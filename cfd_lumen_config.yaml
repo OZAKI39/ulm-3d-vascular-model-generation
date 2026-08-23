@@ -1,0 +1,185 @@
+geometry:
+  source_unit: um
+  export_unit: m
+  centerline_smoothing: false
+  smoothing_window_points: 3
+  resample_radius_fraction: 0.35
+  min_resample_spacing_um: 0.2
+  max_resample_spacing_um: 1.0
+  minimum_edge_length_um: 1.0e-8
+  tube_sides: 32
+
+junction:
+  enabled: true
+  backend: local_implicit
+  radius_scale: 1.0
+  collar_diameters: 2.0
+  overlap_diameters: 0.5
+  bbox_padding_radius: 1.5
+  separation_tolerance_fraction: 0.05
+  implicit:
+    cells_across_min_diameter: 16
+    dtype: float32
+    smooth_union: false
+    chunk_size: 500000
+    k_nearest: 16
+    max_grid_cells: 20000000
+    direction_clip_epsilon_radius_fraction: 0.10
+  remesh:
+    enabled: false
+
+reconstruction:
+  branch_backend: explicit
+  port_backend: explicit
+  junction_backend: local_implicit
+
+hybrid_merge:
+  backend: manifold
+  cleanup_tolerance_um: 3.0e-3
+
+port_transition:
+  backend: continuous_centerline
+  profile_diameter_offsets: [-1.0, 0.0, 1.0, 2.0]
+
+v6:
+  enabled: true
+  transition_backend: continuous_implicit_field
+  legacy_transition_backend: loop_stitch_legacy
+  port_source_fit_points: 5
+  tangent_blend_diameters: 1.5
+  tangent_conditioning_threshold_deg: 3.0
+  radius_blend_diameters: 1.5
+  radius_slope_conditioning_threshold_um_per_um: 0.02
+  port_extension_spacing_radius_fraction: 0.05
+  port_extension_min_spacing_um: 0.05
+  pure_branch_overlap_diameters: 0.5
+  convergence_cells_across_min_diameter: [16, 20, 24]
+  interface_plane_tolerance_radius_fraction: 0.12
+  silhouette_large_corner_deg: 25.0
+  loop_center_tolerance_radius_fraction: 0.08
+  loop_radius_tolerance_fraction: 0.05
+  loop_hausdorff_tolerance_radius_fraction: 0.15
+  local_patch_cleanup_tolerance_um: 5.0e-4
+
+v7:
+  enabled: false
+  backend: unified_polyball
+  polyball_provider: auto
+  cells_across_min_diameter: 16
+  convergence_cells_across_min_diameter: [12, 16, 20, 24]
+  extraction_backend: flying_edges
+  compare_marching_cubes: true
+  port_tail_diameters: 1.0
+  k_nearest_segments: 32
+  field_padding_cells: 3
+  max_grid_cells: 1000000000
+  memory_map_threshold_cells: 120000000
+  memory_map_directory: tmp/polyball_fields
+  newton_iterations: 3
+  projection_tolerance_um: 1.0e-5
+  remesh_backend: pyacvd
+  remesh_target_edge_spacing_factor: 1.5
+  remesh_minimum_clusters: 1000
+  oriented_grid: true
+
+v8:
+  enabled: false
+  backend: unified_polyball_smooth_junction
+  k_radius_ratios: [0.10, 0.20, 0.30]
+  blend_length_scale: 1.0
+  ownership_switch_margin_fraction: 0.02
+  sawtooth_dihedral_percentile: 95.0
+  switch_overlap_distance_edge_factors: 1.5
+  junction_volume_samples_across_diameter: 64
+  maximum_junction_volume_increase_fraction: 0.05
+  maximum_radius_p95_error: 0.01
+  maximum_collar_radius_error_increase: 0.01
+  maximum_hydraulic_resistance_error: 0.05
+  minimum_silhouette_roughness_reduction_fraction: 0.05
+
+hybrid_transition:
+  backend: loop_stitch
+  fallback_backend: manifold_boolean
+  transition_rings: 6
+  smoothstep: quintic
+  constrained_smoothing: false
+  smoothing_iterations: 5
+  smoothing_lambda: 0.25
+  smoothing_mu: -0.26
+  capture_v4_comparison: true
+  minimum_normal_p99_reduction_fraction: 0.20
+  minimum_port_normal_p99_reduction_fraction: 0.20
+  minimum_transition_roughness_reduction_fraction: 0.10
+  maximum_port_area_error_increase: 0.002
+  maximum_radius_p95_error_increase: 0.002
+  maximum_collar_error_increase: 0.002
+
+context_domain:
+  enabled: true
+  source_rodent_run: null
+  max_added_global_edges: 1000
+  verify_source_geometry: true
+
+branch_local_qc:
+  enabled: true
+  ownership_margin_threshold: 0.10
+  minimum_ownership_confidence: 0.80
+  cross_section_cells_across_source_diameter: 96
+  maximum_cross_section_grid_points: 262144
+  severe_area_relative_error: 0.25
+  minimum_junction_total_area_ratio: 0.20
+  maximum_junction_normal_jump_p99_deg: 120.0
+
+ports:
+  extension_diameters: 5.0
+  overlap_diameters: 0.5
+  plane_tolerance_um: 0.02
+  radial_tolerance_fraction: 0.03
+  area_relative_tolerance: 0.15
+  minimum_normal_alignment: 0.90
+
+collision_qc:
+  enabled: true
+  hard_collision_tolerance_um: 0.0
+  near_contact_tolerance_um: 0.2
+
+boolean:
+  backend: manifold
+  allow_implicit_fallback: true
+
+implicit_fallback:
+  dtype: float32
+  cells_across_min_diameter: 8
+  chunk_size: 1000000
+  k_nearest: 16
+  min_spacing_um: 0.15
+  max_spacing_um: 1.0
+  max_grid_cells: 80000000
+
+surface_qc:
+  check_watertight: true
+  check_manifold: true
+  check_connected: true
+  check_port_area: true
+  radius_fidelity_samples_per_branch: 10
+  radius_fidelity_skip_diameters: 2.0
+  max_radius_p95_error: null
+  require_watertight: true
+  require_single_component: true
+  require_zero_boundary_edges: true
+  require_zero_nonmanifold_edges: true
+  require_zero_self_intersections: true
+  require_zero_internal_faces: true
+  require_zero_internal_caps: true
+
+convergence:
+  enabled: true
+  tube_sides: [16, 24, 32, 48]
+
+volume_mesh:
+  enabled: false
+  characteristic_length_factor: 1.0
+
+output:
+  visualizations: true
+  save_centerlines: true
