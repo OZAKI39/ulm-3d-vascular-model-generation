@@ -16,6 +16,7 @@ from utils.cfd_lumen import (
 )
 from utils.cfd_lumen.diagnostic_pipeline import run_geometry_diagnostics
 from utils.cfd_lumen.export import create_run_layout, write_json, write_resolved_config
+from utils.cfd_lumen.ultraliser_backend import run_ultraliser_roi_experiment
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -70,6 +71,15 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Explicitly process all selected representative ROIs.",
     )
+    parser.add_argument(
+        "--surface-backend",
+        choices=("legacy", "ultraliser"),
+        default="legacy",
+        help=(
+            "Surface generation backend. 'legacy' retains the experimental v1-v9 baseline; "
+            "'ultraliser' exclusively invokes official ultraVessMorpho2Mesh."
+        ),
+    )
     parser.add_argument("--backend", choices=("manifold", "implicit"), default=None)
     parser.add_argument(
         "--surface-version",
@@ -93,6 +103,24 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--no-convergence", action="store_true")
     parser.add_argument("--no-visualizations", action="store_true")
+    parser.add_argument(
+        "--ultraliser-root",
+        type=Path,
+        default=PROJECT_ROOT / "Ultraliser",
+        help="Local upstream Ultraliser repository (used without C++ algorithm changes).",
+    )
+    parser.add_argument(
+        "--ultraliser-executable",
+        type=Path,
+        default=None,
+        help="Optional explicit ultraVessMorpho2Mesh executable path.",
+    )
+    parser.add_argument(
+        "--previous-surface",
+        type=Path,
+        default=None,
+        help="Existing legacy final STL used only for the same-camera comparison figure.",
+    )
     return parser
 
 
@@ -120,6 +148,10 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--roi-id cannot be combined with --diagnose-roi/--diagnose-all")
     if diagnosis_mode and args.workers not in (None, 1):
         parser.error("v2 diagnosis requires --workers 1 for traceable logs")
+    if args.surface_backend == "ultraliser" and diagnosis_mode:
+        parser.error("--surface-backend ultraliser cannot be combined with legacy diagnosis")
+    if args.surface_backend == "ultraliser" and args.all_selected:
+        parser.error("Ultraliser formal validation is restricted to one saved anchor_003274 ROI")
     if args.headless:
         os.environ["PYVISTA_OFF_SCREEN"] = "true"
     try:
@@ -143,6 +175,27 @@ def main(argv: list[str] | None = None) -> int:
             config.context_domain.source_rodent_run = str(args.rodent_run.resolve())
         config.validate()
         sampling_run = resolve_sampling_run(args.sampling_run, project_root=PROJECT_ROOT)
+        if args.surface_backend == "ultraliser":
+            selected = load_sampling_rois(sampling_run, roi_id=args.roi_id, selected_only=True)
+            rois = [roi for roi in selected if int(roi.anchor_id) == 3274]
+            if len(rois) != 1:
+                parser.error(
+                    "--surface-backend ultraliser requires exactly the saved representative "
+                    "anchor_003274 ROI"
+                )
+            summary = run_ultraliser_roi_experiment(
+                rois[0],
+                config,
+                output_root=args.output_dir,
+                run_id=args.run_id,
+                ultraliser_root=args.ultraliser_root,
+                executable_path=args.ultraliser_executable,
+                previous_surface=args.previous_surface,
+                threads=args.workers,
+            )
+            print(f"Ultraliser run directory: {summary['run_root']}")
+            print(f"Ultraliser decision: {summary['decision']}")
+            return 0 if summary["surface_qc"]["status"] == "PASS" else 2
         rois = load_sampling_rois(
             sampling_run,
             roi_id=args.diagnose_roi if diagnosis_mode else args.roi_id,
