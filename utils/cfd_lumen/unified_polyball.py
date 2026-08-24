@@ -33,6 +33,24 @@ from .types import (
 
 
 @dataclass(slots=True)
+class PolyBallOwnership:
+    """Exact first/second segment ownership without changing ``evaluate``."""
+
+    phi_um: np.ndarray
+    gradient_world: np.ndarray | None
+    winner_segment_id: np.ndarray
+    winner_branch_id: np.ndarray
+    winner_segment_index_in_branch: np.ndarray
+    winner_parametric_t: np.ndarray
+    winner_local_radius_um: np.ndarray
+    second_segment_id: np.ndarray
+    second_branch_id: np.ndarray
+    second_segment_index_in_branch: np.ndarray
+    second_parametric_t: np.ndarray
+    ownership_margin_um: np.ndarray
+
+
+@dataclass(slots=True)
 class PolyBallLineModel:
     """Piecewise-linear centerline with continuously interpolated radius."""
 
@@ -41,6 +59,7 @@ class PolyBallLineModel:
     radius_start_um: np.ndarray
     radius_end_um: np.ndarray
     segment_branch_id: np.ndarray
+    segment_index_in_branch: np.ndarray
     origin_world_um: np.ndarray
     local_axes: np.ndarray
     tree: cKDTree
@@ -89,6 +108,143 @@ class PolyBallLineModel:
             if gradients and gradient_world is not None and grad_local is not None:
                 gradient_world[start:stop] = grad_local @ self.local_axes
         return values, gradient_world
+
+    def evaluate_with_ownership(
+        self,
+        points_world_um: np.ndarray,
+        *,
+        k: int = 32,
+        gradients: bool = False,
+        chunk_size: int = 50_000,
+    ) -> PolyBallOwnership:
+        """Return exact segment winners, runners-up, margins, and segment ``t``."""
+
+        query_world = np.asarray(points_world_um, dtype=float).reshape((-1, 3))
+        count = len(query_world)
+        values = np.empty(count, dtype=float)
+        gradient_world = np.empty_like(query_world) if gradients else None
+        winner_segment = np.empty(count, dtype=np.int64)
+        winner_t = np.empty(count, dtype=float)
+        winner_radius = np.empty(count, dtype=float)
+        second_segment = np.full(count, -1, dtype=np.int64)
+        second_t = np.full(count, np.nan, dtype=float)
+        margin = np.full(count, np.inf, dtype=float)
+        candidate_count = min(max(1, int(k)), self.segment_count)
+        for start in range(0, count, chunk_size):
+            stop = min(start + chunk_size, count)
+            query = self.world_to_local(query_world[start:stop])
+            _, candidates = self.tree.query(query, k=candidate_count, workers=-1)
+            if candidate_count == 1:
+                candidates = np.asarray(candidates, dtype=np.int64)[:, None]
+            else:
+                candidates = np.asarray(candidates, dtype=np.int64)
+            candidate_phi, parametric_t, radial, distance = (
+                _candidate_polyball_components(
+                    query,
+                    candidates,
+                    self.segment_start_local,
+                    self.segment_end_local,
+                    self.radius_start_um,
+                    self.radius_end_um,
+                )
+            )
+            order = np.argsort(candidate_phi, axis=1, kind="stable")
+            rows = np.arange(len(query))
+            winner_column = order[:, 0]
+            winner_ids = candidates[rows, winner_column]
+            values[start:stop] = candidate_phi[rows, winner_column]
+            winner_segment[start:stop] = winner_ids
+            winner_t[start:stop] = parametric_t[rows, winner_column]
+            winner_radius[start:stop] = (
+                self.radius_start_um[winner_ids]
+                + winner_t[start:stop]
+                * (self.radius_end_um[winner_ids] - self.radius_start_um[winner_ids])
+            )
+            if gradients and gradient_world is not None:
+                chosen_radial = radial[rows, winner_column]
+                chosen_distance = distance[rows, winner_column]
+                gradient_local = np.divide(
+                    chosen_radial,
+                    chosen_distance[:, None],
+                    out=np.zeros_like(chosen_radial),
+                    where=chosen_distance[:, None] > 1.0e-14,
+                )
+                gradient_world[start:stop] = gradient_local @ self.local_axes
+            if candidate_count > 1:
+                second_column = order[:, 1]
+                second_ids = candidates[rows, second_column]
+                second_segment[start:stop] = second_ids
+                second_t[start:stop] = parametric_t[rows, second_column]
+                margin[start:stop] = (
+                    candidate_phi[rows, second_column]
+                    - candidate_phi[rows, winner_column]
+                )
+        valid_second = second_segment >= 0
+        second_branch = np.full(count, -1, dtype=np.int64)
+        second_index = np.full(count, -1, dtype=np.int64)
+        second_branch[valid_second] = self.segment_branch_id[
+            second_segment[valid_second]
+        ]
+        second_index[valid_second] = self.segment_index_in_branch[
+            second_segment[valid_second]
+        ]
+        return PolyBallOwnership(
+            phi_um=values,
+            gradient_world=gradient_world,
+            winner_segment_id=winner_segment,
+            winner_branch_id=self.segment_branch_id[winner_segment],
+            winner_segment_index_in_branch=self.segment_index_in_branch[
+                winner_segment
+            ],
+            winner_parametric_t=winner_t,
+            winner_local_radius_um=winner_radius,
+            second_segment_id=second_segment,
+            second_branch_id=second_branch,
+            second_segment_index_in_branch=second_index,
+            second_parametric_t=second_t,
+            ownership_margin_um=margin,
+        )
+
+    def evaluate_segments(
+        self,
+        points_world_um: np.ndarray,
+        segment_ids: np.ndarray,
+        *,
+        gradients: bool = False,
+    ) -> tuple[np.ndarray, np.ndarray | None, np.ndarray, np.ndarray]:
+        """Evaluate one explicitly selected source segment per query point."""
+
+        points = np.asarray(points_world_um, dtype=float).reshape((-1, 3))
+        ids = np.asarray(segment_ids, dtype=np.int64).reshape(-1)
+        if len(points) != len(ids) or np.any((ids < 0) | (ids >= self.segment_count)):
+            raise ValueError("segment_ids must contain one valid segment per point")
+        query = self.world_to_local(points)
+        candidates = ids[:, None]
+        candidate_phi, parametric_t, radial, distance = (
+            _candidate_polyball_components(
+                query,
+                candidates,
+                self.segment_start_local,
+                self.segment_end_local,
+                self.radius_start_um,
+                self.radius_end_um,
+            )
+        )
+        phi = candidate_phi[:, 0]
+        t = parametric_t[:, 0]
+        local_radius = self.radius_start_um[ids] + t * (
+            self.radius_end_um[ids] - self.radius_start_um[ids]
+        )
+        gradient_world = None
+        if gradients:
+            gradient_local = np.divide(
+                radial[:, 0],
+                distance[:, 0, None],
+                out=np.zeros_like(radial[:, 0]),
+                where=distance[:, 0, None] > 1.0e-14,
+            )
+            gradient_world = gradient_local @ self.local_axes
+        return phi, gradient_world, t, local_radius
 
     @property
     def branch_ids(self) -> np.ndarray:
@@ -184,6 +340,7 @@ class SmoothJunctionPolyBallModel:
     hard_model: PolyBallLineModel
     junctions: tuple[JunctionBlendSpec, ...]
     k_radius_ratio: float
+    competition_threshold_radius_fraction: float | None = None
 
     @property
     def radius_start_um(self) -> np.ndarray:
@@ -240,6 +397,30 @@ class SmoothJunctionPolyBallModel:
             if len(incident_columns) < 2:
                 continue
             weight, weight_gradient = spec.compact_weight_and_gradient(local_points)
+            incident_values = branch_phi[:, incident_columns]
+            incident_order = np.argsort(incident_values, axis=1, kind="stable")
+            incident_rows = np.arange(len(local_points))
+            competition_margin = (
+                incident_values[incident_rows, incident_order[:, 1]]
+                - incident_values[incident_rows, incident_order[:, 0]]
+            )
+            if self.competition_threshold_radius_fraction is None:
+                competition_active = weight > 0.0
+            else:
+                ownership = self.hard_model.evaluate_with_ownership(
+                    local_points,
+                    k=k,
+                    gradients=False,
+                    chunk_size=min(chunk_size, 20_000),
+                )
+                competition_active = (
+                    (weight > 0.0)
+                    & (
+                        competition_margin
+                        < self.competition_threshold_radius_fraction
+                        * ownership.winner_local_radius_um
+                    )
+                )
             spatial_k = self.k_radius_ratio * spec.radius_um * weight
             spatial_k_gradient = (
                 self.k_radius_ratio * spec.radius_um * weight_gradient
@@ -275,11 +456,56 @@ class SmoothJunctionPolyBallModel:
             else:
                 combined = smooth_value
                 combined_gradient = smooth_gradient
-            values[selected] = combined
+            selected_values = values[selected].copy()
+            selected_values[competition_active] = combined[competition_active]
+            values[selected] = selected_values
             if gradients and output_gradient is not None:
                 assert combined_gradient is not None
-                output_gradient[selected] = combined_gradient
+                selected_gradient = output_gradient[selected].copy()
+                selected_gradient[competition_active] = combined_gradient[
+                    competition_active
+                ]
+                output_gradient[selected] = selected_gradient
         return values, output_gradient
+
+    def competition_mask(
+        self, points_world_um: np.ndarray, spec: JunctionBlendSpec
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Return v9 competition support, margin, and local radius."""
+
+        points = np.asarray(points_world_um, dtype=float).reshape((-1, 3))
+        branch_phi, _, branch_ids = self.hard_model.evaluate_branch_fields(
+            points, gradients=False
+        )
+        incident_columns = np.flatnonzero(
+            np.isin(
+                branch_ids,
+                np.asarray(spec.incident_branch_ids, dtype=np.int64),
+            )
+        )
+        if len(incident_columns) < 2:
+            return (
+                np.zeros(len(points), dtype=bool),
+                np.full(len(points), np.inf),
+                np.full(len(points), np.nan),
+            )
+        values = branch_phi[:, incident_columns]
+        order = np.argsort(values, axis=1, kind="stable")
+        rows = np.arange(len(points))
+        margin = values[rows, order[:, 1]] - values[rows, order[:, 0]]
+        ownership = self.hard_model.evaluate_with_ownership(
+            points, gradients=False
+        )
+        weight, _ = spec.compact_weight_and_gradient(points)
+        if self.competition_threshold_radius_fraction is None:
+            active = weight > 0.0
+        else:
+            active = (weight > 0.0) & (
+                margin
+                < self.competition_threshold_radius_fraction
+                * ownership.winner_local_radius_um
+            )
+        return active, margin, ownership.winner_local_radius_um
 
 
 @dataclass(slots=True)
@@ -351,17 +577,15 @@ def _stable_smooth_min_reduce(
     return current, current_gradient
 
 
-def _candidate_polyball_values(
+def _candidate_polyball_components(
     query: np.ndarray,
     candidates: np.ndarray,
     starts: np.ndarray,
     ends: np.ndarray,
     radius_start: np.ndarray,
     radius_end: np.ndarray,
-    *,
-    gradients: bool,
-) -> tuple[np.ndarray, np.ndarray | None]:
-    """Minimum of exact ``distance-to-line(t) - linear-radius(t)`` values."""
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Return exact per-candidate PolyBall values and minimizing parameters."""
 
     p0 = starts[candidates]
     direction = ends[candidates] - p0
@@ -410,6 +634,29 @@ def _candidate_polyball_values(
     distance = np.linalg.norm(radial, axis=2)
     local_radius = radius_start[candidates] + t * delta_radius
     candidate_phi = distance - local_radius
+    return candidate_phi, t, radial, distance
+
+
+def _candidate_polyball_values(
+    query: np.ndarray,
+    candidates: np.ndarray,
+    starts: np.ndarray,
+    ends: np.ndarray,
+    radius_start: np.ndarray,
+    radius_end: np.ndarray,
+    *,
+    gradients: bool,
+) -> tuple[np.ndarray, np.ndarray | None]:
+    """Minimum of exact ``distance-to-line(t) - linear-radius(t)`` values."""
+
+    candidate_phi, _, radial, distance = _candidate_polyball_components(
+        query,
+        candidates,
+        starts,
+        ends,
+        radius_start,
+        radius_end,
+    )
     owner = np.argmin(candidate_phi, axis=1)
     rows = np.arange(len(query))
     phi = candidate_phi[rows, owner]
@@ -558,13 +805,19 @@ def build_polyball_model(
     config: CFDLumenConfig,
     *,
     v6_details: HybridBuildDetails | None = None,
+    constructed_override: list[BranchGeometry] | None = None,
+    port_tail_rows_override: list[dict[str, Any]] | None = None,
 ) -> tuple[PolyBallLineModel, list[BranchGeometry], list[dict[str, Any]]]:
-    base = (
-        v6_details.constructed_branches
-        if v6_details is not None and v6_details.constructed_branches
-        else branches
-    )
-    constructed, tail_rows = _copy_with_tail(base, ports, config)
+    if constructed_override is not None:
+        constructed = constructed_override
+        tail_rows = list(port_tail_rows_override or ())
+    else:
+        base = (
+            v6_details.constructed_branches
+            if v6_details is not None and v6_details.constructed_branches
+            else branches
+        )
+        constructed, tail_rows = _copy_with_tail(base, ports, config)
     all_points = np.vstack([branch.points_um for branch in constructed])
     origin = np.mean(all_points, axis=0)
     if config.v7.oriented_grid and len(all_points) >= 3:
@@ -578,6 +831,7 @@ def build_polyball_model(
     radius_start: list[float] = []
     radius_end: list[float] = []
     branch_ids: list[int] = []
+    segment_indices: list[int] = []
     for branch in constructed:
         local = (np.asarray(branch.points_um) - origin) @ axes.T
         for index in range(len(local) - 1):
@@ -588,6 +842,7 @@ def build_polyball_model(
             radius_start.append(float(branch.radius_um[index]))
             radius_end.append(float(branch.radius_um[index + 1]))
             branch_ids.append(branch.branch_id)
+            segment_indices.append(index)
     start_array = np.asarray(starts, dtype=float)
     end_array = np.asarray(ends, dtype=float)
     if not len(start_array):
@@ -608,6 +863,7 @@ def build_polyball_model(
             radius_start_um=np.asarray(radius_start, dtype=float),
             radius_end_um=np.asarray(radius_end, dtype=float),
             segment_branch_id=np.asarray(branch_ids, dtype=np.int64),
+            segment_index_in_branch=np.asarray(segment_indices, dtype=np.int64),
             origin_world_um=origin,
             local_axes=axes,
             tree=cKDTree(midpoint),
@@ -834,6 +1090,12 @@ def _apply_smooth_junction_polyball(
         ),
         "smooth_union_reduction": "deterministic pairwise branch-id order",
         "compact_support": "quintic smootherstep; k=0 outside true junction cores",
+        "competition_aware_support": (
+            model.competition_threshold_radius_fraction is not None
+        ),
+        "competition_threshold_radius_fraction": (
+            model.competition_threshold_radius_fraction
+        ),
     }
 
 
@@ -854,12 +1116,19 @@ def prepare_polyball_raster(
     *,
     v6_details: HybridBuildDetails | None = None,
     cells_across_min_diameter: int | None = None,
+    constructed_override: list[BranchGeometry] | None = None,
+    port_tail_rows_override: list[dict[str, Any]] | None = None,
 ) -> PreparedPolyBallRaster:
     """Prepare one immutable hard-field raster for the three v8 k/r variants."""
 
     cells = int(cells_across_min_diameter or config.v7.cells_across_min_diameter)
     model, constructed, tail_rows = build_polyball_model(
-        branches, ports, config, v6_details=v6_details
+        branches,
+        ports,
+        config,
+        v6_details=v6_details,
+        constructed_override=constructed_override,
+        port_tail_rows_override=port_tail_rows_override,
     )
     minimum, dimensions, spacing = _grid_specification(model, config, cells)
     field, backing_path, field_report = _rasterize_sparse_polyball(
@@ -1382,6 +1651,9 @@ def build_unified_polyball_surface(
     junction_specs: tuple[JunctionBlendSpec, ...] = (),
     smooth_k_radius_ratio: float | None = None,
     prepared_raster: PreparedPolyBallRaster | None = None,
+    constructed_override: list[BranchGeometry] | None = None,
+    port_tail_rows_override: list[dict[str, Any]] | None = None,
+    competition_threshold_radius_fraction: float | None = None,
 ) -> UnifiedPolyBallBuild:
     """Build one complete implicit wall, then remesh/project and cut final ports."""
 
@@ -1389,7 +1661,12 @@ def build_unified_polyball_surface(
     cells = int(cells_across_min_diameter or config.v7.cells_across_min_diameter)
     if prepared_raster is None:
         model, constructed, tail_rows = build_polyball_model(
-            branches, ports, config, v6_details=v6_details
+            branches,
+            ports,
+            config,
+            v6_details=v6_details,
+            constructed_override=constructed_override,
+            port_tail_rows_override=port_tail_rows_override,
         )
         minimum, dimensions, spacing = _grid_specification(model, config, cells)
     else:
@@ -1418,6 +1695,11 @@ def build_unified_polyball_surface(
             hard_model=model,
             junctions=tuple(junction_specs),
             k_radius_ratio=float(smooth_k_radius_ratio),
+            competition_threshold_radius_fraction=(
+                float(competition_threshold_radius_fraction)
+                if competition_threshold_radius_fraction is not None
+                else None
+            ),
         )
     field: np.ndarray | None = None
     backing_path: Path | None = None
@@ -1520,10 +1802,21 @@ def build_unified_polyball_surface(
         projected_remesh, ports, config
     )
     patch = _patch_from_boundary_ids(capped, boundary_ids, ports, config)
-    is_v8 = isinstance(field_model, SmoothJunctionPolyBallModel)
+    is_smooth = isinstance(field_model, SmoothJunctionPolyBallModel)
+    is_v9 = bool(
+        is_smooth
+        and field_model.competition_threshold_radius_fraction is not None
+    )
+    is_v8 = is_smooth
     metadata = {
         "protocol": "v8 local smooth-union diagnosis" if is_v8 else "(new) 子图建模修改v7",
-        "backend": "unified_polyball_smooth_junction" if is_v8 else "unified_polyball",
+        "backend": (
+            "c1_spline_polyball_competition_union"
+            if is_v9
+            else "unified_polyball_smooth_junction"
+            if is_smooth
+            else "unified_polyball"
+        ),
         "polyball_provider": model.provider,
         "vmtk_available": bool(importlib.util.find_spec("vmtk")),
         "vmtk_environment_decision": (
@@ -1540,9 +1833,17 @@ def build_unified_polyball_surface(
         "surface_boolean_count": 0,
         "collar_surface_count": 0,
         "hybrid_interface_edge_count": 0,
-        "projection_field": "Phi_v8" if is_v8 else "Phi_v7_hard_min",
+        "projection_field": (
+            "Phi_v9_competition_aware"
+            if is_v9
+            else "Phi_v8"
+            if is_smooth
+            else "Phi_v7_hard_min"
+        ),
         "same_field_for_flying_edges_and_both_newton_projections": True,
         "smooth_k_radius_ratio": smooth_k_radius_ratio,
+        "competition_threshold_radius_fraction": competition_threshold_radius_fraction,
+        "competition_aware_support": is_v9,
         "hard_field_reused_for_k_sensitivity": prepared_raster is not None,
         "junction_blends": [
             {
@@ -1573,6 +1874,8 @@ def build_unified_polyball_surface(
         "boundary_ids": {"WALL": 0, **{f"PORT_{port.port_id}": port.port_id + 1 for port in ports}},
         "runtime_s": time.perf_counter() - started,
     }
+    if is_v9:
+        metadata["protocol"] = "v9 C1 spline plus competition-aware junction union"
     return UnifiedPolyBallBuild(
         mesh=capped,
         wall_mesh_before_clip=projected_remesh,

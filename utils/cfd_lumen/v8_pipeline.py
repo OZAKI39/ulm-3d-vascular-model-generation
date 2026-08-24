@@ -56,6 +56,7 @@ class V8RefinementResult:
     decision: str
     geometry_paths: list[Path]
     figure_paths: list[Path]
+    candidate_builds: dict[float, UnifiedPolyBallBuild]
 
 
 def _maximum(rows: list[dict[str, Any]], key: str) -> float | None:
@@ -689,4 +690,5 @@ def run_v8_refinement(
         decision=decision,
         geometry_paths=geometry_paths,
         figure_paths=figure_paths,
+        candidate_builds=candidates,
     )

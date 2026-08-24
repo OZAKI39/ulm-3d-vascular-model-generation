@@ -87,3 +87,4 @@ def compute_structural_features(roi: ROIRecord) -> dict[str, float]:
         "cycle_rank": float(cycle_rank),
         "mean_branch_tortuosity": float(np.mean(tortuosities)) if tortuosities else 1.0,
     }
+

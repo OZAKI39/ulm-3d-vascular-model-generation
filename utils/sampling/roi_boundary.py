@@ -95,3 +95,4 @@ def clip_segment_to_box(
         boundary_face(clipped_start, lower, upper) if enter > tolerance else None,
         boundary_face(clipped_end, lower, upper) if leave < 1.0 - tolerance else None,
     )
+

@@ -133,6 +133,32 @@ class V8Config:
 
 
 @dataclass(slots=True)
+class V9Config:
+    enabled: bool = False
+    backend: str = "c1_spline_polyball_competition_union"
+    spline_method: str = "centripetal_cubic_hermite"
+    adaptive_tangent_angle_degrees: tuple[float, ...] = (0.5, 1.0, 2.0)
+    adaptive_sagitta_radius_fractions: tuple[float, ...] = (0.01, 0.02)
+    spacing_radius_fraction: float = 0.35
+    max_spacing_um: float = 1.0
+    maximum_source_p95_radius_fraction: float = 0.15
+    maximum_source_hausdorff_radius_fraction: float = 0.35
+    maximum_branch_length_change_fraction: float = 0.05
+    competition_threshold_radius_fraction: float = 0.10
+    k_radius_ratios: tuple[float, ...] = (0.10, 0.20, 0.30, 0.40, 0.50)
+    maximum_same_branch_gradient_p99_deg: float = 2.0
+    maximum_cross_branch_gradient_p99_deg: float = 30.0
+    maximum_radius_p95_error: float = 0.01
+    maximum_hydraulic_resistance_error: float = 0.05
+    maximum_junction_volume_increase_fraction: float = 0.05
+    fairing_enabled: bool = True
+    fairing_neighborhood_rings: int = 2
+    fairing_iterations: int = 10
+    fairing_relaxation: float = 0.15
+    fairing_max_displacement_radius_fraction: float = 0.03
+
+
+@dataclass(slots=True)
 class HybridTransitionConfig:
     backend: str = "loop_stitch"
     fallback_backend: str = "manifold_boolean"
@@ -251,6 +277,7 @@ class CFDLumenConfig:
     v6: V6Config = field(default_factory=V6Config)
     v7: V7Config = field(default_factory=V7Config)
     v8: V8Config = field(default_factory=V8Config)
+    v9: V9Config = field(default_factory=V9Config)
     hybrid_transition: HybridTransitionConfig = field(default_factory=HybridTransitionConfig)
     context_domain: ContextDomainConfig = field(default_factory=ContextDomainConfig)
     branch_local_qc: BranchLocalQCConfig = field(default_factory=BranchLocalQCConfig)
@@ -395,6 +422,47 @@ class CFDLumenConfig:
             value = float(getattr(v8, name))
             if not 0.0 <= value < 1.0:
                 raise ValueError(f"v8.{name} must be in [0, 1)")
+        v9 = self.v9
+        if v9.backend != "c1_spline_polyball_competition_union":
+            raise ValueError(
+                "v9.backend must be c1_spline_polyball_competition_union"
+            )
+        if v9.spline_method != "centripetal_cubic_hermite":
+            raise ValueError("v9.spline_method must be centripetal_cubic_hermite")
+        if tuple(v9.adaptive_tangent_angle_degrees) != (0.5, 1.0, 2.0):
+            raise ValueError(
+                "v9.adaptive_tangent_angle_degrees must remain [0.5, 1.0, 2.0]"
+            )
+        if tuple(v9.adaptive_sagitta_radius_fractions) != (0.01, 0.02):
+            raise ValueError(
+                "v9.adaptive_sagitta_radius_fractions must remain [0.01, 0.02]"
+            )
+        if tuple(v9.k_radius_ratios) != (0.10, 0.20, 0.30, 0.40, 0.50):
+            raise ValueError(
+                "v9.k_radius_ratios must remain [0.10, 0.20, 0.30, 0.40, 0.50]"
+            )
+        if min(
+            v9.spacing_radius_fraction,
+            v9.max_spacing_um,
+            v9.maximum_source_p95_radius_fraction,
+            v9.maximum_source_hausdorff_radius_fraction,
+            v9.maximum_branch_length_change_fraction,
+            v9.competition_threshold_radius_fraction,
+            v9.maximum_same_branch_gradient_p99_deg,
+            v9.maximum_cross_branch_gradient_p99_deg,
+            v9.maximum_radius_p95_error,
+            v9.maximum_hydraulic_resistance_error,
+            v9.maximum_junction_volume_increase_fraction,
+            v9.fairing_neighborhood_rings,
+            v9.fairing_iterations,
+            v9.fairing_relaxation,
+            v9.fairing_max_displacement_radius_fraction,
+        ) <= 0:
+            raise ValueError("v9 spline, competition, fidelity, and fairing values must be positive")
+        if v9.maximum_source_p95_radius_fraction > v9.maximum_source_hausdorff_radius_fraction:
+            raise ValueError("v9 source P95 tolerance cannot exceed the Hausdorff tolerance")
+        if not 0.0 < v9.fairing_relaxation < 1.0:
+            raise ValueError("v9.fairing_relaxation must be in (0, 1)")
         transition = self.hybrid_transition
         if transition.backend not in {"loop_stitch", "manifold_boolean"}:
             raise ValueError(
@@ -485,6 +553,7 @@ _SECTIONS: dict[str, type[Any]] = {
     "v6": V6Config,
     "v7": V7Config,
     "v8": V8Config,
+    "v9": V9Config,
     "hybrid_transition": HybridTransitionConfig,
     "context_domain": ContextDomainConfig,
     "branch_local_qc": BranchLocalQCConfig,
@@ -548,6 +617,16 @@ def load_cfd_lumen_config(path: Path | None = None) -> CFDLumenConfig:
             values["k_radius_ratios"] = tuple(
                 float(value) for value in values["k_radius_ratios"]
             )
+        if name == "v9":
+            for tuple_key in (
+                "adaptive_tangent_angle_degrees",
+                "adaptive_sagitta_radius_fractions",
+                "k_radius_ratios",
+            ):
+                if isinstance(values.get(tuple_key), list):
+                    values[tuple_key] = tuple(
+                        float(value) for value in values[tuple_key]
+                    )
         if name == "junction":
             implicit_values = asdict(LocalJunctionImplicitConfig())
             implicit_values.update(values.pop("implicit", {}) or {})

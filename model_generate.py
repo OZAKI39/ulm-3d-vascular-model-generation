@@ -73,11 +73,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--backend", choices=("manifold", "implicit"), default=None)
     parser.add_argument(
         "--surface-version",
-        choices=("v5", "v6", "v7", "v8"),
-        default="v8",
+        choices=("v5", "v6", "v7", "v8", "v9"),
+        default="v9",
         help=(
-            "Formal surface protocol; v8 localizes the v7 artifact and evaluates "
-            "compact-support smooth union only in true junction cores."
+            "Formal surface protocol; v9 replaces piecewise-linear centerlines with "
+            "source-constrained C1 splines before competition-aware junction union."
         ),
     )
     parser.add_argument(
@@ -126,9 +126,10 @@ def main(argv: list[str] | None = None) -> int:
         config = load_cfd_lumen_config(args.config)
         if args.backend is not None:
             config.boolean.backend = args.backend
-        config.v6.enabled = args.surface_version in {"v6", "v7", "v8"}
-        config.v7.enabled = args.surface_version in {"v7", "v8"}
-        config.v8.enabled = args.surface_version == "v8"
+        config.v6.enabled = args.surface_version in {"v6", "v7", "v8", "v9"}
+        config.v7.enabled = args.surface_version in {"v7", "v8", "v9"}
+        config.v8.enabled = args.surface_version in {"v8", "v9"}
+        config.v9.enabled = args.surface_version == "v9"
         if args.junction_backend is not None:
             config.junction.backend = args.junction_backend
             config.reconstruction.junction_backend = args.junction_backend
