@@ -49,6 +49,7 @@ from .types import CFDRunLayout, GeometryValidationError, ROIProcessResult
 from .v6_pipeline import V6RefinementResult, run_v6_refinement
 from .v7_pipeline import V7RefinementResult, run_v7_refinement
 from .v8_pipeline import V8RefinementResult, run_v8_refinement
+from .v9_pipeline import V9RefinementResult, run_v9_refinement
 from .visualization import (
     collision_figure,
     cross_section_figure,
@@ -952,9 +953,32 @@ def process_roi(
                 time.perf_counter() - stage
             )
 
+        v9_result: V9RefinementResult | None = None
+        if config.v9.enabled:
+            if v6_result is None or v7_result is None or v8_result is None:
+                raise GeometryValidationError(
+                    "V9 requires v6 topology details, v7 hard-min, and v8 branch-union controls"
+                )
+            stage = time.perf_counter()
+            v9_result = run_v9_refinement(
+                roi,
+                branches,
+                ports,
+                config,
+                v6_result,
+                v7_result,
+                v8_result,
+                run_layout.run_root / "v9" / core_roi.roi_id,
+            )
+            timings["v9_segment_crease_spline_and_competition_union"] = (
+                time.perf_counter() - stage
+            )
+
         stage = time.perf_counter()
         final_mesh = (
-            v8_result.mesh
+            v9_result.mesh
+            if v9_result is not None
+            else v8_result.mesh
             if v8_result is not None
             else v7_result.mesh
             if v7_result is not None
@@ -966,7 +990,9 @@ def process_roi(
             v6_result.details if v6_result is not None else build.hybrid_details
         )
         final_patch = (
-            v8_result.patch
+            v9_result.patch
+            if v9_result is not None
+            else v8_result.patch
             if v8_result is not None
             else v7_result.patch
             if v7_result is not None
@@ -976,7 +1002,8 @@ def process_roi(
         )
         final_face_region = (
             np.zeros(len(final_mesh.faces), dtype=np.uint8)
-            if v8_result is not None
+            if v9_result is not None
+            or v8_result is not None
             or v7_result is not None
             and v7_result.decision == "ADOPT_V7_UNIFIED_POLYBALL"
             else face_region_labels(final_mesh, final_details, branches)
@@ -1095,7 +1122,9 @@ def process_roi(
         timings["visualization"] = time.perf_counter() - stage
         timings["total"] = time.perf_counter() - started_total
         final_surface_qc = (
-            v8_result.report["selected_surface_qc"]
+            v9_result.report["selected_surface_qc"]
+            if v9_result is not None
+            else v8_result.report["selected_surface_qc"]
             if v8_result is not None
             else v7_result.report["surface_qc_v7"]
             if v7_result is not None
@@ -1106,7 +1135,9 @@ def process_roi(
             else surface_qc
         )
         final_hybrid_qc = (
-            v8_result.report["selected_topology"]
+            v9_result.report["selected_topology"]
+            if v9_result is not None
+            else v8_result.report["selected_topology"]
             if v8_result is not None
             else v7_result.report["topology_v7"]
             if v7_result is not None
@@ -1117,7 +1148,9 @@ def process_roi(
             else hybrid_qc
         )
         final_radius_qc = (
-            v8_result.report["selected_radius_fidelity"]
+            v9_result.report["selected_radius_fidelity"]
+            if v9_result is not None
+            else v8_result.report["selected_radius_fidelity"]
             if v8_result is not None
             else v7_result.report["radius_fidelity_v7"]
             if v7_result is not None
@@ -1128,7 +1161,9 @@ def process_roi(
             else radius_qc
         )
         final_collar_rows = (
-            v8_result.report["selected_collar_radius"]
+            v9_result.report["selected_collar_radius"]
+            if v9_result is not None
+            else v8_result.report["selected_collar_radius"]
             if v8_result is not None
             else v7_result.report["collar_radius_v7"]
             if v7_result is not None
@@ -1172,7 +1207,9 @@ def process_roi(
             "extension_primitive_count": build.extension_primitive_count,
             "backend_requested": build.backend_requested,
             "backend_used": (
-                "unified_polyball_smooth_junction"
+                v9_result.selected_build.metadata.get("backend", "unified_polyball")
+                if v9_result is not None
+                else "unified_polyball_smooth_junction"
                 if v8_result is not None
                 and v8_result.decision == "ADOPT_V8_LOCAL_SMOOTH_UNION"
                 else "unified_polyball"
@@ -1187,7 +1224,10 @@ def process_roi(
             ),
             "fallback_reason": (
                 (
-                    v8_result.decision
+                    v9_result.decision
+                    if v9_result is not None
+                    and not v9_result.decision.startswith("ADOPT_V9")
+                    else v8_result.decision
                     if v8_result is not None
                     and v8_result.decision != "ADOPT_V8_LOCAL_SMOOTH_UNION"
                     else "v7 A/B decision retained v6"
@@ -1230,7 +1270,10 @@ def process_roi(
             "hybrid_max_collar_radius_error": maximum_collar_error,
             "v4_acceptance": v4_acceptance,
             "surface_continuity_version": (
-                "v8"
+                "v9"
+                if v9_result is not None
+                and v9_result.decision.startswith("ADOPT_V9")
+                else "v8"
                 if v8_result is not None
                 and v8_result.decision == "ADOPT_V8_LOCAL_SMOOTH_UNION"
                 else "v7"
@@ -1258,6 +1301,11 @@ def process_roi(
             "v7_report": v7_result.report if v7_result is not None else None,
             "v8_decision": v8_result.decision if v8_result is not None else None,
             "v8_report": v8_result.report if v8_result is not None else None,
+            "v9_decision": v9_result.decision if v9_result is not None else None,
+            "v9_acceptance": (
+                v9_result.report["acceptance"] if v9_result is not None else None
+            ),
+            "v9_report": v9_result.report if v9_result is not None else None,
             "hybrid_junction_max_area_ratio": max_junction_area_ratio(hybrid_area_rows),
             "geometry_paths": [str(path) for path in geometry_paths],
             "figure_paths": [
@@ -1267,6 +1315,7 @@ def process_roi(
                     *(v6_result.figure_paths if v6_result is not None else []),
                     *(v7_result.figure_paths if v7_result is not None else []),
                     *(v8_result.figure_paths if v8_result is not None else []),
+                    *(v9_result.figure_paths if v9_result is not None else []),
                 )
             ],
             "timings_s": timings,

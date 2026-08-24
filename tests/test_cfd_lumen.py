@@ -28,12 +28,15 @@ from utils.cfd_lumen.surface_qc import (
     evaluate_surface_qc,
     identify_port_patches,
 )
+from utils.cfd_lumen.smooth_centerline import build_smooth_centerline
 from utils.cfd_lumen.synthetic_controls import run_synthetic_controls
 from utils.cfd_lumen.types import BranchGeometry
 from utils.cfd_lumen.unified_polyball import (
     JunctionBlendSpec,
+    SmoothJunctionPolyBallModel,
     _candidate_polyball_values,
     _stable_smooth_min_reduce,
+    build_polyball_model,
     build_unified_polyball_surface,
     prepare_polyball_raster,
     release_prepared_polyball_raster,
@@ -510,6 +513,84 @@ def test_v8_smooth_junction_uses_same_field_for_extraction_and_projection() -> N
     assert build.metadata["projection_after_remesh"][
         "post_projection_phi_abs_p95_um"
     ] <= config.v7.projection_tolerance_um
+
+
+def test_v9_spline_retains_source_port_and_radius_constraints() -> None:
+    roi = _roi(
+        "v9_curve",
+        np.asarray(((0, 0, 0), (10, 0.5, 0), (20, 2.0, 0), (30, 4.5, 0))),
+        np.asarray((2.0, 2.2, 2.4, 2.6)),
+        np.asarray(((0, 1), (1, 2), (2, 3))),
+        ((0, "x_min"), (3, "x_max")),
+    )
+    config = _config()
+    branches, _ = validate_and_extract_branches(roi, config)
+    branches = resample_branches(branches, config)
+    ports = construct_port_geometry(roi, config)
+    smooth = build_smooth_centerline(branches, ports, config)
+    assert smooth.report["status"] == "PASS"
+    assert smooth.report["legacy_moving_average_used"] is False
+    assert smooth.report["source_swc_modified"] is False
+    assert smooth.report["junction_position_error_um"] == 0.0
+    assert smooth.report["endpoint_position_error_um"] == 0.0
+    assert smooth.report["port_position_error_um"] == 0.0
+    assert len(smooth.sensitivity_rows) == 6
+    assert all(row["source_points_retained_as_exact_constraints"] for row in smooth.branch_fidelity_rows)
+    assert all(row["radius_interpolator"] == "PCHIP" for row in smooth.branch_fidelity_rows)
+
+
+def test_v9_segment_ownership_exposes_winner_runner_up_and_parametric_t() -> None:
+    roi = _roi(
+        "v9_ownership",
+        np.asarray(((0, 0, 0), (10, 0, 0), (20, 4, 0))),
+        np.full(3, 2.0),
+        np.asarray(((0, 1), (1, 2))),
+        ((0, "x_min"), (2, "x_max")),
+    )
+    config = _config()
+    branches, _ = validate_and_extract_branches(roi, config)
+    branches = resample_branches(branches, config)
+    ports = construct_port_geometry(roi, config)
+    model, _, _ = build_polyball_model(branches, ports, config)
+    queries = np.asarray(((5.0, 2.0, 0.0), (15.0, 3.0, 0.0)))
+    ownership = model.evaluate_with_ownership(queries, k=model.segment_count)
+    assert ownership.winner_segment_id.shape == (2,)
+    assert ownership.second_segment_id.shape == (2,)
+    assert np.all(ownership.winner_parametric_t >= 0.0)
+    assert np.all(ownership.winner_parametric_t <= 1.0)
+    assert np.all(ownership.ownership_margin_um >= 0.0)
+
+
+def test_v9_competition_support_is_local_and_margin_gated() -> None:
+    roi = _roi(
+        "v9_competition",
+        np.asarray(((0, 0, 0), (10, 0, 0), (20, 8, 0), (20, -8, 0))),
+        np.asarray((2.2, 2.0, 1.5, 1.5)),
+        np.asarray(((0, 1), (1, 2), (1, 3))),
+        ((0, "x_min"), (2, "y_max"), (3, "y_min")),
+    )
+    config = _config()
+    branches, _ = validate_and_extract_branches(roi, config)
+    branches = resample_branches(branches, config)
+    ports = construct_port_geometry(roi, config)
+    model, _, _ = build_polyball_model(branches, ports, config)
+    spec = JunctionBlendSpec(
+        junction_node_id=1,
+        center_world_um=np.asarray(roi.local_node_positions_um[1]),
+        radius_um=float(roi.local_node_radius_um[1]),
+        blend_length_um=5.0,
+        incident_branch_ids=tuple(sorted(branch.branch_id for branch in branches)),
+    )
+    field = SmoothJunctionPolyBallModel(
+        hard_model=model,
+        junctions=(spec,),
+        k_radius_ratio=0.2,
+        competition_threshold_radius_fraction=0.1,
+    )
+    points = np.asarray((spec.center_world_um, spec.center_world_um + (8.0, 0.0, 0.0)))
+    active, margin, radius = field.competition_mask(points, spec)
+    assert active[0] == (margin[0] < 0.1 * radius[0])
+    assert not active[1]
 
 
 def test_v4_segment_index_matches_exhaustive_radius_normalized_distance() -> None:
