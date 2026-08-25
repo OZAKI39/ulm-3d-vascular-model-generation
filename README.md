@@ -68,5 +68,20 @@ measured a median signed radius error of `+1.1558%` and P95 absolute radius erro
 The surface was watertight, single-component, free of detected self-intersections, nonmanifold
 edges, and degenerate triangles, and the junction remained visually smooth and continuous.
 
-See `docs/ULTRALISER_PIPELINE.md` for the compact call graph. CFD port preparation, volume meshing,
-CFD solving, and microbubble simulation are intentionally outside the current stage.
+See `docs/ULTRALISER_PIPELINE.md` for the compact surface-reconstruction call graph.
+
+## CFD boundary preprocessing
+
+The next saved-data stage is intentionally separate from ROI sampling and surface reconstruction:
+
+```powershell
+D:\anaconda3\envs\pmp\python.exe cfd_preprocess.py
+```
+
+It reads `configs/cfd_preprocess.yaml`, solves the complete source-edge analysis SWC as a sparse
+Newtonian 1D resistor network, and transfers pressure and flow to exact ROI `CUT_PORT` locations.
+It validates the existing Ultraliser geometry but never rebuilds or modifies it. Strict readiness
+checks prevent a solver boundary package from being emitted for an unsuitable ROI.
+
+See `docs/CFD_PREPROCESS.md` for the three-stage workflow and the formal-baseline assumptions.
+Volume meshing, 3D CFD solving, and microbubble simulation remain outside this stage.

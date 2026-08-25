@@ -1,0 +1,71 @@
+# CFD boundary preprocessing
+
+The project has three separate, sequential responsibilities. Each stage consumes saved output
+from the preceding stage; the CFD preprocessing stage does not regenerate an ROI or a surface.
+
+## Step 1 — SWC preprocessing and representative ROI data
+
+```powershell
+D:\anaconda3\envs\pmp\python.exe swc_roi_generate.py
+```
+
+This produces the normalized analysis SWC, representative ROI records, exact `CUT_PORT`
+coordinates, and the `CUT_PORT`-to-global-edge mapping.
+
+## Step 2 — calibrated watertight ROI surface
+
+```powershell
+D:\anaconda3\envs\pmp\python.exe swc_stl_model_generate.py
+```
+
+This reuses a saved ROI and produces the calibrated Ultraliser STL/VTP surface. The current
+surface calibration uses `radius_scale=0.91`; that factor is a reconstruction compensation and
+is not applied again to the source radii used by the 1D hydraulic model.
+
+## Step 3 — global 1D solution and ROI boundary transfer
+
+```powershell
+D:\anaconda3\envs\pmp\python.exe cfd_preprocess.py
+```
+
+An alternative strict YAML can be supplied as the only positional argument:
+
+```powershell
+D:\anaconda3\envs\pmp\python.exe cfd_preprocess.py configs\my_cfd_preprocess.yaml
+```
+
+The command loads the complete source-edge analysis SWC, validates its stable edge identities
+against the sampling manifest, solves a Newtonian sparse 1D resistor network, and transfers the
+resulting pressure and flow to exact ROI cut positions. SWC parent→current is a simulation
+direction only; it is neither measured nor asserted to be physiological ground truth.
+
+The formal baseline treats the single structural root as `ASSUMED_GLOBAL_INLET`, uses the
+configured literature-derived root velocity or flow, and assigns all structural leaves a 0 Pa
+gauge reference. A CFD-ready ROI receives one volumetric-flow inlet with parabolic-profile
+metadata and direct 1D pressure at each assumed outlet. Resistance and Windkessel outlet models
+are not part of this baseline.
+
+If the ROI contains a true structural terminal, lacks exactly one assumed inlet, or fails another
+strict readiness rule, the command reports `CFD_ROI_NOT_READY` and deliberately does not create a
+solver boundary package. Diagnostic global and port-transfer results are still retained.
+
+```text
+swc_roi_generate.py
+        ↓
+sampling ROI + global mapping
+        ↓
+swc_stl_model_generate.py
+        ↓
+Ultraliser STL/VTP
+        ↓
+cfd_preprocess.py
+        ↓
+global 1D flow + ROI boundary conditions
+        ↓
+NEXT: CFD surface / volume mesh preparation
+        ↓
+3D CFD
+```
+
+This stage does not modify STL files, create a volume mesh, solve Navier–Stokes equations, or run
+microbubble tracking.

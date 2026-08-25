@@ -1,0 +1,289 @@
+"""Numerical and mapping tests for global-to-ROI CFD preprocessing."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from types import SimpleNamespace
+
+import numpy as np
+import pytest
+import yaml
+from scipy.integrate import quad
+
+from utils.cfd_preprocess.config import load_cfd_preprocess_config
+from utils.cfd_preprocess.io import (
+    GeometryReferenceError,
+    InputValidationError,
+    validate_model_run,
+    verify_global_edge_manifest,
+)
+from utils.cfd_preprocess.one_d_flow import edge_resistance, solve_global_flow
+from utils.cfd_preprocess.port_transfer import (
+    classify_cut_port,
+    transfer_all_ports,
+    transfer_cut_port,
+)
+from utils.sampling.roi_extraction import global_model_from_swc
+from utils.sampling.sampling_types import CutPort, ROIRecord
+
+
+MU = 3.45312e-3
+
+
+def _model(
+    points: list[tuple[float, float, float]],
+    radii: list[float],
+    parents: list[int],
+):
+    swc = SimpleNamespace(
+        node_ids=np.arange(len(points), dtype=np.int64),
+        points_um=np.asarray(points, dtype=float),
+        radius_raw_um=np.asarray(radii, dtype=float),
+        parent_ids=np.asarray(parents, dtype=np.int64),
+    )
+    return global_model_from_swc(swc, source_model_id="model", source_mouse_id="mouse")
+
+
+def _solve(model, flow_rate: float = 2.0e-15):
+    return solve_global_flow(
+        model,
+        mu_pa_s=MU,
+        leaf_pressure_pa=0.0,
+        boundary_type="flow_rate",
+        mean_velocity_mm_s=None,
+        prescribed_flow_m3_s=flow_rate,
+        relative_mass_tolerance=1.0e-10,
+        relative_node_residual_tolerance=1.0e-10,
+        reverse_flow_tolerance_m3_s=1.0e-20,
+    )
+
+
+def _roi(
+    positions: list[tuple[float, float, float]],
+    radii: list[float],
+    edges: list[tuple[int, int]],
+    ports: list[CutPort],
+) -> ROIRecord:
+    local_edges = np.asarray(edges, dtype=np.int64)
+    return ROIRecord(
+        roi_id="roi",
+        source_model_id="model",
+        source_mouse_id="mouse",
+        anchor_id=0,
+        anchor_position_um=positions[0],
+        bbox_min_um=(0.0, 0.0, 0.0),
+        bbox_max_um=(10.0, 10.0, 10.0),
+        bbox_center_um=(5.0, 5.0, 5.0),
+        bbox_size_um=(10.0, 10.0, 10.0),
+        global_node_ids=(),
+        global_edge_ids=tuple(port.global_edge_id for port in ports),
+        local_node_ids=np.arange(len(positions), dtype=np.int64),
+        local_node_global_ids=np.full(len(positions), -1, dtype=np.int64),
+        local_node_positions_um=np.asarray(positions, dtype=float),
+        local_node_radius_um=np.asarray(radii, dtype=float),
+        local_edges=local_edges,
+        local_edge_ids=np.arange(len(edges), dtype=np.int64),
+        local_edge_global_ids=np.arange(len(edges), dtype=np.int64),
+        local_edge_points_um=np.asarray(
+            [[positions[a], positions[b]] for a, b in edges], dtype=float
+        ),
+        local_edge_radius_um=np.asarray([[radii[a], radii[b]] for a, b in edges]),
+        true_terminal_local_ids=(),
+        true_terminal_global_ids=(),
+        cut_ports=tuple(ports),
+        raw_component_count=1,
+        raw_total_vessel_length_um=1.0,
+        retained_component_length_um=1.0,
+    )
+
+
+def test_constant_radius_edge_resistance_matches_poiseuille() -> None:
+    length = 12.0e-6
+    radius = 2.1e-6
+    expected = 8.0 * MU * length / (np.pi * radius**4)
+    assert edge_resistance(length, radius, radius, MU) == pytest.approx(
+        expected, rel=1e-14
+    )
+
+
+def test_linear_radius_resistance_matches_quadrature() -> None:
+    length = 17.0e-6
+    radius0 = 1.2e-6
+    radius1 = 2.4e-6
+    integral = quad(
+        lambda distance: 1.0 / (radius0 + (radius1 - radius0) * distance / length) ** 4,
+        0.0,
+        length,
+        epsabs=0.0,
+        epsrel=1.0e-13,
+    )[0]
+    expected = 8.0 * MU / np.pi * integral
+    assert edge_resistance(length, radius0, radius1, MU) == pytest.approx(
+        expected, rel=1e-12
+    )
+
+
+def test_simple_chain_pressure_drop() -> None:
+    model = _model([(0, 0, 0), (5, 0, 0), (12, 0, 0)], [2, 2, 2], [-1, 0, 1])
+    result = _solve(model)
+    expected = result.root_flow_m3_s * np.sum(result.resistances_pa_s_m3)
+    assert result.pressure_by_node_id[0] == pytest.approx(expected)
+    assert result.pressure_by_node_id[2] == 0.0
+
+
+def test_symmetric_y_has_equal_flow_split() -> None:
+    model = _model([(0, 0, 0), (10, 5, 0), (10, -5, 0)], [2, 1.5, 1.5], [-1, 0, 0])
+    result = _solve(model)
+    assert result.flows_m3_s[0] == pytest.approx(result.flows_m3_s[1], rel=1e-13)
+
+
+def test_asymmetric_y_lower_resistance_has_larger_flow() -> None:
+    model = _model([(0, 0, 0), (10, 5, 0), (20, -10, 0)], [2, 1.8, 1.0], [-1, 0, 0])
+    result = _solve(model)
+    lower_resistance = int(np.argmin(result.resistances_pa_s_m3))
+    higher_resistance = 1 - lower_resistance
+    assert result.flows_m3_s[lower_resistance] > result.flows_m3_s[higher_resistance]
+
+
+def test_global_mass_conservation() -> None:
+    model = _model(
+        [(0, 0, 0), (5, 0, 0), (10, 4, 0), (10, -4, 0)],
+        [2, 2, 1.3, 1.1],
+        [-1, 0, 1, 1],
+    )
+    result = _solve(model)
+    assert result.relative_mass_error <= 1.0e-12
+    assert result.maximum_internal_relative_residual <= 1.0e-12
+
+
+def test_cut_port_alpha_recovery() -> None:
+    model = _model([(0, 0, 0), (10, 0, 0)], [2, 1], [-1, 0])
+    flow = _solve(model)
+    port = CutPort("port", 0, 0, (4.0, 0.0, 0.0), 1.6, "xmin")
+    roi = _roi([(4, 0, 0), (8, 0, 0)], [1.6, 1.2], [(0, 1)], [port])
+    result = transfer_cut_port(
+        roi,
+        port,
+        model,
+        flow,
+        mu_pa_s=MU,
+        maximum_position_error_um=1.0e-8,
+        maximum_radius_relative_error=1.0e-12,
+        inlet_length_diameters=5.0,
+        outlet_length_diameters=5.0,
+    )
+    assert result.alpha_on_global_edge == pytest.approx(0.4)
+
+
+def test_cut_pressure_uses_partial_resistance() -> None:
+    model = _model([(0, 0, 0), (10, 0, 0)], [2, 1], [-1, 0])
+    flow = _solve(model)
+    port = CutPort("port", 0, 0, (4.0, 0.0, 0.0), 1.6, "xmin")
+    roi = _roi([(4, 0, 0), (8, 0, 0)], [1.6, 1.2], [(0, 1)], [port])
+    result = transfer_cut_port(
+        roi,
+        port,
+        model,
+        flow,
+        mu_pa_s=MU,
+        maximum_position_error_um=1.0e-8,
+        maximum_radius_relative_error=1.0e-12,
+        inlet_length_diameters=5.0,
+        outlet_length_diameters=5.0,
+    )
+    partial = edge_resistance(4.0e-6, 2.0e-6, 1.6e-6, MU)
+    expected = flow.pressure_by_node_id[0] - flow.flows_m3_s[0] * partial
+    assert result.pressure_pa == pytest.approx(expected, rel=1e-13)
+
+
+def test_inlet_classification_uses_local_edge_orientation() -> None:
+    port = CutPort("in", 0, 0, (0, 0, 0), 1, "xmin")
+    roi = _roi([(0, 0, 0), (1, 0, 0)], [1, 1], [(0, 1)], [port])
+    assert classify_cut_port(roi, port) == "ASSUMED_INLET"
+
+
+def test_outlet_classification_uses_local_edge_orientation() -> None:
+    port = CutPort("out", 1, 0, (1, 0, 0), 1, "xmax")
+    roi = _roi([(0, 0, 0), (1, 0, 0)], [1, 1], [(0, 1)], [port])
+    assert classify_cut_port(roi, port) == "ASSUMED_OUTLET"
+
+
+def test_port_mass_conservation_for_complete_y_cut() -> None:
+    model = _model(
+        [(0, 0, 0), (10, 0, 0), (20, 5, 0), (20, -5, 0)],
+        [2, 1.8, 1.2, 1.2],
+        [-1, 0, 1, 1],
+    )
+    flow = _solve(model)
+    ports = [
+        CutPort("in", 0, 0, (5, 0, 0), 1.9, "xmin"),
+        CutPort("out1", 2, 1, (15, 2.5, 0), 1.5, "xmax"),
+        CutPort("out2", 3, 2, (15, -2.5, 0), 1.5, "xmax"),
+    ]
+    roi = _roi(
+        [(5, 0, 0), (10, 0, 0), (15, 2.5, 0), (15, -2.5, 0)],
+        [1.9, 1.8, 1.5, 1.5],
+        [(0, 1), (1, 2), (1, 3)],
+        ports,
+    )
+    _, error = transfer_all_ports(
+        roi,
+        model,
+        flow,
+        mu_pa_s=MU,
+        maximum_position_error_um=1.0e-8,
+        maximum_radius_relative_error=1.0e-12,
+        inlet_length_diameters=5.0,
+        outlet_length_diameters=5.0,
+    )
+    assert error <= 1.0e-12
+
+
+def test_global_edge_manifest_mismatch_is_rejected(tmp_path: Path) -> None:
+    model = _model([(0, 0, 0), (1, 0, 0)], [1, 1], [-1, 0])
+    manifest = tmp_path / "global_edges.csv"
+    manifest.write_text(
+        "source_model_id,global_edge_id,upstream_node_id,downstream_node_id\n"
+        "model,0,99,1\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(InputValidationError, match="GLOBAL_EDGE_MAPPING_MISMATCH"):
+        verify_global_edge_manifest(model, manifest)
+
+
+def test_model_run_roi_mismatch_is_rejected(tmp_path: Path) -> None:
+    qc = tmp_path / "qc"
+    qc.mkdir()
+    (qc / "run_summary.json").write_text(
+        json.dumps({"status": "PASS", "roi_id": "wrong", "radius_scale": 0.91}),
+        encoding="utf-8",
+    )
+    (qc / "surface_qc.json").write_text(
+        json.dumps({"status": "PASS"}), encoding="utf-8"
+    )
+    (qc / "radius_fidelity.json").write_text(
+        json.dumps({"p95_absolute_relative_error": 0.04}), encoding="utf-8"
+    )
+    with pytest.raises(GeometryReferenceError, match="ROI mismatch"):
+        validate_model_run(tmp_path, roi_id="expected")
+
+
+def test_yaml_unknown_key_is_rejected(tmp_path: Path) -> None:
+    project = Path(__file__).resolve().parents[1]
+    payload = yaml.safe_load((project / "configs" / "cfd_preprocess.yaml").read_text())
+    payload["fluid"]["silent_fallback"] = 1
+    path = tmp_path / "invalid.yaml"
+    path.write_text(yaml.safe_dump(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="Unknown keys in fluid"):
+        load_cfd_preprocess_config(path, project_root=project)
+
+
+def test_yaml_requires_exactly_one_inlet_mode(tmp_path: Path) -> None:
+    project = Path(__file__).resolve().parents[1]
+    payload = yaml.safe_load((project / "configs" / "cfd_preprocess.yaml").read_text())
+    payload["global_1d"]["inlet"]["flow_rate_m3_s"] = 1.0e-15
+    path = tmp_path / "invalid_inlet.yaml"
+    path.write_text(yaml.safe_dump(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="requires only mean_velocity_mm_s"):
+        load_cfd_preprocess_config(path, project_root=project)
