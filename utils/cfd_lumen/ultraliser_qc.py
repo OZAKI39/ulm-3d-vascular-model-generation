@@ -1,29 +1,27 @@
-"""Geometry-only validation and figures for raw Ultraliser surfaces."""
+"""Output conversion, source validation, and QC for Ultraliser surfaces."""
 
 from __future__ import annotations
 
-import json
 import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+import networkx as nx
 import numpy as np
 import pyvista as pv
 import trimesh
+import vtk
+from shapely.geometry import Point, Polygon
 
 from utils.sampling.sampling_types import ROIRecord
+from utils.sampling.structural_features import _branch_paths
 
 from .config import CFDLumenConfig
-from .export import write_csv, write_json
-from .geometry_preprocess import validate_and_extract_branches
-from .mesh_defects import _triangle_intersections
-from .surface_qc import evaluate_radius_fidelity
-
-if TYPE_CHECKING:
-    from .ultraliser_backend import UltraliserLayout
+from .export import write_json
+from .types import BranchGeometry, GeometryValidationError, RadiusFidelitySample
 
 
-def _load_mesh(path: Path) -> trimesh.Trimesh:
+def load_mesh(path: Path) -> trimesh.Trimesh:
     loaded = trimesh.load_mesh(path, process=True, validate=False)
     if isinstance(loaded, trimesh.Scene):
         loaded = loaded.to_mesh()
@@ -39,15 +37,15 @@ def _polydata(mesh: trimesh.Trimesh) -> pv.PolyData:
     return pv.PolyData(np.asarray(mesh.vertices, dtype=float), faces)
 
 
-def _write_geometry_outputs(
-    raw_surface: Path,
-    final_directory: Path,
-) -> tuple[trimesh.Trimesh, dict[str, Any]]:
-    surface_um_stl = final_directory / "ultraliser_surface_um.stl"
-    surface_um_vtp = final_directory / "ultraliser_surface_um.vtp"
-    surface_m_stl = final_directory / "ultraliser_surface_m.stl"
+def write_geometry_outputs(raw_surface: Path, geometry_directory: Path) -> trimesh.Trimesh:
+    """Copy official geometry without smoothing, then create unit-explicit mirrors."""
+
+    geometry_directory.mkdir(parents=True, exist_ok=True)
+    surface_um_stl = geometry_directory / "lumen_surface_um.stl"
+    surface_um_vtp = geometry_directory / "lumen_surface_um.vtp"
+    surface_m_stl = geometry_directory / "lumen_surface_m.stl"
     shutil.copy2(raw_surface, surface_um_stl)
-    mesh = _load_mesh(surface_um_stl)
+    mesh = load_mesh(surface_um_stl)
     _polydata(mesh).save(surface_um_vtp, binary=True)
     mesh_m = trimesh.Trimesh(
         vertices=np.asarray(mesh.vertices, dtype=float) * 1.0e-6,
@@ -55,20 +53,161 @@ def _write_geometry_outputs(
         process=False,
     )
     mesh_m.export(surface_m_stl)
-    units = {
-        "canonical_source_morphology_coordinate_unit": "um",
-        "canonical_source_morphology_radius_unit": "um",
-        "raw_ultraliser_geometry_unit": "um",
-        "ultraliser_surface_um.vtp": "um; topology-only conversion, no smoothing/remeshing/vertex motion",
-        "ultraliser_surface_um.stl": "um; byte-for-byte copy of official watertight STL",
-        "ultraliser_surface_m.stl": "m; copied coordinates scaled by 1e-6 for future CFD",
-        "scale_um_to_m": 1.0e-6,
+    return mesh
+
+
+def validate_source_roi(roi: ROIRecord) -> tuple[list[BranchGeometry], dict[str, Any]]:
+    """Validate and decompose a saved ROI without resampling or modifying it."""
+
+    positions = np.asarray(roi.local_node_positions_um, dtype=float)
+    radii = np.asarray(roi.local_node_radius_um, dtype=float)
+    edges = np.asarray(roi.local_edges, dtype=np.int64).reshape((-1, 2))
+    node_ids = np.asarray(roi.local_node_ids, dtype=np.int64)
+    failures: list[dict[str, Any]] = []
+    if positions.shape != (len(node_ids), 3):
+        failures.append({"reason": "node_position_shape", "value": list(positions.shape)})
+    if radii.shape != (len(node_ids),):
+        failures.append({"reason": "node_radius_shape", "value": list(radii.shape)})
+    if not np.array_equal(node_ids, np.arange(len(node_ids), dtype=np.int64)):
+        failures.append({"reason": "local_node_ids_are_not_contiguous_indices"})
+    invalid_coordinates = np.flatnonzero(~np.all(np.isfinite(positions), axis=1))
+    invalid_radii = np.flatnonzero(~np.isfinite(radii) | (radii <= 0.0))
+    failures.extend(
+        {"reason": "nonfinite_coordinate", "node_id": int(index)}
+        for index in invalid_coordinates
+    )
+    failures.extend(
+        {
+            "reason": "invalid_radius",
+            "node_id": int(index),
+            "radius_um": float(radii[index]),
+        }
+        for index in invalid_radii
+    )
+    if len(edges) == 0:
+        failures.append({"reason": "roi_has_no_edges"})
+        lengths = np.empty(0, dtype=float)
+    elif int(edges.min()) < 0 or int(edges.max()) >= len(node_ids):
+        failures.append({"reason": "edge_node_index_out_of_range"})
+        lengths = np.empty(0, dtype=float)
+    else:
+        lengths = np.linalg.norm(positions[edges[:, 1]] - positions[edges[:, 0]], axis=1)
+        for edge_index in np.flatnonzero(~np.isfinite(lengths) | (lengths <= 1.0e-12)):
+            failures.append(
+                {
+                    "reason": "zero_or_near_zero_edge",
+                    "edge_index": int(edge_index),
+                    "length_um": float(lengths[edge_index]),
+                }
+            )
+
+    graph = nx.Graph()
+    graph.add_nodes_from(map(int, node_ids))
+    graph.add_edges_from((int(first), int(second)) for first, second in edges)
+    component_count = nx.number_connected_components(graph) if graph else 0
+    duplicate_edges = len(edges) - len({tuple(sorted(map(int, edge))) for edge in edges})
+    if duplicate_edges:
+        failures.append({"reason": "duplicate_local_edges", "count": duplicate_edges})
+    if component_count != 1:
+        failures.append({"reason": "roi_not_connected", "component_count": component_count})
+    if failures:
+        error = GeometryValidationError(
+            f"ROI {roi.roi_id} failed source validation: {failures[0]['reason']}"
+        )
+        error.failures = failures  # type: ignore[attr-defined]
+        raise error
+
+    edge_index_by_nodes = {
+        tuple(sorted((int(first), int(second)))): edge_index
+        for edge_index, (first, second) in enumerate(edges)
     }
-    write_json(final_directory / "units.json", units)
-    return mesh, units
+    branches: list[BranchGeometry] = []
+    for branch_id, path in enumerate(_branch_paths(graph)):
+        source_edge_ids = tuple(
+            int(roi.local_edge_global_ids[edge_index_by_nodes[tuple(sorted((first, second)))]] )
+            for first, second in zip(path[:-1], path[1:])
+        )
+        raw_points = positions[path].copy()
+        raw_radii = radii[path].copy()
+        arc_length = np.concatenate(
+            ([0.0], np.cumsum(np.linalg.norm(np.diff(raw_points, axis=0), axis=1)))
+        )
+        branches.append(
+            BranchGeometry(
+                branch_id=branch_id,
+                local_node_ids=tuple(map(int, path)),
+                source_global_nodes=tuple(int(roi.local_node_global_ids[node]) for node in path),
+                source_global_edges=source_edge_ids,
+                raw_points_um=raw_points,
+                raw_radius_um=raw_radii,
+                points_um=raw_points.copy(),
+                radius_um=raw_radii.copy(),
+                arc_length_um=arc_length,
+            )
+        )
+    covered_edges = [edge for branch in branches for edge in branch.source_global_edges]
+    expected_edges = list(map(int, roi.local_edge_global_ids))
+    if sorted(covered_edges) != sorted(expected_edges) or len(covered_edges) != len(expected_edges):
+        raise GeometryValidationError(
+            f"ROI {roi.roi_id} branch extraction did not preserve every source edge exactly once"
+        )
+    cycle_rank = graph.number_of_edges() - graph.number_of_nodes() + component_count
+    report = {
+        "roi_id": roi.roi_id,
+        "node_count": int(len(node_ids)),
+        "edge_count": int(len(edges)),
+        "branch_count": len(branches),
+        "connected_component_count": int(component_count),
+        "cycle_rank": int(cycle_rank),
+        "cut_port_count": len(roi.cut_ports),
+        "radius_min_um": float(radii.min()),
+        "radius_median_um": float(np.median(radii)),
+        "radius_max_um": float(radii.max()),
+        "centerline_total_length_um": float(lengths.sum()),
+        "source_geometry_modified": False,
+        "source_radius_modified": False,
+        "source_edge_coverage_exactly_once": True,
+    }
+    return branches, report
 
 
-def _surface_qc(mesh: trimesh.Trimesh) -> dict[str, Any]:
+def _triangle_intersections(
+    mesh: trimesh.Trimesh,
+    face_ids: np.ndarray,
+) -> tuple[list[tuple[int, int]], int]:
+    """Find non-adjacent triangle intersections using an R-tree AABB index."""
+
+    if len(face_ids) < 2:
+        return [], 0
+    vertices = np.asarray(mesh.vertices, dtype=float)
+    faces = np.asarray(mesh.faces[face_ids], dtype=np.int64)
+    triangles = vertices[faces]
+    triangle_minimum = triangles.min(axis=1)
+    triangle_maximum = triangles.max(axis=1)
+    bounds = np.column_stack((triangle_minimum, triangle_maximum))
+    tree = trimesh.util.bounds_tree(bounds)
+    pairs: list[tuple[int, int]] = []
+    candidates_checked = 0
+    for local_id, current in enumerate(triangles):
+        face_vertices = set(map(int, faces[local_id]))
+        for other_id in tree.intersection(bounds[local_id]):
+            other_id = int(other_id)
+            if other_id <= local_id or face_vertices.intersection(map(int, faces[other_id])):
+                continue
+            if np.any(triangle_maximum[local_id] < triangle_minimum[other_id]) or np.any(
+                triangle_maximum[other_id] < triangle_minimum[local_id]
+            ):
+                continue
+            candidates_checked += 1
+            if vtk.vtkTriangle.TrianglesIntersect(*current, *triangles[other_id]):
+                pairs.append((int(face_ids[local_id]), int(face_ids[other_id])))
+    return pairs, candidates_checked
+
+
+def evaluate_surface_topology(
+    mesh: trimesh.Trimesh,
+    config: CFDLumenConfig,
+) -> dict[str, Any]:
     sorted_edges = np.sort(np.asarray(mesh.edges, dtype=np.int64), axis=1)
     _, edge_counts = np.unique(sorted_edges, axis=0, return_counts=True)
     boundary_edges = int(np.count_nonzero(edge_counts == 1))
@@ -80,20 +219,25 @@ def _surface_qc(mesh: trimesh.Trimesh) -> dict[str, Any]:
         [len(set(map(int, face))) < 3 for face in np.asarray(mesh.faces)], dtype=bool
     )
     degenerate = int(np.count_nonzero((areas <= area_tolerance) | repeated_index))
-    all_faces = np.arange(len(mesh.faces), dtype=np.int64)
-    intersection_pairs, candidate_pairs = _triangle_intersections(mesh, all_faces)
+    intersections, candidate_pairs = _triangle_intersections(
+        mesh, np.arange(len(mesh.faces), dtype=np.int64)
+    )
     components = mesh.split(only_watertight=False)
-    report = {
-        "status": "PASS"
-        if (
-            len(components) == 1
-            and mesh.is_watertight
-            and boundary_edges == 0
-            and nonmanifold_edges == 0
-            and len(intersection_pairs) == 0
-            and degenerate == 0
-        )
-        else "FAIL",
+    qc = config.surface_qc
+    checks = {
+        "watertight": not qc.require_watertight or bool(mesh.is_watertight),
+        "single_component": not qc.require_single_component or len(components) == 1,
+        "zero_boundary_edges": not qc.require_zero_boundary_edges or boundary_edges == 0,
+        "zero_nonmanifold_edges": not qc.require_zero_nonmanifold_edges
+        or nonmanifold_edges == 0,
+        "zero_self_intersections": not qc.require_zero_self_intersections
+        or len(intersections) == 0,
+        "zero_degenerate_triangles": not qc.require_zero_degenerate_triangles
+        or degenerate == 0,
+    }
+    return {
+        "status": "PASS" if all(checks.values()) else "FAIL",
+        "checks": checks,
         "vertex_count": int(len(mesh.vertices)),
         "triangle_count": int(len(mesh.faces)),
         "component_count": int(len(components)),
@@ -101,387 +245,212 @@ def _surface_qc(mesh: trimesh.Trimesh) -> dict[str, Any]:
         "winding_consistent": bool(mesh.is_winding_consistent),
         "boundary_edge_count": boundary_edges,
         "nonmanifold_edge_count": nonmanifold_edges,
-        "self_intersection_count": int(len(intersection_pairs)),
+        "self_intersection_count": int(len(intersections)),
         "self_intersection_candidate_pairs_checked": int(candidate_pairs),
-        "self_intersection_scope": "entire mesh via exact R-tree AABB candidates and vtkTriangle",
         "degenerate_triangle_count": degenerate,
         "degenerate_area_tolerance_um2": area_tolerance,
         "surface_area_um2": float(mesh.area),
-        "signed_volume_um3": float(mesh.volume),
         "volume_um3": float(abs(mesh.volume)),
         "bounds_um": np.asarray(mesh.bounds, dtype=float).tolist(),
-        "raw_ultraliser_geometry_checked_before_port_clipping": True,
     }
-    return report
 
 
-def _source_branches(roi: ROIRecord, config: CFDLumenConfig):
-    branches, _ = validate_and_extract_branches(roi, config)
-    for branch in branches:
-        branch.points_um = np.asarray(branch.raw_points_um, dtype=float).copy()
-        branch.radius_um = np.asarray(branch.raw_radius_um, dtype=float).copy()
-        branch.arc_length_um = np.concatenate(
-            (
-                [0.0],
-                np.cumsum(np.linalg.norm(np.diff(branch.points_um, axis=0), axis=1)),
+def _orthogonal_basis(normal: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    normal = normal / np.linalg.norm(normal)
+    helper = (
+        np.asarray((1.0, 0.0, 0.0))
+        if abs(normal[0]) < 0.8
+        else np.asarray((0.0, 1.0, 0.0))
+    )
+    first = np.cross(normal, helper)
+    first /= np.linalg.norm(first)
+    return first, np.cross(normal, first)
+
+
+def _section_polygon(
+    mesh: trimesh.Trimesh,
+    center: np.ndarray,
+    tangent: np.ndarray,
+) -> tuple[float, tuple[tuple[float, float], ...]] | None:
+    section = mesh.section(plane_origin=center, plane_normal=tangent)
+    if section is None:
+        return None
+    basis_first, basis_second = _orthogonal_basis(tangent)
+    candidates: list[tuple[bool, float, float, np.ndarray]] = []
+    for discrete in section.discrete:
+        points = np.asarray(discrete, dtype=float)
+        if len(points) < 4:
+            continue
+        relative = points - center
+        projected = np.column_stack((relative @ basis_first, relative @ basis_second))
+        polygon = Polygon(projected)
+        if not polygon.is_valid:
+            polygon = polygon.buffer(0)
+        if polygon.is_empty or polygon.area <= 0:
+            continue
+        polygons = polygon.geoms if polygon.geom_type == "MultiPolygon" else (polygon,)
+        for component in polygons:
+            if component.is_empty or component.area <= 0:
+                continue
+            origin = Point(0.0, 0.0)
+            candidates.append(
+                (
+                    bool(component.buffer(1.0e-9).contains(origin)),
+                    float(component.distance(origin)),
+                    float(component.area),
+                    np.asarray(component.exterior.coords, dtype=float),
+                )
             )
-        )
-    return branches
-
-
-def _junctions(roi: ROIRecord) -> list[tuple[int, np.ndarray, float]]:
-    edges = np.asarray(roi.local_edges, dtype=np.int64)
-    degree = np.bincount(edges.ravel(), minlength=roi.node_count)
-    positions = np.asarray(roi.local_node_positions_um, dtype=float)
-    radii = np.asarray(roi.local_node_radius_um, dtype=float)
-    return [
-        (int(node), positions[node], float(radii[node]))
-        for node in np.flatnonzero(degree >= 3)
-    ]
-
-
-def _find_previous_surface(layout: "UltraliserLayout") -> Path | None:
-    outputs_root = layout.run_root.parent.parent
-    candidates = list(outputs_root.glob("model_generate/**/geometry/lumen_surface_m.stl"))
     if not candidates:
         return None
-    return max(candidates, key=lambda path: path.stat().st_mtime)
+    candidates.sort(key=lambda item: (not item[0], item[1], -item[2]))
+    _, _, area, coordinates = candidates[0]
+    return area, tuple((float(point[0]), float(point[1])) for point in coordinates)
 
 
-def _load_previous_um(path: Path) -> tuple[trimesh.Trimesh, float]:
-    mesh = _load_mesh(path)
-    diagonal = float(np.linalg.norm(np.ptp(np.asarray(mesh.vertices), axis=0)))
-    scale = 1.0e6 if diagonal < 1.0e-2 else 1.0
-    if scale != 1.0:
-        mesh = trimesh.Trimesh(
-            vertices=np.asarray(mesh.vertices, dtype=float) * scale,
-            faces=np.asarray(mesh.faces, dtype=np.int64),
-            process=True,
-        )
-    return mesh, scale
-
-
-def _worst_previous_junction(
-    previous: trimesh.Trimesh | None,
-    junctions: list[tuple[int, np.ndarray, float]],
-) -> tuple[int, np.ndarray, float, dict[str, Any]]:
-    if not junctions:
-        center = np.asarray(previous.centroid if previous is not None else (0.0, 0.0, 0.0))
-        return -1, center, 5.0, {"selection_method": "surface centroid; no junction in ROI"}
-    if previous is None:
-        selected = max(junctions, key=lambda row: row[2])
-        return (*selected, {"selection_method": "largest source junction radius; old STL unavailable"})
-    centers = np.asarray(previous.triangles_center, dtype=float)
-    adjacency = np.asarray(previous.face_adjacency, dtype=np.int64)
-    angles = np.degrees(np.asarray(previous.face_adjacency_angles, dtype=float))
-    rows: list[dict[str, Any]] = []
-    for node_id, center, radius in junctions:
-        local = np.linalg.norm(centers - center, axis=1) <= max(6.0 * radius, 3.0)
-        local_adjacency = local[adjacency[:, 0]] & local[adjacency[:, 1]] if len(adjacency) else []
-        values = angles[local_adjacency] if len(adjacency) else np.empty(0)
-        rows.append(
-            {
-                "junction_node_id": node_id,
-                "normal_jump_p99_deg": float(np.percentile(values, 99)) if len(values) else -1.0,
-                "local_face_count": int(np.count_nonzero(local)),
-            }
-        )
-    worst = max(rows, key=lambda row: row["normal_jump_p99_deg"])
-    selected = next(row for row in junctions if row[0] == worst["junction_node_id"])
-    return (
-        *selected,
-        {
-            "selection_method": "maximum old-surface local face-normal jump p99",
-            "old_junction_metrics": rows,
-            "selected_junction_node_id": int(worst["junction_node_id"]),
-        },
-    )
-
-
-def _camera(
-    roi: ROIRecord,
-    node_id: int,
-    center: np.ndarray,
-    extent: float,
-) -> tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]]:
-    edges = np.asarray(roi.local_edges, dtype=np.int64)
-    positions = np.asarray(roi.local_node_positions_um, dtype=float)
-    neighbors = sorted(
-        int(second if first == node_id else first)
-        for first, second in edges
-        if int(first) == node_id or int(second) == node_id
-    )
-    directions = []
-    for neighbor in neighbors:
-        vector = positions[neighbor] - center
-        norm = float(np.linalg.norm(vector))
-        if norm > 0:
-            directions.append(vector / norm)
-    view = np.asarray((1.0, 1.0, 1.0), dtype=float)
-    best_norm = 0.0
-    for first in range(len(directions)):
-        for second in range(first + 1, len(directions)):
-            candidate = np.cross(directions[first], directions[second])
-            norm = float(np.linalg.norm(candidate))
-            if norm > best_norm:
-                view, best_norm = candidate, norm
-    view /= np.linalg.norm(view)
-    dominant = int(np.argmax(np.abs(view)))
-    if view[dominant] < 0:
-        view *= -1.0
-    up = directions[0] if directions else np.asarray((0.0, 0.0, 1.0))
-    up = up - np.dot(up, view) * view
-    if np.linalg.norm(up) < 1.0e-8:
-        up = np.cross(view, np.asarray((1.0, 0.0, 0.0)))
-    up /= np.linalg.norm(up)
-    position = center + view * (4.0 * extent)
-    return tuple(position), tuple(center), tuple(up)
-
-
-def _local_mesh(mesh: trimesh.Trimesh, center: np.ndarray, extent: float) -> trimesh.Trimesh:
-    mask = np.linalg.norm(np.asarray(mesh.triangles_center) - center, axis=1) <= 1.8 * extent
-    face_ids = np.flatnonzero(mask)
-    if len(face_ids) == 0:
-        return mesh
-    return mesh.submesh([face_ids], append=True, repair=False)
-
-
-def _prepare_plotter(plotter: pv.Plotter) -> None:
-    plotter.set_background("white")
-    plotter.enable_anti_aliasing("ssaa")
-
-
-def _full_surface_figure(mesh: trimesh.Trimesh, path: Path) -> Path:
-    plotter = pv.Plotter(off_screen=True, window_size=(1400, 1000))
-    _prepare_plotter(plotter)
-    plotter.add_mesh(_polydata(mesh), color="#C84A42", smooth_shading=True, specular=0.15)
-    plotter.add_text("Raw Ultraliser watertight surface (um)", font_size=13, color="black")
-    plotter.view_isometric()
-    plotter.reset_camera()
-    plotter.show(screenshot=str(path), auto_close=True)
-    return path
-
-
-def _wireframe_figure(mesh: trimesh.Trimesh, path: Path) -> Path:
-    plotter = pv.Plotter(off_screen=True, window_size=(1400, 1000))
-    _prepare_plotter(plotter)
-    plotter.add_mesh(
-        _polydata(mesh),
-        color="#D97757",
-        show_edges=True,
-        edge_color="#263238",
-        line_width=0.35,
-        smooth_shading=False,
-    )
-    plotter.add_text("Raw Ultraliser surface wireframe", font_size=13, color="black")
-    plotter.view_isometric()
-    plotter.reset_camera()
-    plotter.show(screenshot=str(path), auto_close=True)
-    return path
-
-
-def _junction_figure(
-    mesh: trimesh.Trimesh,
-    roi: ROIRecord,
-    node_id: int,
-    center: np.ndarray,
-    radius: float,
-    path: Path,
-) -> tuple[Path, tuple[Any, Any, Any], float]:
-    extent = max(10.0 * radius, 6.0)
-    local = _local_mesh(mesh, center, extent)
-    camera = _camera(roi, node_id, center, extent)
-    plotter = pv.Plotter(off_screen=True, window_size=(1400, 1000))
-    _prepare_plotter(plotter)
-    plotter.add_mesh(
-        _polydata(local),
-        color="#C84A42",
-        smooth_shading=True,
-        show_edges=True,
-        edge_color="#6E2D2A",
-        line_width=0.4,
-    )
-    plotter.add_text(f"Worst previous junction close-up: node {node_id}", font_size=13, color="black")
-    plotter.camera_position = camera
-    plotter.show(screenshot=str(path), auto_close=True)
-    return path, camera, extent
-
-
-def _comparison_figure(
-    previous: trimesh.Trimesh,
-    current: trimesh.Trimesh,
-    center: np.ndarray,
-    extent: float,
-    camera: tuple[Any, Any, Any],
-    path: Path,
-) -> Path:
-    previous_local = _local_mesh(previous, center, extent)
-    current_local = _local_mesh(current, center, extent)
-    plotter = pv.Plotter(shape=(1, 2), off_screen=True, window_size=(1800, 900))
-    for index, (surface, title, color) in enumerate(
-        (
-            (previous_local, "Previous final STL", "#7586A5"),
-            (current_local, "Raw Ultraliser", "#C84A42"),
-        )
-    ):
-        plotter.subplot(0, index)
-        _prepare_plotter(plotter)
-        plotter.add_mesh(
-            _polydata(surface),
-            color=color,
-            smooth_shading=True,
-            show_edges=True,
-            edge_color="#303030",
-            line_width=0.35,
-        )
-        plotter.add_text(title, font_size=13, color="black")
-        plotter.camera_position = camera
-    plotter.link_views()
-    plotter.show(screenshot=str(path), auto_close=True)
-    return path
-
-
-def _validation_figures(
-    mesh: trimesh.Trimesh,
-    roi: ROIRecord,
-    layout: "UltraliserLayout",
-    previous_surface: Path | None,
-) -> dict[str, Any]:
-    full = _full_surface_figure(mesh, layout.figures / "ultraliser_full_surface.png")
-    wireframe = _wireframe_figure(mesh, layout.figures / "ultraliser_wireframe.png")
-    previous_path = previous_surface or _find_previous_surface(layout)
-    previous = None
-    previous_scale = None
-    if previous_path is not None and Path(previous_path).is_file():
-        previous, previous_scale = _load_previous_um(Path(previous_path))
-    node_id, center, radius, selection = _worst_previous_junction(previous, _junctions(roi))
-    closeup, camera, extent = _junction_figure(
-        mesh,
-        roi,
-        node_id,
-        center,
-        radius,
-        layout.figures / "ultraliser_junction_closeup.png",
-    )
-    comparison = None
-    if previous is not None:
-        comparison = _comparison_figure(
-            previous,
-            mesh,
-            center,
-            extent,
-            camera,
-            layout.figures / "previous_vs_ultraliser.png",
-        )
+def _tangent(points: np.ndarray, index: int) -> np.ndarray:
+    if index == 0:
+        vector = points[1] - points[0]
+    elif index == len(points) - 1:
+        vector = points[-1] - points[-2]
     else:
-        placeholder = pv.Plotter(off_screen=True, window_size=(1400, 900))
-        _prepare_plotter(placeholder)
-        placeholder.add_text("Previous final STL was not found", position="upper_left", color="black")
-        placeholder.show(
-            screenshot=str(layout.figures / "previous_vs_ultraliser.png"), auto_close=True
+        vector = points[index + 1] - points[index - 1]
+    return vector / np.linalg.norm(vector)
+
+
+def evaluate_radius_fidelity(
+    mesh: trimesh.Trimesh,
+    branches: list[BranchGeometry],
+    roi: ROIRecord,
+    config: CFDLumenConfig,
+) -> tuple[list[RadiusFidelitySample], dict[str, Any]]:
+    degree = np.bincount(np.asarray(roi.local_edges).ravel(), minlength=roi.node_count)
+    cut_ids = {int(port.local_node_id) for port in roi.cut_ports}
+    samples: list[RadiusFidelitySample] = []
+    attempted = 0
+    missed = 0
+    for branch in branches:
+        length = float(branch.arc_length_um[-1])
+        first_local = branch.local_node_ids[0]
+        last_local = branch.local_node_ids[-1]
+        start_exclusion = (
+            2.0 * branch.radius_um[0] * config.surface_qc.radius_fidelity_skip_diameters
+            if degree[first_local] >= 3 or first_local in cut_ids
+            else 0.0
         )
-        comparison = layout.figures / "previous_vs_ultraliser.png"
-    report = {
-        "full_surface": str(full),
-        "junction_closeup": str(closeup),
-        "wireframe": str(wireframe),
-        "previous_vs_ultraliser": str(comparison),
-        "previous_surface": str(previous_path) if previous_path is not None else None,
-        "previous_surface_scale_to_um_for_visualization": previous_scale,
-        "same_camera_used_for_comparison": True,
-        "camera_position": [list(map(float, row)) for row in camera],
-        "closeup_extent_um": extent,
-        **selection,
+        end_exclusion = (
+            2.0 * branch.radius_um[-1] * config.surface_qc.radius_fidelity_skip_diameters
+            if degree[last_local] >= 3 or last_local in cut_ids
+            else 0.0
+        )
+        valid = np.flatnonzero(
+            (branch.arc_length_um > start_exclusion)
+            & ((length - branch.arc_length_um) > end_exclusion)
+        )
+        if len(valid) == 0:
+            continue
+        count = min(config.surface_qc.radius_fidelity_samples_per_branch, len(valid))
+        chosen = np.unique(valid[np.linspace(0, len(valid) - 1, count).round().astype(int)])
+        for index in chosen:
+            attempted += 1
+            center = branch.points_um[index]
+            tangent = _tangent(branch.points_um, int(index))
+            section = _section_polygon(mesh, center, tangent)
+            if section is None:
+                missed += 1
+                continue
+            area, coordinates = section
+            reconstructed = float(np.sqrt(area / np.pi))
+            source = float(branch.radius_um[index])
+            samples.append(
+                RadiusFidelitySample(
+                    branch_id=branch.branch_id,
+                    sample_index=int(index),
+                    arc_length_um=float(branch.arc_length_um[index]),
+                    center_um=tuple(map(float, center)),
+                    tangent=tuple(map(float, tangent)),
+                    source_radius_um=source,
+                    reconstructed_radius_um=reconstructed,
+                    relative_error=float((reconstructed - source) / source),
+                    section_xy_um=coordinates,
+                )
+            )
+    signed = np.asarray([sample.relative_error for sample in samples], dtype=float)
+    absolute = np.abs(signed)
+    if len(samples) == 0:
+        metrics: dict[str, Any] = {
+            "median_signed_relative_error": None,
+            "mean_signed_relative_error": None,
+            "median_absolute_relative_error": None,
+            "mean_absolute_relative_error": None,
+            "p95_absolute_relative_error": None,
+            "max_absolute_relative_error": None,
+            "positive_error_fraction": None,
+        }
+    else:
+        metrics = {
+            "median_signed_relative_error": float(np.median(signed)),
+            "mean_signed_relative_error": float(np.mean(signed)),
+            "median_absolute_relative_error": float(np.median(absolute)),
+            "mean_absolute_relative_error": float(np.mean(absolute)),
+            "p95_absolute_relative_error": float(np.percentile(absolute, 95)),
+            "max_absolute_relative_error": float(np.max(absolute)),
+            "positive_error_fraction": float(np.mean(signed > 0.0)),
+        }
+    p95 = metrics["p95_absolute_relative_error"]
+    threshold = config.surface_qc.max_radius_p95_error
+    return samples, {
+        "status": "PASS" if p95 is not None and float(p95) <= threshold else "FAIL",
+        "max_radius_p95_error": threshold,
+        "attempted_sample_count": attempted,
+        "successful_sample_count": len(samples),
+        "missed_section_count": missed,
+        **metrics,
     }
-    write_json(layout.qc / "visualization_provenance.json", report)
-    return report
 
 
 def finalize_ultraliser_outputs(
     roi: ROIRecord,
     config: CFDLumenConfig,
     *,
-    layout: "UltraliserLayout",
     raw_surface: Path,
-    previous_surface: Path | None,
+    geometry_directory: Path,
+    qc_directory: Path,
 ) -> dict[str, Any]:
-    mesh, _ = _write_geometry_outputs(raw_surface, layout.final)
-    surface_report = _surface_qc(mesh)
-    write_json(layout.qc / "surface_qc.json", surface_report)
-    branches = _source_branches(roi, config)
-    fidelity_samples, fidelity_report = evaluate_radius_fidelity(mesh, branches, roi, config)
-    write_csv(layout.qc / "radius_fidelity.csv", [sample.report() for sample in fidelity_samples])
-    write_json(layout.qc / "radius_fidelity.json", fidelity_report)
-    figures = _validation_figures(mesh, roi, layout, previous_surface)
+    mesh = write_geometry_outputs(raw_surface, geometry_directory)
+    surface_report = evaluate_surface_topology(mesh, config)
+    branches, source_report = validate_source_roi(roi)
+    samples, radius_report = evaluate_radius_fidelity(mesh, branches, roi, config)
+    radius_report["samples"] = [sample.report() for sample in samples]
+    write_json(qc_directory / "surface_qc.json", surface_report)
+    write_json(qc_directory / "radius_fidelity.json", radius_report)
     return {
+        "source_qc": source_report,
         "surface_qc": surface_report,
-        "radius_fidelity": fidelity_report,
-        "figures": figures,
+        "radius_fidelity": radius_report,
     }
 
 
-def write_ultraliser_report(path: Path, summary: dict[str, Any]) -> Path:
-    surface = summary.get("surface_qc", {})
-    radius = summary.get("radius_fidelity", {})
-    command_path = Path(summary.get("run_root", ".")) / "ultraliser_command.txt"
-    command = command_path.read_text(encoding="utf-8").strip() if command_path.is_file() else "N/A"
-    visual = summary.get("visual_assessment", "PENDING_MANUAL_REVIEW")
+def write_reconstruction_report(path: Path, summary: dict[str, Any]) -> Path:
+    surface = summary["surface_qc"]
+    radius = summary["radius_fidelity"]
     lines = [
-        "# Ultraliser ROI 003274 report",
+        "# Ultraliser vascular surface reconstruction",
         "",
-        f"1. **编译/执行**：成功；commit `{summary.get('ultraliser_git_commit')}`。",
-        f"2. **正式命令**：`{command}`",
-        (
-            "3. **Packing algorithm**："
-            f"`{summary.get('packing_algorithm')}`；{summary.get('packing_algorithm_basis')}。"
-        ),
-        (
-            "4. **voxels_per_micron**："
-            f"`{summary.get('voxels_per_micron')}`；由最小直径目标和 150,000,000 voxel 上限自动确定。"
-        ),
-        f"5. **正式运行耗时**：`{summary.get('final_runtime_seconds')}` s。",
-        (
-            "6. **Surface topology**："
-            f"watertight={surface.get('watertight')}，components={surface.get('component_count')}，"
-            f"self_intersections={surface.get('self_intersection_count')}，"
-            f"nonmanifold_edges={surface.get('nonmanifold_edge_count')}。"
-        ),
-        (
-            "7. **Radius P95 absolute relative error**："
-            f"`{radius.get('p95_absolute_relative_error')}`。"
-        ),
-        f"8. **Junction 锯齿人工核验**：{visual}。",
-        f"9. **相对旧模型**：{summary.get('previous_comparison', visual)}。",
-        f"10. **建议**：`{summary.get('decision', 'PENDING_MANUAL_REVIEW')}`。",
+        f"- ROI: `{summary['roi_id']}`",
+        f"- Source SWC modified: `{summary['source_swc_modified']}`",
+        f"- Source radius modified: `{summary['source_radius_modified']}`",
+        f"- H5 feed radius scale: `{summary['radius_scale']}`",
+        f"- Ultraliser invocation count: `{summary['ultraliser_invocation_count']}`",
+        f"- Watertight: `{surface['watertight']}`",
+        f"- Components: `{surface['component_count']}`",
+        f"- Self intersections: `{surface['self_intersection_count']}`",
+        f"- Nonmanifold edges: `{surface['nonmanifold_edge_count']}`",
+        f"- Degenerate triangles: `{surface['degenerate_triangle_count']}`",
+        f"- Median signed radius error: `{radius['median_signed_relative_error']}`",
+        f"- P95 absolute radius error: `{radius['p95_absolute_relative_error']}`",
+        f"- Status: `{summary['status']}`",
         "",
-        "## Compatibility note",
-        "",
-        (
-            "本地 Ultraliser vascular reader 仅接受 H5/VMV，和论文声称的 vascular SWC 直读不一致。"
-            "`roi_core.swc` 是保持 µm 坐标、半径及 parent-child 的 canonical 输入；正式 executable "
-            "通过 `roi_core.h5` 官方 vascular schema 读取同一几何，未修改 Ultraliser C++ 算法。"
-        ),
     ]
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    path.write_text("\n".join(lines), encoding="utf-8")
     return path
-
-
-def finalize_visual_assessment(
-    run_root: Path,
-    *,
-    accepted: bool,
-    junction_artifact_assessment: str,
-    previous_comparison: str,
-) -> dict[str, Any]:
-    run_root = Path(run_root).resolve()
-    summary_path = run_root / "qc" / "run_summary.json"
-    summary = json.loads(summary_path.read_text(encoding="utf-8"))
-    topology_pass = summary.get("surface_qc", {}).get("status") == "PASS"
-    accepted = bool(accepted and topology_pass)
-    summary["visual_assessment"] = junction_artifact_assessment
-    summary["previous_comparison"] = previous_comparison
-    summary["ULTRALISER_RAW_SURFACE_ACCEPTED"] = accepted
-    summary["decision"] = "ADOPT_ULTRALISER" if accepted else "ULTRALISER_GEOMETRY_NOT_ACCEPTABLE"
-    write_json(summary_path, summary)
-    write_ultraliser_report(run_root / "report" / "ultraliser_roi003274_report.md", summary)
-    return summary

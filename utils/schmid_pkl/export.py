@@ -17,7 +17,7 @@ from ..io import write_csv, write_json
 from ..reporting.acceptance import AcceptanceResult
 from .config import SchmidPKLConfig
 from .layout import SchmidOutputLayout
-from .model import DirectedGraphResult, VESSEL_TYPE_NAMES
+from .model import DirectedGraphResult
 
 
 def _offsets(arrays: list[np.ndarray]) -> np.ndarray:

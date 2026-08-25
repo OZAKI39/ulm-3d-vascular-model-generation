@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable
-
 import matplotlib
 
 matplotlib.use("Agg")
@@ -272,4 +270,3 @@ def feature_mode_comparison_figure(
     figure.savefig(path, dpi=180)
     plt.close(figure)
     return path
-

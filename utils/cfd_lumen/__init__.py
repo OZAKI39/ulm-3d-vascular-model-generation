@@ -1,19 +1,18 @@
-"""CFD-ready vascular lumen reconstruction from saved representative SWC ROIs."""
+"""Ultraliser-only vascular surface reconstruction."""
 
-from .config import CFDLumenConfig, load_cfd_lumen_config
-from .diagnostic_pipeline import run_geometry_diagnostics
-from .pipeline import process_roi, run_cfd_lumen_batch
+from .config import CFDLumenConfig, SurfaceQCConfig, UltraliserConfig, load_cfd_lumen_config
+from .model_yaml_config import SWCSTLRunConfig, load_swc_stl_yaml_config
 from .roi_io import load_sampling_rois, resolve_sampling_run
-from .types import GeometryValidationError, ROIProcessResult
+from .types import GeometryValidationError
 
 __all__ = [
     "CFDLumenConfig",
     "GeometryValidationError",
-    "ROIProcessResult",
+    "SurfaceQCConfig",
+    "SWCSTLRunConfig",
+    "UltraliserConfig",
     "load_cfd_lumen_config",
-    "run_geometry_diagnostics",
+    "load_swc_stl_yaml_config",
     "load_sampling_rois",
-    "process_roi",
     "resolve_sampling_run",
-    "run_cfd_lumen_batch",
 ]

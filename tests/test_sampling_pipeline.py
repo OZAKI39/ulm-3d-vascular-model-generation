@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import networkx as nx
 import numpy as np
 
 from utils.sampling.clustering import deterministic_kmeans

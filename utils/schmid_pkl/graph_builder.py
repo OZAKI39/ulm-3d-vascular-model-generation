@@ -309,7 +309,6 @@ def _node_role(node: DirectedNode) -> str:
 def _build_aggregated_graphs(
     branches: list[DirectedBranch], nodes: list[DirectedNode]
 ) -> tuple[nx.MultiGraph, nx.MultiDiGraph, nx.MultiDiGraph]:
-    node_lookup = {node.node_id: node for node in nodes}
     all_graph = nx.MultiGraph(
         representation="junction_as_node_all_connectivity",
         directed_for_flow=False,
