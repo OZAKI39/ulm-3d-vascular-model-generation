@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -11,7 +12,7 @@ import pytest
 import yaml
 from scipy.integrate import quad
 
-from utils.cfd_preprocess.config import load_cfd_preprocess_config
+from utils.cfd_preprocess.config import ReadinessConfig, load_cfd_preprocess_config
 from utils.cfd_preprocess.io import (
     GeometryReferenceError,
     InputValidationError,
@@ -19,11 +20,16 @@ from utils.cfd_preprocess.io import (
     verify_global_edge_manifest,
 )
 from utils.cfd_preprocess.one_d_flow import edge_resistance, solve_global_flow
+from utils.cfd_preprocess.pipeline import next_stage_for_status
 from utils.cfd_preprocess.port_transfer import (
+    PortTransferError,
     classify_cut_port,
+    transfer_all_boundaries,
     transfer_all_ports,
     transfer_cut_port,
+    transfer_true_terminal,
 )
+from utils.cfd_preprocess.qc import roi_readiness
 from utils.sampling.roi_extraction import global_model_from_swc
 from utils.sampling.sampling_types import CutPort, ROIRecord
 
@@ -45,11 +51,11 @@ def _model(
     return global_model_from_swc(swc, source_model_id="model", source_mouse_id="mouse")
 
 
-def _solve(model, flow_rate: float = 2.0e-15):
+def _solve(model, flow_rate: float = 2.0e-15, leaf_pressure_pa: float = 0.0):
     return solve_global_flow(
         model,
         mu_pa_s=MU,
-        leaf_pressure_pa=0.0,
+        leaf_pressure_pa=leaf_pressure_pa,
         boundary_type="flow_rate",
         mean_velocity_mm_s=None,
         prescribed_flow_m3_s=flow_rate,
@@ -64,6 +70,9 @@ def _roi(
     radii: list[float],
     edges: list[tuple[int, int]],
     ports: list[CutPort],
+    *,
+    terminal_local_ids: tuple[int, ...] = (),
+    terminal_global_ids: tuple[int, ...] = (),
 ) -> ROIRecord:
     local_edges = np.asarray(edges, dtype=np.int64)
     return ROIRecord(
@@ -89,8 +98,8 @@ def _roi(
             [[positions[a], positions[b]] for a, b in edges], dtype=float
         ),
         local_edge_radius_um=np.asarray([[radii[a], radii[b]] for a, b in edges]),
-        true_terminal_local_ids=(),
-        true_terminal_global_ids=(),
+        true_terminal_local_ids=terminal_local_ids,
+        true_terminal_global_ids=terminal_global_ids,
         cut_ports=tuple(ports),
         raw_component_count=1,
         raw_total_vessel_length_um=1.0,
@@ -238,6 +247,243 @@ def test_port_mass_conservation_for_complete_y_cut() -> None:
         outlet_length_diameters=5.0,
     )
     assert error <= 1.0e-12
+
+
+def _terminal_transfer_kwargs() -> dict[str, float]:
+    return {
+        "maximum_position_error_um": 1.0e-8,
+        "maximum_radius_relative_error": 1.0e-12,
+        "inlet_length_diameters": 5.0,
+        "outlet_length_diameters": 5.0,
+    }
+
+
+def _chain_with_terminal():
+    model = _model([(0, 0, 0), (10, 0, 0), (20, 0, 0)], [2, 2, 2], [-1, 0, 1])
+    flow = _solve(model)
+    inlet = CutPort("in", 0, 0, (5, 0, 0), 2, "xmin")
+    roi = _roi(
+        [(5, 0, 0), (10, 0, 0), (20, 0, 0)],
+        [2, 2, 2],
+        [(0, 1), (1, 2)],
+        [inlet],
+        terminal_local_ids=(2,),
+        terminal_global_ids=(2,),
+    )
+    return model, flow, roi
+
+
+def test_chain_true_terminal_is_assumed_outlet_and_balances_mass() -> None:
+    model, flow, roi = _chain_with_terminal()
+    boundaries, error = transfer_all_boundaries(
+        roi, model, flow, mu_pa_s=MU, **_terminal_transfer_kwargs()
+    )
+    assert [item.role for item in boundaries] == ["ASSUMED_INLET", "ASSUMED_OUTLET"]
+    assert boundaries[1].boundary_origin == "TRUE_TERMINAL"
+    assert error <= 1.0e-12
+
+
+def test_y_cut_outlet_plus_terminal_balances_mass() -> None:
+    model = _model(
+        [(0, 0, 0), (10, 0, 0), (20, 5, 0), (20, -5, 0)],
+        [2, 2, 2, 2],
+        [-1, 0, 1, 1],
+    )
+    flow = _solve(model)
+    ports = [
+        CutPort("in", 0, 0, (5, 0, 0), 2, "xmin"),
+        CutPort("cut_out", 2, 1, (15, 2.5, 0), 2, "xmax"),
+    ]
+    roi = _roi(
+        [(5, 0, 0), (10, 0, 0), (15, 2.5, 0), (20, -5, 0)],
+        [2, 2, 2, 2],
+        [(0, 1), (1, 2), (1, 3)],
+        ports,
+        terminal_local_ids=(3,),
+        terminal_global_ids=(3,),
+    )
+    boundaries, error = transfer_all_boundaries(
+        roi, model, flow, mu_pa_s=MU, **_terminal_transfer_kwargs()
+    )
+    inlet_flow = sum(
+        item.role_flow_m3_s for item in boundaries if item.role == "ASSUMED_INLET"
+    )
+    cut_out = next(item for item in boundaries if item.port_id == "cut_out")
+    terminal = next(
+        item for item in boundaries if item.boundary_origin == "TRUE_TERMINAL"
+    )
+    assert inlet_flow == pytest.approx(cut_out.role_flow_m3_s + terminal.role_flow_m3_s)
+    assert error <= 1.0e-12
+
+
+def test_true_terminal_pressure_and_flow_come_from_global_solution() -> None:
+    model, _, roi = _chain_with_terminal()
+    flow = _solve(model, leaf_pressure_pa=17.0)
+    terminal = transfer_true_terminal(
+        roi,
+        model,
+        flow,
+        terminal_index=0,
+        local_node_id=2,
+        global_node_id=2,
+        **_terminal_transfer_kwargs(),
+    )
+    assert terminal.pressure_pa == flow.pressure_by_node_id[2] == 17.0
+    assert terminal.role_flow_m3_s == flow.flow_by_edge_id[1]
+    assert terminal.global_edge_id == 1
+    assert terminal.alpha_on_global_edge == 1.0
+
+
+def test_true_terminal_geometry_points_from_roi_to_terminal() -> None:
+    model, flow, roi = _chain_with_terminal()
+    terminal = transfer_true_terminal(
+        roi,
+        model,
+        flow,
+        terminal_index=0,
+        local_node_id=2,
+        global_node_id=2,
+        **_terminal_transfer_kwargs(),
+    )
+    np.testing.assert_allclose(terminal.geometry.simulation_tangent, [1, 0, 0])
+    np.testing.assert_allclose(terminal.geometry.outward_normal, [1, 0, 0])
+    assert np.linalg.norm(terminal.geometry.outward_normal) == pytest.approx(1.0)
+    assert terminal.geometry.extension_length_um == 20.0
+
+
+def test_true_terminal_wrong_global_node_is_rejected() -> None:
+    model, flow, roi = _chain_with_terminal()
+    with pytest.raises(PortTransferError, match="TRUE_TERMINAL_GLOBAL_MAPPING_INVALID"):
+        transfer_true_terminal(
+            roi,
+            model,
+            flow,
+            terminal_index=0,
+            local_node_id=2,
+            global_node_id=99,
+            **_terminal_transfer_kwargs(),
+        )
+
+
+def test_true_terminal_nonleaf_global_node_is_rejected() -> None:
+    model, flow, roi = _chain_with_terminal()
+    with pytest.raises(PortTransferError, match="TRUE_TERMINAL_GLOBAL_MAPPING_INVALID"):
+        transfer_true_terminal(
+            roi,
+            model,
+            flow,
+            terminal_index=0,
+            local_node_id=1,
+            global_node_id=1,
+            **_terminal_transfer_kwargs(),
+        )
+
+
+def test_true_terminal_position_mismatch_is_rejected() -> None:
+    model, flow, roi = _chain_with_terminal()
+    roi.local_node_positions_um[2, 0] += 0.1
+    with pytest.raises(PortTransferError, match="TRUE_TERMINAL_POSITION_MISMATCH"):
+        transfer_true_terminal(
+            roi,
+            model,
+            flow,
+            terminal_index=0,
+            local_node_id=2,
+            global_node_id=2,
+            **_terminal_transfer_kwargs(),
+        )
+
+
+def test_true_terminal_radius_mismatch_is_rejected() -> None:
+    model, flow, roi = _chain_with_terminal()
+    roi.local_node_radius_um[2] += 0.1
+    with pytest.raises(PortTransferError, match="TRUE_TERMINAL_RADIUS_MISMATCH"):
+        transfer_true_terminal(
+            roi,
+            model,
+            flow,
+            terminal_index=0,
+            local_node_id=2,
+            global_node_id=2,
+            **_terminal_transfer_kwargs(),
+        )
+
+
+def test_true_terminal_local_degree_must_be_one() -> None:
+    model, flow, _ = _chain_with_terminal()
+    roi = _roi(
+        [(5, 0, 0), (20, 0, 0), (15, 0, 0)],
+        [2, 2, 2],
+        [(0, 1), (1, 2)],
+        [],
+        terminal_local_ids=(1,),
+        terminal_global_ids=(2,),
+    )
+    with pytest.raises(PortTransferError, match="TRUE_TERMINAL_LOCAL_TOPOLOGY_INVALID"):
+        transfer_true_terminal(
+            roi,
+            model,
+            flow,
+            terminal_index=0,
+            local_node_id=1,
+            global_node_id=2,
+            **_terminal_transfer_kwargs(),
+        )
+
+
+def _readiness_config() -> ReadinessConfig:
+    return ReadinessConfig(
+        minimum_boundary_count=2,
+        true_terminal_policy="assumed_outlet",
+        required_assumed_inlet_count=1,
+        minimum_assumed_outlet_count=1,
+        require_connected_roi=True,
+        require_cycle_rank_zero=True,
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "check", "expected"),
+    [
+        ("position_error_um", 0.5e-5, "all_boundary_positions_match", True),
+        ("position_error_um", 2.0e-5, "all_boundary_positions_match", False),
+        ("radius_relative_error", 0.5e-6, "all_boundary_radii_match", True),
+        ("radius_relative_error", 2.0e-6, "all_boundary_radii_match", False),
+    ],
+)
+def test_readiness_uses_real_mapping_tolerances(
+    field: str, value: float, check: str, expected: bool
+) -> None:
+    model, flow, roi = _chain_with_terminal()
+    boundaries, error = transfer_all_boundaries(
+        roi, model, flow, mu_pa_s=MU, **_terminal_transfer_kwargs()
+    )
+    boundaries[0] = replace(boundaries[0], **{field: value})
+    result = roi_readiness(
+        roi,
+        boundaries,
+        error,
+        _readiness_config(),
+        boundary_mass_tolerance=1.0e-8,
+        maximum_position_error_um=1.0e-5,
+        maximum_radius_relative_error=1.0e-6,
+    )
+    assert result["checks"][check] is expected
+
+
+def test_next_stage_depends_on_final_status() -> None:
+    assert (
+        next_stage_for_status("CFD_PREPROCESS_BASELINE_PASS")
+        == "CFD_SURFACE_VOLUME_MESH_PREPARATION"
+    )
+    assert (
+        next_stage_for_status("CFD_ROI_NOT_READY")
+        != "CFD_SURFACE_VOLUME_MESH_PREPARATION"
+    )
+    assert next_stage_for_status("GLOBAL_1D_FLOW_FAILED") == "REVIEW_GLOBAL_1D_FLOW"
+    assert next_stage_for_status("GLOBAL_TO_ROI_TRANSFER_FAILED") == (
+        "REVIEW_GLOBAL_TO_ROI_BOUNDARY_TRANSFER"
+    )
 
 
 def test_global_edge_manifest_mismatch_is_rejected(tmp_path: Path) -> None:

@@ -9,7 +9,11 @@ import numpy as np
 from utils.sampling.sampling_types import CutPort, GlobalVascularModel, ROIRecord
 
 from .one_d_flow import GlobalFlowResult, edge_resistance
-from .port_geometry import PortGeometry, build_port_geometry
+from .port_geometry import (
+    PortGeometry,
+    build_boundary_geometry,
+    build_port_geometry,
+)
 
 
 class PortTransferError(RuntimeError):
@@ -21,6 +25,8 @@ class PortTransfer:
     port_id: str
     local_node_id: int
     role: str
+    boundary_origin: str
+    global_node_id: int | None
     global_edge_id: int
     center_um: np.ndarray
     source_radius_um: float
@@ -136,6 +142,8 @@ def transfer_cut_port(
         port_id=port.cut_port_id,
         local_node_id=port.local_node_id,
         role=role,
+        boundary_origin="CUT_PORT",
+        global_node_id=None,
         global_edge_id=edge.edge_id,
         center_um=x_cut,
         source_radius_um=float(radius_global),
@@ -149,15 +157,119 @@ def transfer_cut_port(
     )
 
 
-def transfer_all_ports(
+def transfer_true_terminal(
+    roi: ROIRecord,
+    model: GlobalVascularModel,
+    flow: GlobalFlowResult,
+    *,
+    terminal_index: int,
+    local_node_id: int,
+    global_node_id: int,
+    maximum_position_error_um: float,
+    maximum_radius_relative_error: float,
+    inlet_length_diameters: float,
+    outlet_length_diameters: float,
+) -> PortTransfer:
+    """Map one saved ROI true terminal to its exact global structural leaf."""
+
+    if local_node_id < 0 or local_node_id >= roi.node_count:
+        raise PortTransferError("TRUE_TERMINAL_LOCAL_TOPOLOGY_INVALID")
+    global_matches = np.flatnonzero(model.node_ids == global_node_id)
+    if len(global_matches) != 1:
+        raise PortTransferError("TRUE_TERMINAL_GLOBAL_MAPPING_INVALID")
+    global_index = int(global_matches[0])
+    if global_node_id == flow.root_node_id:
+        raise PortTransferError("TRUE_TERMINAL_GLOBAL_MAPPING_INVALID")
+    outgoing = [edge for edge in model.edges if edge.upstream_node_id == global_node_id]
+    incoming = [
+        edge for edge in model.edges if edge.downstream_node_id == global_node_id
+    ]
+    if outgoing or len(incoming) != 1:
+        raise PortTransferError("TRUE_TERMINAL_GLOBAL_MAPPING_INVALID")
+    edge = incoming[0]
+
+    local_position = np.asarray(roi.local_node_positions_um[local_node_id], dtype=float)
+    global_position = np.asarray(model.node_positions_um[global_index], dtype=float)
+    position_error = float(np.linalg.norm(local_position - global_position))
+    if position_error > maximum_position_error_um:
+        raise PortTransferError(
+            f"TRUE_TERMINAL_POSITION_MISMATCH: error={position_error:.6g} um"
+        )
+    local_radius = float(roi.local_node_radius_um[local_node_id])
+    global_radius = float(model.node_radius_um[global_index])
+    radius_error = abs(local_radius - global_radius) / global_radius
+    if radius_error > maximum_radius_relative_error:
+        raise PortTransferError(
+            f"TRUE_TERMINAL_RADIUS_MISMATCH: relative_error={radius_error:.6g}"
+        )
+    pressure = flow.pressure_by_node_id[global_node_id]
+    signed_flow = flow.flow_by_edge_id[edge.edge_id]
+    if not np.isfinite(signed_flow) or signed_flow <= 0:
+        raise PortTransferError("TRUE_TERMINAL_FLOW_INVALID")
+    if not np.isfinite(pressure):
+        raise PortTransferError(
+            "TRUE_TERMINAL_GLOBAL_MAPPING_INVALID: non-finite pressure"
+        )
+    try:
+        geometry = build_boundary_geometry(
+            roi,
+            local_node_id=local_node_id,
+            center_um=local_position,
+            radius_um=global_radius,
+            role="ASSUMED_OUTLET",
+            inlet_length_diameters=inlet_length_diameters,
+            outlet_length_diameters=outlet_length_diameters,
+            topology_error="TRUE_TERMINAL_LOCAL_TOPOLOGY_INVALID",
+        )
+    except ValueError as error:
+        raise PortTransferError(str(error)) from error
+    return PortTransfer(
+        port_id=f"{roi.roi_id}__terminal_{terminal_index:03d}",
+        local_node_id=local_node_id,
+        role="ASSUMED_OUTLET",
+        boundary_origin="TRUE_TERMINAL",
+        global_node_id=global_node_id,
+        global_edge_id=edge.edge_id,
+        center_um=local_position,
+        source_radius_um=global_radius,
+        alpha_on_global_edge=1.0,
+        position_error_um=position_error,
+        radius_relative_error=radius_error,
+        pressure_pa=float(pressure),
+        signed_parent_to_child_flow_m3_s=float(signed_flow),
+        role_flow_m3_s=float(signed_flow),
+        geometry=geometry,
+    )
+
+
+def transfer_all_boundaries(
     roi: ROIRecord,
     model: GlobalVascularModel,
     flow: GlobalFlowResult,
     **kwargs: float,
 ) -> tuple[list[PortTransfer], float]:
+    """Transfer every CUT_PORT and TRUE_TERMINAL CFD boundary exactly once."""
+
+    if len(roi.true_terminal_local_ids) != len(roi.true_terminal_global_ids):
+        raise PortTransferError("TRUE_TERMINAL_GLOBAL_MAPPING_INVALID")
     transfers = [
         transfer_cut_port(roi, port, model, flow, **kwargs) for port in roi.cut_ports
     ]
+    terminal_kwargs = {key: value for key, value in kwargs.items() if key != "mu_pa_s"}
+    transfers.extend(
+        transfer_true_terminal(
+            roi,
+            model,
+            flow,
+            terminal_index=index,
+            local_node_id=int(local_node_id),
+            global_node_id=int(global_node_id),
+            **terminal_kwargs,
+        )
+        for index, (local_node_id, global_node_id) in enumerate(
+            zip(roi.true_terminal_local_ids, roi.true_terminal_global_ids)
+        )
+    )
     inlet_flow = sum(
         item.role_flow_m3_s for item in transfers if item.role == "ASSUMED_INLET"
     )
@@ -168,3 +280,14 @@ def transfer_all_ports(
         abs(inlet_flow - outlet_flow) / inlet_flow if inlet_flow > 0 else float("inf")
     )
     return transfers, float(error)
+
+
+def transfer_all_ports(
+    roi: ROIRecord,
+    model: GlobalVascularModel,
+    flow: GlobalFlowResult,
+    **kwargs: float,
+) -> tuple[list[PortTransfer], float]:
+    """Deprecated compatibility wrapper; use transfer_all_boundaries()."""
+
+    return transfer_all_boundaries(roi, model, flow, **kwargs)

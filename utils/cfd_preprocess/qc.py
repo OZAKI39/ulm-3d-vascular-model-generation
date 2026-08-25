@@ -50,10 +50,12 @@ def global_graph_qc(
 def roi_readiness(
     roi: ROIRecord,
     transfers: list[PortTransfer],
-    port_mass_error: float,
+    boundary_mass_error: float,
     config: ReadinessConfig,
     *,
-    port_mass_tolerance: float,
+    boundary_mass_tolerance: float,
+    maximum_position_error_um: float,
+    maximum_radius_relative_error: float,
 ) -> dict[str, Any]:
     graph = nx.Graph()
     graph.add_nodes_from(map(int, roi.local_node_ids))
@@ -62,23 +64,36 @@ def roi_readiness(
     cycle_rank = roi.edge_count - roi.node_count + nx.number_connected_components(graph)
     inlet_count = sum(item.role == "ASSUMED_INLET" for item in transfers)
     outlet_count = sum(item.role == "ASSUMED_OUTLET" for item in transfers)
+    total_boundary_count = roi.cut_port_count + roi.true_terminal_count
+    cut_port_outlet_count = sum(
+        item.role == "ASSUMED_OUTLET" and item.boundary_origin == "CUT_PORT"
+        for item in transfers
+    )
+    terminal_outlet_count = sum(
+        item.role == "ASSUMED_OUTLET" and item.boundary_origin == "TRUE_TERMINAL"
+        for item in transfers
+    )
     checks = {
         "roi_connected": (not config.require_connected_roi) or connected,
         "roi_cycle_rank_zero": (not config.require_cycle_rank_zero) or cycle_rank == 0,
-        "minimum_cut_ports": roi.cut_port_count >= config.minimum_cut_ports,
-        "zero_true_terminals": (
-            not config.require_zero_true_terminals or roi.true_terminal_count == 0
+        "minimum_boundary_count": (
+            total_boundary_count >= config.minimum_boundary_count
+        ),
+        "true_terminal_policy_assumed_outlet": (
+            config.true_terminal_policy == "assumed_outlet"
+            and terminal_outlet_count == roi.true_terminal_count
         ),
         "exactly_one_assumed_inlet": inlet_count == config.required_assumed_inlet_count,
         "minimum_assumed_outlets": outlet_count >= config.minimum_assumed_outlet_count,
-        "all_port_global_edge_mappings_valid": len(transfers) == roi.cut_port_count,
-        "all_port_positions_match": all(
-            item.position_error_um >= 0 for item in transfers
+        "all_boundary_global_mappings_valid": len(transfers) == total_boundary_count,
+        "all_boundary_positions_match": all(
+            item.position_error_um <= maximum_position_error_um for item in transfers
         ),
-        "all_port_radii_match": all(
-            item.radius_relative_error >= 0 for item in transfers
+        "all_boundary_radii_match": all(
+            item.radius_relative_error <= maximum_radius_relative_error
+            for item in transfers
         ),
-        "port_mass_conservation": port_mass_error <= port_mass_tolerance,
+        "boundary_mass_conservation": (boundary_mass_error <= boundary_mass_tolerance),
         "one_inlet_flow_finite_positive": inlet_count == 1
         and all(
             np.isfinite(item.role_flow_m3_s) and item.role_flow_m3_s > 0
@@ -90,10 +105,10 @@ def roi_readiness(
             for item in transfers
             if item.role == "ASSUMED_OUTLET"
         ),
-        "all_port_tangents_finite": all(
+        "all_boundary_tangents_finite": all(
             np.all(np.isfinite(item.geometry.simulation_tangent)) for item in transfers
         ),
-        "all_port_normals_unit": all(
+        "all_boundary_normals_unit": all(
             abs(np.linalg.norm(item.geometry.outward_normal) - 1.0) <= 1.0e-12
             for item in transfers
         ),
@@ -109,7 +124,19 @@ def roi_readiness(
         "cycle_rank": cycle_rank,
         "cut_port_count": roi.cut_port_count,
         "true_terminal_count": roi.true_terminal_count,
+        "total_boundary_count": total_boundary_count,
         "assumed_inlet_count": inlet_count,
         "assumed_outlet_count": outlet_count,
-        "relative_port_mass_error": port_mass_error,
+        "cut_port_outlet_count": cut_port_outlet_count,
+        "true_terminal_outlet_count": terminal_outlet_count,
+        "relative_boundary_mass_error": boundary_mass_error,
+        "relative_boundary_mass_tolerance": boundary_mass_tolerance,
+        "maximum_position_error_um": max(
+            (item.position_error_um for item in transfers), default=0.0
+        ),
+        "allowed_position_error_um": maximum_position_error_um,
+        "maximum_radius_relative_error": max(
+            (item.radius_relative_error for item in transfers), default=0.0
+        ),
+        "allowed_radius_relative_error": maximum_radius_relative_error,
     }

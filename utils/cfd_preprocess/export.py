@@ -180,7 +180,9 @@ def port_rows(transfers: list[PortTransfer]) -> list[dict[str, Any]]:
             {
                 "port_id": item.port_id,
                 "role": item.role,
+                "boundary_origin": item.boundary_origin,
                 "local_node_id": item.local_node_id,
+                "global_node_id": item.global_node_id,
                 "global_edge_id": item.global_edge_id,
                 "x_um": x,
                 "y_um": y,
@@ -254,6 +256,10 @@ def write_boundary_package(
             },
             "inlet": {
                 "port_id": inlet.port_id,
+                "role": inlet.role,
+                "boundary_origin": inlet.boundary_origin,
+                "global_node_id": inlet.global_node_id,
+                "global_edge_id": inlet.global_edge_id,
                 "type": "VOLUMETRIC_FLOW_RATE",
                 "flow_rate_m3_s": inlet.role_flow_m3_s,
                 "profile": "PARABOLIC",
@@ -265,6 +271,10 @@ def write_boundary_package(
             "outlets": [
                 {
                     "port_id": item.port_id,
+                    "role": item.role,
+                    "boundary_origin": item.boundary_origin,
+                    "global_node_id": item.global_node_id,
+                    "global_edge_id": item.global_edge_id,
                     "type": "PRESSURE_DIRICHLET",
                     "pressure_pa": item.pressure_pa,
                     "expected_1d_flow_m3_s": item.role_flow_m3_s,
@@ -299,6 +309,9 @@ def write_extension_plan(path: Path, transfers: list[PortTransfer]) -> Path:
     fields = [
         "port_id",
         "role",
+        "boundary_origin",
+        "global_node_id",
+        "global_edge_id",
         "extension_length_um",
         "extension_end_x_um",
         "extension_end_y_um",
@@ -312,6 +325,9 @@ def write_extension_plan(path: Path, transfers: list[PortTransfer]) -> Path:
             {
                 "port_id": item.port_id,
                 "role": item.role,
+                "boundary_origin": item.boundary_origin,
+                "global_node_id": item.global_node_id,
+                "global_edge_id": item.global_edge_id,
                 "extension_length_um": item.geometry.extension_length_um,
                 "extension_end_x_um": end[0],
                 "extension_end_y_um": end[1],
@@ -329,6 +345,9 @@ def write_port_vtp(
     faces: list[int] = []
     cell_port_id: list[str] = []
     cell_role: list[int] = []
+    cell_origin: list[int] = []
+    cell_global_node: list[int] = []
+    cell_global_edge: list[int] = []
     cell_pressure: list[float] = []
     cell_flow: list[float] = []
     cell_radius: list[float] = []
@@ -353,6 +372,11 @@ def write_port_vtp(
             )
             cell_port_id.append(item.port_id)
             cell_role.append(1 if item.role == "ASSUMED_INLET" else 2)
+            cell_origin.append(1 if item.boundary_origin == "CUT_PORT" else 2)
+            cell_global_node.append(
+                item.global_node_id if item.global_node_id is not None else -1
+            )
+            cell_global_edge.append(item.global_edge_id)
             cell_pressure.append(item.pressure_pa)
             cell_flow.append(item.role_flow_m3_s)
             cell_radius.append(item.source_radius_um)
@@ -360,6 +384,9 @@ def write_port_vtp(
     mesh = pv.PolyData(np.vstack(all_points), faces=np.asarray(faces, dtype=np.int64))
     mesh.cell_data["port_id"] = np.asarray(cell_port_id)
     mesh.cell_data["role_code"] = np.asarray(cell_role, dtype=np.uint8)
+    mesh.cell_data["boundary_origin_code"] = np.asarray(cell_origin, dtype=np.uint8)
+    mesh.cell_data["global_node_id"] = np.asarray(cell_global_node, dtype=np.int64)
+    mesh.cell_data["global_edge_id"] = np.asarray(cell_global_edge, dtype=np.int64)
     mesh.cell_data["pressure_pa"] = np.asarray(cell_pressure, dtype=float)
     mesh.cell_data["flow_rate_m3_s"] = np.asarray(cell_flow, dtype=float)
     mesh.cell_data["radius_um"] = np.asarray(cell_radius, dtype=float)

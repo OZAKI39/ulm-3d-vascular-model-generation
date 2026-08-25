@@ -30,7 +30,7 @@ from .io import (
     verify_global_edge_manifest,
 )
 from .one_d_flow import GlobalFlowResult, solve_global_flow
-from .port_transfer import PortTransfer, transfer_all_ports
+from .port_transfer import PortTransfer, transfer_all_boundaries
 from .qc import global_graph_qc, roi_readiness
 from .visualization import global_pressure_figure, roi_boundary_figure
 
@@ -68,7 +68,33 @@ def _logger(path: Path, verbose: bool) -> logging.Logger:
     return logger
 
 
-def _solver_summary(flow: GlobalFlowResult) -> dict[str, Any]:
+def next_stage_for_status(status: str) -> str:
+    """Return the only permitted workflow transition for a final status."""
+
+    return {
+        "CFD_PREPROCESS_BASELINE_PASS": "CFD_SURFACE_VOLUME_MESH_PREPARATION",
+        "CFD_ROI_NOT_READY": "REVIEW_CFD_PREPROCESS_FAILURE",
+        "GLOBAL_1D_FLOW_FAILED": "REVIEW_GLOBAL_1D_FLOW",
+        "GLOBAL_TO_ROI_TRANSFER_FAILED": "REVIEW_GLOBAL_TO_ROI_BOUNDARY_TRANSFER",
+    }.get(status, "REVIEW_CFD_PREPROCESS_FAILURE")
+
+
+def next_stage_display(next_stage: str) -> str:
+    return {
+        "CFD_SURFACE_VOLUME_MESH_PREPARATION": (
+            "CFD SURFACE / VOLUME MESH PREPARATION"
+        ),
+        "REVIEW_CFD_PREPROCESS_FAILURE": "REVIEW CFD PREPROCESS FAILURE REASONS",
+        "REVIEW_GLOBAL_1D_FLOW": "REVIEW GLOBAL 1D FLOW",
+        "REVIEW_GLOBAL_TO_ROI_BOUNDARY_TRANSFER": (
+            "REVIEW GLOBAL-TO-ROI BOUNDARY TRANSFER"
+        ),
+    }[next_stage]
+
+
+def _solver_summary(
+    flow: GlobalFlowResult, *, leaf_pressure_pa: float
+) -> dict[str, Any]:
     return {
         "status": "PASS",
         "backend": "scipy_sparse_spsolve",
@@ -85,27 +111,44 @@ def _solver_summary(flow: GlobalFlowResult) -> dict[str, Any]:
         "relative_mass_error": flow.relative_mass_error,
         "maximum_internal_relative_residual": flow.maximum_internal_relative_residual,
         "reverse_flow_count": flow.reverse_flow_count,
-        "leaf_pressure_pa": 0.0,
+        "leaf_pressure_pa": leaf_pressure_pa,
         "leaf_pressure_role": "GAUGE_PRESSURE_REFERENCE_NOT_PHYSIOLOGICAL_ZERO",
         "radius_source": "ORIGINAL_ANALYSIS_SWC_SOURCE_RADIUS_NOT_RADIUS_SCALE_0.91",
     }
 
 
-def _port_qc(
-    transfers: list[PortTransfer], port_mass_error: float, tolerance: float
+def _boundary_qc(
+    transfers: list[PortTransfer],
+    boundary_mass_error: float,
+    *,
+    mass_tolerance: float,
+    maximum_position_error_um: float,
+    maximum_radius_relative_error: float,
 ) -> dict[str, Any]:
+    position_pass = all(
+        item.position_error_um <= maximum_position_error_um for item in transfers
+    )
+    radius_pass = all(
+        item.radius_relative_error <= maximum_radius_relative_error
+        for item in transfers
+    )
+    mass_pass = boundary_mass_error <= mass_tolerance
     return {
-        "status": "PASS" if port_mass_error <= tolerance else "FAIL",
+        "status": "PASS" if position_pass and radius_pass and mass_pass else "FAIL",
         "all_global_edges_found": True,
-        "all_positions_match": True,
-        "all_radii_match": True,
+        "all_boundary_positions_match": position_pass,
+        "all_boundary_radii_match": radius_pass,
         "pressure_interpolation": "EXACT_PARTIAL_LINEAR_RADIUS_HYDRAULIC_RESISTANCE",
-        "relative_port_mass_error": port_mass_error,
-        "relative_port_mass_tolerance": tolerance,
-        "ports": [
+        "relative_boundary_mass_error": boundary_mass_error,
+        "relative_boundary_mass_tolerance": mass_tolerance,
+        "maximum_allowed_position_error_um": maximum_position_error_um,
+        "maximum_allowed_radius_relative_error": maximum_radius_relative_error,
+        "boundaries": [
             {
                 "port_id": item.port_id,
                 "role": item.role,
+                "boundary_origin": item.boundary_origin,
+                "global_node_id": item.global_node_id,
                 "global_edge_id": item.global_edge_id,
                 "alpha_on_global_edge": item.alpha_on_global_edge,
                 "position_error_um": item.position_error_um,
@@ -129,9 +172,12 @@ def _write_report(
     transfers: list[PortTransfer],
     readiness: dict[str, Any],
     geometry: dict[str, Any],
+    leaf_pressure_pa: float,
+    next_stage: str,
 ) -> Path:
     port_lines = "\n".join(
-        f"- `{item.port_id}` — {item.role}; P={item.pressure_pa:.9g} Pa; "
+        f"- `{item.port_id}` — {item.boundary_origin} / {item.role}; "
+        f"P={item.pressure_pa:.9g} Pa; "
         f"Q={item.role_flow_m3_s:.9g} m³/s"
         for item in transfers
     )
@@ -153,7 +199,8 @@ structural root is temporarily treated as `ASSUMED_GLOBAL_INLET`. Its configured
 {flow.root_mean_velocity_mm_s:.9g} mm/s velocity is a literature-derived baseline assumption,
 not a measurement from the current fMOST mouse.
 
-All structural leaves are assigned 0 Pa gauge pressure as the global baseline reference. This
+All structural leaves are assigned {leaf_pressure_pa:.9g} Pa gauge pressure as the global baseline
+reference. This
 does not mean that physiological blood pressure is zero. The 1D calculation uses original
 analysis-SWC source radii; the Ultraliser radius scale of 0.91 is only a surface-reconstruction
 compensation and is not used in hydraulic resistance.
@@ -161,6 +208,12 @@ compensation and is not used in hydraulic resistance.
 ROI inlet flow and outlet pressure are transferred from the global 1D model. The intended outlet
 condition is **DIRECT 1D PRESSURE**, not a resistance or Windkessel condition. Version-2
 physiological refinements are disabled.
+
+TRUE_TERMINAL boundaries are treated as `ASSUMED_OUTLET` in the current baseline. This is a
+simulation convention used to keep the boundary model simple. It does not assert that these
+terminals are experimentally verified physiological outlets. Their pressure is read from the
+global 1D structural-leaf solution; the current gauge value is a reference pressure, not a claim
+that physiological blood pressure equals zero.
 
 ## Global solution
 
@@ -170,11 +223,11 @@ physiological refinements are disabled.
 - Global relative mass error: {flow.relative_mass_error:.6e}
 - Maximum internal relative residual: {flow.maximum_internal_relative_residual:.6e}
 
-## CUT_PORT transfer
+## Complete CFD boundary transfer
 
 {port_lines}
 
-ROI relative port mass error: {readiness["relative_port_mass_error"]:.6e}
+ROI relative boundary mass error: {readiness["relative_boundary_mass_error"]:.6e}
 
 Readiness failure reasons: {reason_text}
 
@@ -187,6 +240,10 @@ Readiness failure reasons: {reason_text}
 
 No surface was modified, no volume mesh was created, and no 3D CFD or microbubble simulation was
 run in this stage.
+
+## Next stage
+
+{next_stage_display(next_stage)}.
 """
     path.write_text(text, encoding="utf-8")
     return path
@@ -251,7 +308,9 @@ def run_cfd_preprocess(
         flow.relative_mass_error,
     )
     write_global_tables(layout, model, flow)
-    solver_summary = _solver_summary(flow)
+    solver_summary = _solver_summary(
+        flow, leaf_pressure_pa=config.global_1d.leaf_pressure_pa
+    )
     solver_summary["dynamic_viscosity_pa_s"] = mu
     solver_summary["node_count"] = model.node_count
     solver_summary["edge_count"] = model.edge_count
@@ -267,7 +326,7 @@ def run_cfd_preprocess(
     if config.outputs.save_global_vtp:
         write_global_vtp(layout.global_1d / "global_1d_flow.vtp", model, flow)
 
-    transfers, port_mass_error = transfer_all_ports(
+    transfers, boundary_mass_error = transfer_all_boundaries(
         roi,
         model,
         flow,
@@ -278,12 +337,16 @@ def run_cfd_preprocess(
         outlet_length_diameters=config.extension.outlet_length_diameters,
     )
     write_port_classification(layout.roi / "port_classification.csv", transfers)
-    port_qc = _port_qc(
+    boundary_qc = _boundary_qc(
         transfers,
-        port_mass_error,
-        config.transfer.relative_port_mass_tolerance,
+        boundary_mass_error,
+        mass_tolerance=config.transfer.relative_port_mass_tolerance,
+        maximum_position_error_um=config.transfer.maximum_cut_position_error_um,
+        maximum_radius_relative_error=(
+            config.transfer.maximum_cut_radius_relative_error
+        ),
     )
-    write_json(layout.qc / "port_transfer_qc.json", port_qc)
+    write_json(layout.qc / "port_transfer_qc.json", boundary_qc)
 
     geometry, model_auto = resolve_model_run(
         config.paths.model_run,
@@ -312,9 +375,13 @@ def run_cfd_preprocess(
     readiness = roi_readiness(
         roi,
         transfers,
-        port_mass_error,
+        boundary_mass_error,
         config.readiness,
-        port_mass_tolerance=config.transfer.relative_port_mass_tolerance,
+        boundary_mass_tolerance=config.transfer.relative_port_mass_tolerance,
+        maximum_position_error_um=config.transfer.maximum_cut_position_error_um,
+        maximum_radius_relative_error=(
+            config.transfer.maximum_cut_radius_relative_error
+        ),
     )
     readiness["geometry_reference_pass"] = True
     readiness["global_qc_pass"] = global_qc["status"] == "PASS"
@@ -323,7 +390,9 @@ def run_cfd_preprocess(
         if readiness["status"] == "PASS"
         else "CFD_ROI_NOT_READY"
     )
+    next_stage = next_stage_for_status(final_status)
     readiness["final_status"] = final_status
+    readiness["next_stage"] = next_stage
     write_json(layout.qc / "cfd_readiness.json", readiness)
 
     boundary_path: Path | None = None
@@ -357,9 +426,28 @@ def run_cfd_preprocess(
         transfers=transfers,
         readiness=readiness,
         geometry=geometry_report,
+        leaf_pressure_pa=config.global_1d.leaf_pressure_pa,
+        next_stage=next_stage,
     )
+    cut_port_inlet_total = sum(
+        item.role_flow_m3_s
+        for item in transfers
+        if item.boundary_origin == "CUT_PORT" and item.role == "ASSUMED_INLET"
+    )
+    cut_port_outlet_total = sum(
+        item.role_flow_m3_s
+        for item in transfers
+        if item.boundary_origin == "CUT_PORT" and item.role == "ASSUMED_OUTLET"
+    )
+    terminal_outlet_total = sum(
+        item.role_flow_m3_s
+        for item in transfers
+        if item.boundary_origin == "TRUE_TERMINAL" and item.role == "ASSUMED_OUTLET"
+    )
+    all_outlet_total = cut_port_outlet_total + terminal_outlet_total
     summary = {
         "status": final_status,
+        "next_stage": next_stage,
         "run_id": run_id,
         "run_root": str(layout.run_root.resolve()),
         "configuration": str(config.source_path),
@@ -375,10 +463,17 @@ def run_cfd_preprocess(
         "global_relative_mass_error": flow.relative_mass_error,
         "cut_port_count": roi.cut_port_count,
         "true_terminal_count": roi.true_terminal_count,
+        "total_boundary_count": len(transfers),
         "assumed_inlet_count": readiness["assumed_inlet_count"],
         "assumed_outlet_count": readiness["assumed_outlet_count"],
-        "relative_port_mass_error": port_mass_error,
-        "ports": port_qc["ports"],
+        "cut_port_outlet_count": readiness["cut_port_outlet_count"],
+        "true_terminal_outlet_count": readiness["true_terminal_outlet_count"],
+        "cut_port_inlet_total_m3_s": cut_port_inlet_total,
+        "cut_port_outlet_total_m3_s": cut_port_outlet_total,
+        "true_terminal_outlet_total_m3_s": terminal_outlet_total,
+        "all_outlet_total_m3_s": all_outlet_total,
+        "relative_boundary_mass_error": boundary_mass_error,
+        "boundaries": boundary_qc["boundaries"],
         "geometry": geometry_report,
         "boundary_conditions_json": str(boundary_path) if boundary_path else None,
         "port_planes_vtp": str(port_vtp_path) if port_vtp_path else None,
@@ -413,16 +508,29 @@ def print_result(result: CFDPreprocessResult) -> None:
     )
     print(f"Q_root: {summary['root_flow_m3_s']:.12g} m3/s")
     print(f"Global mass error: {summary['global_relative_mass_error']:.6e}")
-    print(f"CUT_PORT count: {summary['cut_port_count']}")
-    print(f"ASSUMED_INLET count: {summary['assumed_inlet_count']}")
-    print(f"ASSUMED_OUTLET count: {summary['assumed_outlet_count']}")
-    print(f"TRUE_TERMINAL count: {summary['true_terminal_count']}")
-    for port in summary["ports"]:
+    print("ROI:")
+    print(f"CUT_PORT = {summary['cut_port_count']}")
+    print(f"TRUE_TERMINAL = {summary['true_terminal_count']}")
+    print(f"TOTAL CFD BOUNDARIES = {summary['total_boundary_count']}")
+    print(f"ASSUMED_INLET = {summary['assumed_inlet_count']}")
+    print(f"ASSUMED_OUTLET = {summary['assumed_outlet_count']}")
+    print("Boundary origins:")
+    print(f"CUT_PORT outlets = {summary['cut_port_outlet_count']}")
+    print(f"TRUE_TERMINAL outlets = {summary['true_terminal_outlet_count']}")
+    for boundary in summary["boundaries"]:
         print(
-            f"Port: {port['port_id']} | {port['role']} | "
-            f"P_1D={port['pressure_pa']:.9g} Pa | Q_1D={port['flow_rate_m3_s']:.9g} m3/s"
+            f"Boundary: {boundary['port_id']} | origin={boundary['boundary_origin']} | "
+            f"role={boundary['role']} | P_1D={boundary['pressure_pa']:.9g} Pa | "
+            f"Q_1D={boundary['flow_rate_m3_s']:.9g} m3/s"
         )
-    print(f"ROI port mass error: {summary['relative_port_mass_error']:.6e}")
+    print(f"CUT_PORT inlet total = {summary['cut_port_inlet_total_m3_s']:.12g} m3/s")
+    print(f"CUT_PORT outlet total = {summary['cut_port_outlet_total_m3_s']:.12g} m3/s")
+    print(
+        "TRUE_TERMINAL outlet total = "
+        f"{summary['true_terminal_outlet_total_m3_s']:.12g} m3/s"
+    )
+    print(f"ALL outlet total = {summary['all_outlet_total_m3_s']:.12g} m3/s")
+    print(f"Boundary mass error = {summary['relative_boundary_mass_error']:.6e}")
     geometry = summary["geometry"]
     print(
         "Ultraliser geometry: PASS | "
@@ -430,3 +538,4 @@ def print_result(result: CFDPreprocessResult) -> None:
         f"radius P95={geometry['radius_p95_absolute_relative_error']:.9g}"
     )
     print(f"Final status: {result.status}")
+    print(f"NEXT: {next_stage_display(summary['next_stage'])}")

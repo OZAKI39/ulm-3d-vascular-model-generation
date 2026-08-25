@@ -79,8 +79,10 @@ D:\anaconda3\envs\pmp\python.exe cfd_preprocess.py
 ```
 
 It reads `configs/cfd_preprocess.yaml`, solves the complete source-edge analysis SWC as a sparse
-Newtonian 1D resistor network, and transfers pressure and flow to exact ROI `CUT_PORT` locations.
-It validates the existing Ultraliser geometry but never rebuilds or modifies it. Strict readiness
+Newtonian 1D resistor network, and transfers pressure and flow to ROI boundaries. `CUT_PORT`
+boundaries retain direction-based assumed roles, while each `TRUE_TERMINAL` is treated as an
+`ASSUMED_OUTLET` for this baseline only—not as a verified physiological outlet. The command
+validates the existing Ultraliser geometry but never rebuilds or modifies it. Strict readiness
 checks prevent a solver boundary package from being emitted for an unsuitable ROI.
 
 See `docs/CFD_PREPROCESS.md` for the three-stage workflow and the formal-baseline assumptions.

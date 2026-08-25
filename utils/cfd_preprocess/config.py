@@ -57,8 +57,8 @@ class Global1DConfig:
 
 @dataclass(frozen=True, slots=True)
 class ReadinessConfig:
-    minimum_cut_ports: int
-    require_zero_true_terminals: bool
+    minimum_boundary_count: int
+    true_terminal_policy: str
     required_assumed_inlet_count: int
     minimum_assumed_outlet_count: int
     require_connected_roi: bool
@@ -381,15 +381,25 @@ def load_cfd_preprocess_config(
         root,
         "roi_readiness",
         {
-            "minimum_cut_ports",
-            "require_zero_true_terminals",
+            "minimum_boundary_count",
+            "true_terminal_policy",
             "required_assumed_inlet_count",
             "minimum_assumed_outlet_count",
             "require_connected_roi",
             "require_cycle_rank_zero",
         },
     )
-    min_ports = _integer(ready["minimum_cut_ports"], "roi_readiness.minimum_cut_ports")
+    min_boundaries = _integer(
+        ready["minimum_boundary_count"], "roi_readiness.minimum_boundary_count"
+    )
+    terminal_policy = _string(
+        ready["true_terminal_policy"], "roi_readiness.true_terminal_policy"
+    )
+    _require(
+        terminal_policy,
+        "assumed_outlet",
+        "roi_readiness.true_terminal_policy",
+    )
     inlet_count = _integer(
         ready["required_assumed_inlet_count"],
         "roi_readiness.required_assumed_inlet_count",
@@ -399,14 +409,14 @@ def load_cfd_preprocess_config(
         "roi_readiness.minimum_assumed_outlet_count",
     )
     if (
-        min_ports is None
-        or min_ports < 1
+        min_boundaries is None
+        or min_boundaries < 2
         or inlet_count != 1
         or outlet_count is None
         or outlet_count < 1
     ):
         raise ValueError(
-            "ROI readiness port counts must define one inlet and at least one outlet"
+            "ROI readiness boundaries must define at least two boundaries, one inlet, and one outlet"
         )
 
     transfer_root = _section(
@@ -555,11 +565,8 @@ def load_cfd_preprocess_config(
             solver=SolverConfig(mass_tol, residual_tol, reverse_tol),
         ),
         readiness=ReadinessConfig(
-            minimum_cut_ports=min_ports,
-            require_zero_true_terminals=_bool(
-                ready["require_zero_true_terminals"],
-                "roi_readiness.require_zero_true_terminals",
-            ),
+            minimum_boundary_count=min_boundaries,
+            true_terminal_policy=str(terminal_policy),
             required_assumed_inlet_count=inlet_count,
             minimum_assumed_outlet_count=outlet_count,
             require_connected_roi=_bool(
