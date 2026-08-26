@@ -50,14 +50,38 @@ def _write_stl(surface: vtk.vtkPolyData, path: str) -> None:
         raise RuntimeError(f"Failed to write STL: {path}")
 
 
-def _run(request: dict[str, object]) -> dict[str, object]:
+def _runtime() -> dict[str, object]:
+    return {
+        "status": "PASS",
+        "python": sys.version,
+        "python_executable": sys.executable,
+        "vmtk_package_version": importlib.metadata.version("vmtk"),
+        "vtk_version": vtk.vtkVersion.GetVTKVersion(),
+        "custom_tps_implementation": False,
+    }
+
+
+def _run_extension(request: dict[str, object]) -> dict[str, object]:
     surface = _read_vtp(str(request["input_surface_vtp"]))
-    centerlines = _read_vtp(str(request["centerlines_vtp"]))
     parameters = dict(request["parameters"])  # type: ignore[arg-type]
+    extension_mode = str(parameters["extension_mode"])
 
     flow = vtkvmtk.vtkvmtkPolyDataFlowExtensionsFilter()
     flow.SetInputData(surface)
-    flow.SetCenterlines(centerlines)
+    if extension_mode == "centerlinedirection":
+        if "centerlines_vtp" not in request:
+            raise RuntimeError("INVALID_VMTK_EXTENSION_MODE:centerlines_required")
+        centerlines = _read_vtp(str(request["centerlines_vtp"]))
+        flow.SetCenterlines(centerlines)
+        flow.SetExtensionModeToUseCenterlineDirection()
+        centerlines_used = True
+        direction_api = "SetExtensionModeToUseCenterlineDirection"
+    elif extension_mode == "boundarynormal":
+        flow.SetExtensionModeToUseNormalToBoundary()
+        centerlines_used = False
+        direction_api = "SetExtensionModeToUseNormalToBoundary"
+    else:
+        raise RuntimeError("INVALID_VMTK_EXTENSION_MODE")
     flow.SetSigma(float(parameters["sigma"]))
     flow.SetAdaptiveExtensionLength(int(bool(parameters["adaptive_extension_length"])))
     flow.SetExtensionRatio(float(parameters["extension_ratio"]))
@@ -75,7 +99,6 @@ def _run(request: dict[str, object]) -> dict[str, object]:
         raise RuntimeError(
             "Installed official VMTK release cannot preserve the source cross-section"
         )
-    flow.SetExtensionModeToUseCenterlineDirection()
     flow.SetInterpolationModeToThinPlateSpline()
     flow.Update()
     raw = vtk.vtkPolyData()
@@ -84,6 +107,31 @@ def _run(request: dict[str, object]) -> dict[str, object]:
         raise RuntimeError("VMTK flow-extension filter did not add surface cells")
     _write_vtp(raw, str(request["raw_vtp"]))
     _write_stl(raw, str(request["raw_stl"]))
+    return {
+        **_runtime(),
+        "operation": "extension",
+        "official_flow_filter": "vtkvmtkPolyDataFlowExtensionsFilter",
+        "extension_mode_effective": extension_mode,
+        "centerlines_used_for_extension_direction": centerlines_used,
+        "official_direction_api": direction_api,
+        "official_interpolation_api": "SetInterpolationModeToThinPlateSpline",
+        "input_points": surface.GetNumberOfPoints(),
+        "input_cells": surface.GetNumberOfCells(),
+        "raw_points": raw.GetNumberOfPoints(),
+        "raw_cells": raw.GetNumberOfCells(),
+        "parameters": parameters,
+        "preserve_cross_section_shape_api_available": preserve_shape_api,
+        "preserve_cross_section_shape_effective": False,
+        "preserve_cross_section_shape_compatibility": (
+            "explicit official filter setter"
+            if preserve_shape_api
+            else "official v1.5.0 behavior always transitions the source profile to the target circle"
+        ),
+    }
+
+
+def _run_remesh_cap(request: dict[str, object]) -> dict[str, object]:
+    raw = _read_vtp(str(request["raw_vtp"]))
 
     remesher = vmtkscripts.vmtkSurfaceRemeshing()
     remesher.Surface = raw
@@ -117,16 +165,10 @@ def _run(request: dict[str, object]) -> dict[str, object]:
         wall_entity_id = max(unique_entities, key=values.count)
         cap_entity_ids = [value for value in unique_entities if value != wall_entity_id]
     return {
-        "status": "PASS",
-        "python": sys.version,
-        "python_executable": sys.executable,
-        "vmtk_package_version": importlib.metadata.version("vmtk"),
-        "vtk_version": vtk.vtkVersion.GetVTKVersion(),
-        "official_flow_filter": "vtkvmtkPolyDataFlowExtensionsFilter",
+        **_runtime(),
+        "operation": "remesh_cap",
         "official_remesher": "vmtkscripts.vmtkSurfaceRemeshing",
         "official_capper": "vmtkscripts.vmtkSurfaceCapper",
-        "input_points": surface.GetNumberOfPoints(),
-        "input_cells": surface.GetNumberOfCells(),
         "raw_points": raw.GetNumberOfPoints(),
         "raw_cells": raw.GetNumberOfCells(),
         "remeshed_open_points": remeshed_open.GetNumberOfPoints(),
@@ -136,7 +178,6 @@ def _run(request: dict[str, object]) -> dict[str, object]:
         "cell_entity_ids": unique_entities,
         "wall_entity_id": wall_entity_id,
         "cap_entity_ids": cap_entity_ids,
-        "parameters": parameters,
         "remesh": {
             "element_size_mode": "edgelength",
             "target_edge_length_um": float(request["target_edge_length_um"]),
@@ -149,15 +190,16 @@ def _run(request: dict[str, object]) -> dict[str, object]:
             "cell_entity_ids_array_name": "CellEntityIds",
             "cell_entity_id_offset": 1,
         },
-        "custom_tps_implementation": False,
-        "preserve_cross_section_shape_api_available": preserve_shape_api,
-        "preserve_cross_section_shape_effective": False,
-        "preserve_cross_section_shape_compatibility": (
-            "explicit official filter setter"
-            if preserve_shape_api
-            else "official v1.5.0 behavior always transitions the source profile to the target circle"
-        ),
     }
+
+
+def _run(request: dict[str, object]) -> dict[str, object]:
+    operation = str(request.get("operation", ""))
+    if operation == "extension":
+        return _run_extension(request)
+    if operation == "remesh_cap":
+        return _run_remesh_cap(request)
+    raise RuntimeError("INVALID_VMTK_OPERATION")
 
 
 def main() -> int:

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from utils.cfd_surface_prepare.config import load_surface_prepare_config
 from utils.cfd_surface_prepare.vmtk_pipeline import (
-    SUCCESS_STATUS,
+    PASS_STATUSES,
     print_vmtk_result,
     run_vmtk_surface_prepare,
 )
@@ -40,7 +40,7 @@ def main() -> int:
         config = load_surface_prepare_config(args.config, project_root=PROJECT_ROOT)
         result = run_vmtk_surface_prepare(config, project_root=PROJECT_ROOT)
         print_vmtk_result(result)
-        return 0 if result.status == SUCCESS_STATUS else 2
+        return 0 if result.status in PASS_STATUSES else 2
     except Exception as error:
         allowed_failures = {
             "VMTK_ENVIRONMENT_BLOCKED",
@@ -48,6 +48,10 @@ def main() -> int:
             "VMTK_EXTENSION_GEOMETRY_FAILED",
             "VMTK_REMESH_CORE_FIDELITY_FAILED",
             "VMTK_SURFACE_QC_FAILED",
+            "INVALID_VMTK_EXTENSION_MODE",
+            "BOUNDARY_NORMAL_INPUT_PLANE_MISMATCH",
+            "VMTK_BOUNDARY_NORMAL_RAW_GEOMETRY_FAILED",
+            "VMTK_BOUNDARY_NORMAL_FINAL_SURFACE_FAILED",
             "ORIGINAL_ULTRALISER_GEOMETRY_MODIFIED",
         }
         failure = str(error).split(":", maxsplit=1)[0]
@@ -55,7 +59,7 @@ def main() -> int:
             failure = "VMTK_TPS_EXTENSION_FAILED"
         print(f"CFD surface preparation failed: {error}")
         print(f"Final status: {failure}")
-        print("NEXT: REVIEW VMTK TPS FAILURE")
+        print("NEXT: REVIEW VMTK BOUNDARY-NORMAL TPS FAILURE")
         return 1
 
 

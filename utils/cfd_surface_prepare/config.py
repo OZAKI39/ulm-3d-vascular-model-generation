@@ -276,11 +276,11 @@ def load_surface_prepare_config(
         False,
         "vmtk.preserve_cross_section_shape",
     )
-    _require(
-        vmtk["extension_mode"],
-        "centerlinedirection",
-        "vmtk.extension_mode",
-    )
+    extension_mode = vmtk["extension_mode"]
+    if extension_mode not in {"centerlinedirection", "boundarynormal"}:
+        raise ValueError(
+            "vmtk.extension_mode must be 'centerlinedirection' or 'boundarynormal'"
+        )
     _require(_number(vmtk["sigma"], "vmtk.sigma"), 1.0, "vmtk.sigma")
     _require(
         _number(vmtk["transition_ratio"], "vmtk.transition_ratio"),
@@ -566,7 +566,7 @@ def load_surface_prepare_config(
             ),
             interpolation_mode="thinplatespline",
             preserve_cross_section_shape=False,
-            extension_mode="centerlinedirection",
+            extension_mode=extension_mode,
             sigma=1.0,
             transition_ratio=0.5,
             adaptive_extension_length=True,

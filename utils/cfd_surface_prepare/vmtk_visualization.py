@@ -75,26 +75,55 @@ def _local(data: pv.PolyData, boundary: BoundaryInput) -> pv.PolyData:
     return data.extract_cells(np.flatnonzero(mask)).extract_surface().triangulate()
 
 
+def _extension_local(data: pv.PolyData, boundary: BoundaryInput) -> pv.PolyData:
+    faces = np.asarray(data.faces, dtype=np.int64).reshape((-1, 4))[:, 1:]
+    centers = np.asarray(data.points)[faces].mean(axis=1)
+    relative = centers - boundary.center_um
+    axial = relative @ boundary.outward_normal
+    radial = np.linalg.norm(
+        relative - np.outer(axial, boundary.outward_normal), axis=1
+    )
+    mask = (
+        (axial >= -2.0 * boundary.source_radius_um)
+        & (axial <= 1.25 * boundary.extension_length_um)
+        & (radial <= 7.0 * boundary.source_radius_um)
+    )
+    return data.extract_cells(np.flatnonzero(mask)).extract_surface().triangulate()
+
+
 def save_vmtk_review_figures(
     *,
     old_custom_vtp: Path,
-    raw_vtp: Path,
-    final_vtp: Path,
+    centerline_raw_vtp: Path,
+    boundarynormal_raw_vtp: Path,
+    boundarynormal_remeshed_open_vtp: Path,
+    boundarynormal_final_vtp: Path,
     boundaries: Iterable[BoundaryInput],
     output_directory: Path,
 ) -> tuple[Path, ...]:
+    """Create the five mandatory manual-review comparisons with fixed cameras."""
+
     output_directory.mkdir(parents=True, exist_ok=True)
     boundary_list = list(boundaries)
     old = pv.read(old_custom_vtp).triangulate()
-    raw = pv.read(raw_vtp).triangulate()
-    final = pv.read(final_vtp).triangulate()
-    for data in (old, raw, final):
+    centerline = pv.read(centerline_raw_vtp).triangulate()
+    raw = pv.read(boundarynormal_raw_vtp).triangulate()
+    remeshed = pv.read(boundarynormal_remeshed_open_vtp).triangulate()
+    final = pv.read(boundarynormal_final_vtp).triangulate()
+    for data in (old, centerline, raw, remeshed, final):
         data.cell_data["review_part"] = _parts(data, boundary_list)
 
-    surface_path = output_directory / "old_custom_vs_vmtk_tps_surface.png"
-    plotter = pv.Plotter(shape=(1, 2), off_screen=True, window_size=(1800, 850))
+    surface_path = (
+        output_directory / "old_custom_vs_centerline_vs_boundarynormal_surface.png"
+    )
+    plotter = pv.Plotter(shape=(1, 3), off_screen=True, window_size=(2400, 800))
     plotter.set_background("white")
-    for column, (title, data) in enumerate((("OLD CUSTOM", old), ("VMTK TPS", final))):
+    surfaces = (
+        ("OLD CUSTOM REFINED", old),
+        ("VMTK CENTERLINE RAW", centerline),
+        ("VMTK BOUNDARYNORMAL FINAL", final),
+    )
+    for column, (title, data) in enumerate(surfaces):
         plotter.subplot(0, column)
         plotter.add_text(title, color="black", font_size=14)
         _add_surface(plotter, data)
@@ -102,14 +131,19 @@ def save_vmtk_review_figures(
     plotter.link_views()
     plotter.show(screenshot=surface_path, auto_close=True)
 
-    interface_path = output_directory / "old_custom_vs_vmtk_tps_interfaces.png"
-    interfaces = pv.Plotter(shape=(4, 2), off_screen=True, window_size=(1800, 2400))
+    interface_path = output_directory / "three_way_interface_closeups.png"
+    interfaces = pv.Plotter(shape=(4, 3), off_screen=True, window_size=(2400, 2400))
     interfaces.set_background("white")
-    wireframe_path = output_directory / "old_custom_vs_vmtk_tps_wireframe.png"
-    wires = pv.Plotter(shape=(4, 2), off_screen=True, window_size=(1800, 2400))
+    wireframe_path = output_directory / "three_way_interface_wireframe.png"
+    wires = pv.Plotter(shape=(4, 3), off_screen=True, window_size=(2400, 2400))
     wires.set_background("white")
     for row, boundary in enumerate(boundary_list):
-        for column, (label, data) in enumerate((("OLD CUSTOM", old), ("VMTK TPS", raw))):
+        comparisons = (
+            ("OLD CUSTOM", old),
+            ("VMTK CENTERLINE", centerline),
+            ("VMTK BOUNDARYNORMAL", raw),
+        )
+        for column, (label, data) in enumerate(comparisons):
             local = _local(data, boundary)
             short = boundary.port_id.rsplit("__", 1)[-1]
             interfaces.subplot(row, column)
@@ -123,25 +157,46 @@ def save_vmtk_review_figures(
     interfaces.show(screenshot=interface_path, auto_close=True)
     wires.show(screenshot=wireframe_path, auto_close=True)
 
-    final_path = output_directory / "vmtk_tps_final_surface.png"
-    final_plot = pv.Plotter(off_screen=True, window_size=(1400, 1100))
-    final_plot.set_background("white")
-    final_plot.add_text("VMTK TPS REMESHED + SIMPLE CAPS", color="black", font_size=14)
-    _add_surface(final_plot, final)
-    final_plot.view_isometric()
-    final_plot.show(screenshot=final_path, auto_close=True)
-
-    raw_remeshed_path = output_directory / "vmtk_raw_vs_remeshed.png"
+    raw_remeshed_path = output_directory / "boundarynormal_raw_vs_remeshed.png"
     comparison = pv.Plotter(shape=(1, 2), off_screen=True, window_size=(1800, 850))
     comparison.set_background("white")
-    for column, (title, data) in enumerate((("VMTK RAW", raw), ("VMTK REMESHED", final))):
+    raw_remeshed = (
+        ("VMTK BOUNDARYNORMAL RAW", raw),
+        ("VMTK BOUNDARYNORMAL REMESHED", remeshed),
+    )
+    for column, (title, data) in enumerate(raw_remeshed):
         comparison.subplot(0, column)
         comparison.add_text(title, color="black", font_size=14)
         _add_surface(comparison, data, wireframe=True)
         comparison.view_isometric()
     comparison.link_views()
     comparison.show(screenshot=raw_remeshed_path, auto_close=True)
-    paths = (surface_path, interface_path, wireframe_path, final_path, raw_remeshed_path)
+
+    cut002 = next(
+        boundary for boundary in boundary_list if boundary.port_id.endswith("__cut_002")
+    )
+    cut002_path = output_directory / "cut002_centerline_vs_boundarynormal.png"
+    cut_plot = pv.Plotter(shape=(1, 2), off_screen=True, window_size=(1800, 900))
+    cut_plot.set_background("white")
+    for column, (title, data) in enumerate(
+        (
+            ("CUT_002 CENTERLINE_DIRECTION", centerline),
+            ("CUT_002 BOUNDARY_NORMAL", raw),
+        )
+    ):
+        cut_plot.subplot(0, column)
+        cut_plot.add_text(title, color="black", font_size=14)
+        _add_surface(cut_plot, _extension_local(data, cut002), wireframe=True)
+        _camera(cut_plot, cut002)
+    cut_plot.show(screenshot=cut002_path, auto_close=True)
+
+    paths = (
+        surface_path,
+        interface_path,
+        wireframe_path,
+        raw_remeshed_path,
+        cut002_path,
+    )
     if not all(path.is_file() and path.stat().st_size > 0 for path in paths):
         raise RuntimeError("Required VMTK manual review figures were not created")
     return tuple(path.resolve() for path in paths)

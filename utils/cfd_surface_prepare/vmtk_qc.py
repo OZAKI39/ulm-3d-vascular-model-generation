@@ -173,7 +173,9 @@ def open_profile_qc(
                 "equivalent_radius_um": loop.equivalent_radius_um,
                 "center_um": loop.center_um.tolist(),
                 "center_distance_um": center_distance,
+                "center_distance_to_expected_boundary_um": center_distance,
                 "normal_abs_dot_outward": normal_dot,
+                "boundary_plane_normal_abs_dot_expected_outward": normal_dot,
                 "planarity_error_um": loop.planarity_error_um,
                 "checks": checks,
                 "status": "PASS" if all(checks.values()) else "FAIL",
@@ -343,6 +345,27 @@ def interface_smoothness_from_old_custom(
     }
 
 
+def extension_vector_measurements(
+    proximal_center_um: np.ndarray,
+    distal_center_um: np.ndarray,
+    expected_outward_normal: np.ndarray,
+) -> dict[str, float]:
+    """Measure extension direction with a signed outward dot product."""
+
+    vector = np.asarray(distal_center_um) - np.asarray(proximal_center_um)
+    norm = float(np.linalg.norm(vector))
+    direction_dot = (
+        -1.0
+        if not np.isfinite(norm) or norm <= np.finfo(float).eps
+        else float(np.dot(vector / norm, expected_outward_normal))
+    )
+    return {
+        "actual_center_to_center_norm_um": norm,
+        "actual_axial_length_um": float(np.dot(vector, expected_outward_normal)),
+        "extension_direction_dot": direction_dot,
+    }
+
+
 def extension_geometry_qc(
     raw_mesh: trimesh.Trimesh,
     boundaries: Iterable[BoundaryInput],
@@ -357,18 +380,22 @@ def extension_geometry_qc(
     for boundary in boundary_list:
         proximal = proximal_loops[boundary.index]
         distal = distal_mapping[boundary.index]
-        vector = distal.center_um - proximal.center_um
-        norm = float(np.linalg.norm(vector))
-        actual_length = float(np.dot(vector, boundary.outward_normal))
-        direction_dot = float(np.dot(vector / norm, boundary.outward_normal))
-        length_error = abs(actual_length - boundary.extension_length_um) / boundary.extension_length_um
+        vector_measurements = extension_vector_measurements(
+            proximal.center_um, distal.center_um, boundary.outward_normal
+        )
+        norm = vector_measurements["actual_center_to_center_norm_um"]
+        direction_dot = vector_measurements["extension_direction_dot"]
+        actual_axial_length = vector_measurements["actual_axial_length_um"]
+        length_error = (
+            abs(actual_axial_length - boundary.extension_length_um)
+            / boundary.extension_length_um
+        )
         area_error = abs(distal.area_um2 - proximal.area_um2) / proximal.area_um2
         checks = {
             "direction_dot_at_least_0_999": direction_dot >= 0.999,
             "relative_length_error_at_most_0_02": length_error <= 0.02,
             "distal_area_relative_error_at_most_0_05": area_error <= 0.05,
             "positive_distal_area": distal.area_um2 > 0.0,
-            "interface_edges_detected": interfaces[boundary.port_id]["interface_edge_count"] > 0,
         }
         rows.append(
             {
@@ -377,10 +404,13 @@ def extension_geometry_qc(
                 "role": boundary.role,
                 "boundary_origin": boundary.boundary_origin,
                 "planned_extension_length_um": boundary.extension_length_um,
-                "actual_extension_length_um": actual_length,
+                "actual_extension_length_um": actual_axial_length,
+                "actual_axial_length_um": actual_axial_length,
+                "actual_center_to_center_norm_um": norm,
                 "extension_length_relative_error": length_error,
                 "extension_direction_dot": direction_dot,
                 "original_area_um2": proximal.area_um2,
+                "proximal_area_um2": proximal.area_um2,
                 "distal_area_um2": distal.area_um2,
                 "distal_area_relative_error": area_error,
                 "equivalent_radius_original_um": proximal.equivalent_radius_um,
@@ -388,6 +418,9 @@ def extension_geometry_qc(
                 "distal_center_um": distal.center_um.tolist(),
                 "distal_planarity_error_um": distal.planarity_error_um,
                 **interfaces[boundary.port_id],
+                "interface_diagnostic_available": (
+                    interfaces[boundary.port_id]["interface_edge_count"] > 0
+                ),
                 "checks": checks,
                 "status": "PASS" if all(checks.values()) else "FAIL",
             }
@@ -444,6 +477,8 @@ def tag_and_export_final_surface(
     boundaries: Iterable[BoundaryInput],
     geometry_directory: Path,
     boundary_directory: Path,
+    *,
+    output_stem: str = "cfd_surface_vmtk_tps_boundarynormal",
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     geometry_directory.mkdir(parents=True, exist_ok=True)
     data = pv.read(capped_vtp).triangulate()
@@ -509,9 +544,9 @@ def tag_and_export_final_surface(
     data.cell_data["boundary_origin_code"] = origin_code
     data.cell_data["boundary_origin"] = origin
     data.cell_data["port_id"] = port_id
-    tagged_vtp = geometry_directory / "cfd_surface_vmtk_tps_remeshed_um.vtp"
-    tagged_stl = geometry_directory / "cfd_surface_vmtk_tps_remeshed_um.stl"
-    meter_stl = geometry_directory / "cfd_surface_vmtk_tps_remeshed_m.stl"
+    tagged_vtp = geometry_directory / f"{output_stem}_um.vtp"
+    tagged_stl = geometry_directory / f"{output_stem}_um.stl"
+    meter_stl = geometry_directory / f"{output_stem}_m.stl"
     data.save(tagged_vtp, binary=True)
     final_mesh = trimesh.Trimesh(
         vertices=np.asarray(data.points, dtype=float), faces=faces, process=False

@@ -13,7 +13,7 @@ from utils.cfd_surface_prepare.config import (
     VmtkConfig,
     load_surface_prepare_config,
 )
-from utils.cfd_surface_prepare.io import BoundaryInput
+from utils.cfd_surface_prepare.io import BoundaryInput, SurfacePrepareError
 from utils.cfd_surface_prepare.io import (
     load_original_surface,
     load_surface_inputs,
@@ -23,15 +23,25 @@ from utils.cfd_surface_prepare.local_cut import local_plane_cut
 from utils.cfd_surface_prepare.types import TaggedSurface
 from utils.cfd_surface_prepare.vmtk_adapter import build_centerline_adapter
 from utils.cfd_surface_prepare.vmtk_qc import (
+    extension_vector_measurements,
     open_profile_qc,
     polydata_mesh,
     tag_and_export_final_surface,
     topology_qc,
 )
+from utils.cfd_surface_prepare.vmtk_pipeline import (
+    WARNING_STATUS,
+    boundary_plane_alignment_pass,
+    final_candidate_status,
+    raw_geometry_hard_gate_pass,
+    should_generate_manual_review_figures,
+    should_promote_raw_candidate,
+)
 from utils.cfd_surface_prepare.vmtk_runner import (
     exchange_paths,
     official_source_provenance,
     parameter_mapping,
+    promote_official_vmtk,
     run_official_vmtk,
 )
 
@@ -63,6 +73,24 @@ def _boundary(index: int, z: float, outward: float, role: str) -> BoundaryInput:
     )
 
 
+def _vmtk_config(extension_mode: str) -> VmtkConfig:
+    return VmtkConfig(
+        environment_python=PMP_PYTHON,
+        runtime_prefix=VMTK_RUNTIME_PREFIX,
+        official_repository=PROJECT_ROOT.parent / "external" / "vmtk",
+        interpolation_mode="thinplatespline",
+        preserve_cross_section_shape=False,
+        extension_mode=extension_mode,
+        sigma=1.0,
+        transition_ratio=0.5,
+        adaptive_extension_length=True,
+        extension_ratio=10.0,
+        adaptive_extension_radius=True,
+        adaptive_boundary_points=True,
+        remesh_after_extension=True,
+    )
+
+
 @pytest.fixture(scope="module")
 def formal_config():
     return load_surface_prepare_config(CONFIG_PATH, project_root=PROJECT_ROOT)
@@ -82,6 +110,7 @@ def synthetic_vmtk(tmp_path_factory):
         input_directory=input_dir,
         vmtk_directory=vmtk_dir,
         geometry_directory=geometry_dir,
+        extension_mode="boundarynormal",
     )
     count = 32
     layers = 7
@@ -110,38 +139,58 @@ def synthetic_vmtk(tmp_path_factory):
         (np.full(len(faces), 3, dtype=np.int64), np.asarray(faces, dtype=np.int64))
     ).ravel()
     pv.PolyData(points, vtk_faces).save(paths.open_surface_vtp, binary=True)
-    centerline = pv.PolyData()
-    centerline.points = np.asarray(((0.0, 0.0, -2.0), (0.0, 0.0, 7.0)))
-    centerline.lines = np.asarray((2, 0, 1), dtype=np.int64)
-    centerline.save(paths.centerlines_vtp, binary=True)
-    config = VmtkConfig(
-        environment_python=PMP_PYTHON,
-        runtime_prefix=VMTK_RUNTIME_PREFIX,
-        official_repository=PROJECT_ROOT.parent / "external" / "vmtk",
-        interpolation_mode="thinplatespline",
-        preserve_cross_section_shape=False,
-        extension_mode="centerlinedirection",
-        sigma=1.0,
-        transition_ratio=0.5,
-        adaptive_extension_length=True,
-        extension_ratio=10.0,
-        adaptive_extension_radius=True,
-        adaptive_boundary_points=True,
-        remesh_after_extension=True,
-    )
+    config = _vmtk_config("boundarynormal")
     before = hashlib.sha256(paths.open_surface_vtp.read_bytes()).hexdigest()
     invocation = run_official_vmtk(
+        config=config,
+        paths=paths,
+        tool_script=PROJECT_ROOT / "tools" / "run_vmtk_flowextension.py",
+    )
+    promotion = promote_official_vmtk(
         config=config,
         paths=paths,
         tool_script=PROJECT_ROOT / "tools" / "run_vmtk_flowextension.py",
         target_edge_length_um=0.45,
     )
     after = hashlib.sha256(paths.open_surface_vtp.read_bytes()).hexdigest()
-    return root, paths, invocation, before, after
+    return root, paths, invocation, promotion, before, after
+
+
+@pytest.fixture(scope="module")
+def synthetic_centerline_vmtk(tmp_path_factory, synthetic_vmtk):
+    root = tmp_path_factory.mktemp("official_vmtk_centerline")
+    input_dir = root / "input"
+    vmtk_dir = root / "vmtk"
+    geometry_dir = root / "geometry"
+    for directory in (input_dir, vmtk_dir, geometry_dir):
+        directory.mkdir()
+    paths = exchange_paths(
+        input_directory=input_dir,
+        vmtk_directory=vmtk_dir,
+        geometry_directory=geometry_dir,
+        extension_mode="centerlinedirection",
+    )
+    source_paths = synthetic_vmtk[1]
+    pv.read(source_paths.open_surface_vtp).save(paths.open_surface_vtp, binary=True)
+    centerline = pv.PolyData()
+    centerline.points = np.asarray(((0.0, 0.0, -2.0), (0.0, 0.0, 7.0)))
+    centerline.lines = np.asarray((2, 0, 1), dtype=np.int64)
+    centerline.save(paths.centerlines_vtp, binary=True)
+    config = _vmtk_config("centerlinedirection")
+    invocation = run_official_vmtk(
+        config=config,
+        paths=paths,
+        tool_script=PROJECT_ROOT / "tools" / "run_vmtk_flowextension.py",
+    )
+    return paths, invocation
 
 
 def test_formal_backend_is_official_vmtk(formal_config):
     assert formal_config.backend.method == "vmtk_flowextensions"
+
+
+def test_formal_yaml_selects_boundarynormal(formal_config):
+    assert formal_config.vmtk.extension_mode == "boundarynormal"
 
 
 def test_formal_interpolation_is_only_thin_plate_spline(formal_config):
@@ -161,6 +210,31 @@ def test_five_d_maps_to_verified_adaptive_ratio_ten(formal_config):
     assert mapping["project_extension_definition"] == "5D"
     assert mapping["extension_ratio"] == 10.0
     assert "meanRadius" in mapping["verified_vmtk_length_definition"]
+
+
+def test_single_variable_scientific_parameters_are_unchanged(formal_config):
+    mapping = parameter_mapping(formal_config.vmtk)
+    assert mapping["interpolation_mode"] == "thinplatespline"
+    assert mapping["sigma"] == 1.0
+    assert mapping["transition_ratio"] == 0.5
+    assert mapping["extension_ratio"] == 10.0
+    assert mapping["adaptive_extension_length"] is True
+    assert mapping["adaptive_extension_radius"] is True
+    assert mapping["adaptive_boundary_points"] is True
+    assert mapping["preserve_cross_section_shape"] is False
+    assert mapping["parameter_sweep"] is False
+
+
+def test_invalid_yaml_extension_mode_fails(tmp_path: Path):
+    invalid = tmp_path / "invalid.yaml"
+    invalid.write_text(
+        CONFIG_PATH.read_text(encoding="utf-8").replace(
+            "extension_mode: boundarynormal", "extension_mode: diagonal"
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="vmtk.extension_mode"):
+        load_surface_prepare_config(invalid, project_root=PROJECT_ROOT)
 
 
 def test_official_source_provenance_records_release_commit(formal_config):
@@ -226,35 +300,83 @@ def test_actual_roi_preflight_has_four_profiles_and_real_centerlines(
     )
     assert report["status"] == "PASS"
     assert report["profile_count"] == 4
+    assert boundary_plane_alignment_pass(report)
+    assert all(
+        row["boundary_plane_normal_abs_dot_expected_outward"] >= 0.999
+        for row in report["boundaries"]
+    )
     assert all(row["invented_centerline_points"] == 0 for row in adapter.records)
     assert all(before[path] == sha256_file(path) for path in before)
 
 
 def test_runner_uses_pmp_environment(synthetic_vmtk):
-    _, _, invocation, _, _ = synthetic_vmtk
+    _, _, invocation, _, _, _ = synthetic_vmtk
     assert Path(invocation.command[0]).resolve() == PMP_PYTHON.resolve()
     assert Path(invocation.runtime["python_executable"]).resolve() == PMP_PYTHON.resolve()
     assert invocation.runtime["vtk_version"] == "9.2.6"
 
 
 def test_runner_calls_official_flow_filter(synthetic_vmtk):
-    _, _, invocation, _, _ = synthetic_vmtk
+    _, _, invocation, _, _, _ = synthetic_vmtk
     assert invocation.runtime["official_flow_filter"] == "vtkvmtkPolyDataFlowExtensionsFilter"
     assert invocation.runtime["custom_tps_implementation"] is False
 
 
+def test_boundarynormal_runner_calls_official_normal_api(synthetic_vmtk):
+    _, _, invocation, _, _, _ = synthetic_vmtk
+    assert (
+        invocation.runtime["official_direction_api"]
+        == "SetExtensionModeToUseNormalToBoundary"
+    )
+    assert invocation.runtime["extension_mode_effective"] == "boundarynormal"
+
+
+def test_boundarynormal_runner_does_not_use_centerlines(synthetic_vmtk):
+    _, paths, invocation, _, _, _ = synthetic_vmtk
+    assert invocation.runtime["centerlines_used_for_extension_direction"] is False
+    assert "centerlines_vtp" not in invocation.request
+    assert not paths.centerlines_vtp.exists()
+    assert (
+        invocation.runtime["official_direction_api"]
+        != "SetExtensionModeToUseCenterlineDirection"
+    )
+
+
+def test_centerlinedirection_runner_path_remains_available(
+    synthetic_centerline_vmtk,
+):
+    paths, invocation = synthetic_centerline_vmtk
+    assert paths.centerlines_vtp.is_file()
+    assert "centerlines_vtp" in invocation.request
+    assert invocation.runtime["centerlines_used_for_extension_direction"] is True
+    assert (
+        invocation.runtime["official_direction_api"]
+        == "SetExtensionModeToUseCenterlineDirection"
+    )
+
+
+def test_invalid_runner_extension_mode_fails(synthetic_vmtk):
+    _, paths, _, _, _, _ = synthetic_vmtk
+    with pytest.raises(SurfacePrepareError, match="INVALID_VMTK_EXTENSION_MODE"):
+        run_official_vmtk(
+            config=_vmtk_config("invalid"),
+            paths=paths,
+            tool_script=PROJECT_ROOT / "tools" / "run_vmtk_flowextension.py",
+        )
+
+
 def test_vmtk_raw_output_exists(synthetic_vmtk):
-    _, paths, _, _, _ = synthetic_vmtk
+    _, paths, _, _, _, _ = synthetic_vmtk
     assert paths.raw_vtp.is_file() and paths.raw_stl.is_file()
 
 
 def test_vmtk_raw_has_detectable_extensions(synthetic_vmtk):
-    _, paths, invocation, _, _ = synthetic_vmtk
+    _, paths, invocation, _, _, _ = synthetic_vmtk
     assert invocation.runtime["raw_cells"] > invocation.runtime["input_cells"]
 
 
 def test_vmtk_raw_has_two_synthetic_open_profiles(synthetic_vmtk):
-    _, paths, _, _, _ = synthetic_vmtk
+    _, paths, _, _, _, _ = synthetic_vmtk
     _, mesh = polydata_mesh(paths.raw_vtp)
     report, _ = topology_qc(
         mesh, expected_open_profile_count=2, allow_degenerate=True
@@ -263,19 +385,19 @@ def test_vmtk_raw_has_two_synthetic_open_profiles(synthetic_vmtk):
 
 
 def test_vmtk_remesher_uses_one_global_target_size(synthetic_vmtk):
-    _, _, invocation, _, _ = synthetic_vmtk
-    assert invocation.runtime["remesh"]["target_size_count"] == 1
-    assert invocation.runtime["remesh"]["parameter_sweep_count"] == 0
+    _, _, _, promotion, _, _ = synthetic_vmtk
+    assert promotion.runtime["remesh"]["target_size_count"] == 1
+    assert promotion.runtime["remesh"]["parameter_sweep_count"] == 0
 
 
 def test_vmtk_simple_cap_ids_are_present(synthetic_vmtk):
-    _, _, invocation, _, _ = synthetic_vmtk
-    assert invocation.runtime["cap"]["method"] == "simple"
-    assert len(invocation.runtime["cap_entity_ids"]) == 2
+    _, _, _, promotion, _, _ = synthetic_vmtk
+    assert promotion.runtime["cap"]["method"] == "simple"
+    assert len(promotion.runtime["cap_entity_ids"]) == 2
 
 
 def test_tagged_caps_keep_project_boundary_metadata(synthetic_vmtk):
-    root, paths, _, _, _ = synthetic_vmtk
+    root, paths, _, _, _, _ = synthetic_vmtk
     outputs, report = tag_and_export_final_surface(
         paths.capped_vtp,
         (_boundary(0, 0.0, -1.0, "ASSUMED_INLET"), _boundary(1, 5.0, 1.0, "ASSUMED_OUTLET")),
@@ -288,12 +410,83 @@ def test_tagged_caps_keep_project_boundary_metadata(synthetic_vmtk):
 
 
 def test_capped_synthetic_surface_is_watertight(synthetic_vmtk):
-    _, paths, _, _, _ = synthetic_vmtk
+    _, paths, _, _, _, _ = synthetic_vmtk
     _, mesh = polydata_mesh(paths.capped_vtp)
     report, _ = topology_qc(mesh, expected_open_profile_count=0)
     assert report["status"] == "PASS"
 
 
 def test_runner_does_not_modify_exchange_input(synthetic_vmtk):
-    _, _, _, before, after = synthetic_vmtk
+    _, _, _, _, before, after = synthetic_vmtk
     assert before == after
+
+
+def test_extension_and_promotion_are_separate_operations(synthetic_vmtk):
+    _, _, invocation, promotion, _, _ = synthetic_vmtk
+    assert invocation.request["operation"] == "extension"
+    assert "remeshed_open_vtp" not in invocation.request
+    assert "capped_vtp" not in invocation.request
+    assert promotion.request["operation"] == "remesh_cap"
+
+
+def test_boundarynormal_runtime_keeps_tps_parameters(synthetic_vmtk):
+    _, _, invocation, _, _, _ = synthetic_vmtk
+    parameters = invocation.runtime["parameters"]
+    assert invocation.runtime["official_interpolation_api"] == (
+        "SetInterpolationModeToThinPlateSpline"
+    )
+    assert parameters["sigma"] == 1.0
+    assert parameters["transition_ratio"] == 0.5
+    assert parameters["extension_ratio"] == 10.0
+    assert parameters["adaptive_extension_radius"] is True
+    assert parameters["adaptive_boundary_points"] is True
+
+
+def test_direction_qc_uses_signed_dot():
+    measurements = extension_vector_measurements(
+        np.zeros(3), np.asarray((0.0, 0.0, -10.0)), np.asarray((0.0, 0.0, 1.0))
+    )
+    assert measurements["extension_direction_dot"] == -1.0
+    assert measurements["actual_axial_length_um"] == -10.0
+
+
+def test_preboundary_plane_qc_uses_absolute_dot(synthetic_vmtk):
+    _, paths, _, _, _, _ = synthetic_vmtk
+    _, mesh = polydata_mesh(paths.open_surface_vtp)
+    report, _ = open_profile_qc(
+        mesh,
+        (
+            _boundary(0, 0.0, -1.0, "ASSUMED_INLET"),
+            _boundary(1, 5.0, 1.0, "ASSUMED_OUTLET"),
+        ),
+    )
+    assert boundary_plane_alignment_pass(report)
+    assert all(
+        0.999 <= row["boundary_plane_normal_abs_dot_expected_outward"] <= 1.0
+        for row in report["boundaries"]
+    )
+
+
+def test_interface_warning_is_not_a_raw_geometry_hard_stop():
+    passed = {"status": "PASS"}
+    assert raw_geometry_hard_gate_pass(passed, passed, passed)
+    assert should_promote_raw_candidate(True)
+    assert final_candidate_status(
+        final_hard_qc_pass=True, interface_status="WARNING"
+    ) == WARNING_STATUS
+
+
+def test_raw_geometry_failure_blocks_promotion():
+    assert not should_promote_raw_candidate(False)
+
+
+def test_interface_warning_still_requires_diagnostic_figures():
+    assert should_generate_manual_review_figures(
+        raw_hard_qc_pass=True, interface_status="WARNING"
+    )
+
+
+def test_boundarynormal_output_names_are_explicit(synthetic_vmtk):
+    _, paths, _, _, _, _ = synthetic_vmtk
+    assert paths.raw_vtp.name == "vmtk_boundarynormal_raw_um.vtp"
+    assert paths.raw_stl.name == "vmtk_boundarynormal_raw_um.stl"
