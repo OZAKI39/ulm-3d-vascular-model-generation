@@ -714,6 +714,8 @@ def interface_smoothness_from_raw(
     rows = _interface_angles(mesh, core, extension, boundary_list)
     return {
         "method": "normal angle across shared original/VMTK interface edges",
+        "diagnostic_source": "raw_core_extension_shared_interface",
+        "comparable_to_raw_core_extension_interface": True,
         "boundaries": [
             {"port_id": boundary.port_id, **rows[boundary.index]}
             for boundary in boundary_list
@@ -734,10 +736,75 @@ def interface_smoothness_from_old_custom(
     )
     return {
         "method": "normal angle across shared old-custom core/extension edges",
+        "diagnostic_source": "old_custom_core_extension_shared_interface",
+        "comparable_to_raw_core_extension_interface": True,
         "boundaries": [
             {"port_id": boundary.port_id, **rows[boundary.index]}
             for boundary in boundary_list
         ],
+    }
+
+
+def normalize_interface_diagnostic(
+    interface_report: dict[str, Any],
+) -> dict[str, Any]:
+    """Normalize interface and seam-local normal diagnostics to one schema."""
+
+    input_rows = interface_report.get("boundaries")
+    if not isinstance(input_rows, list):
+        raise ValueError("INTERFACE_DIAGNOSTIC_BOUNDARIES_MISSING")
+    uses_seam_local_edges = any("adjacent_edge_count" in row for row in input_rows)
+    diagnostic_source = str(
+        interface_report.get("diagnostic_source")
+        or (
+            "cross_seam_local_normal_jump"
+            if uses_seam_local_edges
+            else interface_report.get("method", "unspecified_interface_diagnostic")
+        )
+    )
+    comparable = bool(
+        interface_report.get(
+            "comparable_to_raw_core_extension_interface",
+            not uses_seam_local_edges,
+        )
+    )
+    metric_names = (
+        "normal_jump_P50_deg",
+        "normal_jump_P95_deg",
+        "normal_jump_P99_deg",
+        "normal_jump_max_deg",
+    )
+    rows: list[dict[str, Any]] = []
+    for input_row in input_rows:
+        if "port_id" not in input_row:
+            raise ValueError("INTERFACE_DIAGNOSTIC_PORT_ID_MISSING")
+        if "interface_edge_count" in input_row:
+            edge_count = int(input_row["interface_edge_count"])
+        elif "adjacent_edge_count" in input_row:
+            edge_count = int(input_row["adjacent_edge_count"])
+        elif all(input_row.get(name) is None for name in metric_names):
+            edge_count = 0
+        else:
+            raise ValueError("INTERFACE_DIAGNOSTIC_EDGE_COUNT_MISSING")
+        if edge_count < 0:
+            raise ValueError("INTERFACE_DIAGNOSTIC_EDGE_COUNT_INVALID")
+        metrics = {name: input_row.get(name) for name in metric_names}
+        if edge_count == 0 and any(value is not None for value in metrics.values()):
+            raise ValueError("INTERFACE_DIAGNOSTIC_ZERO_EDGE_METRICS_PRESENT")
+        rows.append(
+            {
+                "port_id": input_row["port_id"],
+                "interface_edge_count": edge_count,
+                **metrics,
+                "diagnostic_source": diagnostic_source,
+                "comparable_to_raw_core_extension_interface": comparable,
+            }
+        )
+    return {
+        "method": interface_report.get("method"),
+        "diagnostic_source": diagnostic_source,
+        "comparable_to_raw_core_extension_interface": comparable,
+        "boundaries": rows,
     }
 
 
@@ -771,7 +838,19 @@ def extension_geometry_qc(
     boundary_list = list(boundaries)
     distal_loops = extract_boundary_loops(raw_mesh)
     distal_mapping = map_loops_to_boundaries(distal_loops, boundary_list, distal=True)
-    interfaces = {row["port_id"]: row for row in interface_report["boundaries"]}
+    canonical_interface = normalize_interface_diagnostic(interface_report)
+    interfaces = {
+        row["port_id"]: row for row in canonical_interface["boundaries"]
+    }
+    missing_ports = [
+        boundary.port_id
+        for boundary in boundary_list
+        if boundary.port_id not in interfaces
+    ]
+    if missing_ports:
+        raise ValueError(
+            "INTERFACE_DIAGNOSTIC_PORTS_MISSING:" + ",".join(missing_ports)
+        )
     rows: list[dict[str, Any]] = []
     for boundary in boundary_list:
         proximal = proximal_loops[boundary.index]
@@ -1730,6 +1809,95 @@ def meter_scale_qc(um_stl: Path, meter_stl: Path) -> dict[str, Any]:
         "legacy_extent_relative_error_by_axis": extent_relative.tolist(),
         "legacy_extent_relative_error_max": float(np.max(extent_relative)),
         "legacy_extent_check_role": "DIAGNOSTIC_ONLY",
+    }
+
+
+def active_collar_cross_section_fidelity_qc(
+    raw_vtp: Path,
+    remeshed_open_vtp: Path,
+    boundaries: Iterable[BoundaryInput],
+    *,
+    maximum_equivalent_radius_relative_error: float,
+    station_offsets_in_source_radius: tuple[float, ...] = (-0.25, -0.5, -0.75),
+) -> dict[str, Any]:
+    """Compare three original-side cross sections per port on frozen geometry."""
+
+    _, raw_mesh = polydata_mesh(raw_vtp)
+    _, remeshed_mesh = polydata_mesh(remeshed_open_vtp)
+    boundary_list = list(boundaries)
+    rows: list[dict[str, Any]] = []
+    for boundary in boundary_list:
+        for station_index, offset in enumerate(station_offsets_in_source_radius):
+            center = (
+                boundary.center_um
+                + offset * boundary.source_radius_um * boundary.outward_normal
+            )
+            raw_section = _section_polygon(
+                raw_mesh, center, boundary.outward_normal
+            )
+            remeshed_section = _section_polygon(
+                remeshed_mesh, center, boundary.outward_normal
+            )
+            if raw_section is None or remeshed_section is None:
+                rows.append(
+                    {
+                        "boundary_index": boundary.index,
+                        "port_id": boundary.port_id,
+                        "station_index": station_index,
+                        "station_offset_in_source_radius": offset,
+                        "station_offset_um": offset * boundary.source_radius_um,
+                        "station_center_um": center.tolist(),
+                        "raw_area_um2": None,
+                        "remeshed_area_um2": None,
+                        "area_relative_error": None,
+                        "raw_equivalent_radius_um": None,
+                        "remeshed_equivalent_radius_um": None,
+                        "radius_relative_error": None,
+                        "status": "FAIL",
+                        "error": "cross_section_not_found",
+                    }
+                )
+                continue
+            raw_area = float(raw_section[0])
+            remeshed_area = float(remeshed_section[0])
+            raw_radius = float(np.sqrt(raw_area / np.pi))
+            remeshed_radius = float(np.sqrt(remeshed_area / np.pi))
+            area_error = abs(remeshed_area - raw_area) / raw_area
+            radius_error = abs(remeshed_radius - raw_radius) / raw_radius
+            passed = radius_error <= maximum_equivalent_radius_relative_error
+            rows.append(
+                {
+                    "boundary_index": boundary.index,
+                    "port_id": boundary.port_id,
+                    "station_index": station_index,
+                    "station_offset_in_source_radius": offset,
+                    "station_offset_um": offset * boundary.source_radius_um,
+                    "station_center_um": center.tolist(),
+                    "raw_area_um2": raw_area,
+                    "remeshed_area_um2": remeshed_area,
+                    "area_relative_error": area_error,
+                    "raw_equivalent_radius_um": raw_radius,
+                    "remeshed_equivalent_radius_um": remeshed_radius,
+                    "radius_relative_error": radius_error,
+                    "status": "PASS" if passed else "FAIL",
+                }
+            )
+    expected_count = len(boundary_list) * len(station_offsets_in_source_radius)
+    passed = len(rows) == expected_count and all(
+        row["status"] == "PASS" for row in rows
+    )
+    return {
+        "status": "PASS" if passed else "FAIL",
+        "method": "three fixed original-side sections per CFD port",
+        "station_offsets_in_source_radius": list(station_offsets_in_source_radius),
+        "station_count_per_port": len(station_offsets_in_source_radius),
+        "expected_total_station_count": expected_count,
+        "actual_total_station_count": len(rows),
+        "maximum_equivalent_radius_relative_error": (
+            maximum_equivalent_radius_relative_error
+        ),
+        "area_relative_error_role": "DIAGNOSTIC_ONLY",
+        "stations": rows,
     }
 
 

@@ -12,6 +12,8 @@ import pyvista as pv
 import pytest
 import trimesh
 
+import utils.cfd_surface_prepare.vmtk_pipeline as vmtk_pipeline
+
 from utils.cfd_surface_prepare.config import (
     CoreCollarConfig,
     EntityRemeshConfig,
@@ -20,6 +22,7 @@ from utils.cfd_surface_prepare.config import (
     load_surface_prepare_config,
 )
 from utils.cfd_surface_prepare.guarded_remesh import (
+    active_collar_original_side_distance_qc,
     assign_cross_seam_active_entities,
     core_face_adjacency_layers,
     cross_seam_entity_preservation_qc,
@@ -40,6 +43,7 @@ from utils.cfd_surface_prepare.local_cut import local_plane_cut
 from utils.cfd_surface_prepare.types import TaggedSurface
 from utils.cfd_surface_prepare.vmtk_adapter import build_centerline_adapter
 from utils.cfd_surface_prepare.vmtk_qc import (
+    active_collar_cross_section_fidelity_qc,
     BoundaryLoop,
     assign_remesh_entities,
     core_symmetric_distance_qc,
@@ -47,6 +51,7 @@ from utils.cfd_surface_prepare.vmtk_qc import (
     extension_mesh_quality_from_surface,
     extension_vector_measurements,
     meter_scale_qc,
+    normalize_interface_diagnostic,
     normal_consistency_qc,
     open_profile_qc,
     polydata_mesh,
@@ -63,6 +68,8 @@ from utils.cfd_surface_prepare.vmtk_pipeline import (
     final_candidate_status,
     raw_geometry_hard_gate_pass,
     resolve_entity_failure_status,
+    resume_open_qc_allows_cap,
+    run_crossseam_open_resume,
     should_cap_crossseam_open,
     should_generate_manual_review_figures,
     should_promote_raw_candidate,
@@ -299,6 +306,54 @@ def four_port_remeshed_open(tmp_path: Path):
         ]
     }
     return mesh, tuple(boundaries), proximal, interface
+
+
+@pytest.fixture()
+def frozen_crossseam_tube(tmp_path: Path):
+    """One unchanged frozen tube spanning original CORE and extension regions."""
+
+    count = 48
+    levels = np.asarray((-1.25, 0.0, 2.0), dtype=float)
+    angle = np.linspace(0.0, 2.0 * np.pi, count, endpoint=False)
+    points = np.vstack(
+        [
+            np.column_stack(
+                (np.cos(angle), np.sin(angle), np.full(count, level))
+            )
+            for level in levels
+        ]
+    ).astype(np.float32)
+    faces: list[list[int]] = []
+    regions: list[int] = []
+    for layer in range(len(levels) - 1):
+        first = layer * count
+        second = (layer + 1) * count
+        for point in range(count):
+            following = (point + 1) % count
+            faces.extend(
+                (
+                    [first + point, first + following, second + following],
+                    [first + point, second + following, second + point],
+                )
+            )
+            regions.extend((layer, layer))
+    packed = np.column_stack(
+        (np.full(len(faces), 3, dtype=np.int64), np.asarray(faces))
+    ).ravel()
+    data = pv.PolyData(points, packed)
+    data.cell_data["SurfaceRegionId"] = np.asarray(regions, dtype=np.uint8)
+    data.cell_data["SurfaceRegion"] = np.where(
+        np.asarray(regions) == 0, "CORE", "EXTENSION"
+    )
+    data.cell_data["RemeshEntityId"] = np.full(
+        len(faces), 2, dtype=np.int32
+    )
+    raw_path = tmp_path / "frozen_raw.vtp"
+    open_path = tmp_path / "frozen_open.vtp"
+    data.save(raw_path, binary=True)
+    data.save(open_path, binary=True)
+    boundary = _boundary(0, 0.0, 1.0, "ASSUMED_OUTLET")
+    return raw_path, open_path, (boundary,)
 
 
 @pytest.fixture(scope="module")
@@ -836,6 +891,94 @@ def test_crossseam_intersection_qc_accepts_disjoint_triangles(tmp_path: Path):
     assert records == []
 
 
+def test_original_side_collar_distance_uses_complete_frozen_surface(
+    frozen_crossseam_tube,
+):
+    raw_path, open_path, boundaries = frozen_crossseam_tube
+    report, hotspots = active_collar_original_side_distance_qc(
+        raw_path,
+        open_path,
+        boundaries,
+        maximum_p95_distance_um=0.05,
+        cross_seam_neighborhood_um=0.25913916380971913,
+    )
+    assert report["status"] == "PASS"
+    assert report["hard_gate"] is True
+    assert report["P50_um"] <= 1.0e-12
+    assert report["P95_um"] <= 1.0e-12
+    assert report["P99_um"] <= 1.0e-12
+    assert report["max_um"] <= 1.0e-12
+    assert len(hotspots) == 10
+    assert all(
+        "distance_from_original_seam_um" in row
+        and "within_cross_seam_triangle_neighborhood" in row
+        for row in hotspots
+    )
+
+
+def test_three_original_side_cross_sections_preserve_area_and_radius(
+    frozen_crossseam_tube,
+):
+    raw_path, open_path, boundaries = frozen_crossseam_tube
+    report = active_collar_cross_section_fidelity_qc(
+        raw_path,
+        open_path,
+        boundaries,
+        maximum_equivalent_radius_relative_error=0.08,
+    )
+    assert report["status"] == "PASS"
+    assert report["station_count_per_port"] == 3
+    assert report["actual_total_station_count"] == 3
+    assert [row["station_offset_in_source_radius"] for row in report["stations"]] == [
+        -0.25,
+        -0.5,
+        -0.75,
+    ]
+    assert all(row["area_relative_error"] <= 1.0e-12 for row in report["stations"])
+    assert all(
+        row["radius_relative_error"] <= 1.0e-12 for row in report["stations"]
+    )
+
+
+def test_resume_pipeline_has_no_geometry_regeneration_calls():
+    names = set(vmtk_pipeline._run_crossseam_open_resume_impl.__code__.co_names)
+    assert "local_plane_cut" not in names
+    assert "run_official_vmtk" not in names
+    assert "entity_remesh_official_vmtk" not in names
+    assert "assign_cross_seam_active_entities" not in names
+    assert "cap_official_vmtk" in names
+
+
+def test_resume_pipeline_reuses_frozen_vtp_and_keeps_legacy_metric_diagnostic():
+    source = (
+        PROJECT_ROOT / "utils" / "cfd_surface_prepare" / "vmtk_pipeline.py"
+    ).read_text(encoding="utf-8")
+    function_source = source[
+        source.index("def _run_crossseam_open_resume_impl(") :
+        source.index("def _post_qc_internal_error_summary(")
+    ]
+    assert "existing_open_geometry_reused" in function_source
+    assert '"geometry_regenerated": False' in function_source
+    assert "legacy_reclassified_collar_bidirectional_distance" in function_source
+    assert '"hard_gate": False' in function_source
+
+
+def test_successful_resume_open_qc_is_the_only_route_to_cap():
+    passed = {"status": "PASS"}
+    failed = {"status": "FAIL"}
+    assert resume_open_qc_allows_cap(passed, passed, passed)
+    assert not resume_open_qc_allows_cap(passed, failed, passed)
+    assert not resume_open_qc_allows_cap()
+
+
+def test_resume_pipeline_keeps_final_radius_pressure_and_meter_path():
+    names = set(vmtk_pipeline._run_crossseam_open_resume_impl.__code__.co_names)
+    assert "_radius_qc" in names
+    assert "geometry_pressure_correction" in names
+    assert "meter_scale_qc" in names
+    assert "tag_and_export_final_surface" in names
+
+
 def test_centerline_adapter_uses_saved_real_graph_nodes(tmp_path: Path):
     run = tmp_path / "run" / "global_1d"
     run.mkdir(parents=True)
@@ -928,6 +1071,92 @@ def test_direction_length_and_area_qc_survive_remeshed_open_surface(
         and row["distal_area_relative_error"] <= 0.05
         for row in report["boundaries"]
     )
+
+
+def test_crossseam_diagnostic_adapter_preserves_real_count_and_metrics(
+    four_port_remeshed_open,
+):
+    mesh, boundaries, proximal, _ = four_port_remeshed_open
+    seam_report = {
+        "method": "adjacent face normal jump near original cut plane",
+        "boundaries": [
+            {
+                "port_id": boundary.port_id,
+                "adjacent_edge_count": 17 + boundary.index,
+                "normal_jump_P50_deg": 1.25 + boundary.index,
+                "normal_jump_P95_deg": 2.5 + boundary.index,
+                "normal_jump_P99_deg": 3.75 + boundary.index,
+                "normal_jump_max_deg": 5.0 + boundary.index,
+            }
+            for boundary in boundaries
+        ],
+    }
+    normalized = normalize_interface_diagnostic(seam_report)
+    report, _ = extension_geometry_qc(mesh, boundaries, proximal, seam_report)
+    assert normalized["diagnostic_source"] == "cross_seam_local_normal_jump"
+    assert normalized["comparable_to_raw_core_extension_interface"] is False
+    assert [row["interface_edge_count"] for row in normalized["boundaries"]] == [
+        17,
+        18,
+        19,
+        20,
+    ]
+    assert [row["normal_jump_P95_deg"] for row in normalized["boundaries"]] == [
+        2.5,
+        3.5,
+        4.5,
+        5.5,
+    ]
+    assert report["status"] == "PASS"
+    assert all(
+        row["interface_edge_count"] > 0
+        and row["interface_diagnostic_available"] is True
+        and row["comparable_to_raw_core_extension_interface"] is False
+        for row in report["boundaries"]
+    )
+
+
+def test_resume_internal_error_writes_post_qc_failure_summary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    source_run = tmp_path / "source_anchor003274_accepted"
+    frozen_open_vtp = (
+        source_run
+        / "geometry"
+        / "vmtk_boundarynormal_crossseam_remeshed_open_um.vtp"
+    )
+    frozen_open_vtp.parent.mkdir(parents=True)
+    frozen_open_vtp.write_bytes(b"immutable frozen OPEN geometry")
+    expected_sha = hashlib.sha256(frozen_open_vtp.read_bytes()).hexdigest()
+    output_root = tmp_path / "outputs"
+    config = SimpleNamespace(paths=SimpleNamespace(output_root=output_root))
+
+    def fail_with_current_schema_bug(*args, **kwargs):
+        raise KeyError("interface_edge_count")
+
+    monkeypatch.setattr(
+        vmtk_pipeline,
+        "_run_crossseam_open_resume_impl",
+        fail_with_current_schema_bug,
+    )
+    with pytest.raises(
+        SurfacePrepareError, match="POST_QC_CONTINUATION_INTERNAL_ERROR"
+    ):
+        run_crossseam_open_resume(
+            config,
+            project_root=tmp_path,
+            source_run=source_run,
+            run_id="recovery_internal_error_test",
+        )
+    summary = read_json(
+        output_root / "recovery_internal_error_test" / "qc" / "run_summary.json"
+    )
+    assert summary["status"] == "POST_QC_CONTINUATION_INTERNAL_ERROR"
+    assert summary["stage"] == "post_qc_continuation"
+    assert summary["geometry_regenerated"] is False
+    assert summary["frozen_source_sha256"] == expected_sha
+    assert summary["exception_type"] == "KeyError"
+    assert "interface_edge_count" in summary["exception_message"]
 
 
 def test_runner_uses_pmp_environment(synthetic_vmtk):

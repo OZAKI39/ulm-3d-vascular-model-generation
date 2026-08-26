@@ -8,8 +8,12 @@ from pathlib import Path
 from utils.cfd_surface_prepare.config import load_surface_prepare_config
 from utils.cfd_surface_prepare.vmtk_pipeline import (
     PASS_STATUSES,
+    POST_QC_CONTINUATION_INTERNAL_ERROR,
+    print_crossseam_resume_header,
+    print_crossseam_resume_result,
     print_vmtk_experiment_header,
     print_vmtk_result,
+    run_crossseam_open_resume,
     run_vmtk_surface_prepare,
 )
 
@@ -33,6 +37,15 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         help=f"strict YAML configuration (default: {DEFAULT_CONFIG})",
     )
+    parser.add_argument(
+        "--resume-crossseam-open",
+        type=Path,
+        metavar="EXISTING_RUN_PATH",
+        help=(
+            "reuse one frozen accepted cross-seam OPEN VTP for post-QC and "
+            "cap only; never runs local cut, flow extension, or remeshing"
+        ),
+    )
     return parser
 
 
@@ -40,6 +53,15 @@ def main() -> int:
     args = _parser().parse_args()
     try:
         config = load_surface_prepare_config(args.config, project_root=PROJECT_ROOT)
+        if args.resume_crossseam_open is not None:
+            print_crossseam_resume_header(args.resume_crossseam_open)
+            result = run_crossseam_open_resume(
+                config,
+                project_root=PROJECT_ROOT,
+                source_run=args.resume_crossseam_open,
+            )
+            print_crossseam_resume_result(result)
+            return 0 if result.status in PASS_STATUSES else 2
         print_vmtk_experiment_header()
         result = run_vmtk_surface_prepare(config, project_root=PROJECT_ROOT)
         print_vmtk_result(result)
@@ -90,13 +112,18 @@ def main() -> int:
             "VMTK_CROSS_SEAM_RING_TOPOLOGY_PRESERVED",
             "VMTK_CROSS_SEAM_TOPOLOGY_FAILED",
             "VMTK_CROSS_SEAM_GEOMETRY_FAILED",
+            "FROZEN_CROSS_SEAM_OPEN_INPUT_MISSING",
+            POST_QC_CONTINUATION_INTERNAL_ERROR,
         }
         failure = str(error).split(":", maxsplit=1)[0]
         if failure not in allowed_failures:
             failure = "VMTK_TPS_EXTENSION_FAILED"
         print(f"CFD surface preparation failed: {error}")
         print(f"Final status: {failure}")
-        print("NEXT: REVIEW CROSS-SEAM REMESH FAILURE")
+        if failure == POST_QC_CONTINUATION_INTERNAL_ERROR:
+            print("NEXT: REVIEW POST-QC CONTINUATION INTERNAL ERROR")
+        else:
+            print("NEXT: REVIEW CROSS-SEAM REMESH FAILURE")
         return 1
 
 

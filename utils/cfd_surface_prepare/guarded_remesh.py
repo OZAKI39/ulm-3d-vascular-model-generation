@@ -827,6 +827,150 @@ def active_collar_geometry_qc(
     }
 
 
+def _minimum_distance_to_segments(
+    points: np.ndarray, segments: np.ndarray
+) -> np.ndarray:
+    """Return the Euclidean distance from each point to the nearest segment."""
+
+    query = np.asarray(points, dtype=float)
+    lines = np.asarray(segments, dtype=float).reshape((-1, 2, 3))
+    if len(lines) == 0:
+        return np.full(len(query), float("inf"), dtype=float)
+    start = lines[:, 0]
+    vector = lines[:, 1] - start
+    denominator = np.sum(vector * vector, axis=1)
+    output = np.empty(len(query), dtype=float)
+    for index, point in enumerate(query):
+        fraction = np.divide(
+            np.sum((point - start) * vector, axis=1),
+            denominator,
+            out=np.zeros_like(denominator),
+            where=denominator > np.finfo(float).eps,
+        )
+        fraction = np.clip(fraction, 0.0, 1.0)
+        closest = start + fraction[:, None] * vector
+        output[index] = float(np.min(np.linalg.norm(closest - point, axis=1)))
+    return output
+
+
+def active_collar_original_side_distance_qc(
+    raw_vtp: Path,
+    remeshed_open_vtp: Path,
+    boundaries: Iterable[BoundaryInput],
+    *,
+    maximum_p95_distance_um: float,
+    cross_seam_neighborhood_um: float,
+    entity_array_name: str = "RemeshEntityId",
+    active_entity_id: int = 2,
+    hotspot_count: int = 10,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Measure RAW original-side collar samples to the complete frozen surface."""
+
+    raw = pv.read(raw_vtp).triangulate()
+    remeshed = pv.read(remeshed_open_vtp).triangulate()
+    raw_faces = _faces(raw)
+    raw_regions = np.asarray(raw.cell_data["SurfaceRegionId"], dtype=np.uint8)
+    raw_entities = np.asarray(raw.cell_data[entity_array_name], dtype=np.int32)
+    collar_ids = np.flatnonzero(
+        (raw_regions == 0) & (raw_entities == active_entity_id)
+    )
+    if len(collar_ids) == 0:
+        raise SurfacePrepareError(
+            "VMTK_CROSS_SEAM_COLLAR_GEOMETRY_FAILED:empty_original_side_collar"
+        )
+    collar_faces = raw_faces[collar_ids]
+    collar_vertices = np.unique(collar_faces)
+    raw_points = np.asarray(raw.points, dtype=float)
+    vertex_samples = raw_points[collar_vertices]
+    center_samples = raw_points[collar_faces].mean(axis=1)
+    samples = np.vstack((vertex_samples, center_samples))
+    sample_kind = np.concatenate(
+        (
+            np.full(len(vertex_samples), "RAW_COLLAR_VERTEX", dtype="<U24"),
+            np.full(len(center_samples), "RAW_COLLAR_FACE_CENTER", dtype="<U24"),
+        )
+    )
+    sample_vertex_id = np.concatenate(
+        (collar_vertices, np.full(len(center_samples), -1, dtype=np.int64))
+    )
+    vertex_to_face: dict[int, int] = {}
+    for local_id, face in enumerate(collar_faces):
+        for vertex_id in face:
+            vertex_to_face.setdefault(int(vertex_id), int(collar_ids[local_id]))
+    sample_face_id = np.concatenate(
+        (
+            np.asarray(
+                [vertex_to_face[int(vertex_id)] for vertex_id in collar_vertices],
+                dtype=np.int64,
+            ),
+            collar_ids,
+        )
+    )
+    remeshed_mesh = trimesh.Trimesh(
+        vertices=np.asarray(remeshed.points, dtype=float),
+        faces=_faces(remeshed),
+        process=False,
+    )
+    closest, distances, nearest_faces = trimesh.proximity.closest_point(
+        remeshed_mesh, samples
+    )
+    summary = _surface_distance_summary(distances)
+    _, _, seam_edges = core_face_adjacency_layers(raw_faces, raw_regions)
+    seam_segments = raw_points[seam_edges]
+    sample_seam_distance = _minimum_distance_to_segments(samples, seam_segments)
+    closest_seam_distance = _minimum_distance_to_segments(closest, seam_segments)
+    boundary_list = list(boundaries)
+    port_indices = _boundary_assignment(samples, boundary_list)
+    order = np.argsort(distances)[::-1][:hotspot_count]
+    hotspots: list[dict[str, Any]] = []
+    for rank, sample_id in enumerate(order, start=1):
+        boundary = boundary_list[int(port_indices[sample_id])]
+        hotspots.append(
+            {
+                "rank": rank,
+                "port_id": boundary.port_id,
+                "sample_kind": str(sample_kind[sample_id]),
+                "raw_vertex_id": int(sample_vertex_id[sample_id]),
+                "raw_face_id": int(sample_face_id[sample_id]),
+                "sample_x_um": float(samples[sample_id, 0]),
+                "sample_y_um": float(samples[sample_id, 1]),
+                "sample_z_um": float(samples[sample_id, 2]),
+                "closest_x_um": float(closest[sample_id, 0]),
+                "closest_y_um": float(closest[sample_id, 1]),
+                "closest_z_um": float(closest[sample_id, 2]),
+                "nearest_remeshed_face_id": int(nearest_faces[sample_id]),
+                "distance_um": float(distances[sample_id]),
+                "distance_from_original_seam_um": float(
+                    sample_seam_distance[sample_id]
+                ),
+                "closest_point_distance_from_original_seam_um": float(
+                    closest_seam_distance[sample_id]
+                ),
+                "within_cross_seam_triangle_neighborhood": bool(
+                    closest_seam_distance[sample_id]
+                    <= cross_seam_neighborhood_um
+                ),
+            }
+        )
+    passed = summary["P95_um"] <= maximum_p95_distance_um
+    return {
+        "status": "PASS" if passed else "FAIL",
+        "hard_gate": True,
+        "method": (
+            "RAW original-side active CORE collar vertices and face centers "
+            "to complete frozen remeshed-open surface"
+        ),
+        "sample_count": int(len(samples)),
+        "raw_active_collar_face_count": int(len(collar_ids)),
+        "raw_active_collar_vertex_count": int(len(collar_vertices)),
+        **summary,
+        "maximum_core_surface_p95_distance_um": maximum_p95_distance_um,
+        "max_role": "DIAGNOSTIC_ONLY",
+        "cross_seam_neighborhood_um": cross_seam_neighborhood_um,
+        "hotspot_count": len(hotspots),
+    }, hotspots
+
+
 def cross_seam_entity_preservation_qc(
     raw_vtp: Path,
     remeshed_vtp: Path,

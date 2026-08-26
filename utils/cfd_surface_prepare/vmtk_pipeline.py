@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 import json
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -20,6 +20,8 @@ from utils.cfd_lumen.ultraliser_qc import evaluate_radius_fidelity, validate_sou
 from .config import SurfacePrepareConfig
 from .export import write_csv
 from .guarded_remesh import (
+    active_collar_geometry_qc,
+    active_collar_original_side_distance_qc,
     assign_cross_seam_active_entities,
     assign_guarded_remesh_entities,
     cross_seam_entity_preservation_qc,
@@ -45,6 +47,7 @@ from .local_cut import local_plane_cut
 from .mesh_quality import measure_local_original_mesh
 from .types import TaggedSurface
 from .vmtk_qc import (
+    active_collar_cross_section_fidelity_qc,
     assign_remesh_entities,
     core_exact_preservation_qc,
     core_symmetric_distance_qc,
@@ -72,6 +75,7 @@ from .vmtk_runner import (
     run_official_vmtk,
 )
 from .vmtk_visualization import (
+    save_crossseam_resume_figures,
     save_crossseam_review_figures,
     save_entityremesh_review_figures,
     save_guarded_open_figures,
@@ -101,6 +105,10 @@ TAIL_WARNING_STATUS = (
 PASS_STATUSES = {SUCCESS_STATUS, TAIL_WARNING_STATUS}
 SUCCESS_NEXT = "MANUALLY REVIEW CROSS-SEAM REMESHED CFD SURFACE"
 FAIL_NEXT = "REVIEW CROSS-SEAM REMESH FAILURE"
+FINALIZED_SUCCESS_STATUS = "CFD_SURFACE_CROSS_SEAM_FINAL_PASS_PENDING_MANUAL_REVIEW"
+FINALIZED_SUCCESS_NEXT = "MANUALLY REVIEW FINAL CAPPED CFD SURFACE"
+POST_QC_CONTINUATION_INTERNAL_ERROR = "POST_QC_CONTINUATION_INTERNAL_ERROR"
+PASS_STATUSES.add(FINALIZED_SUCCESS_STATUS)
 PREVIOUS_GLOBAL_REMESH_RUN_ID = "vmtk_tps_boundarynormal_anchor003274_20260826_153709"
 PREVIOUS_CAPONLY_RUN_ID = (
     "vmtk_tps_boundarynormal_caponly_anchor003274_20260826_165659"
@@ -150,6 +158,14 @@ class VmtkSurfacePrepareResult:
     pressure_rows: tuple[dict[str, Any], ...]
     output_paths: dict[str, Any]
     figures: tuple[Path, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class CrossSeamResumeResult:
+    status: str
+    next_stage: str
+    run_root: Path
+    summary: dict[str, Any]
 
 
 def _layout(output_root: Path, run_id: str) -> VmtkLayout:
@@ -2524,6 +2540,626 @@ def run_vmtk_surface_prepare(
     )
 
 
+def resume_open_qc_allows_cap(*reports: dict[str, Any]) -> bool:
+    """Return true only when every frozen-open hard gate has passed."""
+
+    return bool(reports) and all(report.get("status") == "PASS" for report in reports)
+
+
+def _write_resume_report(path: Path, summary: dict[str, Any]) -> None:
+    runtime = summary.get("runtime", {})
+    lines = [
+        "# Frozen cross-seam OPEN post-QC continuation",
+        "",
+        f"- Status: `{summary['status']}`",
+        "- Geometry regenerated: `false`",
+        "- VMTK flow extension called: `false`",
+        "- VMTK surface remeshing called: `false`",
+        f"- Existing OPEN reused: `{runtime.get('existing_open_geometry_reused')}`",
+        f"- Source OPEN VTP: `{runtime.get('source_open_vtp')}`",
+        f"- SurfaceCapper called: `{runtime.get('surface_capper_called', False)}`",
+        "- Accepted OPEN visual assessment: `USER_ALREADY_ACCEPTED_OPEN_GEOMETRY`",
+        "- Final capped geometry: `MANUAL_REVIEW_REQUIRED`",
+        "- Volume mesh created: `false`",
+        "- CFD run: `false`",
+        "",
+        f"NEXT: `{summary['next']}`",
+        "",
+    ]
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _run_crossseam_open_resume_impl(
+    config: SurfacePrepareConfig,
+    *,
+    project_root: Path,
+    source_run: Path,
+    run_id: str | None = None,
+) -> CrossSeamResumeResult:
+    """Continue from one frozen accepted OPEN without regenerating geometry."""
+
+    source_root = Path(source_run)
+    if not source_root.is_absolute():
+        source_root = (project_root / source_root).resolve()
+    else:
+        source_root = source_root.resolve()
+    frozen_open_vtp = (
+        source_root
+        / "geometry"
+        / "vmtk_boundarynormal_crossseam_remeshed_open_um.vtp"
+    )
+    frozen_open_stl = (
+        source_root
+        / "geometry"
+        / "vmtk_boundarynormal_crossseam_remeshed_open_um.stl"
+    )
+    frozen_raw_vtp = source_root / "geometry" / "vmtk_boundarynormal_raw_um.vtp"
+    frozen_input_open = source_root / "input" / "open_surface_um.vtp"
+    required = (
+        frozen_open_vtp,
+        frozen_open_stl,
+        frozen_raw_vtp,
+        frozen_input_open,
+    )
+    missing = [str(path) for path in required if not path.is_file()]
+    if missing:
+        raise SurfacePrepareError(
+            "FROZEN_CROSS_SEAM_OPEN_INPUT_MISSING:" + ",".join(missing)
+        )
+
+    inputs = load_surface_inputs(
+        config.paths.cfd_preprocess_run,
+        expected_boundary_count=config.qc.expected_boundary_count,
+    )
+    anchor = _anchor_id(str(inputs.preprocess_summary["roi_id"]))
+    continuation_id = run_id or (
+        f"vmtk_tps_boundarynormal_crossseam_finalized_recovery_anchor{anchor}_"
+        f"{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    )
+    layout = _layout(config.paths.output_root, continuation_id)
+    references = _crossseam_reference_paths(config.paths.output_root)
+    base_paths = exchange_paths(
+        input_directory=layout.input,
+        vmtk_directory=layout.vmtk,
+        geometry_directory=layout.geometry,
+        extension_mode="boundarynormal",
+    )
+    paths = replace(
+        base_paths,
+        remeshed_open_vtp=frozen_open_vtp,
+        remeshed_open_stl=frozen_open_stl,
+    )
+    tool_script = project_root / "tools" / "run_vmtk_flowextension.py"
+    source_paths = (frozen_open_vtp, frozen_open_stl, frozen_raw_vtp)
+    source_hashes_before = {str(path): sha256_file(path) for path in source_paths}
+    runtime: dict[str, Any] = {
+        "geometry_regenerated": False,
+        "geometry_regeneration_count": 0,
+        "vmtk_flow_extension_called": False,
+        "vmtk_surface_remeshing_called": False,
+        "existing_open_geometry_reused": True,
+        "source_open_vtp": str(frozen_open_vtp),
+        "source_open_stl": str(frozen_open_stl),
+        "source_run": str(source_root),
+        "surface_capper_called": False,
+        "post_qc_continuation_count": 1,
+    }
+    outputs: dict[str, Any] = {
+        "frozen_open_vtp": str(frozen_open_vtp),
+        "frozen_open_stl": str(frozen_open_stl),
+        "frozen_raw_vtp": str(frozen_raw_vtp),
+    }
+
+    def stop(status: str, evidence: dict[str, Any]) -> None:
+        source_hashes_after = {
+            str(path): sha256_file(path) for path in source_paths
+        }
+        summary = {
+            "status": status,
+            "next": "REVIEW FROZEN CROSS-SEAM POST-QC FAILURE",
+            "run_id": continuation_id,
+            "run_root": str(layout.root),
+            "runtime": runtime,
+            "outputs": outputs,
+            "evidence": evidence,
+            "frozen_source_hashes_before": source_hashes_before,
+            "frozen_source_hashes_after": source_hashes_after,
+            "frozen_source_geometry_unchanged": (
+                source_hashes_before == source_hashes_after
+            ),
+            "geometry_regeneration_count": 0,
+            "post_qc_continuation_count": 1,
+            "volume_mesh_created": False,
+            "cfd_run": False,
+        }
+        write_json(layout.qc / "run_summary.json", summary)
+        _write_resume_report(
+            layout.report / "crossseam_post_qc_continuation_report.md", summary
+        )
+        raise SurfacePrepareError(status)
+
+    write_json(
+        layout.input / "frozen_open_geometry_reference.json",
+        {
+            "source_run_path": str(source_root),
+            "source_open_vtp": str(frozen_open_vtp),
+            "source_open_stl": str(frozen_open_stl),
+            "source_vtp_sha256": source_hashes_before[str(frozen_open_vtp)],
+            "source_stl_sha256": source_hashes_before[str(frozen_open_stl)],
+            "source_raw_vtp_sha256": source_hashes_before[str(frozen_raw_vtp)],
+            "geometry_regenerated": False,
+        },
+    )
+    shutil.copy2(config.source_path, layout.input / "cfd_surface_prepare.yaml")
+    shutil.copy2(
+        inputs.preprocess_run / "roi" / "boundary_conditions.json",
+        layout.bc / "boundary_conditions_original.json",
+    )
+
+    raw_data = pv.read(frozen_raw_vtp).triangulate()
+    frozen_data = pv.read(frozen_open_vtp).triangulate()
+    for label, data in (("RAW", raw_data), ("FROZEN_OPEN", frozen_data)):
+        if "RemeshEntityId" not in data.cell_data:
+            stop(ASSIGNMENT_FAILURE, {"missing_entity_array": label})
+        entity_ids = sorted(
+            int(value) for value in np.unique(data.cell_data["RemeshEntityId"])
+        )
+        if entity_ids != [1, 2]:
+            stop(
+                ASSIGNMENT_FAILURE,
+                {"surface": label, "unexpected_entity_ids": entity_ids},
+            )
+
+    collar_distance, hotspots = active_collar_original_side_distance_qc(
+        frozen_raw_vtp,
+        frozen_open_vtp,
+        inputs.boundaries,
+        maximum_p95_distance_um=config.qc.maximum_core_surface_p95_distance_um,
+        cross_seam_neighborhood_um=(
+            config.vmtk.entity_remesh.target_edge_length_um
+        ),
+    )
+    write_json(
+        layout.qc / "active_collar_original_side_distance_qc.json",
+        collar_distance,
+    )
+    write_csv(layout.qc / "active_collar_distance_hotspots.csv", hotspots)
+    legacy_result = active_collar_geometry_qc(
+        raw_data,
+        frozen_data,
+        maximum_p95_distance_um=config.qc.maximum_core_surface_p95_distance_um,
+        maximum_distance_um=config.qc.maximum_core_surface_distance_um,
+    )
+    legacy = {
+        "status": "DIAGNOSTIC_ONLY",
+        "hard_gate": False,
+        "name": "legacy_reclassified_collar_bidirectional_distance",
+        "legacy_result_status": legacy_result["status"],
+        "result": legacy_result,
+    }
+    write_json(
+        layout.qc / "legacy_reclassified_collar_bidirectional_distance.json",
+        legacy,
+    )
+    cross_sections = active_collar_cross_section_fidelity_qc(
+        frozen_raw_vtp,
+        frozen_open_vtp,
+        inputs.boundaries,
+        maximum_equivalent_radius_relative_error=(
+            config.qc.maximum_equivalent_radius_relative_error
+        ),
+    )
+    write_json(
+        layout.qc / "active_collar_cross_section_fidelity.json", cross_sections
+    )
+    if collar_distance["status"] != "PASS" or cross_sections["status"] != "PASS":
+        stop(
+            COLLAR_FAILURE,
+            {
+                "active_collar_original_side_distance": collar_distance,
+                "active_collar_cross_sections": cross_sections,
+                "legacy_metric": legacy,
+            },
+        )
+
+    seam_topology = cut_seam_topology_qc(
+        frozen_raw_vtp, frozen_open_vtp, inputs.boundaries
+    )
+    write_json(layout.qc / "cut_seam_topology_qc.json", seam_topology)
+    if seam_topology["status"] != "PASS":
+        stop(RING_FAILURE, {"cut_seam_topology": seam_topology})
+
+    _, proximal_mesh = polydata_mesh(frozen_input_open)
+    proximal_profile, proximal_loops = open_profile_qc(
+        proximal_mesh, inputs.boundaries
+    )
+    if proximal_profile["status"] != "PASS":
+        stop(GEOMETRY_FAILURE, {"proximal_profile": proximal_profile})
+    _, frozen_mesh = polydata_mesh(frozen_open_vtp)
+    open_topology_raw, _ = topology_qc(
+        frozen_mesh,
+        expected_open_profile_count=4,
+        allow_degenerate=False,
+        require_winding_consistent=True,
+    )
+    intersection_qc, intersection_records = cross_seam_intersection_qc(
+        frozen_open_vtp
+    )
+    open_topology = _use_true_intersection_count(
+        open_topology_raw, intersection_qc
+    )
+    distal_profile, _ = open_profile_qc(
+        frozen_mesh, inputs.boundaries, distal=True
+    )
+    open_topology["distal_profile_qc"] = distal_profile
+    open_topology["status"] = (
+        "PASS"
+        if open_topology["status"] == distal_profile["status"] == "PASS"
+        else "FAIL"
+    )
+    write_json(layout.qc / "crossseam_open_surface_qc.json", open_topology)
+    write_json(layout.qc / "crossseam_intersection_qc.json", intersection_qc)
+    if open_topology["status"] != "PASS" or intersection_qc["status"] != "PASS":
+        stop(
+            TOPOLOGY_FAILURE,
+            {
+                "open_topology": open_topology,
+                "intersections": intersection_qc,
+                "intersection_records": intersection_records,
+            },
+        )
+
+    seam_new = seam_local_normal_diagnostic(
+        frozen_open_vtp,
+        inputs.boundaries,
+        target_edge_length_um=config.vmtk.entity_remesh.target_edge_length_um,
+    )
+    extension_geometry, distal_loops = extension_geometry_qc(
+        frozen_mesh, inputs.boundaries, proximal_loops, seam_new
+    )
+    write_json(layout.qc / "extension_geometry_qc.json", extension_geometry)
+    if extension_geometry["status"] != "PASS":
+        stop(GEOMETRY_FAILURE, {"extension_geometry": extension_geometry})
+
+    original = load_original_surface(inputs.original_surface_um_vtp)
+    local_targets: dict[int, float] = {}
+    for boundary in inputs.boundaries:
+        local_report = measure_local_original_mesh(
+            original,
+            boundary,
+            sampling_radius_factor=(
+                config.extension_mesh.refinement.local_mesh_sampling_radius_factor
+            ),
+        )
+        local_targets[boundary.index] = float(local_report["edge_length_median_um"])
+    mesh_quality, tail_records = crossseam_active_mesh_quality(
+        frozen_open_vtp,
+        inputs.boundaries,
+        active_entity_id=config.vmtk.entity_remesh.active_entity_id,
+        local_target_edge_um=local_targets,
+        quality=config.mesh_quality,
+    )
+    write_json(layout.qc / "crossseam_mesh_quality_qc.json", mesh_quality)
+
+    seam_global = seam_local_normal_diagnostic(
+        references["global_final_vtp"],
+        inputs.boundaries,
+        target_edge_length_um=config.vmtk.entity_remesh.target_edge_length_um,
+    )
+    seam_guarded = seam_local_normal_diagnostic(
+        references["guarded_final_vtp"],
+        inputs.boundaries,
+        target_edge_length_um=config.vmtk.entity_remesh.target_edge_length_um,
+    )
+    seam_rows = _seam_comparison_rows(
+        seam_global, seam_guarded, seam_new, seam_topology
+    )
+    write_csv(layout.qc / "seam_quality_comparison.csv", seam_rows)
+
+    if not resume_open_qc_allows_cap(
+        collar_distance,
+        cross_sections,
+        seam_topology,
+        open_topology,
+        intersection_qc,
+        extension_geometry,
+    ):
+        stop(GEOMETRY_FAILURE, {"open_hard_gate": "FAIL"})
+
+    cap = cap_official_vmtk(
+        config=config.vmtk, paths=paths, tool_script=tool_script
+    )
+    runtime.update(
+        {
+            "surface_capper_called": True,
+            "cap_only": cap.runtime,
+            "cap_only_command": list(cap.command),
+            "vmtk_package_version": cap.runtime.get("vmtk_package_version"),
+            "vtk_version": cap.runtime.get("vtk_version"),
+        }
+    )
+    if cap.runtime.get("surface_remesher_called") is not False:
+        stop(GEOMETRY_FAILURE, {"cap_runtime": cap.runtime})
+
+    final_outputs, boundary_mapping = tag_and_export_final_surface(
+        paths.capped_vtp,
+        inputs.boundaries,
+        layout.geometry,
+        layout.boundaries,
+        output_stem="cfd_surface_vmtk_tps_boundarynormal_crossseam",
+        raw_vtp=frozen_open_vtp,
+        remesh_entity_codes={
+            "CAP": 0,
+            "FAR_CORE": 1,
+            "CROSS_SEAM_ACTIVE": 2,
+        },
+    )
+    outputs.update(final_outputs)
+    _, final_mesh = polydata_mesh(Path(outputs["tagged_vtp"]))
+    final_topology_raw, _ = topology_qc(
+        final_mesh,
+        expected_open_profile_count=0,
+        require_winding_consistent=True,
+    )
+    final_intersection, _ = cross_seam_intersection_qc(
+        Path(outputs["tagged_vtp"])
+    )
+    final_topology = _use_true_intersection_count(
+        final_topology_raw, final_intersection
+    )
+    far_core = locked_entity_preservation_qc(
+        frozen_raw_vtp,
+        Path(outputs["tagged_vtp"]),
+        entity_id=config.vmtk.entity_remesh.far_core_entity_id,
+        label="far_core",
+    )
+    final_surface = {
+        "status": (
+            "PASS"
+            if final_topology["status"] == "PASS"
+            and boundary_mapping["status"] == "PASS"
+            and far_core["status"] == "PASS"
+            else "FAIL"
+        ),
+        "topology": final_topology,
+        "intersection": final_intersection,
+        "boundary_mapping": boundary_mapping,
+        "far_core_exact_preservation": far_core,
+    }
+    write_json(layout.qc / "final_surface_qc.json", final_surface)
+    write_json(layout.qc / "far_core_exact_preservation_qc.json", far_core)
+    if final_surface["status"] != "PASS":
+        stop(TOPOLOGY_FAILURE, {"final_surface": final_surface})
+
+    try:
+        radius_report = _radius_qc(
+            final_mesh=final_mesh, inputs=inputs, project_root=project_root
+        )
+    except SurfacePrepareError as error:
+        radius_report = {"status": "FAIL", "error": str(error)}
+    meter_report = meter_scale_qc(
+        Path(outputs["manual_review_stl"]), Path(outputs["meter_stl"])
+    )
+    write_json(layout.qc / "radius_fidelity.json", radius_report)
+    write_json(layout.qc / "meter_scale_qc.json", meter_report)
+
+    pressure_rows: list[dict[str, Any]] = []
+    try:
+        pressure_rows, pressure_report = geometry_pressure_correction(
+            final_mesh,
+            inputs.boundaries,
+            proximal_loops,
+            distal_loops,
+            dynamic_viscosity_pa_s=float(
+                inputs.original_boundary_conditions["fluid"][
+                    "dynamic_viscosity_pa_s"
+                ]
+            ),
+        )
+    except SurfacePrepareError as error:
+        pressure_report = {"status": "FAIL", "error": str(error)}
+    else:
+        pressure_report["status"] = "PASS"
+        pressure_csv = (
+            layout.bc
+            / "extension_pressure_correction_vmtk_boundarynormal_crossseam.csv"
+        )
+        write_csv(
+            pressure_csv,
+            [
+                {
+                    **row,
+                    "station_fractions": json.dumps(row["station_fractions"]),
+                    "cross_section_area_um2": json.dumps(
+                        row["cross_section_area_um2"]
+                    ),
+                    "equivalent_radius_um": json.dumps(
+                        row["equivalent_radius_um"]
+                    ),
+                }
+                for row in pressure_rows
+            ],
+        )
+        boundary_json = (
+            layout.bc / "boundary_conditions_vmtk_boundarynormal_crossseam.json"
+        )
+        write_json(
+            boundary_json,
+            _boundary_conditions(inputs.original_boundary_conditions, pressure_rows),
+        )
+        outputs["pressure_correction_csv"] = str(pressure_csv.resolve())
+        outputs["boundary_conditions_json"] = str(boundary_json.resolve())
+    write_json(layout.qc / "extension_pressure_geometry_qc.json", pressure_report)
+
+    source_hashes_after = {str(path): sha256_file(path) for path in source_paths}
+    source_unchanged = source_hashes_before == source_hashes_after
+    if not resume_open_qc_allows_cap(
+        final_surface, radius_report, meter_report, pressure_report
+    ) or not source_unchanged:
+        stop(
+            GEOMETRY_FAILURE,
+            {
+                "final_surface": final_surface,
+                "radius": radius_report,
+                "meter": meter_report,
+                "pressure": pressure_report,
+                "frozen_source_geometry_unchanged": source_unchanged,
+            },
+        )
+
+    figure_paths = save_crossseam_resume_figures(
+        raw_vtp=frozen_raw_vtp,
+        global_remesh_vtp=references["global_final_vtp"],
+        guarded_remesh_vtp=references["guarded_final_vtp"],
+        frozen_open_vtp=frozen_open_vtp,
+        final_vtp=Path(outputs["tagged_vtp"]),
+        boundaries=inputs.boundaries,
+        hotspots=hotspots,
+        output_directory=layout.figures,
+    )
+    outputs["figure_paths"] = [str(path) for path in figure_paths]
+    summary = {
+        "status": FINALIZED_SUCCESS_STATUS,
+        "next": FINALIZED_SUCCESS_NEXT,
+        "run_id": continuation_id,
+        "run_root": str(layout.root),
+        "runtime": runtime,
+        "frozen_source_hashes_before": source_hashes_before,
+        "frozen_source_hashes_after": source_hashes_after,
+        "frozen_source_geometry_unchanged": source_unchanged,
+        "active_collar_original_side_distance": collar_distance,
+        "legacy_reclassified_collar_bidirectional_distance": legacy,
+        "active_collar_cross_section_fidelity": cross_sections,
+        "cut_seam_topology": seam_topology,
+        "open_topology": open_topology,
+        "open_intersections": intersection_qc,
+        "extension_geometry": extension_geometry,
+        "mesh_quality": mesh_quality,
+        "mesh_tail_count": len(tail_records),
+        "seam_quality_comparison": seam_rows,
+        "final_surface": final_surface,
+        "radius_fidelity": radius_report,
+        "pressure_geometry": pressure_report,
+        "meter_scale": meter_report,
+        "outputs": outputs,
+        "visible_ring_assessment": "USER_ALREADY_ACCEPTED_OPEN_GEOMETRY",
+        "final_capped_geometry_assessment": "MANUAL_REVIEW_REQUIRED",
+        "geometry_regeneration_count": 0,
+        "post_qc_continuation_count": 1,
+        "volume_mesh_created": False,
+        "cfd_run": False,
+        "microbubble_simulation_run": False,
+    }
+    write_json(layout.qc / "run_summary.json", summary)
+    _write_resume_report(
+        layout.report / "crossseam_post_qc_continuation_report.md", summary
+    )
+    return CrossSeamResumeResult(
+        status=FINALIZED_SUCCESS_STATUS,
+        next_stage=FINALIZED_SUCCESS_NEXT,
+        run_root=layout.root,
+        summary=summary,
+    )
+
+
+def _post_qc_internal_error_summary(
+    *,
+    continuation_id: str,
+    run_root: Path,
+    frozen_open_vtp: Path,
+    frozen_source_sha256: str | None,
+    error: Exception,
+) -> dict[str, Any]:
+    """Create an audit record for a continuation implementation failure."""
+
+    return {
+        "status": POST_QC_CONTINUATION_INTERNAL_ERROR,
+        "next": "REVIEW POST-QC CONTINUATION INTERNAL ERROR",
+        "stage": "post_qc_continuation",
+        "run_id": continuation_id,
+        "run_root": str(run_root.resolve()),
+        "geometry_regenerated": False,
+        "frozen_source_sha256": frozen_source_sha256,
+        "exception_type": type(error).__name__,
+        "exception_message": str(error),
+        "runtime": {
+            "geometry_regenerated": False,
+            "geometry_regeneration_count": 0,
+            "vmtk_flow_extension_called": False,
+            "vmtk_surface_remeshing_called": False,
+            "existing_open_geometry_reused": True,
+            "source_open_vtp": str(frozen_open_vtp.resolve()),
+            "surface_capper_called": False,
+            "post_qc_continuation_count": 1,
+        },
+        "geometry_regeneration_count": 0,
+        "post_qc_continuation_count": 1,
+        "volume_mesh_created": False,
+        "cfd_run": False,
+    }
+
+
+def run_crossseam_open_resume(
+    config: SurfacePrepareConfig,
+    *,
+    project_root: Path,
+    source_run: Path,
+    run_id: str | None = None,
+) -> CrossSeamResumeResult:
+    """Guard the frozen-OPEN continuation against misclassified code errors."""
+
+    source_root = Path(source_run)
+    if not source_root.is_absolute():
+        source_root = (project_root / source_root).resolve()
+    else:
+        source_root = source_root.resolve()
+    frozen_open_vtp = (
+        source_root
+        / "geometry"
+        / "vmtk_boundarynormal_crossseam_remeshed_open_um.vtp"
+    )
+    marker = "anchor"
+    source_name = source_root.name
+    anchor = (
+        source_name.split(marker, 1)[1].split("_", 1)[0]
+        if marker in source_name
+        else "unknown"
+    )
+    continuation_id = run_id or (
+        f"vmtk_tps_boundarynormal_crossseam_finalized_recovery_anchor{anchor}_"
+        f"{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    )
+    run_root = Path(config.paths.output_root) / continuation_id
+    frozen_sha = sha256_file(frozen_open_vtp) if frozen_open_vtp.is_file() else None
+    try:
+        return _run_crossseam_open_resume_impl(
+            config,
+            project_root=project_root,
+            source_run=source_root,
+            run_id=continuation_id,
+        )
+    except SurfacePrepareError:
+        raise
+    except Exception as error:
+        summary = _post_qc_internal_error_summary(
+            continuation_id=continuation_id,
+            run_root=run_root,
+            frozen_open_vtp=frozen_open_vtp,
+            frozen_source_sha256=frozen_sha,
+            error=error,
+        )
+        qc_directory = run_root / "qc"
+        report_directory = run_root / "report"
+        qc_directory.mkdir(parents=True, exist_ok=True)
+        report_directory.mkdir(parents=True, exist_ok=True)
+        write_json(qc_directory / "run_summary.json", summary)
+        _write_resume_report(
+            report_directory / "crossseam_post_qc_continuation_report.md",
+            summary,
+        )
+        raise SurfacePrepareError(POST_QC_CONTINUATION_INTERNAL_ERROR) from error
+
+
 def print_vmtk_experiment_header() -> None:
     print("EXPERIMENT: FAR-CORE EXCLUDED CROSS-SEAM ACTIVE VMTK REMESH")
     print("VMTK: 1.5.0")
@@ -2537,6 +3173,23 @@ def print_vmtk_experiment_header() -> None:
     print("Active CORE collar: 2 RAW CORE BFS layers (0 and 1)")
     print("Synthetic VMTK preflight: NOT RUN")
     print("Target edge: 0.25913916380971913 um")
+
+
+def print_crossseam_resume_header(source_run: Path) -> None:
+    print("EXPERIMENT: FROZEN CROSS-SEAM OPEN POST-QC CONTINUATION")
+    print(f"Frozen source run: {Path(source_run).resolve()}")
+    print("Geometry regenerated: NO")
+    print("VMTK flow extension: NOT CALLED")
+    print("VMTK surface remeshing: NOT CALLED")
+    print("Only allowed geometry tool after OPEN QC PASS: VMTK SurfaceCapper")
+
+
+def print_crossseam_resume_result(result: CrossSeamResumeResult) -> None:
+    print(f"Run root: {result.run_root}")
+    print("Geometry regeneration count: 0")
+    print("Post-QC continuation count: 1")
+    print(f"Final status: {result.status}")
+    print(f"NEXT: {result.next_stage}")
 
 
 def _legacy_print_vmtk_result(result: VmtkSurfacePrepareResult) -> None:

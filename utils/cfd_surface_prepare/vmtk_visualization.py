@@ -906,3 +906,142 @@ def save_crossseam_review_figures(
     if not all(path.is_file() and path.stat().st_size > 0 for path in paths):
         raise RuntimeError("Required cross-seam figures were not created")
     return tuple(path.resolve() for path in paths)
+
+
+def save_crossseam_resume_figures(
+    *,
+    raw_vtp: Path,
+    global_remesh_vtp: Path,
+    guarded_remesh_vtp: Path,
+    frozen_open_vtp: Path,
+    final_vtp: Path,
+    boundaries: Iterable[BoundaryInput],
+    hotspots: list[dict[str, object]],
+    output_directory: Path,
+) -> tuple[Path, ...]:
+    """Create exactly four figures for frozen-open post-QC continuation."""
+
+    output_directory.mkdir(parents=True, exist_ok=True)
+    boundary_list = list(boundaries)
+    global_remesh = pv.read(global_remesh_vtp).triangulate()
+    guarded = pv.read(guarded_remesh_vtp).triangulate()
+    frozen = pv.read(frozen_open_vtp).triangulate()
+    final = pv.read(final_vtp).triangulate()
+    seam_lines = _original_cut_seam_lines(pv.read(raw_vtp).triangulate())
+
+    three_way_path = output_directory / "seam_wireframe_three_way.png"
+    three_way = pv.Plotter(
+        shape=(4, 3), off_screen=True, window_size=(2400, 2400)
+    )
+    three_way.set_background("white")
+    surfaces = (
+        ("GLOBAL REMESH", global_remesh),
+        ("GUARDED ENTITY REMESH", guarded),
+        ("FROZEN CROSS-SEAM REMESH", frozen),
+    )
+    for row, boundary in enumerate(boundary_list):
+        for column, (label, data) in enumerate(surfaces):
+            three_way.subplot(row, column)
+            three_way.add_text(
+                f"{boundary.port_id.rsplit('__', 1)[-1]} | {label}",
+                color="black",
+                font_size=9,
+            )
+            _add_plain_surface(
+                three_way, _extension_local(data, boundary), wireframe=True
+            )
+            _camera(three_way, boundary)
+    three_way.show(screenshot=three_way_path, auto_close=True)
+
+    closeup_path = output_directory / "crossseam_interface_closeups.png"
+    closeups = pv.Plotter(
+        shape=(4, 1), off_screen=True, window_size=(1100, 2400)
+    )
+    closeups.set_background("white")
+    for row, boundary in enumerate(boundary_list):
+        closeups.subplot(row, 0)
+        closeups.add_text(
+            f"{boundary.port_id.rsplit('__', 1)[-1]} | frozen OPEN | red = original seam",
+            color="black",
+            font_size=10,
+        )
+        _add_plain_surface(closeups, _local(frozen, boundary), wireframe=True)
+        closeups.add_mesh(seam_lines, color="#e6194b", line_width=6)
+        _camera(closeups, boundary)
+        closeups.camera.parallel_scale = 2.8 * boundary.source_radius_um
+    closeups.show(screenshot=closeup_path, auto_close=True)
+
+    hotspot_path = output_directory / "active_collar_distance_hotspots.png"
+    displayed = hotspots[:10]
+    rows = 2
+    columns = 5
+    hotspot_plot = pv.Plotter(
+        shape=(rows, columns), off_screen=True, window_size=(2500, 1000)
+    )
+    hotspot_plot.set_background("white")
+    for index in range(rows * columns):
+        hotspot_plot.subplot(index // columns, index % columns)
+        if index >= len(displayed):
+            hotspot_plot.add_text("No hotspot", color="black", font_size=10)
+            continue
+        record = displayed[index]
+        sample = np.asarray(
+            (
+                record["sample_x_um"],
+                record["sample_y_um"],
+                record["sample_z_um"],
+            ),
+            dtype=float,
+        )
+        closest = np.asarray(
+            (
+                record["closest_x_um"],
+                record["closest_y_um"],
+                record["closest_z_um"],
+            ),
+            dtype=float,
+        )
+        boundary = next(
+            item for item in boundary_list if item.port_id == record["port_id"]
+        )
+        radius = max(1.5 * boundary.source_radius_um, 0.5)
+        _add_plain_surface(
+            hotspot_plot, _hotspot_local(frozen, sample, radius), wireframe=True
+        )
+        hotspot_plot.add_mesh(
+            pv.Sphere(max(0.035 * boundary.source_radius_um, 0.015), center=sample),
+            color="#e6194b",
+        )
+        hotspot_plot.add_mesh(
+            pv.Sphere(
+                max(0.035 * boundary.source_radius_um, 0.015), center=closest
+            ),
+            color="#3cb44b",
+        )
+        line = pv.Line(sample, closest)
+        hotspot_plot.add_mesh(line, color="#ffe119", line_width=5)
+        hotspot_plot.add_text(
+            f"#{record['rank']} | {float(record['distance_um']):.4g} um",
+            color="black",
+            font_size=9,
+        )
+        _hotspot_camera(hotspot_plot, sample, radius)
+    hotspot_plot.show(screenshot=hotspot_path, auto_close=True)
+
+    final_path = output_directory / "final_surface_review.png"
+    final_plot = pv.Plotter(off_screen=True, window_size=(1600, 1200))
+    final_plot.set_background("white")
+    final_plot.add_text(
+        "FINAL CAPPED CROSS-SEAM CFD SURFACE | MANUAL REVIEW REQUIRED",
+        color="black",
+        font_size=13,
+    )
+    _add_plain_surface(final_plot, final, wireframe=False)
+    final_plot.view_isometric()
+    final_plot.enable_parallel_projection()
+    final_plot.show(screenshot=final_path, auto_close=True)
+
+    paths = (three_way_path, closeup_path, hotspot_path, final_path)
+    if not all(path.is_file() and path.stat().st_size > 0 for path in paths):
+        raise RuntimeError("Required frozen cross-seam figures were not created")
+    return tuple(path.resolve() for path in paths)
