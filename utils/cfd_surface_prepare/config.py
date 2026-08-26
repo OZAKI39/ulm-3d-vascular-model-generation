@@ -34,6 +34,7 @@ class VmtkConfig:
     extension_ratio: float
     adaptive_extension_radius: bool
     adaptive_boundary_points: bool
+    postprocess_mode: str
     remesh_after_extension: bool
 
 
@@ -260,6 +261,7 @@ def load_surface_prepare_config(
             "extension_ratio",
             "adaptive_extension_radius",
             "adaptive_boundary_points",
+            "postprocess_mode",
             "remesh_after_extension",
         },
     )
@@ -291,9 +293,14 @@ def load_surface_prepare_config(
         "adaptive_extension_length",
         "adaptive_extension_radius",
         "adaptive_boundary_points",
-        "remesh_after_extension",
     ):
         _require(_boolean(vmtk[key], f"vmtk.{key}"), True, f"vmtk.{key}")
+    _require(vmtk["postprocess_mode"], "cap_only", "vmtk.postprocess_mode")
+    _require(
+        _boolean(vmtk["remesh_after_extension"], "vmtk.remesh_after_extension"),
+        False,
+        "vmtk.remesh_after_extension",
+    )
     _require(
         _number(vmtk["extension_ratio"], "vmtk.extension_ratio"),
         10.0,
@@ -573,7 +580,8 @@ def load_surface_prepare_config(
             extension_ratio=10.0,
             adaptive_extension_radius=True,
             adaptive_boundary_points=True,
-            remesh_after_extension=True,
+            postprocess_mode="cap_only",
+            remesh_after_extension=False,
         ),
         geometry=GeometryConfig(create_meter_copy=create_meter_copy),
         local_cut=LocalCutConfig(

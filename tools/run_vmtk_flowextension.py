@@ -131,6 +131,8 @@ def _run_extension(request: dict[str, object]) -> dict[str, object]:
 
 
 def _run_remesh_cap(request: dict[str, object]) -> dict[str, object]:
+    """LEGACY_GLOBAL_REMESH_REFERENCE_ONLY."""
+
     raw = _read_vtp(str(request["raw_vtp"]))
 
     remesher = vmtkscripts.vmtkSurfaceRemeshing()
@@ -167,6 +169,9 @@ def _run_remesh_cap(request: dict[str, object]) -> dict[str, object]:
     return {
         **_runtime(),
         "operation": "remesh_cap",
+        "legacy_capability": "LEGACY_GLOBAL_REMESH_REFERENCE_ONLY",
+        "surface_remesher_called": True,
+        "global_surface_remeshing_performed": True,
         "official_remesher": "vmtkscripts.vmtkSurfaceRemeshing",
         "official_capper": "vmtkscripts.vmtkSurfaceCapper",
         "raw_points": raw.GetNumberOfPoints(),
@@ -193,12 +198,65 @@ def _run_remesh_cap(request: dict[str, object]) -> dict[str, object]:
     }
 
 
+def _run_cap_only(request: dict[str, object]) -> dict[str, object]:
+    """Cap the official RAW flow-extension output without surface remeshing."""
+
+    raw = _read_vtp(str(request["raw_vtp"]))
+    capper = vmtkscripts.vmtkSurfaceCapper()
+    capper.Surface = raw
+    capper.Method = "simple"
+    capper.Interactive = 0
+    capper.TriangleOutput = 1
+    capper.CellEntityIdsArrayName = "CellEntityIds"
+    capper.CellEntityIdOffset = 1
+    capper.Execute()
+    capped = vtk.vtkPolyData()
+    capped.DeepCopy(capper.Surface)
+    _write_vtp(capped, str(request["capped_vtp"]))
+
+    entity_ids = capped.GetCellData().GetArray("CellEntityIds")
+    unique_entities: list[int] = []
+    wall_entity_id: int | None = None
+    cap_entity_ids: list[int] = []
+    if entity_ids is not None:
+        values = [
+            int(entity_ids.GetTuple1(index))
+            for index in range(capped.GetNumberOfCells())
+        ]
+        unique_entities = sorted(set(values))
+        wall_entity_id = max(unique_entities, key=values.count)
+        cap_entity_ids = [value for value in unique_entities if value != wall_entity_id]
+    return {
+        **_runtime(),
+        "operation": "cap_only",
+        "official_capper": "vmtkscripts.vmtkSurfaceCapper",
+        "surface_remesher_called": False,
+        "global_surface_remeshing_performed": False,
+        "raw_points": raw.GetNumberOfPoints(),
+        "raw_cells": raw.GetNumberOfCells(),
+        "capped_points": capped.GetNumberOfPoints(),
+        "capped_cells": capped.GetNumberOfCells(),
+        "cell_entity_ids": unique_entities,
+        "wall_entity_id": wall_entity_id,
+        "cap_entity_ids": cap_entity_ids,
+        "cap": {
+            "method": "simple",
+            "interactive": False,
+            "triangle_output": True,
+            "cell_entity_ids_array_name": "CellEntityIds",
+            "cell_entity_id_offset": 1,
+        },
+    }
+
+
 def _run(request: dict[str, object]) -> dict[str, object]:
     operation = str(request.get("operation", ""))
     if operation == "extension":
         return _run_extension(request)
     if operation == "remesh_cap":
         return _run_remesh_cap(request)
+    if operation == "cap_only":
+        return _run_cap_only(request)
     raise RuntimeError("INVALID_VMTK_OPERATION")
 
 

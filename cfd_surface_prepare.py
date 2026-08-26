@@ -20,8 +20,8 @@ DEFAULT_CONFIG = PROJECT_ROOT / "configs" / "cfd_surface_prepare.yaml"
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Create one official VMTK TPS flow-extension candidate without modifying "
-            "the original Ultraliser surface or creating a volume mesh."
+            "Create one official VMTK TPS boundary-normal candidate and directly "
+            "cap its RAW surface without global remeshing or a volume mesh."
         )
     )
     parser.add_argument(
@@ -52,6 +52,14 @@ def main() -> int:
             "BOUNDARY_NORMAL_INPUT_PLANE_MISMATCH",
             "VMTK_BOUNDARY_NORMAL_RAW_GEOMETRY_FAILED",
             "VMTK_BOUNDARY_NORMAL_FINAL_SURFACE_FAILED",
+            "INVALID_VMTK_POSTPROCESS_CONFIGURATION",
+            "VMTK_RAW_CORE_NOT_EXACT_COPY",
+            "VMTK_RAW_EXTENSION_MESH_QUALITY_FAILED",
+            "VMTK_RAW_DIRECT_CAP_FAILED",
+            "VMTK_CAPONLY_TOPOLOGY_FAILED",
+            "VMTK_CAPONLY_CORE_PRESERVATION_FAILED",
+            "VMTK_CAPONLY_RADIUS_FIDELITY_FAILED",
+            "VMTK_CAPONLY_BOUNDARY_MAPPING_FAILED",
             "ORIGINAL_ULTRALISER_GEOMETRY_MODIFIED",
         }
         failure = str(error).split(":", maxsplit=1)[0]
@@ -59,7 +67,7 @@ def main() -> int:
             failure = "VMTK_TPS_EXTENSION_FAILED"
         print(f"CFD surface preparation failed: {error}")
         print(f"Final status: {failure}")
-        print("NEXT: REVIEW VMTK BOUNDARY-NORMAL TPS FAILURE")
+        print("NEXT: REVIEW CAP-ONLY SURFACE FAILURE")
         return 1
 
 

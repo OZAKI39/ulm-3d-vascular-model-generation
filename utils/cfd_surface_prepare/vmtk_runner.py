@@ -90,7 +90,9 @@ def parameter_mapping(config: VmtkConfig) -> dict[str, Any]:
         "extension_ratio": config.extension_ratio,
         "adaptive_extension_radius": config.adaptive_extension_radius,
         "adaptive_boundary_points": config.adaptive_boundary_points,
+        "postprocess_mode": config.postprocess_mode,
         "remesh_after_extension": config.remesh_after_extension,
+        "global_surface_remeshing_performed": False,
         "automatic_fallback": False,
         "parameter_sweep": False,
         "custom_tps_implementation": False,
@@ -195,7 +197,7 @@ def promote_official_vmtk(
     tool_script: Path,
     target_edge_length_um: float,
 ) -> VmtkInvocationResult:
-    """Remesh and cap a RAW candidate only after project-side hard QC passes."""
+    """LEGACY_GLOBAL_REMESH_REFERENCE_ONLY: remesh and cap a RAW candidate."""
 
     if not config.environment_python.is_file() or not paths.raw_vtp.is_file():
         raise SurfacePrepareError("VMTK_ENVIRONMENT_BLOCKED")
@@ -237,6 +239,55 @@ def promote_official_vmtk(
     return VmtkInvocationResult(command, request, runtime)
 
 
+def cap_official_vmtk(
+    *,
+    config: VmtkConfig,
+    paths: VmtkExchangePaths,
+    tool_script: Path,
+) -> VmtkInvocationResult:
+    """Directly cap one RAW candidate with the official VMTK capper."""
+
+    if config.postprocess_mode != "cap_only" or config.remesh_after_extension:
+        raise SurfacePrepareError("INVALID_VMTK_POSTPROCESS_CONFIGURATION")
+    if not config.environment_python.is_file() or not paths.raw_vtp.is_file():
+        raise SurfacePrepareError("VMTK_ENVIRONMENT_BLOCKED")
+    request: dict[str, Any] = {
+        "operation": "cap_only",
+        "raw_vtp": str(paths.raw_vtp.resolve()),
+        "capped_vtp": str(paths.capped_vtp.resolve()),
+    }
+    paths.promotion_request_json.write_text(
+        json.dumps(request, indent=2), encoding="utf-8"
+    )
+    command = (
+        str(config.environment_python.resolve()),
+        str(tool_script.resolve()),
+        "--request",
+        str(paths.promotion_request_json.resolve()),
+        "--result",
+        str(paths.promotion_result_json.resolve()),
+    )
+    completed = subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=_vmtk_process_environment(config),
+    )
+    paths.promotion_stdout_log.write_text(completed.stdout, encoding="utf-8")
+    paths.promotion_stderr_log.write_text(completed.stderr, encoding="utf-8")
+    if completed.returncode != 0 or not paths.promotion_result_json.is_file():
+        raise SurfacePrepareError("VMTK_RAW_DIRECT_CAP_FAILED")
+    runtime = json.loads(paths.promotion_result_json.read_text(encoding="utf-8"))
+    if runtime.get("status") != "PASS" or not paths.capped_vtp.is_file():
+        raise SurfacePrepareError("VMTK_RAW_DIRECT_CAP_FAILED")
+    if runtime.get("surface_remesher_called") is not False:
+        raise SurfacePrepareError("VMTK_RAW_DIRECT_CAP_FAILED:remesher_called")
+    return VmtkInvocationResult(command, request, runtime)
+
+
 def exchange_paths(
     *,
     input_directory: Path,
@@ -253,13 +304,13 @@ def exchange_paths(
         raw_vtp=geometry_directory / f"vmtk_{mode_label}_raw_um.vtp",
         raw_stl=geometry_directory / f"vmtk_{mode_label}_raw_um.stl",
         remeshed_open_vtp=vmtk_directory / f"vmtk_{mode_label}_remeshed_open_um.vtp",
-        capped_vtp=vmtk_directory / f"vmtk_{mode_label}_remeshed_capped_um.vtp",
+        capped_vtp=vmtk_directory / f"vmtk_{mode_label}_capped_um.vtp",
         request_json=vmtk_directory / "request.json",
-        promotion_request_json=vmtk_directory / "promotion_request.json",
+        promotion_request_json=vmtk_directory / "cap_request.json",
         result_json=vmtk_directory / "extension_environment.json",
-        promotion_result_json=vmtk_directory / "promotion_environment.json",
+        promotion_result_json=vmtk_directory / "cap_environment.json",
         stdout_log=vmtk_directory / "stdout.log",
         stderr_log=vmtk_directory / "stderr.log",
-        promotion_stdout_log=vmtk_directory / "promotion_stdout.log",
-        promotion_stderr_log=vmtk_directory / "promotion_stderr.log",
+        promotion_stdout_log=vmtk_directory / "cap_stdout.log",
+        promotion_stderr_log=vmtk_directory / "cap_stderr.log",
     )

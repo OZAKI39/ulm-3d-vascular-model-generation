@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -13,12 +14,14 @@ import numpy as np
 import pyvista as pv
 import trimesh
 from scipy.optimize import linear_sum_assignment
+from scipy.spatial import cKDTree
 
 from utils.cfd_lumen.ultraliser_qc import _section_polygon, _triangle_intersections
 
+from .config import LocalCutConfig, MeshQualityConfig
 from .io import BoundaryInput, SurfacePrepareError
 from .local_cut import orthogonal_basis
-from .mesh_quality import triangle_metrics
+from .mesh_quality import summarize_extension_mesh, triangle_metrics
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +52,86 @@ def polydata_mesh(path: Path) -> tuple[pv.PolyData, trimesh.Trimesh]:
         vertices=np.asarray(data.points, dtype=float), faces=faces, process=False
     )
     return data, mesh
+
+
+def _faces(data: pv.PolyData) -> np.ndarray:
+    return np.asarray(data.faces, dtype=np.int64).reshape((-1, 4))[:, 1:]
+
+
+def _output_precision_tolerance(points: np.ndarray) -> float:
+    values = np.asarray(points)
+    spacing = np.abs(np.spacing(values))
+    maximum = float(np.max(spacing)) if spacing.size else 0.0
+    return max(np.sqrt(3.0) * maximum, np.finfo(float).eps)
+
+
+def raw_core_exact_copy_qc(
+    input_vtp: Path,
+    raw_vtp: Path,
+    *,
+    tag_regions: bool = True,
+) -> dict[str, Any]:
+    """Prove that VMTK only appends geometry, allowing its float output ULP."""
+
+    source = pv.read(input_vtp).triangulate()
+    raw = pv.read(raw_vtp).triangulate()
+    source_faces = _faces(source)
+    raw_faces = _faces(raw)
+    point_count = source.n_points
+    cell_count = source.n_cells
+    counts_valid = raw.n_points >= point_count and raw.n_cells >= cell_count
+    if counts_valid:
+        source_points = np.asarray(source.points, dtype=float)
+        retained = np.asarray(raw.points[:point_count])
+        motion = np.linalg.norm(retained.astype(float) - source_points, axis=1)
+        cast_source = np.asarray(source.points).astype(retained.dtype, copy=False)
+        exact_after_cast = bool(np.array_equal(retained, cast_source))
+        connectivity_changed = int(
+            np.count_nonzero(np.any(raw_faces[:cell_count] != source_faces, axis=1))
+        )
+        tolerance = _output_precision_tolerance(retained)
+        maximum = float(np.max(motion)) if len(motion) else float("inf")
+        p95 = float(np.percentile(motion, 95)) if len(motion) else float("inf")
+    else:
+        exact_after_cast = False
+        connectivity_changed = max(cell_count, 1)
+        tolerance = 0.0
+        maximum = float("inf")
+        p95 = float("inf")
+    checks = {
+        "raw_appends_points_and_cells": counts_valid,
+        "retained_points_exact_after_output_dtype_cast": exact_after_cast,
+        "retained_point_motion_within_output_machine_precision": maximum <= tolerance,
+        "original_input_cell_connectivity_unchanged": connectivity_changed == 0,
+    }
+    passed = all(checks.values())
+    if tag_regions and passed:
+        region = np.ones(raw.n_cells, dtype=np.uint8)
+        region[:cell_count] = 0
+        raw.cell_data["SurfaceRegionId"] = region
+        raw.cell_data["SurfaceRegion"] = np.where(
+            region == 0, "CORE", "EXTENSION"
+        )
+        raw.save(raw_vtp, binary=True)
+    return {
+        "status": "PASS" if passed else "FAIL",
+        "checks": checks,
+        "input_point_count": int(point_count),
+        "raw_point_count": int(raw.n_points),
+        "input_cell_count": int(cell_count),
+        "raw_cell_count": int(raw.n_cells),
+        "retained_input_point_max_motion_um": maximum,
+        "retained_input_point_P95_motion_um": p95,
+        "original_input_cell_connectivity_changed_count": connectivity_changed,
+        "new_extension_point_count": int(raw.n_points - point_count),
+        "new_extension_cell_count": int(raw.n_cells - cell_count),
+        "input_point_dtype": str(np.asarray(source.points).dtype),
+        "raw_point_dtype": str(np.asarray(raw.points).dtype),
+        "machine_precision_tolerance_um": tolerance,
+        "retained_points_exact_after_output_dtype_cast": exact_after_cast,
+        "classification_method": "validated input cell/point prefix ordering",
+        "surface_region_codes": {"CORE": 0, "EXTENSION": 1},
+    }
 
 
 def _ordered_component(graph: nx.Graph, component: set[int]) -> np.ndarray:
@@ -200,6 +283,7 @@ def topology_qc(
     *,
     expected_open_profile_count: int,
     allow_degenerate: bool = False,
+    require_winding_consistent: bool = False,
 ) -> tuple[dict[str, Any], list[tuple[int, int]]]:
     sorted_edges = np.sort(np.asarray(mesh.edges, dtype=np.int64), axis=1)
     _, edge_counts = np.unique(sorted_edges, axis=0, return_counts=True)
@@ -234,6 +318,9 @@ def topology_qc(
         "zero_nonmanifold_edges": assessment_nonmanifold == 0,
         "zero_self_intersections": len(intersections) == 0,
         "zero_degenerate_triangles": degenerate == 0 or allow_degenerate,
+        "winding_consistent": (
+            not require_winding_consistent or bool(mesh.is_winding_consistent)
+        ),
     }
     return {
         "status": "PASS" if all(checks.values()) else "FAIL",
@@ -243,6 +330,7 @@ def topology_qc(
         "component_count": components,
         "assessment_component_count_excluding_official_raw_degenerates": assessment_components,
         "watertight": bool(mesh.is_watertight),
+        "winding_consistent": bool(mesh.is_winding_consistent),
         "boundary_edge_count": boundary_edges,
         "open_profile_count": len(loops),
         "nonmanifold_edge_count": nonmanifold,
@@ -472,6 +560,124 @@ def extension_mesh_metrics(
     return {"boundaries": rows}
 
 
+def extension_mesh_quality_from_raw(
+    raw_vtp: Path,
+    boundaries: Iterable[BoundaryInput],
+    *,
+    local_target_edge_um: dict[int, float],
+    quality: MeshQualityConfig,
+    input_point_count: int,
+) -> dict[str, Any]:
+    """Apply the existing project mesh-quality rules to RAW extension cells only."""
+
+    data, mesh = polydata_mesh(raw_vtp)
+    if "SurfaceRegionId" not in data.cell_data:
+        raise SurfacePrepareError("VMTK_RAW_CORE_NOT_EXACT_COPY:regions_missing")
+    region = np.asarray(data.cell_data["SurfaceRegionId"], dtype=np.uint8)
+    extension_ids = np.flatnonzero(region == 1)
+    if len(extension_ids) == 0:
+        raise SurfacePrepareError("VMTK_RAW_EXTENSION_MESH_QUALITY_FAILED")
+    boundary_list = list(boundaries)
+    centers = np.asarray(mesh.triangles_center, dtype=float)[extension_ids]
+    scores: list[np.ndarray] = []
+    for boundary in boundary_list:
+        relative = centers - boundary.center_um
+        axial = relative @ boundary.outward_normal
+        radial = np.linalg.norm(
+            relative - np.outer(axial, boundary.outward_normal), axis=1
+        )
+        before = np.maximum(-axial, 0.0)
+        after = np.maximum(axial - boundary.extension_length_um, 0.0)
+        scores.append(
+            (radial / boundary.source_radius_um) ** 2
+            + ((before + after) / boundary.source_radius_um) ** 2
+        )
+    assignment = np.argmin(np.column_stack(scores), axis=1)
+    rows: list[dict[str, Any]] = []
+    faces = np.asarray(mesh.faces, dtype=np.int64)
+    for local_index, boundary in enumerate(boundary_list):
+        selected_ids = extension_ids[assignment == local_index]
+        selected_faces = faces[selected_ids]
+        target = float(local_target_edge_um[boundary.index])
+        summary = summarize_extension_mesh(
+            np.asarray(mesh.vertices, dtype=float),
+            selected_faces,
+            target_edge_length_um=target,
+            local_original_median_edge_length_um=target,
+            quality=quality,
+        )
+        interface_mask = np.any(selected_faces < input_point_count, axis=1)
+        if np.any(interface_mask):
+            interface = triangle_metrics(
+                np.asarray(mesh.vertices, dtype=float), selected_faces[interface_mask]
+            )
+            interface_ratio = float(np.median(interface.edge_lengths) / target)
+        else:
+            interface_ratio = float("inf")
+        finite = all(
+            np.isfinite(value)
+            for value in summary.values()
+            if isinstance(value, float)
+        ) and np.isfinite(interface_ratio)
+        checks = {
+            "finite_metrics": bool(finite),
+            "bad_triangle_fraction": (
+                summary["bad_triangle_fraction"]
+                <= quality.maximum_bad_triangle_fraction
+            ),
+            "neighbor_area_ratio_p95": (
+                summary["neighbor_area_ratio_p95"]
+                <= quality.maximum_neighbor_area_ratio
+            ),
+            "interface_edge_length_ratio": (
+                interface_ratio <= quality.maximum_interface_edge_length_ratio
+            ),
+        }
+        rows.append(
+            {
+                "boundary_index": boundary.index,
+                "port_id": boundary.port_id,
+                "role": boundary.role,
+                "triangle_count": int(len(selected_faces)),
+                "minimum_angle_deg": summary["minimum_triangle_angle_deg"],
+                "angle_P05_deg": summary["triangle_angle_p05_deg"],
+                "aspect_ratio_median": summary["aspect_ratio_median"],
+                "aspect_ratio_P95": summary["aspect_ratio_p95"],
+                "aspect_ratio_max": summary["aspect_ratio_max"],
+                "edge_length_median_um": summary["edge_length_median_um"],
+                "edge_length_P95_um": summary["edge_length_p95_um"],
+                "bad_triangle_fraction": summary["bad_triangle_fraction"],
+                "neighbor_area_ratio_P95": summary["neighbor_area_ratio_p95"],
+                "interface_edge_length_ratio": interface_ratio,
+                "local_original_target_edge_um": target,
+                "checks": checks,
+                "status": "PASS" if all(checks.values()) else "FAIL",
+            }
+        )
+    return {
+        "status": (
+            "PASS"
+            if len(rows) == len(boundary_list)
+            and all(row["status"] == "PASS" for row in rows)
+            else "FAIL"
+        ),
+        "scope": "SurfaceRegionId == EXTENSION only",
+        "thresholds": {
+            "minimum_triangle_angle_deg": quality.minimum_triangle_angle_deg,
+            "maximum_aspect_ratio": quality.maximum_aspect_ratio,
+            "maximum_edge_length_to_local_target_ratio": (
+                quality.maximum_edge_length_to_local_target_ratio
+            ),
+            "maximum_neighbor_area_ratio": quality.maximum_neighbor_area_ratio,
+            "maximum_interface_edge_length_ratio": (
+                quality.maximum_interface_edge_length_ratio
+            ),
+            "maximum_bad_triangle_fraction": quality.maximum_bad_triangle_fraction,
+        },
+        "boundaries": rows,
+    }
+
+
 def tag_and_export_final_surface(
     capped_vtp: Path,
     boundaries: Iterable[BoundaryInput],
@@ -479,6 +685,7 @@ def tag_and_export_final_surface(
     boundary_directory: Path,
     *,
     output_stem: str = "cfd_surface_vmtk_tps_boundarynormal",
+    raw_vtp: Path | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     geometry_directory.mkdir(parents=True, exist_ok=True)
     data = pv.read(capped_vtp).triangulate()
@@ -506,6 +713,36 @@ def tag_and_export_final_surface(
     origin = np.full(len(faces), "WALL", dtype="<U16")
     port_width = max(len(boundary.port_id) for boundary in boundary_list)
     port_id = np.full(len(faces), "", dtype=f"<U{port_width}")
+    surface_region_id = np.full(len(faces), 2, dtype=np.uint8)
+    preserved_raw_triangle_count = 0
+    missing_raw_triangle_count = 0
+    if raw_vtp is not None:
+        raw = pv.read(raw_vtp).triangulate()
+        if "SurfaceRegionId" not in raw.cell_data:
+            raise SurfacePrepareError("VMTK_RAW_CORE_NOT_EXACT_COPY:regions_missing")
+        raw_faces = _faces(raw)
+        raw_regions = np.asarray(raw.cell_data["SurfaceRegionId"], dtype=np.uint8)
+
+        def key(points: np.ndarray, face: np.ndarray) -> tuple[tuple[float, ...], ...]:
+            return tuple(
+                sorted(tuple(float(value) for value in point) for point in points[face])
+            )
+
+        available: dict[tuple[tuple[float, ...], ...], list[int]] = defaultdict(list)
+        raw_points = np.asarray(raw.points)
+        for raw_id, raw_face in enumerate(raw_faces):
+            available[key(raw_points, raw_face)].append(int(raw_regions[raw_id]))
+        capped_points = np.asarray(data.points)
+        for face_id, face in enumerate(faces):
+            values = available.get(key(capped_points, face))
+            if values:
+                surface_region_id[face_id] = values.pop()
+                preserved_raw_triangle_count += 1
+        missing_raw_triangle_count = sum(len(values) for values in available.values())
+        if missing_raw_triangle_count or preserved_raw_triangle_count != len(raw_faces):
+            raise SurfacePrepareError("VMTK_CAPONLY_CORE_PRESERVATION_FAILED")
+    else:
+        surface_region_id[entity == wall_entity_id] = 0
     mapping_rows: list[dict[str, Any]] = []
     boundary_paths: list[str] = []
     boundary_directory.mkdir(parents=True, exist_ok=True)
@@ -544,6 +781,10 @@ def tag_and_export_final_surface(
     data.cell_data["boundary_origin_code"] = origin_code
     data.cell_data["boundary_origin"] = origin
     data.cell_data["port_id"] = port_id
+    data.cell_data["SurfaceRegionId"] = surface_region_id
+    data.cell_data["SurfaceRegion"] = np.asarray(
+        ["CORE", "EXTENSION", "CAP"], dtype="<U9"
+    )[surface_region_id]
     tagged_vtp = geometry_directory / f"{output_stem}_um.vtp"
     tagged_stl = geometry_directory / f"{output_stem}_um.stl"
     meter_stl = geometry_directory / f"{output_stem}_m.stl"
@@ -581,14 +822,452 @@ def tag_and_export_final_surface(
         "boundary_stl_paths": boundary_paths,
         "boundary_manifest_csv": str(manifest.resolve()),
     }
+    one_inlet = sum(row["role"] == "ASSUMED_INLET" for row in mapping_rows) == 1
+    expected_outlets = (
+        sum(row["role"] == "ASSUMED_OUTLET" for row in mapping_rows)
+        == len(boundary_list) - 1
+    )
     report = {
-        "status": "PASS",
+        "status": (
+            "PASS"
+            if len(cap_ids) == len(boundary_list)
+            and (raw_vtp is None or missing_raw_triangle_count == 0)
+            and one_inlet
+            and expected_outlets
+            else "FAIL"
+        ),
         "mapping_method": "one-to-one nearest predicted extension end",
         "wall_entity_id": wall_entity_id,
         "distal_boundary_count": len(cap_ids),
+        "one_inlet": one_inlet,
+        "three_outlets": sum(
+            row["role"] == "ASSUMED_OUTLET" for row in mapping_rows
+        )
+        == 3,
+        "expected_outlet_count": expected_outlets,
+        "raw_noncap_triangle_count": preserved_raw_triangle_count,
+        "raw_noncap_triangle_missing_count": missing_raw_triangle_count,
+        "surface_region_codes": {"CORE": 0, "EXTENSION": 1, "CAP": 2},
         "boundaries": sorted(mapping_rows, key=lambda row: int(row["boundary_index"])),
     }
     return outputs, report
+
+
+def _outside_local_zones(
+    points: np.ndarray,
+    boundaries: Iterable[BoundaryInput],
+    local: LocalCutConfig,
+    *,
+    exclude_full_extensions: bool = False,
+) -> np.ndarray:
+    keep = np.ones(len(points), dtype=bool)
+    for boundary in boundaries:
+        relative = np.asarray(points, dtype=float) - boundary.center_um
+        axial = relative @ boundary.outward_normal
+        radial = np.linalg.norm(
+            relative - np.outer(axial, boundary.outward_normal), axis=1
+        )
+        upper = (
+            1.1 * boundary.extension_length_um
+            if exclude_full_extensions
+            else local.local_axial_forward_radius_factor * boundary.source_radius_um
+        )
+        in_zone = (
+            (radial <= local.local_radial_radius_factor * boundary.source_radius_um)
+            & (
+                axial
+                >= -local.local_axial_back_radius_factor
+                * boundary.source_radius_um
+            )
+            & (axial <= upper)
+        )
+        keep &= ~in_zone
+    return keep
+
+
+def _distance_summary(values: np.ndarray) -> dict[str, float]:
+    distances = np.asarray(values, dtype=float)
+    if len(distances) == 0:
+        return {key: float("inf") for key in ("P50_um", "P95_um", "P99_um", "max_um")}
+    return {
+        "P50_um": float(np.percentile(distances, 50)),
+        "P95_um": float(np.percentile(distances, 95)),
+        "P99_um": float(np.percentile(distances, 99)),
+        "max_um": float(np.max(distances)),
+    }
+
+
+def _angle_summary(values: np.ndarray) -> dict[str, float]:
+    angles = np.asarray(values, dtype=float)
+    if len(angles) == 0:
+        return {key: float("inf") for key in ("P50_deg", "P95_deg", "P99_deg", "max_deg")}
+    return {
+        "P50_deg": float(np.percentile(angles, 50)),
+        "P95_deg": float(np.percentile(angles, 95)),
+        "P99_deg": float(np.percentile(angles, 99)),
+        "max_deg": float(np.max(angles)),
+    }
+
+
+def _triangle_key(
+    points: np.ndarray, face: np.ndarray
+) -> tuple[tuple[float, ...], ...]:
+    return tuple(
+        sorted(tuple(float(value) for value in point) for point in points[face])
+    )
+
+
+def _face_lookup(
+    points: np.ndarray, faces: np.ndarray, face_ids: np.ndarray
+) -> dict[tuple[tuple[float, ...], ...], list[int]]:
+    lookup: dict[tuple[tuple[float, ...], ...], list[int]] = defaultdict(list)
+    for face_id in face_ids:
+        lookup[_triangle_key(points, faces[int(face_id)])].append(int(face_id))
+    return lookup
+
+
+def core_exact_preservation_qc(
+    original: trimesh.Trimesh,
+    final_vtp: Path,
+    boundaries: Iterable[BoundaryInput],
+    local: LocalCutConfig,
+) -> dict[str, Any]:
+    """Verify original vertices and triangles outside surgery zones exactly."""
+
+    data, final_mesh = polydata_mesh(final_vtp)
+    region = np.asarray(data.cell_data["SurfaceRegionId"], dtype=np.uint8)
+    final_faces = np.asarray(final_mesh.faces, dtype=np.int64)
+    core_face_ids = np.flatnonzero(region == 0)
+    final_points = np.asarray(data.points)
+    original_points = np.asarray(original.vertices, dtype=float)
+    original_faces = np.asarray(original.faces, dtype=np.int64)
+    keep_vertices = _outside_local_zones(
+        original_points, boundaries, local, exclude_full_extensions=False
+    )
+    keep_faces = _outside_local_zones(
+        original_points[original_faces].mean(axis=1),
+        boundaries,
+        local,
+        exclude_full_extensions=False,
+    )
+    cast_original = original_points.astype(final_points.dtype, copy=False)
+    lookup = _face_lookup(final_points, final_faces, core_face_ids)
+    missing = 0
+    for face_id in np.flatnonzero(keep_faces):
+        values = lookup.get(_triangle_key(cast_original, original_faces[face_id]))
+        if values:
+            values.pop()
+        else:
+            missing += 1
+    used_core_vertices = np.unique(final_faces[core_face_ids])
+    tree = cKDTree(final_points[used_core_vertices].astype(float))
+    motion, _ = tree.query(original_points[keep_vertices], k=1)
+    cast_motion, _ = tree.query(cast_original[keep_vertices].astype(float), k=1)
+    tolerance = _output_precision_tolerance(final_points)
+    maximum = float(np.max(motion)) if len(motion) else float("inf")
+    p95 = float(np.percentile(motion, 95)) if len(motion) else float("inf")
+    cast_maximum = float(np.max(cast_motion)) if len(cast_motion) else float("inf")
+    checks = {
+        "retained_original_vertices_available": bool(np.any(keep_vertices)),
+        "retained_original_vertex_motion_within_output_machine_precision": (
+            maximum <= tolerance
+        ),
+        "retained_vertices_exact_after_output_dtype_cast": cast_maximum == 0.0,
+        "core_triangle_connectivity_unchanged": missing == 0,
+    }
+    return {
+        "status": "PASS" if all(checks.values()) else "FAIL",
+        "checks": checks,
+        "retained_original_vertex_count": int(np.count_nonzero(keep_vertices)),
+        "retained_original_vertex_max_motion_um": maximum,
+        "retained_original_vertex_P95_motion_um": p95,
+        "retained_original_vertex_max_motion_after_output_dtype_cast_um": cast_maximum,
+        "machine_precision_tolerance_um": tolerance,
+        "core_triangle_count_checked": int(np.count_nonzero(keep_faces)),
+        "core_triangle_connectivity_changed_count": int(missing),
+        "final_core_triangle_count": int(len(core_face_ids)),
+        "final_point_dtype": str(final_points.dtype),
+    }
+
+
+def core_symmetric_distance_qc(
+    original: trimesh.Trimesh,
+    final_vtp: Path,
+    boundaries: Iterable[BoundaryInput],
+    local: LocalCutConfig,
+) -> dict[str, Any]:
+    """Measure both directions so final-only spikes cannot be hidden."""
+
+    data, final_mesh = polydata_mesh(final_vtp)
+    region = np.asarray(data.cell_data["SurfaceRegionId"], dtype=np.uint8)
+    original_points = np.asarray(original.vertices, dtype=float)
+    original_faces = np.asarray(original.faces, dtype=np.int64)
+    original_face_keep = _outside_local_zones(
+        original_points[original_faces].mean(axis=1), boundaries, local
+    )
+    original_core = trimesh.Trimesh(
+        vertices=original_points,
+        faces=original_faces[original_face_keep],
+        process=False,
+    )
+    final_faces = np.asarray(final_mesh.faces, dtype=np.int64)
+    final_centers = np.asarray(final_mesh.triangles_center, dtype=float)
+    final_face_keep = (region == 0) & _outside_local_zones(
+        final_centers, boundaries, local
+    )
+    final_core = trimesh.Trimesh(
+        vertices=np.asarray(final_mesh.vertices, dtype=float),
+        faces=final_faces[final_face_keep],
+        process=False,
+    )
+    original_vertex_ids = np.unique(original_core.faces)
+    final_vertex_ids = np.unique(final_core.faces)
+    original_samples = np.vstack(
+        (original_core.vertices[original_vertex_ids], original_core.triangles_center)
+    )
+    final_samples = np.vstack(
+        (final_core.vertices[final_vertex_ids], final_core.triangles_center)
+    )
+    _, forward, _ = trimesh.proximity.closest_point(final_core, original_samples)
+    _, reverse, _ = trimesh.proximity.closest_point(original_core, final_samples)
+    forward_report = _distance_summary(forward)
+    reverse_report = _distance_summary(reverse)
+    tolerance = _output_precision_tolerance(np.asarray(data.points))
+    symmetric_max = max(forward_report["max_um"], reverse_report["max_um"])
+    return {
+        "status": "PASS" if symmetric_max <= tolerance else "FAIL",
+        "method": "bidirectional vertex-plus-face-center closest surface distance",
+        "original_core_to_caponly_final_core": forward_report,
+        "caponly_final_core_to_original_core": reverse_report,
+        "symmetric_max_um": symmetric_max,
+        "machine_precision_tolerance_um": tolerance,
+        "original_sample_count": int(len(original_samples)),
+        "final_sample_count": int(len(final_samples)),
+    }
+
+
+def _inconsistent_adjacent_orientation_count(faces: np.ndarray) -> int:
+    edge_faces: dict[tuple[int, int], list[tuple[int, int]]] = defaultdict(list)
+    for face_id, face in enumerate(np.asarray(faces, dtype=np.int64)):
+        for first, second in zip(face, np.roll(face, -1)):
+            key = tuple(sorted((int(first), int(second))))
+            direction = 1 if (int(first), int(second)) == key else -1
+            edge_faces[key].append((face_id, direction))
+    return sum(
+        1
+        for linked in edge_faces.values()
+        if len(linked) == 2 and linked[0][1] == linked[1][1]
+    )
+
+
+def normal_consistency_qc(
+    original: trimesh.Trimesh,
+    final_vtp: Path,
+    boundaries: Iterable[BoundaryInput],
+    local: LocalCutConfig,
+) -> dict[str, Any]:
+    data, final_mesh = polydata_mesh(final_vtp)
+    faces = np.asarray(final_mesh.faces, dtype=np.int64)
+    adjacency = np.asarray(final_mesh.face_adjacency, dtype=np.int64)
+    adjacent_dots = np.sum(
+        final_mesh.face_normals[adjacency[:, 0]]
+        * final_mesh.face_normals[adjacency[:, 1]],
+        axis=1,
+    )
+    adjacent_angles = np.degrees(
+        np.arccos(np.clip(adjacent_dots, -1.0, 1.0))
+    )
+    region = np.asarray(data.cell_data["SurfaceRegionId"], dtype=np.uint8)
+    core_ids = np.flatnonzero(region == 0)
+    original_points = np.asarray(original.vertices, dtype=float)
+    original_faces = np.asarray(original.faces, dtype=np.int64)
+    keep = _outside_local_zones(
+        original_points[original_faces].mean(axis=1), boundaries, local
+    )
+    final_points = np.asarray(data.points)
+    cast_original = original_points.astype(final_points.dtype, copy=False)
+    lookup = _face_lookup(final_points, faces, core_ids)
+    cast_mesh = trimesh.Trimesh(
+        vertices=cast_original.astype(float), faces=original_faces, process=False
+    )
+    source_angles: list[float] = []
+    cast_angles: list[float] = []
+    cast_normal_differences: list[float] = []
+    missing = 0
+    for source_id in np.flatnonzero(keep):
+        values = lookup.get(_triangle_key(cast_original, original_faces[source_id]))
+        if not values:
+            missing += 1
+            continue
+        final_id = values.pop()
+        for output, source_normal in (
+            (source_angles, original.face_normals[source_id]),
+            (cast_angles, cast_mesh.face_normals[source_id]),
+        ):
+            dot = float(
+                np.clip(np.dot(source_normal, final_mesh.face_normals[final_id]), -1.0, 1.0)
+            )
+            output.append(float(np.degrees(np.arccos(dot))))
+        cast_normal_differences.append(
+            float(
+                np.max(
+                    np.abs(
+                        cast_mesh.face_normals[source_id]
+                        - final_mesh.face_normals[final_id]
+                    )
+                )
+            )
+        )
+    source_array = np.asarray(source_angles, dtype=float)
+    cast_array = np.asarray(cast_angles, dtype=float)
+    source_report = _angle_summary(source_array)
+    cast_report = _angle_summary(cast_array)
+    cast_normal_max_difference = (
+        float(np.max(cast_normal_differences))
+        if cast_normal_differences
+        else float("inf")
+    )
+    cast_exact = cast_normal_max_difference <= 1.0e-12
+    inconsistent = _inconsistent_adjacent_orientation_count(faces)
+    checks = {
+        "winding_consistent": bool(final_mesh.is_winding_consistent),
+        "zero_flipped_or_opposing_adjacent_faces": inconsistent == 0,
+        "core_face_correspondence_complete": missing == 0,
+        "core_normals_exact_after_output_dtype_cast": cast_exact,
+    }
+    adjacent_report = _angle_summary(adjacent_angles)
+    return {
+        "status": "PASS" if all(checks.values()) else "FAIL",
+        "checks": checks,
+        "winding_consistent": bool(final_mesh.is_winding_consistent),
+        "flipped_or_opposing_adjacent_face_count": int(inconsistent),
+        "adjacent_normal_jump_P50_deg": adjacent_report["P50_deg"],
+        "adjacent_normal_jump_P95_deg": adjacent_report["P95_deg"],
+        "adjacent_normal_jump_P99_deg": adjacent_report["P99_deg"],
+        "adjacent_normal_jump_max_deg": adjacent_report["max_deg"],
+        "core_normal_deviation_P50_deg": source_report["P50_deg"],
+        "core_normal_deviation_P95_deg": source_report["P95_deg"],
+        "core_normal_deviation_P99_deg": source_report["P99_deg"],
+        "core_normal_deviation_max_deg": source_report["max_deg"],
+        "core_normal_after_output_dtype_cast_P50_deg": cast_report["P50_deg"],
+        "core_normal_after_output_dtype_cast_P95_deg": cast_report["P95_deg"],
+        "core_normal_after_output_dtype_cast_P99_deg": cast_report["P99_deg"],
+        "core_normal_after_output_dtype_cast_max_deg": cast_report["max_deg"],
+        "core_normal_after_output_dtype_cast_max_vector_difference": (
+            cast_normal_max_difference
+        ),
+        "core_face_correspondence_missing_count": int(missing),
+    }
+
+
+def previous_global_remesh_diagnostics(
+    original: trimesh.Trimesh,
+    previous_final_vtp: Path,
+    boundaries: Iterable[BoundaryInput],
+    local: LocalCutConfig,
+    *,
+    hotspot_count: int = 8,
+) -> dict[str, Any]:
+    """Diagnose prior global-remesh changes outside all boundary surgery zones."""
+
+    data, previous = polydata_mesh(previous_final_vtp)
+    faces = np.asarray(previous.faces, dtype=np.int64)
+    centers = np.asarray(previous.triangles_center, dtype=float)
+    wall = (
+        np.asarray(data.cell_data["boundary_type_code"], dtype=np.uint8) == 0
+        if "boundary_type_code" in data.cell_data
+        else np.ones(len(faces), dtype=bool)
+    )
+    previous_keep = wall & _outside_local_zones(
+        centers,
+        boundaries,
+        local,
+        exclude_full_extensions=True,
+    )
+    previous_ids = np.flatnonzero(previous_keep)
+    previous_core = trimesh.Trimesh(
+        vertices=np.asarray(previous.vertices, dtype=float),
+        faces=faces[previous_keep],
+        process=False,
+    )
+    original_points = np.asarray(original.vertices, dtype=float)
+    original_faces = np.asarray(original.faces, dtype=np.int64)
+    original_keep = _outside_local_zones(
+        original_points[original_faces].mean(axis=1), boundaries, local
+    )
+    original_core = trimesh.Trimesh(
+        vertices=original_points, faces=original_faces[original_keep], process=False
+    )
+    original_vertex_ids = np.unique(original_core.faces)
+    previous_vertex_ids = np.unique(previous_core.faces)
+    original_samples = np.vstack(
+        (original_core.vertices[original_vertex_ids], original_core.triangles_center)
+    )
+    previous_samples = np.vstack(
+        (previous_core.vertices[previous_vertex_ids], previous_core.triangles_center)
+    )
+    _, forward, _ = trimesh.proximity.closest_point(previous_core, original_samples)
+    _, reverse, _ = trimesh.proximity.closest_point(original_core, previous_samples)
+    forward_report = _distance_summary(forward)
+    reverse_report = _distance_summary(reverse)
+
+    selected_centers = centers[previous_keep]
+    _, center_distances, nearest_original = trimesh.proximity.closest_point(
+        original, selected_centers
+    )
+    normal_dots = np.sum(
+        previous.face_normals[previous_ids]
+        * original.face_normals[np.asarray(nearest_original, dtype=np.int64)],
+        axis=1,
+    )
+    normal_angles = np.degrees(np.arccos(np.clip(normal_dots, -1.0, 1.0)))
+    normal_report = _angle_summary(normal_angles)
+    distance_scale = max(float(np.percentile(center_distances, 99)), 1.0e-15)
+    normal_scale = max(float(np.percentile(normal_angles, 99)), 1.0e-15)
+    score = center_distances / distance_scale + normal_angles / normal_scale
+    order = np.argsort(score)[::-1]
+    separation = max(float(np.median(original.edges_unique_length)) * 5.0, 0.5)
+    chosen: list[int] = []
+    for local_id in order:
+        center = selected_centers[local_id]
+        if all(np.linalg.norm(center - selected_centers[other]) >= separation for other in chosen):
+            chosen.append(int(local_id))
+        if len(chosen) == hotspot_count:
+            break
+    boundary_list = list(boundaries)
+    hotspots = []
+    for hotspot_id, local_id in enumerate(chosen):
+        center = selected_centers[local_id]
+        hotspots.append(
+            {
+                "hotspot_id": hotspot_id,
+                "center_x_um": float(center[0]),
+                "center_y_um": float(center[1]),
+                "center_z_um": float(center[2]),
+                "distance_to_original_um": float(center_distances[local_id]),
+                "local_normal_deviation_deg": float(normal_angles[local_id]),
+                "nearest_original_face_id": int(nearest_original[local_id]),
+                "previous_final_face_id": int(previous_ids[local_id]),
+                "distance_from_nearest_CFD_boundary_um": float(
+                    min(np.linalg.norm(center - boundary.center_um) for boundary in boundary_list)
+                ),
+            }
+        )
+    tolerance = _output_precision_tolerance(np.asarray(data.points))
+    symmetric_max = max(forward_report["max_um"], reverse_report["max_um"])
+    return {
+        "status": "PASS",
+        "method": "bidirectional core surface distance outside boundary surgery cylinders",
+        "original_core_to_previous_final": forward_report,
+        "previous_final_core_to_original": reverse_report,
+        "symmetric_max_um": symmetric_max,
+        "core_normal_deviation": normal_report,
+        "winding_consistent": bool(previous.is_winding_consistent),
+        "global_remesh_artifact_detected": symmetric_max > 10.0 * tolerance,
+        "machine_precision_reference_um": tolerance,
+        "hotspot_count": len(hotspots),
+        "hotspots": hotspots,
+    }
 
 
 def meter_scale_qc(um_stl: Path, meter_stl: Path) -> dict[str, Any]:
@@ -654,7 +1333,7 @@ def geometry_pressure_correction(
                 "Q_solver_m3_s": boundary.expected_flow_m3_s if not is_outlet else None,
                 "profile": "PARABOLIC" if not is_outlet else None,
                 "pressure_correction_role": "NUMERICAL_ARTIFICIAL_EXTENSION_CORRECTION",
-                "geometry_source": "final VMTK remeshed surface; 20 normal cross sections",
+                "geometry_source": "final VMTK direct-cap surface; 20 normal cross sections",
             }
         )
     return rows, {

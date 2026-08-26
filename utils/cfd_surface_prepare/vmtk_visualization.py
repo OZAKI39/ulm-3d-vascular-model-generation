@@ -200,3 +200,177 @@ def save_vmtk_review_figures(
     if not all(path.is_file() and path.stat().st_size > 0 for path in paths):
         raise RuntimeError("Required VMTK manual review figures were not created")
     return tuple(path.resolve() for path in paths)
+
+
+def _hotspot_local(data: pv.PolyData, center: np.ndarray, radius: float) -> pv.PolyData:
+    faces = np.asarray(data.faces, dtype=np.int64).reshape((-1, 4))[:, 1:]
+    centers = np.asarray(data.points)[faces].mean(axis=1)
+    mask = np.linalg.norm(centers - center, axis=1) <= radius
+    return data.extract_cells(np.flatnonzero(mask)).extract_surface().triangulate()
+
+
+def _hotspot_camera(plotter: pv.Plotter, center: np.ndarray, radius: float) -> None:
+    view = np.asarray((1.0, 0.8, 0.65), dtype=float)
+    view /= np.linalg.norm(view)
+    plotter.camera.focal_point = center
+    plotter.camera.position = center + 8.0 * radius * view
+    plotter.camera.up = (0.0, 0.0, 1.0)
+    plotter.enable_parallel_projection()
+    plotter.camera.parallel_scale = 1.15 * radius
+
+
+def _add_plain_surface(
+    plotter: pv.Plotter,
+    data: pv.PolyData,
+    *,
+    wireframe: bool = False,
+    color: str = "#b8c4ca",
+) -> None:
+    plotter.add_mesh(
+        data,
+        color=color,
+        show_edges=wireframe,
+        edge_color="#13232d",
+        line_width=0.7,
+        smooth_shading=not wireframe,
+    )
+
+
+def save_caponly_review_figures(
+    *,
+    original_vtp: Path,
+    raw_vtp: Path,
+    previous_global_final_vtp: Path,
+    caponly_final_vtp: Path,
+    boundaries: Iterable[BoundaryInput],
+    hotspots: list[dict[str, float]],
+    output_directory: Path,
+) -> tuple[Path, ...]:
+    """Create quantitative, automatically centered cap-only review figures."""
+
+    output_directory.mkdir(parents=True, exist_ok=True)
+    boundary_list = list(boundaries)
+    original = pv.read(original_vtp).triangulate()
+    raw = pv.read(raw_vtp).triangulate()
+    previous = pv.read(previous_global_final_vtp).triangulate()
+    caponly = pv.read(caponly_final_vtp).triangulate()
+    for data in (raw, previous, caponly):
+        data.cell_data["review_part"] = _parts(data, boundary_list)
+
+    whole_path = output_directory / "global_remesh_vs_caponly_whole_surface.png"
+    whole = pv.Plotter(shape=(1, 2), off_screen=True, window_size=(2000, 900))
+    whole.set_background("white")
+    for column, (title, data) in enumerate(
+        (("PREVIOUS GLOBAL-REMESHED FINAL", previous), ("NEW CAP-ONLY FINAL", caponly))
+    ):
+        whole.subplot(0, column)
+        whole.add_text(title, color="black", font_size=14)
+        _add_surface(whole, data)
+        whole.view_isometric()
+    whole.link_views()
+    whole.show(screenshot=whole_path, auto_close=True)
+
+    selected = hotspots[: max(5, min(8, len(hotspots)))]
+    if len(selected) < 5:
+        raise RuntimeError("At least five automatic core hotspots are required")
+    radius = max(3.0 * float(np.median([item.source_radius_um for item in boundary_list])), 2.0)
+    bifurcation_path = output_directory / "bifurcation_artifact_comparison.png"
+    bifurcation = pv.Plotter(
+        shape=(len(selected), 4), off_screen=True, window_size=(3000, 650 * len(selected))
+    )
+    bifurcation.set_background("white")
+    three_path = output_directory / "previous_global_remesh_artifact_hotspots.png"
+    three = pv.Plotter(
+        shape=(len(selected), 3), off_screen=True, window_size=(2400, 650 * len(selected))
+    )
+    three.set_background("white")
+    for row, hotspot in enumerate(selected):
+        center = np.asarray(
+            (hotspot["center_x_um"], hotspot["center_y_um"], hotspot["center_z_um"]),
+            dtype=float,
+        )
+        four_columns = (
+            ("ORIGINAL ULTRALISER", original),
+            ("BOUNDARYNORMAL RAW", raw),
+            ("CAP-ONLY FINAL", caponly),
+            ("PREVIOUS GLOBAL-REMESHED", previous),
+        )
+        for column, (label, data) in enumerate(four_columns):
+            bifurcation.subplot(row, column)
+            bifurcation.add_text(
+                f"H{hotspot['hotspot_id']} | {label}", color="black", font_size=10
+            )
+            _add_plain_surface(bifurcation, _hotspot_local(data, center, radius))
+            _hotspot_camera(bifurcation, center, radius)
+        for column, (label, data) in enumerate(
+            (
+                ("ORIGINAL ULTRALISER", original),
+                ("BOUNDARYNORMAL RAW", raw),
+                ("PREVIOUS GLOBAL-REMESHED", previous),
+            )
+        ):
+            three.subplot(row, column)
+            three.add_text(
+                f"H{hotspot['hotspot_id']} | {label}", color="black", font_size=10
+            )
+            _add_plain_surface(three, _hotspot_local(data, center, radius))
+            _hotspot_camera(three, center, radius)
+    bifurcation.show(screenshot=bifurcation_path, auto_close=True)
+    three.show(screenshot=three_path, auto_close=True)
+
+    closeup_path = output_directory / "extension_caponly_closeups.png"
+    closeups = pv.Plotter(shape=(4, 2), off_screen=True, window_size=(1800, 2400))
+    closeups.set_background("white")
+    wireframe_path = output_directory / "extension_caponly_wireframe.png"
+    wires = pv.Plotter(shape=(4, 2), off_screen=True, window_size=(1800, 2400))
+    wires.set_background("white")
+    for row, boundary in enumerate(boundary_list):
+        for column, (label, data) in enumerate((("RAW", raw), ("CAP-ONLY", caponly))):
+            local_data = _extension_local(data, boundary)
+            short = boundary.port_id.rsplit("__", 1)[-1]
+            closeups.subplot(row, column)
+            closeups.add_text(f"{short} | {label}", color="black", font_size=11)
+            _add_surface(closeups, local_data)
+            _camera(closeups, boundary)
+            wires.subplot(row, column)
+            wires.add_text(f"{short} | {label}", color="black", font_size=11)
+            _add_surface(wires, local_data, wireframe=True)
+            _camera(wires, boundary)
+    closeups.show(screenshot=closeup_path, auto_close=True)
+    wires.show(screenshot=wireframe_path, auto_close=True)
+
+    normal_path = output_directory / "core_normal_deviation_hotspots.png"
+    normals = pv.Plotter(
+        shape=(len(selected), 3), off_screen=True, window_size=(2400, 650 * len(selected))
+    )
+    normals.set_background("white")
+    for row, hotspot in enumerate(selected):
+        center = np.asarray(
+            (hotspot["center_x_um"], hotspot["center_y_um"], hotspot["center_z_um"]),
+            dtype=float,
+        )
+        for column, (label, data, color) in enumerate(
+            (
+                ("ORIGINAL NORMALS", original, "#a8b7bf"),
+                ("GLOBAL-REMESH DEVIATION", previous, "#c94f45"),
+                ("CAP-ONLY DEVIATION", caponly, "#2c7fb8"),
+            )
+        ):
+            normals.subplot(row, column)
+            normals.add_text(
+                f"H{hotspot['hotspot_id']} | {label}", color="black", font_size=10
+            )
+            _add_plain_surface(
+                normals,
+                _hotspot_local(data, center, radius),
+                wireframe=True,
+                color=color,
+            )
+            _hotspot_camera(normals, center, radius)
+    normals.show(screenshot=normal_path, auto_close=True)
+
+    paths = (whole_path, bifurcation_path, closeup_path, wireframe_path, normal_path)
+    required = (*paths, three_path)
+    if not all(path.is_file() and path.stat().st_size > 0 for path in required):
+        raise RuntimeError("Required cap-only manual review figures were not created")
+    return tuple(path.resolve() for path in paths)
