@@ -751,3 +751,158 @@ def save_guarded_three_way_comparison(
     if not output_path.is_file() or output_path.stat().st_size == 0:
         raise RuntimeError("Three-way guarded comparison was not created")
     return output_path.resolve()
+
+
+def _original_cut_seam_lines(raw: pv.PolyData) -> pv.PolyData:
+    faces = np.asarray(raw.faces, dtype=np.int64).reshape((-1, 4))[:, 1:]
+    regions = np.asarray(raw.cell_data["SurfaceRegionId"], dtype=np.uint8)
+    edge_faces: dict[tuple[int, int], list[int]] = {}
+    for face_id, face in enumerate(faces):
+        for first, second in zip(face, np.roll(face, -1)):
+            edge_faces.setdefault(
+                tuple(sorted((int(first), int(second)))), []
+            ).append(face_id)
+    seam_edges = [
+        edge
+        for edge, linked in edge_faces.items()
+        if len(linked) == 2
+        and {int(regions[linked[0]]), int(regions[linked[1]])} == {0, 1}
+    ]
+    if not seam_edges:
+        return pv.PolyData()
+    points = np.asarray(raw.points)[np.asarray(seam_edges, dtype=np.int64)].reshape(
+        (-1, 3)
+    )
+    lines = np.column_stack(
+        (
+            np.full(len(seam_edges), 2, dtype=np.int64),
+            np.arange(0, 2 * len(seam_edges), 2, dtype=np.int64),
+            np.arange(1, 2 * len(seam_edges), 2, dtype=np.int64),
+        )
+    ).ravel()
+    return pv.PolyData(points, lines=lines)
+
+
+def _add_crossseam_assignment(
+    plotter: pv.Plotter, data: pv.PolyData, *, wireframe: bool = True
+) -> None:
+    display = data.copy()
+    entities = np.asarray(display.cell_data["RemeshEntityId"], dtype=np.int32)
+    regions = np.asarray(display.cell_data["SurfaceRegionId"], dtype=np.uint8)
+    display.cell_data["CrossSeamDisplayRegion"] = np.where(
+        entities == 1, 0, np.where(regions == 0, 1, 2)
+    ).astype(np.uint8)
+    plotter.add_mesh(
+        display,
+        scalars="CrossSeamDisplayRegion",
+        preference="cell",
+        categories=True,
+        cmap=["#9aa9b2", "#f2a93b", "#2878b5"],
+        clim=(0, 2),
+        show_scalar_bar=False,
+        show_edges=wireframe,
+        edge_color="#17242b",
+        line_width=0.7,
+        smooth_shading=not wireframe,
+    )
+
+
+def save_crossseam_review_figures(
+    *,
+    raw_vtp: Path,
+    global_remesh_vtp: Path,
+    guarded_remesh_vtp: Path,
+    crossseam_final_vtp: Path,
+    boundaries: Iterable[BoundaryInput],
+    output_directory: Path,
+) -> tuple[Path, ...]:
+    """Create exactly four cross-seam manual-review figures."""
+
+    output_directory.mkdir(parents=True, exist_ok=True)
+    boundary_list = list(boundaries)
+    raw = pv.read(raw_vtp).triangulate()
+    global_remesh = pv.read(global_remesh_vtp).triangulate()
+    guarded = pv.read(guarded_remesh_vtp).triangulate()
+    crossseam = pv.read(crossseam_final_vtp).triangulate()
+    seam_lines = _original_cut_seam_lines(raw)
+
+    active_path = output_directory / "active_region_visualization.png"
+    active_plot = pv.Plotter(
+        shape=(4, 1), off_screen=True, window_size=(1100, 2400)
+    )
+    active_plot.set_background("white")
+    for row, boundary in enumerate(boundary_list):
+        active_plot.subplot(row, 0)
+        active_plot.add_text(
+            f"{boundary.port_id.rsplit('__', 1)[-1]} | FAR_CORE / ACTIVE CORE COLLAR / EXTENSION",
+            color="black",
+            font_size=10,
+        )
+        _add_crossseam_assignment(
+            active_plot, _extension_local(raw, boundary), wireframe=True
+        )
+        active_plot.add_mesh(seam_lines, color="#e6194b", line_width=6)
+        _camera(active_plot, boundary)
+    active_plot.show(screenshot=active_path, auto_close=True)
+
+    three_way_path = output_directory / "seam_wireframe_three_way.png"
+    three_way = pv.Plotter(
+        shape=(4, 3), off_screen=True, window_size=(2400, 2400)
+    )
+    three_way.set_background("white")
+    surfaces = (
+        ("GLOBAL REMESH", global_remesh),
+        ("GUARDED ENTITY REMESH", guarded),
+        ("NEW CROSS-SEAM REMESH", crossseam),
+    )
+    for row, boundary in enumerate(boundary_list):
+        for column, (label, data) in enumerate(surfaces):
+            three_way.subplot(row, column)
+            three_way.add_text(
+                f"{boundary.port_id.rsplit('__', 1)[-1]} | {label}",
+                color="black",
+                font_size=9,
+            )
+            _add_plain_surface(
+                three_way, _extension_local(data, boundary), wireframe=True
+            )
+            _camera(three_way, boundary)
+    three_way.show(screenshot=three_way_path, auto_close=True)
+
+    closeup_path = output_directory / "crossseam_interface_closeups.png"
+    closeups = pv.Plotter(
+        shape=(4, 1), off_screen=True, window_size=(1100, 2400)
+    )
+    closeups.set_background("white")
+    for row, boundary in enumerate(boundary_list):
+        closeups.subplot(row, 0)
+        closeups.add_text(
+            f"{boundary.port_id.rsplit('__', 1)[-1]} | CROSS-SEAM REMESH | red = original seam",
+            color="black",
+            font_size=10,
+        )
+        _add_plain_surface(
+            closeups, _local(crossseam, boundary), wireframe=True
+        )
+        closeups.add_mesh(seam_lines, color="#e6194b", line_width=6)
+        _camera(closeups, boundary)
+        closeups.camera.parallel_scale = 2.8 * boundary.source_radius_um
+    closeups.show(screenshot=closeup_path, auto_close=True)
+
+    final_path = output_directory / "final_surface_review.png"
+    final_plot = pv.Plotter(off_screen=True, window_size=(1600, 1200))
+    final_plot.set_background("white")
+    final_plot.add_text(
+        "FINAL CROSS-SEAM CFD SURFACE | VISUAL ACCEPTANCE REQUIRES MANUAL REVIEW",
+        color="black",
+        font_size=13,
+    )
+    _add_plain_surface(final_plot, crossseam, wireframe=False)
+    final_plot.view_isometric()
+    final_plot.enable_parallel_projection()
+    final_plot.show(screenshot=final_path, auto_close=True)
+
+    paths = (active_path, three_way_path, closeup_path, final_path)
+    if not all(path.is_file() and path.stat().st_size > 0 for path in paths):
+        raise RuntimeError("Required cross-seam figures were not created")
+    return tuple(path.resolve() for path in paths)

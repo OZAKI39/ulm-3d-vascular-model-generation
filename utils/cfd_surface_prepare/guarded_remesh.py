@@ -1,4 +1,4 @@
-"""Topological guard assignment and exact diagnostics for guarded VMTK remeshing."""
+"""Entity assignment and exact diagnostics for local cross-seam VMTK remeshing."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from .vmtk_qc import polydata_mesh, symmetric_mesh_size_mismatch
 
 
 ENTITY_NAMES = {0: "CAP", 1: "CORE", 2: "PROXIMAL_GUARD", 3: "EXTENSION_BODY"}
+CROSS_SEAM_ENTITY_NAMES = {0: "CAP", 1: "FAR_CORE", 2: "CROSS_SEAM_ACTIVE"}
 
 
 def _faces(data: pv.PolyData) -> np.ndarray:
@@ -69,6 +70,49 @@ def extension_face_adjacency_layers(
             distances[neighbor] = distances[current] + 1
             queue.append(neighbor)
     return distances, np.asarray(sorted(seeds), dtype=np.int64)
+
+
+def core_face_adjacency_layers(
+    faces: np.ndarray, regions: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return CORE BFS layers seeded by the original CORE/extension seam."""
+
+    faces = np.asarray(faces, dtype=np.int64)
+    regions = np.asarray(regions, dtype=np.uint8)
+    if len(faces) != len(regions):
+        raise ValueError("faces and regions must have equal length")
+    edge_faces = _edge_face_map(faces)
+    core_neighbors: dict[int, set[int]] = defaultdict(set)
+    seeds: set[int] = set()
+    seam_edges: list[tuple[int, int]] = []
+    for edge, linked in edge_faces.items():
+        if len(linked) != 2:
+            continue
+        first, second = linked
+        values = {int(regions[first]), int(regions[second])}
+        if values == {0, 1}:
+            seam_edges.append(edge)
+            seeds.add(first if regions[first] == 0 else second)
+        elif values == {0}:
+            core_neighbors[first].add(second)
+            core_neighbors[second].add(first)
+    distances = np.full(len(faces), -1, dtype=np.int64)
+    queue: deque[int] = deque()
+    for face_id in sorted(seeds):
+        distances[face_id] = 0
+        queue.append(face_id)
+    while queue:
+        current = queue.popleft()
+        for neighbor in core_neighbors[current]:
+            if distances[neighbor] >= 0:
+                continue
+            distances[neighbor] = distances[current] + 1
+            queue.append(neighbor)
+    return (
+        distances,
+        np.asarray(sorted(seeds), dtype=np.int64),
+        np.asarray(sorted(seam_edges), dtype=np.int64),
+    )
 
 
 def _boundary_assignment(
@@ -229,6 +273,171 @@ def assign_guarded_remesh_entities(
         "body_face_count": int(np.count_nonzero(body)),
         "unknown_face_count": unknown,
         "interface_seed_face_count": int(len(seeds)),
+        "per_port": per_port,
+    }, distances
+
+
+def assign_cross_seam_active_entities(
+    raw_vtp: Path,
+    boundaries: Iterable[BoundaryInput],
+    *,
+    face_layers: int = 2,
+    entity_array_name: str = "RemeshEntityId",
+    far_core_entity_id: int = 1,
+    active_entity_id: int = 2,
+) -> tuple[dict[str, Any], np.ndarray]:
+    """Assign FAR_CORE and one active entity spanning CORE collar and extension."""
+
+    failure = "VMTK_CROSS_SEAM_ENTITY_ASSIGNMENT_FAILED"
+    if face_layers != 2:
+        raise SurfacePrepareError(f"{failure}:face_layers")
+    data = pv.read(raw_vtp).triangulate()
+    if "SurfaceRegionId" not in data.cell_data:
+        raise SurfacePrepareError(f"{failure}:regions_missing")
+    faces = _faces(data)
+    regions = np.asarray(data.cell_data["SurfaceRegionId"], dtype=np.uint8)
+    if sorted(int(value) for value in np.unique(regions)) != [0, 1]:
+        raise SurfacePrepareError(f"{failure}:regions")
+    distances, seeds, seam_edges = core_face_adjacency_layers(faces, regions)
+    core = regions == 0
+    extension = regions == 1
+    collar = core & (distances >= 0) & (distances < face_layers)
+    far_core = core & ~collar
+    active = collar | extension
+    entities = np.zeros(len(faces), dtype=np.int32)
+    entities[far_core] = far_core_entity_id
+    entities[active] = active_entity_id
+
+    edge_faces = _edge_face_map(faces)
+    seam_set = {tuple(map(int, edge)) for edge in seam_edges}
+    seam_between_entities = 0
+    far_active_edges: list[tuple[int, int]] = []
+    far_active_on_seam = 0
+    for edge, linked in edge_faces.items():
+        if len(linked) != 2:
+            continue
+        first, second = linked
+        if edge in seam_set and entities[first] != entities[second]:
+            seam_between_entities += 1
+        if {int(entities[first]), int(entities[second])} == {
+            far_core_entity_id,
+            active_entity_id,
+        }:
+            far_active_edges.append(edge)
+            if {int(regions[first]), int(regions[second])} != {0}:
+                far_active_on_seam += 1
+
+    boundary_list = list(boundaries)
+    centers = np.asarray(data.points)[faces].mean(axis=1)
+    port_assignment = _boundary_assignment(centers, boundary_list)
+    collar_layer = np.where(core, distances, -1).astype(np.int32)
+    face_port = np.where(active, port_assignment, -1).astype(np.int32)
+    points_before = np.asarray(data.points).copy()
+    faces_before = faces.copy()
+    data.cell_data[entity_array_name] = entities
+    data.cell_data["CoreCollarLayer"] = collar_layer
+    data.cell_data["CrossSeamPortIndex"] = face_port
+    data.cell_data["OriginalCutSeamCoreFace"] = np.isin(
+        np.arange(len(faces), dtype=np.int64), seeds
+    ).astype(np.uint8)
+    data.save(raw_vtp, binary=True)
+    saved = pv.read(raw_vtp).triangulate()
+    saved_entities = np.asarray(saved.cell_data[entity_array_name], dtype=np.int32)
+
+    seam_midpoints = (
+        np.asarray(saved.points)[seam_edges].mean(axis=1)
+        if len(seam_edges)
+        else np.empty((0, 3), dtype=float)
+    )
+    seam_ports = (
+        _boundary_assignment(seam_midpoints, boundary_list)
+        if len(seam_midpoints)
+        else np.empty(0, dtype=np.int64)
+    )
+    per_port: list[dict[str, Any]] = []
+    for local_index, boundary in enumerate(boundary_list):
+        collar_ids = np.flatnonzero(collar & (port_assignment == local_index))
+        extension_ids = np.flatnonzero(extension & (port_assignment == local_index))
+        collar_vertices = (
+            np.unique(faces[collar_ids])
+            if len(collar_ids)
+            else np.empty(0, dtype=np.int64)
+        )
+        if len(collar_vertices):
+            axial = (
+                np.asarray(saved.points)[collar_vertices] - boundary.center_um
+            ) @ boundary.outward_normal
+            axial_min = float(np.min(axial))
+            axial_max = float(np.max(axial))
+            width = float(axial_max - axial_min)
+        else:
+            axial_min = axial_max = width = float("nan")
+        per_port.append(
+            {
+                "boundary_index": boundary.index,
+                "port_id": boundary.port_id,
+                "original_cut_seam_edge_count": int(
+                    np.count_nonzero(seam_ports == local_index)
+                ),
+                "active_core_collar_face_count": int(len(collar_ids)),
+                "active_core_collar_vertex_count": int(len(collar_vertices)),
+                "extension_face_count": int(len(extension_ids)),
+                "collar_axial_extent_min_um": axial_min,
+                "collar_axial_extent_max_um": axial_max,
+                "collar_approximate_axial_width_um": width,
+                "collar_width_in_source_radius": width / boundary.source_radius_um,
+                "collar_width_in_diameter": width
+                / (2.0 * boundary.source_radius_um),
+            }
+        )
+    unknown = int(np.count_nonzero(entities == 0))
+    checks = {
+        "geometry_points_unchanged": bool(
+            np.array_equal(np.asarray(saved.points), points_before)
+        ),
+        "geometry_connectivity_unchanged": bool(
+            np.array_equal(_faces(saved), faces_before)
+        ),
+        "far_core_face_count_positive": bool(np.count_nonzero(far_core)),
+        "active_core_collar_face_count_positive": bool(np.count_nonzero(collar)),
+        "extension_face_count_positive": bool(np.count_nonzero(extension)),
+        "unknown_face_count_zero": unknown == 0,
+        "entity_ids_exact": sorted(int(value) for value in np.unique(saved_entities))
+        == [far_core_entity_id, active_entity_id],
+        "all_extension_faces_active": bool(
+            np.all(saved_entities[extension] == active_entity_id)
+        ),
+        "original_cut_seam_not_entity_boundary": seam_between_entities == 0,
+        "far_core_active_boundary_inside_original_core": far_active_on_seam == 0,
+        "each_port_has_collar_and_extension": all(
+            row["active_core_collar_face_count"] > 0
+            and row["extension_face_count"] > 0
+            and row["original_cut_seam_edge_count"] > 0
+            for row in per_port
+        ),
+    }
+    return {
+        "status": "PASS" if all(checks.values()) else failure,
+        "checks": checks,
+        "mode": "core_face_adjacency_layers",
+        "core_collar_face_layers": face_layers,
+        "core_collar_layers_included": list(range(face_layers)),
+        "far_core_entity_id": far_core_entity_id,
+        "active_entity_id": active_entity_id,
+        "entity_ids": sorted(int(value) for value in np.unique(saved_entities)),
+        "far_core_face_count": int(np.count_nonzero(far_core)),
+        "active_core_collar_face_count": int(np.count_nonzero(collar)),
+        "extension_face_count": int(np.count_nonzero(extension)),
+        "unknown_face_count": unknown,
+        "core_collar_seed_face_count": int(len(seeds)),
+        "original_cut_seam_edge_count": int(len(seam_edges)),
+        "original_cut_seam_edges_between_different_remesh_entities": int(
+            seam_between_entities
+        ),
+        "far_core_active_boundary_edge_count": int(len(far_active_edges)),
+        "far_core_active_boundary_edges_on_original_cut_seam": int(
+            far_active_on_seam
+        ),
         "per_port": per_port,
     }, distances
 
@@ -480,6 +689,385 @@ def guarded_entity_preservation_qc(
     return core, guard, boundary, body
 
 
+def _surface_distance_summary(values: np.ndarray) -> dict[str, float]:
+    values = np.asarray(values, dtype=float)
+    return {
+        "P50_um": float(np.percentile(values, 50)),
+        "P95_um": float(np.percentile(values, 95)),
+        "P99_um": float(np.percentile(values, 99)),
+        "max_um": float(np.max(values)),
+    }
+
+
+def _closest_region_assignment(
+    raw: pv.PolyData,
+    remeshed: pv.PolyData,
+    *,
+    entity_array_name: str,
+    active_entity_id: int,
+) -> np.ndarray:
+    """Restore CORE/extension semantics after cross-seam topology changes."""
+
+    raw_faces = _faces(raw)
+    raw_regions = np.asarray(raw.cell_data["SurfaceRegionId"], dtype=np.uint8)
+    raw_entities = np.asarray(raw.cell_data[entity_array_name], dtype=np.int32)
+    collar_faces = raw_faces[
+        (raw_regions == 0) & (raw_entities == active_entity_id)
+    ]
+    extension_faces = raw_faces[raw_regions == 1]
+    if len(collar_faces) == 0 or len(extension_faces) == 0:
+        raise SurfacePrepareError(
+            "VMTK_CROSS_SEAM_ENTITY_ASSIGNMENT_FAILED:empty_region_reference"
+        )
+    raw_points = np.asarray(raw.points, dtype=float)
+    collar_mesh = trimesh.Trimesh(
+        vertices=raw_points, faces=collar_faces, process=False
+    )
+    extension_mesh = trimesh.Trimesh(
+        vertices=raw_points, faces=extension_faces, process=False
+    )
+    remeshed_faces = _faces(remeshed)
+    remeshed_entities = np.asarray(
+        remeshed.cell_data[entity_array_name], dtype=np.int32
+    )
+    regions = np.zeros(len(remeshed_faces), dtype=np.uint8)
+    active_ids = np.flatnonzero(remeshed_entities == active_entity_id)
+    centers = np.asarray(remeshed.points, dtype=float)[
+        remeshed_faces[active_ids]
+    ].mean(axis=1)
+    _, collar_distance, _ = trimesh.proximity.closest_point(collar_mesh, centers)
+    _, extension_distance, _ = trimesh.proximity.closest_point(
+        extension_mesh, centers
+    )
+    regions[active_ids] = np.where(
+        collar_distance <= extension_distance, 0, 1
+    ).astype(np.uint8)
+    return regions
+
+
+def active_collar_geometry_qc(
+    raw: pv.PolyData,
+    remeshed: pv.PolyData,
+    *,
+    entity_array_name: str = "RemeshEntityId",
+    active_entity_id: int = 2,
+    maximum_p95_distance_um: float,
+    maximum_distance_um: float,
+) -> dict[str, Any]:
+    """Measure bidirectional fidelity of the remeshable original-CORE collar."""
+
+    raw_faces = _faces(raw)
+    remeshed_faces = _faces(remeshed)
+    raw_regions = np.asarray(raw.cell_data["SurfaceRegionId"], dtype=np.uint8)
+    remeshed_regions = np.asarray(
+        remeshed.cell_data["SurfaceRegionId"], dtype=np.uint8
+    )
+    raw_entities = np.asarray(raw.cell_data[entity_array_name], dtype=np.int32)
+    remeshed_entities = np.asarray(
+        remeshed.cell_data[entity_array_name], dtype=np.int32
+    )
+    raw_ids = np.flatnonzero(
+        (raw_regions == 0) & (raw_entities == active_entity_id)
+    )
+    remeshed_ids = np.flatnonzero(
+        (remeshed_regions == 0) & (remeshed_entities == active_entity_id)
+    )
+    if len(raw_ids) == 0 or len(remeshed_ids) == 0:
+        return {
+            "status": "FAIL",
+            "error": "empty active CORE collar",
+            "raw_active_collar_face_count": int(len(raw_ids)),
+            "remeshed_active_collar_face_count": int(len(remeshed_ids)),
+        }
+    raw_mesh = trimesh.Trimesh(
+        vertices=np.asarray(raw.points, dtype=float),
+        faces=raw_faces[raw_ids],
+        process=False,
+    )
+    remeshed_mesh = trimesh.Trimesh(
+        vertices=np.asarray(remeshed.points, dtype=float),
+        faces=remeshed_faces[remeshed_ids],
+        process=False,
+    )
+    raw_vertex_ids = np.unique(raw_mesh.faces)
+    remeshed_vertex_ids = np.unique(remeshed_mesh.faces)
+    raw_samples = np.vstack(
+        (raw_mesh.vertices[raw_vertex_ids], raw_mesh.triangles_center)
+    )
+    remeshed_samples = np.vstack(
+        (
+            remeshed_mesh.vertices[remeshed_vertex_ids],
+            remeshed_mesh.triangles_center,
+        )
+    )
+    _, forward, _ = trimesh.proximity.closest_point(remeshed_mesh, raw_samples)
+    _, reverse, _ = trimesh.proximity.closest_point(raw_mesh, remeshed_samples)
+    forward_report = _surface_distance_summary(forward)
+    reverse_report = _surface_distance_summary(reverse)
+    p95 = max(forward_report["P95_um"], reverse_report["P95_um"])
+    maximum = max(forward_report["max_um"], reverse_report["max_um"])
+    checks = {
+        "bidirectional_P95_within_existing_core_tolerance": p95
+        <= maximum_p95_distance_um,
+        "bidirectional_max_within_existing_core_tolerance": maximum
+        <= maximum_distance_um,
+    }
+    return {
+        "status": "PASS" if all(checks.values()) else "FAIL",
+        "checks": checks,
+        "method": "bidirectional vertex-plus-face-center closest surface distance",
+        "raw_active_collar_face_count": int(len(raw_ids)),
+        "remeshed_active_collar_face_count": int(len(remeshed_ids)),
+        "raw_to_remeshed": forward_report,
+        "remeshed_to_raw": reverse_report,
+        "bidirectional_P95_um": p95,
+        "bidirectional_max_um": maximum,
+        "maximum_core_surface_P95_distance_um": maximum_p95_distance_um,
+        "maximum_core_surface_distance_um": maximum_distance_um,
+    }
+
+
+def cross_seam_entity_preservation_qc(
+    raw_vtp: Path,
+    remeshed_vtp: Path,
+    boundaries: Iterable[BoundaryInput],
+    *,
+    entity_array_name: str = "RemeshEntityId",
+    far_core_entity_id: int = 1,
+    active_entity_id: int = 2,
+    maximum_p95_distance_um: float = 0.05,
+    maximum_distance_um: float = 0.15,
+    restore_region_arrays: bool = True,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """Check FAR_CORE lock, active boundary, collar fidelity, and remesh effect."""
+
+    failure = "VMTK_CROSS_SEAM_ENTITY_ASSIGNMENT_FAILED"
+    raw = pv.read(raw_vtp).triangulate()
+    remeshed = pv.read(remeshed_vtp).triangulate()
+    for data in (raw, remeshed):
+        if entity_array_name not in data.cell_data:
+            raise SurfacePrepareError(f"{failure}:array_missing")
+        ids = sorted(
+            int(value) for value in np.unique(data.cell_data[entity_array_name])
+        )
+        if ids != [far_core_entity_id, active_entity_id]:
+            raise SurfacePrepareError(f"{failure}:ids_changed")
+    far_core = _locked_entity_report(
+        raw,
+        remeshed,
+        entity_array_name=entity_array_name,
+        entity_id=far_core_entity_id,
+        label="far_core",
+    )
+    boundary = _entity_boundary_report(
+        raw,
+        remeshed,
+        entity_array_name=entity_array_name,
+        first_id=far_core_entity_id,
+        second_id=active_entity_id,
+        label="far_core_active",
+    )
+    restored_regions = _closest_region_assignment(
+        raw,
+        remeshed,
+        entity_array_name=entity_array_name,
+        active_entity_id=active_entity_id,
+    )
+    remeshed.cell_data["SurfaceRegionId"] = restored_regions
+    remeshed.cell_data["SurfaceRegion"] = np.where(
+        restored_regions == 0, "CORE", "EXTENSION"
+    )
+    remeshed_faces = _faces(remeshed)
+    remeshed_entities = np.asarray(
+        remeshed.cell_data[entity_array_name], dtype=np.int32
+    )
+    centers = np.asarray(remeshed.points)[remeshed_faces].mean(axis=1)
+    remeshed.cell_data["CrossSeamPortIndex"] = np.where(
+        remeshed_entities == active_entity_id,
+        _boundary_assignment(centers, list(boundaries)),
+        -1,
+    ).astype(np.int32)
+    if restore_region_arrays:
+        remeshed.save(remeshed_vtp, binary=True)
+    collar = active_collar_geometry_qc(
+        raw,
+        remeshed,
+        entity_array_name=entity_array_name,
+        active_entity_id=active_entity_id,
+        maximum_p95_distance_um=maximum_p95_distance_um,
+        maximum_distance_um=maximum_distance_um,
+    )
+
+    raw_faces = _faces(raw)
+    raw_regions = np.asarray(raw.cell_data["SurfaceRegionId"], dtype=np.uint8)
+    raw_extension_ids = np.flatnonzero(raw_regions == 1)
+    remeshed_extension_ids = np.flatnonzero(restored_regions == 1)
+    raw_points = np.asarray(raw.points).astype(
+        np.asarray(remeshed.points).dtype, copy=False
+    )
+    remeshed_points = np.asarray(remeshed.points)
+    raw_counter = Counter(
+        _triangle_key(raw_points, raw_faces[index])
+        for index in raw_extension_ids
+    )
+    remeshed_counter = Counter(
+        _triangle_key(remeshed_points, remeshed_faces[index])
+        for index in remeshed_extension_ids
+    )
+    changed = raw_counter != remeshed_counter
+    raw_vertices = np.unique(raw_faces[raw_extension_ids])
+    remeshed_vertices = np.unique(remeshed_faces[remeshed_extension_ids])
+    effect_detected = bool(
+        len(raw_extension_ids) != len(remeshed_extension_ids)
+        or len(raw_vertices) != len(remeshed_vertices)
+        or changed
+    )
+    extension_effect = {
+        "status": "PASS" if effect_detected else "FAIL",
+        "raw_extension_face_count": int(len(raw_extension_ids)),
+        "remeshed_extension_face_count": int(len(remeshed_extension_ids)),
+        "raw_extension_vertex_count": int(len(raw_vertices)),
+        "remeshed_extension_vertex_count": int(len(remeshed_vertices)),
+        "extension_connectivity_changed": bool(changed),
+        "extension_remesh_effect_detected": effect_detected,
+        "raw_active_face_count": int(
+            np.count_nonzero(
+                np.asarray(raw.cell_data[entity_array_name]) == active_entity_id
+            )
+        ),
+        "remeshed_active_face_count": int(
+            np.count_nonzero(remeshed_entities == active_entity_id)
+        ),
+    }
+    return far_core, boundary, collar, extension_effect
+
+
+def locked_entity_preservation_qc(
+    raw_vtp: Path,
+    candidate_vtp: Path,
+    *,
+    entity_array_name: str = "RemeshEntityId",
+    entity_id: int = 1,
+    label: str = "far_core",
+) -> dict[str, Any]:
+    """Expose the exact locked-entity evaluator for post-cap verification."""
+
+    return _locked_entity_report(
+        pv.read(raw_vtp).triangulate(),
+        pv.read(candidate_vtp).triangulate(),
+        entity_array_name=entity_array_name,
+        entity_id=entity_id,
+        label=label,
+    )
+
+
+def edges_form_simple_closed_loop(edges: np.ndarray) -> bool:
+    """Return true only for one connected cycle with degree two everywhere."""
+
+    edges = np.asarray(edges, dtype=np.int64).reshape((-1, 2))
+    if len(edges) < 3:
+        return False
+    neighbors: dict[int, set[int]] = defaultdict(set)
+    for first, second in edges:
+        neighbors[int(first)].add(int(second))
+        neighbors[int(second)].add(int(first))
+    if any(len(linked) != 2 for linked in neighbors.values()):
+        return False
+    visited: set[int] = set()
+    queue: deque[int] = deque([next(iter(neighbors))])
+    while queue:
+        current = queue.popleft()
+        if current in visited:
+            continue
+        visited.add(current)
+        queue.extend(neighbors[current] - visited)
+    return len(visited) == len(neighbors) and len(edges) == len(neighbors)
+
+
+def cut_seam_topology_qc(
+    raw_vtp: Path,
+    remeshed_vtp: Path,
+    boundaries: Iterable[BoundaryInput],
+) -> dict[str, Any]:
+    """Measure exact survival of the original seam and reject a complete ring."""
+
+    raw = pv.read(raw_vtp).triangulate()
+    remeshed = pv.read(remeshed_vtp).triangulate()
+    raw_faces = _faces(raw)
+    raw_regions = np.asarray(raw.cell_data["SurfaceRegionId"], dtype=np.uint8)
+    _, _, seam_edges = core_face_adjacency_layers(raw_faces, raw_regions)
+    raw_points = np.asarray(raw.points)
+    target_points = np.asarray(remeshed.points)
+    cast_points = raw_points.astype(target_points.dtype, copy=False)
+    coordinate_to_target: dict[tuple[float, float, float], list[int]] = defaultdict(list)
+    for point_id, point in enumerate(target_points):
+        coordinate_to_target[tuple(float(value) for value in point)].append(point_id)
+    remeshed_edges = {
+        tuple(sorted((int(first), int(second))))
+        for first, second in np.asarray(
+            trimesh.Trimesh(
+                vertices=target_points,
+                faces=_faces(remeshed),
+                process=False,
+            ).edges_unique,
+            dtype=np.int64,
+        )
+    }
+    survived = np.zeros(len(seam_edges), dtype=bool)
+    for edge_index, (first, second) in enumerate(seam_edges):
+        first_ids = coordinate_to_target.get(
+            tuple(float(value) for value in cast_points[int(first)]), []
+        )
+        second_ids = coordinate_to_target.get(
+            tuple(float(value) for value in cast_points[int(second)]), []
+        )
+        survived[edge_index] = any(
+            tuple(sorted((first_id, second_id))) in remeshed_edges
+            for first_id in first_ids
+            for second_id in second_ids
+        )
+    boundary_list = list(boundaries)
+    midpoints = raw_points[seam_edges].mean(axis=1)
+    port_assignment = _boundary_assignment(midpoints, boundary_list)
+    per_port: list[dict[str, Any]] = []
+    closed_loop_survives = False
+    for local_index, boundary in enumerate(boundary_list):
+        indices = np.flatnonzero(port_assignment == local_index)
+        port_edges = seam_edges[indices]
+        surviving_edges = port_edges[survived[indices]]
+        closed = bool(
+            len(surviving_edges) == len(port_edges)
+            and edges_form_simple_closed_loop(surviving_edges)
+        )
+        closed_loop_survives |= closed
+        per_port.append(
+            {
+                "boundary_index": boundary.index,
+                "port_id": boundary.port_id,
+                "original_seam_edge_count": int(len(port_edges)),
+                "surviving_original_seam_edge_count": int(len(surviving_edges)),
+                "surviving_fraction": float(
+                    len(surviving_edges) / len(port_edges)
+                )
+                if len(port_edges)
+                else 0.0,
+                "original_seam_closed_loop_survives": closed,
+            }
+        )
+    surviving_count = int(np.count_nonzero(survived))
+    return {
+        "status": "FAIL" if closed_loop_survives else "PASS",
+        "failure_status_if_rejected": "VMTK_CROSS_SEAM_RING_TOPOLOGY_PRESERVED",
+        "original_cut_seam_edge_count": int(len(seam_edges)),
+        "surviving_original_seam_edge_count": surviving_count,
+        "surviving_fraction": float(surviving_count / len(seam_edges))
+        if len(seam_edges)
+        else 0.0,
+        "original_cut_seam_closed_loop_survives": closed_loop_survives,
+        "per_port": per_port,
+    }
+
+
 def _plane_section_points(
     triangle: np.ndarray, plane_point: np.ndarray, plane_normal: np.ndarray
 ) -> np.ndarray:
@@ -653,6 +1241,132 @@ def guarded_intersection_qc(
         "classification_counts": counts,
         "intersections": records,
     }, records
+
+
+def cross_seam_intersection_qc(
+    surface_vtp: Path,
+    *,
+    entity_array_name: str = "RemeshEntityId",
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Classify true intersections for FAR_CORE and CROSS_SEAM_ACTIVE."""
+
+    data, mesh = polydata_mesh(surface_vtp)
+    faces = np.asarray(mesh.faces, dtype=np.int64)
+    entities = np.asarray(data.cell_data[entity_array_name], dtype=np.int32)
+    pairs, candidates = _triangle_intersections(
+        mesh, np.arange(len(faces), dtype=np.int64)
+    )
+    order = {"CAP": 0, "FAR_CORE": 1, "CROSS_SEAM_ACTIVE": 2}
+    counts = {
+        "FAR_CORE_FAR_CORE": 0,
+        "FAR_CORE_CROSS_SEAM_ACTIVE": 0,
+        "CROSS_SEAM_ACTIVE_CROSS_SEAM_ACTIVE": 0,
+    }
+    records: list[dict[str, Any]] = []
+    for first, second in pairs:
+        diagnosis = triangle_pair_intersection_diagnosis(
+            np.asarray(mesh.vertices), faces, first, second
+        )
+        first_name = CROSS_SEAM_ENTITY_NAMES.get(
+            int(entities[first]), f"ENTITY_{int(entities[first])}"
+        )
+        second_name = CROSS_SEAM_ENTITY_NAMES.get(
+            int(entities[second]), f"ENTITY_{int(entities[second])}"
+        )
+        names = sorted(
+            (first_name, second_name), key=lambda name: order.get(name, 99)
+        )
+        canonical = "_".join(names)
+        diagnosis.update(
+            {
+                "first_entity_id": int(entities[first]),
+                "second_entity_id": int(entities[second]),
+                "entity_pair": canonical,
+            }
+        )
+        if diagnosis["true_triangle_triangle_intersection"]:
+            counts.setdefault(canonical, 0)
+            counts[canonical] += 1
+            records.append(diagnosis)
+    total = int(sum(counts.values()))
+    return {
+        "status": "PASS" if total == 0 else "FAIL",
+        "true_self_intersection_count": total,
+        "vtk_candidate_intersection_count": int(len(pairs)),
+        "candidate_pairs_checked": int(candidates),
+        "classification_counts": counts,
+        "intersections": records,
+    }, records
+
+
+def seam_local_normal_diagnostic(
+    surface_vtp: Path,
+    boundaries: Iterable[BoundaryInput],
+    *,
+    target_edge_length_um: float,
+) -> dict[str, Any]:
+    """Report adjacent-face normal jumps within ± one target edge of each cut."""
+
+    _, mesh = polydata_mesh(surface_vtp)
+    faces = np.asarray(mesh.faces, dtype=np.int64)
+    vertices = np.asarray(mesh.vertices, dtype=float)
+    normals = np.asarray(mesh.face_normals, dtype=float)
+    edge_faces = _edge_face_map(faces)
+    boundary_list = list(boundaries)
+    values: dict[int, list[float]] = {
+        boundary.index: [] for boundary in boundary_list
+    }
+    for edge, linked in edge_faces.items():
+        if len(linked) != 2:
+            continue
+        midpoint = vertices[np.asarray(edge, dtype=np.int64)].mean(axis=0)
+        eligible: list[tuple[float, BoundaryInput]] = []
+        for boundary in boundary_list:
+            relative = midpoint - boundary.center_um
+            axial = float(relative @ boundary.outward_normal)
+            radial_vector = relative - axial * boundary.outward_normal
+            radial = float(np.linalg.norm(radial_vector))
+            if (
+                abs(axial) <= target_edge_length_um
+                and radial <= 3.0 * boundary.source_radius_um
+            ):
+                eligible.append((radial / boundary.source_radius_um, boundary))
+        if not eligible:
+            continue
+        boundary = min(eligible, key=lambda item: item[0])[1]
+        first, second = linked
+        dot = float(np.clip(normals[first] @ normals[second], -1.0, 1.0))
+        values[boundary.index].append(float(np.degrees(np.arccos(dot))))
+    rows: list[dict[str, Any]] = []
+    for boundary in boundary_list:
+        angles = np.asarray(values[boundary.index], dtype=float)
+        rows.append(
+            {
+                "boundary_index": boundary.index,
+                "port_id": boundary.port_id,
+                "adjacent_edge_count": int(len(angles)),
+                "normal_jump_P50_deg": float(np.percentile(angles, 50))
+                if len(angles)
+                else None,
+                "normal_jump_P95_deg": float(np.percentile(angles, 95))
+                if len(angles)
+                else None,
+                "normal_jump_P99_deg": float(np.percentile(angles, 99))
+                if len(angles)
+                else None,
+                "normal_jump_max_deg": float(np.max(angles))
+                if len(angles)
+                else None,
+            }
+        )
+    return {
+        "status": "PASS"
+        if all(row["adjacent_edge_count"] > 0 for row in rows)
+        else "FAIL",
+        "window_um": target_edge_length_um,
+        "method": "adjacent face normal jump near original cut plane",
+        "boundaries": rows,
+    }
 
 
 def _point_to_segments_distance(point: np.ndarray, segments: np.ndarray) -> float:
@@ -953,6 +1667,31 @@ def guarded_region_mesh_quality(
         "tail_triangle_count": len(tail_records),
     }
     return report, tail_records
+
+
+def crossseam_active_mesh_quality(
+    surface_vtp: Path,
+    boundaries: Iterable[BoundaryInput],
+    *,
+    active_entity_id: int,
+    local_target_edge_um: dict[int, float],
+    quality: MeshQualityConfig,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Report the single active collar-plus-extension region; tails are warnings."""
+
+    report, tails = guarded_region_mesh_quality(
+        surface_vtp,
+        boundaries,
+        entity_id=active_entity_id,
+        entity_label="CROSS_SEAM_ACTIVE",
+        local_target_edge_um=local_target_edge_um,
+        quality=quality,
+        hard_body_gate=False,
+    )
+    report.pop("guard_sliver_policy", None)
+    report["tail_policy"] = "WARNING_ONLY"
+    report["hard_gate"] = False
+    return report, tails
 
 
 def previous_tail_fraction_inside_guard(

@@ -263,13 +263,24 @@ def _run_entity_remesh(request: dict[str, object]) -> dict[str, object]:
             for index in range(raw.GetNumberOfCells())
         }
     )
-    core_entity_id = int(request["core_entity_id"])
-    guard_entity_id = int(request["guard_entity_id"])
-    body_entity_id = int(request["extension_body_entity_id"])
-    if input_entity_ids != [core_entity_id, guard_entity_id, body_entity_id]:
+    expected_entity_ids = sorted(
+        int(value) for value in request["expected_entity_ids"]  # type: ignore[union-attr]
+    )
+    if input_entity_ids != expected_entity_ids:
         raise RuntimeError("VMTK_ENTITY_ASSIGNMENT_FAILED:unexpected_ids")
-    excluded_entity_ids = [int(value) for value in request["exclude_entity_ids"]]  # type: ignore[union-attr]
-    if excluded_entity_ids != [core_entity_id, guard_entity_id]:
+    excluded_entity_ids = sorted(
+        int(value) for value in request["excluded_entity_ids"]  # type: ignore[union-attr]
+    )
+    active_entity_ids = sorted(
+        int(value) for value in request["active_entity_ids"]  # type: ignore[union-attr]
+    )
+    if (
+        not excluded_entity_ids
+        or not active_entity_ids
+        or set(excluded_entity_ids) & set(active_entity_ids)
+        or sorted(set(excluded_entity_ids) | set(active_entity_ids))
+        != expected_entity_ids
+    ):
         raise RuntimeError("VMTK_ENTITY_ASSIGNMENT_FAILED:unsafe_exclusion")
 
     remesher = vmtkscripts.vmtkSurfaceRemeshing()
@@ -301,7 +312,7 @@ def _run_entity_remesh(request: dict[str, object]) -> dict[str, object]:
         "official_remesher": "vmtkscripts.vmtkSurfaceRemeshing",
         "cell_entity_ids_array": entity_array_name,
         "excluded_entity_ids": excluded_entity_ids,
-        "active_entity_ids": [body_entity_id],
+        "active_entity_ids": active_entity_ids,
         "input_entity_ids": input_entity_ids,
         "output_entity_ids": output_entity_ids,
         "target_edge_length_um": float(request["target_edge_length_um"]),

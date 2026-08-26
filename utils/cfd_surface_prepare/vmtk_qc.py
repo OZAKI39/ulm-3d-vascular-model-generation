@@ -1072,6 +1072,7 @@ def tag_and_export_final_surface(
     *,
     output_stem: str = "cfd_surface_vmtk_tps_boundarynormal",
     raw_vtp: Path | None = None,
+    remesh_entity_codes: dict[str, int] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     geometry_directory.mkdir(parents=True, exist_ok=True)
     data = pv.read(capped_vtp).triangulate()
@@ -1255,12 +1256,8 @@ def tag_and_export_final_surface(
         "source_open_noncap_triangle_count": preserved_raw_triangle_count,
         "source_open_noncap_triangle_missing_count": missing_raw_triangle_count,
         "surface_region_codes": {"CORE": 0, "EXTENSION": 1, "CAP": 2},
-        "remesh_entity_codes": {
-            "CAP": 0,
-            "CORE": 1,
-            "PROXIMAL_GUARD": 2,
-            "EXTENSION_BODY": 3,
-        },
+        "remesh_entity_codes": remesh_entity_codes
+        or {"CAP": 0, "FAR_CORE": 1, "CROSS_SEAM_ACTIVE": 2},
         "boundaries": sorted(mapping_rows, key=lambda row: int(row["boundary_index"])),
     }
     return outputs, report

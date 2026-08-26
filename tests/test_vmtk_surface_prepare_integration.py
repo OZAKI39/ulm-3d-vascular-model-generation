@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import ast
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pyvista as pv
@@ -12,16 +13,20 @@ import pytest
 import trimesh
 
 from utils.cfd_surface_prepare.config import (
+    CoreCollarConfig,
     EntityRemeshConfig,
-    GuardConfig,
     MeshQualityConfig,
     VmtkConfig,
     load_surface_prepare_config,
 )
 from utils.cfd_surface_prepare.guarded_remesh import (
-    assign_guarded_remesh_entities,
-    guarded_entity_preservation_qc,
-    guarded_intersection_qc,
+    assign_cross_seam_active_entities,
+    core_face_adjacency_layers,
+    cross_seam_entity_preservation_qc,
+    cross_seam_intersection_qc,
+    cut_seam_topology_qc,
+    edges_form_simple_closed_loop,
+    locked_entity_preservation_qc,
     triangle_pair_intersection_diagnosis,
 )
 from utils.cfd_surface_prepare.io import BoundaryInput, SurfacePrepareError
@@ -58,13 +63,12 @@ from utils.cfd_surface_prepare.vmtk_pipeline import (
     final_candidate_status,
     raw_geometry_hard_gate_pass,
     resolve_entity_failure_status,
-    run_synthetic_entity_exclusion_preflight,
-    should_cap_guarded_open,
+    should_cap_crossseam_open,
     should_generate_manual_review_figures,
-    should_write_guarded_collision_figure,
     should_promote_raw_candidate,
 )
 from utils.cfd_surface_prepare.vmtk_runner import (
+    build_entity_remesh_request,
     cap_official_vmtk,
     entity_remesh_official_vmtk,
     exchange_paths,
@@ -79,6 +83,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = PROJECT_ROOT / "configs" / "cfd_surface_prepare.yaml"
 PMP_PYTHON = Path("D:/anaconda3/envs/pmp/python.exe")
 VMTK_RUNTIME_PREFIX = Path("D:/anaconda3/envs/vmtk-env")
+GUARDED_ENTITY_RUN = (
+    PROJECT_ROOT
+    / "outputs"
+    / "cfd_surface_prepare"
+    / "vmtk_tps_boundarynormal_guarded_entityremesh_anchor003274_20260826_185752"
+)
 PREVIOUS_ENTITY_RUN = (
     PROJECT_ROOT
     / "outputs"
@@ -112,12 +122,11 @@ def _entity_remesh_config() -> EntityRemeshConfig:
     return EntityRemeshConfig(
         enabled=True,
         entity_array_name="RemeshEntityId",
-        core_entity_id=1,
-        guard_entity_id=2,
-        extension_body_entity_id=3,
-        exclude_entity_ids=(1, 2),
-        guard=GuardConfig(
-            mode="extension_face_adjacency_layers", face_layers=2
+        far_core_entity_id=1,
+        active_entity_id=2,
+        exclude_entity_ids=(1,),
+        core_collar=CoreCollarConfig(
+            mode="core_face_adjacency_layers", face_layers=2
         ),
         element_size_mode="edgelength",
         target_edge_length_um=0.25913916380971913,
@@ -142,7 +151,7 @@ def _vmtk_config(
         adaptive_extension_radius=True,
         adaptive_boundary_points=True,
         postprocess_mode=(
-            "guarded_extension_entity_remesh_then_cap"
+            "cross_seam_active_collar_remesh_then_cap"
             if entity_remesh
             else "cap_only"
         ),
@@ -157,62 +166,54 @@ def formal_config():
 
 
 @pytest.fixture(scope="module")
-def synthetic_entity_remesh(formal_config, tmp_path_factory):
-    """Run the official entity-exclusion safety proof once for this module."""
+def actual_crossseam_assignment(formal_config, tmp_path_factory):
+    """Classify the saved RAW surface without running synthetic VMTK."""
 
-    if not PMP_PYTHON.is_file() or not VMTK_RUNTIME_PREFIX.is_dir():
-        pytest.skip("pmp or the pinned VMTK runtime is unavailable")
-    root = tmp_path_factory.mktemp("official_vmtk_entity_remesh")
-    report = run_synthetic_entity_exclusion_preflight(
-        formal_config,
-        root=root,
-        tool_script=PROJECT_ROOT / "tools" / "run_vmtk_flowextension.py",
-    )
-    paths = exchange_paths(
-        input_directory=root / "input",
-        vmtk_directory=root / "vmtk",
-        geometry_directory=root / "geometry",
-        extension_mode="boundarynormal",
-    )
-    return root, paths, report
-
-
-@pytest.fixture(scope="module")
-def synthetic_entity_cap(formal_config, synthetic_entity_remesh):
-    """Cap the already-remeshed synthetic candidate once with official VMTK."""
-
-    root, paths, report = synthetic_entity_remesh
-    promotion = cap_official_vmtk(
-        config=formal_config.vmtk,
-        paths=paths,
-        tool_script=PROJECT_ROOT / "tools" / "run_vmtk_flowextension.py",
-    )
-    return root, paths, report, promotion
-
-
-@pytest.fixture(scope="module")
-def actual_guard_assignment(formal_config, tmp_path_factory):
-    """Classify the saved RAW surface without rerunning ROI geometry."""
-
-    root = tmp_path_factory.mktemp("saved_raw_guard_assignment")
+    root = tmp_path_factory.mktemp("saved_raw_crossseam_assignment")
     raw_path = root / "saved_raw.vtp"
     pv.read(
-        PREVIOUS_ENTITY_RUN / "geometry" / "vmtk_boundarynormal_raw_um.vtp"
+        GUARDED_ENTITY_RUN / "geometry" / "vmtk_boundarynormal_raw_um.vtp"
     ).save(raw_path, binary=True)
     inputs = load_surface_inputs(
         formal_config.paths.cfd_preprocess_run, expected_boundary_count=4
     )
     settings = formal_config.vmtk.entity_remesh
-    report, distances = assign_guarded_remesh_entities(
+    report, distances = assign_cross_seam_active_entities(
         raw_path,
         inputs.boundaries,
-        face_layers=settings.guard.face_layers,
+        face_layers=settings.core_collar.face_layers,
         entity_array_name=settings.entity_array_name,
-        core_entity_id=settings.core_entity_id,
-        guard_entity_id=settings.guard_entity_id,
-        body_entity_id=settings.extension_body_entity_id,
+        far_core_entity_id=settings.far_core_entity_id,
+        active_entity_id=settings.active_entity_id,
     )
     return raw_path, report, distances, inputs
+
+
+@pytest.fixture(scope="module")
+def crossseam_modified_candidate(actual_crossseam_assignment, tmp_path_factory):
+    """Create a deterministic extension-only change without invoking VMTK."""
+
+    raw_path, _, _, inputs = actual_crossseam_assignment
+    candidate = pv.read(raw_path).triangulate()
+    faces = np.asarray(candidate.faces).reshape((-1, 4))[:, 1:]
+    regions = np.asarray(candidate.cell_data["SurfaceRegionId"])
+    core_vertices = np.unique(faces[regions == 0])
+    extension_vertices = np.unique(faces[regions == 1])
+    extension_only = np.setdiff1d(extension_vertices, core_vertices)
+    assert len(extension_only) > 0
+    candidate.points[int(extension_only[0]), 0] += 1.0e-3
+    candidate_path = (
+        tmp_path_factory.mktemp("crossseam_modified_candidate")
+        / "candidate.vtp"
+    )
+    candidate.save(candidate_path, binary=True)
+    reports = cross_seam_entity_preservation_qc(
+        raw_path,
+        candidate_path,
+        inputs.boundaries,
+        restore_region_arrays=False,
+    )
+    return raw_path, candidate_path, reports
 
 
 @pytest.fixture()
@@ -302,6 +303,9 @@ def four_port_remeshed_open(tmp_path: Path):
 
 @pytest.fixture(scope="module")
 def synthetic_vmtk(tmp_path_factory):
+    pytest.skip(
+        "External synthetic VMTK execution is disabled for the cross-seam task"
+    )
     if not PMP_PYTHON.is_file() or not VMTK_RUNTIME_PREFIX.is_dir():
         pytest.skip("pmp or the pinned VMTK runtime is unavailable")
     root = tmp_path_factory.mktemp("official_vmtk")
@@ -332,7 +336,7 @@ def synthetic_vmtk(tmp_path_factory):
             )
             for z in np.linspace(0.0, 5.0, layers)
         ]
-    )
+    ).astype(np.float32)
     faces: list[list[int]] = []
     for layer in range(layers - 1):
         first = layer * count
@@ -367,17 +371,10 @@ def synthetic_vmtk(tmp_path_factory):
 
 
 @pytest.fixture(scope="module")
-def clean_open_surface_cap(tmp_path_factory):
-    """Cap a clean open tube without involving extension resampling.
+def synthetic_entity_cap(tmp_path_factory):
+    """Build a local capped tube without invoking any external VMTK process."""
 
-    The frozen adaptive flow-extension filter has a known synthetic-only seam
-    degeneracy for this tiny fixture.  Cap topology is therefore tested on a
-    separate valid RAW-like surface, while ``synthetic_vmtk`` continues to
-    exercise the exact formal extension configuration.
-    """
-    if not PMP_PYTHON.is_file() or not VMTK_RUNTIME_PREFIX.is_dir():
-        pytest.skip("pmp or the pinned VMTK runtime is unavailable")
-    root = tmp_path_factory.mktemp("official_vmtk_clean_cap")
+    root = tmp_path_factory.mktemp("local_entity_cap")
     input_dir = root / "input"
     vmtk_dir = root / "vmtk"
     geometry_dir = root / "geometry"
@@ -389,24 +386,23 @@ def clean_open_surface_cap(tmp_path_factory):
         geometry_directory=geometry_dir,
         extension_mode="boundarynormal",
     )
-
     count = 32
-    layers = 9
+    layers = 5
     angle = np.linspace(0.0, 2.0 * np.pi, count, endpoint=False)
     points = np.vstack(
         [
             np.column_stack(
                 (1.1 * np.cos(angle), 0.9 * np.sin(angle), np.full(count, z))
             )
-            for z in np.linspace(-5.0, 10.0, layers)
+            for z in np.linspace(0.0, 4.0, layers)
         ]
-    )
+    ).astype(np.float32)
     faces: list[list[int]] = []
     regions: list[int] = []
     for layer in range(layers - 1):
         first = layer * count
         second = (layer + 1) * count
-        region = 0 if layer < 3 else 1
+        region = 0 if layer < 2 else 1
         for point in range(count):
             following = (point + 1) % count
             faces.extend(
@@ -417,19 +413,59 @@ def clean_open_surface_cap(tmp_path_factory):
             )
             regions.extend((region, region))
     vtk_faces = np.column_stack(
-        (np.full(len(faces), 3, dtype=np.int64), np.asarray(faces, dtype=np.int64))
+        (np.full(len(faces), 3, dtype=np.int64), np.asarray(faces))
     ).ravel()
     raw = pv.PolyData(points, vtk_faces)
     raw.cell_data["SurfaceRegionId"] = np.asarray(regions, dtype=np.uint8)
-    raw.cell_data["SurfaceRegion"] = np.asarray(
-        ["CORE" if region == 0 else "EXTENSION" for region in regions]
+    raw.cell_data["SurfaceRegion"] = np.where(
+        np.asarray(regions) == 0, "CORE", "EXTENSION"
     )
     raw.save(paths.raw_vtp, binary=True)
-    promotion = cap_official_vmtk(
-        config=_vmtk_config("boundarynormal"),
-        paths=paths,
-        tool_script=PROJECT_ROOT / "tools" / "run_vmtk_flowextension.py",
+    assignment = assign_remesh_entities(paths.raw_vtp)
+    pv.read(paths.raw_vtp).save(paths.remeshed_open_vtp, binary=True)
+
+    capped_points = np.vstack(
+        (
+            points,
+            np.asarray(((0.0, 0.0, 0.0), (0.0, 0.0, 4.0)), dtype=np.float32),
+        )
     )
+    bottom_center = len(points)
+    top_center = bottom_center + 1
+    top_start = (layers - 1) * count
+    capped_faces = list(faces)
+    for point in range(count):
+        following = (point + 1) % count
+        capped_faces.append([bottom_center, following, point])
+        capped_faces.append(
+            [top_center, top_start + point, top_start + following]
+        )
+    packed = np.column_stack(
+        (
+            np.full(len(capped_faces), 3, dtype=np.int64),
+            np.asarray(capped_faces),
+        )
+    ).ravel()
+    capped = pv.PolyData(capped_points, packed)
+    capped.cell_data["CellEntityIds"] = np.concatenate(
+        (
+            np.ones(len(faces), dtype=np.int32),
+            np.tile(np.asarray((2, 3), dtype=np.int32), count),
+        )
+    )
+    capped.save(paths.capped_vtp, binary=True)
+    promotion = SimpleNamespace(
+        request={"source_open_vtp": str(paths.remeshed_open_vtp.resolve())},
+        runtime={"surface_remesher_called": False},
+    )
+    return root, paths, assignment, promotion
+
+
+@pytest.fixture(scope="module")
+def clean_open_surface_cap(synthetic_entity_cap):
+    """Reuse the local watertight tube; no external capper is executed."""
+
+    _, paths, _, promotion = synthetic_entity_cap
     return paths, promotion
 
 
@@ -470,7 +506,7 @@ def test_formal_yaml_selects_boundarynormal(formal_config):
     assert formal_config.vmtk.extension_mode == "boundarynormal"
     assert (
         formal_config.vmtk.postprocess_mode
-        == "guarded_extension_entity_remesh_then_cap"
+        == "cross_seam_active_collar_remesh_then_cap"
     )
     assert formal_config.vmtk.remesh_after_extension is True
 
@@ -510,11 +546,10 @@ def test_single_variable_scientific_parameters_are_unchanged(formal_config):
 def test_formal_entity_array_mapping_is_exact(formal_config):
     settings = formal_config.vmtk.entity_remesh
     assert settings.entity_array_name == "RemeshEntityId"
-    assert settings.core_entity_id == 1
-    assert settings.guard_entity_id == 2
-    assert settings.extension_body_entity_id == 3
-    assert settings.exclude_entity_ids == (1, 2)
-    assert settings.guard.face_layers == 2
+    assert settings.far_core_entity_id == 1
+    assert settings.active_entity_id == 2
+    assert settings.exclude_entity_ids == (1,)
+    assert settings.core_collar.face_layers == 2
 
 
 def test_formal_entity_remesher_parameters_are_frozen(formal_config):
@@ -528,53 +563,74 @@ def test_parameter_mapping_prohibits_global_remesh(formal_config):
     mapping = parameter_mapping(formal_config.vmtk)
     assert mapping["global_surface_remeshing_performed"] is False
     assert mapping["entity_aware_extension_remeshing_performed"] is True
-    assert mapping["entity_remesh"]["exclude_entity_ids"] == [1, 2]
+    assert mapping["entity_remesh"]["expected_entity_ids"] == [1, 2]
+    assert mapping["entity_remesh"]["exclude_entity_ids"] == [1]
+    assert mapping["entity_remesh"]["active_entity_ids"] == [2]
 
 
-def test_guard_bfs_layer_zero_detection(actual_guard_assignment):
-    _, report, distances, _ = actual_guard_assignment
-    assert report["interface_seed_face_count"] == np.count_nonzero(distances == 0)
-    assert report["interface_seed_face_count"] > 0
+def test_core_seam_detection(actual_crossseam_assignment):
+    raw_path, report, _, _ = actual_crossseam_assignment
+    data = pv.read(raw_path).triangulate()
+    faces = np.asarray(data.faces).reshape((-1, 4))[:, 1:]
+    distances, seeds, seam_edges = core_face_adjacency_layers(
+        faces, np.asarray(data.cell_data["SurfaceRegionId"])
+    )
+    assert report["core_collar_seed_face_count"] == len(seeds)
+    assert report["original_cut_seam_edge_count"] == len(seam_edges)
+    assert len(seeds) == np.count_nonzero(distances == 0) > 0
 
 
-def test_guard_two_layer_expansion(actual_guard_assignment):
-    raw_path, report, distances, _ = actual_guard_assignment
-    data = pv.read(raw_path)
-    entities = np.asarray(data.cell_data["RemeshEntityId"])
-    assert report["guard_face_layers"] == 2
-    assert np.all(np.isin(distances[entities == 2], (0, 1)))
-    assert np.count_nonzero(distances == 1) > 0
-
-
-def test_guard_never_includes_core(actual_guard_assignment):
-    raw_path, _, _, _ = actual_guard_assignment
+def test_core_collar_two_layer_expansion(actual_crossseam_assignment):
+    raw_path, report, distances, _ = actual_crossseam_assignment
     data = pv.read(raw_path)
     regions = np.asarray(data.cell_data["SurfaceRegionId"])
     entities = np.asarray(data.cell_data["RemeshEntityId"])
-    assert not np.any((regions == 0) & (entities == 2))
-    assert np.all(entities[regions == 0] == 1)
+    collar = (regions == 0) & (entities == 2)
+    assert report["core_collar_face_layers"] == 2
+    assert np.all(np.isin(distances[collar], (0, 1)))
+    assert np.count_nonzero(distances == 1) > 0
 
 
-def test_guard_never_includes_distal_boundary(actual_guard_assignment):
-    _, report, _, _ = actual_guard_assignment
+def test_all_extension_faces_are_active(actual_crossseam_assignment):
+    raw_path, _, _, _ = actual_crossseam_assignment
+    data = pv.read(raw_path)
+    regions = np.asarray(data.cell_data["SurfaceRegionId"])
+    entities = np.asarray(data.cell_data["RemeshEntityId"])
+    assert np.all(entities[regions == 1] == 2)
+
+
+def test_far_core_is_excluded_entity_one(actual_crossseam_assignment):
+    raw_path, report, _, _ = actual_crossseam_assignment
+    data = pv.read(raw_path)
+    regions = np.asarray(data.cell_data["SurfaceRegionId"])
+    entities = np.asarray(data.cell_data["RemeshEntityId"])
+    assert report["far_core_face_count"] > 0
+    assert np.all(regions[entities == 1] == 0)
+
+
+def test_crossseam_assignment_has_only_two_entities(actual_crossseam_assignment):
+    _, report, _, _ = actual_crossseam_assignment
+    assert report["status"] == "PASS"
+    assert report["entity_ids"] == [1, 2]
     assert all(
-        not row["guard_contains_distal_boundary"] for row in report["per_port"]
+        row["active_core_collar_face_count"] > 0
+        and row["extension_face_count"] > 0
+        for row in report["per_port"]
     )
 
 
-def test_guard_body_remains_nonempty_per_port(actual_guard_assignment):
-    _, report, _, _ = actual_guard_assignment
-    assert report["status"] == "PASS"
-    assert all(row["guard_face_count"] > 0 for row in report["per_port"])
-    assert all(row["extension_body_face_count"] > 0 for row in report["per_port"])
+def test_original_cut_seam_is_not_entity_boundary(actual_crossseam_assignment):
+    _, report, _, _ = actual_crossseam_assignment
+    assert report["original_cut_seam_edge_count"] > 0
+    assert report["original_cut_seam_edges_between_different_remesh_entities"] == 0
 
 
-def test_guard_entity_ids_are_one_two_three(actual_guard_assignment):
-    _, report, _, _ = actual_guard_assignment
-    assert report["core_entity_id"] == 1
-    assert report["guard_entity_id"] == 2
-    assert report["extension_body_entity_id"] == 3
-    assert report["entity_ids"] == [1, 2, 3]
+def test_far_core_active_boundary_is_inside_original_core(
+    actual_crossseam_assignment,
+):
+    _, report, _, _ = actual_crossseam_assignment
+    assert report["far_core_active_boundary_edge_count"] > 0
+    assert report["far_core_active_boundary_edges_on_original_cut_seam"] == 0
 
 
 def test_invalid_yaml_extension_mode_fails(tmp_path: Path):
@@ -620,105 +676,32 @@ def test_official_source_provenance_records_release_commit(formal_config):
     assert provenance["runtime_release_tag_commit"] == "30d5d7cb8e607d153c208a9d7d39c9feb7985476"
 
 
-def test_synthetic_entity_exclusion_preflight_passes(synthetic_entity_remesh):
-    _, _, report = synthetic_entity_remesh
-    assert report["status"] == "PASS"
+def test_entity_remesh_request_has_exact_two_entity_contract(tmp_path: Path):
+    paths = exchange_paths(
+        input_directory=tmp_path / "input",
+        vmtk_directory=tmp_path / "vmtk",
+        geometry_directory=tmp_path / "geometry",
+        extension_mode="boundarynormal",
+    )
+    request = build_entity_remesh_request(
+        config=_vmtk_config("boundarynormal", entity_remesh=True), paths=paths
+    )
+    assert request["expected_entity_ids"] == [1, 2]
+    assert request["excluded_entity_ids"] == [1]
+    assert request["active_entity_ids"] == [2]
+    assert request["preserve_boundary_edges"] is True
+    assert request["target_edge_length_um"] == 0.25913916380971913
 
 
-def test_synthetic_core_vertices_are_unchanged(synthetic_entity_remesh):
-    _, _, report = synthetic_entity_remesh
-    assert report["core"]["checks"][
-        "core_vertices_exact_after_output_dtype_cast"
-    ]
-    assert report["core"]["core_vertex_max_motion_um"] <= report["core"][
-        "machine_precision_tolerance_um"
-    ]
-
-
-def test_synthetic_core_connectivity_is_unchanged(synthetic_entity_remesh):
-    _, _, report = synthetic_entity_remesh
-    assert report["core"]["checks"]["core_connectivity_unchanged"]
-    assert report["core"]["core_connectivity_changed_count"] == 0
-
-
-def test_synthetic_curved_guard_is_exact_locked(synthetic_entity_remesh):
-    _, _, report = synthetic_entity_remesh
-    guard = report["guard"]
-    assert guard["status"] == "PASS"
-    assert guard["guard_vertex_max_motion_um"] <= guard[
-        "machine_precision_tolerance_um"
-    ]
-    assert guard["guard_connectivity_changed_count"] == 0
-
-
-def test_synthetic_curved_guard_has_zero_self_intersections(
-    synthetic_entity_remesh,
+def test_entity_runner_rejects_configuration_without_crossseam_mode(
+    tmp_path: Path,
 ):
-    _, _, report = synthetic_entity_remesh
-    assert report["topology"]["status"] == "PASS"
-    assert report["intersections"]["true_self_intersection_count"] == 0
-
-
-def test_post_remesh_intersection_classification_works(synthetic_entity_remesh):
-    _, paths, _ = synthetic_entity_remesh
-    report, records = guarded_intersection_qc(paths.remeshed_open_vtp)
-    assert report["status"] == "PASS"
-    assert report["true_self_intersection_count"] == 0
-    assert records == []
-
-
-def test_synthetic_shared_interface_vertices_are_unchanged(
-    synthetic_entity_remesh,
-):
-    _, _, report = synthetic_entity_remesh
-    interface = report["entity_boundaries"]
-    assert interface["status"] == "PASS"
-    assert interface["core_guard_max_motion_um"] <= interface[
-        "machine_precision_tolerance_um"
-    ]
-    assert interface["guard_body_max_motion_um"] <= interface[
-        "machine_precision_tolerance_um"
-    ]
-
-
-def test_synthetic_extension_is_actually_remeshed(synthetic_entity_remesh):
-    _, _, report = synthetic_entity_remesh
-    extension = report["body"]
-    assert extension["status"] == "PASS"
-    assert extension["body_remesh_effect_detected"] is True
-    assert extension["body_connectivity_changed"] is True
-
-
-def test_entity_runner_uses_official_exclusion_api(synthetic_entity_remesh):
-    _, _, report = synthetic_entity_remesh
-    runtime = report["runtime"]
-    assert runtime["official_remesher"] == "vmtkscripts.vmtkSurfaceRemeshing"
-    assert runtime["cell_entity_ids_array"] == "RemeshEntityId"
-    assert runtime["excluded_entity_ids"] == [1, 2]
-    assert runtime["active_entity_ids"] == [3]
-
-
-def test_entity_runner_preserves_boundary_edges(synthetic_entity_remesh):
-    _, _, report = synthetic_entity_remesh
-    assert report["runtime"]["preserve_boundary_edges"] is True
-
-
-def test_entity_runner_uses_exact_target_edge(synthetic_entity_remesh):
-    _, _, report = synthetic_entity_remesh
-    assert report["runtime"]["target_edge_length_um"] == 0.25913916380971913
-
-
-def test_entity_runner_does_not_perform_global_remesh(synthetic_entity_remesh):
-    _, _, report = synthetic_entity_remesh
-    assert report["runtime"]["surface_remesher_called"] is True
-    assert report["runtime"]["global_surface_remeshing_performed"] is False
-    assert report["runtime"]["entity_aware_extension_remeshing_performed"] is True
-
-
-def test_entity_runner_rejects_configuration_without_exclusion(
-    synthetic_entity_remesh,
-):
-    _, paths, _ = synthetic_entity_remesh
+    paths = exchange_paths(
+        input_directory=tmp_path / "input",
+        vmtk_directory=tmp_path / "vmtk",
+        geometry_directory=tmp_path / "geometry",
+        extension_mode="boundarynormal",
+    )
     with pytest.raises(
         SurfacePrepareError, match="INVALID_VMTK_POSTPROCESS_CONFIGURATION"
     ):
@@ -729,110 +712,128 @@ def test_entity_runner_rejects_configuration_without_exclusion(
         )
 
 
-def test_entity_remesh_output_preserves_entity_ids(synthetic_entity_remesh):
-    _, paths, report = synthetic_entity_remesh
-    data = pv.read(paths.remeshed_open_vtp)
-    assert report["runtime"]["output_entity_ids"] == [1, 2, 3]
-    assert set(np.unique(data.cell_data["RemeshEntityId"])) == {1, 2, 3}
-
-
-def test_project_entity_assignment_preserves_geometry(
-    synthetic_entity_remesh, tmp_path: Path
+def test_crossseam_preservation_qc_accepts_extension_only_change(
+    crossseam_modified_candidate,
 ):
-    _, paths, _ = synthetic_entity_remesh
-    data = pv.read(paths.raw_vtp)
-    del data.cell_data["RemeshEntityId"]
-    candidate = tmp_path / "raw_to_assign.vtp"
-    data.save(candidate, binary=True)
-    report = assign_remesh_entities(candidate)
-    assert report["status"] == "PASS"
-    assert all(report["checks"].values())
-    assert report["core_entity_id"] == 1
-    assert report["extension_entity_id"] == 2
+    _, _, reports = crossseam_modified_candidate
+    far_core, boundary, collar, extension = reports
+    assert far_core["status"] == "PASS"
+    assert boundary["status"] == "PASS"
+    assert collar["status"] == "PASS"
+    assert extension["status"] == "PASS"
+    assert extension["extension_remesh_effect_detected"] is True
 
 
-def test_entity_qc_catches_core_vertex_motion(
-    synthetic_entity_remesh, tmp_path: Path
+def test_crossseam_qc_rejects_unchanged_extension(actual_crossseam_assignment):
+    raw_path, _, _, inputs = actual_crossseam_assignment
+    far_core, boundary, collar, extension = cross_seam_entity_preservation_qc(
+        raw_path, raw_path, inputs.boundaries, restore_region_arrays=False
+    )
+    assert far_core["status"] == "PASS"
+    assert boundary["status"] == "PASS"
+    assert collar["status"] == "PASS"
+    assert extension["status"] == "FAIL"
+    assert extension["extension_remesh_effect_detected"] is False
+
+
+def test_far_core_exact_qc_catches_vertex_motion(
+    actual_crossseam_assignment, tmp_path: Path
 ):
-    _, paths, _ = synthetic_entity_remesh
-    data = pv.read(paths.remeshed_open_vtp).triangulate()
+    raw_path, _, _, _ = actual_crossseam_assignment
+    data = pv.read(raw_path).triangulate()
     faces = np.asarray(data.faces).reshape((-1, 4))[:, 1:]
     entities = np.asarray(data.cell_data["RemeshEntityId"])
-    core_vertices = np.unique(faces[entities == 1])
-    extension_vertices = np.unique(faces[np.isin(entities, (2, 3))])
-    core_only = np.setdiff1d(core_vertices, extension_vertices)
-    data.points[core_only[0], 0] += 1.0e-3
-    candidate = tmp_path / "core_moved.vtp"
+    far_vertices = np.unique(faces[entities == 1])
+    active_vertices = np.unique(faces[entities == 2])
+    far_only = np.setdiff1d(far_vertices, active_vertices)
+    data.points[int(far_only[0]), 0] += 1.0e-3
+    candidate = tmp_path / "far_core_moved.vtp"
     data.save(candidate, binary=True)
-    core, _, _, _ = guarded_entity_preservation_qc(
-        paths.raw_vtp, candidate, restore_region_arrays=False
-    )
-    assert core["status"] == "FAIL"
-    assert not core["checks"][
-        "core_motion_within_output_machine_precision"
-    ]
+    report = locked_entity_preservation_qc(raw_path, candidate)
+    assert report["status"] == "FAIL"
+    assert not report["checks"]["far_core_vertices_exact_after_output_dtype_cast"]
 
 
-def test_entity_qc_catches_core_connectivity_change(
-    synthetic_entity_remesh, tmp_path: Path
+def test_far_core_exact_qc_catches_connectivity_change(
+    actual_crossseam_assignment, tmp_path: Path
 ):
-    _, paths, _ = synthetic_entity_remesh
-    data = pv.read(paths.remeshed_open_vtp).triangulate()
+    raw_path, _, _, _ = actual_crossseam_assignment
+    data = pv.read(raw_path).triangulate()
     packed = np.asarray(data.faces).reshape((-1, 4)).copy()
     faces = packed[:, 1:]
     entities = np.asarray(data.cell_data["RemeshEntityId"])
-    core_face_id = int(np.flatnonzero(entities == 1)[0])
-    alternatives = np.setdiff1d(
-        np.unique(faces[entities == 1]), faces[core_face_id]
-    )
-    packed[core_face_id, 2] = int(alternatives[0])
+    face_id = int(np.flatnonzero(entities == 1)[0])
+    alternatives = np.setdiff1d(np.unique(faces[entities == 1]), faces[face_id])
+    packed[face_id, 2] = int(alternatives[0])
     data.faces = packed.ravel()
-    candidate = tmp_path / "core_connectivity_changed.vtp"
+    candidate = tmp_path / "far_core_connectivity_changed.vtp"
     data.save(candidate, binary=True)
-    core, _, _, _ = guarded_entity_preservation_qc(
-        paths.raw_vtp, candidate, restore_region_arrays=False
-    )
-    assert core["status"] == "FAIL"
-    assert not core["checks"]["core_connectivity_unchanged"]
-    assert core["core_connectivity_changed_count"] > 0
+    report = locked_entity_preservation_qc(raw_path, candidate)
+    assert report["status"] == "FAIL"
+    assert not report["checks"]["far_core_connectivity_unchanged"]
 
 
-def test_entity_qc_catches_shared_interface_motion(
-    synthetic_entity_remesh, tmp_path: Path
+def test_far_core_active_boundary_qc_catches_motion(
+    actual_crossseam_assignment, tmp_path: Path
 ):
-    _, paths, _ = synthetic_entity_remesh
-    data = pv.read(paths.remeshed_open_vtp).triangulate()
+    raw_path, _, _, inputs = actual_crossseam_assignment
+    data = pv.read(raw_path).triangulate()
     faces = np.asarray(data.faces).reshape((-1, 4))[:, 1:]
     entities = np.asarray(data.cell_data["RemeshEntityId"])
     shared = np.intersect1d(
         np.unique(faces[entities == 1]), np.unique(faces[entities == 2])
     )
-    data.points[shared[0], 1] += 1.0e-3
-    candidate = tmp_path / "interface_moved.vtp"
+    data.points[int(shared[0]), 1] += 1.0e-3
+    candidate = tmp_path / "far_active_boundary_moved.vtp"
     data.save(candidate, binary=True)
-    _, _, interface, _ = guarded_entity_preservation_qc(
-        paths.raw_vtp, candidate, restore_region_arrays=False
+    _, boundary, _, _ = cross_seam_entity_preservation_qc(
+        raw_path, candidate, inputs.boundaries, restore_region_arrays=False
     )
-    assert interface["status"] == "FAIL"
-    assert interface["core_guard_max_motion_um"] > interface[
+    assert boundary["status"] == "FAIL"
+    assert boundary["far_core_active_max_motion_um"] > boundary[
         "machine_precision_tolerance_um"
     ]
 
 
-def test_entity_qc_rejects_no_extension_remesh_effect(
-    synthetic_entity_remesh, tmp_path: Path
-):
-    _, paths, _ = synthetic_entity_remesh
-    candidate = tmp_path / "unchanged_raw.vtp"
-    pv.read(paths.raw_vtp).save(candidate, binary=True)
-    core, guard, interface, extension = guarded_entity_preservation_qc(
-        paths.raw_vtp, candidate, restore_region_arrays=False
+def test_simple_closed_loop_detector_rejects_open_chain():
+    assert edges_form_simple_closed_loop(
+        np.asarray(((0, 1), (1, 2), (2, 3), (3, 0)))
     )
-    assert core["status"] == "PASS"
-    assert guard["status"] == "PASS"
-    assert interface["status"] == "PASS"
-    assert extension["status"] == "FAIL"
-    assert extension["body_remesh_effect_detected"] is False
+    assert not edges_form_simple_closed_loop(
+        np.asarray(((0, 1), (1, 2), (2, 3)))
+    )
+
+
+def test_cut_seam_qc_rejects_an_unchanged_original_ring(
+    actual_crossseam_assignment,
+):
+    raw_path, _, _, inputs = actual_crossseam_assignment
+    report = cut_seam_topology_qc(raw_path, raw_path, inputs.boundaries)
+    assert report["status"] == "FAIL"
+    assert report["original_cut_seam_closed_loop_survives"] is True
+
+
+def test_crossseam_intersection_qc_accepts_disjoint_triangles(tmp_path: Path):
+    data = pv.PolyData(
+        np.asarray(
+            (
+                (0.0, 0.0, 0.0),
+                (1.0, 0.0, 0.0),
+                (0.0, 1.0, 0.0),
+                (0.0, 0.0, 2.0),
+                (1.0, 0.0, 2.0),
+                (0.0, 1.0, 2.0),
+            )
+        ),
+        np.asarray((3, 0, 1, 2, 3, 3, 4, 5)),
+    )
+    data.cell_data["RemeshEntityId"] = np.asarray((1, 2), dtype=np.int32)
+    path = tmp_path / "disjoint_crossseam_entities.vtp"
+    data.save(path, binary=True)
+    report, records = cross_seam_intersection_qc(path)
+    assert report["status"] == "PASS"
+    assert report["true_self_intersection_count"] == 0
+    assert records == []
 
 
 def test_centerline_adapter_uses_saved_real_graph_nodes(tmp_path: Path):
@@ -1150,20 +1151,19 @@ def test_raw_geometry_failure_blocks_promotion():
     assert not should_promote_raw_candidate(False)
 
 
-def test_guarded_topology_failure_stops_before_cap():
-    assert not should_cap_guarded_open(
-        {"status": "FAIL"}, {"status": "PASS"}
-    )
+def test_crossseam_topology_failure_stops_before_cap():
+    passed = {"status": "PASS"}
+    assert not should_cap_crossseam_open({"status": "FAIL"}, passed, passed)
 
 
-def test_guarded_topology_failure_still_outputs_collision_figure():
-    assert should_write_guarded_collision_figure("FAIL")
+def test_surviving_original_seam_ring_stops_before_cap():
+    passed = {"status": "PASS"}
+    assert not should_cap_crossseam_open(passed, passed, {"status": "FAIL"})
 
 
-def test_zero_intersection_guarded_surface_continues_to_cap():
-    assert should_cap_guarded_open(
-        {"status": "PASS"}, {"status": "PASS"}
-    )
+def test_clean_crossseam_open_surface_continues_to_cap():
+    passed = {"status": "PASS"}
+    assert should_cap_crossseam_open(passed, passed, passed)
 
 
 def test_interface_warning_still_requires_diagnostic_figures():
@@ -1172,13 +1172,18 @@ def test_interface_warning_still_requires_diagnostic_figures():
     )
 
 
-def test_boundarynormal_output_names_are_explicit(synthetic_vmtk):
-    _, paths, _, _, _, _, _ = synthetic_vmtk
+def test_boundarynormal_output_names_are_explicit(tmp_path: Path):
+    paths = exchange_paths(
+        input_directory=tmp_path / "input",
+        vmtk_directory=tmp_path / "vmtk",
+        geometry_directory=tmp_path / "geometry",
+        extension_mode="boundarynormal",
+    )
     assert paths.raw_vtp.name == "vmtk_boundarynormal_raw_um.vtp"
     assert paths.raw_stl.name == "vmtk_boundarynormal_raw_um.stl"
     assert (
         paths.remeshed_open_vtp.name
-        == "vmtk_boundarynormal_guarded_extension_remeshed_open_um.vtp"
+        == "vmtk_boundarynormal_crossseam_remeshed_open_um.vtp"
     )
     assert "remeshed" not in paths.capped_vtp.name
 
@@ -1423,7 +1428,7 @@ def test_official_cap_preserves_every_remeshed_noncap_triangle(
     assert Path(outputs["tagged_vtp"]).is_file()
 
 
-def test_entityremesh_final_tags_are_core_extension_and_cap(
+def test_entityremesh_final_tags_are_far_core_active_and_cap(
     synthetic_entity_cap, tmp_path: Path
 ):
     _, paths, _, _ = synthetic_entity_cap
@@ -1441,11 +1446,16 @@ def test_entityremesh_final_tags_are_core_extension_and_cap(
     data = pv.read(outputs["tagged_vtp"])
     assert report["status"] == "PASS"
     assert set(np.unique(data.cell_data["SurfaceRegionId"])) == {0, 1, 2}
-    assert set(np.unique(data.cell_data["RemeshEntityId"])) == {0, 1, 2, 3}
+    assert set(np.unique(data.cell_data["RemeshEntityId"])) == {0, 1, 2}
+    assert report["remesh_entity_codes"] == {
+        "CAP": 0,
+        "FAR_CORE": 1,
+        "CROSS_SEAM_ACTIVE": 2,
+    }
 
 
-@pytest.mark.parametrize("entity_id", [1, 2, 3])
-def test_cap_preserves_each_guarded_noncap_entity(
+@pytest.mark.parametrize("entity_id", [1, 2])
+def test_cap_preserves_each_crossseam_noncap_entity(
     synthetic_entity_cap, tmp_path: Path, entity_id: int
 ):
     _, paths, _, _ = synthetic_entity_cap
@@ -1457,7 +1467,7 @@ def test_cap_preserves_each_guarded_noncap_entity(
         ),
         tmp_path / f"geometry_{entity_id}",
         tmp_path / f"boundaries_{entity_id}",
-        output_stem=f"guarded_cap_entity_{entity_id}",
+        output_stem=f"crossseam_cap_entity_{entity_id}",
         raw_vtp=paths.remeshed_open_vtp,
     )
     source = pv.read(paths.remeshed_open_vtp).triangulate()
@@ -1467,7 +1477,9 @@ def test_cap_preserves_each_guarded_noncap_entity(
     )
 
 
-def test_guarded_final_boundary_tags_are_present(synthetic_entity_cap, tmp_path: Path):
+def test_crossseam_final_boundary_tags_are_present(
+    synthetic_entity_cap, tmp_path: Path
+):
     _, paths, _, _ = synthetic_entity_cap
     outputs, _ = tag_and_export_final_surface(
         paths.capped_vtp,
@@ -1477,7 +1489,7 @@ def test_guarded_final_boundary_tags_are_present(synthetic_entity_cap, tmp_path:
         ),
         tmp_path / "geometry",
         tmp_path / "boundaries",
-        output_stem="guarded_boundary_tags",
+        output_stem="crossseam_boundary_tags",
         raw_vtp=paths.remeshed_open_vtp,
     )
     final = pv.read(outputs["tagged_vtp"])

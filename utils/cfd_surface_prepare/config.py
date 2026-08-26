@@ -21,7 +21,7 @@ class BackendConfig:
 
 
 @dataclass(frozen=True, slots=True)
-class GuardConfig:
+class CoreCollarConfig:
     mode: str
     face_layers: int
 
@@ -30,11 +30,10 @@ class GuardConfig:
 class EntityRemeshConfig:
     enabled: bool
     entity_array_name: str
-    core_entity_id: int
-    guard_entity_id: int
-    extension_body_entity_id: int
+    far_core_entity_id: int
+    active_entity_id: int
     exclude_entity_ids: tuple[int, ...]
-    guard: GuardConfig
+    core_collar: CoreCollarConfig
     element_size_mode: str
     target_edge_length_um: float
     preserve_boundary_edges: bool
@@ -319,7 +318,7 @@ def load_surface_prepare_config(
         _require(_boolean(vmtk[key], f"vmtk.{key}"), True, f"vmtk.{key}")
     _require(
         vmtk["postprocess_mode"],
-        "guarded_extension_entity_remesh_then_cap",
+        "cross_seam_active_collar_remesh_then_cap",
         "vmtk.postprocess_mode",
     )
     _require(
@@ -337,11 +336,10 @@ def load_surface_prepare_config(
         {
             "enabled",
             "entity_array_name",
-            "core_entity_id",
-            "guard_entity_id",
-            "extension_body_entity_id",
+            "far_core_entity_id",
+            "active_entity_id",
             "exclude_entity_ids",
-            "guard",
+            "core_collar",
             "element_size_mode",
             "target_edge_length_um",
             "preserve_boundary_edges",
@@ -358,45 +356,42 @@ def load_surface_prepare_config(
         "RemeshEntityId",
         "vmtk.entity_remesh.entity_array_name",
     )
-    core_entity_id = _integer(
-        entity_remesh["core_entity_id"], "vmtk.entity_remesh.core_entity_id"
+    far_core_entity_id = _integer(
+        entity_remesh["far_core_entity_id"],
+        "vmtk.entity_remesh.far_core_entity_id",
     )
-    guard_entity_id = _integer(
-        entity_remesh["guard_entity_id"],
-        "vmtk.entity_remesh.guard_entity_id",
+    active_entity_id = _integer(
+        entity_remesh["active_entity_id"],
+        "vmtk.entity_remesh.active_entity_id",
     )
-    extension_body_entity_id = _integer(
-        entity_remesh["extension_body_entity_id"],
-        "vmtk.entity_remesh.extension_body_entity_id",
-    )
-    _require(core_entity_id, 1, "vmtk.entity_remesh.core_entity_id")
-    _require(guard_entity_id, 2, "vmtk.entity_remesh.guard_entity_id")
-    _require(
-        extension_body_entity_id,
-        3,
-        "vmtk.entity_remesh.extension_body_entity_id",
-    )
+    _require(far_core_entity_id, 1, "vmtk.entity_remesh.far_core_entity_id")
+    _require(active_entity_id, 2, "vmtk.entity_remesh.active_entity_id")
     excluded = entity_remesh["exclude_entity_ids"]
     if not isinstance(excluded, list) or any(
         isinstance(value, bool) or not isinstance(value, int) for value in excluded
     ):
         raise ValueError("vmtk.entity_remesh.exclude_entity_ids must be an integer list")
     exclude_entity_ids = tuple(int(value) for value in excluded)
-    _require(exclude_entity_ids, (1, 2), "vmtk.entity_remesh.exclude_entity_ids")
-    guard = _exact(
-        entity_remesh["guard"],
+    _require(exclude_entity_ids, (1,), "vmtk.entity_remesh.exclude_entity_ids")
+    core_collar = _exact(
+        entity_remesh["core_collar"],
         {"mode", "face_layers"},
-        "vmtk.entity_remesh.guard",
+        "vmtk.entity_remesh.core_collar",
     )
     _require(
-        guard["mode"],
-        "extension_face_adjacency_layers",
-        "vmtk.entity_remesh.guard.mode",
+        core_collar["mode"],
+        "core_face_adjacency_layers",
+        "vmtk.entity_remesh.core_collar.mode",
     )
-    guard_face_layers = _integer(
-        guard["face_layers"], "vmtk.entity_remesh.guard.face_layers"
+    core_collar_face_layers = _integer(
+        core_collar["face_layers"],
+        "vmtk.entity_remesh.core_collar.face_layers",
     )
-    _require(guard_face_layers, 2, "vmtk.entity_remesh.guard.face_layers")
+    _require(
+        core_collar_face_layers,
+        2,
+        "vmtk.entity_remesh.core_collar.face_layers",
+    )
     _require(
         entity_remesh["element_size_mode"],
         "edgelength",
@@ -693,18 +688,17 @@ def load_surface_prepare_config(
             extension_ratio=10.0,
             adaptive_extension_radius=True,
             adaptive_boundary_points=True,
-            postprocess_mode="guarded_extension_entity_remesh_then_cap",
+            postprocess_mode="cross_seam_active_collar_remesh_then_cap",
             remesh_after_extension=True,
             entity_remesh=EntityRemeshConfig(
                 enabled=True,
                 entity_array_name="RemeshEntityId",
-                core_entity_id=core_entity_id,
-                guard_entity_id=guard_entity_id,
-                extension_body_entity_id=extension_body_entity_id,
+                far_core_entity_id=far_core_entity_id,
+                active_entity_id=active_entity_id,
                 exclude_entity_ids=exclude_entity_ids,
-                guard=GuardConfig(
-                    mode="extension_face_adjacency_layers",
-                    face_layers=guard_face_layers,
+                core_collar=CoreCollarConfig(
+                    mode="core_face_adjacency_layers",
+                    face_layers=core_collar_face_layers,
                 ),
                 element_size_mode="edgelength",
                 target_edge_length_um=target_edge_length_um,

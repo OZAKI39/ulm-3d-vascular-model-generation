@@ -21,9 +21,9 @@ DEFAULT_CONFIG = PROJECT_ROOT / "configs" / "cfd_surface_prepare.yaml"
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Create one official VMTK TPS boundary-normal candidate, remesh only "
-            "EXTENSION_BODY with CORE and PROXIMAL_GUARD excluded, and cap it "
-            "without global remeshing or a volume mesh."
+            "Create one official VMTK TPS boundary-normal candidate, remesh one "
+            "active region spanning the local CORE collar and all extensions, "
+            "keep FAR_CORE excluded, and cap without global remeshing."
         )
     )
     parser.add_argument(
@@ -84,13 +84,19 @@ def main() -> int:
             "VMTK_GUARDED_ENTITY_REMESH_TOPOLOGY_FAILED",
             "VMTK_GUARDED_ENTITY_REMESH_BOUNDARY_MAPPING_FAILED",
             "VMTK_GUARDED_ENTITY_REMESH_RADIUS_FAILED",
+            "VMTK_CROSS_SEAM_ENTITY_ASSIGNMENT_FAILED",
+            "VMTK_CROSS_SEAM_FAR_CORE_MODIFIED",
+            "VMTK_CROSS_SEAM_COLLAR_GEOMETRY_FAILED",
+            "VMTK_CROSS_SEAM_RING_TOPOLOGY_PRESERVED",
+            "VMTK_CROSS_SEAM_TOPOLOGY_FAILED",
+            "VMTK_CROSS_SEAM_GEOMETRY_FAILED",
         }
         failure = str(error).split(":", maxsplit=1)[0]
         if failure not in allowed_failures:
             failure = "VMTK_TPS_EXTENSION_FAILED"
         print(f"CFD surface preparation failed: {error}")
         print(f"Final status: {failure}")
-        print("NEXT: REVIEW GUARDED PROXIMAL REMESH FAILURE")
+        print("NEXT: REVIEW CROSS-SEAM REMESH FAILURE")
         return 1
 
 

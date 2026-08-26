@@ -102,15 +102,17 @@ def parameter_mapping(config: VmtkConfig) -> dict[str, Any]:
         "entity_remesh": {
             "enabled": config.entity_remesh.enabled,
             "entity_array_name": config.entity_remesh.entity_array_name,
-            "core_entity_id": config.entity_remesh.core_entity_id,
-            "guard_entity_id": config.entity_remesh.guard_entity_id,
-            "extension_body_entity_id": (
-                config.entity_remesh.extension_body_entity_id
-            ),
+            "far_core_entity_id": config.entity_remesh.far_core_entity_id,
+            "active_entity_id": config.entity_remesh.active_entity_id,
+            "expected_entity_ids": [
+                config.entity_remesh.far_core_entity_id,
+                config.entity_remesh.active_entity_id,
+            ],
             "exclude_entity_ids": list(config.entity_remesh.exclude_entity_ids),
-            "guard": {
-                "mode": config.entity_remesh.guard.mode,
-                "face_layers": config.entity_remesh.guard.face_layers,
+            "active_entity_ids": [config.entity_remesh.active_entity_id],
+            "core_collar": {
+                "mode": config.entity_remesh.core_collar.mode,
+                "face_layers": config.entity_remesh.core_collar.face_layers,
             },
             "element_size_mode": config.entity_remesh.element_size_mode,
             "target_edge_length_um": config.entity_remesh.target_edge_length_um,
@@ -273,7 +275,7 @@ def cap_official_vmtk(
     if config.postprocess_mode == "cap_only" and not config.remesh_after_extension:
         source_open_vtp = paths.raw_vtp
     elif (
-        config.postprocess_mode == "guarded_extension_entity_remesh_then_cap"
+        config.postprocess_mode == "cross_seam_active_collar_remesh_then_cap"
         and config.remesh_after_extension
     ):
         source_open_vtp = paths.remeshed_open_vtp
@@ -325,20 +327,19 @@ def entity_remesh_official_vmtk(
     paths: VmtkExchangePaths,
     tool_script: Path,
 ) -> VmtkInvocationResult:
-    """Remesh BODY using official VMTK with CORE and GUARD excluded."""
+    """Remesh the cross-seam active entity with only FAR_CORE excluded."""
 
     settings = config.entity_remesh
     valid = (
-        config.postprocess_mode == "guarded_extension_entity_remesh_then_cap"
+        config.postprocess_mode == "cross_seam_active_collar_remesh_then_cap"
         and config.remesh_after_extension
         and settings.enabled
         and settings.entity_array_name == "RemeshEntityId"
-        and settings.core_entity_id == 1
-        and settings.guard_entity_id == 2
-        and settings.extension_body_entity_id == 3
-        and settings.exclude_entity_ids == (1, 2)
-        and settings.guard.mode == "extension_face_adjacency_layers"
-        and settings.guard.face_layers == 2
+        and settings.far_core_entity_id == 1
+        and settings.active_entity_id == 2
+        and settings.exclude_entity_ids == (1,)
+        and settings.core_collar.mode == "core_face_adjacency_layers"
+        and settings.core_collar.face_layers == 2
         and settings.element_size_mode == "edgelength"
         and settings.target_edge_length_um == 0.25913916380971913
         and settings.preserve_boundary_edges
@@ -347,20 +348,7 @@ def entity_remesh_official_vmtk(
         raise SurfacePrepareError("INVALID_VMTK_POSTPROCESS_CONFIGURATION")
     if not config.environment_python.is_file() or not paths.raw_vtp.is_file():
         raise SurfacePrepareError("VMTK_ENVIRONMENT_BLOCKED")
-    request: dict[str, Any] = {
-        "operation": "entity_remesh",
-        "raw_vtp": str(paths.raw_vtp.resolve()),
-        "remeshed_open_vtp": str(paths.remeshed_open_vtp.resolve()),
-        "remeshed_open_stl": str(paths.remeshed_open_stl.resolve()),
-        "entity_array_name": settings.entity_array_name,
-        "core_entity_id": settings.core_entity_id,
-        "guard_entity_id": settings.guard_entity_id,
-        "extension_body_entity_id": settings.extension_body_entity_id,
-        "exclude_entity_ids": list(settings.exclude_entity_ids),
-        "element_size_mode": settings.element_size_mode,
-        "target_edge_length_um": settings.target_edge_length_um,
-        "preserve_boundary_edges": settings.preserve_boundary_edges,
-    }
+    request = build_entity_remesh_request(config=config, paths=paths)
     paths.entity_remesh_request_json.write_text(
         json.dumps(request, indent=2), encoding="utf-8"
     )
@@ -392,11 +380,41 @@ def entity_remesh_official_vmtk(
     if (
         runtime.get("surface_remesher_called") is not True
         or runtime.get("global_surface_remeshing_performed") is not False
-        or runtime.get("excluded_entity_ids") != [1, 2]
-        or runtime.get("active_entity_ids") != [3]
+        or runtime.get("excluded_entity_ids") != [1]
+        or runtime.get("active_entity_ids") != [2]
+        or runtime.get("input_entity_ids") != [1, 2]
+        or runtime.get("output_entity_ids") != [1, 2]
     ):
         raise SurfacePrepareError("VMTK_ENTITY_ASSIGNMENT_FAILED")
     return VmtkInvocationResult(command, request, runtime)
+
+
+def build_entity_remesh_request(
+    *, config: VmtkConfig, paths: VmtkExchangePaths
+) -> dict[str, Any]:
+    """Build the generalized entity-remesh request without executing VMTK."""
+
+    settings = config.entity_remesh
+    expected_entity_ids = sorted(
+        (settings.far_core_entity_id, settings.active_entity_id)
+    )
+    excluded_entity_ids = sorted(settings.exclude_entity_ids)
+    active_entity_ids = sorted(
+        set(expected_entity_ids) - set(excluded_entity_ids)
+    )
+    return {
+        "operation": "entity_remesh",
+        "raw_vtp": str(paths.raw_vtp.resolve()),
+        "remeshed_open_vtp": str(paths.remeshed_open_vtp.resolve()),
+        "remeshed_open_stl": str(paths.remeshed_open_stl.resolve()),
+        "entity_array_name": settings.entity_array_name,
+        "expected_entity_ids": expected_entity_ids,
+        "excluded_entity_ids": excluded_entity_ids,
+        "active_entity_ids": active_entity_ids,
+        "element_size_mode": settings.element_size_mode,
+        "target_edge_length_um": settings.target_edge_length_um,
+        "preserve_boundary_edges": settings.preserve_boundary_edges,
+    }
 
 
 def exchange_paths(
@@ -416,11 +434,11 @@ def exchange_paths(
         raw_stl=geometry_directory / f"vmtk_{mode_label}_raw_um.stl",
         remeshed_open_vtp=(
             geometry_directory
-            / f"vmtk_{mode_label}_guarded_extension_remeshed_open_um.vtp"
+            / f"vmtk_{mode_label}_crossseam_remeshed_open_um.vtp"
         ),
         remeshed_open_stl=(
             geometry_directory
-            / f"vmtk_{mode_label}_guarded_extension_remeshed_open_um.stl"
+            / f"vmtk_{mode_label}_crossseam_remeshed_open_um.stl"
         ),
         capped_vtp=vmtk_directory / f"vmtk_{mode_label}_capped_um.vtp",
         request_json=vmtk_directory / "request.json",
