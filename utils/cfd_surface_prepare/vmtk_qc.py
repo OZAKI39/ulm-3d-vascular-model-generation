@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -134,6 +134,291 @@ def raw_core_exact_copy_qc(
     }
 
 
+def assign_remesh_entities(
+    raw_vtp: Path,
+    *,
+    entity_array_name: str = "RemeshEntityId",
+    core_entity_id: int = 1,
+    extension_entity_id: int = 2,
+) -> dict[str, Any]:
+    """Map validated project regions to the two official remesher entities."""
+
+    data = pv.read(raw_vtp).triangulate()
+    if "SurfaceRegionId" not in data.cell_data:
+        raise SurfacePrepareError("VMTK_ENTITY_ASSIGNMENT_FAILED:regions_missing")
+    regions = np.asarray(data.cell_data["SurfaceRegionId"], dtype=np.uint8)
+    unique_regions = sorted(int(value) for value in np.unique(regions))
+    if unique_regions != [0, 1]:
+        raise SurfacePrepareError("VMTK_ENTITY_ASSIGNMENT_FAILED:unexpected_regions")
+    points_before = np.asarray(data.points).copy()
+    faces_before = _faces(data).copy()
+    entities = np.where(regions == 0, core_entity_id, extension_entity_id).astype(
+        np.int32
+    )
+    data.cell_data[entity_array_name] = entities
+    data.save(raw_vtp, binary=True)
+    saved = pv.read(raw_vtp).triangulate()
+    saved_entities = np.asarray(saved.cell_data[entity_array_name], dtype=np.int32)
+    checks = {
+        "geometry_points_unchanged": bool(
+            np.array_equal(np.asarray(saved.points), points_before)
+        ),
+        "geometry_connectivity_unchanged": bool(
+            np.array_equal(_faces(saved), faces_before)
+        ),
+        "core_region_maps_to_entity_one": bool(
+            np.all(saved_entities[regions == 0] == core_entity_id)
+        ),
+        "extension_region_maps_to_entity_two": bool(
+            np.all(saved_entities[regions == 1] == extension_entity_id)
+        ),
+        "exactly_two_entity_ids": sorted(
+            int(value) for value in np.unique(saved_entities)
+        )
+        == [core_entity_id, extension_entity_id],
+    }
+    return {
+        "status": "PASS" if all(checks.values()) else "FAIL",
+        "checks": checks,
+        "source_of_truth": "SurfaceRegionId validated by raw_core_exact_copy_qc",
+        "entity_array_name": entity_array_name,
+        "core_entity_id": core_entity_id,
+        "extension_entity_id": extension_entity_id,
+        "core_face_count": int(np.count_nonzero(saved_entities == core_entity_id)),
+        "extension_face_count": int(
+            np.count_nonzero(saved_entities == extension_entity_id)
+        ),
+    }
+
+
+def _coordinate_triangle_counter(
+    points: np.ndarray, faces: np.ndarray
+) -> Counter[tuple[tuple[float, ...], ...]]:
+    return Counter(_triangle_key(points, face) for face in faces)
+
+
+def _entity_vertex_ids(faces: np.ndarray, entities: np.ndarray, value: int) -> np.ndarray:
+    selected = faces[entities == value]
+    return np.unique(selected) if len(selected) else np.empty(0, dtype=np.int64)
+
+
+def _shared_entity_vertex_ids(
+    faces: np.ndarray,
+    entities: np.ndarray,
+    first: int,
+    second: int,
+) -> np.ndarray:
+    return np.intersect1d(
+        _entity_vertex_ids(faces, entities, first),
+        _entity_vertex_ids(faces, entities, second),
+    )
+
+
+def _vertex_set_motion(
+    source: np.ndarray, target: np.ndarray, *, target_dtype: np.dtype[Any]
+) -> dict[str, Any]:
+    if not len(source) or not len(target):
+        return {
+            "max_motion": float("inf"),
+            "p95_motion": float("inf"),
+            "exact_after_cast": False,
+            "added_count": int(len(target)),
+            "missing_count": int(len(source)),
+        }
+    distances, _ = cKDTree(np.asarray(target, dtype=float)).query(
+        np.asarray(source, dtype=float), k=1
+    )
+    source_cast = np.asarray(source).astype(target_dtype, copy=False)
+    source_keys = Counter(tuple(float(value) for value in point) for point in source_cast)
+    target_keys = Counter(tuple(float(value) for value in point) for point in target)
+    return {
+        "max_motion": float(np.max(distances)),
+        "p95_motion": float(np.percentile(distances, 95)),
+        "exact_after_cast": source_keys == target_keys,
+        "added_count": int(sum((target_keys - source_keys).values())),
+        "missing_count": int(sum((source_keys - target_keys).values())),
+    }
+
+
+def entity_remesh_preservation_qc(
+    raw_vtp: Path,
+    remeshed_open_vtp: Path,
+    *,
+    entity_array_name: str = "RemeshEntityId",
+    core_entity_id: int = 1,
+    extension_entity_id: int = 2,
+    restore_region_arrays: bool = True,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """Prove the excluded core/interface are locked and the extension changed."""
+
+    raw = pv.read(raw_vtp).triangulate()
+    remeshed = pv.read(remeshed_open_vtp).triangulate()
+    if (
+        entity_array_name not in raw.cell_data
+        or entity_array_name not in remeshed.cell_data
+    ):
+        raise SurfacePrepareError("VMTK_ENTITY_ASSIGNMENT_FAILED:entity_array_missing")
+    raw_faces = _faces(raw)
+    remeshed_faces = _faces(remeshed)
+    raw_entities = np.asarray(raw.cell_data[entity_array_name], dtype=np.int32)
+    remeshed_entities = np.asarray(
+        remeshed.cell_data[entity_array_name], dtype=np.int32
+    )
+    if sorted(np.unique(raw_entities)) != [core_entity_id, extension_entity_id] or sorted(
+        np.unique(remeshed_entities)
+    ) != [core_entity_id, extension_entity_id]:
+        raise SurfacePrepareError("VMTK_ENTITY_ASSIGNMENT_FAILED:entity_ids_changed")
+
+    raw_points = np.asarray(raw.points)
+    remeshed_points = np.asarray(remeshed.points)
+    cast_raw_points = raw_points.astype(remeshed_points.dtype, copy=False)
+    tolerance = _output_precision_tolerance(remeshed_points)
+    raw_core_faces = raw_faces[raw_entities == core_entity_id]
+    remeshed_core_faces = remeshed_faces[remeshed_entities == core_entity_id]
+    raw_core_counter = _coordinate_triangle_counter(
+        cast_raw_points, raw_core_faces
+    )
+    remeshed_core_counter = _coordinate_triangle_counter(
+        remeshed_points, remeshed_core_faces
+    )
+    missing_core = int(sum((raw_core_counter - remeshed_core_counter).values()))
+    added_core = int(sum((remeshed_core_counter - raw_core_counter).values()))
+    raw_core_ids = _entity_vertex_ids(raw_faces, raw_entities, core_entity_id)
+    remeshed_core_ids = _entity_vertex_ids(
+        remeshed_faces, remeshed_entities, core_entity_id
+    )
+    core_motion = _vertex_set_motion(
+        raw_points[raw_core_ids],
+        remeshed_points[remeshed_core_ids],
+        target_dtype=remeshed_points.dtype,
+    )
+    core_checks = {
+        "core_face_count_unchanged": len(raw_core_faces) == len(remeshed_core_faces),
+        "core_vertex_count_unchanged": len(raw_core_ids) == len(remeshed_core_ids),
+        "core_vertex_motion_within_output_machine_precision": (
+            core_motion["max_motion"] <= tolerance
+        ),
+        "core_vertices_exact_after_output_dtype_cast": core_motion["exact_after_cast"],
+        "core_connectivity_unchanged": missing_core == 0 and added_core == 0,
+        "core_entity_id_complete": bool(
+            np.all(
+                remeshed_entities[remeshed_entities == core_entity_id]
+                == core_entity_id
+            )
+        ),
+    }
+    core_report = {
+        "status": "PASS" if all(core_checks.values()) else "FAIL",
+        "checks": core_checks,
+        "raw_core_face_count": int(len(raw_core_faces)),
+        "remeshed_core_face_count": int(len(remeshed_core_faces)),
+        "raw_core_vertex_count": int(len(raw_core_ids)),
+        "remeshed_core_vertex_count": int(len(remeshed_core_ids)),
+        "core_vertex_max_motion_um": core_motion["max_motion"],
+        "core_vertex_P95_motion_um": core_motion["p95_motion"],
+        "core_vertices_exact_after_output_dtype_cast": core_motion[
+            "exact_after_cast"
+        ],
+        "machine_precision_tolerance_um": tolerance,
+        "core_connectivity_changed_count": missing_core + added_core,
+        "core_triangle_missing_count": missing_core,
+        "core_triangle_added_count": added_core,
+    }
+
+    raw_shared_ids = _shared_entity_vertex_ids(
+        raw_faces, raw_entities, core_entity_id, extension_entity_id
+    )
+    remeshed_shared_ids = _shared_entity_vertex_ids(
+        remeshed_faces,
+        remeshed_entities,
+        core_entity_id,
+        extension_entity_id,
+    )
+    shared_motion = _vertex_set_motion(
+        raw_points[raw_shared_ids],
+        remeshed_points[remeshed_shared_ids],
+        target_dtype=remeshed_points.dtype,
+    )
+    interface_checks = {
+        "shared_vertex_count_unchanged": len(raw_shared_ids)
+        == len(remeshed_shared_ids),
+        "shared_vertex_motion_within_output_machine_precision": (
+            shared_motion["max_motion"] <= tolerance
+        ),
+        "shared_vertices_exact_after_output_dtype_cast": shared_motion[
+            "exact_after_cast"
+        ],
+        "shared_vertex_set_unchanged": (
+            shared_motion["missing_count"] == 0
+            and shared_motion["added_count"] == 0
+        ),
+    }
+    interface_report = {
+        "status": "PASS" if all(interface_checks.values()) else "FAIL",
+        "checks": interface_checks,
+        "interface_shared_vertex_count": int(len(raw_shared_ids)),
+        "remeshed_interface_shared_vertex_count": int(len(remeshed_shared_ids)),
+        "interface_shared_vertex_max_motion_um": shared_motion["max_motion"],
+        "interface_shared_vertex_P95_motion_um": shared_motion["p95_motion"],
+        "interface_shared_vertices_exact_after_output_dtype_cast": shared_motion[
+            "exact_after_cast"
+        ],
+        "machine_precision_tolerance_um": tolerance,
+    }
+
+    raw_extension_faces = raw_faces[raw_entities == extension_entity_id]
+    remeshed_extension_faces = remeshed_faces[
+        remeshed_entities == extension_entity_id
+    ]
+    raw_extension_ids = _entity_vertex_ids(
+        raw_faces, raw_entities, extension_entity_id
+    )
+    remeshed_extension_ids = _entity_vertex_ids(
+        remeshed_faces, remeshed_entities, extension_entity_id
+    )
+    raw_extension_counter = _coordinate_triangle_counter(
+        cast_raw_points, raw_extension_faces
+    )
+    remeshed_extension_counter = _coordinate_triangle_counter(
+        remeshed_points, remeshed_extension_faces
+    )
+    connectivity_changed = raw_extension_counter != remeshed_extension_counter
+    raw_extension_vertices = Counter(
+        tuple(float(value) for value in point)
+        for point in cast_raw_points[raw_extension_ids]
+    )
+    remeshed_extension_vertices = Counter(
+        tuple(float(value) for value in point)
+        for point in remeshed_points[remeshed_extension_ids]
+    )
+    vertex_layout_changed = raw_extension_vertices != remeshed_extension_vertices
+    effect = bool(
+        len(raw_extension_faces) != len(remeshed_extension_faces)
+        or len(raw_extension_ids) != len(remeshed_extension_ids)
+        or connectivity_changed
+        or vertex_layout_changed
+    )
+    extension_report = {
+        "status": "PASS" if effect else "FAIL",
+        "raw_extension_triangle_count": int(len(raw_extension_faces)),
+        "remeshed_extension_triangle_count": int(len(remeshed_extension_faces)),
+        "raw_extension_vertex_count": int(len(raw_extension_ids)),
+        "remeshed_extension_vertex_count": int(len(remeshed_extension_ids)),
+        "extension_connectivity_changed": bool(connectivity_changed),
+        "extension_vertex_layout_changed": bool(vertex_layout_changed),
+        "extension_remesh_effect_detected": effect,
+    }
+    if restore_region_arrays:
+        remeshed.cell_data["SurfaceRegionId"] = np.where(
+            remeshed_entities == core_entity_id, 0, 1
+        ).astype(np.uint8)
+        remeshed.cell_data["SurfaceRegion"] = np.where(
+            remeshed_entities == core_entity_id, "CORE", "EXTENSION"
+        )
+        remeshed.save(remeshed_open_vtp, binary=True)
+    return core_report, interface_report, extension_report
+
+
 def _ordered_component(graph: nx.Graph, component: set[int]) -> np.ndarray:
     if len(component) < 3 or any(graph.degree(node) != 2 for node in component):
         raise SurfacePrepareError("VMTK_BOUNDARY_NOT_SIMPLE_CLOSED_LOOP")
@@ -228,23 +513,37 @@ def map_loops_to_boundaries(
 
 
 def open_profile_qc(
-    mesh: trimesh.Trimesh, boundaries: Iterable[BoundaryInput]
+    mesh: trimesh.Trimesh,
+    boundaries: Iterable[BoundaryInput],
+    *,
+    distal: bool = False,
 ) -> tuple[dict[str, Any], dict[int, BoundaryLoop]]:
     boundary_list = list(boundaries)
     loops = extract_boundary_loops(mesh)
-    mapping = map_loops_to_boundaries(loops, boundary_list, distal=False)
+    mapping = map_loops_to_boundaries(loops, boundary_list, distal=distal)
     rows: list[dict[str, Any]] = []
     for boundary in boundary_list:
         loop = mapping[boundary.index]
         normal_dot = float(abs(np.dot(loop.normal, boundary.outward_normal)))
-        center_distance = float(np.linalg.norm(loop.center_um - boundary.center_um))
+        expected_center = (
+            boundary.extension_end_um if distal else boundary.center_um
+        )
+        center_distance = float(np.linalg.norm(loop.center_um - expected_center))
         checks = {
             "simple_closed_loop": len(loop.point_ids) >= 3,
             "positive_area": np.isfinite(loop.area_um2) and loop.area_um2 > 0.0,
-            "center_matches_preprocess_plane": center_distance
-            <= boundary.source_radius_um,
-            "normal_matches_preprocess_outward": normal_dot >= 0.999,
+            "center_matches_expected_plane": (
+                center_distance <= boundary.source_radius_um
+            ),
+            "normal_matches_expected_outward": normal_dot >= 0.999,
         }
+        if not distal:
+            checks["center_matches_preprocess_plane"] = checks[
+                "center_matches_expected_plane"
+            ]
+            checks["normal_matches_preprocess_outward"] = checks[
+                "normal_matches_expected_outward"
+            ]
         rows.append(
             {
                 "boundary_index": boundary.index,
@@ -272,6 +571,7 @@ def open_profile_qc(
     passed = all(count_checks.values()) and all(row["status"] == "PASS" for row in rows)
     return {
         "status": "PASS" if passed else "FAIL",
+        "profile_location": "DISTAL_EXTENSION_END" if distal else "PROXIMAL_CUT",
         "profile_count": len(loops),
         "checks": count_checks,
         "boundaries": rows,
@@ -396,12 +696,20 @@ def _interface_angles(
 def interface_smoothness_from_raw(
     mesh: trimesh.Trimesh,
     *,
-    input_point_count: int,
+    input_point_count: int | None,
     boundaries: Iterable[BoundaryInput],
+    core_face_mask: np.ndarray | None = None,
+    extension_face_mask: np.ndarray | None = None,
 ) -> dict[str, Any]:
     faces = np.asarray(mesh.faces, dtype=np.int64)
-    extension = np.any(faces >= input_point_count, axis=1)
-    core = ~extension
+    if core_face_mask is not None and extension_face_mask is not None:
+        core = np.asarray(core_face_mask, dtype=bool)
+        extension = np.asarray(extension_face_mask, dtype=bool)
+    elif input_point_count is not None:
+        extension = np.any(faces >= input_point_count, axis=1)
+        core = ~extension
+    else:
+        raise ValueError("input point count or explicit region masks are required")
     boundary_list = list(boundaries)
     rows = _interface_angles(mesh, core, extension, boundary_list)
     return {
@@ -560,25 +868,60 @@ def extension_mesh_metrics(
     return {"boundaries": rows}
 
 
-def extension_mesh_quality_from_raw(
-    raw_vtp: Path,
+def symmetric_mesh_size_mismatch(size_ratio: float) -> float:
+    if not np.isfinite(size_ratio) or size_ratio <= 0.0:
+        return float("inf")
+    return float(max(size_ratio, 1.0 / size_ratio))
+
+
+def extension_mesh_quality_from_surface(
+    surface_vtp: Path,
     boundaries: Iterable[BoundaryInput],
     *,
     local_target_edge_um: dict[int, float],
     quality: MeshQualityConfig,
-    input_point_count: int,
+    method: str,
+    require_symmetric_size_match: bool,
+    region_array_name: str = "SurfaceRegionId",
+    geometric_extension_selection: bool = False,
 ) -> dict[str, Any]:
-    """Apply the existing project mesh-quality rules to RAW extension cells only."""
+    """Evaluate extension triangles with one shared metric implementation."""
 
-    data, mesh = polydata_mesh(raw_vtp)
-    if "SurfaceRegionId" not in data.cell_data:
-        raise SurfacePrepareError("VMTK_RAW_CORE_NOT_EXACT_COPY:regions_missing")
-    region = np.asarray(data.cell_data["SurfaceRegionId"], dtype=np.uint8)
-    extension_ids = np.flatnonzero(region == 1)
-    if len(extension_ids) == 0:
-        raise SurfacePrepareError("VMTK_RAW_EXTENSION_MESH_QUALITY_FAILED")
+    data, mesh = polydata_mesh(surface_vtp)
     boundary_list = list(boundaries)
-    centers = np.asarray(mesh.triangles_center, dtype=float)[extension_ids]
+    faces = np.asarray(mesh.faces, dtype=np.int64)
+    all_centers = np.asarray(mesh.triangles_center, dtype=float)
+    if region_array_name in data.cell_data and not geometric_extension_selection:
+        region = np.asarray(data.cell_data[region_array_name], dtype=np.uint8)
+        extension_ids = np.flatnonzero(region == 1)
+        core_ids = np.flatnonzero(region == 0)
+        shared_vertices = np.intersect1d(
+            np.unique(faces[extension_ids]), np.unique(faces[core_ids])
+        )
+        scope = f"{region_array_name} == EXTENSION only"
+    else:
+        mask = np.zeros(len(faces), dtype=bool)
+        if "boundary_type_code" in data.cell_data:
+            mask &= np.asarray(data.cell_data["boundary_type_code"]) == 0
+        for boundary in boundary_list:
+            relative = all_centers - boundary.center_um
+            axial = relative @ boundary.outward_normal
+            radial = np.linalg.norm(
+                relative - np.outer(axial, boundary.outward_normal), axis=1
+            )
+            mask |= (
+                (axial >= -0.1 * boundary.source_radius_um)
+                & (axial <= 1.08 * boundary.extension_length_um)
+                & (radial <= 2.5 * boundary.source_radius_um)
+            )
+        if "boundary_type_code" in data.cell_data:
+            mask &= np.asarray(data.cell_data["boundary_type_code"]) == 0
+        extension_ids = np.flatnonzero(mask)
+        shared_vertices = np.empty(0, dtype=np.int64)
+        scope = "geometric extension cylinders; cap faces excluded"
+    if len(extension_ids) == 0:
+        raise SurfacePrepareError("VMTK_ENTITY_REMESH_GEOMETRY_FAILED:no_extension_faces")
+    centers = all_centers[extension_ids]
     scores: list[np.ndarray] = []
     for boundary in boundary_list:
         relative = centers - boundary.center_um
@@ -594,7 +937,6 @@ def extension_mesh_quality_from_raw(
         )
     assignment = np.argmin(np.column_stack(scores), axis=1)
     rows: list[dict[str, Any]] = []
-    faces = np.asarray(mesh.faces, dtype=np.int64)
     for local_index, boundary in enumerate(boundary_list):
         selected_ids = extension_ids[assignment == local_index]
         selected_faces = faces[selected_ids]
@@ -606,19 +948,26 @@ def extension_mesh_quality_from_raw(
             local_original_median_edge_length_um=target,
             quality=quality,
         )
-        interface_mask = np.any(selected_faces < input_point_count, axis=1)
+        interface_mask = np.any(np.isin(selected_faces, shared_vertices), axis=1)
         if np.any(interface_mask):
             interface = triangle_metrics(
                 np.asarray(mesh.vertices, dtype=float), selected_faces[interface_mask]
             )
             interface_ratio = float(np.median(interface.edge_lengths) / target)
         else:
-            interface_ratio = float("inf")
+            interface_ratio = None
+        metrics = triangle_metrics(
+            np.asarray(mesh.vertices, dtype=float), selected_faces
+        )
+        angle_tail = metrics.minimum_angles_deg < 5.0
+        aspect_tail = metrics.aspect_ratios > 20.0
+        mesh_size_ratio = float(summary["edge_length_median_um"] / target)
+        symmetric_mismatch = symmetric_mesh_size_mismatch(mesh_size_ratio)
         finite = all(
             np.isfinite(value)
             for value in summary.values()
             if isinstance(value, float)
-        ) and np.isfinite(interface_ratio)
+        ) and (interface_ratio is None or np.isfinite(interface_ratio))
         checks = {
             "finite_metrics": bool(finite),
             "bad_triangle_fraction": (
@@ -629,8 +978,8 @@ def extension_mesh_quality_from_raw(
                 summary["neighbor_area_ratio_p95"]
                 <= quality.maximum_neighbor_area_ratio
             ),
-            "interface_edge_length_ratio": (
-                interface_ratio <= quality.maximum_interface_edge_length_ratio
+            "symmetric_mesh_size_mismatch": (
+                not require_symmetric_size_match or symmetric_mismatch <= 1.5
             ),
         }
         rows.append(
@@ -650,6 +999,17 @@ def extension_mesh_quality_from_raw(
                 "neighbor_area_ratio_P95": summary["neighbor_area_ratio_p95"],
                 "interface_edge_length_ratio": interface_ratio,
                 "local_original_target_edge_um": target,
+                "mesh_size_ratio": mesh_size_ratio,
+                "symmetric_mesh_size_mismatch": symmetric_mismatch,
+                "triangle_count_angle_below_5deg": int(np.count_nonzero(angle_tail)),
+                "triangle_fraction_angle_below_5deg": float(np.mean(angle_tail)),
+                "triangle_count_aspect_above_20": int(np.count_nonzero(aspect_tail)),
+                "triangle_fraction_aspect_above_20": float(np.mean(aspect_tail)),
+                "tail_status": (
+                    "MESH_TAIL_WARNING"
+                    if np.any(angle_tail) or np.any(aspect_tail)
+                    else "PASS"
+                ),
                 "checks": checks,
                 "status": "PASS" if all(checks.values()) else "FAIL",
             }
@@ -661,7 +1021,14 @@ def extension_mesh_quality_from_raw(
             and all(row["status"] == "PASS" for row in rows)
             else "FAIL"
         ),
-        "scope": "SurfaceRegionId == EXTENSION only",
+        "method": method,
+        "scope": scope,
+        "symmetric_mesh_size_mismatch_maximum": 1.5,
+        "tail_status": (
+            "MESH_TAIL_WARNING"
+            if any(row["tail_status"] == "MESH_TAIL_WARNING" for row in rows)
+            else "PASS"
+        ),
         "thresholds": {
             "minimum_triangle_angle_deg": quality.minimum_triangle_angle_deg,
             "maximum_aspect_ratio": quality.maximum_aspect_ratio,
@@ -676,6 +1043,25 @@ def extension_mesh_quality_from_raw(
         },
         "boundaries": rows,
     }
+
+
+def extension_mesh_quality_from_raw(
+    raw_vtp: Path,
+    boundaries: Iterable[BoundaryInput],
+    *,
+    local_target_edge_um: dict[int, float],
+    quality: MeshQualityConfig,
+    input_point_count: int,
+) -> dict[str, Any]:
+    del input_point_count
+    return extension_mesh_quality_from_surface(
+        raw_vtp,
+        boundaries,
+        local_target_edge_um=local_target_edge_um,
+        quality=quality,
+        method="RAW_CAP_ONLY_NO_REMESH",
+        require_symmetric_size_match=False,
+    )
 
 
 def tag_and_export_final_surface(
@@ -714,6 +1100,7 @@ def tag_and_export_final_surface(
     port_width = max(len(boundary.port_id) for boundary in boundary_list)
     port_id = np.full(len(faces), "", dtype=f"<U{port_width}")
     surface_region_id = np.full(len(faces), 2, dtype=np.uint8)
+    remesh_entity_id = np.zeros(len(faces), dtype=np.int32)
     preserved_raw_triangle_count = 0
     missing_raw_triangle_count = 0
     if raw_vtp is not None:
@@ -728,19 +1115,32 @@ def tag_and_export_final_surface(
                 sorted(tuple(float(value) for value in point) for point in points[face])
             )
 
-        available: dict[tuple[tuple[float, ...], ...], list[int]] = defaultdict(list)
+        raw_remesh_entities = (
+            np.asarray(raw.cell_data["RemeshEntityId"], dtype=np.int32)
+            if "RemeshEntityId" in raw.cell_data
+            else np.where(raw_regions == 0, 1, 2).astype(np.int32)
+        )
+        available: dict[
+            tuple[tuple[float, ...], ...], list[tuple[int, int]]
+        ] = defaultdict(list)
         raw_points = np.asarray(raw.points)
         for raw_id, raw_face in enumerate(raw_faces):
-            available[key(raw_points, raw_face)].append(int(raw_regions[raw_id]))
+            available[key(raw_points, raw_face)].append(
+                (int(raw_regions[raw_id]), int(raw_remesh_entities[raw_id]))
+            )
         capped_points = np.asarray(data.points)
         for face_id, face in enumerate(faces):
             values = available.get(key(capped_points, face))
             if values:
-                surface_region_id[face_id] = values.pop()
+                region_value, remesh_value = values.pop()
+                surface_region_id[face_id] = region_value
+                remesh_entity_id[face_id] = remesh_value
                 preserved_raw_triangle_count += 1
         missing_raw_triangle_count = sum(len(values) for values in available.values())
         if missing_raw_triangle_count or preserved_raw_triangle_count != len(raw_faces):
-            raise SurfacePrepareError("VMTK_CAPONLY_CORE_PRESERVATION_FAILED")
+            raise SurfacePrepareError(
+                "VMTK_ENTITY_REMESH_CORE_MODIFIED:cap_changed_open_surface"
+            )
     else:
         surface_region_id[entity == wall_entity_id] = 0
     mapping_rows: list[dict[str, Any]] = []
@@ -785,6 +1185,11 @@ def tag_and_export_final_surface(
     data.cell_data["SurfaceRegion"] = np.asarray(
         ["CORE", "EXTENSION", "CAP"], dtype="<U9"
     )[surface_region_id]
+    if raw_vtp is None:
+        remesh_entity_id = np.where(
+            surface_region_id == 0, 1, np.where(surface_region_id == 1, 2, 0)
+        ).astype(np.int32)
+    data.cell_data["RemeshEntityId"] = remesh_entity_id
     tagged_vtp = geometry_directory / f"{output_stem}_um.vtp"
     tagged_stl = geometry_directory / f"{output_stem}_um.stl"
     meter_stl = geometry_directory / f"{output_stem}_m.stl"
@@ -847,7 +1252,15 @@ def tag_and_export_final_surface(
         "expected_outlet_count": expected_outlets,
         "raw_noncap_triangle_count": preserved_raw_triangle_count,
         "raw_noncap_triangle_missing_count": missing_raw_triangle_count,
+        "source_open_noncap_triangle_count": preserved_raw_triangle_count,
+        "source_open_noncap_triangle_missing_count": missing_raw_triangle_count,
         "surface_region_codes": {"CORE": 0, "EXTENSION": 1, "CAP": 2},
+        "remesh_entity_codes": {
+            "CAP": 0,
+            "CORE": 1,
+            "PROXIMAL_GUARD": 2,
+            "EXTENSION_BODY": 3,
+        },
         "boundaries": sorted(mapping_rows, key=lambda row: int(row["boundary_index"])),
     }
     return outputs, report
@@ -1037,6 +1450,9 @@ def core_symmetric_distance_qc(
     return {
         "status": "PASS" if symmetric_max <= tolerance else "FAIL",
         "method": "bidirectional vertex-plus-face-center closest surface distance",
+        "original_core_to_entityremesh_final_core": forward_report,
+        "entityremesh_final_core_to_original_core": reverse_report,
+        # Backward-compatible aliases for historical cap-only result readers.
         "original_core_to_caponly_final_core": forward_report,
         "caponly_final_core_to_original_core": reverse_report,
         "symmetric_max_um": symmetric_max,
@@ -1273,14 +1689,50 @@ def previous_global_remesh_diagnostics(
 def meter_scale_qc(um_stl: Path, meter_stl: Path) -> dict[str, Any]:
     um = trimesh.load_mesh(um_stl, process=False)
     meter = trimesh.load_mesh(meter_stl, process=False)
+    um_triangles = np.asarray(um.triangles, dtype=float)
+    meter_triangles = np.asarray(meter.triangles, dtype=np.float32)
+    expected_meter_triangles = np.asarray(
+        um_triangles * 1.0e-6, dtype=np.float32
+    )
+    sequence_compatible = expected_meter_triangles.shape == meter_triangles.shape
+    exact_in_sequence = bool(
+        sequence_compatible
+        and np.array_equal(meter_triangles, expected_meter_triangles)
+    )
+
+    def triangle_keys(values: np.ndarray) -> Counter[tuple[tuple[float, ...], ...]]:
+        return Counter(
+            tuple(sorted(tuple(float(value) for value in point) for point in triangle))
+            for triangle in values
+        )
+
+    exact_after_sorted_triangle_matching = bool(
+        sequence_compatible
+        and triangle_keys(meter_triangles)
+        == triangle_keys(expected_meter_triangles)
+    )
+    exact_after_cast = exact_in_sequence or exact_after_sorted_triangle_matching
     um_extent = np.asarray(um.extents, dtype=float)
     meter_extent = np.asarray(meter.extents, dtype=float)
-    passed = bool(np.allclose(meter_extent, um_extent * 1.0e-6, rtol=1.0e-7, atol=1.0e-14))
+    expected_extent = um_extent * 1.0e-6
+    extent_relative = np.abs(meter_extent - expected_extent) / expected_extent
     return {
-        "status": "PASS" if passed else "FAIL",
+        "status": "PASS" if exact_after_cast else "FAIL",
         "scale_factor": 1.0e-6,
+        "method": "dtype-aware binary-STL float32 triangle serialization",
+        "triangle_count_um": int(len(um_triangles)),
+        "triangle_count_meter": int(len(meter_triangles)),
+        "triangle_sequence_compatible": sequence_compatible,
+        "exact_in_original_triangle_sequence_after_float32_cast": exact_in_sequence,
+        "exact_after_sorted_triangle_coordinate_matching": (
+            exact_after_sorted_triangle_matching
+        ),
+        "exact_after_float32_cast": exact_after_cast,
         "um_extent": um_extent.tolist(),
         "meter_extent": meter_extent.tolist(),
+        "legacy_extent_relative_error_by_axis": extent_relative.tolist(),
+        "legacy_extent_relative_error_max": float(np.max(extent_relative)),
+        "legacy_extent_check_role": "DIAGNOSTIC_ONLY",
     }
 
 

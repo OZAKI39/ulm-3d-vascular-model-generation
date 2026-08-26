@@ -12,39 +12,61 @@ import pytest
 import trimesh
 
 from utils.cfd_surface_prepare.config import (
+    EntityRemeshConfig,
+    GuardConfig,
+    MeshQualityConfig,
     VmtkConfig,
     load_surface_prepare_config,
+)
+from utils.cfd_surface_prepare.guarded_remesh import (
+    assign_guarded_remesh_entities,
+    guarded_entity_preservation_qc,
+    guarded_intersection_qc,
+    triangle_pair_intersection_diagnosis,
 )
 from utils.cfd_surface_prepare.io import BoundaryInput, SurfacePrepareError
 from utils.cfd_surface_prepare.io import (
     load_original_surface,
     load_surface_inputs,
+    read_json,
     sha256_file,
 )
 from utils.cfd_surface_prepare.local_cut import local_plane_cut
 from utils.cfd_surface_prepare.types import TaggedSurface
 from utils.cfd_surface_prepare.vmtk_adapter import build_centerline_adapter
 from utils.cfd_surface_prepare.vmtk_qc import (
+    BoundaryLoop,
+    assign_remesh_entities,
     core_symmetric_distance_qc,
+    extension_geometry_qc,
+    extension_mesh_quality_from_surface,
     extension_vector_measurements,
     meter_scale_qc,
     normal_consistency_qc,
     open_profile_qc,
     polydata_mesh,
     raw_core_exact_copy_qc,
+    symmetric_mesh_size_mismatch,
     tag_and_export_final_surface,
     topology_qc,
 )
 from utils.cfd_surface_prepare.vmtk_pipeline import (
+    METER_FAILURE,
     SUCCESS_STATUS,
+    TOPOLOGY_FAILURE,
     boundary_plane_alignment_pass,
     final_candidate_status,
     raw_geometry_hard_gate_pass,
+    resolve_entity_failure_status,
+    run_synthetic_entity_exclusion_preflight,
+    should_cap_guarded_open,
     should_generate_manual_review_figures,
+    should_write_guarded_collision_figure,
     should_promote_raw_candidate,
 )
 from utils.cfd_surface_prepare.vmtk_runner import (
     cap_official_vmtk,
+    entity_remesh_official_vmtk,
     exchange_paths,
     official_source_provenance,
     parameter_mapping,
@@ -57,6 +79,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = PROJECT_ROOT / "configs" / "cfd_surface_prepare.yaml"
 PMP_PYTHON = Path("D:/anaconda3/envs/pmp/python.exe")
 VMTK_RUNTIME_PREFIX = Path("D:/anaconda3/envs/vmtk-env")
+PREVIOUS_ENTITY_RUN = (
+    PROJECT_ROOT
+    / "outputs"
+    / "cfd_surface_prepare"
+    / "vmtk_tps_boundarynormal_entityremesh_anchor003274_20260826_180737"
+)
 
 
 def _boundary(index: int, z: float, outward: float, role: str) -> BoundaryInput:
@@ -80,7 +108,26 @@ def _boundary(index: int, z: float, outward: float, role: str) -> BoundaryInput:
     )
 
 
-def _vmtk_config(extension_mode: str) -> VmtkConfig:
+def _entity_remesh_config() -> EntityRemeshConfig:
+    return EntityRemeshConfig(
+        enabled=True,
+        entity_array_name="RemeshEntityId",
+        core_entity_id=1,
+        guard_entity_id=2,
+        extension_body_entity_id=3,
+        exclude_entity_ids=(1, 2),
+        guard=GuardConfig(
+            mode="extension_face_adjacency_layers", face_layers=2
+        ),
+        element_size_mode="edgelength",
+        target_edge_length_um=0.25913916380971913,
+        preserve_boundary_edges=True,
+    )
+
+
+def _vmtk_config(
+    extension_mode: str, *, entity_remesh: bool = False
+) -> VmtkConfig:
     return VmtkConfig(
         environment_python=PMP_PYTHON,
         runtime_prefix=VMTK_RUNTIME_PREFIX,
@@ -94,14 +141,163 @@ def _vmtk_config(extension_mode: str) -> VmtkConfig:
         extension_ratio=10.0,
         adaptive_extension_radius=True,
         adaptive_boundary_points=True,
-        postprocess_mode="cap_only",
-        remesh_after_extension=False,
+        postprocess_mode=(
+            "guarded_extension_entity_remesh_then_cap"
+            if entity_remesh
+            else "cap_only"
+        ),
+        remesh_after_extension=entity_remesh,
+        entity_remesh=_entity_remesh_config(),
     )
 
 
 @pytest.fixture(scope="module")
 def formal_config():
     return load_surface_prepare_config(CONFIG_PATH, project_root=PROJECT_ROOT)
+
+
+@pytest.fixture(scope="module")
+def synthetic_entity_remesh(formal_config, tmp_path_factory):
+    """Run the official entity-exclusion safety proof once for this module."""
+
+    if not PMP_PYTHON.is_file() or not VMTK_RUNTIME_PREFIX.is_dir():
+        pytest.skip("pmp or the pinned VMTK runtime is unavailable")
+    root = tmp_path_factory.mktemp("official_vmtk_entity_remesh")
+    report = run_synthetic_entity_exclusion_preflight(
+        formal_config,
+        root=root,
+        tool_script=PROJECT_ROOT / "tools" / "run_vmtk_flowextension.py",
+    )
+    paths = exchange_paths(
+        input_directory=root / "input",
+        vmtk_directory=root / "vmtk",
+        geometry_directory=root / "geometry",
+        extension_mode="boundarynormal",
+    )
+    return root, paths, report
+
+
+@pytest.fixture(scope="module")
+def synthetic_entity_cap(formal_config, synthetic_entity_remesh):
+    """Cap the already-remeshed synthetic candidate once with official VMTK."""
+
+    root, paths, report = synthetic_entity_remesh
+    promotion = cap_official_vmtk(
+        config=formal_config.vmtk,
+        paths=paths,
+        tool_script=PROJECT_ROOT / "tools" / "run_vmtk_flowextension.py",
+    )
+    return root, paths, report, promotion
+
+
+@pytest.fixture(scope="module")
+def actual_guard_assignment(formal_config, tmp_path_factory):
+    """Classify the saved RAW surface without rerunning ROI geometry."""
+
+    root = tmp_path_factory.mktemp("saved_raw_guard_assignment")
+    raw_path = root / "saved_raw.vtp"
+    pv.read(
+        PREVIOUS_ENTITY_RUN / "geometry" / "vmtk_boundarynormal_raw_um.vtp"
+    ).save(raw_path, binary=True)
+    inputs = load_surface_inputs(
+        formal_config.paths.cfd_preprocess_run, expected_boundary_count=4
+    )
+    settings = formal_config.vmtk.entity_remesh
+    report, distances = assign_guarded_remesh_entities(
+        raw_path,
+        inputs.boundaries,
+        face_layers=settings.guard.face_layers,
+        entity_array_name=settings.entity_array_name,
+        core_entity_id=settings.core_entity_id,
+        guard_entity_id=settings.guard_entity_id,
+        body_entity_id=settings.extension_body_entity_id,
+    )
+    return raw_path, report, distances, inputs
+
+
+@pytest.fixture()
+def four_port_remeshed_open(tmp_path: Path):
+    """Controlled four-port distal-open surface for post-remesh QC tests."""
+
+    count = 32
+    angle = np.linspace(0.0, 2.0 * np.pi, count, endpoint=False)
+    points: list[list[float]] = []
+    faces: list[list[int]] = []
+    boundaries: list[BoundaryInput] = []
+    proximal: dict[int, BoundaryLoop] = {}
+    polygon_area = 0.5 * count * np.sin(2.0 * np.pi / count)
+    for index, x_center in enumerate((0.0, 4.0, 8.0, 12.0)):
+        base = len(points)
+        bottom = np.column_stack(
+            (
+                x_center + np.cos(angle),
+                np.sin(angle),
+                np.zeros(count),
+            )
+        )
+        top = bottom.copy()
+        top[:, 2] = 3.0
+        points.extend(bottom.tolist())
+        points.extend(top.tolist())
+        bottom_center = len(points)
+        points.append([x_center, 0.0, 0.0])
+        for point in range(count):
+            following = (point + 1) % count
+            faces.extend(
+                (
+                    [base + point, base + following, base + count + following],
+                    [base + point, base + count + following, base + count + point],
+                    [bottom_center, base + following, base + point],
+                )
+            )
+        center = np.asarray((x_center, 0.0, 0.0))
+        role = "ASSUMED_INLET" if index == 0 else "ASSUMED_OUTLET"
+        boundary = BoundaryInput(
+            index=index,
+            port_id=f"four_port__{index}",
+            boundary_origin="CUT_PORT",
+            role=role,
+            global_node_id=None,
+            global_edge_id=index,
+            center_um=center,
+            source_radius_um=1.0,
+            pressure_original_pa=100.0,
+            expected_flow_m3_s=1.0e-15,
+            simulation_tangent=np.asarray((0.0, 0.0, 1.0)),
+            outward_normal=np.asarray((0.0, 0.0, 1.0)),
+            extension_length_um=3.0,
+            extension_end_um=center + np.asarray((0.0, 0.0, 3.0)),
+        )
+        boundaries.append(boundary)
+        proximal[index] = BoundaryLoop(
+            point_ids=np.arange(count, dtype=np.int64),
+            points=bottom,
+            center_um=center,
+            area_um2=float(polygon_area),
+            equivalent_radius_um=float(np.sqrt(polygon_area / np.pi)),
+            normal=np.asarray((0.0, 0.0, 1.0)),
+            planarity_error_um=0.0,
+        )
+    vtk_faces = np.column_stack(
+        (np.full(len(faces), 3, dtype=np.int64), np.asarray(faces, dtype=np.int64))
+    ).ravel()
+    path = tmp_path / "four_port_entity_remeshed_open.vtp"
+    pv.PolyData(np.asarray(points), vtk_faces).save(path, binary=True)
+    _, mesh = polydata_mesh(path)
+    interface = {
+        "boundaries": [
+            {
+                "port_id": boundary.port_id,
+                "interface_edge_count": count,
+                "normal_jump_P50_deg": 0.0,
+                "normal_jump_P95_deg": 0.0,
+                "normal_jump_P99_deg": 0.0,
+                "normal_jump_max_deg": 0.0,
+            }
+            for boundary in boundaries
+        ]
+    }
+    return mesh, tuple(boundaries), proximal, interface
 
 
 @pytest.fixture(scope="module")
@@ -272,8 +468,11 @@ def test_formal_backend_is_official_vmtk(formal_config):
 
 def test_formal_yaml_selects_boundarynormal(formal_config):
     assert formal_config.vmtk.extension_mode == "boundarynormal"
-    assert formal_config.vmtk.postprocess_mode == "cap_only"
-    assert formal_config.vmtk.remesh_after_extension is False
+    assert (
+        formal_config.vmtk.postprocess_mode
+        == "guarded_extension_entity_remesh_then_cap"
+    )
+    assert formal_config.vmtk.remesh_after_extension is True
 
 
 def test_formal_interpolation_is_only_thin_plate_spline(formal_config):
@@ -308,6 +507,76 @@ def test_single_variable_scientific_parameters_are_unchanged(formal_config):
     assert mapping["parameter_sweep"] is False
 
 
+def test_formal_entity_array_mapping_is_exact(formal_config):
+    settings = formal_config.vmtk.entity_remesh
+    assert settings.entity_array_name == "RemeshEntityId"
+    assert settings.core_entity_id == 1
+    assert settings.guard_entity_id == 2
+    assert settings.extension_body_entity_id == 3
+    assert settings.exclude_entity_ids == (1, 2)
+    assert settings.guard.face_layers == 2
+
+
+def test_formal_entity_remesher_parameters_are_frozen(formal_config):
+    settings = formal_config.vmtk.entity_remesh
+    assert settings.element_size_mode == "edgelength"
+    assert settings.target_edge_length_um == 0.25913916380971913
+    assert settings.preserve_boundary_edges is True
+
+
+def test_parameter_mapping_prohibits_global_remesh(formal_config):
+    mapping = parameter_mapping(formal_config.vmtk)
+    assert mapping["global_surface_remeshing_performed"] is False
+    assert mapping["entity_aware_extension_remeshing_performed"] is True
+    assert mapping["entity_remesh"]["exclude_entity_ids"] == [1, 2]
+
+
+def test_guard_bfs_layer_zero_detection(actual_guard_assignment):
+    _, report, distances, _ = actual_guard_assignment
+    assert report["interface_seed_face_count"] == np.count_nonzero(distances == 0)
+    assert report["interface_seed_face_count"] > 0
+
+
+def test_guard_two_layer_expansion(actual_guard_assignment):
+    raw_path, report, distances, _ = actual_guard_assignment
+    data = pv.read(raw_path)
+    entities = np.asarray(data.cell_data["RemeshEntityId"])
+    assert report["guard_face_layers"] == 2
+    assert np.all(np.isin(distances[entities == 2], (0, 1)))
+    assert np.count_nonzero(distances == 1) > 0
+
+
+def test_guard_never_includes_core(actual_guard_assignment):
+    raw_path, _, _, _ = actual_guard_assignment
+    data = pv.read(raw_path)
+    regions = np.asarray(data.cell_data["SurfaceRegionId"])
+    entities = np.asarray(data.cell_data["RemeshEntityId"])
+    assert not np.any((regions == 0) & (entities == 2))
+    assert np.all(entities[regions == 0] == 1)
+
+
+def test_guard_never_includes_distal_boundary(actual_guard_assignment):
+    _, report, _, _ = actual_guard_assignment
+    assert all(
+        not row["guard_contains_distal_boundary"] for row in report["per_port"]
+    )
+
+
+def test_guard_body_remains_nonempty_per_port(actual_guard_assignment):
+    _, report, _, _ = actual_guard_assignment
+    assert report["status"] == "PASS"
+    assert all(row["guard_face_count"] > 0 for row in report["per_port"])
+    assert all(row["extension_body_face_count"] > 0 for row in report["per_port"])
+
+
+def test_guard_entity_ids_are_one_two_three(actual_guard_assignment):
+    _, report, _, _ = actual_guard_assignment
+    assert report["core_entity_id"] == 1
+    assert report["guard_entity_id"] == 2
+    assert report["extension_body_entity_id"] == 3
+    assert report["entity_ids"] == [1, 2, 3]
+
+
 def test_invalid_yaml_extension_mode_fails(tmp_path: Path):
     invalid = tmp_path / "invalid.yaml"
     invalid.write_text(
@@ -320,11 +589,11 @@ def test_invalid_yaml_extension_mode_fails(tmp_path: Path):
         load_surface_prepare_config(invalid, project_root=PROJECT_ROOT)
 
 
-def test_cap_only_with_remesh_enabled_fails_configuration(tmp_path: Path):
+def test_entity_remesh_disabled_fails_configuration(tmp_path: Path):
     invalid = tmp_path / "invalid_postprocess.yaml"
     invalid.write_text(
         CONFIG_PATH.read_text(encoding="utf-8").replace(
-            "remesh_after_extension: false", "remesh_after_extension: true"
+            "remesh_after_extension: true", "remesh_after_extension: false"
         ),
         encoding="utf-8",
     )
@@ -332,10 +601,238 @@ def test_cap_only_with_remesh_enabled_fails_configuration(tmp_path: Path):
         load_surface_prepare_config(invalid, project_root=PROJECT_ROOT)
 
 
+def test_entity_target_edge_change_fails_configuration(tmp_path: Path):
+    invalid = tmp_path / "invalid_target.yaml"
+    invalid.write_text(
+        CONFIG_PATH.read_text(encoding="utf-8").replace(
+            "target_edge_length_um: 0.25913916380971913",
+            "target_edge_length_um: 0.26",
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="target_edge_length_um"):
+        load_surface_prepare_config(invalid, project_root=PROJECT_ROOT)
+
+
 def test_official_source_provenance_records_release_commit(formal_config):
     provenance = official_source_provenance(formal_config.vmtk)
     assert provenance["runtime_release_tag"] == "v1.5.0"
     assert provenance["runtime_release_tag_commit"] == "30d5d7cb8e607d153c208a9d7d39c9feb7985476"
+
+
+def test_synthetic_entity_exclusion_preflight_passes(synthetic_entity_remesh):
+    _, _, report = synthetic_entity_remesh
+    assert report["status"] == "PASS"
+
+
+def test_synthetic_core_vertices_are_unchanged(synthetic_entity_remesh):
+    _, _, report = synthetic_entity_remesh
+    assert report["core"]["checks"][
+        "core_vertices_exact_after_output_dtype_cast"
+    ]
+    assert report["core"]["core_vertex_max_motion_um"] <= report["core"][
+        "machine_precision_tolerance_um"
+    ]
+
+
+def test_synthetic_core_connectivity_is_unchanged(synthetic_entity_remesh):
+    _, _, report = synthetic_entity_remesh
+    assert report["core"]["checks"]["core_connectivity_unchanged"]
+    assert report["core"]["core_connectivity_changed_count"] == 0
+
+
+def test_synthetic_curved_guard_is_exact_locked(synthetic_entity_remesh):
+    _, _, report = synthetic_entity_remesh
+    guard = report["guard"]
+    assert guard["status"] == "PASS"
+    assert guard["guard_vertex_max_motion_um"] <= guard[
+        "machine_precision_tolerance_um"
+    ]
+    assert guard["guard_connectivity_changed_count"] == 0
+
+
+def test_synthetic_curved_guard_has_zero_self_intersections(
+    synthetic_entity_remesh,
+):
+    _, _, report = synthetic_entity_remesh
+    assert report["topology"]["status"] == "PASS"
+    assert report["intersections"]["true_self_intersection_count"] == 0
+
+
+def test_post_remesh_intersection_classification_works(synthetic_entity_remesh):
+    _, paths, _ = synthetic_entity_remesh
+    report, records = guarded_intersection_qc(paths.remeshed_open_vtp)
+    assert report["status"] == "PASS"
+    assert report["true_self_intersection_count"] == 0
+    assert records == []
+
+
+def test_synthetic_shared_interface_vertices_are_unchanged(
+    synthetic_entity_remesh,
+):
+    _, _, report = synthetic_entity_remesh
+    interface = report["entity_boundaries"]
+    assert interface["status"] == "PASS"
+    assert interface["core_guard_max_motion_um"] <= interface[
+        "machine_precision_tolerance_um"
+    ]
+    assert interface["guard_body_max_motion_um"] <= interface[
+        "machine_precision_tolerance_um"
+    ]
+
+
+def test_synthetic_extension_is_actually_remeshed(synthetic_entity_remesh):
+    _, _, report = synthetic_entity_remesh
+    extension = report["body"]
+    assert extension["status"] == "PASS"
+    assert extension["body_remesh_effect_detected"] is True
+    assert extension["body_connectivity_changed"] is True
+
+
+def test_entity_runner_uses_official_exclusion_api(synthetic_entity_remesh):
+    _, _, report = synthetic_entity_remesh
+    runtime = report["runtime"]
+    assert runtime["official_remesher"] == "vmtkscripts.vmtkSurfaceRemeshing"
+    assert runtime["cell_entity_ids_array"] == "RemeshEntityId"
+    assert runtime["excluded_entity_ids"] == [1, 2]
+    assert runtime["active_entity_ids"] == [3]
+
+
+def test_entity_runner_preserves_boundary_edges(synthetic_entity_remesh):
+    _, _, report = synthetic_entity_remesh
+    assert report["runtime"]["preserve_boundary_edges"] is True
+
+
+def test_entity_runner_uses_exact_target_edge(synthetic_entity_remesh):
+    _, _, report = synthetic_entity_remesh
+    assert report["runtime"]["target_edge_length_um"] == 0.25913916380971913
+
+
+def test_entity_runner_does_not_perform_global_remesh(synthetic_entity_remesh):
+    _, _, report = synthetic_entity_remesh
+    assert report["runtime"]["surface_remesher_called"] is True
+    assert report["runtime"]["global_surface_remeshing_performed"] is False
+    assert report["runtime"]["entity_aware_extension_remeshing_performed"] is True
+
+
+def test_entity_runner_rejects_configuration_without_exclusion(
+    synthetic_entity_remesh,
+):
+    _, paths, _ = synthetic_entity_remesh
+    with pytest.raises(
+        SurfacePrepareError, match="INVALID_VMTK_POSTPROCESS_CONFIGURATION"
+    ):
+        entity_remesh_official_vmtk(
+            config=_vmtk_config("boundarynormal", entity_remesh=False),
+            paths=paths,
+            tool_script=PROJECT_ROOT / "tools" / "run_vmtk_flowextension.py",
+        )
+
+
+def test_entity_remesh_output_preserves_entity_ids(synthetic_entity_remesh):
+    _, paths, report = synthetic_entity_remesh
+    data = pv.read(paths.remeshed_open_vtp)
+    assert report["runtime"]["output_entity_ids"] == [1, 2, 3]
+    assert set(np.unique(data.cell_data["RemeshEntityId"])) == {1, 2, 3}
+
+
+def test_project_entity_assignment_preserves_geometry(
+    synthetic_entity_remesh, tmp_path: Path
+):
+    _, paths, _ = synthetic_entity_remesh
+    data = pv.read(paths.raw_vtp)
+    del data.cell_data["RemeshEntityId"]
+    candidate = tmp_path / "raw_to_assign.vtp"
+    data.save(candidate, binary=True)
+    report = assign_remesh_entities(candidate)
+    assert report["status"] == "PASS"
+    assert all(report["checks"].values())
+    assert report["core_entity_id"] == 1
+    assert report["extension_entity_id"] == 2
+
+
+def test_entity_qc_catches_core_vertex_motion(
+    synthetic_entity_remesh, tmp_path: Path
+):
+    _, paths, _ = synthetic_entity_remesh
+    data = pv.read(paths.remeshed_open_vtp).triangulate()
+    faces = np.asarray(data.faces).reshape((-1, 4))[:, 1:]
+    entities = np.asarray(data.cell_data["RemeshEntityId"])
+    core_vertices = np.unique(faces[entities == 1])
+    extension_vertices = np.unique(faces[np.isin(entities, (2, 3))])
+    core_only = np.setdiff1d(core_vertices, extension_vertices)
+    data.points[core_only[0], 0] += 1.0e-3
+    candidate = tmp_path / "core_moved.vtp"
+    data.save(candidate, binary=True)
+    core, _, _, _ = guarded_entity_preservation_qc(
+        paths.raw_vtp, candidate, restore_region_arrays=False
+    )
+    assert core["status"] == "FAIL"
+    assert not core["checks"][
+        "core_motion_within_output_machine_precision"
+    ]
+
+
+def test_entity_qc_catches_core_connectivity_change(
+    synthetic_entity_remesh, tmp_path: Path
+):
+    _, paths, _ = synthetic_entity_remesh
+    data = pv.read(paths.remeshed_open_vtp).triangulate()
+    packed = np.asarray(data.faces).reshape((-1, 4)).copy()
+    faces = packed[:, 1:]
+    entities = np.asarray(data.cell_data["RemeshEntityId"])
+    core_face_id = int(np.flatnonzero(entities == 1)[0])
+    alternatives = np.setdiff1d(
+        np.unique(faces[entities == 1]), faces[core_face_id]
+    )
+    packed[core_face_id, 2] = int(alternatives[0])
+    data.faces = packed.ravel()
+    candidate = tmp_path / "core_connectivity_changed.vtp"
+    data.save(candidate, binary=True)
+    core, _, _, _ = guarded_entity_preservation_qc(
+        paths.raw_vtp, candidate, restore_region_arrays=False
+    )
+    assert core["status"] == "FAIL"
+    assert not core["checks"]["core_connectivity_unchanged"]
+    assert core["core_connectivity_changed_count"] > 0
+
+
+def test_entity_qc_catches_shared_interface_motion(
+    synthetic_entity_remesh, tmp_path: Path
+):
+    _, paths, _ = synthetic_entity_remesh
+    data = pv.read(paths.remeshed_open_vtp).triangulate()
+    faces = np.asarray(data.faces).reshape((-1, 4))[:, 1:]
+    entities = np.asarray(data.cell_data["RemeshEntityId"])
+    shared = np.intersect1d(
+        np.unique(faces[entities == 1]), np.unique(faces[entities == 2])
+    )
+    data.points[shared[0], 1] += 1.0e-3
+    candidate = tmp_path / "interface_moved.vtp"
+    data.save(candidate, binary=True)
+    _, _, interface, _ = guarded_entity_preservation_qc(
+        paths.raw_vtp, candidate, restore_region_arrays=False
+    )
+    assert interface["status"] == "FAIL"
+    assert interface["core_guard_max_motion_um"] > interface[
+        "machine_precision_tolerance_um"
+    ]
+
+
+def test_entity_qc_rejects_no_extension_remesh_effect(
+    synthetic_entity_remesh, tmp_path: Path
+):
+    _, paths, _ = synthetic_entity_remesh
+    candidate = tmp_path / "unchanged_raw.vtp"
+    pv.read(paths.raw_vtp).save(candidate, binary=True)
+    core, guard, interface, extension = guarded_entity_preservation_qc(
+        paths.raw_vtp, candidate, restore_region_arrays=False
+    )
+    assert core["status"] == "PASS"
+    assert guard["status"] == "PASS"
+    assert interface["status"] == "PASS"
+    assert extension["status"] == "FAIL"
+    assert extension["body_remesh_effect_detected"] is False
 
 
 def test_centerline_adapter_uses_saved_real_graph_nodes(tmp_path: Path):
@@ -402,6 +899,34 @@ def test_actual_roi_preflight_has_four_profiles_and_real_centerlines(
     )
     assert all(row["invented_centerline_points"] == 0 for row in adapter.records)
     assert all(before[path] == sha256_file(path) for path in before)
+
+
+def test_four_open_profiles_are_preserved_after_remesh_qc(
+    four_port_remeshed_open,
+):
+    mesh, boundaries, _, _ = four_port_remeshed_open
+    report, mapping = open_profile_qc(mesh, boundaries, distal=True)
+    assert report["status"] == "PASS"
+    assert report["profile_count"] == 4
+    assert report["profile_location"] == "DISTAL_EXTENSION_END"
+    assert len(mapping) == 4
+
+
+def test_direction_length_and_area_qc_survive_remeshed_open_surface(
+    four_port_remeshed_open,
+):
+    mesh, boundaries, proximal, interface = four_port_remeshed_open
+    report, distal = extension_geometry_qc(
+        mesh, boundaries, proximal, interface
+    )
+    assert report["status"] == "PASS"
+    assert len(distal) == 4
+    assert all(
+        row["extension_direction_dot"] >= 0.999
+        and row["extension_length_relative_error"] <= 0.02
+        and row["distal_area_relative_error"] <= 0.05
+        for row in report["boundaries"]
+    )
 
 
 def test_runner_uses_pmp_environment(synthetic_vmtk):
@@ -548,6 +1073,53 @@ def test_direction_qc_uses_signed_dot():
     assert measurements["actual_axial_length_um"] == -10.0
 
 
+def test_intersection_detector_accepts_legal_shared_edge_contact():
+    vertices = np.asarray(
+        ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, -1.0, 0.0))
+    )
+    faces = np.asarray(((0, 1, 2), (1, 0, 3)), dtype=np.int64)
+    report = triangle_pair_intersection_diagnosis(vertices, faces, 0, 1)
+    assert report["shared_vertex_count"] == 2
+    assert report["shared_edge_count"] == 1
+    assert report["intersection_type"] == "LEGAL_SHARED_EDGE_CONTACT"
+    assert report["true_triangle_triangle_intersection"] is False
+
+
+def test_intersection_segment_calculation_detects_real_penetration():
+    vertices = np.asarray(
+        (
+            (0.0, 0.0, 0.0),
+            (1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (0.25, -0.25, -1.0),
+            (0.25, 0.75, 1.0),
+            (0.25, 0.75, -1.0),
+        )
+    )
+    faces = np.asarray(((0, 1, 2), (3, 4, 5)), dtype=np.int64)
+    report = triangle_pair_intersection_diagnosis(vertices, faces, 0, 1)
+    assert report["shared_vertex_count"] == 0
+    assert report["shared_edge_count"] == 0
+    assert report["true_triangle_triangle_intersection"] is True
+    assert report["intersection_segment_length_um"] > 0.0
+
+
+def test_saved_previous_penetration_is_raw_layer_zero():
+    diagnosis = read_json(
+        PREVIOUS_ENTITY_RUN
+        / "qc"
+        / "previous_entityremesh_intersection_diagnosis.json"
+    )
+    layer = read_json(
+        PREVIOUS_ENTITY_RUN / "qc" / "previous_collision_layer_diagnosis.json"
+    )
+    assert diagnosis["REAL_GEOMETRIC_PENETRATION"] == "YES"
+    assert diagnosis["shared_edge_count"] == 0
+    assert diagnosis["intersection_segment_length_um"] > 0.0
+    assert layer["port_is_cut_002"] is True
+    assert layer["face_adjacency_layer"] == 0
+
+
 def test_preboundary_plane_qc_uses_absolute_dot(synthetic_vmtk):
     _, paths, _, _, _, _, _ = synthetic_vmtk
     _, mesh = polydata_mesh(paths.open_surface_vtp)
@@ -578,6 +1150,22 @@ def test_raw_geometry_failure_blocks_promotion():
     assert not should_promote_raw_candidate(False)
 
 
+def test_guarded_topology_failure_stops_before_cap():
+    assert not should_cap_guarded_open(
+        {"status": "FAIL"}, {"status": "PASS"}
+    )
+
+
+def test_guarded_topology_failure_still_outputs_collision_figure():
+    assert should_write_guarded_collision_figure("FAIL")
+
+
+def test_zero_intersection_guarded_surface_continues_to_cap():
+    assert should_cap_guarded_open(
+        {"status": "PASS"}, {"status": "PASS"}
+    )
+
+
 def test_interface_warning_still_requires_diagnostic_figures():
     assert should_generate_manual_review_figures(
         raw_hard_qc_pass=True, interface_status="WARNING"
@@ -588,6 +1176,10 @@ def test_boundarynormal_output_names_are_explicit(synthetic_vmtk):
     _, paths, _, _, _, _, _ = synthetic_vmtk
     assert paths.raw_vtp.name == "vmtk_boundarynormal_raw_um.vtp"
     assert paths.raw_stl.name == "vmtk_boundarynormal_raw_um.stl"
+    assert (
+        paths.remeshed_open_vtp.name
+        == "vmtk_boundarynormal_guarded_extension_remeshed_open_um.vtp"
+    )
     assert "remeshed" not in paths.capped_vtp.name
 
 
@@ -761,13 +1353,234 @@ def test_meter_copy_is_exact_for_caponly_export(synthetic_vmtk, tmp_path: Path):
     )["status"] == "PASS"
 
 
-def test_pipeline_recomputes_radius_and_pressure_from_caponly_final():
+def test_symmetric_mesh_size_mismatch_is_bidirectional():
+    assert symmetric_mesh_size_mismatch(2.0) == 2.0
+    assert symmetric_mesh_size_mismatch(0.5) == 2.0
+
+
+def test_symmetric_mesh_size_mismatch_identity_and_invalid():
+    assert symmetric_mesh_size_mismatch(1.0) == 1.0
+    assert np.isinf(symmetric_mesh_size_mismatch(0.0))
+
+
+def test_tail_triangle_counters_detect_catastrophic_sliver(tmp_path: Path):
+    points = np.asarray(
+        (
+            (0.0, 0.0, 0.0),
+            (1.0, 0.0, 0.0),
+            (0.001, 0.00001, 0.0),
+            (0.0, 1.0, 0.0),
+        )
+    )
+    faces = np.asarray(((0, 1, 2), (0, 2, 3)), dtype=np.int64)
+    vtk_faces = np.column_stack(
+        (np.full(len(faces), 3, dtype=np.int64), faces)
+    ).ravel()
+    data = pv.PolyData(points, vtk_faces)
+    data.cell_data["SurfaceRegionId"] = np.ones(len(faces), dtype=np.uint8)
+    path = tmp_path / "sliver_extension.vtp"
+    data.save(path, binary=True)
+    report = extension_mesh_quality_from_surface(
+        path,
+        (_boundary(0, 0.0, 1.0, "ASSUMED_INLET"),),
+        local_target_edge_um={0: 1.0},
+        quality=MeshQualityConfig(
+            minimum_triangle_angle_deg=20.0,
+            maximum_aspect_ratio=5.0,
+            maximum_edge_length_to_local_target_ratio=2.0,
+            maximum_neighbor_area_ratio=1.0e9,
+            maximum_interface_edge_length_ratio=2.0,
+            maximum_bad_triangle_fraction=1.0,
+        ),
+        method="TAIL_COUNTER_TEST",
+        require_symmetric_size_match=False,
+    )
+    row = report["boundaries"][0]
+    assert row["triangle_count_angle_below_5deg"] > 0
+    assert row["triangle_count_aspect_above_20"] > 0
+    assert report["tail_status"] == "MESH_TAIL_WARNING"
+
+
+def test_official_cap_preserves_every_remeshed_noncap_triangle(
+    synthetic_entity_cap, tmp_path: Path
+):
+    _, paths, _, promotion = synthetic_entity_cap
+    assert Path(promotion.request["source_open_vtp"]) == paths.remeshed_open_vtp.resolve()
+    outputs, report = tag_and_export_final_surface(
+        paths.capped_vtp,
+        (
+            _boundary(0, 0.0, -1.0, "ASSUMED_INLET"),
+            _boundary(1, 4.0, 1.0, "ASSUMED_OUTLET"),
+        ),
+        tmp_path / "geometry",
+        tmp_path / "boundaries",
+        output_stem="synthetic_entityremesh",
+        raw_vtp=paths.remeshed_open_vtp,
+    )
+    remeshed = pv.read(paths.remeshed_open_vtp).triangulate()
+    assert report["source_open_noncap_triangle_count"] == remeshed.n_cells
+    assert report["source_open_noncap_triangle_missing_count"] == 0
+    assert Path(outputs["tagged_vtp"]).is_file()
+
+
+def test_entityremesh_final_tags_are_core_extension_and_cap(
+    synthetic_entity_cap, tmp_path: Path
+):
+    _, paths, _, _ = synthetic_entity_cap
+    outputs, report = tag_and_export_final_surface(
+        paths.capped_vtp,
+        (
+            _boundary(0, 0.0, -1.0, "ASSUMED_INLET"),
+            _boundary(1, 4.0, 1.0, "ASSUMED_OUTLET"),
+        ),
+        tmp_path / "geometry",
+        tmp_path / "boundaries",
+        output_stem="synthetic_entityremesh_tags",
+        raw_vtp=paths.remeshed_open_vtp,
+    )
+    data = pv.read(outputs["tagged_vtp"])
+    assert report["status"] == "PASS"
+    assert set(np.unique(data.cell_data["SurfaceRegionId"])) == {0, 1, 2}
+    assert set(np.unique(data.cell_data["RemeshEntityId"])) == {0, 1, 2, 3}
+
+
+@pytest.mark.parametrize("entity_id", [1, 2, 3])
+def test_cap_preserves_each_guarded_noncap_entity(
+    synthetic_entity_cap, tmp_path: Path, entity_id: int
+):
+    _, paths, _, _ = synthetic_entity_cap
+    outputs, _ = tag_and_export_final_surface(
+        paths.capped_vtp,
+        (
+            _boundary(0, 0.0, -1.0, "ASSUMED_INLET"),
+            _boundary(1, 4.0, 1.0, "ASSUMED_OUTLET"),
+        ),
+        tmp_path / f"geometry_{entity_id}",
+        tmp_path / f"boundaries_{entity_id}",
+        output_stem=f"guarded_cap_entity_{entity_id}",
+        raw_vtp=paths.remeshed_open_vtp,
+    )
+    source = pv.read(paths.remeshed_open_vtp).triangulate()
+    final = pv.read(outputs["tagged_vtp"]).triangulate()
+    assert np.count_nonzero(source.cell_data["RemeshEntityId"] == entity_id) == (
+        np.count_nonzero(final.cell_data["RemeshEntityId"] == entity_id)
+    )
+
+
+def test_guarded_final_boundary_tags_are_present(synthetic_entity_cap, tmp_path: Path):
+    _, paths, _, _ = synthetic_entity_cap
+    outputs, _ = tag_and_export_final_surface(
+        paths.capped_vtp,
+        (
+            _boundary(0, 0.0, -1.0, "ASSUMED_INLET"),
+            _boundary(1, 4.0, 1.0, "ASSUMED_OUTLET"),
+        ),
+        tmp_path / "geometry",
+        tmp_path / "boundaries",
+        output_stem="guarded_boundary_tags",
+        raw_vtp=paths.remeshed_open_vtp,
+    )
+    final = pv.read(outputs["tagged_vtp"])
+    for name in (
+        "boundary_type_code",
+        "boundary_index",
+        "boundary_origin",
+        "port_id",
+    ):
+        assert name in final.cell_data
+
+
+def test_meter_scale_dtype_aware_exact_after_cast_passes(
+    synthetic_entity_cap, tmp_path: Path
+):
+    _, paths, _, _ = synthetic_entity_cap
+    outputs, _ = tag_and_export_final_surface(
+        paths.capped_vtp,
+        (
+            _boundary(0, 0.0, -1.0, "ASSUMED_INLET"),
+            _boundary(1, 4.0, 1.0, "ASSUMED_OUTLET"),
+        ),
+        tmp_path / "geometry",
+        tmp_path / "boundaries",
+        output_stem="synthetic_entityremesh_meter",
+        raw_vtp=paths.remeshed_open_vtp,
+    )
+    report = meter_scale_qc(
+        Path(outputs["manual_review_stl"]), Path(outputs["meter_stl"])
+    )
+    assert report["status"] == "PASS"
+    assert report["exact_after_float32_cast"] is True
+
+
+def test_meter_scale_genuine_scaling_error_fails(
+    synthetic_entity_cap, tmp_path: Path
+):
+    _, paths, _, _ = synthetic_entity_cap
+    outputs, _ = tag_and_export_final_surface(
+        paths.capped_vtp,
+        (
+            _boundary(0, 0.0, -1.0, "ASSUMED_INLET"),
+            _boundary(1, 4.0, 1.0, "ASSUMED_OUTLET"),
+        ),
+        tmp_path / "geometry",
+        tmp_path / "boundaries",
+        output_stem="synthetic_entityremesh_bad_meter",
+        raw_vtp=paths.remeshed_open_vtp,
+    )
+    corrupt_path = tmp_path / "incorrect_meter.stl"
+    corrupt = trimesh.load_mesh(outputs["meter_stl"], process=False)
+    corrupt.vertices = np.asarray(corrupt.vertices) * 1.01
+    corrupt.export(corrupt_path)
+    assert meter_scale_qc(
+        Path(outputs["manual_review_stl"]), corrupt_path
+    )["status"] == "FAIL"
+
+
+def _failure_report(status: str = "PASS") -> dict[str, str]:
+    return {"status": status}
+
+
+def test_meter_failure_maps_to_dedicated_status():
+    status = resolve_entity_failure_status(
+        topology=_failure_report(),
+        boundary_mapping=_failure_report(),
+        core_exact=_failure_report(),
+        core_distance=_failure_report(),
+        normal=_failure_report(),
+        radius=_failure_report(),
+        meter=_failure_report("FAIL"),
+        pressure=_failure_report(),
+        integrity=_failure_report(),
+    )
+    assert status == METER_FAILURE
+
+
+def test_topology_pass_is_not_renamed_topology_failure_by_meter_qc():
+    status = resolve_entity_failure_status(
+        topology=_failure_report(),
+        boundary_mapping=_failure_report(),
+        core_exact=_failure_report(),
+        core_distance=_failure_report(),
+        normal=_failure_report(),
+        radius=_failure_report(),
+        meter=_failure_report("FAIL"),
+        pressure=_failure_report(),
+        integrity=_failure_report(),
+    )
+    assert status == METER_FAILURE
+    assert status != TOPOLOGY_FAILURE
+
+
+def test_pipeline_recomputes_radius_and_pressure_from_guarded_final():
     source = (PROJECT_ROOT / "utils" / "cfd_surface_prepare" / "vmtk_pipeline.py").read_text(
         encoding="utf-8"
     )
     assert "final_mesh=final_mesh" in source
     assert "geometry_pressure_correction(\n            final_mesh" in source
-    assert "extension_pressure_correction_vmtk_boundarynormal_caponly.csv" in source
+    assert (
+        "extension_pressure_correction_vmtk_boundarynormal_guarded_entityremesh.csv"
+        in source
+    )
 
 
 def test_previous_global_remesh_reference_is_read_only():

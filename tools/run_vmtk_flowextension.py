@@ -249,6 +249,82 @@ def _run_cap_only(request: dict[str, object]) -> dict[str, object]:
     }
 
 
+def _run_entity_remesh(request: dict[str, object]) -> dict[str, object]:
+    """Remesh only explicitly active entities with the official VMTK filter."""
+
+    raw = _read_vtp(str(request["raw_vtp"]))
+    entity_array_name = str(request["entity_array_name"])
+    entity_array = raw.GetCellData().GetArray(entity_array_name)
+    if entity_array is None:
+        raise RuntimeError("VMTK_ENTITY_ASSIGNMENT_FAILED:array_missing")
+    input_entity_ids = sorted(
+        {
+            int(entity_array.GetTuple1(index))
+            for index in range(raw.GetNumberOfCells())
+        }
+    )
+    core_entity_id = int(request["core_entity_id"])
+    guard_entity_id = int(request["guard_entity_id"])
+    body_entity_id = int(request["extension_body_entity_id"])
+    if input_entity_ids != [core_entity_id, guard_entity_id, body_entity_id]:
+        raise RuntimeError("VMTK_ENTITY_ASSIGNMENT_FAILED:unexpected_ids")
+    excluded_entity_ids = [int(value) for value in request["exclude_entity_ids"]]  # type: ignore[union-attr]
+    if excluded_entity_ids != [core_entity_id, guard_entity_id]:
+        raise RuntimeError("VMTK_ENTITY_ASSIGNMENT_FAILED:unsafe_exclusion")
+
+    remesher = vmtkscripts.vmtkSurfaceRemeshing()
+    remesher.Surface = raw
+    remesher.CellEntityIdsArrayName = entity_array_name
+    remesher.ExcludeEntityIds = excluded_entity_ids
+    remesher.ElementSizeMode = str(request["element_size_mode"])
+    remesher.TargetEdgeLength = float(request["target_edge_length_um"])
+    remesher.PreserveBoundaryEdges = int(bool(request["preserve_boundary_edges"]))
+    remesher.Execute()
+    remeshed = vtk.vtkPolyData()
+    remeshed.DeepCopy(remesher.Surface)
+    output_entities = remeshed.GetCellData().GetArray(entity_array_name)
+    if output_entities is None:
+        raise RuntimeError("VMTK_ENTITY_ASSIGNMENT_FAILED:output_array_missing")
+    output_entity_ids = sorted(
+        {
+            int(output_entities.GetTuple1(index))
+            for index in range(remeshed.GetNumberOfCells())
+        }
+    )
+    if output_entity_ids != input_entity_ids:
+        raise RuntimeError("VMTK_ENTITY_ASSIGNMENT_FAILED:output_ids_changed")
+    _write_vtp(remeshed, str(request["remeshed_open_vtp"]))
+    _write_stl(remeshed, str(request["remeshed_open_stl"]))
+    return {
+        **_runtime(),
+        "operation": "entity_remesh",
+        "official_remesher": "vmtkscripts.vmtkSurfaceRemeshing",
+        "cell_entity_ids_array": entity_array_name,
+        "excluded_entity_ids": excluded_entity_ids,
+        "active_entity_ids": [body_entity_id],
+        "input_entity_ids": input_entity_ids,
+        "output_entity_ids": output_entity_ids,
+        "target_edge_length_um": float(request["target_edge_length_um"]),
+        "element_size_mode": str(request["element_size_mode"]),
+        "preserve_boundary_edges": bool(request["preserve_boundary_edges"]),
+        "raw_points": raw.GetNumberOfPoints(),
+        "raw_cells": raw.GetNumberOfCells(),
+        "remeshed_open_points": remeshed.GetNumberOfPoints(),
+        "remeshed_open_cells": remeshed.GetNumberOfCells(),
+        "surface_remesher_called": True,
+        "global_surface_remeshing_performed": False,
+        "entity_aware_extension_remeshing_performed": True,
+        "official_default_parameters_retained": {
+            "number_of_iterations": remesher.NumberOfIterations,
+            "connectivity_optimization_iterations": (
+                remesher.NumberOfConnectivityOptimizationIterations
+            ),
+            "relaxation": remesher.Relaxation,
+            "aspect_ratio_threshold": remesher.AspectRatioThreshold,
+        },
+    }
+
+
 def _run(request: dict[str, object]) -> dict[str, object]:
     operation = str(request.get("operation", ""))
     if operation == "extension":
@@ -257,6 +333,8 @@ def _run(request: dict[str, object]) -> dict[str, object]:
         return _run_remesh_cap(request)
     if operation == "cap_only":
         return _run_cap_only(request)
+    if operation == "entity_remesh":
+        return _run_entity_remesh(request)
     raise RuntimeError("INVALID_VMTK_OPERATION")
 
 

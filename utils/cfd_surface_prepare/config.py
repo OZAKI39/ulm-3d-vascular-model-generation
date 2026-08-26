@@ -21,6 +21,26 @@ class BackendConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class GuardConfig:
+    mode: str
+    face_layers: int
+
+
+@dataclass(frozen=True, slots=True)
+class EntityRemeshConfig:
+    enabled: bool
+    entity_array_name: str
+    core_entity_id: int
+    guard_entity_id: int
+    extension_body_entity_id: int
+    exclude_entity_ids: tuple[int, ...]
+    guard: GuardConfig
+    element_size_mode: str
+    target_edge_length_um: float
+    preserve_boundary_edges: bool
+
+
+@dataclass(frozen=True, slots=True)
 class VmtkConfig:
     environment_python: Path
     runtime_prefix: Path
@@ -36,6 +56,7 @@ class VmtkConfig:
     adaptive_boundary_points: bool
     postprocess_mode: str
     remesh_after_extension: bool
+    entity_remesh: EntityRemeshConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -263,6 +284,7 @@ def load_surface_prepare_config(
             "adaptive_boundary_points",
             "postprocess_mode",
             "remesh_after_extension",
+            "entity_remesh",
         },
     )
     _require(
@@ -295,16 +317,107 @@ def load_surface_prepare_config(
         "adaptive_boundary_points",
     ):
         _require(_boolean(vmtk[key], f"vmtk.{key}"), True, f"vmtk.{key}")
-    _require(vmtk["postprocess_mode"], "cap_only", "vmtk.postprocess_mode")
+    _require(
+        vmtk["postprocess_mode"],
+        "guarded_extension_entity_remesh_then_cap",
+        "vmtk.postprocess_mode",
+    )
     _require(
         _boolean(vmtk["remesh_after_extension"], "vmtk.remesh_after_extension"),
-        False,
+        True,
         "vmtk.remesh_after_extension",
     )
     _require(
         _number(vmtk["extension_ratio"], "vmtk.extension_ratio"),
         10.0,
         "vmtk.extension_ratio",
+    )
+    entity_remesh = _exact(
+        vmtk["entity_remesh"],
+        {
+            "enabled",
+            "entity_array_name",
+            "core_entity_id",
+            "guard_entity_id",
+            "extension_body_entity_id",
+            "exclude_entity_ids",
+            "guard",
+            "element_size_mode",
+            "target_edge_length_um",
+            "preserve_boundary_edges",
+        },
+        "vmtk.entity_remesh",
+    )
+    _require(
+        _boolean(entity_remesh["enabled"], "vmtk.entity_remesh.enabled"),
+        True,
+        "vmtk.entity_remesh.enabled",
+    )
+    _require(
+        entity_remesh["entity_array_name"],
+        "RemeshEntityId",
+        "vmtk.entity_remesh.entity_array_name",
+    )
+    core_entity_id = _integer(
+        entity_remesh["core_entity_id"], "vmtk.entity_remesh.core_entity_id"
+    )
+    guard_entity_id = _integer(
+        entity_remesh["guard_entity_id"],
+        "vmtk.entity_remesh.guard_entity_id",
+    )
+    extension_body_entity_id = _integer(
+        entity_remesh["extension_body_entity_id"],
+        "vmtk.entity_remesh.extension_body_entity_id",
+    )
+    _require(core_entity_id, 1, "vmtk.entity_remesh.core_entity_id")
+    _require(guard_entity_id, 2, "vmtk.entity_remesh.guard_entity_id")
+    _require(
+        extension_body_entity_id,
+        3,
+        "vmtk.entity_remesh.extension_body_entity_id",
+    )
+    excluded = entity_remesh["exclude_entity_ids"]
+    if not isinstance(excluded, list) or any(
+        isinstance(value, bool) or not isinstance(value, int) for value in excluded
+    ):
+        raise ValueError("vmtk.entity_remesh.exclude_entity_ids must be an integer list")
+    exclude_entity_ids = tuple(int(value) for value in excluded)
+    _require(exclude_entity_ids, (1, 2), "vmtk.entity_remesh.exclude_entity_ids")
+    guard = _exact(
+        entity_remesh["guard"],
+        {"mode", "face_layers"},
+        "vmtk.entity_remesh.guard",
+    )
+    _require(
+        guard["mode"],
+        "extension_face_adjacency_layers",
+        "vmtk.entity_remesh.guard.mode",
+    )
+    guard_face_layers = _integer(
+        guard["face_layers"], "vmtk.entity_remesh.guard.face_layers"
+    )
+    _require(guard_face_layers, 2, "vmtk.entity_remesh.guard.face_layers")
+    _require(
+        entity_remesh["element_size_mode"],
+        "edgelength",
+        "vmtk.entity_remesh.element_size_mode",
+    )
+    target_edge_length_um = _number(
+        entity_remesh["target_edge_length_um"],
+        "vmtk.entity_remesh.target_edge_length_um",
+    )
+    _require(
+        target_edge_length_um,
+        0.25913916380971913,
+        "vmtk.entity_remesh.target_edge_length_um",
+    )
+    _require(
+        _boolean(
+            entity_remesh["preserve_boundary_edges"],
+            "vmtk.entity_remesh.preserve_boundary_edges",
+        ),
+        True,
+        "vmtk.entity_remesh.preserve_boundary_edges",
     )
 
     geometry = _section(
@@ -580,8 +693,23 @@ def load_surface_prepare_config(
             extension_ratio=10.0,
             adaptive_extension_radius=True,
             adaptive_boundary_points=True,
-            postprocess_mode="cap_only",
-            remesh_after_extension=False,
+            postprocess_mode="guarded_extension_entity_remesh_then_cap",
+            remesh_after_extension=True,
+            entity_remesh=EntityRemeshConfig(
+                enabled=True,
+                entity_array_name="RemeshEntityId",
+                core_entity_id=core_entity_id,
+                guard_entity_id=guard_entity_id,
+                extension_body_entity_id=extension_body_entity_id,
+                exclude_entity_ids=exclude_entity_ids,
+                guard=GuardConfig(
+                    mode="extension_face_adjacency_layers",
+                    face_layers=guard_face_layers,
+                ),
+                element_size_mode="edgelength",
+                target_edge_length_um=target_edge_length_um,
+                preserve_boundary_edges=True,
+            ),
         ),
         geometry=GeometryConfig(create_meter_copy=create_meter_copy),
         local_cut=LocalCutConfig(

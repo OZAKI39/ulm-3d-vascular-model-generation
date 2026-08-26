@@ -8,6 +8,7 @@ from pathlib import Path
 from utils.cfd_surface_prepare.config import load_surface_prepare_config
 from utils.cfd_surface_prepare.vmtk_pipeline import (
     PASS_STATUSES,
+    print_vmtk_experiment_header,
     print_vmtk_result,
     run_vmtk_surface_prepare,
 )
@@ -20,8 +21,9 @@ DEFAULT_CONFIG = PROJECT_ROOT / "configs" / "cfd_surface_prepare.yaml"
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Create one official VMTK TPS boundary-normal candidate and directly "
-            "cap its RAW surface without global remeshing or a volume mesh."
+            "Create one official VMTK TPS boundary-normal candidate, remesh only "
+            "EXTENSION_BODY with CORE and PROXIMAL_GUARD excluded, and cap it "
+            "without global remeshing or a volume mesh."
         )
     )
     parser.add_argument(
@@ -38,6 +40,7 @@ def main() -> int:
     args = _parser().parse_args()
     try:
         config = load_surface_prepare_config(args.config, project_root=PROJECT_ROOT)
+        print_vmtk_experiment_header()
         result = run_vmtk_surface_prepare(config, project_root=PROJECT_ROOT)
         print_vmtk_result(result)
         return 0 if result.status in PASS_STATUSES else 2
@@ -61,13 +64,33 @@ def main() -> int:
             "VMTK_CAPONLY_RADIUS_FIDELITY_FAILED",
             "VMTK_CAPONLY_BOUNDARY_MAPPING_FAILED",
             "ORIGINAL_ULTRALISER_GEOMETRY_MODIFIED",
+            "VMTK_ENTITY_EXCLUSION_NOT_SAFE",
+            "VMTK_ENTITY_ASSIGNMENT_FAILED",
+            "VMTK_ENTITY_REMESH_CORE_MODIFIED",
+            "VMTK_ENTITY_REMESH_NO_EFFECT",
+            "VMTK_ENTITY_REMESH_GEOMETRY_FAILED",
+            "VMTK_ENTITY_REMESH_TOPOLOGY_FAILED",
+            "VMTK_ENTITY_REMESH_BOUNDARY_MAPPING_FAILED",
+            "VMTK_ENTITY_REMESH_RADIUS_FAILED",
+            "VMTK_METER_SCALE_SERIALIZATION_FAILED",
+            "ENTITY_REMESH_INTERSECTION_DETECTOR_REVIEW_REQUIRED",
+            "VMTK_GUARDED_ENTITY_EXCLUSION_NOT_SAFE",
+            "VMTK_GUARD_ENTITY_ASSIGNMENT_FAILED",
+            "GUARD_REGION_CLASSIFICATION_SUSPICIOUS",
+            "VMTK_GUARDED_ENTITY_REMESH_CORE_MODIFIED",
+            "VMTK_GUARDED_ENTITY_REMESH_GUARD_MODIFIED",
+            "VMTK_GUARDED_ENTITY_REMESH_NO_EFFECT",
+            "VMTK_GUARDED_ENTITY_REMESH_GEOMETRY_FAILED",
+            "VMTK_GUARDED_ENTITY_REMESH_TOPOLOGY_FAILED",
+            "VMTK_GUARDED_ENTITY_REMESH_BOUNDARY_MAPPING_FAILED",
+            "VMTK_GUARDED_ENTITY_REMESH_RADIUS_FAILED",
         }
         failure = str(error).split(":", maxsplit=1)[0]
         if failure not in allowed_failures:
             failure = "VMTK_TPS_EXTENSION_FAILED"
         print(f"CFD surface preparation failed: {error}")
         print(f"Final status: {failure}")
-        print("NEXT: REVIEW CAP-ONLY SURFACE FAILURE")
+        print("NEXT: REVIEW GUARDED PROXIMAL REMESH FAILURE")
         return 1
 
 

@@ -20,6 +20,7 @@ class VmtkExchangePaths:
     raw_vtp: Path
     raw_stl: Path
     remeshed_open_vtp: Path
+    remeshed_open_stl: Path
     capped_vtp: Path
     request_json: Path
     promotion_request_json: Path
@@ -29,6 +30,10 @@ class VmtkExchangePaths:
     stderr_log: Path
     promotion_stdout_log: Path
     promotion_stderr_log: Path
+    entity_remesh_request_json: Path
+    entity_remesh_result_json: Path
+    entity_remesh_stdout_log: Path
+    entity_remesh_stderr_log: Path
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +98,24 @@ def parameter_mapping(config: VmtkConfig) -> dict[str, Any]:
         "postprocess_mode": config.postprocess_mode,
         "remesh_after_extension": config.remesh_after_extension,
         "global_surface_remeshing_performed": False,
+        "entity_aware_extension_remeshing_performed": config.remesh_after_extension,
+        "entity_remesh": {
+            "enabled": config.entity_remesh.enabled,
+            "entity_array_name": config.entity_remesh.entity_array_name,
+            "core_entity_id": config.entity_remesh.core_entity_id,
+            "guard_entity_id": config.entity_remesh.guard_entity_id,
+            "extension_body_entity_id": (
+                config.entity_remesh.extension_body_entity_id
+            ),
+            "exclude_entity_ids": list(config.entity_remesh.exclude_entity_ids),
+            "guard": {
+                "mode": config.entity_remesh.guard.mode,
+                "face_layers": config.entity_remesh.guard.face_layers,
+            },
+            "element_size_mode": config.entity_remesh.element_size_mode,
+            "target_edge_length_um": config.entity_remesh.target_edge_length_um,
+            "preserve_boundary_edges": config.entity_remesh.preserve_boundary_edges,
+        },
         "automatic_fallback": False,
         "parameter_sweep": False,
         "custom_tps_implementation": False,
@@ -245,15 +268,23 @@ def cap_official_vmtk(
     paths: VmtkExchangePaths,
     tool_script: Path,
 ) -> VmtkInvocationResult:
-    """Directly cap one RAW candidate with the official VMTK capper."""
+    """Directly cap the selected open candidate with the official VMTK capper."""
 
-    if config.postprocess_mode != "cap_only" or config.remesh_after_extension:
+    if config.postprocess_mode == "cap_only" and not config.remesh_after_extension:
+        source_open_vtp = paths.raw_vtp
+    elif (
+        config.postprocess_mode == "guarded_extension_entity_remesh_then_cap"
+        and config.remesh_after_extension
+    ):
+        source_open_vtp = paths.remeshed_open_vtp
+    else:
         raise SurfacePrepareError("INVALID_VMTK_POSTPROCESS_CONFIGURATION")
-    if not config.environment_python.is_file() or not paths.raw_vtp.is_file():
+    if not config.environment_python.is_file() or not source_open_vtp.is_file():
         raise SurfacePrepareError("VMTK_ENVIRONMENT_BLOCKED")
     request: dict[str, Any] = {
         "operation": "cap_only",
-        "raw_vtp": str(paths.raw_vtp.resolve()),
+        "raw_vtp": str(source_open_vtp.resolve()),
+        "source_open_vtp": str(source_open_vtp.resolve()),
         "capped_vtp": str(paths.capped_vtp.resolve()),
     }
     paths.promotion_request_json.write_text(
@@ -288,6 +319,86 @@ def cap_official_vmtk(
     return VmtkInvocationResult(command, request, runtime)
 
 
+def entity_remesh_official_vmtk(
+    *,
+    config: VmtkConfig,
+    paths: VmtkExchangePaths,
+    tool_script: Path,
+) -> VmtkInvocationResult:
+    """Remesh BODY using official VMTK with CORE and GUARD excluded."""
+
+    settings = config.entity_remesh
+    valid = (
+        config.postprocess_mode == "guarded_extension_entity_remesh_then_cap"
+        and config.remesh_after_extension
+        and settings.enabled
+        and settings.entity_array_name == "RemeshEntityId"
+        and settings.core_entity_id == 1
+        and settings.guard_entity_id == 2
+        and settings.extension_body_entity_id == 3
+        and settings.exclude_entity_ids == (1, 2)
+        and settings.guard.mode == "extension_face_adjacency_layers"
+        and settings.guard.face_layers == 2
+        and settings.element_size_mode == "edgelength"
+        and settings.target_edge_length_um == 0.25913916380971913
+        and settings.preserve_boundary_edges
+    )
+    if not valid:
+        raise SurfacePrepareError("INVALID_VMTK_POSTPROCESS_CONFIGURATION")
+    if not config.environment_python.is_file() or not paths.raw_vtp.is_file():
+        raise SurfacePrepareError("VMTK_ENVIRONMENT_BLOCKED")
+    request: dict[str, Any] = {
+        "operation": "entity_remesh",
+        "raw_vtp": str(paths.raw_vtp.resolve()),
+        "remeshed_open_vtp": str(paths.remeshed_open_vtp.resolve()),
+        "remeshed_open_stl": str(paths.remeshed_open_stl.resolve()),
+        "entity_array_name": settings.entity_array_name,
+        "core_entity_id": settings.core_entity_id,
+        "guard_entity_id": settings.guard_entity_id,
+        "extension_body_entity_id": settings.extension_body_entity_id,
+        "exclude_entity_ids": list(settings.exclude_entity_ids),
+        "element_size_mode": settings.element_size_mode,
+        "target_edge_length_um": settings.target_edge_length_um,
+        "preserve_boundary_edges": settings.preserve_boundary_edges,
+    }
+    paths.entity_remesh_request_json.write_text(
+        json.dumps(request, indent=2), encoding="utf-8"
+    )
+    command = (
+        str(config.environment_python.resolve()),
+        str(tool_script.resolve()),
+        "--request",
+        str(paths.entity_remesh_request_json.resolve()),
+        "--result",
+        str(paths.entity_remesh_result_json.resolve()),
+    )
+    completed = subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=_vmtk_process_environment(config),
+    )
+    paths.entity_remesh_stdout_log.write_text(completed.stdout, encoding="utf-8")
+    paths.entity_remesh_stderr_log.write_text(completed.stderr, encoding="utf-8")
+    required = (paths.remeshed_open_vtp, paths.remeshed_open_stl)
+    if completed.returncode != 0 or not paths.entity_remesh_result_json.is_file():
+        raise SurfacePrepareError("VMTK_ENTITY_REMESH_GEOMETRY_FAILED")
+    runtime = json.loads(paths.entity_remesh_result_json.read_text(encoding="utf-8"))
+    if runtime.get("status") != "PASS" or not all(path.is_file() for path in required):
+        raise SurfacePrepareError("VMTK_ENTITY_REMESH_GEOMETRY_FAILED")
+    if (
+        runtime.get("surface_remesher_called") is not True
+        or runtime.get("global_surface_remeshing_performed") is not False
+        or runtime.get("excluded_entity_ids") != [1, 2]
+        or runtime.get("active_entity_ids") != [3]
+    ):
+        raise SurfacePrepareError("VMTK_ENTITY_ASSIGNMENT_FAILED")
+    return VmtkInvocationResult(command, request, runtime)
+
+
 def exchange_paths(
     *,
     input_directory: Path,
@@ -303,7 +414,14 @@ def exchange_paths(
         centerlines_vtp=input_directory / "centerlines_um.vtp",
         raw_vtp=geometry_directory / f"vmtk_{mode_label}_raw_um.vtp",
         raw_stl=geometry_directory / f"vmtk_{mode_label}_raw_um.stl",
-        remeshed_open_vtp=vmtk_directory / f"vmtk_{mode_label}_remeshed_open_um.vtp",
+        remeshed_open_vtp=(
+            geometry_directory
+            / f"vmtk_{mode_label}_guarded_extension_remeshed_open_um.vtp"
+        ),
+        remeshed_open_stl=(
+            geometry_directory
+            / f"vmtk_{mode_label}_guarded_extension_remeshed_open_um.stl"
+        ),
         capped_vtp=vmtk_directory / f"vmtk_{mode_label}_capped_um.vtp",
         request_json=vmtk_directory / "request.json",
         promotion_request_json=vmtk_directory / "cap_request.json",
@@ -313,4 +431,8 @@ def exchange_paths(
         stderr_log=vmtk_directory / "stderr.log",
         promotion_stdout_log=vmtk_directory / "cap_stdout.log",
         promotion_stderr_log=vmtk_directory / "cap_stderr.log",
+        entity_remesh_request_json=vmtk_directory / "entity_remesh_request.json",
+        entity_remesh_result_json=vmtk_directory / "entity_remesh_environment.json",
+        entity_remesh_stdout_log=vmtk_directory / "entity_remesh_stdout.log",
+        entity_remesh_stderr_log=vmtk_directory / "entity_remesh_stderr.log",
     )

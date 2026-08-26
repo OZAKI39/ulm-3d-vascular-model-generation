@@ -10,6 +10,7 @@ import pyvista as pv
 
 from .io import BoundaryInput
 from .local_cut import orthogonal_basis
+from .mesh_quality import triangle_metrics
 
 
 def _parts(data: pv.PolyData, boundaries: list[BoundaryInput]) -> np.ndarray:
@@ -374,3 +375,379 @@ def save_caponly_review_figures(
     if not all(path.is_file() and path.stat().st_size > 0 for path in required):
         raise RuntimeError("Required cap-only manual review figures were not created")
     return tuple(path.resolve() for path in paths)
+
+
+def save_entityremesh_review_figures(
+    *,
+    original_vtp: Path,
+    raw_vtp: Path,
+    previous_global_final_vtp: Path,
+    entity_remeshed_open_vtp: Path,
+    entity_final_vtp: Path,
+    boundaries: Iterable[BoundaryInput],
+    output_directory: Path,
+) -> tuple[Path, ...]:
+    """Create the five required entity-aware remesh manual-review figures."""
+
+    output_directory.mkdir(parents=True, exist_ok=True)
+    boundary_list = list(boundaries)
+    original = pv.read(original_vtp).triangulate()
+    raw = pv.read(raw_vtp).triangulate()
+    previous = pv.read(previous_global_final_vtp).triangulate()
+    remeshed = pv.read(entity_remeshed_open_vtp).triangulate()
+    final = pv.read(entity_final_vtp).triangulate()
+    for data in (raw, previous, remeshed, final):
+        data.cell_data["review_part"] = _parts(data, boundary_list)
+
+    closeup_path = output_directory / "extension_three_way_closeups.png"
+    closeups = pv.Plotter(shape=(4, 3), off_screen=True, window_size=(2400, 2400))
+    closeups.set_background("white")
+    wire_path = output_directory / "extension_three_way_wireframe.png"
+    wires = pv.Plotter(shape=(4, 3), off_screen=True, window_size=(2400, 2400))
+    wires.set_background("white")
+    comparisons = (
+        ("CAP-ONLY RAW / NO REMESH", raw),
+        ("PREVIOUS GLOBAL REMESH", previous),
+        ("NEW ENTITY-AWARE REMESH", final),
+    )
+    for row, boundary in enumerate(boundary_list):
+        for column, (label, data) in enumerate(comparisons):
+            local = _extension_local(data, boundary)
+            short = boundary.port_id.rsplit("__", 1)[-1]
+            closeups.subplot(row, column)
+            closeups.add_text(f"{short} | {label}", color="black", font_size=10)
+            _add_surface(closeups, local)
+            _camera(closeups, boundary)
+            wires.subplot(row, column)
+            wires.add_text(f"{short} | {label}", color="black", font_size=10)
+            _add_surface(wires, local, wireframe=True)
+            _camera(wires, boundary)
+    closeups.show(screenshot=closeup_path, auto_close=True)
+    wires.show(screenshot=wire_path, auto_close=True)
+
+    core_path = output_directory / "core_original_vs_global_vs_entityremesh.png"
+    core = pv.Plotter(shape=(1, 3), off_screen=True, window_size=(2700, 900))
+    core.set_background("white")
+    for column, (label, data) in enumerate(
+        (
+            ("ORIGINAL ULTRALISER", original),
+            ("PREVIOUS GLOBAL REMESH", previous),
+            ("NEW ENTITY-AWARE REMESH", final),
+        )
+    ):
+        core.subplot(0, column)
+        core.add_text(label, color="black", font_size=13)
+        _add_plain_surface(core, data, wireframe=True)
+        core.view_isometric()
+    core.link_views()
+    core.show(screenshot=core_path, auto_close=True)
+
+    interface_path = output_directory / "entity_interface_closeups.png"
+    interfaces = pv.Plotter(shape=(4, 2), off_screen=True, window_size=(1800, 2400))
+    interfaces.set_background("white")
+    for row, boundary in enumerate(boundary_list):
+        for column, (label, data) in enumerate(
+            (("RAW ENTITY INTERFACE", raw), ("REMESHED ENTITY INTERFACE", remeshed))
+        ):
+            local = _local(data, boundary)
+            short = boundary.port_id.rsplit("__", 1)[-1]
+            interfaces.subplot(row, column)
+            interfaces.add_text(f"{short} | {label}", color="black", font_size=10)
+            _add_surface(interfaces, local, wireframe=True)
+            _camera(interfaces, boundary)
+    interfaces.show(screenshot=interface_path, auto_close=True)
+
+    tail_path = output_directory / "extension_mesh_tail_hotspots.png"
+    tails = pv.Plotter(shape=(4, 2), off_screen=True, window_size=(1800, 2400))
+    tails.set_background("white")
+    remesh_faces = np.asarray(remeshed.faces, dtype=np.int64).reshape((-1, 4))[:, 1:]
+    regions = np.asarray(remeshed.cell_data["SurfaceRegionId"], dtype=np.uint8)
+    extension_ids = np.flatnonzero(regions == 1)
+    extension_centers = np.asarray(remeshed.points)[remesh_faces[extension_ids]].mean(axis=1)
+    scores = []
+    for boundary in boundary_list:
+        relative = extension_centers - boundary.center_um
+        axial = relative @ boundary.outward_normal
+        radial = np.linalg.norm(
+            relative - np.outer(axial, boundary.outward_normal), axis=1
+        )
+        before = np.maximum(-axial, 0.0)
+        after = np.maximum(axial - boundary.extension_length_um, 0.0)
+        scores.append(
+            (radial / boundary.source_radius_um) ** 2
+            + ((before + after) / boundary.source_radius_um) ** 2
+        )
+    assignment = np.argmin(np.column_stack(scores), axis=1)
+    for row, boundary in enumerate(boundary_list):
+        selected = extension_ids[assignment == row]
+        metrics = triangle_metrics(np.asarray(remeshed.points), remesh_faces[selected])
+        worst = (
+            ("LOWEST MINIMUM ANGLE", selected[int(np.argmin(metrics.minimum_angles_deg))]),
+            ("HIGHEST ASPECT RATIO", selected[int(np.argmax(metrics.aspect_ratios))]),
+        )
+        for column, (label, face_id) in enumerate(worst):
+            center = np.asarray(remeshed.points)[remesh_faces[face_id]].mean(axis=0)
+            tails.subplot(row, column)
+            tails.add_text(
+                f"{boundary.port_id.rsplit('__', 1)[-1]} | {label}",
+                color="black",
+                font_size=10,
+            )
+            _add_surface(tails, _extension_local(remeshed, boundary), wireframe=True)
+            tails.add_mesh(
+                pv.Sphere(
+                    radius=max(0.12 * boundary.source_radius_um, 0.03),
+                    center=center,
+                ),
+                color="#ffcc00",
+            )
+            _camera(tails, boundary)
+    tails.show(screenshot=tail_path, auto_close=True)
+
+    paths = (closeup_path, wire_path, core_path, interface_path, tail_path)
+    if not all(path.is_file() and path.stat().st_size > 0 for path in paths):
+        raise RuntimeError("Required entity-remesh manual review figures were not created")
+    return tuple(path.resolve() for path in paths)
+
+
+def _add_guarded_surface(
+    plotter: pv.Plotter, data: pv.PolyData, *, wireframe: bool = True
+) -> None:
+    plotter.add_mesh(
+        data,
+        scalars="RemeshEntityId",
+        preference="cell",
+        categories=True,
+        cmap=["#8da0ae", "#f2a93b", "#2878b5"],
+        clim=(1, 3),
+        show_scalar_bar=False,
+        show_edges=wireframe,
+        edge_color="#17242b",
+        line_width=0.7,
+        smooth_shading=not wireframe,
+    )
+
+
+def save_previous_collision_closeup(
+    *,
+    remeshed_vtp: Path,
+    diagnosis: dict[str, object],
+    boundary: BoundaryInput,
+    output_path: Path,
+) -> Path:
+    """Show the exact saved CORE/BODY penetration with both triangles highlighted."""
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    data = pv.read(remeshed_vtp).triangulate()
+    faces = np.asarray(data.faces, dtype=np.int64).reshape((-1, 4))[:, 1:]
+    core_id = int(diagnosis["core_face_id"])
+    extension_id = int(diagnosis["extension_face_id"])
+    center = np.asarray(data.points)[faces[[core_id, extension_id]]].mean(axis=(0, 1))
+    face_centers = np.asarray(data.points)[faces].mean(axis=1)
+    local_ids = np.flatnonzero(
+        np.linalg.norm(face_centers - center, axis=1)
+        <= 2.5 * boundary.source_radius_um
+    )
+    local = data.extract_cells(local_ids).extract_surface().triangulate()
+    plotter = pv.Plotter(off_screen=True, window_size=(1500, 1200))
+    plotter.set_background("white")
+    plotter.add_text(
+        "PREVIOUS ENTITY-REMESH TRUE CORE/EXTENSION PENETRATION | cut_002",
+        color="black",
+        font_size=13,
+    )
+    plotter.add_mesh(
+        local,
+        scalars="RemeshEntityId",
+        preference="cell",
+        categories=True,
+        cmap=["#8da0ae", "#2878b5"],
+        show_scalar_bar=False,
+        show_edges=True,
+        edge_color="#1b252a",
+    )
+    plotter.add_mesh(
+        data.extract_cells([core_id]).extract_surface(),
+        color="#ffe119",
+        show_edges=True,
+        edge_color="#111111",
+        line_width=5,
+    )
+    plotter.add_mesh(
+        data.extract_cells([extension_id]).extract_surface(),
+        color="#f032e6",
+        show_edges=True,
+        edge_color="#111111",
+        line_width=5,
+    )
+    start = diagnosis.get("intersection_segment_start_xyz")
+    end = diagnosis.get("intersection_segment_end_xyz")
+    if start is not None and end is not None:
+        plotter.add_mesh(pv.Line(start, end), color="#e6194b", line_width=10)
+    _camera(plotter, boundary)
+    plotter.camera.focal_point = center
+    plotter.camera.parallel_scale = 2.2 * boundary.source_radius_um
+    plotter.show(screenshot=output_path, auto_close=True)
+    if not output_path.is_file() or output_path.stat().st_size == 0:
+        raise RuntimeError("Previous collision close-up was not created")
+    return output_path.resolve()
+
+
+def save_guarded_open_figures(
+    *,
+    raw_vtp: Path,
+    remeshed_vtp: Path,
+    boundaries: Iterable[BoundaryInput],
+    tail_records: list[dict[str, object]],
+    intersections: list[dict[str, object]],
+    output_directory: Path,
+) -> tuple[Path, ...]:
+    """Create guarded-region, interface, wireframe, tail, and collision evidence."""
+
+    output_directory.mkdir(parents=True, exist_ok=True)
+    boundary_list = list(boundaries)
+    raw = pv.read(raw_vtp).triangulate()
+    remeshed = pv.read(remeshed_vtp).triangulate()
+    guard_path = output_directory / "guard_region_visualization.png"
+    guard_plot = pv.Plotter(shape=(4, 1), off_screen=True, window_size=(1000, 2400))
+    guard_plot.set_background("white")
+    for row, boundary in enumerate(boundary_list):
+        guard_plot.subplot(row, 0)
+        guard_plot.add_text(
+            f"{boundary.port_id.rsplit('__', 1)[-1]} | CORE / GUARD / BODY",
+            color="black",
+            font_size=11,
+        )
+        _add_guarded_surface(guard_plot, _extension_local(raw, boundary))
+        _camera(guard_plot, boundary)
+    guard_plot.show(screenshot=guard_path, auto_close=True)
+
+    interface_path = output_directory / "guarded_entityremesh_interface_closeups.png"
+    wire_path = output_directory / "guarded_entityremesh_wireframe.png"
+    interfaces = pv.Plotter(shape=(4, 2), off_screen=True, window_size=(1800, 2400))
+    wires = pv.Plotter(shape=(4, 2), off_screen=True, window_size=(1800, 2400))
+    interfaces.set_background("white")
+    wires.set_background("white")
+    for row, boundary in enumerate(boundary_list):
+        for column, (label, data) in enumerate(
+            (("RAW GUARDED ENTITIES", raw), ("GUARDED REMESH", remeshed))
+        ):
+            local = _local(data, boundary)
+            title = f"{boundary.port_id.rsplit('__', 1)[-1]} | {label}"
+            interfaces.subplot(row, column)
+            interfaces.add_text(title, color="black", font_size=10)
+            _add_guarded_surface(interfaces, local, wireframe=False)
+            _camera(interfaces, boundary)
+            wires.subplot(row, column)
+            wires.add_text(title, color="black", font_size=10)
+            _add_guarded_surface(wires, local, wireframe=True)
+            _camera(wires, boundary)
+    interfaces.show(screenshot=interface_path, auto_close=True)
+    wires.show(screenshot=wire_path, auto_close=True)
+
+    tail_path = output_directory / "mesh_tail_hotspots.png"
+    tails = pv.Plotter(shape=(4, 2), off_screen=True, window_size=(1800, 2400))
+    tails.set_background("white")
+    remeshed_faces = np.asarray(remeshed.faces).reshape((-1, 4))[:, 1:]
+    for row, boundary in enumerate(boundary_list):
+        port_records = [
+            record for record in tail_records if record["port_id"] == boundary.port_id
+        ]
+        for column, entity in enumerate(("PROXIMAL_GUARD", "EXTENSION_BODY")):
+            records = [record for record in port_records if record["entity"] == entity]
+            tails.subplot(row, column)
+            tails.add_text(
+                f"{boundary.port_id.rsplit('__', 1)[-1]} | {entity}",
+                color="black",
+                font_size=10,
+            )
+            _add_guarded_surface(tails, _extension_local(remeshed, boundary))
+            if records:
+                worst = max(records, key=lambda item: float(item["aspect_ratio"]))
+                face_id = int(worst["triangle_id"])
+                center = np.asarray(remeshed.points)[remeshed_faces[face_id]].mean(axis=0)
+                tails.add_mesh(
+                    pv.Sphere(0.12 * boundary.source_radius_um, center=center),
+                    color="#e6194b",
+                )
+            _camera(tails, boundary)
+    tails.show(screenshot=tail_path, auto_close=True)
+
+    collision_path = output_directory / "guarded_entityremesh_collision_closeups.png"
+    collision = pv.Plotter(off_screen=True, window_size=(1500, 1200))
+    collision.set_background("white")
+    if intersections:
+        first = intersections[0]
+        first_id = int(first["first_face_id"])
+        second_id = int(first["second_face_id"])
+        center = np.asarray(remeshed.points)[
+            remeshed_faces[[first_id, second_id]]
+        ].mean(axis=(0, 1))
+        boundary = boundary_list[
+            int(
+                np.argmin(
+                    [np.linalg.norm(center - item.center_um) for item in boundary_list]
+                )
+            )
+        ]
+        collision.add_text("TRUE GUARDED-REMESH INTERSECTION", color="black")
+        _add_guarded_surface(collision, _local(remeshed, boundary))
+        for face_id, color in ((first_id, "#ffe119"), (second_id, "#f032e6")):
+            collision.add_mesh(
+                remeshed.extract_cells([face_id]).extract_surface(),
+                color=color,
+                show_edges=True,
+                edge_color="black",
+                line_width=5,
+            )
+        _camera(collision, boundary)
+        collision.camera.focal_point = center
+    else:
+        collision.add_text(
+            "NO TRUE SELF-INTERSECTIONS DETECTED",
+            color="#137333",
+            font_size=18,
+        )
+        _add_guarded_surface(collision, remeshed)
+        collision.view_isometric()
+    collision.show(screenshot=collision_path, auto_close=True)
+    paths = (guard_path, interface_path, wire_path, tail_path, collision_path)
+    if not all(path.is_file() and path.stat().st_size > 0 for path in paths):
+        raise RuntimeError("Required guarded-open figures were not created")
+    return tuple(path.resolve() for path in paths)
+
+
+def save_guarded_three_way_comparison(
+    *,
+    caponly_vtp: Path,
+    previous_entityremesh_vtp: Path,
+    guarded_final_vtp: Path,
+    boundaries: Iterable[BoundaryInput],
+    output_path: Path,
+) -> Path:
+    """Compare cap-only, previous entity-remesh, and new guarded final surfaces."""
+
+    boundary_list = list(boundaries)
+    surfaces = (
+        ("CAP-ONLY", pv.read(caponly_vtp).triangulate()),
+        ("PREVIOUS ENTITY REMESH", pv.read(previous_entityremesh_vtp).triangulate()),
+        ("NEW GUARDED ENTITY REMESH", pv.read(guarded_final_vtp).triangulate()),
+    )
+    plotter = pv.Plotter(shape=(4, 3), off_screen=True, window_size=(2400, 2400))
+    plotter.set_background("white")
+    for row, boundary in enumerate(boundary_list):
+        for column, (label, data) in enumerate(surfaces):
+            plotter.subplot(row, column)
+            plotter.add_text(
+                f"{boundary.port_id.rsplit('__', 1)[-1]} | {label}",
+                color="black",
+                font_size=9,
+            )
+            _add_plain_surface(
+                plotter, _extension_local(data, boundary), wireframe=True
+            )
+            _camera(plotter, boundary)
+    plotter.show(screenshot=output_path, auto_close=True)
+    if not output_path.is_file() or output_path.stat().st_size == 0:
+        raise RuntimeError("Three-way guarded comparison was not created")
+    return output_path.resolve()
