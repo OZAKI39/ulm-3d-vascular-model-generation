@@ -88,7 +88,7 @@ checks prevent a solver boundary package from being emitted for an unsuitable RO
 See `docs/CFD_PREPROCESS.md` for the three-stage workflow and the formal-baseline assumptions.
 Volume meshing, 3D CFD solving, and microbubble simulation remain outside this stage.
 
-## CFD-only surface preparation
+## Refined CFD-only surface preparation
 
 After a CFD preprocessing run has passed, create the derived, locally flattened and extended
 surface with:
@@ -97,13 +97,15 @@ surface with:
 D:\anaconda3\envs\pmp\python.exe cfd_surface_prepare.py
 ```
 
-The strict parameters are in `configs/cfd_surface_prepare.yaml`. The command reads the saved four
-boundary definitions, keeps the validated Ultraliser STL immutable, performs exact local plane
-surgery, extrudes each actual cut loop by its already planned length, adds tagged flat distal
-caps, and writes combined micrometre/meter STL and tagged VTP files for manual inspection. Outlet
-pressures are corrected only for the predicted loss in the artificial extension; the original
-P/Q records remain separate and unchanged.
+The strict parameters are in `configs/cfd_surface_prepare.yaml`. The command keeps the validated
+Ultraliser STL and the previous direct-extrusion run immutable. It performs exact local plane
+surgery and gives each artificial extension multiple axial rings whose spacing comes from the
+original local mesh. The actual proximal loop, original core, distal ring, and planar cap stay
+locked; only intermediate extension vertices receive constrained regularization and smoothing.
+Quality-driven diagonals and explicit extension/interface metrics replace the former long, thin
+two-ring triangles. Outlet pressure correction is recomputed from each final refined cap area,
+while original P/Q records remain separate and unchanged.
 
-The successful status is `CFD_SURFACE_PREPARE_PASS_PENDING_MANUAL_REVIEW`, and processing stops
+The successful status is `CFD_EXTENSION_MESH_REFINED_PENDING_MANUAL_REVIEW`, and processing stops
 before volume meshing or 3D CFD. See `docs/CFD_SURFACE_PREPARE.md` for the geometry safeguards,
 pressure-correction meaning, quality controls, and output layout.

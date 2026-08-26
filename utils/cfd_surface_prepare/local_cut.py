@@ -232,6 +232,8 @@ def local_plane_cut(
     new_index: list[int] = []
     new_origin: list[int] = []
     new_kind: list[int] = []
+    new_extension_index: list[int] = []
+    new_extension_band: list[int] = []
     for face_id, face in enumerate(surface.faces):
         if face_id in outward_ids:
             continue
@@ -241,6 +243,8 @@ def local_plane_cut(
             new_index.append(int(surface.boundary_index[face_id]))
             new_origin.append(int(surface.boundary_origin[face_id]))
             new_kind.append(int(surface.face_kind[face_id]))
+            new_extension_index.append(int(surface.extension_index[face_id]))
+            new_extension_band.append(int(surface.extension_band[face_id]))
             continue
         polygon, segment = _clip_face(
             face, axial, vertices, intersection_cache
@@ -252,6 +256,8 @@ def local_plane_cut(
             new_index.append(-1)
             new_origin.append(0)
             new_kind.append(0)
+            new_extension_index.append(-1)
+            new_extension_band.append(-1)
     loop_ids = _order_loop(loop_edges)
     loop_points = np.asarray([vertices[index] for index in loop_ids], dtype=float)
     area, loop_center, projected = polygon_metrics(loop_points, normal)
@@ -272,6 +278,14 @@ def local_plane_cut(
         boundary_index=np.asarray(new_index, dtype=np.int32),
         boundary_origin=np.asarray(new_origin, dtype=np.uint8),
         face_kind=np.asarray(new_kind, dtype=np.uint8),
+        extension_index=np.asarray(new_extension_index, dtype=np.int32),
+        extension_band=np.asarray(new_extension_band, dtype=np.int32),
+        source_vertex_index=np.concatenate(
+            (
+                surface.source_vertex_index,
+                np.full(len(vertices) - len(surface.vertices), -1, dtype=np.int64),
+            )
+        ),
     )
     qc = {
         "port_id": boundary.port_id,

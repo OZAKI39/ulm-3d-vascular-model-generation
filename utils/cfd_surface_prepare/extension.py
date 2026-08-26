@@ -6,8 +6,10 @@ import numpy as np
 from shapely.geometry import Polygon
 from shapely.ops import triangulate
 
+from .config import ExtensionMeshConfig
 from .io import BoundaryInput, SurfacePrepareError
-from .local_cut import orthogonal_basis
+from .local_cut import orthogonal_basis, polygon_metrics
+from .mesh_refinement import build_refined_rings, choose_quad_diagonal
 from .types import BoundarySurfaceResult, CutLoop, TaggedSurface
 
 
@@ -54,24 +56,43 @@ def extrude_and_cap(
     surface: TaggedSurface,
     loop: CutLoop,
     boundary: BoundaryInput,
+    *,
+    local_original_median_edge_length_um: float,
+    mesh_config: ExtensionMeshConfig,
 ) -> tuple[TaggedSurface, BoundarySurfaceResult]:
-    """Rigidly translate the actual cut loop, add a wall, then add one tagged flat cap."""
+    """Create a structured multi-ring extension without moving Ring 0 or the core."""
 
     proximal_ids = np.asarray(loop.vertex_ids, dtype=np.int64)
     proximal = surface.vertices[proximal_ids]
-    distal = proximal + boundary.outward_normal * boundary.extension_length_um
-    first_distal_id = len(surface.vertices)
-    distal_ids = np.arange(first_distal_id, first_distal_id + len(distal), dtype=np.int64)
-    vertices = np.vstack((surface.vertices, distal))
+    refined = build_refined_rings(
+        proximal,
+        boundary.outward_normal,
+        boundary.extension_length_um,
+        local_original_median_edge_length_um,
+        boundary.source_radius_um,
+        mesh_config,
+    )
+    new_points = refined.points[1:].reshape((-1, 3))
+    vertices = np.vstack((surface.vertices, new_points))
+    ring_ids = [proximal_ids]
+    next_id = len(surface.vertices)
+    for _ in range(1, refined.ring_count):
+        ids = np.arange(next_id, next_id + len(proximal_ids), dtype=np.int64)
+        ring_ids.append(ids)
+        next_id += len(proximal_ids)
+    distal_ids = ring_ids[-1]
+    distal = vertices[distal_ids]
     side_faces: list[tuple[int, int, int]] = []
-    count = len(proximal_ids)
-    for index in range(count):
-        following = (index + 1) % count
-        first = int(proximal_ids[index])
-        next_first = int(proximal_ids[following])
-        second = int(distal_ids[index])
-        next_second = int(distal_ids[following])
-        side_faces.extend(((first, next_first, next_second), (first, next_second, second)))
+    side_bands: list[int] = []
+    for band, (first_ring, second_ring) in enumerate(
+        zip(ring_ids[:-1], ring_ids[1:], strict=True)
+    ):
+        for index in range(len(proximal_ids)):
+            faces = choose_quad_diagonal(
+                vertices, first_ring, second_ring, index
+            )
+            side_faces.extend(faces)
+            side_bands.extend((band, band))
     local_cap_faces = triangulate_cap(distal, boundary.outward_normal)
     cap_faces = [
         tuple(int(distal_ids[index]) for index in face) for face in local_cap_faces
@@ -120,6 +141,26 @@ def extrude_and_cap(
                 np.full(cap_count, 2, dtype=np.uint8),
             )
         ),
+        extension_index=np.concatenate(
+            (
+                surface.extension_index,
+                np.full(side_count, boundary.index, dtype=np.int32),
+                np.full(cap_count, boundary.index, dtype=np.int32),
+            )
+        ),
+        extension_band=np.concatenate(
+            (
+                surface.extension_band,
+                np.asarray(side_bands, dtype=np.int32),
+                np.full(cap_count, -1, dtype=np.int32),
+            )
+        ),
+        source_vertex_index=np.concatenate(
+            (
+                surface.source_vertex_index,
+                np.full(len(new_points), -1, dtype=np.int64),
+            )
+        ),
     )
     cap_indices = np.arange(cap_start, cap_start + cap_count, dtype=np.int64)
     side_indices = np.arange(side_start, side_start + side_count, dtype=np.int64)
@@ -134,11 +175,87 @@ def extrude_and_cap(
     normals /= normal_lengths[:, None]
     normal_dots = normals @ boundary.outward_normal
     cap_residual = np.abs((distal - boundary.extension_end_um) @ boundary.outward_normal)
+    actual_cap_area, distal_center, _ = polygon_metrics(
+        distal, boundary.outward_normal
+    )
+    _, proximal_center, proximal_projected = polygon_metrics(
+        proximal, boundary.outward_normal
+    )
+    first, second = orthogonal_basis(boundary.outward_normal)
+    intermediate_centers: list[np.ndarray] = []
+    intermediate_areas: list[float] = []
+    intermediate_validity: list[bool] = []
+    intermediate_signed_areas: list[float] = []
+    intermediate_axial_errors: list[float] = []
+    for ring, station in zip(
+        refined.points[1:-1], refined.stations_um[1:-1], strict=True
+    ):
+        origin = np.mean(ring, axis=0)
+        projected = np.column_stack(
+            ((ring - origin) @ first, (ring - origin) @ second)
+        )
+        polygon = Polygon(projected)
+        center_2d = np.asarray(polygon.centroid.coords[0], dtype=float)
+        intermediate_centers.append(
+            origin + center_2d[0] * first + center_2d[1] * second
+        )
+        intermediate_areas.append(float(polygon.area))
+        intermediate_validity.append(
+            bool(
+                polygon.is_valid
+                and polygon.exterior.is_simple
+                and np.isfinite(polygon.area)
+                and polygon.area > 0.0
+            )
+        )
+        following = np.roll(projected, -1, axis=0)
+        intermediate_signed_areas.append(
+            0.5
+            * float(
+                np.sum(
+                    projected[:, 0] * following[:, 1]
+                    - following[:, 0] * projected[:, 1]
+                )
+            )
+        )
+        intermediate_axial_errors.append(
+            float(
+                np.max(
+                    np.abs(
+                        (ring - proximal_center) @ boundary.outward_normal
+                        - float(station)
+                    )
+                )
+            )
+        )
+    intermediate_centers_array = np.asarray(intermediate_centers)
+    centerline_displacements = intermediate_centers_array - proximal_center
+    centerline_radial_offsets = centerline_displacements - np.outer(
+        centerline_displacements @ boundary.outward_normal,
+        boundary.outward_normal,
+    )
+    intermediate_drifts = np.linalg.norm(centerline_radial_offsets, axis=1)
+    worst_intermediate_offset = int(np.argmax(intermediate_drifts))
+    intermediate_areas_array = np.asarray(intermediate_areas)
+    target_intermediate_areas = refined.target_areas_um2[1:-1]
+    area_relative_errors = np.abs(
+        intermediate_areas_array - target_intermediate_areas
+    ) / target_intermediate_areas
+    proximal_following = np.roll(proximal_projected, -1, axis=0)
+    proximal_signed_area = 0.5 * float(
+        np.sum(
+            proximal_projected[:, 0] * proximal_following[:, 1]
+            - proximal_following[:, 0] * proximal_projected[:, 1]
+        )
+    )
     measured_lengths = (distal - proximal) @ boundary.outward_normal
-    displacement = distal - proximal
-    displacement_norms = np.linalg.norm(displacement, axis=1)
-    axis_dots = (
-        displacement @ boundary.outward_normal / displacement_norms
+    center_displacement = distal_center - proximal_center
+    center_displacement_norm = float(np.linalg.norm(center_displacement))
+    if center_displacement_norm <= np.finfo(float).eps:
+        raise SurfacePrepareError("PORT_EXTENSION_AXIS_INVALID")
+    extension_axis_dot = float(
+        np.dot(center_displacement, boundary.outward_normal)
+        / center_displacement_norm
     )
     return output, BoundarySurfaceResult(
         boundary_index=boundary.index,
@@ -147,14 +264,67 @@ def extrude_and_cap(
         role=boundary.role,
         source_radius_um=boundary.source_radius_um,
         extension_length_um=boundary.extension_length_um,
-        actual_cap_area_um2=loop.area_um2,
-        equivalent_radius_um=loop.equivalent_radius_um,
+        actual_cap_area_um2=actual_cap_area,
+        equivalent_radius_um=float(np.sqrt(actual_cap_area / np.pi)),
         cap_planarity_error_um=float(np.max(cap_residual)),
         minimum_cap_normal_dot=float(np.min(normal_dots)),
         extension_length_error_um=float(
             np.max(np.abs(measured_lengths - boundary.extension_length_um))
         ),
-        extension_axis_dot=float(np.min(axis_dots)),
+        extension_axis_dot=extension_axis_dot,
+        intermediate_ring_centerline_max_deviation_um=(
+            float(np.max(intermediate_drifts))
+        ),
+        intermediate_ring_centerline_p95_deviation_um=float(
+            np.percentile(intermediate_drifts, 95)
+        ),
+        intermediate_ring_centerline_mean_deviation_um=float(
+            np.mean(intermediate_drifts)
+        ),
+        intermediate_ring_centerline_worst_ring_index=(
+            worst_intermediate_offset + 1
+        ),
+        intermediate_ring_centerline_worst_ring_axial_station_um=float(
+            refined.stations_um[worst_intermediate_offset + 1]
+        ),
+        intermediate_ring_axial_station_max_error_um=float(
+            np.max(intermediate_axial_errors)
+        ),
+        intermediate_ring_area_relative_error_max=float(
+            np.max(area_relative_errors)
+        ),
+        intermediate_ring_all_areas_finite_positive=bool(
+            np.all(np.isfinite(intermediate_areas_array))
+            and np.all(intermediate_areas_array > 0.0)
+        ),
+        intermediate_ring_all_polygons_simple_valid=bool(
+            all(intermediate_validity)
+        ),
+        intermediate_ring_all_orientations_consistent=bool(
+            np.all(
+                np.sign(np.asarray(intermediate_signed_areas))
+                == np.sign(proximal_signed_area)
+            )
+        ),
+        local_original_median_edge_length_um=local_original_median_edge_length_um,
+        target_edge_length_um=refined.target_edge_length_um,
+        ring_count=refined.ring_count,
+        transition_length_um=refined.transition_length_um,
+        proximal_ring_max_motion_um=float(
+            np.max(np.linalg.norm(vertices[proximal_ids] - proximal, axis=1))
+        ),
+        distal_ring_max_motion_um=float(
+            np.max(
+                np.linalg.norm(
+                    distal
+                    - (
+                        refined.regularized_loop
+                        + boundary.extension_length_um * boundary.outward_normal
+                    ),
+                    axis=1,
+                )
+            )
+        ),
         cut_loop_vertex_count=len(proximal_ids),
         cap_face_indices=cap_indices,
         side_face_indices=side_indices,

@@ -103,7 +103,7 @@ def export_geometry(
     boundary_list = list(boundaries)
     full_mesh = surface.mesh()
     full_um = _export_stl(
-        full_mesh, layout.geometry / "cfd_surface_extended_um.stl"
+        full_mesh, layout.geometry / "cfd_surface_refined_um.stl"
     )
     faces = np.column_stack(
         (np.full(len(surface.faces), 3, dtype=np.int64), surface.faces)
@@ -112,15 +112,19 @@ def export_geometry(
     polydata.cell_data["boundary_type_code"] = surface.boundary_type
     polydata.cell_data["boundary_index"] = surface.boundary_index
     polydata.cell_data["boundary_origin_code"] = surface.boundary_origin
+    polydata.cell_data["extension_boundary_index"] = surface.extension_index
+    polydata.cell_data["extension_band"] = surface.extension_band
     port_ids = np.full(len(surface.faces), "", dtype=f"<U{max(map(len, [item.port_id for item in boundary_list]))}")
     for boundary in boundary_list:
         port_ids[surface.boundary_index == boundary.index] = boundary.port_id
     polydata.cell_data["port_id"] = port_ids
-    full_vtp = layout.geometry / "cfd_surface_extended_um.vtp"
+    full_vtp = layout.geometry / "cfd_surface_refined_um.vtp"
     polydata.save(full_vtp, binary=True)
 
     wall_mask = surface.boundary_type == 0
-    wall_path = _export_stl(_submesh(surface, wall_mask), layout.geometry / "cfd_wall_um.stl")
+    wall_path = _export_stl(
+        _submesh(surface, wall_mask), layout.geometry / "cfd_wall_refined_um.stl"
+    )
     meter_path: Path | None = None
     if create_meter_copy:
         meter_mesh = trimesh.Trimesh(
@@ -129,7 +133,7 @@ def export_geometry(
             process=False,
         )
         meter_path = _export_stl(
-            meter_mesh, layout.geometry / "cfd_surface_extended_m.stl"
+            meter_mesh, layout.geometry / "cfd_surface_refined_m.stl"
         )
 
     manifest: list[dict[str, Any]] = []
@@ -161,10 +165,10 @@ def export_geometry(
         layout.boundaries / "boundary_manifest.csv", manifest
     )
     return {
-        "cfd_surface_extended_um_stl": full_um.resolve(),
-        "cfd_surface_extended_um_vtp": full_vtp.resolve(),
-        "cfd_surface_extended_m_stl": meter_path.resolve() if meter_path else None,
-        "cfd_wall_um_stl": wall_path.resolve(),
+        "cfd_surface_refined_um_stl": full_um.resolve(),
+        "cfd_surface_refined_um_vtp": full_vtp.resolve(),
+        "cfd_surface_refined_m_stl": meter_path.resolve() if meter_path else None,
+        "cfd_wall_refined_um_stl": wall_path.resolve(),
         "boundary_stl_directory": layout.boundaries.resolve(),
         "boundary_stl_paths": [path.resolve() for path in boundary_paths],
         "boundary_manifest_csv": manifest_path.resolve(),

@@ -79,6 +79,7 @@ def boundary_geometry_qc(
     cuts = list(cut_reports)
     result_list = list(results)
     records: list[dict[str, Any]] = []
+    area_relative_tolerance = float(np.sqrt(np.finfo(float).eps))
     for cut, result in zip(cuts, result_list, strict=True):
         boundary = boundary_by_index[result.boundary_index]
         checks = {
@@ -101,10 +102,36 @@ def boundary_geometry_qc(
             <= config.maximum_extension_length_error_um,
             "extension_axis": result.extension_axis_dot
             >= config.minimum_normal_dot,
+            "intermediate_ring_centerline": (
+                result.intermediate_ring_centerline_max_deviation_um
+                <= config.maximum_extension_length_error_um
+            ),
+            "intermediate_ring_axial_stations": (
+                result.intermediate_ring_axial_station_max_error_um
+                <= config.maximum_extension_length_error_um
+            ),
+            "intermediate_ring_areas_finite_positive": (
+                result.intermediate_ring_all_areas_finite_positive
+            ),
+            "intermediate_ring_target_areas_preserved": (
+                result.intermediate_ring_area_relative_error_max
+                <= area_relative_tolerance
+            ),
+            "intermediate_ring_polygons_simple_valid_no_crossing": (
+                result.intermediate_ring_all_polygons_simple_valid
+            ),
+            "intermediate_ring_orientations_no_fold": (
+                result.intermediate_ring_all_orientations_consistent
+            ),
             "distal_cap_planarity": result.cap_planarity_error_um
             <= config.maximum_cap_planarity_error_um,
             "distal_cap_normal": result.minimum_cap_normal_dot
             >= config.minimum_normal_dot,
+            "proximal_ring_locked": result.proximal_ring_max_motion_um
+            <= np.finfo(float).eps,
+            "distal_ring_locked": result.distal_ring_max_motion_um
+            <= np.finfo(float).eps,
+            "intermediate_rings_present": result.ring_count > 2,
         }
         records.append(
             {
@@ -113,6 +140,16 @@ def boundary_geometry_qc(
                 "role": boundary.role,
                 "status": "PASS" if all(checks.values()) else "FAIL",
                 "checks": checks,
+                "minimum_extension_axis_dot_allowed": config.minimum_normal_dot,
+                "intermediate_ring_centerline_tolerance_um": (
+                    config.maximum_extension_length_error_um
+                ),
+                "intermediate_ring_axial_station_tolerance_um": (
+                    config.maximum_extension_length_error_um
+                ),
+                "intermediate_ring_area_relative_error_tolerance": (
+                    area_relative_tolerance
+                ),
                 **cut,
                 **result.report(),
             }
@@ -209,4 +246,49 @@ def extension_collision_qc(
         "status": "PASS" if not pairs else "FAIL",
         "extension_collision_count": len(pairs),
         "intersection_face_pairs": pairs,
+    }
+
+
+def original_locked_vertex_motion_qc(
+    original: trimesh.Trimesh,
+    final: TaggedSurface,
+    boundaries: Iterable[BoundaryInput],
+    local: LocalCutConfig,
+) -> dict[str, Any]:
+    """Directly prove that retained original vertices outside surgery zones never moved."""
+
+    source_ids = final.source_vertex_index
+    original_mask = source_ids >= 0
+    points = final.vertices[original_mask]
+    ids = source_ids[original_mask]
+    outside = np.ones(len(points), dtype=bool)
+    for boundary in boundaries:
+        relative = points - boundary.center_um
+        axial = relative @ boundary.outward_normal
+        radial = np.linalg.norm(
+            relative - np.outer(axial, boundary.outward_normal), axis=1
+        )
+        inside = (
+            (radial <= local.local_radial_radius_factor * boundary.source_radius_um)
+            & (
+                axial
+                >= -local.local_axial_back_radius_factor * boundary.source_radius_um
+            )
+            & (
+                axial
+                <= local.local_axial_forward_radius_factor
+                * boundary.source_radius_um
+            )
+        )
+        outside &= ~inside
+    motion = np.linalg.norm(
+        points[outside] - np.asarray(original.vertices, dtype=float)[ids[outside]],
+        axis=1,
+    )
+    maximum = float(np.max(motion)) if len(motion) else float("inf")
+    return {
+        "status": "PASS" if maximum <= np.finfo(float).eps else "FAIL",
+        "locked_original_vertex_count": int(np.count_nonzero(outside)),
+        "original_locked_vertex_motion_max_um": maximum,
+        "required_exact_or_machine_precision": True,
     }
