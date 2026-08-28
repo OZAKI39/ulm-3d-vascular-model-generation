@@ -1,4 +1,4 @@
-"""Main-environment orchestration for the official VMTK runner."""
+"""Process-isolated orchestration for the official VMTK production filters."""
 
 from __future__ import annotations
 
@@ -16,24 +16,23 @@ from .io import SurfacePrepareError
 @dataclass(frozen=True, slots=True)
 class VmtkExchangePaths:
     open_surface_vtp: Path
-    centerlines_vtp: Path
     raw_vtp: Path
     raw_stl: Path
     remeshed_open_vtp: Path
     remeshed_open_stl: Path
     capped_vtp: Path
-    request_json: Path
-    promotion_request_json: Path
-    result_json: Path
-    promotion_result_json: Path
-    stdout_log: Path
-    stderr_log: Path
-    promotion_stdout_log: Path
-    promotion_stderr_log: Path
-    entity_remesh_request_json: Path
-    entity_remesh_result_json: Path
-    entity_remesh_stdout_log: Path
-    entity_remesh_stderr_log: Path
+    extension_request_json: Path
+    extension_result_json: Path
+    extension_stdout_log: Path
+    extension_stderr_log: Path
+    remesh_request_json: Path
+    remesh_result_json: Path
+    remesh_stdout_log: Path
+    remesh_stderr_log: Path
+    cap_request_json: Path
+    cap_result_json: Path
+    cap_stdout_log: Path
+    cap_stderr_log: Path
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,8 +56,6 @@ def _git_value(repository: Path, *arguments: str) -> str | None:
 
 
 def official_source_provenance(config: VmtkConfig) -> dict[str, Any]:
-    """Record inspected source and the official commit behind runtime v1.5.0."""
-
     return {
         "repository": "https://github.com/vmtk/vmtk",
         "inspected_repository_path": str(config.official_repository),
@@ -78,13 +75,11 @@ def official_source_provenance(config: VmtkConfig) -> dict[str, Any]:
 
 
 def parameter_mapping(config: VmtkConfig) -> dict[str, Any]:
+    settings = config.entity_remesh
     return {
         "project_extension_definition": "5D",
         "verified_vmtk_length_definition": (
             "AdaptiveExtensionLength: extensionLength = meanRadius * ExtensionRatio"
-        ),
-        "verified_official_source_line": (
-            "vtkvmtkPolyDataFlowExtensionsFilter.cxx:437-440"
         ),
         "interpolation_mode": config.interpolation_mode,
         "preserve_cross_section_shape": config.preserve_cross_section_shape,
@@ -97,42 +92,23 @@ def parameter_mapping(config: VmtkConfig) -> dict[str, Any]:
         "adaptive_boundary_points": config.adaptive_boundary_points,
         "postprocess_mode": config.postprocess_mode,
         "remesh_after_extension": config.remesh_after_extension,
-        "global_surface_remeshing_performed": False,
-        "entity_aware_extension_remeshing_performed": config.remesh_after_extension,
         "entity_remesh": {
-            "enabled": config.entity_remesh.enabled,
-            "entity_array_name": config.entity_remesh.entity_array_name,
-            "far_core_entity_id": config.entity_remesh.far_core_entity_id,
-            "active_entity_id": config.entity_remesh.active_entity_id,
-            "expected_entity_ids": [
-                config.entity_remesh.far_core_entity_id,
-                config.entity_remesh.active_entity_id,
-            ],
-            "exclude_entity_ids": list(config.entity_remesh.exclude_entity_ids),
-            "active_entity_ids": [config.entity_remesh.active_entity_id],
+            "entity_array_name": settings.entity_array_name,
+            "far_core_entity_id": settings.far_core_entity_id,
+            "active_entity_id": settings.active_entity_id,
+            "exclude_entity_ids": list(settings.exclude_entity_ids),
             "core_collar": {
-                "mode": config.entity_remesh.core_collar.mode,
-                "face_layers": config.entity_remesh.core_collar.face_layers,
+                "mode": settings.core_collar.mode,
+                "face_layers": settings.core_collar.face_layers,
             },
-            "element_size_mode": config.entity_remesh.element_size_mode,
-            "target_edge_length_um": config.entity_remesh.target_edge_length_um,
-            "preserve_boundary_edges": config.entity_remesh.preserve_boundary_edges,
+            "element_size_mode": settings.element_size_mode,
+            "target_edge_length_um": settings.target_edge_length_um,
+            "preserve_boundary_edges": settings.preserve_boundary_edges,
         },
-        "automatic_fallback": False,
-        "parameter_sweep": False,
-        "custom_tps_implementation": False,
     }
 
 
 def _vmtk_process_environment(config: VmtkConfig) -> dict[str, str]:
-    """Expose the pinned VMTK binaries only to the pmp child process.
-
-    VMTK 1.5.0 on Windows is built against VTK 9.2.6 and an HDF5 stack that
-    cannot be solved into the existing pmp/FEniCS environment.  A process-local
-    runtime overlay lets the pmp interpreter load that verified binary stack
-    without replacing pmp's packages or activation settings.
-    """
-
     prefix = config.runtime_prefix.resolve()
     site_packages = prefix / "Lib" / "site-packages"
     native_directories = (
@@ -150,233 +126,125 @@ def _vmtk_process_environment(config: VmtkConfig) -> dict[str, str]:
     environment["PYTHONPATH"] = os.pathsep.join(
         [str(site_packages), *([existing_pythonpath] if existing_pythonpath else [])]
     )
-    existing_path = environment.get("PATH", "")
     environment["PATH"] = os.pathsep.join(
-        [*(str(path) for path in native_directories), existing_path]
+        [*(str(path) for path in native_directories), environment.get("PATH", "")]
     )
     environment["VMTK_RUNTIME_PREFIX"] = str(prefix)
     return environment
 
 
-def run_official_vmtk(
+def _invoke(
     *,
     config: VmtkConfig,
-    paths: VmtkExchangePaths,
     tool_script: Path,
+    request: dict[str, Any],
+    request_path: Path,
+    result_path: Path,
+    stdout_path: Path,
+    stderr_path: Path,
+    required_outputs: tuple[Path, ...],
+    failure_status: str,
 ) -> VmtkInvocationResult:
-    """Execute exactly one official TPS flow-extension candidate."""
-
-    if not config.environment_python.is_file():
-        raise SurfacePrepareError("VMTK_ENVIRONMENT_BLOCKED")
-    if not config.runtime_prefix.is_dir():
+    if not config.environment_python.is_file() or not config.runtime_prefix.is_dir():
         raise SurfacePrepareError("VMTK_ENVIRONMENT_BLOCKED")
     if not tool_script.is_file():
         raise SurfacePrepareError(f"Missing VMTK runner: {tool_script}")
-    if config.extension_mode not in {"centerlinedirection", "boundarynormal"}:
-        raise SurfacePrepareError("INVALID_VMTK_EXTENSION_MODE")
-    parameters = parameter_mapping(config)
-    request: dict[str, Any] = {
+    request_path.write_text(json.dumps(request, indent=2), encoding="utf-8")
+    command = (
+        str(config.environment_python.resolve()),
+        str(tool_script.resolve()),
+        "--request",
+        str(request_path.resolve()),
+        "--result",
+        str(result_path.resolve()),
+    )
+    completed = subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=_vmtk_process_environment(config),
+    )
+    stdout_path.write_text(completed.stdout, encoding="utf-8")
+    stderr_path.write_text(completed.stderr, encoding="utf-8")
+    if completed.returncode != 0 or not result_path.is_file():
+        raise SurfacePrepareError(failure_status)
+    runtime = json.loads(result_path.read_text(encoding="utf-8"))
+    if runtime.get("status") != "PASS" or not all(
+        path.is_file() for path in required_outputs
+    ):
+        raise SurfacePrepareError(failure_status)
+    return VmtkInvocationResult(command, request, runtime)
+
+
+def run_official_vmtk(
+    *, config: VmtkConfig, paths: VmtkExchangePaths, tool_script: Path
+) -> VmtkInvocationResult:
+    """Run the sole supported TPS boundary-normal extension operation."""
+
+    if config.extension_mode != "boundarynormal":
+        raise SurfacePrepareError("INVALID_VMTK_POSTPROCESS_CONFIGURATION")
+    request = {
         "operation": "extension",
         "input_surface_vtp": str(paths.open_surface_vtp.resolve()),
         "raw_vtp": str(paths.raw_vtp.resolve()),
         "raw_stl": str(paths.raw_stl.resolve()),
-        "parameters": parameters,
+        "parameters": parameter_mapping(config),
     }
-    if config.extension_mode == "centerlinedirection":
-        if not paths.centerlines_vtp.is_file():
-            raise SurfacePrepareError("VMTK_ENVIRONMENT_BLOCKED:centerlines_missing")
-        request["centerlines_vtp"] = str(paths.centerlines_vtp.resolve())
-    paths.request_json.write_text(json.dumps(request, indent=2), encoding="utf-8")
-    command = (
-        str(config.environment_python.resolve()),
-        str(tool_script.resolve()),
-        "--request",
-        str(paths.request_json.resolve()),
-        "--result",
-        str(paths.result_json.resolve()),
+    return _invoke(
+        config=config,
+        tool_script=tool_script,
+        request=request,
+        request_path=paths.extension_request_json,
+        result_path=paths.extension_result_json,
+        stdout_path=paths.extension_stdout_log,
+        stderr_path=paths.extension_stderr_log,
+        required_outputs=(paths.raw_vtp, paths.raw_stl),
+        failure_status="VMTK_TPS_EXTENSION_FAILED",
     )
-    completed = subprocess.run(
-        command,
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        env=_vmtk_process_environment(config),
-    )
-    paths.stdout_log.write_text(completed.stdout, encoding="utf-8")
-    paths.stderr_log.write_text(completed.stderr, encoding="utf-8")
-    if completed.returncode != 0 or not paths.result_json.is_file():
-        raise SurfacePrepareError("VMTK_TPS_EXTENSION_FAILED")
-    runtime = json.loads(paths.result_json.read_text(encoding="utf-8"))
-    required = (paths.raw_vtp, paths.raw_stl)
-    if runtime.get("status") != "PASS" or not all(path.is_file() for path in required):
-        raise SurfacePrepareError("VMTK_TPS_EXTENSION_FAILED")
-    return VmtkInvocationResult(command, request, runtime)
 
 
-def promote_official_vmtk(
-    *,
-    config: VmtkConfig,
-    paths: VmtkExchangePaths,
-    tool_script: Path,
-    target_edge_length_um: float,
-) -> VmtkInvocationResult:
-    """LEGACY_GLOBAL_REMESH_REFERENCE_ONLY: remesh and cap a RAW candidate."""
-
-    if not config.environment_python.is_file() or not paths.raw_vtp.is_file():
-        raise SurfacePrepareError("VMTK_ENVIRONMENT_BLOCKED")
-    request: dict[str, Any] = {
-        "operation": "remesh_cap",
+def build_entity_remesh_request(
+    *, config: VmtkConfig, paths: VmtkExchangePaths
+) -> dict[str, Any]:
+    settings = config.entity_remesh
+    expected = sorted((settings.far_core_entity_id, settings.active_entity_id))
+    excluded = sorted(settings.exclude_entity_ids)
+    return {
+        "operation": "entity_remesh",
         "raw_vtp": str(paths.raw_vtp.resolve()),
         "remeshed_open_vtp": str(paths.remeshed_open_vtp.resolve()),
-        "capped_vtp": str(paths.capped_vtp.resolve()),
-        "target_edge_length_um": float(target_edge_length_um),
+        "remeshed_open_stl": str(paths.remeshed_open_stl.resolve()),
+        "entity_array_name": settings.entity_array_name,
+        "expected_entity_ids": expected,
+        "excluded_entity_ids": excluded,
+        "active_entity_ids": sorted(set(expected) - set(excluded)),
+        "element_size_mode": settings.element_size_mode,
+        "target_edge_length_um": settings.target_edge_length_um,
+        "preserve_boundary_edges": settings.preserve_boundary_edges,
     }
-    paths.promotion_request_json.write_text(
-        json.dumps(request, indent=2), encoding="utf-8"
-    )
-    command = (
-        str(config.environment_python.resolve()),
-        str(tool_script.resolve()),
-        "--request",
-        str(paths.promotion_request_json.resolve()),
-        "--result",
-        str(paths.promotion_result_json.resolve()),
-    )
-    completed = subprocess.run(
-        command,
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        env=_vmtk_process_environment(config),
-    )
-    paths.promotion_stdout_log.write_text(completed.stdout, encoding="utf-8")
-    paths.promotion_stderr_log.write_text(completed.stderr, encoding="utf-8")
-    if completed.returncode != 0 or not paths.promotion_result_json.is_file():
-        raise SurfacePrepareError("VMTK_TPS_EXTENSION_FAILED")
-    runtime = json.loads(paths.promotion_result_json.read_text(encoding="utf-8"))
-    required = (paths.remeshed_open_vtp, paths.capped_vtp)
-    if runtime.get("status") != "PASS" or not all(path.is_file() for path in required):
-        raise SurfacePrepareError("VMTK_TPS_EXTENSION_FAILED")
-    return VmtkInvocationResult(command, request, runtime)
-
-
-def cap_official_vmtk(
-    *,
-    config: VmtkConfig,
-    paths: VmtkExchangePaths,
-    tool_script: Path,
-) -> VmtkInvocationResult:
-    """Directly cap the selected open candidate with the official VMTK capper."""
-
-    if config.postprocess_mode == "cap_only" and not config.remesh_after_extension:
-        source_open_vtp = paths.raw_vtp
-    elif (
-        config.postprocess_mode == "cross_seam_active_collar_remesh_then_cap"
-        and config.remesh_after_extension
-    ):
-        source_open_vtp = paths.remeshed_open_vtp
-    else:
-        raise SurfacePrepareError("INVALID_VMTK_POSTPROCESS_CONFIGURATION")
-    if not config.environment_python.is_file() or not source_open_vtp.is_file():
-        raise SurfacePrepareError("VMTK_ENVIRONMENT_BLOCKED")
-    request: dict[str, Any] = {
-        "operation": "cap_only",
-        "raw_vtp": str(source_open_vtp.resolve()),
-        "source_open_vtp": str(source_open_vtp.resolve()),
-        "capped_vtp": str(paths.capped_vtp.resolve()),
-    }
-    paths.promotion_request_json.write_text(
-        json.dumps(request, indent=2), encoding="utf-8"
-    )
-    command = (
-        str(config.environment_python.resolve()),
-        str(tool_script.resolve()),
-        "--request",
-        str(paths.promotion_request_json.resolve()),
-        "--result",
-        str(paths.promotion_result_json.resolve()),
-    )
-    completed = subprocess.run(
-        command,
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        env=_vmtk_process_environment(config),
-    )
-    paths.promotion_stdout_log.write_text(completed.stdout, encoding="utf-8")
-    paths.promotion_stderr_log.write_text(completed.stderr, encoding="utf-8")
-    if completed.returncode != 0 or not paths.promotion_result_json.is_file():
-        raise SurfacePrepareError("VMTK_RAW_DIRECT_CAP_FAILED")
-    runtime = json.loads(paths.promotion_result_json.read_text(encoding="utf-8"))
-    if runtime.get("status") != "PASS" or not paths.capped_vtp.is_file():
-        raise SurfacePrepareError("VMTK_RAW_DIRECT_CAP_FAILED")
-    if runtime.get("surface_remesher_called") is not False:
-        raise SurfacePrepareError("VMTK_RAW_DIRECT_CAP_FAILED:remesher_called")
-    return VmtkInvocationResult(command, request, runtime)
 
 
 def entity_remesh_official_vmtk(
-    *,
-    config: VmtkConfig,
-    paths: VmtkExchangePaths,
-    tool_script: Path,
+    *, config: VmtkConfig, paths: VmtkExchangePaths, tool_script: Path
 ) -> VmtkInvocationResult:
-    """Remesh the cross-seam active entity with only FAR_CORE excluded."""
-
-    settings = config.entity_remesh
-    valid = (
-        config.postprocess_mode == "cross_seam_active_collar_remesh_then_cap"
-        and config.remesh_after_extension
-        and settings.enabled
-        and settings.entity_array_name == "RemeshEntityId"
-        and settings.far_core_entity_id == 1
-        and settings.active_entity_id == 2
-        and settings.exclude_entity_ids == (1,)
-        and settings.core_collar.mode == "core_face_adjacency_layers"
-        and settings.core_collar.face_layers == 2
-        and settings.element_size_mode == "edgelength"
-        and settings.target_edge_length_um == 0.25913916380971913
-        and settings.preserve_boundary_edges
-    )
-    if not valid:
-        raise SurfacePrepareError("INVALID_VMTK_POSTPROCESS_CONFIGURATION")
-    if not config.environment_python.is_file() or not paths.raw_vtp.is_file():
+    if not paths.raw_vtp.is_file():
         raise SurfacePrepareError("VMTK_ENVIRONMENT_BLOCKED")
     request = build_entity_remesh_request(config=config, paths=paths)
-    paths.entity_remesh_request_json.write_text(
-        json.dumps(request, indent=2), encoding="utf-8"
+    result = _invoke(
+        config=config,
+        tool_script=tool_script,
+        request=request,
+        request_path=paths.remesh_request_json,
+        result_path=paths.remesh_result_json,
+        stdout_path=paths.remesh_stdout_log,
+        stderr_path=paths.remesh_stderr_log,
+        required_outputs=(paths.remeshed_open_vtp, paths.remeshed_open_stl),
+        failure_status="VMTK_CROSS_SEAM_REMESH_FAILED",
     )
-    command = (
-        str(config.environment_python.resolve()),
-        str(tool_script.resolve()),
-        "--request",
-        str(paths.entity_remesh_request_json.resolve()),
-        "--result",
-        str(paths.entity_remesh_result_json.resolve()),
-    )
-    completed = subprocess.run(
-        command,
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        env=_vmtk_process_environment(config),
-    )
-    paths.entity_remesh_stdout_log.write_text(completed.stdout, encoding="utf-8")
-    paths.entity_remesh_stderr_log.write_text(completed.stderr, encoding="utf-8")
-    required = (paths.remeshed_open_vtp, paths.remeshed_open_stl)
-    if completed.returncode != 0 or not paths.entity_remesh_result_json.is_file():
-        raise SurfacePrepareError("VMTK_ENTITY_REMESH_GEOMETRY_FAILED")
-    runtime = json.loads(paths.entity_remesh_result_json.read_text(encoding="utf-8"))
-    if runtime.get("status") != "PASS" or not all(path.is_file() for path in required):
-        raise SurfacePrepareError("VMTK_ENTITY_REMESH_GEOMETRY_FAILED")
+    runtime = result.runtime
     if (
         runtime.get("surface_remesher_called") is not True
         or runtime.get("global_surface_remeshing_performed") is not False
@@ -385,72 +253,56 @@ def entity_remesh_official_vmtk(
         or runtime.get("input_entity_ids") != [1, 2]
         or runtime.get("output_entity_ids") != [1, 2]
     ):
-        raise SurfacePrepareError("VMTK_ENTITY_ASSIGNMENT_FAILED")
-    return VmtkInvocationResult(command, request, runtime)
+        raise SurfacePrepareError("VMTK_CROSS_SEAM_ENTITY_ASSIGNMENT_FAILED")
+    return result
 
 
-def build_entity_remesh_request(
-    *, config: VmtkConfig, paths: VmtkExchangePaths
-) -> dict[str, Any]:
-    """Build the generalized entity-remesh request without executing VMTK."""
-
-    settings = config.entity_remesh
-    expected_entity_ids = sorted(
-        (settings.far_core_entity_id, settings.active_entity_id)
-    )
-    excluded_entity_ids = sorted(settings.exclude_entity_ids)
-    active_entity_ids = sorted(
-        set(expected_entity_ids) - set(excluded_entity_ids)
-    )
-    return {
-        "operation": "entity_remesh",
-        "raw_vtp": str(paths.raw_vtp.resolve()),
-        "remeshed_open_vtp": str(paths.remeshed_open_vtp.resolve()),
-        "remeshed_open_stl": str(paths.remeshed_open_stl.resolve()),
-        "entity_array_name": settings.entity_array_name,
-        "expected_entity_ids": expected_entity_ids,
-        "excluded_entity_ids": excluded_entity_ids,
-        "active_entity_ids": active_entity_ids,
-        "element_size_mode": settings.element_size_mode,
-        "target_edge_length_um": settings.target_edge_length_um,
-        "preserve_boundary_edges": settings.preserve_boundary_edges,
+def cap_official_vmtk(
+    *, config: VmtkConfig, paths: VmtkExchangePaths, tool_script: Path
+) -> VmtkInvocationResult:
+    if not paths.remeshed_open_vtp.is_file():
+        raise SurfacePrepareError("VMTK_ENVIRONMENT_BLOCKED")
+    request = {
+        "operation": "cap",
+        "open_vtp": str(paths.remeshed_open_vtp.resolve()),
+        "capped_vtp": str(paths.capped_vtp.resolve()),
     }
+    result = _invoke(
+        config=config,
+        tool_script=tool_script,
+        request=request,
+        request_path=paths.cap_request_json,
+        result_path=paths.cap_result_json,
+        stdout_path=paths.cap_stdout_log,
+        stderr_path=paths.cap_stderr_log,
+        required_outputs=(paths.capped_vtp,),
+        failure_status="VMTK_SURFACE_CAP_FAILED",
+    )
+    if result.runtime.get("surface_remesher_called") is not False:
+        raise SurfacePrepareError("VMTK_SURFACE_CAP_FAILED:remesher_called")
+    return result
 
 
 def exchange_paths(
-    *,
-    input_directory: Path,
-    vmtk_directory: Path,
-    geometry_directory: Path,
-    extension_mode: str,
+    *, input_directory: Path, vmtk_directory: Path, geometry_directory: Path
 ) -> VmtkExchangePaths:
-    mode_label = (
-        "boundarynormal" if extension_mode == "boundarynormal" else "centerline"
-    )
     return VmtkExchangePaths(
         open_surface_vtp=input_directory / "open_surface_um.vtp",
-        centerlines_vtp=input_directory / "centerlines_um.vtp",
-        raw_vtp=geometry_directory / f"vmtk_{mode_label}_raw_um.vtp",
-        raw_stl=geometry_directory / f"vmtk_{mode_label}_raw_um.stl",
-        remeshed_open_vtp=(
-            geometry_directory
-            / f"vmtk_{mode_label}_crossseam_remeshed_open_um.vtp"
-        ),
-        remeshed_open_stl=(
-            geometry_directory
-            / f"vmtk_{mode_label}_crossseam_remeshed_open_um.stl"
-        ),
-        capped_vtp=vmtk_directory / f"vmtk_{mode_label}_capped_um.vtp",
-        request_json=vmtk_directory / "request.json",
-        promotion_request_json=vmtk_directory / "cap_request.json",
-        result_json=vmtk_directory / "extension_environment.json",
-        promotion_result_json=vmtk_directory / "cap_environment.json",
-        stdout_log=vmtk_directory / "stdout.log",
-        stderr_log=vmtk_directory / "stderr.log",
-        promotion_stdout_log=vmtk_directory / "cap_stdout.log",
-        promotion_stderr_log=vmtk_directory / "cap_stderr.log",
-        entity_remesh_request_json=vmtk_directory / "entity_remesh_request.json",
-        entity_remesh_result_json=vmtk_directory / "entity_remesh_environment.json",
-        entity_remesh_stdout_log=vmtk_directory / "entity_remesh_stdout.log",
-        entity_remesh_stderr_log=vmtk_directory / "entity_remesh_stderr.log",
+        raw_vtp=geometry_directory / "vmtk_boundarynormal_raw_um.vtp",
+        raw_stl=geometry_directory / "vmtk_boundarynormal_raw_um.stl",
+        remeshed_open_vtp=geometry_directory / "vmtk_boundarynormal_crossseam_remeshed_open_um.vtp",
+        remeshed_open_stl=geometry_directory / "vmtk_boundarynormal_crossseam_remeshed_open_um.stl",
+        capped_vtp=vmtk_directory / "vmtk_boundarynormal_capped_um.vtp",
+        extension_request_json=vmtk_directory / "extension_request.json",
+        extension_result_json=vmtk_directory / "extension_environment.json",
+        extension_stdout_log=vmtk_directory / "extension_stdout.log",
+        extension_stderr_log=vmtk_directory / "extension_stderr.log",
+        remesh_request_json=vmtk_directory / "remesh_request.json",
+        remesh_result_json=vmtk_directory / "remesh_environment.json",
+        remesh_stdout_log=vmtk_directory / "remesh_stdout.log",
+        remesh_stderr_log=vmtk_directory / "remesh_stderr.log",
+        cap_request_json=vmtk_directory / "cap_request.json",
+        cap_result_json=vmtk_directory / "cap_environment.json",
+        cap_stdout_log=vmtk_directory / "cap_stdout.log",
+        cap_stderr_log=vmtk_directory / "cap_stderr.log",
     )

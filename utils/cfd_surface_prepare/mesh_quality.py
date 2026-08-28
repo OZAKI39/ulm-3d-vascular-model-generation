@@ -1,18 +1,15 @@
-"""Measured local mesh targets and extension-only triangle quality controls."""
+"""Measured local targets and triangle metrics used by the formal VMTK path."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import numpy as np
-import pyvista as pv
 import trimesh
 
 from .config import MeshQualityConfig
 from .io import BoundaryInput, SurfacePrepareError
-from .types import BoundarySurfaceResult, TaggedSurface
 
 
 ASPECT_RATIO_DEFINITION = (
@@ -41,7 +38,10 @@ def triangle_metrics(vertices: np.ndarray, faces: np.ndarray) -> TriangleMetrics
     )
     lengths = np.linalg.norm(edge_vectors, axis=2)
     area_twice = np.linalg.norm(
-        np.cross(triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0]),
+        np.cross(
+            triangles[:, 1] - triangles[:, 0],
+            triangles[:, 2] - triangles[:, 0],
+        ),
         axis=1,
     )
     if np.any(area_twice <= np.finfo(float).eps):
@@ -75,7 +75,7 @@ def measure_local_original_mesh(
     *,
     sampling_radius_factor: float,
 ) -> dict[str, Any]:
-    """Measure inward local wall triangles and exclude the outward rounded end."""
+    """Measure inward local wall triangles and exclude the rounded vessel end."""
 
     vertices = np.asarray(original.vertices, dtype=float)
     faces = np.asarray(original.faces, dtype=np.int64)
@@ -87,7 +87,9 @@ def measure_local_original_mesh(
         <= sampling_radius_factor * boundary.source_radius_um
     ) & (axial <= 0.0)
     if np.count_nonzero(mask) < 10:
-        raise SurfacePrepareError(f"LOCAL_ORIGINAL_MESH_SAMPLE_INSUFFICIENT:{boundary.port_id}")
+        raise SurfacePrepareError(
+            f"LOCAL_ORIGINAL_MESH_SAMPLE_INSUFFICIENT:{boundary.port_id}"
+        )
     metrics = triangle_metrics(vertices, faces[mask])
     edges = metrics.edge_lengths.ravel()
     return {
@@ -114,7 +116,9 @@ def _neighbor_area_ratios(faces: np.ndarray, areas: np.ndarray) -> np.ndarray:
     edge_faces: dict[tuple[int, int], list[int]] = {}
     for local_id, face in enumerate(faces):
         for first, second in zip(face, np.roll(face, -1)):
-            edge_faces.setdefault(tuple(sorted((int(first), int(second)))), []).append(local_id)
+            edge_faces.setdefault(
+                tuple(sorted((int(first), int(second)))), []
+            ).append(local_id)
     ratios = np.ones(len(faces), dtype=float)
     for linked in edge_faces.values():
         if len(linked) != 2:
@@ -179,156 +183,3 @@ def summarize_extension_mesh(
         "bad_triangle_count": int(np.count_nonzero(aggregate_bad)),
         "bad_triangle_fraction": float(np.mean(aggregate_bad)),
     }
-
-
-def extension_mesh_quality_qc(
-    surface: TaggedSurface,
-    boundaries: Iterable[BoundaryInput],
-    results: Iterable[BoundarySurfaceResult],
-    quality: MeshQualityConfig,
-) -> dict[str, Any]:
-    result_by_index = {item.boundary_index: item for item in results}
-    records: list[dict[str, Any]] = []
-    for boundary in boundaries:
-        result = result_by_index[boundary.index]
-        mask = (surface.face_kind == 1) & (surface.extension_index == boundary.index)
-        faces = surface.faces[mask]
-        summary = summarize_extension_mesh(
-            surface.vertices,
-            faces,
-            target_edge_length_um=result.target_edge_length_um,
-            local_original_median_edge_length_um=result.local_original_median_edge_length_um,
-            quality=quality,
-            quality_face_mask=surface.extension_band[mask] > 0,
-        )
-        interface_mask = mask & (surface.extension_band == 0)
-        interface_faces = surface.faces[interface_mask]
-        interface = triangle_metrics(surface.vertices, interface_faces)
-        interface_edge_ratio = float(
-            np.median(interface.edge_lengths) / result.target_edge_length_um
-        )
-        finite = bool(
-            all(
-                np.isfinite(value)
-                for value in summary.values()
-                if isinstance(value, float)
-            )
-        )
-        checks = {
-            "finite_metrics": finite,
-            "intermediate_rings_present": result.ring_count > 2,
-            "bad_triangle_fraction": summary["bad_triangle_fraction"]
-            <= quality.maximum_bad_triangle_fraction,
-            "interface_edge_length_ratio": interface_edge_ratio
-            <= quality.maximum_interface_edge_length_ratio,
-            "neighbor_area_ratio_p95": summary["neighbor_area_ratio_p95"]
-            <= quality.maximum_neighbor_area_ratio,
-        }
-        records.append(
-            {
-                "port_id": boundary.port_id,
-                "boundary_origin": boundary.boundary_origin,
-                "role": boundary.role,
-                "local_original_median_edge_length_um": result.local_original_median_edge_length_um,
-                "target_edge_length_um": result.target_edge_length_um,
-                "ring_count": result.ring_count,
-                **summary,
-                "interface_triangle_count": int(len(interface_faces)),
-                "interface_edge_length_ratio": interface_edge_ratio,
-                "interface_triangle_aspect_ratio_p95": float(
-                    np.percentile(interface.aspect_ratios, 95)
-                ),
-                "interface_minimum_angle_deg": float(
-                    np.min(interface.minimum_angles_deg)
-                ),
-                "quality_aggregate_excludes_separately_checked_interface_band": True,
-                "checks": checks,
-                "status": "PASS" if all(checks.values()) else "FAIL",
-            }
-        )
-    return {
-        "status": "PASS"
-        if all(record["status"] == "PASS" for record in records)
-        else "FAIL",
-        "aspect_ratio_definition": ASPECT_RATIO_DEFINITION,
-        "thresholds": {
-            "minimum_triangle_angle_deg": quality.minimum_triangle_angle_deg,
-            "maximum_aspect_ratio": quality.maximum_aspect_ratio,
-            "maximum_edge_length_to_local_target_ratio": quality.maximum_edge_length_to_local_target_ratio,
-            "maximum_neighbor_area_ratio": quality.maximum_neighbor_area_ratio,
-            "maximum_interface_edge_length_ratio": quality.maximum_interface_edge_length_ratio,
-            "maximum_bad_triangle_fraction": quality.maximum_bad_triangle_fraction,
-        },
-        "boundaries": records,
-    }
-
-
-def _read_previous_vtp(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    data = pv.read(path).triangulate()
-    faces = np.asarray(data.faces, dtype=np.int64).reshape((-1, 4))[:, 1:]
-    boundary_type = np.asarray(data.cell_data["boundary_type_code"], dtype=np.uint8)
-    return np.asarray(data.points, dtype=float), faces, boundary_type
-
-
-def compare_previous_extensions(
-    previous_vtp: Path,
-    refined: TaggedSurface,
-    boundaries: Iterable[BoundaryInput],
-    results: Iterable[BoundarySurfaceResult],
-) -> list[dict[str, Any]]:
-    old_vertices, old_faces, old_type = _read_previous_vtp(previous_vtp)
-    old_centers = old_vertices[old_faces].mean(axis=1)
-    result_by_index = {item.boundary_index: item for item in results}
-    rows: list[dict[str, Any]] = []
-    for boundary in boundaries:
-        result = result_by_index[boundary.index]
-        relative = old_centers - boundary.center_um
-        axial = relative @ boundary.outward_normal
-        radial = np.linalg.norm(
-            relative - np.outer(axial, boundary.outward_normal), axis=1
-        )
-        old_mask = (
-            (old_type == 0)
-            & (axial > 1.0e-8)
-            & (axial < boundary.extension_length_um + 1.0e-8)
-            & (radial < 2.0 * boundary.source_radius_um)
-        )
-        new_mask = (refined.face_kind == 1) & (
-            refined.extension_index == boundary.index
-        )
-        old_summary = summarize_extension_mesh(
-            old_vertices,
-            old_faces[old_mask],
-            target_edge_length_um=result.target_edge_length_um,
-            local_original_median_edge_length_um=result.local_original_median_edge_length_um,
-            quality=None,
-        )
-        new_summary = summarize_extension_mesh(
-            refined.vertices,
-            refined.faces[new_mask],
-            target_edge_length_um=result.target_edge_length_um,
-            local_original_median_edge_length_um=result.local_original_median_edge_length_um,
-            quality=None,
-        )
-        rows.append(
-            {
-                "port_id": boundary.port_id,
-                "previous_triangle_count": old_summary["extension_triangle_count"],
-                "refined_triangle_count": new_summary["extension_triangle_count"],
-                "previous_median_edge_um": old_summary["edge_length_median_um"],
-                "refined_median_edge_um": new_summary["edge_length_median_um"],
-                "previous_aspect_ratio_p95": old_summary["aspect_ratio_p95"],
-                "refined_aspect_ratio_p95": new_summary["aspect_ratio_p95"],
-                "previous_aspect_ratio_max": old_summary["aspect_ratio_max"],
-                "refined_aspect_ratio_max": new_summary["aspect_ratio_max"],
-                "previous_minimum_angle_deg": old_summary["minimum_triangle_angle_deg"],
-                "refined_minimum_angle_deg": new_summary["minimum_triangle_angle_deg"],
-                "triangle_count_increased": new_summary["extension_triangle_count"]
-                > old_summary["extension_triangle_count"],
-                "p95_aspect_ratio_improved": new_summary["aspect_ratio_p95"]
-                < old_summary["aspect_ratio_p95"],
-                "minimum_angle_improved": new_summary["minimum_triangle_angle_deg"]
-                > old_summary["minimum_triangle_angle_deg"],
-            }
-        )
-    return rows

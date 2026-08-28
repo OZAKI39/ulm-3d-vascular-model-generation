@@ -19,7 +19,6 @@ from .mesh_quality import summarize_extension_mesh, triangle_metrics
 from .vmtk_qc import polydata_mesh, symmetric_mesh_size_mismatch
 
 
-ENTITY_NAMES = {0: "CAP", 1: "CORE", 2: "PROXIMAL_GUARD", 3: "EXTENSION_BODY"}
 CROSS_SEAM_ENTITY_NAMES = {0: "CAP", 1: "FAR_CORE", 2: "CROSS_SEAM_ACTIVE"}
 
 
@@ -33,43 +32,6 @@ def _edge_face_map(faces: np.ndarray) -> dict[tuple[int, int], list[int]]:
         for first, second in zip(face, np.roll(face, -1)):
             mapping[tuple(sorted((int(first), int(second))))].append(face_id)
     return mapping
-
-
-def extension_face_adjacency_layers(
-    faces: np.ndarray, regions: np.ndarray
-) -> tuple[np.ndarray, np.ndarray]:
-    """Return extension BFS distance and layer-zero faces at the CORE interface."""
-
-    faces = np.asarray(faces, dtype=np.int64)
-    regions = np.asarray(regions, dtype=np.uint8)
-    if len(faces) != len(regions):
-        raise ValueError("faces and regions must have equal length")
-    edge_faces = _edge_face_map(faces)
-    extension_neighbors: dict[int, set[int]] = defaultdict(set)
-    seeds: set[int] = set()
-    for linked in edge_faces.values():
-        if len(linked) != 2:
-            continue
-        first, second = linked
-        values = {int(regions[first]), int(regions[second])}
-        if values == {0, 1}:
-            seeds.add(first if regions[first] == 1 else second)
-        elif values == {1}:
-            extension_neighbors[first].add(second)
-            extension_neighbors[second].add(first)
-    distances = np.full(len(faces), -1, dtype=np.int64)
-    queue: deque[int] = deque()
-    for face_id in sorted(seeds):
-        distances[face_id] = 0
-        queue.append(face_id)
-    while queue:
-        current = queue.popleft()
-        for neighbor in extension_neighbors[current]:
-            if distances[neighbor] >= 0:
-                continue
-            distances[neighbor] = distances[current] + 1
-            queue.append(neighbor)
-    return distances, np.asarray(sorted(seeds), dtype=np.int64)
 
 
 def core_face_adjacency_layers(
@@ -132,149 +94,6 @@ def _boundary_assignment(
             + ((before + after) / boundary.source_radius_um) ** 2
         )
     return np.argmin(np.column_stack(scores), axis=1)
-
-
-def assign_guarded_remesh_entities(
-    raw_vtp: Path,
-    boundaries: Iterable[BoundaryInput],
-    *,
-    face_layers: int = 2,
-    entity_array_name: str = "RemeshEntityId",
-    core_entity_id: int = 1,
-    guard_entity_id: int = 2,
-    body_entity_id: int = 3,
-) -> tuple[dict[str, Any], np.ndarray]:
-    """Assign CORE/GUARD/BODY using exactly two extension adjacency layers."""
-
-    if face_layers != 2:
-        raise SurfacePrepareError("VMTK_GUARD_ENTITY_ASSIGNMENT_FAILED:face_layers")
-    data = pv.read(raw_vtp).triangulate()
-    if "SurfaceRegionId" not in data.cell_data:
-        raise SurfacePrepareError("VMTK_GUARD_ENTITY_ASSIGNMENT_FAILED:regions_missing")
-    faces = _faces(data)
-    regions = np.asarray(data.cell_data["SurfaceRegionId"], dtype=np.uint8)
-    if sorted(int(value) for value in np.unique(regions)) != [0, 1]:
-        raise SurfacePrepareError("VMTK_GUARD_ENTITY_ASSIGNMENT_FAILED:regions")
-    distances, seeds = extension_face_adjacency_layers(faces, regions)
-    core = regions == 0
-    extension = regions == 1
-    guard = extension & (distances >= 0) & (distances < face_layers)
-    body = extension & ~guard
-    entities = np.zeros(len(faces), dtype=np.int32)
-    entities[core] = core_entity_id
-    entities[guard] = guard_entity_id
-    entities[body] = body_entity_id
-    points_before = np.asarray(data.points).copy()
-    faces_before = faces.copy()
-    data.cell_data[entity_array_name] = entities
-    data.save(raw_vtp, binary=True)
-    saved = pv.read(raw_vtp).triangulate()
-    saved_entities = np.asarray(saved.cell_data[entity_array_name], dtype=np.int32)
-
-    boundary_list = list(boundaries)
-    centers = np.asarray(saved.points)[faces].mean(axis=1)
-    extension_ids = np.flatnonzero(extension)
-    port_assignment = _boundary_assignment(centers[extension_ids], boundary_list)
-    face_port = np.full(len(faces), -1, dtype=np.int32)
-    face_port[extension_ids] = port_assignment
-    edge_faces = _edge_face_map(faces)
-    distal_face_ids = {
-        linked[0]
-        for linked in edge_faces.values()
-        if len(linked) == 1 and extension[linked[0]]
-    }
-    per_port: list[dict[str, Any]] = []
-    suspicious = False
-    for local_index, boundary in enumerate(boundary_list):
-        guard_ids = np.flatnonzero(guard & (face_port == local_index))
-        body_ids = np.flatnonzero(body & (face_port == local_index))
-        port_extension_count = len(guard_ids) + len(body_ids)
-        guard_vertices = (
-            np.unique(faces[guard_ids]) if len(guard_ids) else np.empty(0, dtype=np.int64)
-        )
-        if len(guard_ids):
-            axial = (
-                np.asarray(saved.points)[faces[guard_ids]].reshape((-1, 3))
-                - boundary.center_um
-            ) @ boundary.outward_normal
-            axial_min = float(np.min(axial))
-            axial_max = float(np.max(axial))
-            axial_width = float(axial_max - axial_min)
-        else:
-            axial_min = axial_max = axial_width = float("nan")
-        contains_distal = bool(set(map(int, guard_ids)) & distal_face_ids)
-        guard_fraction = (
-            float(len(guard_ids) / port_extension_count)
-            if port_extension_count
-            else 1.0
-        )
-        port_suspicious = bool(
-            len(guard_ids) == 0
-            or len(body_ids) == 0
-            or contains_distal
-            or guard_fraction >= 0.25
-            or (np.isfinite(axial_width) and axial_width > 2.0 * boundary.source_radius_um)
-        )
-        suspicious |= port_suspicious
-        per_port.append(
-            {
-                "boundary_index": boundary.index,
-                "port_id": boundary.port_id,
-                "guard_face_count": int(len(guard_ids)),
-                "guard_vertex_count": int(len(guard_vertices)),
-                "extension_body_face_count": int(len(body_ids)),
-                "guard_axial_extent_min_um": axial_min,
-                "guard_axial_extent_max_um": axial_max,
-                "guard_maximum_axial_width_um": axial_width,
-                "guard_width_in_source_radius": axial_width / boundary.source_radius_um,
-                "guard_width_in_diameter": axial_width / (2.0 * boundary.source_radius_um),
-                "guard_face_fraction_of_extension": guard_fraction,
-                "guard_contains_distal_boundary": contains_distal,
-                "classification_suspicious": port_suspicious,
-            }
-        )
-    unknown = int(np.count_nonzero(entities == 0))
-    checks = {
-        "geometry_points_unchanged": bool(
-            np.array_equal(np.asarray(saved.points), points_before)
-        ),
-        "geometry_connectivity_unchanged": bool(
-            np.array_equal(_faces(saved), faces_before)
-        ),
-        "guard_layer_zero_detected": bool(len(seeds)),
-        "guard_triangle_count_positive": bool(np.count_nonzero(guard)),
-        "body_triangle_count_positive": bool(np.count_nonzero(body)),
-        "unknown_face_count_zero": unknown == 0,
-        "entity_ids_exact": sorted(int(value) for value in np.unique(saved_entities))
-        == [core_entity_id, guard_entity_id, body_entity_id],
-        "guard_excludes_core": not bool(np.any(guard & core)),
-        "guard_excludes_distal_boundary": not any(
-            row["guard_contains_distal_boundary"] for row in per_port
-        ),
-    }
-    if not all(checks.values()):
-        status = "VMTK_GUARD_ENTITY_ASSIGNMENT_FAILED"
-    elif suspicious:
-        status = "GUARD_REGION_CLASSIFICATION_SUSPICIOUS"
-    else:
-        status = "PASS"
-    return {
-        "status": status,
-        "checks": checks,
-        "mode": "extension_face_adjacency_layers",
-        "guard_face_layers": face_layers,
-        "guard_layers_included": list(range(face_layers)),
-        "core_entity_id": core_entity_id,
-        "guard_entity_id": guard_entity_id,
-        "extension_body_entity_id": body_entity_id,
-        "entity_ids": sorted(int(value) for value in np.unique(saved_entities)),
-        "core_face_count": int(np.count_nonzero(core)),
-        "guard_face_count": int(np.count_nonzero(guard)),
-        "body_face_count": int(np.count_nonzero(body)),
-        "unknown_face_count": unknown,
-        "interface_seed_face_count": int(len(seeds)),
-        "per_port": per_port,
-    }, distances
 
 
 def assign_cross_seam_active_entities(
@@ -580,115 +399,6 @@ def _entity_boundary_report(
     }
 
 
-def guarded_entity_preservation_qc(
-    raw_vtp: Path,
-    remeshed_vtp: Path,
-    *,
-    entity_array_name: str = "RemeshEntityId",
-    core_entity_id: int = 1,
-    guard_entity_id: int = 2,
-    body_entity_id: int = 3,
-    restore_region_arrays: bool = True,
-) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
-    """Prove CORE/GUARD locks, both interfaces, and BODY remesh effect."""
-
-    raw = pv.read(raw_vtp).triangulate()
-    remeshed = pv.read(remeshed_vtp).triangulate()
-    expected = [core_entity_id, guard_entity_id, body_entity_id]
-    for data in (raw, remeshed):
-        if entity_array_name not in data.cell_data:
-            raise SurfacePrepareError("VMTK_GUARD_ENTITY_ASSIGNMENT_FAILED:array_missing")
-        if sorted(int(v) for v in np.unique(data.cell_data[entity_array_name])) != expected:
-            raise SurfacePrepareError("VMTK_GUARD_ENTITY_ASSIGNMENT_FAILED:ids_changed")
-    core = _locked_entity_report(
-        raw,
-        remeshed,
-        entity_array_name=entity_array_name,
-        entity_id=core_entity_id,
-        label="core",
-    )
-    guard = _locked_entity_report(
-        raw,
-        remeshed,
-        entity_array_name=entity_array_name,
-        entity_id=guard_entity_id,
-        label="guard",
-    )
-    core_guard = _entity_boundary_report(
-        raw,
-        remeshed,
-        entity_array_name=entity_array_name,
-        first_id=core_entity_id,
-        second_id=guard_entity_id,
-        label="core_guard",
-    )
-    guard_body = _entity_boundary_report(
-        raw,
-        remeshed,
-        entity_array_name=entity_array_name,
-        first_id=guard_entity_id,
-        second_id=body_entity_id,
-        label="guard_body",
-    )
-    boundary = {
-        "status": (
-            "PASS"
-            if core_guard["status"] == guard_body["status"] == "PASS"
-            else "FAIL"
-        ),
-        **{key: value for key, value in core_guard.items() if key != "status"},
-        **{key: value for key, value in guard_body.items() if key != "status"},
-    }
-    raw_faces = _faces(raw)
-    remeshed_faces = _faces(remeshed)
-    raw_entities = np.asarray(raw.cell_data[entity_array_name], dtype=np.int32)
-    remeshed_entities = np.asarray(
-        remeshed.cell_data[entity_array_name], dtype=np.int32
-    )
-    raw_body_ids = np.flatnonzero(raw_entities == body_entity_id)
-    remeshed_body_ids = np.flatnonzero(remeshed_entities == body_entity_id)
-    raw_points = np.asarray(raw.points).astype(np.asarray(remeshed.points).dtype, copy=False)
-    remeshed_points = np.asarray(remeshed.points)
-    raw_counter = Counter(
-        _triangle_key(raw_points, raw_faces[index]) for index in raw_body_ids
-    )
-    remeshed_counter = Counter(
-        _triangle_key(remeshed_points, remeshed_faces[index])
-        for index in remeshed_body_ids
-    )
-    raw_vertices = _entity_vertex_ids(raw_faces, raw_entities, body_entity_id)
-    remeshed_vertices = _entity_vertex_ids(
-        remeshed_faces, remeshed_entities, body_entity_id
-    )
-    changed = raw_counter != remeshed_counter
-    effect = bool(
-        len(raw_body_ids) != len(remeshed_body_ids)
-        or len(raw_vertices) != len(remeshed_vertices)
-        or changed
-    )
-    body = {
-        "status": "PASS" if effect else "FAIL",
-        "raw_body_face_count": int(len(raw_body_ids)),
-        "remeshed_body_face_count": int(len(remeshed_body_ids)),
-        "raw_body_vertex_count": int(len(raw_vertices)),
-        "remeshed_body_vertex_count": int(len(remeshed_vertices)),
-        "body_connectivity_changed": bool(changed),
-        "body_remesh_effect_detected": effect,
-    }
-    if restore_region_arrays:
-        output_entities = np.asarray(
-            remeshed.cell_data[entity_array_name], dtype=np.int32
-        )
-        remeshed.cell_data["SurfaceRegionId"] = np.where(
-            output_entities == core_entity_id, 0, 1
-        ).astype(np.uint8)
-        remeshed.cell_data["SurfaceRegion"] = np.where(
-            output_entities == core_entity_id, "CORE", "EXTENSION"
-        )
-        remeshed.save(remeshed_vtp, binary=True)
-    return core, guard, boundary, body
-
-
 def _surface_distance_summary(values: np.ndarray) -> dict[str, float]:
     values = np.asarray(values, dtype=float)
     return {
@@ -743,88 +453,6 @@ def _closest_region_assignment(
         collar_distance <= extension_distance, 0, 1
     ).astype(np.uint8)
     return regions
-
-
-def active_collar_geometry_qc(
-    raw: pv.PolyData,
-    remeshed: pv.PolyData,
-    *,
-    entity_array_name: str = "RemeshEntityId",
-    active_entity_id: int = 2,
-    maximum_p95_distance_um: float,
-    maximum_distance_um: float,
-) -> dict[str, Any]:
-    """Measure bidirectional fidelity of the remeshable original-CORE collar."""
-
-    raw_faces = _faces(raw)
-    remeshed_faces = _faces(remeshed)
-    raw_regions = np.asarray(raw.cell_data["SurfaceRegionId"], dtype=np.uint8)
-    remeshed_regions = np.asarray(
-        remeshed.cell_data["SurfaceRegionId"], dtype=np.uint8
-    )
-    raw_entities = np.asarray(raw.cell_data[entity_array_name], dtype=np.int32)
-    remeshed_entities = np.asarray(
-        remeshed.cell_data[entity_array_name], dtype=np.int32
-    )
-    raw_ids = np.flatnonzero(
-        (raw_regions == 0) & (raw_entities == active_entity_id)
-    )
-    remeshed_ids = np.flatnonzero(
-        (remeshed_regions == 0) & (remeshed_entities == active_entity_id)
-    )
-    if len(raw_ids) == 0 or len(remeshed_ids) == 0:
-        return {
-            "status": "FAIL",
-            "error": "empty active CORE collar",
-            "raw_active_collar_face_count": int(len(raw_ids)),
-            "remeshed_active_collar_face_count": int(len(remeshed_ids)),
-        }
-    raw_mesh = trimesh.Trimesh(
-        vertices=np.asarray(raw.points, dtype=float),
-        faces=raw_faces[raw_ids],
-        process=False,
-    )
-    remeshed_mesh = trimesh.Trimesh(
-        vertices=np.asarray(remeshed.points, dtype=float),
-        faces=remeshed_faces[remeshed_ids],
-        process=False,
-    )
-    raw_vertex_ids = np.unique(raw_mesh.faces)
-    remeshed_vertex_ids = np.unique(remeshed_mesh.faces)
-    raw_samples = np.vstack(
-        (raw_mesh.vertices[raw_vertex_ids], raw_mesh.triangles_center)
-    )
-    remeshed_samples = np.vstack(
-        (
-            remeshed_mesh.vertices[remeshed_vertex_ids],
-            remeshed_mesh.triangles_center,
-        )
-    )
-    _, forward, _ = trimesh.proximity.closest_point(remeshed_mesh, raw_samples)
-    _, reverse, _ = trimesh.proximity.closest_point(raw_mesh, remeshed_samples)
-    forward_report = _surface_distance_summary(forward)
-    reverse_report = _surface_distance_summary(reverse)
-    p95 = max(forward_report["P95_um"], reverse_report["P95_um"])
-    maximum = max(forward_report["max_um"], reverse_report["max_um"])
-    checks = {
-        "bidirectional_P95_within_existing_core_tolerance": p95
-        <= maximum_p95_distance_um,
-        "bidirectional_max_within_existing_core_tolerance": maximum
-        <= maximum_distance_um,
-    }
-    return {
-        "status": "PASS" if all(checks.values()) else "FAIL",
-        "checks": checks,
-        "method": "bidirectional vertex-plus-face-center closest surface distance",
-        "raw_active_collar_face_count": int(len(raw_ids)),
-        "remeshed_active_collar_face_count": int(len(remeshed_ids)),
-        "raw_to_remeshed": forward_report,
-        "remeshed_to_raw": reverse_report,
-        "bidirectional_P95_um": p95,
-        "bidirectional_max_um": maximum,
-        "maximum_core_surface_P95_distance_um": maximum_p95_distance_um,
-        "maximum_core_surface_distance_um": maximum_distance_um,
-    }
 
 
 def _minimum_distance_to_segments(
@@ -979,11 +607,9 @@ def cross_seam_entity_preservation_qc(
     entity_array_name: str = "RemeshEntityId",
     far_core_entity_id: int = 1,
     active_entity_id: int = 2,
-    maximum_p95_distance_um: float = 0.05,
-    maximum_distance_um: float = 0.15,
     restore_region_arrays: bool = True,
-) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
-    """Check FAR_CORE lock, active boundary, collar fidelity, and remesh effect."""
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """Check FAR_CORE lock, active boundary, and extension remesh effect."""
 
     failure = "VMTK_CROSS_SEAM_ENTITY_ASSIGNMENT_FAILED"
     raw = pv.read(raw_vtp).triangulate()
@@ -1033,15 +659,6 @@ def cross_seam_entity_preservation_qc(
     ).astype(np.int32)
     if restore_region_arrays:
         remeshed.save(remeshed_vtp, binary=True)
-    collar = active_collar_geometry_qc(
-        raw,
-        remeshed,
-        entity_array_name=entity_array_name,
-        active_entity_id=active_entity_id,
-        maximum_p95_distance_um=maximum_p95_distance_um,
-        maximum_distance_um=maximum_distance_um,
-    )
-
     raw_faces = _faces(raw)
     raw_regions = np.asarray(raw.cell_data["SurfaceRegionId"], dtype=np.uint8)
     raw_extension_ids = np.flatnonzero(raw_regions == 1)
@@ -1083,7 +700,7 @@ def cross_seam_entity_preservation_qc(
             np.count_nonzero(remeshed_entities == active_entity_id)
         ),
     }
-    return far_core, boundary, collar, extension_effect
+    return far_core, boundary, extension_effect
 
 
 def locked_entity_preservation_qc(
@@ -1334,59 +951,6 @@ def triangle_pair_intersection_diagnosis(
     }
 
 
-def guarded_intersection_qc(
-    surface_vtp: Path,
-    *,
-    entity_array_name: str = "RemeshEntityId",
-) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    """Classify every true non-adjacent intersection by guarded entity pair."""
-
-    data, mesh = polydata_mesh(surface_vtp)
-    faces = np.asarray(mesh.faces, dtype=np.int64)
-    entities = np.asarray(data.cell_data[entity_array_name], dtype=np.int32)
-    pairs, candidates = _triangle_intersections(
-        mesh, np.arange(len(faces), dtype=np.int64)
-    )
-    records: list[dict[str, Any]] = []
-    counts = {
-        "CORE_CORE": 0,
-        "CORE_PROXIMAL_GUARD": 0,
-        "CORE_EXTENSION_BODY": 0,
-        "PROXIMAL_GUARD_PROXIMAL_GUARD": 0,
-        "PROXIMAL_GUARD_EXTENSION_BODY": 0,
-        "EXTENSION_BODY_EXTENSION_BODY": 0,
-    }
-    for first, second in pairs:
-        diagnosis = triangle_pair_intersection_diagnosis(
-            np.asarray(mesh.vertices), faces, first, second
-        )
-        first_name = ENTITY_NAMES[int(entities[first])]
-        second_name = ENTITY_NAMES[int(entities[second])]
-        order = {"CAP": 0, "CORE": 1, "PROXIMAL_GUARD": 2, "EXTENSION_BODY": 3}
-        ordered_names = sorted((first_name, second_name), key=order.__getitem__)
-        canonical = "_".join(ordered_names)
-        diagnosis.update(
-            {
-                "first_entity_id": int(entities[first]),
-                "second_entity_id": int(entities[second]),
-                "entity_pair": canonical,
-            }
-        )
-        if diagnosis["true_triangle_triangle_intersection"]:
-            counts.setdefault(canonical, 0)
-            counts[canonical] += 1
-            records.append(diagnosis)
-    total = int(sum(counts.values()))
-    return {
-        "status": "PASS" if total == 0 else "FAIL",
-        "true_self_intersection_count": total,
-        "vtk_candidate_intersection_count": int(len(pairs)),
-        "candidate_pairs_checked": int(candidates),
-        "classification_counts": counts,
-        "intersections": records,
-    }, records
-
-
 def cross_seam_intersection_qc(
     surface_vtp: Path,
     *,
@@ -1528,157 +1092,7 @@ def _point_to_segments_distance(point: np.ndarray, segments: np.ndarray) -> floa
     return float(np.min(np.linalg.norm(closest - point, axis=1)))
 
 
-def diagnose_previous_entityremesh(
-    raw_vtp: Path,
-    remeshed_vtp: Path,
-    boundaries: Iterable[BoundaryInput],
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Recompute the saved 180737 collision and locate its RAW BFS layer."""
-
-    raw_data, raw_mesh = polydata_mesh(raw_vtp)
-    remeshed_data, remeshed_mesh = polydata_mesh(remeshed_vtp)
-    pairs, candidates = _triangle_intersections(
-        remeshed_mesh,
-        np.arange(len(remeshed_mesh.faces), dtype=np.int64),
-    )
-    entities = np.asarray(remeshed_data.cell_data["RemeshEntityId"], dtype=np.int32)
-    target_pair: tuple[int, int] | None = None
-    target_diagnosis: dict[str, Any] | None = None
-    for first, second in pairs:
-        if {int(entities[first]), int(entities[second])} != {1, 2}:
-            continue
-        diagnosis = triangle_pair_intersection_diagnosis(
-            np.asarray(remeshed_mesh.vertices),
-            np.asarray(remeshed_mesh.faces),
-            first,
-            second,
-        )
-        if diagnosis["true_triangle_triangle_intersection"]:
-            target_pair = (first, second)
-            target_diagnosis = diagnosis
-            break
-    if target_pair is None or target_diagnosis is None:
-        return {
-            "status": "ENTITY_REMESH_INTERSECTION_DETECTOR_REVIEW_REQUIRED",
-            "REAL_GEOMETRIC_PENETRATION": "NO",
-            "vtk_intersection_pair_count": int(len(pairs)),
-            "candidate_pairs_checked": int(candidates),
-        }, {"status": "NOT_APPLICABLE"}
-    core_face_id = (
-        target_pair[0] if entities[target_pair[0]] == 1 else target_pair[1]
-    )
-    extension_face_id = (
-        target_pair[0] if entities[target_pair[0]] == 2 else target_pair[1]
-    )
-    diagnosis = {
-        "status": "PASS",
-        "REAL_GEOMETRIC_PENETRATION": "YES",
-        "core_face_id": int(core_face_id),
-        "extension_face_id": int(extension_face_id),
-        "core_triangle_vertices_xyz": target_diagnosis[
-            "first_triangle_vertices_xyz"
-            if target_pair[0] == core_face_id
-            else "second_triangle_vertices_xyz"
-        ],
-        "extension_triangle_vertices_xyz": target_diagnosis[
-            "first_triangle_vertices_xyz"
-            if target_pair[0] == extension_face_id
-            else "second_triangle_vertices_xyz"
-        ],
-        "shared_vertex_count": target_diagnosis["shared_vertex_count"],
-        "shared_edge_count": target_diagnosis["shared_edge_count"],
-        "core_normal": target_diagnosis[
-            "first_normal" if target_pair[0] == core_face_id else "second_normal"
-        ],
-        "extension_normal": target_diagnosis[
-            "first_normal" if target_pair[0] == extension_face_id else "second_normal"
-        ],
-        "triangle_centroids": {
-            "core": target_diagnosis[
-                "first_triangle_centroid"
-                if target_pair[0] == core_face_id
-                else "second_triangle_centroid"
-            ],
-            "extension": target_diagnosis[
-                "first_triangle_centroid"
-                if target_pair[0] == extension_face_id
-                else "second_triangle_centroid"
-            ],
-        },
-        "minimum_triangle_distance_um": target_diagnosis[
-            "minimum_triangle_distance_um"
-        ],
-        "true_triangle_triangle_intersection": True,
-        "intersection_type": target_diagnosis["intersection_type"],
-        "intersection_segment_start_xyz": target_diagnosis[
-            "intersection_segment_start_xyz"
-        ],
-        "intersection_segment_end_xyz": target_diagnosis[
-            "intersection_segment_end_xyz"
-        ],
-        "intersection_segment_length_um": target_diagnosis[
-            "intersection_segment_length_um"
-        ],
-        "candidate_pairs_checked": int(candidates),
-    }
-
-    raw_faces = np.asarray(raw_mesh.faces, dtype=np.int64)
-    raw_regions = np.asarray(raw_data.cell_data["SurfaceRegionId"], dtype=np.uint8)
-    distances, seeds = extension_face_adjacency_layers(raw_faces, raw_regions)
-    raw_extension_ids = np.flatnonzero(raw_regions == 1)
-    failed_triangle = np.asarray(remeshed_mesh.vertices)[
-        np.asarray(remeshed_mesh.faces)[extension_face_id]
-    ]
-    failed_center = failed_triangle.mean(axis=0)
-    raw_extension = trimesh.Trimesh(
-        vertices=np.asarray(raw_mesh.vertices),
-        faces=raw_faces[raw_extension_ids],
-        process=False,
-    )
-    _, nearest_distance, nearest_local = trimesh.proximity.closest_point(
-        raw_extension, failed_center[None, :]
-    )
-    nearest_raw_face_id = int(raw_extension_ids[int(nearest_local[0])])
-    edge_faces = _edge_face_map(raw_faces)
-    interface_edges = np.asarray(
-        [
-            edge
-            for edge, linked in edge_faces.items()
-            if len(linked) == 2
-            and {int(raw_regions[linked[0]]), int(raw_regions[linked[1]])} == {0, 1}
-        ],
-        dtype=np.int64,
-    )
-    interface_segments = np.asarray(raw_mesh.vertices)[interface_edges]
-    spatial_distance = min(
-        _point_to_segments_distance(point, interface_segments)
-        for point in np.vstack((failed_triangle, failed_center))
-    )
-    boundary_list = list(boundaries)
-    port_local = int(_boundary_assignment(failed_center[None, :], boundary_list)[0])
-    boundary = boundary_list[port_local]
-    axial = float((failed_center - boundary.center_um) @ boundary.outward_normal)
-    layer_report = {
-        "status": "PASS",
-        "port_id": boundary.port_id,
-        "boundary_index": boundary.index,
-        "expected_port_id_suffix": "cut_002",
-        "port_is_cut_002": boundary.port_id.endswith("cut_002"),
-        "extension_face_id_previous_remesh": int(extension_face_id),
-        "nearest_raw_extension_face_id": nearest_raw_face_id,
-        "nearest_raw_triangle_distance_um": float(nearest_distance[0]),
-        "axial_distance_from_original_cut_plane_um": axial,
-        "axial_distance_in_source_radius": axial / boundary.source_radius_um,
-        "axial_distance_in_diameter": axial / (2.0 * boundary.source_radius_um),
-        "distance_to_CORE_EXTENSION_interface_um": spatial_distance,
-        "face_adjacency_layer": int(distances[nearest_raw_face_id]),
-        "interface_seed_face_count": int(len(seeds)),
-        "raw_extension_face_count": int(len(raw_extension_ids)),
-    }
-    return diagnosis, layer_report
-
-
-def guarded_region_mesh_quality(
+def _active_region_mesh_quality(
     surface_vtp: Path,
     boundaries: Iterable[BoundaryInput],
     *,
@@ -1688,14 +1102,14 @@ def guarded_region_mesh_quality(
     quality: MeshQualityConfig,
     hard_body_gate: bool,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    """Report GUARD and BODY separately and return spatial tail records."""
+    """Report the active cross-seam region and return spatial tail records."""
 
     data, mesh = polydata_mesh(surface_vtp)
     entities = np.asarray(data.cell_data["RemeshEntityId"], dtype=np.int32)
     faces = np.asarray(mesh.faces, dtype=np.int64)
     selected_ids = np.flatnonzero(entities == entity_id)
     if len(selected_ids) == 0:
-        raise SurfacePrepareError("VMTK_GUARD_ENTITY_ASSIGNMENT_FAILED:empty_entity")
+        raise SurfacePrepareError("VMTK_CROSS_SEAM_ENTITY_ASSIGNMENT_FAILED:empty_active_entity")
     centers = np.asarray(mesh.triangles_center)[selected_ids]
     boundary_list = list(boundaries)
     assignment = _boundary_assignment(centers, boundary_list)
@@ -1803,8 +1217,8 @@ def guarded_region_mesh_quality(
         ),
         "entity": entity_label,
         "hard_gate": hard_body_gate,
-        "guard_sliver_policy": (
-            "DIAGNOSTIC_ONLY" if not hard_body_gate else "BODY_HARD_BULK_QC"
+        "active_region_policy": (
+            "DIAGNOSTIC_ONLY" if not hard_body_gate else "ACTIVE_REGION_HARD_QC"
         ),
         "maximum_symmetric_mesh_size_mismatch": 1.5,
         "boundaries": rows,
@@ -1823,7 +1237,7 @@ def crossseam_active_mesh_quality(
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Report the single active collar-plus-extension region; tails are warnings."""
 
-    report, tails = guarded_region_mesh_quality(
+    report, tails = _active_region_mesh_quality(
         surface_vtp,
         boundaries,
         entity_id=active_entity_id,
@@ -1832,39 +1246,7 @@ def crossseam_active_mesh_quality(
         quality=quality,
         hard_body_gate=False,
     )
-    report.pop("guard_sliver_policy", None)
+    report.pop("active_region_policy", None)
     report["tail_policy"] = "WARNING_ONLY"
     report["hard_gate"] = False
     return report, tails
-
-
-def previous_tail_fraction_inside_guard(
-    previous_remeshed_vtp: Path,
-    guarded_raw_vtp: Path,
-) -> dict[str, Any]:
-    """Map previous sliver-tail centers to nearest RAW extension faces."""
-
-    previous_data, previous_mesh = polydata_mesh(previous_remeshed_vtp)
-    raw_data, raw_mesh = polydata_mesh(guarded_raw_vtp)
-    previous_entities = np.asarray(
-        previous_data.cell_data["RemeshEntityId"], dtype=np.int32
-    )
-    previous_ids = np.flatnonzero(previous_entities == 2)
-    previous_faces = np.asarray(previous_mesh.faces)[previous_ids]
-    metrics = triangle_metrics(np.asarray(previous_mesh.vertices), previous_faces)
-    tail = (metrics.minimum_angles_deg < 5.0) | (metrics.aspect_ratios > 20.0)
-    tail_ids = previous_ids[tail]
-    raw_entities = np.asarray(raw_data.cell_data["RemeshEntityId"], dtype=np.int32)
-    raw_extension_ids = np.flatnonzero(np.isin(raw_entities, (2, 3)))
-    tree = cKDTree(np.asarray(raw_mesh.triangles_center)[raw_extension_ids])
-    _, nearest = tree.query(np.asarray(previous_mesh.triangles_center)[tail_ids], k=1)
-    nearest_raw = raw_extension_ids[np.asarray(nearest, dtype=np.int64)]
-    inside = raw_entities[nearest_raw] == 2
-    fraction = float(np.mean(inside)) if len(inside) else 0.0
-    return {
-        "previous_tail_triangle_count": int(len(tail_ids)),
-        "previous_tail_inside_new_guard_count": int(np.count_nonzero(inside)),
-        "previous_tail_fraction_within_new_guard": fraction,
-        "PROXIMAL_TAIL_LOCALIZATION_CONFIRMED": "YES" if fraction > 0.5 else "NO",
-        "role": "DIAGNOSTIC_ONLY",
-    }

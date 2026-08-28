@@ -23,12 +23,10 @@ class OutputLayout:
     run_root: Path
     config: Path
     input: Path
-    logs: Path
     global_1d: Path
     roi: Path
     qc: Path
     figures: Path
-    report: Path
 
 
 def create_layout(output_root: Path, run_id: str) -> OutputLayout:
@@ -38,12 +36,10 @@ def create_layout(output_root: Path, run_id: str) -> OutputLayout:
         for name in (
             "config",
             "input",
-            "logs",
             "global_1d",
             "roi",
             "qc",
             "figures",
-            "report",
         )
     }
     for folder in folders.values():

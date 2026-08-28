@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import shutil
 from dataclasses import dataclass
 from datetime import datetime
@@ -57,17 +56,6 @@ def _unique_run_id(output_root: Path, anchor: int) -> str:
     return candidate
 
 
-def _logger(path: Path, verbose: bool) -> logging.Logger:
-    logger = logging.getLogger(f"cfd_preprocess.{path.parent.parent.name}")
-    logger.handlers.clear()
-    logger.setLevel(logging.DEBUG if verbose else logging.INFO)
-    handler = logging.FileHandler(path, encoding="utf-8")
-    handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s"))
-    logger.addHandler(handler)
-    logger.propagate = False
-    return logger
-
-
 def next_stage_for_status(status: str) -> str:
     """Return the only permitted workflow transition for a final status."""
 
@@ -76,6 +64,8 @@ def next_stage_for_status(status: str) -> str:
         "CFD_ROI_NOT_READY": "REVIEW_CFD_PREPROCESS_FAILURE",
         "GLOBAL_1D_FLOW_FAILED": "REVIEW_GLOBAL_1D_FLOW",
         "GLOBAL_TO_ROI_TRANSFER_FAILED": "REVIEW_GLOBAL_TO_ROI_BOUNDARY_TRANSFER",
+        "CFD_GEOMETRY_REFERENCE_INVALID": "REVIEW_CFD_PREPROCESS_FAILURE",
+        "CFD_PREPROCESS_INTERNAL_ERROR": "REVIEW_CFD_PREPROCESS_FAILURE",
     }.get(status, "REVIEW_CFD_PREPROCESS_FAILURE")
 
 
@@ -162,93 +152,6 @@ def _boundary_qc(
     }
 
 
-def _write_report(
-    path: Path,
-    *,
-    status: str,
-    roi_id: str,
-    source_model_id: str,
-    flow: GlobalFlowResult,
-    transfers: list[PortTransfer],
-    readiness: dict[str, Any],
-    geometry: dict[str, Any],
-    leaf_pressure_pa: float,
-    next_stage: str,
-) -> Path:
-    port_lines = "\n".join(
-        f"- `{item.port_id}` — {item.boundary_origin} / {item.role}; "
-        f"P={item.pressure_pa:.9g} Pa; "
-        f"Q={item.role_flow_m3_s:.9g} m³/s"
-        for item in transfers
-    )
-    reasons = readiness.get("failure_reasons") or []
-    reason_text = ", ".join(reasons) if reasons else "none"
-    text = f"""# CFD boundary preprocessing report
-
-Final status: **{status}**
-
-ROI: `{roi_id}`
-
-Global source model: `{source_model_id}`
-
-## Formal baseline and its limits
-
-SWC parent→current direction is used only as the **simulation direction**. It is not an
-experimentally measured blood-flow direction and is not physiological ground truth. The single
-structural root is temporarily treated as `ASSUMED_GLOBAL_INLET`. Its configured
-{flow.root_mean_velocity_mm_s:.9g} mm/s velocity is a literature-derived baseline assumption,
-not a measurement from the current fMOST mouse.
-
-All structural leaves are assigned {leaf_pressure_pa:.9g} Pa gauge pressure as the global baseline
-reference. This
-does not mean that physiological blood pressure is zero. The 1D calculation uses original
-analysis-SWC source radii; the Ultraliser radius scale of 0.91 is only a surface-reconstruction
-compensation and is not used in hydraulic resistance.
-
-ROI inlet flow and outlet pressure are transferred from the global 1D model. The intended outlet
-condition is **DIRECT 1D PRESSURE**, not a resistance or Windkessel condition. Version-2
-physiological refinements are disabled.
-
-TRUE_TERMINAL boundaries are treated as `ASSUMED_OUTLET` in the current baseline. This is a
-simulation convention used to keep the boundary model simple. It does not assert that these
-terminals are experimentally verified physiological outlets. Their pressure is read from the
-global 1D structural-leaf solution; the current gauge value is a reference pressure, not a claim
-that physiological blood pressure equals zero.
-
-## Global solution
-
-- Structural root: {flow.root_node_id}
-- Structural leaves: {len(flow.leaf_node_ids)}
-- Root flow: {flow.root_flow_m3_s:.12g} m³/s
-- Global relative mass error: {flow.relative_mass_error:.6e}
-- Maximum internal relative residual: {flow.maximum_internal_relative_residual:.6e}
-
-## Complete CFD boundary transfer
-
-{port_lines}
-
-ROI relative boundary mass error: {readiness["relative_boundary_mass_error"]:.6e}
-
-Readiness failure reasons: {reason_text}
-
-## Geometry reference
-
-- Model run: `{geometry["run_id"]}`
-- Geometry status: {geometry["status"]}
-- Radius scale: {geometry["radius_scale"]}
-- Radius P95 absolute relative error: {geometry["radius_p95_absolute_relative_error"]:.9g}
-
-No surface was modified, no volume mesh was created, and no 3D CFD or microbubble simulation was
-run in this stage.
-
-## Next stage
-
-{next_stage_display(next_stage)}.
-"""
-    path.write_text(text, encoding="utf-8")
-    return path
-
-
 def run_cfd_preprocess(
     config: CFDPreprocessConfig,
     *,
@@ -268,10 +171,6 @@ def run_cfd_preprocess(
     run_id = _unique_run_id(config.paths.output_root, roi.anchor_id)
     layout = create_layout(config.paths.output_root, run_id)
     shutil.copy2(config.source_path, layout.config / "source_cfd_preprocess.yaml")
-    logger = _logger(layout.logs / "cfd_preprocess.log", config.verbose)
-    logger.info("Configuration: %s", config.source_path)
-    logger.info("Sampling run: %s", sampling_run)
-    logger.info("ROI: %s", roi.roi_id)
 
     rodent_root = project_root / "outputs" / "rodent_vasculature"
     rodent_run, rodent_auto = resolve_rodent_run(
@@ -279,11 +178,8 @@ def run_cfd_preprocess(
         output_root=rodent_root,
         source_model_id=roi.source_model_id,
     )
-    if rodent_auto:
-        logger.info("AUTO_RESOLVED_RODENT_RUN: %s", rodent_run)
     model = load_matching_global_model(rodent_run, roi.source_model_id)
     verify_global_edge_manifest(model, sampling_run / "manifests" / "global_edges.csv")
-    logger.info("GLOBAL_EDGE_MAPPING_MATCH: %d edges", model.edge_count)
 
     mu = config.fluid.dynamic_viscosity_pa_s
     flow = solve_global_flow(
@@ -300,12 +196,6 @@ def run_cfd_preprocess(
         reverse_flow_tolerance_m3_s=(
             config.global_1d.solver.reverse_flow_tolerance_m3_s
         ),
-    )
-    logger.info(
-        "Global solve PASS: nodes=%d edges=%d mass_error=%.3e",
-        model.node_count,
-        model.edge_count,
-        flow.relative_mass_error,
     )
     write_global_tables(layout, model, flow)
     solver_summary = _solver_summary(
@@ -353,8 +243,6 @@ def run_cfd_preprocess(
         model_output_root=config.paths.model_output_root,
         roi_id=roi.roi_id,
     )
-    if model_auto:
-        logger.info("AUTO_RESOLVED_MODEL_RUN: %s", geometry.run_root)
     geometry_report = geometry.report()
     write_json(layout.input / "geometry_reference.json", geometry_report)
     write_json(
@@ -403,11 +291,6 @@ def run_cfd_preprocess(
             write_extension_plan(layout.roi / "port_extension_plan.csv", transfers)
         if config.outputs.save_port_vtp:
             port_vtp_path = write_port_vtp(layout.roi / "port_planes.vtp", transfers)
-    else:
-        logger.warning(
-            "CFD_ROI_NOT_READY: boundary package not generated; reasons=%s",
-            ", ".join(readiness["failure_reasons"]),
-        )
 
     if config.outputs.save_figures:
         global_pressure_figure(layout.figures / "global_1d_pressure.png", model, flow)
@@ -417,34 +300,6 @@ def run_cfd_preprocess(
             transfers,
             final_status=final_status,
         )
-    _write_report(
-        layout.report / "cfd_preprocess_report.md",
-        status=final_status,
-        roi_id=roi.roi_id,
-        source_model_id=roi.source_model_id,
-        flow=flow,
-        transfers=transfers,
-        readiness=readiness,
-        geometry=geometry_report,
-        leaf_pressure_pa=config.global_1d.leaf_pressure_pa,
-        next_stage=next_stage,
-    )
-    cut_port_inlet_total = sum(
-        item.role_flow_m3_s
-        for item in transfers
-        if item.boundary_origin == "CUT_PORT" and item.role == "ASSUMED_INLET"
-    )
-    cut_port_outlet_total = sum(
-        item.role_flow_m3_s
-        for item in transfers
-        if item.boundary_origin == "CUT_PORT" and item.role == "ASSUMED_OUTLET"
-    )
-    terminal_outlet_total = sum(
-        item.role_flow_m3_s
-        for item in transfers
-        if item.boundary_origin == "TRUE_TERMINAL" and item.role == "ASSUMED_OUTLET"
-    )
-    all_outlet_total = cut_port_outlet_total + terminal_outlet_total
     summary = {
         "status": final_status,
         "next_stage": next_stage,
@@ -468,22 +323,13 @@ def run_cfd_preprocess(
         "assumed_outlet_count": readiness["assumed_outlet_count"],
         "cut_port_outlet_count": readiness["cut_port_outlet_count"],
         "true_terminal_outlet_count": readiness["true_terminal_outlet_count"],
-        "cut_port_inlet_total_m3_s": cut_port_inlet_total,
-        "cut_port_outlet_total_m3_s": cut_port_outlet_total,
-        "true_terminal_outlet_total_m3_s": terminal_outlet_total,
-        "all_outlet_total_m3_s": all_outlet_total,
         "relative_boundary_mass_error": boundary_mass_error,
         "boundaries": boundary_qc["boundaries"],
         "geometry": geometry_report,
         "boundary_conditions_json": str(boundary_path) if boundary_path else None,
         "port_planes_vtp": str(port_vtp_path) if port_vtp_path else None,
-        "upstream_regeneration_performed": False,
-        "surface_modified": False,
-        "volume_mesh_created": False,
-        "three_dimensional_cfd_run": False,
     }
     write_json(layout.qc / "run_summary.json", summary)
-    logger.info("Final status: %s", final_status)
     return CFDPreprocessResult(
         layout=layout,
         status=final_status,
@@ -496,46 +342,18 @@ def run_cfd_preprocess(
 
 def print_result(result: CFDPreprocessResult) -> None:
     summary = result.summary
-    print(f"Configuration: {summary['configuration']}")
+    print("CFD PREPROCESS")
     print(f"ROI: {summary['roi_id']}")
-    print(f"Global source model: {summary['source_model_id']}")
-    print(f"Global nodes: {summary['global_node_count']}")
-    print(f"Global edges: {summary['global_edge_count']}")
-    print(f"Structural root: {summary['structural_root_node_id']}")
-    print(f"Global leaves: {summary['structural_leaf_count']}")
     print(
-        f"Global inlet baseline: {summary['root_mean_velocity_mm_s']:.9g} mm/s (NOT MEASURED)"
+        "Global: "
+        f"nodes={summary['global_node_count']} | edges={summary['global_edge_count']} | "
+        f"mass={summary['global_relative_mass_error']:.6e}"
     )
-    print(f"Q_root: {summary['root_flow_m3_s']:.12g} m3/s")
-    print(f"Global mass error: {summary['global_relative_mass_error']:.6e}")
-    print("ROI:")
-    print(f"CUT_PORT = {summary['cut_port_count']}")
-    print(f"TRUE_TERMINAL = {summary['true_terminal_count']}")
-    print(f"TOTAL CFD BOUNDARIES = {summary['total_boundary_count']}")
-    print(f"ASSUMED_INLET = {summary['assumed_inlet_count']}")
-    print(f"ASSUMED_OUTLET = {summary['assumed_outlet_count']}")
-    print("Boundary origins:")
-    print(f"CUT_PORT outlets = {summary['cut_port_outlet_count']}")
-    print(f"TRUE_TERMINAL outlets = {summary['true_terminal_outlet_count']}")
-    for boundary in summary["boundaries"]:
-        print(
-            f"Boundary: {boundary['port_id']} | origin={boundary['boundary_origin']} | "
-            f"role={boundary['role']} | P_1D={boundary['pressure_pa']:.9g} Pa | "
-            f"Q_1D={boundary['flow_rate_m3_s']:.9g} m3/s"
-        )
-    print(f"CUT_PORT inlet total = {summary['cut_port_inlet_total_m3_s']:.12g} m3/s")
-    print(f"CUT_PORT outlet total = {summary['cut_port_outlet_total_m3_s']:.12g} m3/s")
     print(
-        "TRUE_TERMINAL outlet total = "
-        f"{summary['true_terminal_outlet_total_m3_s']:.12g} m3/s"
+        f"Boundaries: inlet={summary['assumed_inlet_count']} | "
+        f"outlet={summary['assumed_outlet_count']} | "
+        f"mass={summary['relative_boundary_mass_error']:.6e}"
     )
-    print(f"ALL outlet total = {summary['all_outlet_total_m3_s']:.12g} m3/s")
-    print(f"Boundary mass error = {summary['relative_boundary_mass_error']:.6e}")
-    geometry = summary["geometry"]
-    print(
-        "Ultraliser geometry: PASS | "
-        f"radius scale={geometry['radius_scale']} | "
-        f"radius P95={geometry['radius_p95_absolute_relative_error']:.9g}"
-    )
-    print(f"Final status: {result.status}")
+    print(f"Boundary conditions: {summary['boundary_conditions_json']}")
+    print(f"STATUS: {result.status}")
     print(f"NEXT: {next_stage_display(summary['next_stage'])}")

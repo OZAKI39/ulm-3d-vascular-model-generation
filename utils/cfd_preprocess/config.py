@@ -96,7 +96,6 @@ class CFDPreprocessConfig:
     readiness: ReadinessConfig
     transfer: TransferConfig
     extension: ExtensionConfig
-    verbose: bool
     outputs: OutputConfig
 
 
@@ -201,7 +200,6 @@ def load_cfd_preprocess_config(
         "boundary_transfer",
         "port_geometry",
         "physics_baseline",
-        "runtime",
         "outputs",
     }
     root = _exact(root, top_keys, "YAML root")
@@ -541,7 +539,6 @@ def load_cfd_preprocess_config(
         False,
         "physics_baseline.pulsatility",
     )
-    runtime = _section(root, "runtime", {"verbose"})
     output_values = _section(
         root,
         "outputs",
@@ -579,7 +576,6 @@ def load_cfd_preprocess_config(
         ),
         transfer=TransferConfig(position_tol, radius_tol, port_mass_tol),
         extension=ExtensionConfig(extension_enabled, inlet_d, outlet_d),
-        verbose=_bool(runtime["verbose"], "runtime.verbose"),
         outputs=OutputConfig(
             _bool(output_values["save_global_vtp"], "outputs.save_global_vtp"),
             _bool(output_values["save_port_vtp"], "outputs.save_port_vtp"),

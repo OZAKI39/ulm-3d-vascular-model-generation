@@ -6,12 +6,15 @@ import argparse
 from pathlib import Path
 
 from utils.cfd_preprocess.config import load_cfd_preprocess_config
+from utils.cfd_preprocess.io import GeometryReferenceError, InputValidationError
+from utils.cfd_preprocess.one_d_flow import GlobalFlowError
 from utils.cfd_preprocess.pipeline import (
     next_stage_display,
     next_stage_for_status,
     print_result,
     run_cfd_preprocess,
 )
+from utils.cfd_preprocess.port_transfer import PortTransferError
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -44,27 +47,19 @@ def main() -> int:
         print_result(result)
         return 0 if result.status == "CFD_PREPROCESS_BASELINE_PASS" else 2
     except Exception as error:  # top-level CLI status reporting
-        message = str(error)
-        if "GLOBAL_1D_FLOW_FAILED" in message or "GLOBAL_BASELINE_REQUIRES" in message:
+        if isinstance(error, GlobalFlowError):
             status = "GLOBAL_1D_FLOW_FAILED"
-        elif any(
-            code in message
-            for code in (
-                "GLOBAL_TO_ROI_TRANSFER_FAILED",
-                "GLOBAL_EDGE_MAPPING_MISMATCH",
-                "CUT_PORT_",
-                "TRUE_TERMINAL_",
-                "AMBIGUOUS_CUT_PORT_DIRECTION",
-            )
-        ):
+        elif isinstance(error, PortTransferError):
             status = "GLOBAL_TO_ROI_TRANSFER_FAILED"
-        elif "CFD_GEOMETRY_REFERENCE_INVALID" in message:
+        elif isinstance(error, GeometryReferenceError):
             status = "CFD_GEOMETRY_REFERENCE_INVALID"
-        else:
+        elif isinstance(error, (InputValidationError, FileNotFoundError, ValueError)):
             status = "CFD_ROI_NOT_READY"
+        else:
+            status = "CFD_PREPROCESS_INTERNAL_ERROR"
         next_stage = next_stage_for_status(status)
-        print(f"CFD preprocessing failed: {message}")
-        print(f"Final status: {status}")
+        print(f"CFD preprocessing failed: {error}")
+        print(f"STATUS: {status}")
         print(f"NEXT: {next_stage_display(next_stage)}")
         return 1
 

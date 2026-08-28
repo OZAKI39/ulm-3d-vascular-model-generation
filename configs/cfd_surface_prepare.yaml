@@ -53,50 +53,9 @@ local_cut:
   require_single_cut_loop: true
   fail_if_other_vessel_intersects_local_surgery_region: true
 
-extension:
-# LEGACY_CUSTOM_REFERENCE only. The formal backend never reads these settings.
-  enabled: true
-  use_existing_extension_plan: true
-  cross_section_mode: extrude_actual_cut_loop
-  cap_distal_end: true
-
 extension_mesh:
-# LEGACY_CUSTOM_REFERENCE only. The formal backend never calls these algorithms.
   refinement:
-    enabled: true
-    target_edge_length_source: local_original_mesh
     local_mesh_sampling_radius_factor: 2.0
-    target_axial_spacing_factor: 1.0
-    minimum_ring_count: 6
-    maximum_ring_count: 128
-    require_intermediate_rings: true
-  transition:
-    enabled: true
-    transition_length_diameters: 1.0
-    loop_regularization:
-      enabled: true
-      iterations: 8
-      relaxation: 0.20
-      preserve_area: true
-      preserve_centroid: true
-      preserve_plane: true
-  smoothing:
-    enabled: true
-    method: taubin_constrained
-    iterations: 6
-    lambda: 0.30
-    mu: -0.31
-    lock_proximal_ring: true
-    lock_distal_ring: true
-    lock_distal_cap: true
-    lock_original_core: true
-    transition_only: false
-  optimization:
-    enabled: true
-    improve_triangle_diagonals: true
-    allow_edge_collapse: false
-    allow_edge_split: true
-    allow_edge_flip: true
 
 mesh_quality:
   enabled: true
@@ -106,10 +65,6 @@ mesh_quality:
   maximum_neighbor_area_ratio: 4.0
   maximum_interface_edge_length_ratio: 2.0
   maximum_bad_triangle_fraction: 0.01
-
-manual_review:
-  previous_surface_run: outputs/cfd_surface_prepare/cfd_surface_refined_anchor003274_20260826_125703
-  generate_before_after_figures: true
 
 pressure_correction:
   enabled: true
@@ -134,12 +89,3 @@ qc:
   maximum_core_surface_distance_um: 0.15
   maximum_core_surface_p95_distance_um: 0.05
   maximum_equivalent_radius_relative_error: 0.08
-
-runtime:
-  verbose: true
-
-outputs:
-  save_stl: true
-  save_vtp: true
-  save_boundary_stl: true
-  save_figures: true
