@@ -10,13 +10,16 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from utils.cfd_flow.diagnostics import DIAGNOSTIC_STATUS, run_diagnostic  # noqa: E402
+from utils.cfd_flow.diagnostics import (  # noqa: E402
+    PROJECT_STEADY_CONFIRMED_STATUS,
+    run_project_steady_confirmation,
+)
 from utils.cfd_flow.io import FlowError  # noqa: E402
 
 
 def main() -> int:
     try:
-        summary = run_diagnostic(PROJECT_ROOT)
+        summary = run_project_steady_confirmation(PROJECT_ROOT)
     except (FlowError, FileNotFoundError, ValueError) as error:
         status = error.status if isinstance(error, FlowError) else "CFD_FLOW_DIAGNOSTIC_INPUT_INVALID"
         print(f"CFD FLOW diagnostic failed: {error}")
@@ -26,12 +29,12 @@ def main() -> int:
     print(f"Restart: {summary['restart_validation']['status']}")
     print(f"Harvester runs: {summary['diagnostic_harvester_run_count']}")
     print(f"Additional iterations: {summary['additional_musubi_iterations']}")
-    print(f"Classification: {summary['convergence_classification']}")
+    official_steady = summary["official_steady_termination"]["official_steady_termination"]
+    print(f"Official steady termination: {'YES' if official_steady else 'NO'}")
     print(f"STATUS: {summary['status']}")
     print(f"NEXT_RECOMMENDATION: {summary['next_recommendation']}")
-    return 0 if summary["status"] == DIAGNOSTIC_STATUS else 2
+    return 0 if summary["status"] == PROJECT_STEADY_CONFIRMED_STATUS else 2
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
