@@ -133,6 +133,7 @@ def reconstruct_boundary(
     *,
     label: str,
     boundary_id: int,
+    allow_zero_normals: bool = False,
 ) -> BoundaryReconstruction:
     """Mirror countnBnds/assignBCList for the active D3Q19 QQN=18."""
 
@@ -154,7 +155,14 @@ def reconstruct_boundary(
             * D3Q19_DIRECTIONS[outgoing_directions].astype(np.int64),
             axis=0,
         )
-        normal_indices[local] = closest_discrete_direction(raw[local])
+        if np.all(raw[local] == 0) and allow_zero_normals:
+            # Adaptive-flux/pressure mesh QC consumes the exact boundary-link
+            # masks, not normalInd. A zero aggregate at a coarse Cartesian rim
+            # is represented explicitly instead of inventing a direction.
+            # The default remains strict for source-proven V2 audits.
+            normal_indices[local] = -1
+        else:
+            normal_indices[local] = closest_discrete_direction(raw[local])
     return BoundaryReconstruction(
         label=label,
         boundary_id=int(boundary_id),
