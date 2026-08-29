@@ -1,0 +1,813 @@
+{
+  "status": "PASS",
+  "generic_boundary_binary_and_mfr_contract": {
+    "status": "PASS",
+    "audit_revision": "ZERO_RUN_LATTICE_PORT_FLUX_AUDIT_V1",
+    "direct_decode_execution_base_commit": "459a3b4c15f2d333eccbd2ce928391bd50573c93",
+    "current_evidence_commit": "02660620d9bead5356d931f0c4fa65bd3efa3491",
+    "pinned_source_root": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-pinned\\musubi_official",
+    "git_pull_performed": false,
+    "submodule_update_performed": false,
+    "metadata_git_calls_only": true,
+    "repositories": {
+      "musubi": {
+        "path": "/home/lzy/apes-pinned/musubi_official",
+        "commit": "4e8b277b66226277171ef93bf054d21270812793",
+        "expected_commit": "4e8b277b66226277171ef93bf054d21270812793",
+        "tracked_worktree_clean": true
+      },
+      "musubi_scheme": {
+        "path": "/home/lzy/apes-pinned/musubi_official/mus",
+        "commit": "81f8c4f13772f6d4af31f335e1e3f99b02726e25",
+        "expected_commit": "81f8c4f13772f6d4af31f335e1e3f99b02726e25",
+        "tracked_worktree_clean": true
+      },
+      "treelm": {
+        "path": "/home/lzy/apes-pinned/musubi_official/tem",
+        "commit": "9899d1376992c4fafc8a343d2b4ccef81de670d1",
+        "expected_commit": "9899d1376992c4fafc8a343d2b4ccef81de670d1",
+        "tracked_worktree_clean": true
+      }
+    },
+    "source_files": {
+      "property_element_mapping": {
+        "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-pinned\\musubi_official\\tem\\source\\tem_property_module.f90",
+        "source_revision": "9899d1376992c4fafc8a343d2b4ccef81de670d1",
+        "sha256": "b037805d5a4424db155b1c3b36a6a6b3b2f098533f4d06286aa8a87dc7a84ee3",
+        "evidence": {
+          "btest_count": {
+            "status": "PASS",
+            "line_numbers": [
+              217
+            ],
+            "tokens": [
+              "Property%nElems = count(btest(BitField, Header%BitPos))"
+            ]
+          },
+          "ascending_tree_element_scan": {
+            "status": "PASS",
+            "line_numbers": [
+              232,
+              234,
+              238
+            ],
+            "tokens": [
+              "do iElem=1,nElems",
+              "if (btest(BitField(iElem), Header%BitPos)) then",
+              "Property%ElemID(PropElem) = iElem"
+            ]
+          }
+        }
+      },
+      "boundary_binary_layout": {
+        "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-pinned\\musubi_official\\tem\\source\\tem_bc_prop_module.f90",
+        "source_revision": "9899d1376992c4fafc8a343d2b4ccef81de670d1",
+        "sha256": "8eae04f4af72e842988ae98c1cef692783b202065e2509b767f2a2598156b657",
+        "evidence": {
+          "contiguous_sides_per_element": {
+            "status": "PASS",
+            "line_numbers": [
+              337,
+              364
+            ],
+            "tokens": [
+              "call MPI_TYPE_CONTIGUOUS( me%nSides, long_k_mpi, etype, iError )",
+              "call MPI_FILE_READ_ALL( fh, buffer, nElems, etype, iostatus, iError )"
+            ]
+          },
+          "row_mapping": {
+            "status": "PASS",
+            "line_numbers": [
+              409
+            ],
+            "tokens": [
+              "me%boundary_ID(:,i) = buffer( ((i-1)*me%nSides+1) : (i*me%nSides) )"
+            ]
+          },
+          "dump_matches_load": {
+            "status": "PASS",
+            "line_numbers": [
+              866
+            ],
+            "tokens": [
+              "call MPI_FILE_WRITE_ALL( fh, me%boundary_ID, nElems, etype, iostatus, iError )"
+            ]
+          }
+        }
+      },
+      "side_ordering": {
+        "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-pinned\\musubi_official\\tem\\source\\tem_param_module.f90",
+        "source_revision": "9899d1376992c4fafc8a343d2b4ccef81de670d1",
+        "sha256": "020992066162b88659d960fc89060d72aa68e73adf238e0060ab8f901b488123",
+        "evidence": {
+          "direct_face_indices": {
+            "status": "PASS",
+            "line_numbers": [
+              50,
+              51,
+              52,
+              53,
+              54,
+              55
+            ],
+            "tokens": [
+              "q__W     = 1",
+              "q__S     = 2",
+              "q__B     = 3",
+              "q__E     = 4",
+              "q__N     = 5",
+              "q__T     = 6"
+            ]
+          },
+          "offset_definition": {
+            "status": "PASS",
+            "line_numbers": [
+              134,
+              135
+            ],
+            "tokens": [
+              "qOffset =",
+              "reshape((/-1, 0, 0, 1, 0, 0"
+            ]
+          }
+        }
+      },
+      "integer_width_and_endian": {
+        "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-pinned\\musubi_official\\tem\\source\\env_module.f90",
+        "source_revision": "9899d1376992c4fafc8a343d2b4ccef81de670d1",
+        "sha256": "db7a64e7bb9d9ff76abb3c9d9dca0b7289b412431e6ad6e9e4c6a93f7f79f575",
+        "evidence": {
+          "integer8": {
+            "status": "PASS",
+            "line_numbers": [
+              195
+            ],
+            "tokens": [
+              "long_k_mpi = MPI_INTEGER8"
+            ]
+          },
+          "little_endian_suffix": {
+            "status": "PASS",
+            "line_numbers": [
+              196,
+              412
+            ],
+            "tokens": [
+              "isLittleEndian = Sys_is_Little_Endian()",
+              "suffix = '.lsb'"
+            ]
+          }
+        }
+      }
+    },
+    "property_element_mapping": {
+      "status": "PASS",
+      "fortran_bit_test": "BTEST(ElemPropertyBits, bitpos)",
+      "python_mirror": "(bits & (1 << bitpos)) != 0",
+      "ordering": "ascending tree-element order"
+    },
+    "boundary_binary": {
+      "status": "PASS",
+      "dtype": "little-endian signed int64 (<i8)",
+      "ordering": "26 contiguous side values per boundary-property element"
+    },
+    "side_ordering": {
+      "status": "PASS",
+      "names": [
+        "W",
+        "S",
+        "B",
+        "E",
+        "N",
+        "T",
+        "BS",
+        "TS",
+        "BN",
+        "TN",
+        "BW",
+        "BE",
+        "TW",
+        "TE",
+        "SW",
+        "NW",
+        "SE",
+        "NE",
+        "BSW",
+        "BSE",
+        "BNW",
+        "BNE",
+        "TSW",
+        "TSE",
+        "TNW",
+        "TNE"
+      ],
+      "q_offset": [
+        [
+          -1,
+          0,
+          0
+        ],
+        [
+          0,
+          -1,
+          0
+        ],
+        [
+          0,
+          0,
+          -1
+        ],
+        [
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          1
+        ],
+        [
+          0,
+          -1,
+          -1
+        ],
+        [
+          0,
+          -1,
+          1
+        ],
+        [
+          0,
+          1,
+          -1
+        ],
+        [
+          0,
+          1,
+          1
+        ],
+        [
+          -1,
+          0,
+          -1
+        ],
+        [
+          1,
+          0,
+          -1
+        ],
+        [
+          -1,
+          0,
+          1
+        ],
+        [
+          1,
+          0,
+          1
+        ],
+        [
+          -1,
+          -1,
+          0
+        ],
+        [
+          -1,
+          1,
+          0
+        ],
+        [
+          1,
+          -1,
+          0
+        ],
+        [
+          1,
+          1,
+          0
+        ],
+        [
+          -1,
+          -1,
+          -1
+        ],
+        [
+          1,
+          -1,
+          -1
+        ],
+        [
+          -1,
+          1,
+          -1
+        ],
+        [
+          1,
+          1,
+          -1
+        ],
+        [
+          -1,
+          -1,
+          1
+        ],
+        [
+          1,
+          -1,
+          1
+        ],
+        [
+          -1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1
+        ]
+      ],
+      "direct_six": [
+        "W",
+        "S",
+        "B",
+        "E",
+        "N",
+        "T"
+      ]
+    }
+  },
+  "exact_restart_and_boundary_path": {
+    "status": "PASS",
+    "restart_pdf_timestep_stage_proven": true,
+    "restart_stage": "POST_FUSED_PULL_STREAM_AND_BGK_COLLISION_NNEXT_BEFORE_NEXT_BOUNDARY_UPDATE",
+    "streaming": "PULL",
+    "fetch": "neighbor lookup in inverse streaming direction; missing/solid link reads local inverse PDF",
+    "bc_buffer_exactly_reconstructable": true,
+    "cxDirRK": "RAW_INTEGER_DIRECTION_AS_REAL_NOT_UNIT_NORMALIZED",
+    "files": {
+      "main_loop_and_final_restart": {
+        "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-pinned\\musubi_official\\mus\\source\\mus_program_module.fpp",
+        "source_revision": "81f8c4f13772f6d4af31f335e1e3f99b02726e25",
+        "sha256": "c2d7183d71db255c2e16815b72b928cfa143cc011820421a7adaa59285f6fceb",
+        "evidence": {
+          "steady_check_precedes_compute": {
+            "status": "PASS",
+            "tokens": [
+              "call check_flow_status(",
+              "exit mainLoop",
+              "call control%do_computation("
+            ],
+            "line_numbers": [
+              274,
+              283,
+              291
+            ]
+          },
+          "restart_after_main_loop": {
+            "status": "PASS",
+            "tokens": [
+              "Writing restart at final time:",
+              "call mus_writeRestart("
+            ],
+            "line_numbers": [
+              468,
+              470
+            ]
+          }
+        }
+      },
+      "fast_single_level_order": {
+        "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-pinned\\musubi_official\\mus\\source\\mus_control_module.f90",
+        "source_revision": "81f8c4f13772f6d4af31f335e1e3f99b02726e25",
+        "sha256": "ba01842e5eba943a8d6f2aaec9545e0f4b264d545ceae2568859f095bc83a18f",
+        "evidence": {
+          "boundary_before_swap_compute": {
+            "status": "PASS",
+            "tokens": [
+              "call set_boundary(",
+              "call mus_swap_now_next(",
+              "call me%scheme%compute("
+            ],
+            "line_numbers": [
+              294,
+              313,
+              376
+            ]
+          },
+          "compute_now_to_next": {
+            "status": "PASS",
+            "tokens": [
+              "inState   = me%scheme%state(iLevel)%val(:,Now)",
+              "outState  = me%scheme%state(iLevel)%val(:,Next)"
+            ],
+            "line_numbers": [
+              378,
+              379
+            ]
+          }
+        }
+      },
+      "restart_serializes_nnext_save": {
+        "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-pinned\\musubi_official\\mus\\source\\mus_buffer_module.fpp",
+        "source_revision": "81f8c4f13772f6d4af31f335e1e3f99b02726e25",
+        "sha256": "765146e97c558bea487a0d23407278bf875fc1816f6068a85adeb6636aca95a4",
+        "evidence": {
+          "nnext_save": {
+            "status": "PASS",
+            "tokens": [
+              "buffer(iIndex) = scheme%state",
+              "?SAVE?(",
+              "scheme%pdf( iLevel )%nNext"
+            ],
+            "line_numbers": [
+              127,
+              128,
+              129
+            ]
+          }
+        }
+      },
+      "pull_macros": {
+        "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-pinned\\musubi_official\\mus\\source\\header\\lbm_macros.inc",
+        "source_revision": "81f8c4f13772f6d4af31f335e1e3f99b02726e25",
+        "sha256": "6ec8847e27ee89f55899e15ef86ad119c352b6ce0ed0e02d22c64b46fccd1569",
+        "evidence": {
+          "pull_fetch_save": {
+            "status": "PASS",
+            "tokens": [
+              "else !PULL",
+              "macro :: FETCH",
+              "macro :: SAVE",
+              "macro :: NgDir"
+            ],
+            "line_numbers": [
+              69,
+              60,
+              62,
+              65
+            ]
+          }
+        }
+      },
+      "pull_connectivity": {
+        "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-pinned\\musubi_official\\mus\\source\\mus_connectivity_module.fpp",
+        "source_revision": "81f8c4f13772f6d4af31f335e1e3f99b02726e25",
+        "sha256": "d082c43bd71d3e08ade3a7f96b1850393d1b56ebfee63e500a66afa6719237de",
+        "evidence": {
+          "inverse_bounceback": {
+            "status": "PASS",
+            "tokens": [
+              "nghDir = ?NgDir?(iDir, stencil)",
+              "sourceDir = stencil%cxDirInv( iDir )",
+              "GetFromPos = iElem"
+            ],
+            "line_numbers": [
+              136,
+              162,
+              170
+            ]
+          }
+        }
+      },
+      "boundary_buffers": {
+        "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-pinned\\musubi_official\\mus\\source\\bc\\mus_bc_general_module.fpp",
+        "source_revision": "81f8c4f13772f6d4af31f335e1e3f99b02726e25",
+        "sha256": "2f0224a66179087a0e1341a02a011a645239cddf9ce9096d73ca35ee337e14ce",
+        "evidence": {
+          "bc_buffer_from_nnext": {
+            "status": "PASS",
+            "tokens": [
+              "currState = state( :, pdf%nNext )",
+              "bcBuffer always uses AOS",
+              "?SAVE?("
+            ],
+            "line_numbers": [
+              220,
+              1760,
+              1439
+            ]
+          },
+          "neighbor_buffer_from_nnext_fetch": {
+            "status": "PASS",
+            "tokens": [
+              "neighBufferPre_nNext",
+              "currstate(",
+              "?FETCH?("
+            ],
+            "line_numbers": [
+              1660,
+              1595,
+              1638
+            ]
+          }
+        }
+      },
+      "mfr_and_pressure_eq": {
+        "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-pinned\\musubi_official\\mus\\source\\bc\\mus_bc_fluid_module.fpp",
+        "source_revision": "81f8c4f13772f6d4af31f335e1e3f99b02726e25",
+        "sha256": "5d2c765b275d0a083320f87f1e752ed41a1913733fe6e045545c811bc3008eb7",
+        "evidence": {
+          "mfr_area_velocity": {
+            "status": "PASS",
+            "tokens": [
+              "globBC%nElems_totalLevel(iLvl) * physics%dxLvl(iLvl)**2",
+              "1.0_rk / ( physics%rho0 * area )",
+              "layout%fStencil%cxDirRK",
+              "normalInd%val(iElem)"
+            ],
+            "line_numbers": [
+              677,
+              679,
+              697,
+              698
+            ]
+          },
+          "pressure_macro_and_extrapolation": {
+            "status": "PASS",
+            "tokens": [
+              "rho = rho / physics%fac( iLevel )%press * cs2inv",
+              "neighBufferPre_nNext(1,:)",
+              "neighBufferPre_nNext(2,:)",
+              "1.5_rk * uxB_1",
+              "0.5_rk * uxB_2"
+            ],
+            "line_numbers": [
+              858,
+              863,
+              870,
+              879,
+              880
+            ]
+          },
+          "incoming_fetch_replacement": {
+            "status": "PASS",
+            "tokens": [
+              "bitmask%val( iDir, iElem )",
+              "state( ?FETCH?(",
+              "fEq( (iElem-1)*QQ + iDir )"
+            ],
+            "line_numbers": [
+              233,
+              236,
+              729
+            ]
+          }
+        }
+      },
+      "d3q19_boundary_lists": {
+        "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-pinned\\musubi_official\\mus\\source\\mus_construction_module.fpp",
+        "source_revision": "81f8c4f13772f6d4af31f335e1e3f99b02726e25",
+        "sha256": "c2eea0f440dc2880fb74c64d44fd9d8ac9c7a78de575598d73357f9981a27960",
+        "evidence": {
+          "active_stencil_only": {
+            "status": "PASS",
+            "tokens": [
+              "do iDir = 1, stencil%QQN",
+              "iMeshDir = stencil%map( iDir )"
+            ],
+            "line_numbers": [
+              2074,
+              2075
+            ]
+          },
+          "bitmask_inverse": {
+            "status": "PASS",
+            "tokens": [
+              "stencil%cxDirInv(iDir), nBnds( bID ) ) = .true."
+            ],
+            "line_numbers": [
+              2324
+            ]
+          },
+          "weighted_inward_normal": {
+            "status": "PASS",
+            "tokens": [
+              "weight(iDir) = 4",
+              "weight(iDir) = 2",
+              "-  weight(iDir) * stencil%cxDir( :, iDir )"
+            ],
+            "line_numbers": [
+              2254,
+              2257,
+              2345
+            ]
+          },
+          "normal_projection": {
+            "status": "PASS",
+            "tokens": [
+              "call tem_determine_discreteVector(",
+              "normalInd",
+              "val = iDir"
+            ],
+            "line_numbers": [
+              2433,
+              2451,
+              2452
+            ]
+          },
+          "remove_runtime_solid_boundary_elements": {
+            "status": "PASS",
+            "tokens": [
+              "if ( remove_solid .and. (nBCs > 0) ) then",
+              "call remove_solid_in_bc("
+            ],
+            "line_numbers": [
+              1495,
+              1496
+            ]
+          }
+        }
+      },
+      "higher_order_stencil_solidification": {
+        "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-pinned\\musubi_official\\tem\\source\\tem_construction_module.f90",
+        "source_revision": "9899d1376992c4fafc8a343d2b4ccef81de670d1",
+        "sha256": "8520039a7e3f03b86c014f204cb4f96487f558864fdc3da954380593b0d98cfc",
+        "evidence": {
+          "missing_either_required_neighbor_marks_current_element_solid": {
+            "status": "PASS",
+            "tokens": [
+              "if( levelPos <= 0 .and. computeStencil%requireNeighNeigh ) then",
+              "missingNeigh = .true.",
+              "= ibset( levelDesc%property( totalPos ), prp_solid )"
+            ],
+            "line_numbers": [
+              3235,
+              3236,
+              3249
+            ]
+          }
+        }
+      },
+      "solid_boundary_removal": {
+        "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-pinned\\musubi_official\\mus\\source\\bc\\mus_bc_header_module.fpp",
+        "source_revision": "81f8c4f13772f6d4af31f335e1e3f99b02726e25",
+        "sha256": "336fefcf67cdb135ecad5f5dd7fec5b7eea5efafe447f8a0c833e9b660727644",
+        "evidence": {
+          "pressure_eq_requires_two_neighbors": {
+            "status": "PASS",
+            "tokens": [
+              "case( 'pressure_eq' )",
+              "me( myBCID )%requireNeighBufPre_nNext = .true.",
+              "me( myBCID )%nNeighs = 2"
+            ],
+            "line_numbers": [
+              1037,
+              893,
+              845
+            ]
+          },
+          "solid_elements_excluded": {
+            "status": "PASS",
+            "tokens": [
+              "btest( levelDesc(iLevel)%property(posInTotal), prp_solid )",
+              "nValid(iLevel) = nValid(iLevel) + 1"
+            ],
+            "line_numbers": [
+              1598,
+              1604
+            ]
+          }
+        }
+      },
+      "raw_cxdir_and_unit_prevailing": {
+        "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-pinned\\musubi_official\\tem\\source\\tem_stencil_module.fpp",
+        "source_revision": "9899d1376992c4fafc8a343d2b4ccef81de670d1",
+        "sha256": "ab2cf74dd1727d1b775fded6fa6a7c10076b9ec823a0883b279a7f9ea610f27b",
+        "evidence": {
+          "raw_cxdirrk": {
+            "status": "PASS",
+            "tokens": [
+              "me%cxDirRK(:,:) = real( cxDir(:,:), rk )"
+            ],
+            "line_numbers": [
+              1051
+            ]
+          },
+          "unit_prevailing": {
+            "status": "PASS",
+            "tokens": [
+              "length_rk = sqrt(real(length, kind=rk))",
+              "/ length_rk"
+            ],
+            "line_numbers": [
+              582,
+              584
+            ]
+          }
+        }
+      },
+      "strict_equilibrium": {
+        "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-pinned\\musubi_official\\mus\\source\\scheme\\mus_scheme_derived_quantities_type_module.f90",
+        "source_revision": "81f8c4f13772f6d4af31f335e1e3f99b02726e25",
+        "sha256": "b4dd38ea5581a16ba3a40d1ac83e1f30cad04b26f374bb327968b6446af5466e",
+        "evidence": {
+          "d3q19_equilibrium": {
+            "status": "PASS",
+            "tokens": [
+              "pure function get_pdfEq_d3q19",
+              "rho_div_18",
+              "rho_div_36",
+              "fEq(19)"
+            ],
+            "line_numbers": [
+              532,
+              548,
+              428,
+              576
+            ]
+          }
+        }
+      }
+    },
+    "runtime_log": {
+      "path": "E:\\ULM\\hatimb-particle_flow_simulator\\ulm_3D_vascular\\outputs\\cfd_flow\\musubi_project_steady_confirmation_anchor003274_20260828_225334\\tracking\\musubi_stdout.log",
+      "sha256": "4bf29e601c4199c0c740002186b792ef0fb67cf26da3b6fd3dbd7a739490ace8",
+      "required_tokens": [
+        "Using AOS (array of structures data layout)",
+        "Using PULL for streaming",
+        "Select fast single level control routine.",
+        "nElems: 311",
+        "Reached steady state       198064 T",
+        "Writing restart at final time:",
+        "Removed 6 elements on level 9"
+      ]
+    }
+  },
+  "mfr_eq_contract": {
+    "status": "PASS",
+    "source": {
+      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-pinned\\musubi_official\\mus\\source\\bc\\mus_bc_fluid_module.fpp",
+      "source_revision": "81f8c4f13772f6d4af31f335e1e3f99b02726e25",
+      "sha256": "5d2c765b275d0a083320f87f1e752ed41a1913733fe6e045545c811bc3008eb7",
+      "evidence": {
+        "mfr_eq_routine": {
+          "status": "PASS",
+          "line_numbers": [
+            604,
+            670
+          ],
+          "tokens": [
+            "subroutine mfr_eq(",
+            "res     = massFlowRate"
+          ]
+        },
+        "total_boundary_area": {
+          "status": "PASS",
+          "line_numbers": [
+            677
+          ],
+          "tokens": [
+            "area = area + globBC%nElems_totalLevel(iLvl) * physics%dxLvl(iLvl)**2"
+          ]
+        },
+        "mass_to_physical_velocity": {
+          "status": "PASS",
+          "line_numbers": [
+            679
+          ],
+          "tokens": [
+            "massFlowRateToVel = 1.0_rk / ( physics%rho0 * area )"
+          ]
+        },
+        "physical_to_lattice_velocity": {
+          "status": "PASS",
+          "line_numbers": [
+            185
+          ],
+          "tokens": [
+            "/ physics%fac( iLevel )%vel"
+          ]
+        },
+        "normal_velocity_per_boundary_element": {
+          "status": "PASS",
+          "line_numbers": [
+            696,
+            698
+          ],
+          "tokens": [
+            "velocity(:,iElem) = massFlowRate(iElem) * massFlowRateToVel",
+            "normalInd%val(iElem)"
+          ]
+        }
+      }
+    },
+    "mass_flowrate_input_unit": "kg/s",
+    "unit_basis": "massFlowRate/(rho0[kg/m3] * area[m2]) produces physical velocity[m/s]",
+    "physical_to_lattice_conversion": "divide physical velocity by physics%fac(iLevel)%vel",
+    "boundary_velocity": "normal-aligned velocity using cxDirRK(:, normalInd)",
+    "boundary_area": "sum nElems_totalLevel(level) * dx(level)^2 over levels",
+    "target_distribution": "the same configured mass-flow value produces one uniform normal speed from the total boundary-element area; equilibrium PDFs are then assigned per boundary element",
+    "implementation_modified": false
+  },
+  "runtime_executable": {
+    "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\.local\\bin\\musubi",
+    "sha256": "a005b4f00bd45df0339adc22460f251c3f300f967ff746c1cd43fa5ad7c07e88"
+  }
+}
