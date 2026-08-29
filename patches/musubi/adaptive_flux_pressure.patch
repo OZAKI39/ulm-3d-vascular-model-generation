@@ -1,0 +1,401 @@
+diff --git a/source/bc/mus_bc_fluid_module.fpp b/source/bc/mus_bc_fluid_module.fpp
+index 1ee8086..f1203e9 100644
+--- a/source/bc/mus_bc_fluid_module.fpp
++++ b/source/bc/mus_bc_fluid_module.fpp
+@@ -41,9 +41,11 @@
+ ?? include 'tem/source/logMacros.inc'
+ module mus_bc_fluid_module
+   use iso_c_binding, only: c_f_pointer
++  use mpi
+ 
+   ! include treelm modules
+-  use env_module,               only: rk
++  use env_module,               only: rk, rk_mpi
++  use tem_aux_module,           only: tem_abort
+   use tem_param_module,         only: div1_3, div4_3, csInv, cs, cs2, cs2inv, &
+     &                                 rho0, rho0Inv
+   use tem_time_module,          only: tem_time_type
+@@ -73,6 +75,7 @@ module mus_bc_fluid_module
+   public :: velocity_eq
+   public :: mfr_bounceback
+   public :: mfr_eq
++  public :: adaptive_flux_pressure
+   public :: velocity_bounceback_incomp, velocity_bounceback
+   public :: velocity_bfl, velocity_bfl_incomp
+   public :: vel_neq
+@@ -826,21 +829,10 @@ contains
+     !> mixture info
+     type(mus_mixture_type), intent(in) :: mixture
+     ! -------------------------------------------------------------------- !
+-    real(kind=rk) :: fEq( layout%fStencil%QQ*globBC%nElems(iLevel) )
+-    ! need to compute precollision velocity of neighbor element
+-    ! Density on boundary element
+     real(kind=rk) :: rho( globBC%nElems(iLevel))
+-    ! Velocity on boundary element
+     real(kind=rk) :: velocity(3,globBC%nElems(iLevel))
+-    ! Vel on frst neighbor element
+-    real(kind=rk) :: uxB_1(3*globBC%nElems(iLevel))
+-    ! Vel on scnd neighbor element
+-    real(kind=rk) :: uxB_2(3*globBC%nElems(iLevel))
+-    integer :: iDir, iElem, QQ, elemPos
+     integer :: bcPress_pos
+     ! ---------------------------------------------------------------------------
+-    QQ = layout%fStencil%QQ
+-
+     ! position of boundary pressure in varSys
+     bcPress_pos = me%bc_states%pressure%varPos
+     ! get pressure variable from spacetime function
+@@ -857,30 +849,87 @@ contains
+     ! convert physical pressure to LB density
+     rho = rho / physics%fac( iLevel )%press * cs2inv
+ 
+-    ! KM: velocity is taken from precollision of current
+-    ! Calculate velocity of two neighbors
+-    call derVarPos%velFromState(                           &
+-      &     state  = me%neigh(iLevel)%neighBufferPre_nNext(1,:), &
+-      &     iField = iField,                               &
+-      &     nElems = globBC%nElems(iLevel),                &
+-      &     varSys = varSys,                               &
+-      &     layout = layout,                               &
+-      &     res    = uxB_1                                 )
+-    call derVarPos%velFromState(                           &
+-      &     state  = me%neigh(iLevel)%neighBufferPre_nNext(2,:), &
+-      &     iField = iField,                               &
+-      &     nElems = globBC%nElems(iLevel),                &
+-      &     varSys = varSys,                               &
+-      &     layout = layout,                               &
+-      &     res    = uxB_2                                 )
+-
+-    ! caluclate my velocity by interpolation
++    call pressure_eq_velocity( me        = me,        &
++      &                        globBC    = globBC,    &
++      &                        iLevel    = iLevel,    &
++      &                        derVarPos = derVarPos, &
++      &                        iField    = iField,    &
++      &                        varSys    = varSys,    &
++      &                        layout    = layout,    &
++      &                        velocity  = velocity   )
++    call pressure_eq_reconstruct( state      = state,      &
++      &                           rho        = rho,        &
++      &                           velocity   = velocity,   &
++      &                           globBC     = globBC,     &
++      &                           iLevel     = iLevel,     &
++      &                           nSize      = nSize,      &
++      &                           neigh      = neigh,      &
++      &                           layout     = layout,     &
++      &                           nScalars   = nScalars,   &
++      &                           varSys     = varSys,     &
++      &                           derVarPos  = derVarPos,  &
++      &                           iField     = iField      )
++
++  end subroutine pressure_eq
++! ****************************************************************************** !
++
++
++! ****************************************************************************** !
++  !> Native pressure_eq velocity extrapolation shared by fixed and adaptive
++  !! pressure boundary conditions.
++  subroutine pressure_eq_velocity( me, globBC, iLevel, derVarPos, iField, &
++    &                              varSys, layout, velocity )
++    class(boundary_type), intent(in) :: me
++    type(glob_boundary_type), intent(in) :: globBC
++    integer, intent(in) :: iLevel, iField
++    type(mus_derVarPos_type), intent(in) :: derVarPos
++    type(tem_varSys_type), intent(in) :: varSys
++    type(mus_scheme_layout_type), intent(in) :: layout
++    real(kind=rk), intent(out) :: velocity(:,:)
++    real(kind=rk) :: uxB_1(3*globBC%nElems(iLevel))
++    real(kind=rk) :: uxB_2(3*globBC%nElems(iLevel))
++    integer :: iElem
++
++    call derVarPos%velFromState(                                &
++      & state  = me%neigh(iLevel)%neighBufferPre_nNext(1,:),    &
++      & iField = iField,                                        &
++      & nElems = globBC%nElems(iLevel),                         &
++      & varSys = varSys,                                        &
++      & layout = layout,                                        &
++      & res    = uxB_1                                          )
++    call derVarPos%velFromState(                                &
++      & state  = me%neigh(iLevel)%neighBufferPre_nNext(2,:),    &
++      & iField = iField,                                        &
++      & nElems = globBC%nElems(iLevel),                         &
++      & varSys = varSys,                                        &
++      & layout = layout,                                        &
++      & res    = uxB_2                                          )
+     do iElem = 1, globBC%nElems(iLevel)
+-      velocity(:,iElem) =   1.5_rk * uxB_1((iElem-1)*3+1:iElem*3) &
+-        &                  - 0.5_rk * uxB_2((iElem-1)*3+1:iElem*3)
++      velocity(:,iElem) = 1.5_rk * uxB_1((iElem-1)*3+1:iElem*3) &
++        &                 - 0.5_rk * uxB_2((iElem-1)*3+1:iElem*3)
+     end do
++  end subroutine pressure_eq_velocity
++! ****************************************************************************** !
+ 
+-    ! compute equilibrium
++
++! ****************************************************************************** !
++  !> Native pressure_eq equilibrium reconstruction shared by fixed and
++  !! adaptive pressure boundary conditions.
++  subroutine pressure_eq_reconstruct( state, rho, velocity, globBC, iLevel, &
++    &                                 nSize, neigh, layout, nScalars, varSys, &
++    &                                 derVarPos, iField )
++    real(kind=rk), intent(inout) :: state(:)
++    real(kind=rk), intent(in) :: rho(:), velocity(:,:)
++    type(glob_boundary_type), intent(in) :: globBC
++    integer, intent(in) :: iLevel, nSize, nScalars, iField
++    integer, intent(in) :: neigh(:)
++    type(mus_scheme_layout_type), intent(in) :: layout
++    type(tem_varSys_type), intent(in) :: varSys
++    type(mus_derVarPos_type), intent(in) :: derVarPos
++    real(kind=rk) :: fEq(layout%fStencil%QQ*globBC%nElems(iLevel))
++    integer :: iDir, iElem, elemPos, QQ
++
++    QQ = layout%fStencil%QQ
+     call derVarPos%equilFromMacro( density  = rho,                   &
+       &                            velocity = velocity,              &
+       &                            iField   = iField,                &
+@@ -888,29 +937,175 @@ contains
+       &                            varSys   = varSys,                &
+       &                            layout   = layout,                &
+       &                            res      = fEq                    )
+-
+-    ! Run over all elements in list for this boundary
+-    do iElem = 1, globBC%nElems( iLevel )
+-      elemPos = globBC%elemLvl(iLevel)%elem%val( iElem )
++    do iElem = 1, globBC%nElems(iLevel)
++      elemPos = globBC%elemLvl(iLevel)%elem%val(iElem)
+       do iDir = 1, layout%fStencil%QQN
+-        ! the bitmask points into the incoming direction, which must
+-        ! be updated. As the kernel reads this value with FETCH,
+-        ! we store it to the FETCH position.
+-        ! This results for
+-        ! - PUSH in storing the density to where the bitmask
+-        !   points, i.e. incoming
+-        ! - PULL storing the density pointing outwards, but as
+-        !   this density is being bounced back before collision in
+-        !   the kernel, this is the correct position
+-        if( globBC%elemLvl(iLevel)%bitmask%val( iDir, iElem )) then
+-          ! Now assign the values
+-state( ?FETCH?( iDir, iField, elemPos, QQ, nScalars, nSize, neigh )) = &
+-          & fEq( (iElem-1)*QQ + iDir )
+-        end if ! bitMask
+-      end do ! iDir
+-    end do ! iElem
++        if (globBC%elemLvl(iLevel)%bitmask%val(iDir, iElem)) then
++          state(?FETCH?(iDir, iField, elemPos, QQ, nScalars, nSize, neigh)) &
++            & = fEq((iElem-1)*QQ+iDir)
++        end if
++      end do
++    end do
++  end subroutine pressure_eq_reconstruct
++! ****************************************************************************** !
+ 
+-  end subroutine pressure_eq
++
++! ****************************************************************************** !
++  !> Enforce one global volumetric flux by solving a uniform pressure density
++  !! and then using the native pressure_eq equilibrium replacement.
++  subroutine adaptive_flux_pressure( me, state, bcBuffer, globBC, levelDesc, &
++    &                                tree, nSize, iLevel, sim_time, neigh,    &
++    &                                layout, fieldProp, varPos, nScalars,    &
++    &                                varSys, derVarPos, physics, iField,     &
++    &                                mixture )
++    class(boundary_type) :: me
++    real(kind=rk), intent(inout) :: state(:)
++    real(kind=rk), intent(in) :: bcBuffer(:)
++    type(glob_boundary_type), intent(in) :: globBC
++    type(tem_levelDesc_type), intent(in) :: levelDesc
++    type(treelmesh_type), intent(in) :: tree
++    integer, intent(in) :: nSize, iLevel, nScalars, iField
++    type(tem_time_type), intent(in) :: sim_time
++    integer, intent(in) :: neigh(:), varPos(:)
++    type(mus_scheme_layout_type), intent(in) :: layout
++    type(mus_field_prop_type), intent(in) :: fieldProp
++    type(tem_varSys_type), intent(in) :: varSys
++    type(mus_derVarPos_type), intent(in) :: derVarPos
++    type(mus_physics_type), intent(in) :: physics
++    type(mus_mixture_type), intent(in) :: mixture
++    real(kind=rk) :: massFlowRate(globBC%nElems(iLevel))
++    real(kind=rk) :: velocity(3,globBC%nElems(iLevel))
++    real(kind=rk) :: rho(globBC%nElems(iLevel))
++    real(kind=rk) :: rhoUnit(globBC%nElems(iLevel))
++    real(kind=rk) :: fEqUnit(layout%fStencil%QQ*globBC%nElems(iLevel))
++    real(kind=rk) :: alphaLocal, betaLocal, alpha, beta
++    real(kind=rk) :: massLocal, massGlobal, targetMassFlow, targetFlux
++    real(kind=rk) :: controlledFlux, relativeError, pressure, rhoBoundary
++    real(kind=rk) :: minPdfLocal, minPdf, maxSpeedLocal, maxSpeed
++    real(kind=rk) :: fVal, rhoElem, momentum(3), speed
++    integer :: bcMfr_pos, iElem, iDir, elemPos, QQ, iErr
++
++    if (layout%fStencil%QQ /= 19 .or. layout%fStencil%QQN /= 18) then
++      call tem_abort('adaptive_flux_pressure supports only D3Q19')
++    end if
++    if (tree%global%minLevel /= tree%global%maxLevel) then
++      call tem_abort('adaptive_flux_pressure supports one uniform level')
++    end if
++    QQ = layout%fStencil%QQ
++
++    bcMfr_pos = me%bc_states%massFlowRate%varPos
++    call varSys%method%val(bcMfr_pos)%get_valOfIndex( &
++      & varSys  = varSys,                             &
++      & time    = sim_time,                           &
++      & iLevel  = iLevel,                             &
++      & idx     = me%bc_states%massFlowRate           &
++      &           %pntIndex%indexLvl(iLevel)          &
++      &           %val(1:globBC%nElems(iLevel)),      &
++      & nVals   = globBC%nElems(iLevel),              &
++      & res     = massFlowRate                        )
++    massLocal = sum(massFlowRate)
++    call mpi_allreduce(massLocal, massGlobal, 1, rk_mpi, mpi_sum, &
++      &                tree%global%comm, iErr)
++    if (globBC%nElems_total <= 0) then
++      call tem_abort('adaptive_flux_pressure has no boundary elements')
++    end if
++    targetMassFlow = massGlobal / real(globBC%nElems_total, kind=rk)
++    targetFlux = targetMassFlow / physics%rho0 * physics%dtLvl(iLevel) &
++      &          / physics%dxLvl(iLevel)**3
++
++    call pressure_eq_velocity( me        = me,        &
++      &                        globBC    = globBC,    &
++      &                        iLevel    = iLevel,    &
++      &                        derVarPos = derVarPos, &
++      &                        iField    = iField,    &
++      &                        varSys    = varSys,    &
++      &                        layout    = layout,    &
++      &                        velocity  = velocity   )
++    rhoUnit = 1.0_rk
++    call derVarPos%equilFromMacro( density  = rhoUnit,              &
++      &                            velocity = velocity,             &
++      &                            iField   = iField,               &
++      &                            nElems   = globBC%nElems(iLevel),&
++      &                            varSys   = varSys,               &
++      &                            layout   = layout,               &
++      &                            res      = fEqUnit                )
++
++    alphaLocal = 0.0_rk
++    betaLocal = 0.0_rk
++    do iElem = 1, globBC%nElems(iLevel)
++      elemPos = globBC%elemLvl(iLevel)%elem%val(iElem)
++      do iDir = 1, layout%fStencil%QQN
++        if (globBC%elemLvl(iLevel)%bitmask%val(iDir, iElem)) then
++          alphaLocal = alphaLocal + fEqUnit((iElem-1)*QQ+iDir)
++          betaLocal = betaLocal - state( &
++            & ?FETCH?(iDir, iField, elemPos, QQ, nScalars, nSize, neigh) )
++        end if
++      end do
++    end do
++    call mpi_allreduce(alphaLocal, alpha, 1, rk_mpi, mpi_sum, &
++      &                tree%global%comm, iErr)
++    call mpi_allreduce(betaLocal, beta, 1, rk_mpi, mpi_sum, &
++      &                tree%global%comm, iErr)
++    if (abs(alpha) <= tiny(alpha)) then
++      call tem_abort('adaptive_flux_pressure alpha is zero')
++    end if
++    rhoBoundary = (targetFlux-beta) / alpha
++    rho = rhoBoundary
++    controlledFlux = alpha*rhoBoundary + beta
++    relativeError = abs(controlledFlux-targetFlux) / max(abs(targetFlux), &
++      &                                                   tiny(targetFlux))
++    pressure = rhoBoundary * physics%fac(iLevel)%press * cs2
++
++    call pressure_eq_reconstruct( state      = state,      &
++      &                           rho        = rho,        &
++      &                           velocity   = velocity,   &
++      &                           globBC     = globBC,     &
++      &                           iLevel     = iLevel,     &
++      &                           nSize      = nSize,      &
++      &                           neigh      = neigh,      &
++      &                           layout     = layout,     &
++      &                           nScalars   = nScalars,   &
++      &                           varSys     = varSys,     &
++      &                           derVarPos  = derVarPos,  &
++      &                           iField     = iField      )
++
++    minPdfLocal = huge(minPdfLocal)
++    maxSpeedLocal = 0.0_rk
++    do iElem = 1, globBC%nElems(iLevel)
++      elemPos = globBC%elemLvl(iLevel)%elem%val(iElem)
++      rhoElem = 0.0_rk
++      momentum = 0.0_rk
++      do iDir = 1, QQ
++        fVal = state( &
++          & ?FETCH?(iDir, iField, elemPos, QQ, nScalars, nSize, neigh) )
++        minPdfLocal = min(minPdfLocal, fVal)
++        rhoElem = rhoElem + fVal
++        momentum = momentum + fVal*layout%fStencil%cxDirRK(:,iDir)
++      end do
++      if (rhoElem <= 0.0_rk) then
++        call tem_abort('adaptive_flux_pressure non-positive boundary density')
++      end if
++      speed = sqrt(sum((momentum/rhoElem)**2))
++      maxSpeedLocal = max(maxSpeedLocal, speed)
++    end do
++    call mpi_allreduce(minPdfLocal, minPdf, 1, rk_mpi, mpi_min, &
++      &                tree%global%comm, iErr)
++    call mpi_allreduce(maxSpeedLocal, maxSpeed, 1, rk_mpi, mpi_max, &
++      &                tree%global%comm, iErr)
++    if (tree%global%myPart == 0) then
++      write(logUnit(1),'(A,I0,7(A,ES24.16E3),A,I0)') &
++        & 'ADAPTIVE_FLUX_PRESSURE iter=', sim_time%iter, &
++        & ' target_lattice=', targetFlux,                &
++        & ' controlled_lattice=', controlledFlux,        &
++        & ' relative_error=', relativeError,             &
++        & ' rho_boundary=', rhoBoundary,                 &
++        & ' pressure_pa=', pressure,                     &
++        & ' max_lattice_velocity=', maxSpeed,            &
++        & ' minimum_pdf=', minPdf,                       &
++        & ' globBC_count=', globBC%nElems_total
++      flush(logUnit(1))
++    end if
++  end subroutine adaptive_flux_pressure
+ ! ****************************************************************************** !
+ 
+ 
+diff --git a/source/bc/mus_bc_general_module.fpp b/source/bc/mus_bc_general_module.fpp
+index c23754a..485155d 100644
+--- a/source/bc/mus_bc_general_module.fpp
++++ b/source/bc/mus_bc_general_module.fpp
+@@ -89,6 +89,7 @@ module mus_bc_general_module
+     &                                         pressure_antiBounceBack,         &
+     &                                         outlet_zero_prsgrd,              &
+     &                                         mfr_bounceback, mfr_eq,          &
++    &                                         adaptive_flux_pressure,          &
+     &                                         velocity_bounceback,             &
+     &                                         velocity_bounceback_incomp,      &
+     &                                         velocity_bfl, bc_pdf,            &
+@@ -627,6 +628,8 @@ contains
+         bc( iBnd )%fnct => mfr_bounceback
+       case('mfr_eq')
+         bc( iBnd )%fnct => mfr_eq
++      case('adaptive_flux_pressure')
++        bc( iBnd )%fnct => adaptive_flux_pressure
+       case('vel_neq')
+         bc( iBnd )%fnct => vel_neq
+       case('bc_pdf')
+diff --git a/source/bc/mus_bc_header_module.fpp b/source/bc/mus_bc_header_module.fpp
+index 954c183..41abfb2 100644
+--- a/source/bc/mus_bc_header_module.fpp
++++ b/source/bc/mus_bc_header_module.fpp
+@@ -1030,6 +1030,22 @@ contains
+ 
+           me(myBCID)%nNeighs = me(myBCID)%order
+ 
++        case( 'adaptive_flux_pressure' )
++          write(logUnit(1),*) '   Adaptive global flux/pressure treatment for ' &
++            &                 //trim(me( myBCID )%label)
++
++          call tem_load_bc_state( bc         = me(myBCID)%BC_states     &
++            &                                            %massFlowRate, &
++            &                     state_name = 'mass_flowrate',         &
++            &                     nComp      = 1,                       &
++            &                     conf       = conf,                    &
++            &                     bc_handle  = sub_handle,              &
++            &                     varDict    = me(myBCID)%varDict,      &
++            &                     varSys     = varSys                    )
++
++          me( myBCID )%requireNeighBufPre_nNext = .true.
++          me( myBCID )%nNeighs = 2
++
+         case( 'pressure_eq', 'pressure_antibounceback', 'outlet_bouzidi',      &
+           &   'pressure_expol', 'pressure_expol_slow', 'pressure_noneq_expol', &
+           &   'pressure_momentsbased', 'press_neq'                             )
