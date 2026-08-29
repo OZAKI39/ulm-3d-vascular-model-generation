@@ -1,0 +1,66 @@
+{
+  "status": "PASS",
+  "source": {
+    "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-pinned\\musubi_official\\mus\\source\\bc\\mus_bc_fluid_module.fpp",
+    "source_revision": "81f8c4f13772f6d4af31f335e1e3f99b02726e25",
+    "sha256": "5d2c765b275d0a083320f87f1e752ed41a1913733fe6e045545c811bc3008eb7",
+    "evidence": {
+      "mfr_eq_routine": {
+        "status": "PASS",
+        "line_numbers": [
+          604,
+          670
+        ],
+        "tokens": [
+          "subroutine mfr_eq(",
+          "res     = massFlowRate"
+        ]
+      },
+      "total_boundary_area": {
+        "status": "PASS",
+        "line_numbers": [
+          677
+        ],
+        "tokens": [
+          "area = area + globBC%nElems_totalLevel(iLvl) * physics%dxLvl(iLvl)**2"
+        ]
+      },
+      "mass_to_physical_velocity": {
+        "status": "PASS",
+        "line_numbers": [
+          679
+        ],
+        "tokens": [
+          "massFlowRateToVel = 1.0_rk / ( physics%rho0 * area )"
+        ]
+      },
+      "physical_to_lattice_velocity": {
+        "status": "PASS",
+        "line_numbers": [
+          185
+        ],
+        "tokens": [
+          "/ physics%fac( iLevel )%vel"
+        ]
+      },
+      "normal_velocity_per_boundary_element": {
+        "status": "PASS",
+        "line_numbers": [
+          696,
+          698
+        ],
+        "tokens": [
+          "velocity(:,iElem) = massFlowRate(iElem) * massFlowRateToVel",
+          "normalInd%val(iElem)"
+        ]
+      }
+    }
+  },
+  "mass_flowrate_input_unit": "kg/s",
+  "unit_basis": "massFlowRate/(rho0[kg/m3] * area[m2]) produces physical velocity[m/s]",
+  "physical_to_lattice_conversion": "divide physical velocity by physics%fac(iLevel)%vel",
+  "boundary_velocity": "normal-aligned velocity using cxDirRK(:, normalInd)",
+  "boundary_area": "sum nElems_totalLevel(level) * dx(level)^2 over levels",
+  "target_distribution": "the same configured mass-flow value produces one uniform normal speed from the total boundary-element area; equilibrium PDFs are then assigned per boundary element",
+  "implementation_modified": false
+}
