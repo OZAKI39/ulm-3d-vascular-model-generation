@@ -85,6 +85,7 @@ class MonitoredRun:
     safety_failure: str | None
     wrapper_timeout: bool
     infrastructure_failure: str | None
+    continuity_failure: str | None
     controller_record_count: int
     latest_controller_iteration: int | None
 
@@ -401,6 +402,7 @@ def _run_monitored_wsl(
     controller_csv_path: Path,
     timeout_s: int,
     checkpoint_tracker: CheckpointTracker | None = None,
+    minimum_controller_iteration_exclusive: int | None = None,
 ) -> MonitoredRun:
     """Stream WSL stdout/stderr directly into durable Windows evidence."""
 
@@ -409,6 +411,7 @@ def _run_monitored_wsl(
     state: dict[str, Any] = {
         "safety_failure": None,
         "infrastructure_failure": None,
+        "continuity_failure": None,
         "controller_record_count": 0,
         "latest_controller_iteration": None,
     }
@@ -459,6 +462,18 @@ def _run_monitored_wsl(
                             record = _match_record(match)
                             writer.writerow(record)
                             controller_sink.flush()
+                            if (
+                                state["controller_record_count"] == 0
+                                and minimum_controller_iteration_exclusive is not None
+                                and int(record["iteration"])
+                                <= minimum_controller_iteration_exclusive
+                            ):
+                                state["continuity_failure"] = (
+                                    "First controller iteration "
+                                    f"{record['iteration']} <= resume iteration "
+                                    f"{minimum_controller_iteration_exclusive}"
+                                )
+                                stop_event.set()
                             state["controller_record_count"] += 1
                             state["latest_controller_iteration"] = int(
                                 record["iteration"]
@@ -552,6 +567,7 @@ def _run_monitored_wsl(
         safety_failure=state["safety_failure"],
         wrapper_timeout=wrapper_timeout,
         infrastructure_failure=state["infrastructure_failure"],
+        continuity_failure=state["continuity_failure"],
         controller_record_count=int(state["controller_record_count"]),
         latest_controller_iteration=state["latest_controller_iteration"],
     )
