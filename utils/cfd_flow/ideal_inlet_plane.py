@@ -34,7 +34,7 @@ from .restart_decode import read_treelm_elemlist, tree_ids_to_ijk, tree_levels
 
 
 EXPECTED_BRANCH = "codex/cfd-flow-axis-aligned-inlet-preflight-20260829"
-EXPECTED_HEAD = "5eabc72a28bd7a8760ed8554ca0d43721828e6fd"
+EXPECTED_HEAD = "478fab2aa727ea5e2e2c5d17859960a51beadd56"
 PREVIOUS_ROTATED_RUN = "axis_aligned_inlet_geometry_anchor003274_20260829_111451"
 FROZEN_STEADY_RUN = "musubi_project_steady_confirmation_anchor003274_20260828_225334"
 FROZEN_DIRECT_FIELD_RUN = "musubi_direct_restart_field_anchor003274_20260829_000544"
@@ -50,6 +50,8 @@ DOMAIN_CHANGED = "CFD_FLOW_IDEAL_INLET_PLANE_DOMAIN_CHANGED"
 SEEDER_INPUT_FORMAT_FAILED = "CFD_FLOW_IDEAL_INLET_PLANE_SEEDER_INPUT_FORMAT_FAILED"
 PASS_NEXT = "RUN ONE NEW AXIS_ALIGNED MUSUBI BASELINE"
 FAILED_NEXT = "BUILD SHORT AXIS-ALIGNED STRAIGHT INLET EXTENSION"
+CURRENT_SEEDER_FAILURE_NEXT = "FIX CURRENT SEEDER CANOND PREFLIGHT FAILURE"
+TOPOLOGY_FAILURE_NEXT = "REVIEW NEED FOR SHORT AXIS-ALIGNED STRAIGHT INLET EXTENSION"
 
 PREVIOUS_FLUID_CELL_COUNT = 221_359
 RECTANGLE_MARGIN_CELLS = 2
@@ -585,7 +587,7 @@ def run_ideal_inlet_plane_preflight(project_root: Path) -> dict[str, Any]:
     manifest_path = layout.qc / "ideal_plane_preflight_manifest.json"
     summary: dict[str, Any] = {
         "status": FAILED_STATUS,
-        "next": FAILED_NEXT,
+        "next": CURRENT_SEEDER_FAILURE_NEXT,
         "revision": REVISION,
         "run_root": str(layout.root),
         "branch": branch,
@@ -927,7 +929,7 @@ def run_ideal_inlet_plane_preflight(project_root: Path) -> dict[str, Any]:
         write_json(layout.seeder / "mesh_manifest.json", mesh_manifest)
 
         final_status = PASS_STATUS if not failures else FAILED_STATUS
-        final_next = PASS_NEXT if not failures else FAILED_NEXT
+        final_next = PASS_NEXT if not failures else TOPOLOGY_FAILURE_NEXT
         summary.update(
             {
                 "status": final_status,
@@ -990,7 +992,7 @@ def run_ideal_inlet_plane_preflight(project_root: Path) -> dict[str, Any]:
         summary.update(
             {
                 "status": status,
-                "next": FAILED_NEXT,
+                "next": CURRENT_SEEDER_FAILURE_NEXT,
                 "first_failure_reason": str(error),
                 "previous_rotated_geometry_modified": not frozen_unchanged,
                 "source_frozen_files_unchanged": frozen_unchanged,
