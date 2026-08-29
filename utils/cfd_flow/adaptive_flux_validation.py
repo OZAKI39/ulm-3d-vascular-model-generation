@@ -287,6 +287,8 @@ def run_adaptive_flux_validation(project_root: Path) -> dict[str, Any]:
     qc = run_root / "qc"
     for directory in (canonical, vascular, qc):
         directory.mkdir(parents=True, exist_ok=False)
+    canonical_mesh = canonical / "mesh"
+    canonical_mesh.mkdir(parents=True, exist_ok=False)
 
     source_paths = (
         root / "cfd_flow.py",
@@ -458,4 +460,3 @@ def run_adaptive_flux_validation(project_root: Path) -> dict[str, Any]:
         )
         write_json(qc / "adaptive_flux_validation_manifest.json", summary)
         return summary
-

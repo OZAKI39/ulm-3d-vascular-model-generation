@@ -13,7 +13,7 @@ import re
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import numpy as np
@@ -185,11 +185,15 @@ def _wsl_source_root(distribution: str) -> Path:
     raise FlowError(CONTRACT_UNPROVEN, "Pinned Musubi source directory is unavailable")
 
 
-def _wsl_to_windows_path(value: str) -> Path:
+def _wsl_to_windows_path(value: str, *, relative_root: Path | None = None) -> Path:
     match = re.fullmatch(r"/mnt/([A-Za-z])/(.+)", value)
-    if not match:
-        raise FlowError(CONTRACT_UNPROVEN, f"Unsupported frozen WSL path: {value}")
-    return Path(f"{match.group(1).upper()}:/{match.group(2)}")
+    if match:
+        return Path(f"{match.group(1).upper()}:/{match.group(2)}")
+    if value.startswith("/"):
+        return Path(r"\\wsl.localhost\Ubuntu" + value.replace("/", "\\"))
+    if relative_root is not None:
+        return Path(relative_root).joinpath(*PurePosixPath(value).parts).resolve()
+    raise FlowError(CONTRACT_UNPROVEN, f"Unsupported frozen WSL path: {value}")
 
 
 def _extract_string(text: str, key: str) -> str:
@@ -220,10 +224,15 @@ def parse_restart_header(path: Path) -> RestartHeader:
         raise FlowError(CONTRACT_UNPROVEN, "Restart binary or variable metadata is missing")
     binary_wsl = binary_match.group(1)
     solver_config_wsl = _extract_string(text, "solver_configFile")
+    # Musubi normally writes paths relative to the configuration directory.
+    # A header is one directory below that root (for example restart/header.lua).
+    relative_root = Path(path).parent.parent
     return RestartHeader(
-        binary_path=_wsl_to_windows_path(binary_wsl),
+        binary_path=_wsl_to_windows_path(binary_wsl, relative_root=relative_root),
         binary_name_wsl=binary_wsl,
-        solver_config=_wsl_to_windows_path(solver_config_wsl),
+        solver_config=_wsl_to_windows_path(
+            solver_config_wsl, relative_root=relative_root
+        ),
         solver_config_wsl=solver_config_wsl,
         iteration=_extract_integer(text, "iter"),
         n_elems=_extract_integer(text, "nElems"),
