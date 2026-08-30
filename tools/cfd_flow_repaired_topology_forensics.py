@@ -44,14 +44,16 @@ from utils.cfd_flow.repaired_topology_forensics import (  # noqa: E402
     parse_uniform_lattice,
     port_component_membership,
     scale_binary_stl,
-    scaled_seeder_command,
-    scaled_seeder_preflight_command,
+    scaled_seeder_preflight_script,
+    scaled_seeder_run_script,
     scale_seeder_lua_geometry,
     evaluate_scaled_seeder_preflight,
     seeder_mesh_semantic_success,
     sparse_component_labels,
+    stl_scale_roundtrip_error,
     timed_runtime,
     unit_scaling_oracle_decision,
+    wsl_script_file_command,
 )
 from utils.cfd_flow.apes import windows_to_wsl  # noqa: E402
 from utils.cfd_flow.musubi_boundary_mass_referee import (  # noqa: E402
@@ -407,7 +409,7 @@ def prepare_scaled(project_root: Path) -> dict[str, Any]:
 
 
 def launcher_preflight(project_root: Path) -> dict[str, Any]:
-    """Run the zero-Launcher-call direct-WSL filesystem/hash preflight."""
+    """Run the zero-Launcher-call filesystem/hash script through direct WSL."""
 
     started = time.perf_counter()
     paths = _paths(project_root.resolve())
@@ -420,9 +422,14 @@ def launcher_preflight(project_root: Path) -> dict[str, Any]:
         row for row in transform["stl_files"] if Path(row["source"]).name == "wall.stl"
     )
     workdir_wsl = windows_to_wsl(paths["scaled"] / "seeder", "Ubuntu")
-    command = scaled_seeder_preflight_command(workdir_wsl)
+    script_path = paths["scaled"] / "seeder/launcher_preflight.sh"
+    expected_script = scaled_seeder_preflight_script()
+    if script_path.read_text(encoding="utf-8") != expected_script:
+        raise ValueError("launcher_preflight.sh does not match the tested payload")
+    script_wsl = windows_to_wsl(script_path, "Ubuntu")
+    command = wsl_script_file_command(script_wsl)
     process = subprocess.run(
-        ["wsl.exe", "-d", "Ubuntu", "--", "bash", "-lc", command],
+        command,
         check=False,
         capture_output=True,
         text=True,
@@ -449,7 +456,11 @@ def launcher_preflight(project_root: Path) -> dict[str, Any]:
             else "CFD_FLOW_SCALE_ORACLE_LAUNCH_PREFLIGHT_FAILED"
         ),
         "workdir_wsl": workdir_wsl,
-        "command_transport": "DIRECT_PYTHON_SUBPROCESS_TO_WSL_BASH_LC",
+        "script": str(script_path.resolve()),
+        "script_wsl": script_wsl,
+        "script_sha256": sha256_file(script_path),
+        "command": command,
+        "command_transport": "WSL_BIN_BASH_SCRIPT_FILE_ONLY",
         "returncode": int(process.returncode),
         "stdout": str(stdout_path.resolve()),
         "stdout_sha256": sha256_file(stdout_path),
@@ -489,9 +500,16 @@ def run_scaled_seeder_oracle(project_root: Path) -> dict[str, Any]:
     if any(required_before.values()):
         raise RuntimeError("Scaled mesh already contains non-empty semantic artifacts")
     workdir_wsl = preflight["workdir_wsl"]
-    command = scaled_seeder_command(workdir_wsl)
+    script_path = paths["scaled"] / "seeder/run_unpatched_scaled_seeder.sh"
+    expected_script = scaled_seeder_run_script()
+    if script_path.read_text(encoding="utf-8") != expected_script:
+        raise ValueError(
+            "run_unpatched_scaled_seeder.sh does not match the tested payload"
+        )
+    script_wsl = windows_to_wsl(script_path, "Ubuntu")
+    command = wsl_script_file_command(script_wsl)
     process = subprocess.run(
-        ["wsl.exe", "-d", "Ubuntu", "--", "bash", "-lc", command],
+        command,
         check=False,
         capture_output=True,
         text=True,
@@ -514,7 +532,11 @@ def run_scaled_seeder_oracle(project_root: Path) -> dict[str, Any]:
         ),
         "semantic": semantic,
         "workdir_wsl": workdir_wsl,
-        "command_transport": "DIRECT_PYTHON_SUBPROCESS_TO_WSL_BASH_LC",
+        "script": str(script_path.resolve()),
+        "script_wsl": script_wsl,
+        "script_sha256": sha256_file(script_path),
+        "command": command,
+        "command_transport": "WSL_BIN_BASH_SCRIPT_FILE_ONLY",
         "binary": UNPATCHED_SEEDER_BINARY_WSL,
         "binary_sha256": UNPATCHED_SEEDER_BINARY_SHA256,
         "pinned_seeder_source_sha": PINNED_SEEDER_SHA,
@@ -645,7 +667,7 @@ def finalize_preflight_failed(project_root: Path) -> dict[str, Any]:
     return final
 
 
-def finalize(project_root: Path) -> dict[str, Any]:
+def _finalize_legacy(project_root: Path) -> dict[str, Any]:
     started = time.perf_counter()
     paths = _paths(project_root.resolve())
     repaired, repaired_lattice = _load_mesh(paths["repaired"])
@@ -789,6 +811,190 @@ def finalize(project_root: Path) -> dict[str, Any]:
             "unit_scaling_oracle": "unit_scaling_oracle.json",
         },
         "runtime_s": timed_runtime(started),
+        "next": next_step,
+    }
+    write_json(paths["qc"] / "repaired_topology_root_cause.json", final)
+    return final
+
+
+def finalize(project_root: Path) -> dict[str, Any]:
+    """Finalize the one-call scale oracle with strict topology equality."""
+
+    started = time.perf_counter()
+    paths = _paths(project_root.resolve())
+    repaired, repaired_lattice = _load_mesh(paths["repaired"])
+    scaled, scaled_lattice = _load_mesh(paths["scaled"])
+    _, repaired_connectivity = _connectivity_records(repaired, repaired_lattice)
+    _, scaled_connectivity = _connectivity_records(scaled, scaled_lattice)
+    repaired_tree_ids, repaired_bnd = load_boundary_ids_by_cell(
+        paths["repaired"] / "seeder/mesh"
+    )
+    scaled_tree_ids, scaled_bnd = load_boundary_ids_by_cell(
+        paths["scaled"] / "seeder/mesh"
+    )
+    if not np.array_equal(repaired_tree_ids, repaired.tree_ids):
+        raise ValueError("Repaired boundary/tree-ID ordering mismatch")
+    if not np.array_equal(scaled_tree_ids, scaled.tree_ids):
+        raise ValueError("Scaled boundary/tree-ID ordering mismatch")
+
+    comparison = compare_scaled_meshes(repaired, scaled, repaired_bnd, scaled_bnd)
+    repaired_structures = {
+        mode: {
+            "component_count": row["component_count"],
+            "component_sizes": row["component_sizes"],
+        }
+        for mode, row in repaired_connectivity.items()
+    }
+    scaled_structures = {
+        mode: {
+            "component_count": row["component_count"],
+            "component_sizes": row["component_sizes"],
+        }
+        for mode, row in scaled_connectivity.items()
+    }
+    transform = json.loads(
+        (paths["scaled"] / "scaled_geometry_transform.json").read_text(encoding="utf-8")
+    )
+    roundtrip = stl_scale_roundtrip_error(transform, dx_m=repaired_lattice.dx)
+    decision = unit_scaling_oracle_decision(
+        comparison,
+        repaired_structures,
+        scaled_structures,
+        derived_q_tolerance=roundtrip["derived_q_tolerance"],
+    )
+    patched_boundary_counts = {
+        name: int(len(boundary.cell_indices))
+        for name, boundary in repaired.boundaries.items()
+    }
+    scaled_boundary_counts = {
+        name: int(len(boundary.cell_indices))
+        for name, boundary in scaled.boundaries.items()
+    }
+    topology_checks = {
+        "cell_count_exact_match": len(repaired.tree_ids) == len(scaled.tree_ids),
+        "tree_id_set_exact_match": comparison["tree_id_set_exact_match"],
+        "boundary_id_exact_match": comparison["boundary_id_exact_match"],
+        "component_structures_exact_match": repaired_structures == scaled_structures,
+    }
+    preflight = json.loads(
+        (paths["scaled"] / "launcher_preflight.json").read_text(encoding="utf-8")
+    )
+    attempt = json.loads(
+        (paths["scaled"] / "seeder_oracle_attempt_summary.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    q_max = comparison["q_patched_minus_scaled"]["max"]
+    oracle = {
+        "status": decision,
+        "interpretation": {
+            "PASS_EXACT": "SCALE_INVARIANCE_ORACLE_PASS_EXACT",
+            "PASS_WITH_FLOAT32_STL_ROUNDOFF": (
+                "SCALE_INVARIANCE_ORACLE_PASS_WITH_FLOAT32_STL_ROUNDOFF"
+            ),
+            "FAIL": "SCALE_INVARIANCE_ORACLE_FAIL",
+        }[decision],
+        "topology_scale_invariance": (
+            "PASS" if all(topology_checks.values()) else "FAIL"
+        ),
+        "topology_checks": topology_checks,
+        "patched_meter": {
+            "cell_count": int(len(repaired.tree_ids)),
+            "connectivity": repaired_structures,
+            "boundary_counts": patched_boundary_counts,
+        },
+        "unpatched_micrometer_scaled": {
+            "cell_count": int(len(scaled.tree_ids)),
+            "connectivity": scaled_structures,
+            "boundary_counts": scaled_boundary_counts,
+            "pinned_seeder_sha": PINNED_SEEDER_SHA,
+        },
+        "comparison": {
+            **comparison,
+            "stl_scale_roundtrip": roundtrip,
+            "q_error_within_derived_tolerance": bool(
+                q_max is not None and q_max <= roundtrip["derived_q_tolerance"]
+            ),
+        },
+        "launcher_preflight": preflight,
+        "seeder_attempt": attempt,
+        "seeder_calls": 1,
+        "musubi_calls": 0,
+        "runtime_s": timed_runtime(started),
+    }
+    write_json(paths["qc"] / "unit_scaling_oracle.json", oracle)
+
+    components = json.loads(
+        (paths["qc"] / "repaired_base_component_forensics.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    spatial = json.loads(
+        (paths["qc"] / "old_vs_repaired_spatial_difference.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    if decision == "FAIL":
+        final_status = "CFD_FLOW_QVALUE_PATCH_TOPOLOGY_NOT_PROVEN"
+        root_cause = "UNIT_SCALED_UNPATCHED_MESH_DID_NOT_MATCH_PATCHED_METER_MESH"
+        next_step = "INVESTIGATE REMAINING DIMENSIONAL GEOMETRY PREDICATES"
+        first_failure = {
+            "failed_topology_checks": {
+                name: value for name, value in topology_checks.items() if not value
+            },
+            "patched_cells": int(len(repaired.tree_ids)),
+            "scaled_cells": int(len(scaled.tree_ids)),
+            "patched_only_tree_ids": comparison["patched_only_tree_ids"],
+            "scaled_only_tree_ids": comparison["scaled_only_tree_ids"],
+        }
+    else:
+        final_status = "CFD_FLOW_QVALUE_SCALE_REPAIR_VALIDATED_READY_FOR_WALL_BENCHMARK"
+        root_cause = (
+            "QVALUE_SCALE_REPAIR_VALIDATED; OLD_BASE_FALSE_FLOODING_CONFIRMED; "
+            "MAIN_VASCULAR_NETWORK_NOT_SPLIT"
+        )
+        next_step = "RUN MINIMAL PERIODIC PIPE FORCE WITH REPAIRED CONTINUOUS QVALUES"
+        first_failure = None
+    finalization_s = timed_runtime(started)
+    runtime = {
+        "launcher_preflight_s": preflight["runtime_s"],
+        "scaled_seeder_s": attempt["runtime_s"],
+        "finalization_s": finalization_s,
+    }
+    runtime["total_s"] = sum(runtime.values())
+    final = {
+        "status": final_status,
+        "actual_head_at_execution": _head(paths["root"]),
+        "production_pipeline_modified": False,
+        "launcher_transport": "WSL_BIN_BASH_SCRIPT_FILE_ONLY",
+        "zero_call_launcher_preflight": "PASS",
+        "seeder_calls": 1,
+        "seeder_semantic_success": True,
+        "musubi_calls": 0,
+        "harvester_calls": 0,
+        "old_base_cells": 221309,
+        "repaired_base_cells": int(len(repaired.tree_ids)),
+        "scaled_unpatched_base_cells": int(len(scaled.tree_ids)),
+        "component_classification": components["component_classification"],
+        "scale_invariance_oracle": decision,
+        "topology_scale_invariance": oracle["topology_scale_invariance"],
+        "old_mesh_false_flooding": spatial["old_mesh_false_flooding"],
+        "singleton_forensics": None,
+        "main_vascular_network_split": False,
+        "root_cause_final": root_cause,
+        "first_failure": first_failure,
+        "evidence": {
+            "component_forensics": "repaired_base_component_forensics.json",
+            "spatial_difference": "old_vs_repaired_spatial_difference.json",
+            "unit_scaling_oracle": "unit_scaling_oracle.json",
+            "launcher_preflight": str(
+                (paths["scaled"] / "launcher_preflight.json").resolve()
+            ),
+            "seeder_attempt": str(
+                (paths["scaled"] / "seeder_oracle_attempt_summary.json").resolve()
+            ),
+        },
+        "runtime": runtime,
         "next": next_step,
     }
     write_json(paths["qc"] / "repaired_topology_root_cause.json", final)

@@ -13,7 +13,6 @@ import heapq
 import json
 import math
 import re
-import shlex
 import struct
 import time
 from dataclasses import dataclass
@@ -627,48 +626,65 @@ def stl_scale_roundtrip_error(
     }
 
 
-def scaled_seeder_preflight_command(
-    workdir_wsl: str,
+def scaled_seeder_preflight_script(
     *,
     binary_wsl: str = UNPATCHED_SEEDER_BINARY_WSL,
     source_root_wsl: str = "/home/lzy/apes-pinned/seeder_official",
 ) -> str:
-    """Build the zero-Launcher-call WSL shell preflight."""
+    """Return a self-locating, zero-Launcher-call shell-script payload."""
 
-    workdir = shlex.quote(workdir_wsl)
-    binary = shlex.quote(binary_wsl)
-    source_root = shlex.quote(source_root_wsl)
-    return " && ".join(
-        (
-            "set -euo pipefail",
-            f"cd {workdir}",
-            "test -f seeder.lua",
-            "test -d ../geometry",
-            "test -f ../geometry/geometry_solver_m/wall.stl",
-            f"test -x {binary}",
-            "mkdir -p mesh",
-            "printf 'PREFLIGHT_CWD=%s\\n' \"$PWD\"",
-            "printf 'SEEDER_LUA_REALPATH=%s\\n' \"$(realpath seeder.lua)\"",
-            "printf 'SEEDER_LUA_SHA256=%s\\n' \"$(sha256sum seeder.lua | awk '{print $1}')\"",
-            "printf 'WALL_STL_SHA256=%s\\n' \"$(sha256sum ../geometry/geometry_solver_m/wall.stl | awk '{print $1}')\"",
-            f"printf 'SEEDER_BINARY_SHA256=%s\\n' \"$(sha256sum {binary} | awk '{{print $1}}')\"",
-            f"printf 'SEEDER_SOURCE_HEAD=%s\\n' \"$(git -C {source_root} rev-parse HEAD)\"",
-        )
-    )
+    return f"""#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(
+  cd -- "$(dirname -- "${{BASH_SOURCE[0]}}")"
+  pwd -P
+)"
+
+cd "$SCRIPT_DIR"
+
+test -f seeder.lua
+test -d ../geometry
+test -f ../geometry/geometry_solver_m/wall.stl
+test -x {binary_wsl}
+
+mkdir -p mesh
+
+printf 'PREFLIGHT_CWD=%s\\n' "$PWD"
+printf 'SEEDER_LUA_REALPATH=%s\\n' "$(realpath seeder.lua)"
+printf 'SEEDER_LUA_SHA256=%s\\n' "$(sha256sum seeder.lua | awk '{{print $1}}')"
+printf 'WALL_STL_SHA256=%s\\n' "$(sha256sum ../geometry/geometry_solver_m/wall.stl | awk '{{print $1}}')"
+printf 'SEEDER_BINARY_SHA256=%s\\n' "$(sha256sum {binary_wsl} | awk '{{print $1}}')"
+printf 'SEEDER_SOURCE_HEAD=%s\\n' "$(git -C {source_root_wsl} rev-parse HEAD)"
+"""
 
 
-def scaled_seeder_command(
-    workdir_wsl: str, *, binary_wsl: str = UNPATCHED_SEEDER_BINARY_WSL
-) -> str:
-    """Build the one allowed direct-WSL Seeder invocation."""
+def scaled_seeder_run_script(*, binary_wsl: str = UNPATCHED_SEEDER_BINARY_WSL) -> str:
+    """Return the self-locating script for the one allowed Seeder call."""
 
-    return " && ".join(
-        (
-            "set -euo pipefail",
-            f"cd {shlex.quote(workdir_wsl)}",
-            f"exec {shlex.quote(binary_wsl)} seeder.lua",
-        )
-    )
+    return f"""#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(
+  cd -- "$(dirname -- "${{BASH_SOURCE[0]}}")"
+  pwd -P
+)"
+
+cd "$SCRIPT_DIR"
+
+test -f seeder.lua
+mkdir -p mesh
+
+exec {binary_wsl} seeder.lua
+"""
+
+
+def wsl_script_file_command(
+    script_wsl: str, *, distribution: str = "Ubuntu"
+) -> list[str]:
+    """Build a WSL invocation whose only shell payload is a script path."""
+
+    return ["wsl.exe", "-d", distribution, "--", "/bin/bash", script_wsl]
 
 
 def parse_key_value_lines(stdout: str) -> dict[str, str]:
@@ -817,23 +833,26 @@ def compare_scaled_meshes(
     relative_tree_difference = symmetric_difference / max(
         len(patched.tree_ids), len(scaled.tree_ids)
     )
+    tree_exact = bool(
+        len(patched.tree_ids) == len(scaled.tree_ids)
+        and np.array_equal(patched_ids, scaled_ids)
+    )
+    boundary_common_exact = bool(np.all(boundary_equal))
     return {
         "patched_tree_id_count": int(len(patched.tree_ids)),
         "scaled_tree_id_count": int(len(scaled.tree_ids)),
         "common_tree_ids": int(len(common)),
         "patched_only_tree_ids": int(len(patched.tree_ids) - len(common)),
         "scaled_only_tree_ids": int(len(scaled.tree_ids) - len(common)),
-        "tree_id_set_exact_match": bool(
-            len(patched.tree_ids) == len(scaled.tree_ids)
-            and np.array_equal(patched_ids, scaled_ids)
-        ),
+        "tree_id_set_exact_match": tree_exact,
         "tree_id_order_exact_match": bool(
             np.array_equal(patched.tree_ids, scaled.tree_ids)
         ),
         "relative_tree_id_symmetric_difference": float(relative_tree_difference),
         "boundary_id_values_compared": int(boundary_equal.size),
         "boundary_id_mismatch_count": int(np.count_nonzero(~boundary_equal)),
-        "boundary_id_exact_match": bool(np.all(boundary_equal)),
+        "boundary_id_exact_on_common_tree_ids": boundary_common_exact,
+        "boundary_id_exact_match": bool(tree_exact and boundary_common_exact),
         "boundary_id_mismatch_fraction": float(np.mean(~boundary_equal)),
         "common_q_links": int(np.count_nonzero(q_mask)),
         "q_patched_minus_scaled": error_statistics(q_error),
@@ -842,15 +861,31 @@ def compare_scaled_meshes(
 
 def unit_scaling_oracle_decision(
     comparison: Mapping[str, Any],
-    patched_component_counts: Mapping[str, int],
-    scaled_component_counts: Mapping[str, int],
+    patched_component_structures: Mapping[str, Any],
+    scaled_component_structures: Mapping[str, Any],
+    *,
+    derived_q_tolerance: float | None = None,
 ) -> str:
-    relative = float(comparison["relative_tree_id_symmetric_difference"])
-    boundary_fraction = float(comparison["boundary_id_mismatch_fraction"])
-    topology_same = dict(patched_component_counts) == dict(scaled_component_counts)
-    if relative > 0.001 or not topology_same or boundary_fraction > 0.001:
+    """Return an exact-topology scale oracle with a geometry-derived q budget."""
+
+    topology_same = dict(patched_component_structures) == dict(
+        scaled_component_structures
+    )
+    if (
+        not comparison["tree_id_set_exact_match"]
+        or not comparison["boundary_id_exact_match"]
+        or not topology_same
+    ):
         return "FAIL"
-    return "PASS"
+    q_max = comparison["q_patched_minus_scaled"]["max"]
+    if q_max is None:
+        return "FAIL"
+    exact_tolerance = 64.0 * np.finfo(np.float64).eps
+    if float(q_max) <= exact_tolerance:
+        return "PASS_EXACT"
+    if derived_q_tolerance is not None and float(q_max) <= float(derived_q_tolerance):
+        return "PASS_WITH_FLOAT32_STL_ROUNDOFF"
+    return "FAIL"
 
 
 def source_line_evidence(path: Path, token: str) -> dict[str, Any]:
