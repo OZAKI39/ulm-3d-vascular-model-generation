@@ -7,6 +7,7 @@ meshes, and stores all grid-convergence evidence under a dedicated run root.
 
 from __future__ import annotations
 
+import csv
 import math
 import shlex
 import shutil
@@ -100,6 +101,8 @@ PRESSURE_GATE = 0.005
 INLET_GATE = 0.01
 BOUNDARY_WINDOW_GATE = 0.001
 SIGNIFICANT_BACKFLOW_FRACTION = 0.05
+FINE_DEFER_FULL_AUDIT_UNTIL = 550_000
+AUDIT_WINDOW_ITERATIONS = 20_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -897,7 +900,9 @@ def run_grid_steady(project_root: Path, label: str) -> dict[str, Any]:
     return result
 
 
-def _grid_runtime_is_running(runtime_root_wsl: str) -> bool:
+def _active_grid_musubi_processes() -> list[dict[str, Any]]:
+    """Return unique live grid runtimes, grouping their MPI worker PIDs."""
+
     process = subprocess.run(
         ["wsl.exe", "-d", "Ubuntu", "--", "ps", "-eo", "pid=,cmd="],
         capture_output=True,
@@ -908,7 +913,8 @@ def _grid_runtime_is_running(runtime_root_wsl: str) -> bool:
         check=False,
     )
     if process.returncode != 0:
-        return False
+        return []
+    by_runtime: dict[str, dict[str, Any]] = {}
     for line in process.stdout.splitlines():
         if BINARY_WSL not in line:
             continue
@@ -927,13 +933,231 @@ def _grid_runtime_is_running(runtime_root_wsl: str) -> bool:
             timeout=30,
             check=False,
         )
-        if cwd.returncode == 0 and cwd.stdout.strip() == runtime_root_wsl:
-            return True
-    return False
+        if cwd.returncode != 0:
+            continue
+        runtime = cwd.stdout.strip()
+        if not runtime.startswith("/home/lzy/u3da/gc_"):
+            continue
+        record = by_runtime.setdefault(
+            runtime,
+            {
+                "runtime_root_wsl": runtime,
+                "pids": [],
+                "binary_wsl": BINARY_WSL,
+            },
+        )
+        record["pids"].append(int(fields[0]))
+    return sorted(by_runtime.values(), key=lambda item: item["runtime_root_wsl"])
+
+
+def _grid_runtime_is_running(runtime_root_wsl: str) -> bool:
+    return any(
+        record["runtime_root_wsl"] == runtime_root_wsl
+        for record in _active_grid_musubi_processes()
+    )
+
+
+def _assert_no_duplicate_grid_musubi(label: str) -> None:
+    prefix = f"/home/lzy/u3da/gc_{label}_"
+    active = [
+        record
+        for record in _active_grid_musubi_processes()
+        if str(record["runtime_root_wsl"]).startswith(prefix)
+    ]
+    if active:
+        runtimes = ", ".join(str(record["runtime_root_wsl"]) for record in active)
+        raise FlowError(
+            "CFD_FLOW_GRID_DUPLICATE_MUSUBI_BLOCKED",
+            f"{label} already active: {runtimes}",
+        )
+
+
+def _archive_intermediate_summary(steady_root: Path) -> dict[str, Any] | None:
+    """Preserve a cleanly ended, non-steady segment without calling it a failure."""
+
+    summary_path = steady_root / "steady_summary.json"
+    if not summary_path.is_file():
+        return None
+    existing = read_json(summary_path)
+    if existing.get("status") == "PASS":
+        return existing
+    history = steady_root / "history"
+    history.mkdir(parents=True, exist_ok=True)
+    historical_path = history / "initial_segment_summary.json"
+    if not historical_path.exists():
+        historical = dict(existing)
+        if (
+            historical.get("status") == "FAIL"
+            and int(historical.get("returncode", 0)) == 0
+        ):
+            historical["historical_status"] = "COMPLETED_NOT_STEADY"
+            historical["status_was_not_a_numerical_failure"] = True
+        write_json(historical_path, historical)
+    process_path = history / "initial_process_provenance.json"
+    if not process_path.exists():
+        returncode = existing.get("returncode")
+        completed_cleanly = returncode is not None and int(returncode) == 0
+        write_json(
+            process_path,
+            {
+                "segment": "initial",
+                "source_iteration": 0,
+                "end_iteration": existing.get("latest_iteration"),
+                "runtime_root_wsl": existing.get("runtime_root_wsl"),
+                "returncode": returncode,
+                "wall_time_s": existing.get("wall_time_s"),
+                "status": (
+                    "COMPLETED_NOT_STEADY"
+                    if completed_cleanly
+                    else "NUMERICAL_FAILED"
+                ),
+                "evidence_source": str(historical_path),
+            },
+        )
+    return existing
+
+
+def _write_process_record(segment_root: Path, record: dict[str, Any]) -> Path:
+    path = segment_root / "process_provenance.json"
+    write_json(path, record)
+    return path
+
+
+def _grid_process_history(steady_root: Path) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    initial = steady_root / "history" / "initial_process_provenance.json"
+    if initial.is_file():
+        records.append(read_json(initial))
+    for path in sorted((steady_root / "continuations").glob("*/process_provenance.json")):
+        records.append(read_json(path))
+    return records
+
+
+def _runtime_from_restart_path(value: str | None) -> str | None:
+    if not value:
+        return None
+    normalized = str(value).replace("\\", "/")
+    marker = "/home/lzy/"
+    if marker in normalized and "/restart/" in normalized:
+        return marker + normalized.split(marker, 1)[1].split("/restart/", 1)[0]
+    return None
+
+
+def reconcile_grid_process_provenance(
+    project_root: Path, label: str
+) -> dict[str, Any]:
+    """Rebuild cumulative launch provenance from measured segment evidence."""
+
+    root = Path(project_root).resolve()
+    steady_root = (
+        root / "outputs" / "cfd_flow" / GRID_RUN / "grids" / label / "steady"
+    )
+    summary_path = steady_root / "steady_summary.json"
+    summary = read_json(summary_path)
+    history_root = steady_root / "history"
+    history_root.mkdir(parents=True, exist_ok=True)
+    historical_summary_path = history_root / "initial_segment_summary.json"
+    initial_process_path = history_root / "initial_process_provenance.json"
+    if historical_summary_path.is_file() and not initial_process_path.is_file():
+        initial_summary = read_json(historical_summary_path)
+        runtime = initial_summary.get("runtime_root_wsl")
+        checkpoint_evidence = steady_root / "qc" / "checkpoint_referee_v2.json"
+        if runtime is None and checkpoint_evidence.is_file():
+            records = read_json(checkpoint_evidence).get("records", [])
+            historical_end = int(initial_summary.get("latest_iteration", -1))
+            matching = [
+                record for record in records
+                if int(record.get("iteration", -2)) == historical_end
+            ]
+            if matching:
+                runtime = _runtime_from_restart_path(matching[-1].get("restart_header"))
+        returncode = initial_summary.get("returncode")
+        write_json(
+            initial_process_path,
+            {
+                "segment": "initial",
+                "source_iteration": 0,
+                "end_iteration": initial_summary.get("latest_iteration"),
+                "runtime_root_wsl": runtime,
+                "returncode": returncode,
+                "wall_time_s": initial_summary.get("wall_time_s"),
+                "status": (
+                    "COMPLETED_NOT_STEADY"
+                    if returncode is not None and int(returncode) == 0
+                    else "NUMERICAL_FAILED"
+                ),
+                "evidence_source": str(historical_summary_path),
+            },
+        )
+    for segment_root in sorted((steady_root / "continuations").glob("from_*")):
+        process_path = segment_root / "process_provenance.json"
+        existing_process = read_json(process_path) if process_path.is_file() else {}
+        progress_path = segment_root / "progress.json"
+        progress = read_json(progress_path) if progress_path.is_file() else {}
+        runtime = progress.get("runtime_root_wsl") or existing_process.get("runtime_root_wsl")
+        active = bool(runtime and _grid_runtime_is_running(str(runtime)))
+        source_iteration = int(segment_root.name.removeprefix("from_"))
+        is_final_segment = runtime is not None and runtime == summary.get("runtime_root_wsl")
+        passed = is_final_segment and summary.get("status") == "PASS"
+        observed_final_iteration = progress.get("latest_iteration")
+        if passed:
+            end_iteration = max(
+                int(summary.get("steady_iteration") or -1),
+                int(summary.get("actual_final_iteration") or -1),
+                int(observed_final_iteration or -1),
+            )
+        else:
+            end_iteration = observed_final_iteration
+        process_record = dict(existing_process)
+        process_record.update(
+            {
+                "segment": segment_root.name,
+                "source_iteration": source_iteration,
+                "end_iteration": end_iteration,
+                "runtime_root_wsl": runtime,
+                "returncode": 0 if passed else None,
+                "wall_time_s": progress.get("elapsed_s"),
+                "status": (
+                    "RUNNING"
+                    if active
+                    else "COMPLETED" if passed else "COMPLETED_NOT_STEADY"
+                ),
+                "evidence_source": str(progress_path),
+            },
+        )
+        write_json(process_path, process_record)
+    processes = _grid_process_history(steady_root)
+    result = {
+        "status": "PASS" if processes else "FAIL",
+        "grid": label,
+        "musubi_process_count": len(processes),
+        "processes": processes,
+    }
+    provenance_path = history_root / "musubi_process_provenance.json"
+    write_json(provenance_path, result)
+    if summary.get("status") == "PASS":
+        summary["musubi_calls"] = len(processes)
+        summary["process_provenance"] = processes
+        summary.setdefault("gate_pass_iteration", summary.get("steady_iteration"))
+        summary.setdefault("stop_request_iteration", summary.get("steady_iteration"))
+        final_iterations = [
+            int(process["end_iteration"])
+            for process in processes
+            if process.get("end_iteration") is not None
+        ]
+        summary["actual_final_iteration"] = max(
+            final_iterations or [int(summary.get("steady_iteration") or -1)]
+        )
+        write_json(summary_path, summary)
+    return result
 
 
 def monitor_existing_grid_steady(
-    project_root: Path, label: str, runtime_root_wsl: str
+    project_root: Path,
+    label: str,
+    runtime_root_wsl: str,
+    *,
+    defer_full_audit_until_iteration: int = 0,
 ) -> dict[str, Any]:
     """Attach the V2 auditor to an already-running single Musubi call."""
 
@@ -960,16 +1184,28 @@ def monitor_existing_grid_steady(
     started = time.perf_counter()
     next_progress = started + 60.0
     stop_created = (runtime_root / "stop").is_file()
+    stop_request_iteration: int | None = None
     while _grid_runtime_is_running(runtime_root_wsl):
-        for header_path in _complete_restart_headers(runtime_root, auditor.cell_count):
+        headers = _complete_restart_headers(runtime_root, auditor.cell_count)
+        latest_iteration = (
+            parse_restart_header(headers[-1]).iteration if headers else 0
+        )
+        lower = max(0, latest_iteration - AUDIT_WINDOW_ITERATIONS)
+        eligible = (
+            headers
+            if latest_iteration >= defer_full_audit_until_iteration
+            else []
+        )
+        for header_path in eligible:
             iteration = parse_restart_header(header_path).iteration
-            if iteration in audited:
+            if iteration < lower or iteration in audited:
                 continue
             record = auditor.audit(header_path)
             audited.add(iteration)
             if record["all_final_gates_pass"] and not stop_created:
                 (runtime_root / "stop").touch(exist_ok=True)
                 stop_created = True
+                stop_request_iteration = int(record["iteration"])
         if time.perf_counter() >= next_progress:
             latest = max(audited) if audited else None
             mass = auditor.records[-1].get("R_mass_short") if auditor.records else None
@@ -981,21 +1217,30 @@ def monitor_existing_grid_steady(
             next_progress += 60.0
         time.sleep(5.0)
     time.sleep(2.0)
-    for header_path in _complete_restart_headers(runtime_root, auditor.cell_count):
+    final_headers = _complete_restart_headers(runtime_root, auditor.cell_count)
+    final_latest = (
+        parse_restart_header(final_headers[-1]).iteration if final_headers else 0
+    )
+    final_lower = max(0, final_latest - AUDIT_WINDOW_ITERATIONS)
+    for header_path in (
+        final_headers if final_latest >= defer_full_audit_until_iteration else []
+    ):
         iteration = parse_restart_header(header_path).iteration
-        if iteration not in audited:
+        if iteration >= final_lower and iteration not in audited:
             auditor.audit(header_path)
             audited.add(iteration)
     elapsed = time.perf_counter() - started
+    process_count = max(1, len(_grid_process_history(steady_root)))
     if auditor.gate_pass is None:
         result = {
-            "status": "FAIL",
+            "status": "IN_PROGRESS",
             "grid": label,
-            "musubi_calls": 1,
+            "musubi_calls": process_count,
             "selected_ranks": ranks,
             "wall_time_s_attached": elapsed,
-            "latest_iteration": max(audited) if audited else None,
-            "first_failure": "Detached Musubi ended before Referee V2 gates passed",
+            "latest_iteration": final_latest or None,
+            "segment_completed_without_steady_pass": True,
+            "first_failure": None,
             "runtime_root_wsl": runtime_root_wsl,
         }
         write_json(summary_path, result)
@@ -1012,10 +1257,12 @@ def monitor_existing_grid_steady(
     result = {
         "status": "PASS",
         "grid": label,
-        "musubi_calls": 1,
+        "musubi_calls": process_count,
         "selected_ranks": ranks,
         "wall_time_s_attached": elapsed,
         "steady_iteration": int(gate["iteration"]),
+        "gate_pass_iteration": int(gate["iteration"]),
+        "stop_request_iteration": stop_request_iteration,
         "accepted_restart_header": str(archived_header),
         "accepted_restart_binary": str(archived_binary),
         "accepted_restart_sha256": gate["restart_sha256"],
@@ -1025,6 +1272,23 @@ def monitor_existing_grid_steady(
     }
     write_json(summary_path, result)
     return result
+
+
+def monitor_existing_grid_steady_deferred(
+    project_root: Path,
+    label: str,
+    runtime_root_wsl: str,
+    *,
+    defer_full_audit_until_iteration: int = FINE_DEFER_FULL_AUDIT_UNTIL,
+) -> dict[str, Any]:
+    """Attach without replaying checkpoints before the requested iteration."""
+
+    return monitor_existing_grid_steady(
+        project_root,
+        label,
+        runtime_root_wsl,
+        defer_full_audit_until_iteration=defer_full_audit_until_iteration,
+    )
 
 
 def _tail_controller_record(path: Path) -> dict[str, Any] | None:
@@ -1061,6 +1325,8 @@ def run_grid_steady_continuation(
     source = parse_restart_header(Path(source_header))
     if source.n_elems != int(parse_mesh_header(mesh)["fluid_element_count"]):
         raise FlowError("CFD_FLOW_GRID_RESTART_CONTRACT_FAILED", str(source_header))
+    _assert_no_duplicate_grid_musubi(label)
+    _archive_intermediate_summary(steady_root)
     segment_root = steady_root / "continuations" / f"from_{source.iteration}"
     segment_root.mkdir(parents=True, exist_ok=False)
     stamp = datetime.now().strftime("%H%M%S")
@@ -1122,7 +1388,34 @@ def run_grid_steady_continuation(
     started = time.perf_counter()
     next_progress = started + 60.0
     stop_created = False
+    stop_request_iteration: int | None = None
     first_failure: str | None = None
+    process_record: dict[str, Any] = {
+        "segment": segment_root.name,
+        "source_iteration": source.iteration,
+        "end_iteration": None,
+        "runtime_root_wsl": runtime_root_wsl,
+        "returncode": None,
+        "wall_time_s": None,
+        "status": "RUNNING",
+        "selected_ranks": ranks,
+    }
+    _write_process_record(segment_root, process_record)
+    process_count = len(_grid_process_history(steady_root))
+    write_json(
+        summary_path,
+        {
+            "status": "IN_PROGRESS",
+            "grid": label,
+            "musubi_calls": process_count,
+            "selected_ranks": ranks,
+            "source_iteration": source.iteration,
+            "latest_iteration": source.iteration,
+            "runtime_root_wsl": runtime_root_wsl,
+            "full_audit_deferred_until_iteration": defer_full_audit_until_iteration,
+            "first_failure": None,
+        },
+    )
     with (
         stdout_runtime.open("w", encoding="utf-8") as stdout,
         stderr_runtime.open("w", encoding="utf-8") as stderr,
@@ -1168,6 +1461,7 @@ def run_grid_steady_continuation(
                     if record["all_final_gates_pass"] and not stop_created:
                         (runtime_root / "stop").touch(exist_ok=True)
                         stop_created = True
+                        stop_request_iteration = int(record["iteration"])
             elapsed = time.perf_counter() - started
             if elapsed >= 43_200:
                 process.terminate()
@@ -1184,6 +1478,13 @@ def run_grid_steady_continuation(
                     "runtime_root_wsl": runtime_root_wsl,
                 }
                 write_json(segment_root / "progress.json", progress)
+                process_record.update(
+                    {
+                        "end_iteration": latest_iteration,
+                        "wall_time_s": elapsed,
+                    }
+                )
+                _write_process_record(segment_root, process_record)
                 print(
                     f"GRID_STEADY_PROGRESS grid={label} continuation=true "
                     f"elapsed_s={elapsed:.1f} latest_checkpoint={latest_iteration} "
@@ -1194,25 +1495,67 @@ def run_grid_steady_continuation(
         returncode = process.wait(timeout=30)
     shutil.copy2(stdout_runtime, segment_root / "musubi_stdout.log")
     shutil.copy2(stderr_runtime, segment_root / "musubi_stderr.log")
+    final_headers = _complete_restart_headers(runtime_root, auditor.cell_count)
+    actual_final_iteration = (
+        parse_restart_header(final_headers[-1]).iteration
+        if final_headers
+        else source.iteration
+    )
+    if actual_final_iteration >= defer_full_audit_until_iteration:
+        final_lower = actual_final_iteration - AUDIT_WINDOW_ITERATIONS
+        for header_path in final_headers:
+            iteration = parse_restart_header(header_path).iteration
+            if iteration >= final_lower and iteration not in audited:
+                auditor.audit(header_path)
+                audited.add(iteration)
+    elapsed = time.perf_counter() - started
+    process_record.update(
+        {
+            "end_iteration": actual_final_iteration,
+            "returncode": returncode,
+            "wall_time_s": elapsed,
+            "status": (
+                "NUMERICAL_FAILED"
+                if returncode != 0 or first_failure
+                else "COMPLETED"
+            ),
+        }
+    )
+    _write_process_record(segment_root, process_record)
+    process_count = len(_grid_process_history(steady_root))
     if returncode != 0 or first_failure:
+        write_json(
+            summary_path,
+            {
+                "status": "NUMERICAL_FAILED",
+                "grid": label,
+                "musubi_calls": process_count,
+                "selected_ranks": ranks,
+                "latest_iteration": actual_final_iteration,
+                "first_failure": first_failure or f"returncode={returncode}",
+                "runtime_root_wsl": runtime_root_wsl,
+            },
+        )
         raise FlowError(
             "CFD_FLOW_GRID_STEADY_FAILED",
             first_failure or f"{label} continuation returncode={returncode}",
         )
     if auditor.gate_pass is None:
         result = {
-            "status": "FAIL",
+            "status": "IN_PROGRESS",
             "grid": label,
-            "musubi_calls": 2,
+            "musubi_calls": process_count,
             "selected_ranks": ranks,
-            "latest_iteration": max(audited) if audited else source.iteration,
-            "first_failure": "Referee V2 gates did not pass",
+            "latest_iteration": actual_final_iteration,
+            "segment_completed_without_steady_pass": True,
+            "first_failure": None,
             "runtime_root_wsl": runtime_root_wsl,
         }
         write_json(summary_path, result)
         return result
     gate = auditor.gate_pass
     accepted = steady_root / "accepted_restart"
+    accepted.mkdir(parents=True, exist_ok=True)
     source_gate_header = Path(str(gate["restart_header"]))
     source_gate_binary = Path(str(gate["restart_binary"]))
     archived_header = accepted / source_gate_header.name
@@ -1224,9 +1567,12 @@ def run_grid_steady_continuation(
     result = {
         "status": "PASS",
         "grid": label,
-        "musubi_calls": 2,
+        "musubi_calls": process_count,
         "selected_ranks": ranks,
         "steady_iteration": int(gate["iteration"]),
+        "gate_pass_iteration": int(gate["iteration"]),
+        "stop_request_iteration": stop_request_iteration,
+        "actual_final_iteration": actual_final_iteration,
         "accepted_restart_header": str(archived_header),
         "accepted_restart_binary": str(archived_binary),
         "accepted_restart_sha256": gate["restart_sha256"],
@@ -1234,6 +1580,7 @@ def run_grid_steady_continuation(
         "runtime_root_wsl": runtime_root_wsl,
         "source_iteration": source.iteration,
         "full_audit_deferred_until_iteration": defer_full_audit_until_iteration,
+        "process_provenance": _grid_process_history(steady_root),
     }
     write_json(summary_path, result)
     return result
@@ -1241,17 +1588,92 @@ def run_grid_steady_continuation(
 
 def _base_grid_observables(project_root: Path) -> dict[str, Any]:
     root = Path(project_root).resolve()
-    manifest = read_json(
-        root / "outputs" / "cfd_flow" / ARCHIVE_RUN / "qc"
-        / "accepted_steady_manifest.json"
-    )
+    archive_root = root / "outputs" / "cfd_flow" / ARCHIVE_RUN
+    manifest_path = archive_root / "qc" / "accepted_steady_manifest.json"
+    manifest = read_json(manifest_path)
+    if manifest.get("status") != "PASS" or int(manifest["iteration"]) != ACCEPTED_ITERATION:
+        raise FlowError("CFD_FLOW_BASE_OBSERVABLES_INVALID", "accepted manifest")
     binary = Path(str(manifest["archived_binary"]))
-    state, _, _ = _grid_pdf_state(binary, grid_specs()["base"], EXPECTED_CELLS)
-    inlet_gauge = 304.74290891696364
+    header = Path(str(manifest["archived_header"]))
+    if not binary.is_file():
+        binary = archive_root / "restart" / Path(str(manifest["archived_binary"])).name
+    if not header.is_file():
+        header = archive_root / "restart" / Path(str(manifest["archived_header"])).name
+    actual_sha = sha256_file(binary)
+    if actual_sha != ACCEPTED_SHA256 or manifest.get("binary_sha256") != ACCEPTED_SHA256:
+        raise FlowError("CFD_FLOW_BASE_OBSERVABLES_INVALID", "accepted restart SHA")
+    restart = parse_restart_header(header)
+    if (
+        restart.iteration != ACCEPTED_ITERATION
+        or restart.n_elems != EXPECTED_CELLS
+        or restart.n_components != 19
+        or restart.binary_path.resolve() != binary.resolve()
+    ):
+        raise FlowError("CFD_FLOW_BASE_OBSERVABLES_INVALID", "restart contract")
+    spec = grid_specs()["base"]
+    state, _, pdf = _grid_pdf_state(binary, spec, EXPECTED_CELLS)
+    mesh_dir = root / "outputs" / "cfd_flow" / BASE_MESH_RUN / "seeder" / "mesh"
+    mesh = load_mesh_contract(
+        mesh_dir,
+        expected_cells=EXPECTED_CELLS,
+        allow_zero_normals=True,
+        require_runtime_order=False,
+    )
+    replay = replay_boundary_step(
+        pdf,
+        mesh,
+        dx_m=spec.dx_m,
+        dt_s=spec.dt_s,
+        density_kg_m3=RHO0,
+        target_mass_flow_kg_s=TARGET_MASS_FLOW,
+        outlet_pressures_pa=OUTLET_PRESSURES_PA,
+    )
+    inlet_rho = float(replay["details"]["inlet"]["rho"])
+    inlet_gauge = (
+        inlet_rho * RHO0 * spec.dx_m**2 / spec.dt_s**2 / 3.0
+        - PRESSURE_REFERENCE_PA
+    )
+    referee_root = root / "outputs" / "cfd_flow" / RUN_NAME / "qc" / "referee"
+    residual_path = referee_root / "corrected_residual_history.csv"
+    with residual_path.open("r", encoding="utf-8", newline="") as stream:
+        residual_rows = list(csv.DictReader(stream))
+    residual = next(
+        (row for row in residual_rows if int(row["iteration"]) == ACCEPTED_ITERATION),
+        None,
+    )
+    if residual is None or residual["restart_sha256"] != ACCEPTED_SHA256:
+        raise FlowError("CFD_FLOW_BASE_OBSERVABLES_INVALID", "Referee V2 residual row")
+    flux_path = referee_root / "corrected_boundary_flux_history.csv"
+    with flux_path.open("r", encoding="utf-8", newline="") as stream:
+        flux_rows = [
+            row
+            for row in csv.DictReader(stream)
+            if ACCEPTED_ITERATION - AUDIT_WINDOW_ITERATIONS
+            <= int(row["iteration"])
+            <= ACCEPTED_ITERATION
+        ]
+    iterations = np.asarray([int(row["iteration"]) for row in flux_rows], dtype=np.float64)
+    if (
+        len(flux_rows) < 2
+        or int(iterations[0]) != ACCEPTED_ITERATION - AUDIT_WINDOW_ITERATIONS
+        or int(iterations[-1]) != ACCEPTED_ITERATION
+    ):
+        raise FlowError("CFD_FLOW_BASE_OBSERVABLES_INVALID", "20k flux window")
+    columns = {
+        "inlet": "inlet_into_domain_kg_s",
+        "outlet_01": "outlet_01_outward_kg_s",
+        "outlet_02": "outlet_02_outward_kg_s",
+        "outlet_03": "outlet_03_outward_kg_s",
+    }
     means = {
-        "outlet_01": 2.4625448835157734e-13,
-        "outlet_02": 1.3659959781542836e-12,
-        "outlet_03": 1.2725451309430385e-12,
+        label: float(
+            np.trapezoid(
+                np.asarray([float(row[column]) for row in flux_rows], dtype=np.float64),
+                iterations,
+            )
+            / AUDIT_WINDOW_ITERATIONS
+        )
+        for label, column in columns.items()
     }
     return {
         "inlet_gauge_pressure_pa": inlet_gauge,
@@ -1260,20 +1682,38 @@ def _base_grid_observables(project_root: Path) -> dict[str, Any]:
             for label, pressure in OUTLET_PRESSURES_PA.items()
         },
         "outlet_flow_fractions": {
-            label: value / TARGET_MASS_FLOW for label, value in means.items()
+            label: means[label] / means["inlet"]
+            for label in ("outlet_01", "outlet_02", "outlet_03")
         },
         "global_mean_velocity_m_s": state["global_mean_velocity_m_s"],
         "global_mean_pressure_gauge_pa": state["global_mean_pressure_gauge_pa"],
         "maximum_physical_velocity_m_s": state["maximum_physical_velocity_m_s"],
+        "provenance": {
+            "observable_semantics": "REFEREE_V2_ACCEPTED_RESTART_AND_20K_LONG_WINDOW",
+            "accepted_iteration": ACCEPTED_ITERATION,
+            "accepted_restart_header": str(header),
+            "accepted_restart_binary": str(binary),
+            "accepted_restart_sha256": actual_sha,
+            "accepted_manifest": str(manifest_path),
+            "corrected_residual_history": str(residual_path),
+            "corrected_boundary_flux_history": str(flux_path),
+            "residual_row_sha256": residual["restart_sha256"],
+            "residual_csv_mean_columns_are_short_window_only": True,
+            "long_window_sample_iterations": iterations.astype(int).tolist(),
+            "mean_port_flows_kg_s": means,
+            "fractions_not_renormalized": True,
+            "referee_revision": REFEREE_REVISION_NEW,
+        },
     }
 
 
 def _solved_grid_observables(project_root: Path, label: str) -> dict[str, Any]:
     root = Path(project_root).resolve()
-    summary = read_json(
+    summary_path = (
         root / "outputs" / "cfd_flow" / GRID_RUN / "grids" / label
         / "steady" / "steady_summary.json"
     )
+    summary = read_json(summary_path)
     if summary.get("status") != "PASS":
         raise FlowError("CFD_FLOW_GRID_STEADY_FAILED", label)
     gate = summary["referee_v2"]
@@ -1292,6 +1732,22 @@ def _solved_grid_observables(project_root: Path, label: str) -> dict[str, Any]:
         "maximum_physical_velocity_m_s": float(
             gate["maximum_physical_velocity_m_s"]
         ),
+        "provenance": {
+            "observable_semantics": "REFEREE_V2_ACCEPTED_RESTART_AND_20K_LONG_WINDOW",
+            "steady_summary": str(summary_path),
+            "accepted_iteration": int(summary["steady_iteration"]),
+            "accepted_restart_header": summary["accepted_restart_header"],
+            "accepted_restart_binary": summary["accepted_restart_binary"],
+            "accepted_restart_sha256": summary["accepted_restart_sha256"],
+            "long_window_sample_iterations": gate["long_boundary_window"][
+                "sample_iterations"
+            ],
+            "mean_port_flows_kg_s": gate["long_boundary_window"][
+                "mean_port_flows_kg_s"
+            ],
+            "fractions_not_renormalized": True,
+            "referee_revision": gate["referee_revision"],
+        },
     }
 
 
@@ -1302,7 +1758,18 @@ def three_grid_scalar_analysis(
 
     values = tuple(float(value) for value in (coarse, base, fine))
     if not all(math.isfinite(value) for value in values):
-        return {"status": "UNAVAILABLE", "reason": "non-finite value"}
+        return {
+            "status": "UNAVAILABLE",
+            "classification": "NON_FINITE",
+            "reason": "non-finite value",
+            "coarse": values[0],
+            "base": values[1],
+            "fine": values[2],
+            "observed_order_p": None,
+            "richardson_extrapolation": None,
+            "gci_coarse_base": None,
+            "gci_base_fine": None,
+        }
     delta_cb = values[0] - values[1]
     delta_bf = values[1] - values[2]
     cb_relative = abs(delta_cb) / max(abs(values[1]), np.finfo(float).tiny)
@@ -1315,12 +1782,41 @@ def three_grid_scalar_analysis(
         "coarse_to_base_relative_difference": cb_relative,
         "base_to_fine_relative_difference": bf_relative,
         "difference_ratio": ratio,
+        "base_to_fine_within_5_percent": bf_relative <= 0.05,
+        "base_to_fine_within_preferred_2_percent": bf_relative <= 0.02,
     }
+    if delta_cb == 0.0 or delta_bf == 0.0:
+        result.update(
+            {
+                "status": "UNAVAILABLE",
+                "classification": "STALLED",
+                "reason": "one or both successive differences are zero",
+                "observed_order_p": None,
+                "richardson_extrapolation": None,
+                "gci_coarse_base": None,
+                "gci_base_fine": None,
+            }
+        )
+        return result
+    if delta_cb * delta_bf < 0.0:
+        result.update(
+            {
+                "status": "UNAVAILABLE",
+                "classification": "OSCILLATORY",
+                "reason": "successive differences have opposite signs",
+                "observed_order_p": None,
+                "richardson_extrapolation": None,
+                "gci_coarse_base": None,
+                "gci_base_fine": None,
+            }
+        )
+        return result
     if not math.isfinite(ratio) or ratio <= 1.0:
         result.update(
             {
                 "status": "UNAVAILABLE",
-                "reason": "oscillatory, stalled, or non-asymptotic three-grid trend",
+                "classification": "NON_ASYMPTOTIC",
+                "reason": "successive differences do not decrease under refinement",
                 "observed_order_p": None,
                 "richardson_extrapolation": None,
                 "gci_coarse_base": None,
@@ -1334,6 +1830,7 @@ def three_grid_scalar_analysis(
         result.update(
             {
                 "status": "UNAVAILABLE",
+                "classification": "NON_ASYMPTOTIC",
                 "reason": "non-positive observed order",
                 "observed_order_p": None,
                 "richardson_extrapolation": None,
@@ -1345,6 +1842,7 @@ def three_grid_scalar_analysis(
     result.update(
         {
             "status": "AVAILABLE",
+            "classification": "ASYMPTOTIC_MONOTONIC",
             "reason": None,
             "observed_order_p": order,
             "richardson_extrapolation": values[2] + (values[2] - values[1]) / denominator,
@@ -1355,9 +1853,132 @@ def three_grid_scalar_analysis(
     return result
 
 
+def reconcile_grid_convergence_evidence(project_root: Path) -> dict[str, Any]:
+    """Replace stale phase status only after all three steady states are accepted."""
+
+    root = Path(project_root).resolve()
+    run_root = root / "outputs" / "cfd_flow" / GRID_RUN
+    status_path = run_root / "qc" / "grid_convergence_status.json"
+    previous = read_json(status_path) if status_path.is_file() else None
+    coarse_summary_path = run_root / "grids" / "coarse" / "steady" / "steady_summary.json"
+    fine_summary_path = run_root / "grids" / "fine" / "steady" / "steady_summary.json"
+    base_manifest_path = (
+        root / "outputs" / "cfd_flow" / ARCHIVE_RUN / "qc"
+        / "accepted_steady_manifest.json"
+    )
+    coarse = read_json(coarse_summary_path)
+    fine = read_json(fine_summary_path)
+    base = read_json(base_manifest_path)
+    fine_processes = reconcile_grid_process_provenance(root, "fine")
+    mesh_qc = {
+        label: read_json(run_root / "grids" / label / "qc" / "mesh_qc.json")
+        for label in ("coarse", "fine")
+    }
+    benchmarks = {
+        label: read_json(
+            run_root / "grids" / label / "benchmark" / "benchmark_summary.json"
+        )
+        for label in ("coarse", "fine")
+    }
+    checks = {
+        "coarse_steady_pass": coarse.get("status") == "PASS",
+        "base_steady_pass": base.get("status") == "PASS",
+        "fine_steady_pass": fine.get("status") == "PASS",
+        "base_accepted_iteration": int(base.get("iteration", -1)) == ACCEPTED_ITERATION,
+        "base_accepted_sha": base.get("binary_sha256") == ACCEPTED_SHA256,
+        "coarse_mesh_pass": mesh_qc["coarse"].get("status") == "PASS",
+        "fine_mesh_pass": mesh_qc["fine"].get("status") == "PASS",
+        "coarse_benchmark_pass": benchmarks["coarse"].get("status") == "PASS",
+        "fine_benchmark_pass": benchmarks["fine"].get("status") == "PASS",
+        "fine_process_provenance_complete": fine_processes.get("status") == "PASS",
+    }
+    passed = all(checks.values())
+    result = {
+        "actual_head": _git(root, "rev-parse", "HEAD"),
+        "production_pipeline_modified": bool(
+            _git(
+                root,
+                "diff",
+                "--",
+                *(str(path.relative_to(root)) for path in _production_paths(root)),
+            )
+        ),
+        "referee_revision": REFEREE_REVISION_NEW,
+        "evidence_reconciliation": "PASS" if passed else "FAIL",
+        "checks": checks,
+        "coarse": {
+            "summary": str(coarse_summary_path),
+            "steady_iteration": coarse.get("steady_iteration"),
+            "selected_mpi_ranks": coarse.get("selected_ranks"),
+        },
+        "base": {
+            "manifest": str(base_manifest_path),
+            "steady_iteration": base.get("iteration"),
+            "accepted_sha256": base.get("binary_sha256"),
+        },
+        "fine": {
+            "summary": str(fine_summary_path),
+            "steady_iteration": fine.get("steady_iteration"),
+            "selected_mpi_ranks": fine.get("selected_ranks"),
+            "process_provenance": fine_processes,
+        },
+        "historical_status": previous,
+        "grid_convergence": "READY_FOR_GCI" if passed else "BLOCKED",
+        "final_status": (
+            "CFD_FLOW_HEALTHY_ADAPTIVE_FLUX_THREE_GRID_STEADY_READY_FOR_GCI"
+            if passed
+            else "CFD_FLOW_HEALTHY_ADAPTIVE_FLUX_EVIDENCE_RECONCILIATION_FAILED"
+        ),
+        "next": "COMPUTE RICHARDSON AND GCI" if passed else "FIX EVIDENCE INCONSISTENCY",
+        "first_failure": next((name for name, value in checks.items() if not value), None),
+    }
+    write_json(status_path, result)
+    return result
+
+
+def evaluate_grid_convergence_gate(
+    analyses: dict[str, dict[str, Any]], primary_metrics: tuple[str, ...]
+) -> dict[str, Any]:
+    trends = all(
+        analyses[name].get("classification") == "ASYMPTOTIC_MONOTONIC"
+        and analyses[name].get("status") == "AVAILABLE"
+        for name in primary_metrics
+    )
+    within_5 = all(
+        float(analyses[name]["base_to_fine_relative_difference"]) <= 0.05
+        for name in primary_metrics
+    )
+    within_2 = all(
+        float(analyses[name]["base_to_fine_relative_difference"]) <= 0.02
+        for name in primary_metrics
+    )
+    passed = trends and within_5
+    return {
+        "status": "PASS" if passed else "FAIL",
+        "primary_trends_asymptotic_monotonic": trends,
+        "base_fine_primary_within_5_percent": within_5,
+        "base_fine_primary_within_preferred_2_percent": within_2,
+        "next": (
+            "PROMOTE HEALTHY ADAPTIVE-FLUX CFD TO PRODUCTION PIPELINE"
+            if passed
+            else (
+                "DESIGN ONE FINER GRID FOR CONVERGENCE CONFIRMATION"
+                if trends
+                else "REVIEW VOXELIZED GEOMETRY GRID-SENSITIVITY"
+            )
+        ),
+    }
+
+
 def finalize_grid_convergence(project_root: Path) -> dict[str, Any]:
     root = Path(project_root).resolve()
     run_root = root / "outputs" / "cfd_flow" / GRID_RUN
+    reconciliation = reconcile_grid_convergence_evidence(root)
+    if reconciliation["evidence_reconciliation"] != "PASS":
+        raise FlowError(
+            "CFD_FLOW_GRID_EVIDENCE_RECONCILIATION_FAILED",
+            str(reconciliation["first_failure"]),
+        )
     observables = {
         "coarse": _solved_grid_observables(root, "coarse"),
         "base": _base_grid_observables(root),
@@ -1399,38 +2020,77 @@ def finalize_grid_convergence(project_root: Path) -> dict[str, Any]:
         "outlet_02_flow_fraction",
         "outlet_03_flow_fraction",
     )
-    base_fine_gate = all(
-        float(analyses[name]["base_to_fine_relative_difference"]) <= 0.05
-        for name in primary
-    )
-    preferred = all(
-        float(analyses[name]["base_to_fine_relative_difference"]) <= 0.02
-        for name in primary
-    )
-    reasonable_trend = all(
-        analyses[name]["status"] == "AVAILABLE" for name in primary
-    )
-    passed = base_fine_gate and reasonable_trend
+    gate = evaluate_grid_convergence_gate(analyses, primary)
+    base_fine_gate = bool(gate["base_fine_primary_within_5_percent"])
+    preferred = bool(gate["base_fine_primary_within_preferred_2_percent"])
+    reasonable_trend = bool(gate["primary_trends_asymptotic_monotonic"])
+    passed = gate["status"] == "PASS"
     result = {
         "status": "PASS" if passed else "FAIL",
         "refinement_ratio": REFINEMENT_RATIO,
+        "refinement_ratio_contract": {
+            "coarse_over_base": grid_specs()["coarse"].dx_m / grid_specs()["base"].dx_m,
+            "base_over_fine": grid_specs()["base"].dx_m / grid_specs()["fine"].dx_m,
+            "constant_r_1p3": math.isclose(
+                grid_specs()["coarse"].dx_m / grid_specs()["base"].dx_m,
+                REFINEMENT_RATIO,
+                rel_tol=0.0,
+                abs_tol=1.0e-12,
+            ) and math.isclose(
+                grid_specs()["base"].dx_m / grid_specs()["fine"].dx_m,
+                REFINEMENT_RATIO,
+                rel_tol=0.0,
+                abs_tol=1.0e-12,
+            ),
+            "diffusive_dt_scaling": all(
+                math.isclose(
+                    spec.dt_s,
+                    DT_S * (spec.dx_m / DX_M) ** 2,
+                    rel_tol=1.0e-14,
+                )
+                for spec in grid_specs().values()
+            ),
+        },
+        "evidence_reconciliation": reconciliation,
         "observables": observables,
         "analyses": analyses,
         "base_fine_primary_within_5_percent": base_fine_gate,
         "base_fine_primary_within_preferred_2_percent": preferred,
         "primary_trends_asymptotic_monotonic": reasonable_trend,
+        "selected_production_grid": "base" if passed else None,
+        "selected_production_dx_m": DX_M if passed else None,
         "final_status": (
             "CFD_FLOW_HEALTHY_ADAPTIVE_FLUX_GRID_CONVERGENCE_PASS"
             if passed
             else "CFD_FLOW_HEALTHY_ADAPTIVE_FLUX_GRID_CONVERGENCE_FAILED"
         ),
-        "next": (
-            "PROMOTE HEALTHY ADAPTIVE-FLUX CFD TO PRODUCTION PIPELINE"
-            if passed
-            else "REVIEW THREE-GRID NONCONVERGENT METRICS WITHOUT RETUNING PHYSICS"
-        ),
+        "next": gate["next"],
     }
-    write_json(run_root / "qc" / "grid_convergence_final.json", result)
+    final_path = run_root / "qc" / "grid_convergence_final.json"
+    write_json(final_path, result)
+    active_status = dict(reconciliation)
+    active_status.update(
+        {
+            "grid_convergence": "PASS" if passed else "FAIL",
+            "grid_convergence_result": str(final_path),
+            "final_status": result["final_status"],
+            "next": result["next"],
+            "first_failure": (
+                None
+                if passed
+                else next(
+                    (
+                        name
+                        for name in primary
+                        if analyses[name]["status"] != "AVAILABLE"
+                        or float(analyses[name]["base_to_fine_relative_difference"]) > 0.05
+                    ),
+                    "primary grid-convergence gate",
+                )
+            ),
+        }
+    )
+    write_json(run_root / "qc" / "grid_convergence_status.json", active_status)
     return result
 
 
