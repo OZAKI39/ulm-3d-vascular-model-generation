@@ -251,6 +251,7 @@ def audit_mesh_qvalues(
         physical_links,
         axis=axis,
         radius_m=float(summary["wall"].get("radius_m", PIPE_RADIUS_M)),
+        center_m=summary["wall"].get("center_m", (0.0, 0.0, 0.0)),
     )
     exact_on_link = np.isfinite(q_exact) & (q_exact >= -1.0e-10) & (q_exact <= 1.0 + 1.0e-10)
     q_valid = np.isfinite(q_seeder) & (q_seeder > 0.0) & (q_seeder <= 1.0)

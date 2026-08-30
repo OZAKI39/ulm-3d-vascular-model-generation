@@ -1,10 +1,4 @@
-"""Pure contracts for a gated Musubi periodic wall-geometry benchmark.
-
-The executable stage is intentionally absent from this module: the current
-research run failed its preceding q-value gate, so no Pipe Force case may be
-launched.  These functions make the physical conversion, analytic oracle,
-early-stop rule, and decision tree independently testable.
-"""
+"""Contracts for the isolated Musubi periodic wall-geometry benchmark."""
 
 from __future__ import annotations
 

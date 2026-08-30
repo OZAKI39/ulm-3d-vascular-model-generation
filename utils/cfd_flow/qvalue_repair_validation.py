@@ -16,8 +16,10 @@ from .qvalue_contract_forensics import (
 from .wall_qvalue_oracle import audit_mesh_qvalues
 
 
-TINY_MEDIAN_ABS_LIMIT = 0.02
-TINY_P95_ABS_LIMIT = 0.05
+TINY_MEDIAN_ABS_LIMIT = 0.01
+TINY_P95_ABS_LIMIT = 0.02
+TINY_BIAS_LIMIT = 0.01
+TINY_FALLBACK_FRACTION_LIMIT = 1.0e-12
 MINIMUM_CONTINUOUS_UNIQUE = 16
 
 
@@ -64,10 +66,15 @@ def tiny_cylinder_gate(mesh_dir: Path, mesh_summary: Path) -> dict[str, Any]:
     bias = metrics["bias"]
     median_pass = median is not None and float(median) <= TINY_MEDIAN_ABS_LIMIT
     p95_pass = p95 is not None and float(p95) <= TINY_P95_ABS_LIMIT
-    bias_pass = bias is not None and abs(float(bias)) <= TINY_MEDIAN_ABS_LIMIT
+    bias_pass = bias is not None and abs(float(bias)) <= TINY_BIAS_LIMIT
+    fallback_pass = (
+        float(audit["uniform_halfway_fallback_fraction"])
+        <= TINY_FALLBACK_FRACTION_LIMIT
+    )
+    direction_mapping_pass = int(audit["direction_mismatch_count"]) == 0
     support_pass = (
         continuous_unique >= MINIMUM_CONTINUOUS_UNIQUE
-        and audit["uniform_halfway_fallback_fraction"] < 1.0
+        and fallback_pass
     )
     passed = (
         audit["status"].startswith("PASS")
@@ -75,6 +82,7 @@ def tiny_cylinder_gate(mesh_dir: Path, mesh_summary: Path) -> dict[str, Any]:
         and median_pass
         and p95_pass
         and bias_pass
+        and direction_mapping_pass
     )
     return {
         "status": "PASS" if passed else "FAIL",
@@ -84,9 +92,11 @@ def tiny_cylinder_gate(mesh_dir: Path, mesh_summary: Path) -> dict[str, Any]:
         "gates": {
             "structural": audit["status"].startswith("PASS"),
             "continuous_support": support_pass,
-            "median_absolute_le_0p02": median_pass,
-            "p95_absolute_le_0p05": p95_pass,
-            "no_large_systematic_bias": bias_pass,
+            "fallback_fraction_approximately_zero": fallback_pass,
+            "median_absolute_le_0p01": median_pass,
+            "p95_absolute_le_0p02": p95_pass,
+            "absolute_bias_le_0p01": bias_pass,
+            "d3q19_wall_direction_mapping": direction_mapping_pass,
         },
     }
 

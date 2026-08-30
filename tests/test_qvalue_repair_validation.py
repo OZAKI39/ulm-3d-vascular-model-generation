@@ -38,9 +38,11 @@ def test_repaired_tiny_cylinder_passes_analytic_oracle() -> None:
     result = tiny_cylinder_gate(case / "mesh", case / "source_mesh_summary.json")
 
     assert result["status"] == "PASS"
-    assert result["q_error"]["median_absolute"] <= 0.02
-    assert result["q_error"]["p95_absolute"] <= 0.05
+    assert result["q_error"]["median_absolute"] <= 0.01
+    assert result["q_error"]["p95_absolute"] <= 0.02
+    assert abs(result["q_error"]["bias"]) <= 0.01
     assert result["audit"]["uniform_halfway_fallback_fraction"] == 0.0
+    assert result["audit"]["direction_mismatch_count"] == 0
 
 
 def _single_wall_mesh(qvalue: float) -> tuple[np.ndarray, MeshContract, int]:
