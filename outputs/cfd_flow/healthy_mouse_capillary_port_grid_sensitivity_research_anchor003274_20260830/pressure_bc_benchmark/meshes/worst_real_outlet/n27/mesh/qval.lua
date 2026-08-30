@@ -1,0 +1,5 @@
+ hasQVal = {
+    false,
+    true,
+    false 
+}

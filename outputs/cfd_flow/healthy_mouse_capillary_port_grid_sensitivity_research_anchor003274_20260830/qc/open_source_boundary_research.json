@@ -1,0 +1,183 @@
+{
+  "status": "PASS",
+  "clean_room_policy": "ALGORITHM_AND_GEOMETRY_CONTRACTS_ONLY_NO_EXTERNAL_CODE_COPIED",
+  "repositories": [
+    {
+      "repository": "Musubi",
+      "url": "https://github.com/apes-suite/musubi",
+      "actual_commit_sha": "4e8b277b66226277171ef93bf054d21270812793",
+      "embedded_mus_source_commit_sha": "81f8c4f13772f6d4af31f335e1e3f99b02726e25",
+      "working_tree_state": "embedded mus source contains the already-validated isolated adaptive_flux_pressure patch; it was inspected and not modified by this research task",
+      "validated_binary_sha256": "e80162fb7e0e657d2e41aafc40a1b13b32204ff34692e24b7ab02c51aa97c588",
+      "license": "BSD-2-Clause",
+      "source_paths": [
+        "mus/source/bc/mus_bc_fluid_module.fpp",
+        "mus/source/bc/mus_bc_fluid_nonEqExpol_module.fpp",
+        "mus/source/bc/mus_bc_header_module.fpp"
+      ],
+      "relevant_function": [
+        "pressure_eq",
+        "pressure_nonEqExpol",
+        "pressure_antiBounceBack",
+        "press_neq",
+        "pressure_expol"
+      ],
+      "relevant_method": "native D3Q19 pressure boundary implementations and their neighbor/q-value contracts",
+      "what_we_reuse": "the already-built pinned implementation and source-proven configuration names",
+      "what_we_do_not_copy": "no external source code is copied",
+      "relevance": "direct solver implementation under test"
+    },
+    {
+      "repository": "HemePure",
+      "url": "https://github.com/UCL-CCS/HemePure",
+      "actual_commit_sha": "0bf67b16b23b41a06507810337a445f9916d62bf",
+      "license": "BSD-3-Clause",
+      "source_paths": [
+        "cases/Benchmarking",
+        "README.md"
+      ],
+      "relevant_function": "image-derived vascular case representation",
+      "relevant_method": "vascular geometry and pressure/flow case reference",
+      "what_we_reuse": "research context only",
+      "what_we_do_not_copy": "no solver or case source copied",
+      "relevance": "geometry representation reference, not a second production solver"
+    },
+    {
+      "repository": "HemeLB",
+      "url": "https://github.com/hemelb-codes/hemelb",
+      "actual_commit_sha": "432d3386e32571487a1521f88a407db5dc9ca171",
+      "license": "LGPL-3.0",
+      "source_paths": [
+        "Code/lb/streamers/NashZerothOrderPressure.h",
+        "Code/lb/streamers/BouzidiFirdaousLallemand.h",
+        "Code/lb/streamers/GuoZhengShi.h",
+        "Code/configuration/SimConfig.cc"
+      ],
+      "relevant_function": "NashZerothOrderPressureLink, BouzidiFirdaousLallemandLink, GuoZhengShiLink, DoIOForBaseInOutlet",
+      "relevant_method": "ghost-site pressure equilibrium; fractional-link BFL/GZS wall treatments; explicit iolet position and normal",
+      "what_we_reuse": "method-level comparison and plane/normal representation concepts",
+      "what_we_do_not_copy": "LGPL implementation code is not copied or linked",
+      "relevance": "distinguishes pressure-iolet semantics from fractional wall distance"
+    },
+    {
+      "repository": "VMTK",
+      "url": "https://github.com/vmtk/vmtk",
+      "actual_commit_sha": "06c7fb60f8bb873718d5f8b54af0ded4841dae50",
+      "license": "BSD (repository LICENSE; bundled components separately licensed)",
+      "source_paths": [
+        "vtkVmtk/ComputationalGeometry/vtkvmtkBoundaryReferenceSystems.cxx",
+        "vtkVmtk/ComputationalGeometry/vtkvmtkCenterlineEndpointExtractor.cxx",
+        "vmtkScripts/vmtkflowextensions.py",
+        "vtkVmtk/ComputationalGeometry/vtkvmtkPolyDataFlowExtensionsFilter.cxx"
+      ],
+      "relevant_function": "boundary barycenter/normal/radius, centerline endpoint extraction, centerline-direction or boundary-normal extensions",
+      "relevant_method": "standardized port reference systems and optional CFD flow extensions",
+      "what_we_reuse": "geometric concepts; current audit implements an independent VTK/PCA-equivalent plane contract",
+      "what_we_do_not_copy": "no VMTK source code copied and no extension inserted",
+      "relevance": "defines clean physical ports without assuming an extension is required"
+    }
+  ],
+  "published_work": [
+    {
+      "work": "Feiger et al., Suitability of lattice Boltzmann inlet and outlet boundary conditions for image-derived vasculature",
+      "doi": "10.1002/cnm.3198",
+      "finding_used": "pressure BC accuracy/stability must be tested in image-derived vascular geometry"
+    },
+    {
+      "work": "Nash et al., Choice of boundary condition for lattice-Boltzmann simulation of moderate-Re flow in complex domains",
+      "doi": "10.1103/PhysRevE.89.023303",
+      "finding_used": "BFL/GZS wall accuracy and orientation effects motivate a controlled rotated-pipe benchmark"
+    },
+    {
+      "work": "Bouzidi, Firdaouss & Lallemand, Momentum transfer of a Boltzmann-lattice fluid with boundaries",
+      "doi": "10.1063/1.1399290",
+      "finding_used": "fractional link distance belongs to interpolated wall bounce-back"
+    },
+    {
+      "work": "Guo, Zheng & Shi, An extrapolation method for boundary conditions in lattice Boltzmann method",
+      "doi": "10.1063/1.1471914",
+      "finding_used": "source-proven non-equilibrium extrapolation alternative"
+    }
+  ],
+  "musubi_pressure_bc_candidates_found": {
+    "pressure_eq": {
+      "configuration_token": "pressure_eq",
+      "source_path": "mus/source/bc/mus_bc_fluid_module.fpp:788 pressure_eq; :880 pressure_eq_velocity",
+      "mathematical_idea": "prescribed pressure/density plus first-order 1.5*u1-0.5*u2 velocity extrapolation, equilibrium replacement on missing incoming links",
+      "D3Q19_compatible": true,
+      "pull_fetch_semantics": "globBC incoming-link writes use FETCH; PULL storage is inverse because the kernel performs missing-neighbor bounce-back",
+      "curved_false_requirement": "not source-enforced; numerical plane still must supply a valid constant discrete normal",
+      "neighbor_requirements": 2,
+      "uses_q_value": false,
+      "straight_boundary_requirement": "not declared, but two neighbors are selected along one normalInd",
+      "oblique_plane_suitability": "conditional on a stable D3Q19 normalInd and two interior neighbors",
+      "pressure_dirichlet": true,
+      "example_test": "mus/examples/fluid/benchmark/Channel2D/C2D_BoundaryConditions/C2D_BC_MfrEq_PressEq",
+      "citation": "Izquierdo, Martinez-Lera & Fueyo (2009), Eq. 6"
+    },
+    "pressure_nonEqExpol": {
+      "configuration_token": "pressure_noneq_expol",
+      "source_path": "mus/source/bc/mus_bc_fluid_nonEqExpol_module.fpp:454 pressure_nonEqExpol",
+      "mathematical_idea": "prescribed pressure equilibrium plus the first interior neighbor's non-equilibrium distribution",
+      "D3Q19_compatible": true,
+      "pull_fetch_semantics": "updates all local directions through FETCH from one pre-collision overnext-neighbor buffer",
+      "curved_false_requirement": "source header calls it a straight-boundary method and fixes qVal=0",
+      "neighbor_requirements": 1,
+      "uses_q_value": false,
+      "straight_boundary_requirement": true,
+      "oblique_plane_suitability": "only when the rasterized boundary has one coherent normal direction",
+      "pressure_dirichlet": true,
+      "example_test": "mus/examples/fluid/benchmark/Channel2D/C2D_Simple/C2D_Simple_rBGK",
+      "citation": "Guo, Zheng & Shi (2002), DOI 10.1063/1.1471914"
+    },
+    "pressure_antiBounceBack": {
+      "configuration_token": "pressure_antibounceback",
+      "source_path": "mus/source/bc/mus_bc_fluid_module.fpp:2356 pressure_antiBounceBack",
+      "mathematical_idea": "anti-bounce-back Dirichlet pressure term with non-equilibrium correction and extrapolated boundary velocity",
+      "D3Q19_compatible": true,
+      "pull_fetch_semantics": "writes missing incoming links with FETCH and reads one post-collision neighbor buffer",
+      "curved_false_requirement": "no fractional boundary distance is read",
+      "neighbor_requirements": 1,
+      "uses_q_value": false,
+      "straight_boundary_requirement": "assumes a consistent boundary normal/neighbor direction",
+      "oblique_plane_suitability": "source-implemented but must be benchmarked for orientation sensitivity",
+      "pressure_dirichlet": true,
+      "example_test": "documented in mus/examples/tutorials/tut_04_boundaries.md",
+      "citation": "Musubi native implementation; no copied code"
+    },
+    "press_neq": {
+      "source_path": "mus/source/bc/mus_bc_fluid_module.fpp:440 press_neq",
+      "mathematical_idea": "prescribed pressure equilibrium plus locally copied non-equilibrium component scaled by 1-omega",
+      "D3Q19_compatible": true,
+      "pull_fetch_semantics": "updates only incoming globBC links through FETCH",
+      "curved_false_requirement": "no q-value or geometric intersection distance is used",
+      "neighbor_requirements": 1,
+      "uses_q_value": false,
+      "straight_boundary_requirement": "not explicitly declared",
+      "oblique_plane_suitability": "link-local but not selected for the bounded benchmark candidate set",
+      "pressure_dirichlet": true,
+      "example_test": "no dedicated pinned example found",
+      "citation": "Guo & Shi non-equilibrium pressure treatment as documented in source"
+    },
+    "pressure_expol": {
+      "source_path": "mus/source/bc/mus_bc_fluid_module.fpp:1360 pressure_expol",
+      "mathematical_idea": "pressure and velocity extrapolation using two interior neighbors",
+      "D3Q19_compatible": true,
+      "pull_fetch_semantics": "two pre-collision neighbor buffers; qVal forcibly zero",
+      "curved_false_requirement": "qVal=0 in boundary loader",
+      "neighbor_requirements": 2,
+      "uses_q_value": false,
+      "straight_boundary_requirement": true,
+      "oblique_plane_suitability": "conditional on a coherent discrete normal",
+      "pressure_dirichlet": true,
+      "example_test": "mus/examples/fluid_incompressible/benchmark/Pipe/PIP_Simple",
+      "citation": "Musubi native extrapolation implementation"
+    }
+  },
+  "bounded_benchmark_set": [
+    "pressure_eq",
+    "pressure_nonEqExpol",
+    "pressure_antiBounceBack"
+  ],
+  "selection_reason": "CURRENT plus two pressure-Dirichlet, D3Q19-compatible, source-proven alternatives; pressure_nonEqExpol is prioritized by the task and pressure_antiBounceBack offers a distinct one-neighbor reconstruction."
+}
