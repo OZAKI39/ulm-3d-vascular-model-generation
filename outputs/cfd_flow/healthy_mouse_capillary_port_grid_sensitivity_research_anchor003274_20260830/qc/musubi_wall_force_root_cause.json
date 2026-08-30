@@ -1,0 +1,101 @@
+{
+  "status": "CFD_FLOW_WALL_FORCE_NUMERICS_VALIDATED",
+  "wall_benchmark_status": "CFD_FLOW_WALL_BENCHMARK_PASS_AT_VALIDATED_RELAXATION",
+  "root_cause": "HIGH_TAU_BGK_WALL_COUPLING_CONFIRMED",
+  "scope": "research isolation only",
+  "production_pipeline_modified": false,
+  "seeder_geometry_freeze_preserved": true,
+  "vascular_solver_calls": {
+    "seeder": 0,
+    "musubi": 0,
+    "harvester": 0
+  },
+  "decision_tree": {
+    "force_source_contract": "PASS",
+    "force_compiled_binary_oracle": "PASS",
+    "wall_libb_source_contract": "PASS",
+    "wall_libb_compiled_binary_oracle": "PASS",
+    "tau1_n27": "PASS",
+    "official_pip_force": "NOT_NEEDED",
+    "custom_d3q27_n27": "NOT_NEEDED"
+  },
+  "scientific_call_accounting": {
+    "musubi_total": 4,
+    "force_one_step": 2,
+    "wall_one_step": 1,
+    "tau1_n27": 1,
+    "official_pip_force": 0,
+    "custom_d3q27_n27": 0,
+    "tiny_seeder_total": 2,
+    "true_first_scientific_failure": null
+  },
+  "operational_recoveries": {
+    "count": 9,
+    "all_recovered_without_extra_scientific_rerun": true,
+    "log": "musubi_wall_force_operational_recovery_log.jsonl"
+  },
+  "force_contract": {
+    "glob_source_force_quantity": "body force per unit volume / force density",
+    "si_unit": "N/m^3",
+    "physical_to_lattice_formula": "F_lat=F_phy*dt^2/(rho0*dx)",
+    "binary_sha256": "e80162fb7e0e657d2e41aafc40a1b13b32204ff34692e24b7ab02c51aa97c588"
+  },
+  "wall_libb_contract": {
+    "q_slot": "outgoing iDir",
+    "boundary_mask_slot": "incoming cxDirInv(iDir)",
+    "runtime_mapping": "mus_set_bouzidi applies invDir again; inPos=iDir, outPos=invDir, neighbor buffer=invDir",
+    "q_lt_half": "post=2*q*f_out+(1-2*q)*f_neighbor",
+    "q_ge_half": "post=(1-0.5/q)*f_in+(0.5/q)*f_out"
+  },
+  "baseline_n27": {
+    "tau": 6.487548828125001,
+    "omega": 0.15414142174387535,
+    "mean_velocity_relative_error_vs_continuum": 0.3162146790324557,
+    "mean_velocity_relative_error_vs_discrete": 0.2879963770619432
+  },
+  "tau1_n27": {
+    "dt_s": 6.961079172750448e-10,
+    "tau": 1.0,
+    "omega": 1.0,
+    "accepted_iteration": 1800,
+    "solver_official_steady": true,
+    "cell_arithmetic_mean_velocity_m_s": 0.0003571381423106585,
+    "cell_arithmetic_mean_error_vs_continuum": 0.02039469231616713,
+    "cell_arithmetic_mean_error_vs_discrete": 0.0014815304729997592,
+    "cell_center_discrete_analytic_mean_m_s": 0.00035766803840877915,
+    "independent_cross_section_flow_rate_m3_s": 2.731491407045004e-15,
+    "independent_cross_section_flow_error_vs_continuum": 0.0019810025280040193,
+    "flux_derived_nominal_area_mean_error_vs_continuum": 0.0019810025280040193,
+    "profile_l2": 0.0014656436585080345,
+    "effective_radius_bias": 0.0004956189675145994,
+    "minimum_pdf": 6.579173159953178e-05,
+    "maximum_lattice_speed": 4.154737115472512e-06,
+    "all_finite": true,
+    "mean_gate_interpretation": "The all-cell arithmetic mean is compared to the required discrete-cell analytic reference; the independent plane flux divided by nominal continuum area is the continuum mean/flow gate. The raw all-cell versus continuum difference remains reported and is dominated by the known 2.190868% voxel-area normalization offset."
+  },
+  "validated_configuration": {
+    "stencil": "D3Q19",
+    "relaxation_model": "BGK",
+    "tau": 1.0,
+    "omega": 1.0,
+    "wall_boundary": "wall_libb with continuous q",
+    "force_unit": "N/m^3",
+    "musubi_binary_sha256": "e80162fb7e0e657d2e41aafc40a1b13b32204ff34692e24b7ab02c51aa97c588"
+  },
+  "recommended_diffusive_scaling": {
+    "rule": "dt=dx^2/(6*nu_phy) for tau=1 with cs_lattice_squared=1/3",
+    "dt_over_dx_squared_s_per_m2": 50968.39959225281,
+    "base_dx_m": 2e-07,
+    "recommended_base_dt_s": 2.038735983690112e-09,
+    "recommended_base_dt_relative_to_old": 0.08350662589194699,
+    "coarse_base_fine_policy": "Apply the same dt proportional to dx^2 rule at every grid so nu_lattice=1/6, tau=1, and omega=1 remain grid-independent.",
+    "production_change_applied_this_round": false
+  },
+  "fix_applied": "Research benchmark harness only: source-proven force/wall binary oracles, tau=1 analytical dt isolation, and independent per-plane flux quadrature. No Musubi mathematical source or production pipeline was modified.",
+  "targeted_verification": {
+    "pytest": "29 passed",
+    "ruff": "PASS",
+    "qc_json_and_jsonl_parse": "PASS"
+  },
+  "next": "CONTINUOUS_Q_REFEREE_V2 + FRESH_REPAIRED_BASE_CFD"
+}

@@ -1,0 +1,390 @@
+  end subroutine spc_slip_wall
+! ****************************************************************************** !
+
+! ****************************************************************************** !
+  !> No comment yet!
+  !!
+  !! @TODO add comment
+  !!
+  !! This subroutine's interface must match the abstract interface definition
+  !! [[boundaryRoutine]] in bc/[[mus_bc_header_module]].f90 in order to be
+  !! callable via [[boundary_type:fnct]] function pointer.
+  subroutine wall_libb( me, state, bcBuffer, globBC, levelDesc, tree, nSize,  &
+    &                   iLevel, sim_time, neigh, layout, fieldProp, varPos,   &
+    &                   nScalars, varSys, derVarPos, physics, iField, mixture )
+    ! -------------------------------------------------------------------- !
+    !> global boundary type
+    class(boundary_type) :: me
+    !> Current state vector of iLevel
+    real(kind=rk), intent(inout) :: state(:)
+    !> size of state array ( in terms of elements )
+    integer, intent(in) :: nSize
+    !> state values of boundary elements of all fields of iLevel
+    real(kind=rk), intent(in) :: bcBuffer(:)
+    !> iLevel descriptor
+    type(tem_levelDesc_type), intent(in) :: levelDesc
+    !> Treelm Mesh
+    type(treelmesh_type), intent(in) :: tree
+    !> fluid parameters and properties
+    type(mus_field_prop_type), intent(in) :: fieldProp
+    !> stencil layout information
+    type(mus_scheme_layout_type), intent(in) :: layout
+    !> the level On which this boundary was invoked
+    integer, intent(in) :: iLevel
+    !> connectivity array corresponding to state vector
+    integer, intent(in) :: neigh(:)
+    !> global time information
+    type(tem_time_type), intent(in)  :: sim_time
+    !> pointer to field variable in the state vector
+    integer, intent(in) :: varPos(:)
+    !> number of Scalars in the scheme var system
+    integer, intent(in) :: nScalars
+    !> scheme variable system
+    type(tem_varSys_type), intent(in) :: varSys
+    !> position of derived quantities in varsys
+    type(mus_derVarPos_type), intent(in) :: derVarPos
+    !> scheme global boundary type
+    type(glob_boundary_type), intent(in) :: globBC
+    !> scheme global boundary type
+    type(mus_physics_type), intent(in) :: physics
+    !> current field
+    integer, intent(in) :: iField
+    !> mixture info
+    type(mus_mixture_type), intent(in) :: mixture
+    ! -------------------------------------------------------------------- !
+    real(kind=rk) :: fIn, fOut, fNgh
+    real(kind=rk) :: cIn, cOut, cNgh
+    integer :: iLink
+    ! ---------------------------------------------------------------------------
+
+    !NEC$ ivdep
+    !DIR$ ivdep
+    !IBM* independent
+    do iLink = 1, me%links(iLevel)%nVals
+
+      cIn  = me%bouzidi(iLevel)% cIn( iLink )
+      cOut = me%bouzidi(iLevel)%cOut( iLink )
+      cNgh = me%bouzidi(iLevel)%cNgh( iLink )
+
+      fIn  = bcBuffer( me%bouzidi(iLevel)% inPos(iLink) )
+      fOut = bcBuffer( me%bouzidi(iLevel)%outPos(iLink) )
+      fNgh = me%neigh(iLevel)%computeNeighBuf(me%bouzidi(iLevel)%nghPos(iLink))
+
+      state( me%links(iLevel)%val(iLink) ) = cIn*fIn + cOut*fOut + cNgh*fNgh
+
+    end do ! iLink
+
+  end subroutine wall_libb
+! ****************************************************************************** !
+
+! ****************************************************************************** !
+  !> No comment yet!
+  !!
+  !! @TODO add comment
+  !!
+  !! This subroutine's interface must match the abstract interface definition
+  !! [[boundaryRoutine]] in bc/[[mus_bc_header_module]].f90 in order to be
+    links%val(1:iLink) = dirs(1:iLink)
+    links%nVals        = iLink
+
+    deallocate( dirs )
+
+  end subroutine mus_set_bcLinks
+  ! ------------------------------------------------------------------------ !
+
+
+  ! ------------------------------------------------------------------------ !
+  !> Set the coefficients of bouzidi linear interpolation boundary condition.
+  !!
+  subroutine set_bouzidi_coeff( qVal, cIn, cOut, cNgh, cVel )
+    ! -------------------------------------------------------------------- !
+    real(kind=rk),  intent(in) :: qVal
+    real(kind=rk), intent(out) :: cIn, cOut, cNgh, cVel
+    ! -------------------------------------------------------------------- !
+    if ( qVal >= 0.5_rk ) then
+      cIn  = 1._rk - 0.5_rk / qVal
+      cOut =         0.5_rk / qVal
+      cNgh = 0.0_rk
+      cVel = 0.5_rk / qVal
+    else
+      cIn  = 0.0_rk
+      cOut =         2.0_rk * qVal
+      cNgh = 1._rk - 2.0_rk * qVal
+      cVel = 1._rk
+    end if
+
+  end subroutine set_bouzidi_coeff
+  ! ------------------------------------------------------------------------ !
+
+
+  ! ------------------------------------------------------------------------ !
+  !> Set necessary data for Wall Bouzidi BC
+  !! bouzidi should be allocated beforehand
+  subroutine mus_set_bouzidi( iLevel, QQ, QQN, nScalars, globBC, cxDirInv, &
+    &                         varPos, bouzidi )
+    ! -------------------------------------------------------------------- !
+    integer, intent(in) :: iLevel, QQ, QQN, nScalars
+    type( glob_boundary_type ), intent(in) :: globBC
+    integer, intent(in)  :: cxDirInv(QQ)
+    integer, intent(in)  :: varPos(:)
+    !> cIn, cOut, cNgh should have size of nLinks
+    type( bc_wall_bouzidi_type ), intent(inout) :: bouzidi
+    ! -------------------------------------------------------------------- !
+    integer :: iLink, iDir, invDir, iElem, posInBCBuf
+    real(kind=rk) :: cVelTmp ! not required for wall_libb
+    ! -------------------------------------------------------------------- !
+
+    iLink = 0
+
+    do iElem = 1, globBC%nElems(iLevel)
+
+      posInBCBuf = globBC%elemLvl( iLevel )%posInBcElemBuf%val( iElem )
+
+      do iDir = 1, QQN
+        if( globBC%elemLvl(iLevel)%bitmask%val( iDir, iElem )) then
+          invDir = cxDirInv(iDir)
+          iLink = iLink + 1
+          bouzidi%qVal( iLink ) = globBC%elemLvl( iLevel )       &
+            &                           %qVal%val( invDir, iElem )
+          call set_bouzidi_coeff(            &
+            &    qVal = bouzidi%qVal(iLink), &
+            &    cIn  = bouzidi%cIn(iLink),  &
+            &    cOut = bouzidi%cOut(iLink), &
+            &    cNgh = bouzidi%cNgh(iLink), &
+            &    cVel = cVelTmp              )
+
+          ! inPos and outPos are used in bcBuffer
+          bouzidi%inPos( iLink ) = varPos(iDir) + ( posInBCBuf-1 ) * nScalars
+          bouzidi%outPos( iLink ) = varPos(invDir) + ( posInBCBuf-1 ) * nScalars
+          ! nghPos is used in computeNeighBuf
+          bouzidi%nghPos( iLink ) = invDir + (iElem-1)*QQ
+        end if
+      end do ! iDir
+
+    end do ! iElem
+
+  end subroutine mus_set_bouzidi
+  ! ------------------------------------------------------------------------ !
+
+
+  ! ------------------------------------------------------------------------ !
+  subroutine mus_alloc_bouzidi( me, nVals, minLevel, maxLevel )
+    ! -------------------------------------------------------------------- !
+    type( bc_wall_bouzidi_type ), allocatable :: me(:)
+    integer, intent(in) :: minLevel, maxLevel
+    integer, intent(in) :: nVals(minLevel:maxLevel)
+    ! -------------------------------------------------------------------- !
+  !! provided by seeder.
+  subroutine init_qVals(refQVal, layout, globBC, minLevel, maxLevel)
+    ! ---------------------------------------------------------------------------
+    real(kind=rk),                 intent(in) :: refQVal
+    type( mus_scheme_layout_type), intent(in) :: layout
+    type( glob_boundary_type ), intent(inout) :: globBC
+    integer,                       intent(in) :: minLevel, maxLevel
+    ! ---------------------------------------------------------------------------
+    integer :: iElem, iLevel, iDir, invDir, QQN
+    ! ---------------------------------------------------------------------------
+
+    globBC%qValInitialized = .true.
+    QQN = layout%fStencil%QQN
+
+    ! 2. allocate qVal array level-wise
+    lvlLoop: do iLevel = minLevel, maxLevel
+
+      ! if qVal is not available from seeder then initialize qVal
+      call init( me     = globBC%elemLvl(iLevel)%qVal, &
+        &        width  = QQN,                         &
+        &        length = globBC%nElems(iLevel)        )
+        globBC%elemLvl( iLevel )%qVal%val = 0.0_rk
+
+      ! loop over elements
+      do iElem = 1, globBC%nElems(iLevel)
+        ! loop over directions
+        do iDir = 1, QQN
+          ! Bitmask is true for incoming direction.
+          ! so use invDir to access qVal and cxDirRK
+          if ( globBC%elemLvl(iLevel)%bitmask%val(iDir, iElem) ) then
+            invDir  = layout%fStencil%cxDirInv(iDir)
+            ! if no qVal from seeder then use refQVal
+            globBC%elemLvl(iLevel)%qVal%val(invDir, iElem) = refQVal
+          end if
+        end do !iDir
+      end do !iElem
+    end do lvlLoop
+
+  end subroutine init_qVals
+            &    wasadded = wasadded                             )
+
+          if ( wasadded ) then
+            bitmask     = .false.
+            normal      = 0
+            !append the bitmask for bID
+            call append( me = globBC( bID )%elemLvl( level )%bitmask, &
+              &          val = bitmask                                )
+
+            !append normal
+            call append( me = globBC( bID )%elemLvl( level )%normal, &
+              &          val = normal                                )
+            if ( globBC( bID )%hasQVal ) then
+              !append qVal
+              call append( me = globBC( bID )%elemLvl( level )%qVal, &
+                &         val = qVal                                 )
+            end if ! haQval
+
+            found( bID ) = .true.
+          end if
+
+          ! Set the bitmask for the incoming directions which have to be
+          ! updated, which is opposed to BCid direction.
+          globBC( bID )%elemLvl( level )%bitmask%val(       &
+            & stencil%cxDirInv(iDir), nBnds( bID ) ) = .true.
+
+          if( globBC( bID )%hasQVal ) then
+            ! Set the qvalue from the boundary array
+            ! q-values stored in outgoing direction
+            globBC( bID )%elemLvl( level )%qVal%val(iDir, nBnds( bID ) ) &
+              & = bc_prop%qVal(iMeshDir, iElem_qVal)
+            if (bc_prop%qVal(iMeshDir, iElem_qVal) > 0.0_rk) then
+              qValiDir = qValWeight(iDir) * bc_prop%qVal(iMeshDir, iElem_qVal)
+              minQVal = min(minQVal, qValiDir)
+              if (minQVal == qValiDir ) then
+                globBC( bID )%elemLvl( level )%normal%val(:, nBnds( bID ) ) &
+                  & = - stencil%cxDir( :, iDir )
+              end if
+            end if
+          else
+            ! Add this boundary direction to the sum for the normal vector
+            ! use the minus, as we want to go into the flow domain, and the
+            ! stencil is pointing outside
+            globBC( bID )%elemLvl( level )%normal%val(:, nBnds( bID ) )         &
+              &  =  globBC( bID )%elemLvl( level )%normal%val(:, nBnds( bID ) ) &
+              &     -  weight(iDir) * stencil%cxDir( :, iDir )
+          end if ! hasQVal
+        end if ! bID > 0
+      end do  ! iDir
+
+      ! if element is intersected by more than one boundary
+! Copyright (c) 2011-2013 Manuel Hasert <m.hasert@grs-sim.de>
+! Copyright (c) 2011 Harald Klimach <harald.klimach@uni-siegen.de>
+! Copyright (c) 2011 Konstantin Kleinheinz <k.kleinheinz@grs-sim.de>
+! Copyright (c) 2011-2012 Simon Zimny <s.zimny@grs-sim.de>
+! Copyright (c) 2012, 2014-2016 Jiaxing Qi <jiaxing.qi@uni-siegen.de>
+! Copyright (c) 2012 Kartik Jain <kartik.jain@uni-siegen.de>
+! Copyright (c) 2013-2015, 2019 Kannan Masilamani <kannan.masilamani@uni-siegen.de>
+! Copyright (c) 2016 Tobias Schneider <tobias1.schneider@student.uni-siegen.de>
+!
+! Redistribution and use in source and binary forms, with or without
+! modification, are permitted provided that the following conditions are met:
+!
+! 1. Redistributions of source code must retain the above copyright notice,
+! this list of conditions and the following disclaimer.
+!
+! 2. Redistributions in binary form must reproduce the above copyright notice,
+! this list of conditions and the following disclaimer in the documentation
+! and/or other materials provided with the distribution.
+!
+! THIS SOFTWARE IS PROVIDED BY THE UNIVERSITY OF SIEGEN “AS IS” AND ANY EXPRESS
+! OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+! OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+! IN NO EVENT SHALL UNIVERSITY OF SIEGEN OR CONTRIBUTORS BE LIABLE FOR ANY
+! DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+! (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+! LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+! ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+! (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+! SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+??! We include two accesses to the pdf variables
+??! - array of structures (AOS)
+??! - structure of arrays (SOA)
+??!
+??IFNDEF (SOA) THEN
+?? LOGICAL :: SOA = .false.
+??ENDIF
+??!
+??! Streaming layout
+??!   PUSH:  read element-local pdf and store to adjacent element
+??!   PULL:  read adjacent element pdf and store to local element
+??! Multi-level only works with Pull
+??!
+??!
+??IFNDEF (PUSH) THEN
+?? LOGICAL :: PUSH = .false.
+??ENDIF
+??! Macro to get neighbor element index from current element index, connectivity
+??! array and direction
+?? macro :: NghElemIDX(neigh, iDir, stencil, index, QQ, nElems) &
+??   & = ?ElemIDX?(?neigh?(?NGPOS?(?NgDir?(?iDir?, ?stencil?), ?index?, ?nElems?)), &
+??   & ?QQ?, ?nElems?)
+??!
+??!
+??! NgDir: The ELEMENT direction with which the streaming operation takes places
+??!        Mainly used in the reconstruct_connectivity routine to build the neighbor array.
+??!        Also used in boundary routine
+??! nScalars: number of scalars in state array
+??! QQ: number of stencil directions
+?? if(PUSH) then
+?? macro :: FETCH(iDir,iField,node,QQ,nScalars,nElems)       &
+??   &        = ?IDX?( ?iDir?+(?iField?-1)*?QQ?, ?node?, ?nScalars?, ?nElems?)
+?? macro :: SAVE( iDir,iField,node,QQ,nScalars,nElems,neigh) &
+??   &        = ?neigh?( ?NGPOS?(?iDir?,?node?,?nElems?) ) + ?NGOFFSET?(?iField?, ?QQ?, ?nElems?) + ?nScalars?*0
+?? macro :: StreamName = push
+?? macro :: NgDir(iDir) = ?iDir?
+?? macro :: InvNgDir(iDir, stencil) = ?stencil?%cxDirInv( ?iDir? )
+?? macro :: post2pre( omega ) = ( 1.0_rk + ?omega?*0.0_rk )
+?? macro :: pre2post( omega ) = ( 1.0_rk + ?omega?*0.0_rk )
+?? else !PULL
+?? macro :: FETCH(iDir,iField,node,QQ,nScalars,nElems,neigh) &
+??   &        = ?neigh?(?NGPOS?(?iDir?,?node?,?nElems?))+?NGOFFSET?(?iField?,?QQ?,?nElems?)+?nScalars?*0
+?? macro :: SAVE( iDir,iField,node,QQ,nScalars,nElems)      &
+??   &        = ?IDX?( ?iDir?+(?iField?-1)*?QQ?, ?node?, ?nScalars?, ?nElems?)
+?? macro :: StreamName = pull
+?? macro :: NgDir(iDir, stencil) = ?stencil?%cxDirInv( ?iDir? )
+?? macro :: InvNgDir(iDir) = ?iDir?
+?? macro :: post2pre( omega ) = ( 1.0_rk - ?omega? )
+?? macro :: pre2post( omega ) = ( 1.0_rk - ?omega? )
+?? endif
+??
+??! Access to the Connectivity Array
+?? macro :: NGPOS(iDir,node,nElems) = (?iDir?-1)*?nElems? + ?node?
+??!
+?? IF(SOA) THEN
+??!--------------------------------------------
+??!    S O A - Structure of arrays layout
+??!-------------------------------------------
+??! These are the array index access macros
+??! Access to the state array
+?? macro :: IDX(varPosiDir,node, nScalars, nElems) = (?varPosiDir?-1)*?nElems? + ?node? + ?nScalars?*0
+??! Offset in NGPOS
+?? macro :: NGOFFSET( iField, QQ, nElems ) = (?iField?-1)*?QQ?*?nElems?
+??! Position in Element list
+?? macro :: ElemIDX(index, QQ, nElems) = mod(?index?-1,?nElems?) + 1 + ?QQ?*0
+??! Direction
+?? macro :: DirIDX(index, QQ, nElems)  = int((?index?-1)/?nElems?) + 1 + ?QQ?*0
+??!
+?? ELSE
+??!--------------------------------------------
+??!    A O S - Array of structures layout
+??!-------------------------------------------
+??! These are the Array index access macros
+??! Access to the State Array
+?? macro :: IDX(varPosiDir,node,nScalars) = (?node?-1)*?nScalars? + ?varPosiDir?
+??! Offset after NGPOS
+?? macro :: NGOFFSET( iField, QQ ) = (?iField?-1)*?QQ?
+??! Position in Element list
+?? macro :: ElemIDX(index, QQ) = int((?index?-1)/?QQ?) + 1
+??! Direction
+?? macro :: DirIDX(index, QQ, nElems)  = mod(?index?-1,?QQ?) + 1 + ?nElems?*0
+?? ENDIF
+??!
+?? text :: dir_vector
+!CDIR NODEP
+!IBM* INDEPENDENT
+!DIR$ IVDEP
+!DIR$ VECTOR aligned NONTEMPORAL(outState)
+?? end text dir_vector
+??!
+?? text :: dir_novec
+!CDIR NODEP
+!IBM* NOVECTOR
+!DIR$ NOVECTOR
+?? end text dir_novec
