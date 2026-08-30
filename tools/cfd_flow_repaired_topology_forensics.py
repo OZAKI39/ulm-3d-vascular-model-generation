@@ -26,6 +26,8 @@ from utils.cfd_flow.repaired_topology_forensics import (  # noqa: E402
     PINNED_SEEDER_SHA,
     PINNED_TREELM_SHA,
     PORT_LABELS,
+    UNPATCHED_SEEDER_BINARY_SHA256,
+    UNPATCHED_SEEDER_BINARY_WSL,
     SCALE_FACTOR,
     cell_centers,
     classify_component_topology,
@@ -42,11 +44,16 @@ from utils.cfd_flow.repaired_topology_forensics import (  # noqa: E402
     parse_uniform_lattice,
     port_component_membership,
     scale_binary_stl,
+    scaled_seeder_command,
+    scaled_seeder_preflight_command,
     scale_seeder_lua_geometry,
+    evaluate_scaled_seeder_preflight,
+    seeder_mesh_semantic_success,
     sparse_component_labels,
     timed_runtime,
     unit_scaling_oracle_decision,
 )
+from utils.cfd_flow.apes import windows_to_wsl  # noqa: E402
 from utils.cfd_flow.musubi_boundary_mass_referee import (  # noqa: E402
     MeshContract,
     load_mesh_contract,
@@ -399,6 +406,245 @@ def prepare_scaled(project_root: Path) -> dict[str, Any]:
     return result
 
 
+def launcher_preflight(project_root: Path) -> dict[str, Any]:
+    """Run the zero-Launcher-call direct-WSL filesystem/hash preflight."""
+
+    started = time.perf_counter()
+    paths = _paths(project_root.resolve())
+    transform = json.loads(
+        (paths["scaled"] / "scaled_geometry_transform.json").read_text(encoding="utf-8")
+    )
+    if transform["status"] != "PASS_SCALED_GEOMETRY_PREPARED":
+        raise ValueError("Existing scaled geometry transform is not PASS")
+    wall = next(
+        row for row in transform["stl_files"] if Path(row["source"]).name == "wall.stl"
+    )
+    workdir_wsl = windows_to_wsl(paths["scaled"] / "seeder", "Ubuntu")
+    command = scaled_seeder_preflight_command(workdir_wsl)
+    process = subprocess.run(
+        ["wsl.exe", "-d", "Ubuntu", "--", "bash", "-lc", command],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=60,
+    )
+    stdout_path = paths["scaled"] / "seeder/launcher_preflight_stdout.log"
+    stderr_path = paths["scaled"] / "seeder/launcher_preflight_stderr.log"
+    stdout_path.write_text(process.stdout, encoding="utf-8")
+    stderr_path.write_text(process.stderr, encoding="utf-8")
+    evaluated = evaluate_scaled_seeder_preflight(
+        returncode=process.returncode,
+        stdout=process.stdout,
+        expected_workdir_wsl=workdir_wsl,
+        expected_lua_sha256=transform["scaled_seeder_lua_sha256"],
+        expected_wall_sha256=wall["destination_sha256"],
+    )
+    result = {
+        **evaluated,
+        "status": (
+            "PASS_ZERO_CALL_LAUNCHER_PREFLIGHT"
+            if evaluated["status"] == "PASS"
+            else "CFD_FLOW_SCALE_ORACLE_LAUNCH_PREFLIGHT_FAILED"
+        ),
+        "workdir_wsl": workdir_wsl,
+        "command_transport": "DIRECT_PYTHON_SUBPROCESS_TO_WSL_BASH_LC",
+        "returncode": int(process.returncode),
+        "stdout": str(stdout_path.resolve()),
+        "stdout_sha256": sha256_file(stdout_path),
+        "stderr": str(stderr_path.resolve()),
+        "stderr_sha256": sha256_file(stderr_path),
+        "seeder_calls": 0,
+        "musubi_calls": 0,
+        "runtime_s": timed_runtime(started),
+    }
+    write_json(paths["scaled"] / "launcher_preflight.json", result)
+    return result
+
+
+def run_scaled_seeder_oracle(project_root: Path) -> dict[str, Any]:
+    """Run exactly one direct-WSL unpatched scaled Seeder after PASS preflight."""
+
+    started = time.perf_counter()
+    paths = _paths(project_root.resolve())
+    preflight_path = paths["scaled"] / "launcher_preflight.json"
+    preflight = json.loads(preflight_path.read_text(encoding="utf-8"))
+    if preflight["status"] != "PASS_ZERO_CALL_LAUNCHER_PREFLIGHT":
+        raise RuntimeError(
+            "Seeder call prohibited because launcher preflight is not PASS"
+        )
+    mesh_dir = paths["scaled"] / "seeder/mesh"
+    required_before = {
+        name: (mesh_dir / name).is_file() and (mesh_dir / name).stat().st_size > 0
+        for name in (
+            "header.lua",
+            "bnd.lua",
+            "bnd.lsb",
+            "elemlist.lsb",
+            "qval.lua",
+            "qval.lsb",
+        )
+    }
+    if any(required_before.values()):
+        raise RuntimeError("Scaled mesh already contains non-empty semantic artifacts")
+    workdir_wsl = preflight["workdir_wsl"]
+    command = scaled_seeder_command(workdir_wsl)
+    process = subprocess.run(
+        ["wsl.exe", "-d", "Ubuntu", "--", "bash", "-lc", command],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=120,
+    )
+    stdout_path = paths["scaled"] / "seeder/seeder_oracle_stdout.log"
+    stderr_path = paths["scaled"] / "seeder/seeder_oracle_stderr.log"
+    stdout_path.write_text(process.stdout, encoding="utf-8")
+    stderr_path.write_text(process.stderr, encoding="utf-8")
+    semantic = seeder_mesh_semantic_success(
+        mesh_dir, returncode=process.returncode, stdout=process.stdout
+    )
+    result = {
+        "status": (
+            "PASS_SCALED_UNPATCHED_SEEDER"
+            if semantic["semantic_success"]
+            else "FAIL_SCALED_UNPATCHED_SEEDER_SEMANTICS"
+        ),
+        "semantic": semantic,
+        "workdir_wsl": workdir_wsl,
+        "command_transport": "DIRECT_PYTHON_SUBPROCESS_TO_WSL_BASH_LC",
+        "binary": UNPATCHED_SEEDER_BINARY_WSL,
+        "binary_sha256": UNPATCHED_SEEDER_BINARY_SHA256,
+        "pinned_seeder_source_sha": PINNED_SEEDER_SHA,
+        "returncode": int(process.returncode),
+        "stdout": str(stdout_path.resolve()),
+        "stdout_sha256": sha256_file(stdout_path),
+        "stderr": str(stderr_path.resolve()),
+        "stderr_sha256": sha256_file(stderr_path),
+        "seeder_calls": 1,
+        "musubi_calls": 0,
+        "runtime_s": timed_runtime(started),
+        "first_failure": None if semantic["semantic_success"] else semantic["checks"],
+    }
+    write_json(paths["scaled"] / "seeder_oracle_attempt_summary.json", result)
+    return result
+
+
+def finalize_preflight_failed(project_root: Path) -> dict[str, Any]:
+    """Record a zero-call launcher failure and prohibit the Seeder attempt."""
+
+    started = time.perf_counter()
+    paths = _paths(project_root.resolve())
+    preflight = json.loads(
+        (paths["scaled"] / "launcher_preflight.json").read_text(encoding="utf-8")
+    )
+    if preflight["status"] != "CFD_FLOW_SCALE_ORACLE_LAUNCH_PREFLIGHT_FAILED":
+        raise ValueError("Launcher preflight is not a recorded failure")
+    components = json.loads(
+        (paths["qc"] / "repaired_base_component_forensics.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    spatial = json.loads(
+        (paths["qc"] / "old_vs_repaired_spatial_difference.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    first_failure = (
+        "The direct Python subprocess -> wsl.exe -> bash -lc preflight did not "
+        "preserve the requested scaled Seeder working directory. PWD remained "
+        "at the repository root, so seeder.lua and wall.stl were not visible."
+    )
+    oracle = {
+        "status": "FAIL",
+        "interpretation": "SCALE_INVARIANCE_ORACLE_NOT_EXECUTED_PREFLIGHT_FAILED",
+        "patched_meter": {
+            "cell_count": int(components["fluid_cell_count"]),
+            "component_counts": {
+                mode: row["component_count"]
+                for mode, row in components["connectivity"].items()
+            },
+        },
+        "unpatched_micrometer_scaled": {
+            "cell_count": None,
+            "component_counts": None,
+            "boundary_counts": None,
+            "pinned_seeder_sha": PINNED_SEEDER_SHA,
+        },
+        "comparison": {
+            "tree_id_set_exact_match": None,
+            "boundary_id_exact_match": None,
+            "common_q_links": None,
+            "q_patched_minus_scaled": {
+                "mean": None,
+                "rms": None,
+                "median": None,
+                "p95": None,
+                "max": None,
+            },
+            "stl_scale_roundtrip": None,
+        },
+        "launcher_preflight": preflight,
+        "seeder_calls": 0,
+        "musubi_calls": 0,
+        "first_failure": first_failure,
+        "runtime_s": timed_runtime(started),
+    }
+    write_json(paths["qc"] / "unit_scaling_oracle.json", oracle)
+    finalization_s = timed_runtime(started)
+    final = {
+        "status": "CFD_FLOW_SCALE_ORACLE_LAUNCH_PREFLIGHT_FAILED",
+        "actual_head_at_execution": _head(paths["root"]),
+        "production_pipeline_modified": False,
+        "zero_call_launcher_preflight": "FAIL",
+        "seeder_calls": 0,
+        "seeder_semantic_success": False,
+        "musubi_calls": 0,
+        "harvester_calls": 0,
+        "old_base_cells": 221309,
+        "repaired_base_cells": int(components["fluid_cell_count"]),
+        "scaled_unpatched_base_cells": None,
+        "scale_invariance_oracle": "NOT_EXECUTED_PREFLIGHT_FAILED",
+        "old_mesh_false_flooding": spatial["old_mesh_false_flooding"],
+        "component_classification": components["component_classification"],
+        "singleton_forensics": None,
+        "main_vascular_network_split": False,
+        "root_cause_final": (
+            "THE INDEPENDENT SCALE ORACLE WAS NOT EXECUTED BECAUSE THE ZERO-CALL "
+            "DIRECT-WSL PREFLIGHT DID NOT ENTER THE SCALED SEEDER DIRECTORY; "
+            "PRIOR OLD-FALSE-FLOODING AND D3Q19-SINGLETON EVIDENCE IS UNCHANGED"
+        ),
+        "first_failure": first_failure,
+        "evidence": {
+            "launcher_preflight": str(
+                (paths["scaled"] / "launcher_preflight.json").resolve()
+            ),
+            "unit_scaling_oracle": str(
+                (paths["qc"] / "unit_scaling_oracle.json").resolve()
+            ),
+            "targeted_validation": str(
+                (
+                    paths["visualization"]
+                    / "scale_oracle_launcher_validation_summary.json"
+                ).resolve()
+            ),
+        },
+        "runtime": {
+            "launcher_preflight_s": preflight["runtime_s"],
+            "finalization_s": finalization_s,
+            "total_s": float(preflight["runtime_s"] + finalization_s),
+        },
+        "next": (
+            "IN A NEW AUTHORIZED ROUND, VALIDATE ONE-LINE WSL ARGUMENT "
+            "MARSHALLING WITH A ZERO-CALL PREFLIGHT BEFORE ANY SEEDER"
+        ),
+    }
+    write_json(paths["qc"] / "repaired_topology_root_cause.json", final)
+    return final
+
+
 def finalize(project_root: Path) -> dict[str, Any]:
     started = time.perf_counter()
     paths = _paths(project_root.resolve())
@@ -698,7 +944,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "phase",
-        choices=("zero-run", "prepare-scaled", "finalize", "finalize-failed-launch"),
+        choices=(
+            "zero-run",
+            "prepare-scaled",
+            "launcher-preflight",
+            "run-scaled-oracle",
+            "finalize",
+            "finalize-failed-launch",
+            "finalize-preflight-failed",
+        ),
     )
     parser.add_argument("--project-root", type=Path, default=ROOT)
     args = parser.parse_args()
@@ -706,8 +960,14 @@ def main() -> int:
         result = run_zero(args.project_root)
     elif args.phase == "prepare-scaled":
         result = prepare_scaled(args.project_root)
+    elif args.phase == "launcher-preflight":
+        result = launcher_preflight(args.project_root)
+    elif args.phase == "run-scaled-oracle":
+        result = run_scaled_seeder_oracle(args.project_root)
     elif args.phase == "finalize":
         result = finalize(args.project_root)
+    elif args.phase == "finalize-preflight-failed":
+        result = finalize_preflight_failed(args.project_root)
     else:
         result = finalize_failed_launch(args.project_root)
     print(result["status"])

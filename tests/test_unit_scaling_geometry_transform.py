@@ -8,6 +8,7 @@ import numpy as np
 from utils.cfd_flow.repaired_topology_forensics import (
     scale_binary_stl,
     scale_seeder_lua_geometry,
+    stl_scale_roundtrip_error,
 )
 
 
@@ -83,3 +84,46 @@ endsolid test
     assert "vertex 1 0 0" in scaled
     assert "vertex 0 2 0" in scaled
     assert "vertex 0 0 3" in scaled
+
+
+def test_stl_roundtrip_error_is_normalized_by_dx(tmp_path: Path) -> None:
+    source = tmp_path / "source.stl"
+    scaled = tmp_path / "scaled.stl"
+    source.write_text(
+        """solid test
+  facet normal 0 0 1
+    outer loop
+      vertex 1e-6 0 0
+      vertex 0 2e-6 0
+      vertex 0 0 3e-6
+    endloop
+  endfacet
+endsolid test
+""",
+        encoding="utf-8",
+    )
+    scaled.write_text(
+        """solid test
+  facet normal 0 0 1
+    outer loop
+      vertex 1.000001 0 0
+      vertex 0 2 0
+      vertex 0 0 3
+    endloop
+  endfacet
+endsolid test
+""",
+        encoding="utf-8",
+    )
+
+    result = stl_scale_roundtrip_error(
+        {
+            "scale_factor": 1.0e6,
+            "stl_files": [{"source": str(source), "destination": str(scaled)}],
+        },
+        dx_m=2.0e-7,
+    )
+
+    assert np.isclose(result["maximum_euclidean_vertex_error_m"], 1.0e-12)
+    assert np.isclose(result["geometry_quantization_over_dx"], 5.0e-6)
+    assert result["derived_q_tolerance"] > result["geometry_quantization_over_dx"]

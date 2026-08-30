@@ -13,6 +13,7 @@ import heapq
 import json
 import math
 import re
+import shlex
 import struct
 import time
 from dataclasses import dataclass
@@ -46,6 +47,18 @@ SCALE_FACTOR = 1.0e6
 PINNED_SEEDER_SHA = "667109df6fafdcb39f4409e3f5d90f04d75cd33c"
 PINNED_TREELM_SHA = "53f273dbb8e9dcbe7feeb3d9831a35f5ae3cd72c"
 PINNED_SDR_SHA = "3b3e344aec0af8d1383e2cfb023a21df3361e1e9"
+UNPATCHED_SEEDER_BINARY_WSL = "/home/lzy/apes-pinned/seeder_official/build/seeder"
+UNPATCHED_SEEDER_BINARY_SHA256 = (
+    "178d01f153d01df49cbc16e3f6be2f98ebcc19922bf92dc5afd43c49c8a5e511"
+)
+REQUIRED_SEEDER_MESH_FILES = (
+    "header.lua",
+    "bnd.lua",
+    "bnd.lsb",
+    "elemlist.lsb",
+    "qval.lua",
+    "qval.lsb",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -526,6 +539,208 @@ def scale_binary_stl(
         ],
         "source_sha256": sha256_file(source),
         "destination_sha256": sha256_file(destination),
+    }
+
+
+def stl_vertices(path: Path) -> np.ndarray:
+    """Read binary or ASCII STL vertices in stored facet order."""
+
+    raw = Path(path).read_bytes()
+    if len(raw) >= 84:
+        triangle_count = struct.unpack_from("<I", raw, 80)[0]
+        if len(raw) == 84 + 50 * triangle_count:
+            facet_dtype = np.dtype(
+                [
+                    ("normal", "<f4", 3),
+                    ("vertices", "<f4", (3, 3)),
+                    ("attribute", "<u2"),
+                ]
+            )
+            facets = np.frombuffer(
+                raw, dtype=facet_dtype, count=triangle_count, offset=84
+            )
+            return np.asarray(facets["vertices"], dtype=np.float64).reshape(-1, 3)
+    text = raw.decode("utf-8")
+    number = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[EeDd][-+]?\d+)?"
+    pattern = re.compile(rf"(?mi)^\s*vertex\s+({number})\s+({number})\s+({number})\s*$")
+    vertices = [
+        [float(value.replace("D", "E").replace("d", "e")) for value in match]
+        for match in pattern.findall(text)
+    ]
+    if not vertices or len(vertices) % 3:
+        raise ValueError(f"STL is neither valid binary nor ASCII: {path}")
+    return np.asarray(vertices, dtype=np.float64)
+
+
+def stl_scale_roundtrip_error(
+    transform: Mapping[str, Any], *, dx_m: float
+) -> dict[str, Any]:
+    """Measure scaled-STL round-trip error and derive a q-fraction budget.
+
+    Each source vertex is compared with its corresponding scaled vertex divided
+    by the declared scale factor.  The q budget assigns one maximum Euclidean
+    perturbation to each of the three triangle vertices plus one floating-point
+    arithmetic allowance; it is a first-order screening budget, not a claim
+    about ill-conditioned grazing intersections.
+    """
+
+    factor = float(transform["scale_factor"])
+    per_file = []
+    maximum_coordinate = 0.0
+    maximum_euclidean = 0.0
+    for record in transform["stl_files"]:
+        source = stl_vertices(Path(record["source"]))
+        scaled = stl_vertices(Path(record["destination"])) / factor
+        if source.shape != scaled.shape:
+            raise ValueError(
+                f"STL vertex shape changed during scaling: {record['source']}"
+            )
+        delta = scaled - source
+        coordinate_error = float(np.max(np.abs(delta)))
+        euclidean_error = float(np.max(np.linalg.norm(delta, axis=1)))
+        maximum_coordinate = max(maximum_coordinate, coordinate_error)
+        maximum_euclidean = max(maximum_euclidean, euclidean_error)
+        per_file.append(
+            {
+                "source": record["source"],
+                "destination": record["destination"],
+                "vertex_count": int(len(source)),
+                "maximum_absolute_coordinate_error_m": coordinate_error,
+                "maximum_euclidean_vertex_error_m": euclidean_error,
+            }
+        )
+    over_dx = maximum_euclidean / float(dx_m)
+    arithmetic_allowance = 64.0 * np.finfo(np.float64).eps
+    q_tolerance = 4.0 * over_dx + arithmetic_allowance
+    return {
+        "scale_factor": factor,
+        "dx_m": float(dx_m),
+        "maximum_absolute_coordinate_error_m": maximum_coordinate,
+        "maximum_euclidean_vertex_error_m": maximum_euclidean,
+        "geometry_quantization_over_dx": float(over_dx),
+        "q_tolerance_derivation": (
+            "4 * geometry_quantization_over_dx + 64 * float64_epsilon; "
+            "three triangle-vertex perturbations plus one arithmetic allowance"
+        ),
+        "derived_q_tolerance": float(q_tolerance),
+        "files": per_file,
+    }
+
+
+def scaled_seeder_preflight_command(
+    workdir_wsl: str,
+    *,
+    binary_wsl: str = UNPATCHED_SEEDER_BINARY_WSL,
+    source_root_wsl: str = "/home/lzy/apes-pinned/seeder_official",
+) -> str:
+    """Build the zero-Launcher-call WSL shell preflight."""
+
+    workdir = shlex.quote(workdir_wsl)
+    binary = shlex.quote(binary_wsl)
+    source_root = shlex.quote(source_root_wsl)
+    return " && ".join(
+        (
+            "set -euo pipefail",
+            f"cd {workdir}",
+            "test -f seeder.lua",
+            "test -d ../geometry",
+            "test -f ../geometry/geometry_solver_m/wall.stl",
+            f"test -x {binary}",
+            "mkdir -p mesh",
+            "printf 'PREFLIGHT_CWD=%s\\n' \"$PWD\"",
+            "printf 'SEEDER_LUA_REALPATH=%s\\n' \"$(realpath seeder.lua)\"",
+            "printf 'SEEDER_LUA_SHA256=%s\\n' \"$(sha256sum seeder.lua | awk '{print $1}')\"",
+            "printf 'WALL_STL_SHA256=%s\\n' \"$(sha256sum ../geometry/geometry_solver_m/wall.stl | awk '{print $1}')\"",
+            f"printf 'SEEDER_BINARY_SHA256=%s\\n' \"$(sha256sum {binary} | awk '{{print $1}}')\"",
+            f"printf 'SEEDER_SOURCE_HEAD=%s\\n' \"$(git -C {source_root} rev-parse HEAD)\"",
+        )
+    )
+
+
+def scaled_seeder_command(
+    workdir_wsl: str, *, binary_wsl: str = UNPATCHED_SEEDER_BINARY_WSL
+) -> str:
+    """Build the one allowed direct-WSL Seeder invocation."""
+
+    return " && ".join(
+        (
+            "set -euo pipefail",
+            f"cd {shlex.quote(workdir_wsl)}",
+            f"exec {shlex.quote(binary_wsl)} seeder.lua",
+        )
+    )
+
+
+def parse_key_value_lines(stdout: str) -> dict[str, str]:
+    result = {}
+    for line in stdout.splitlines():
+        if "=" in line:
+            key, value = line.split("=", 1)
+            result[key.strip()] = value.strip()
+    return result
+
+
+def evaluate_scaled_seeder_preflight(
+    *,
+    returncode: int,
+    stdout: str,
+    expected_workdir_wsl: str,
+    expected_lua_sha256: str,
+    expected_wall_sha256: str,
+    expected_binary_sha256: str = UNPATCHED_SEEDER_BINARY_SHA256,
+    expected_source_head: str = PINNED_SEEDER_SHA,
+) -> dict[str, Any]:
+    """Validate preflight markers instead of trusting a process return code."""
+
+    markers = parse_key_value_lines(stdout)
+    expected_realpath = f"{expected_workdir_wsl.rstrip('/')}/seeder.lua"
+    checks = {
+        "returncode_zero": int(returncode) == 0,
+        "working_directory_exact": markers.get("PREFLIGHT_CWD")
+        == expected_workdir_wsl.rstrip("/"),
+        "seeder_lua_visible": markers.get("SEEDER_LUA_REALPATH") == expected_realpath,
+        "seeder_lua_sha256_match": markers.get("SEEDER_LUA_SHA256")
+        == expected_lua_sha256,
+        "wall_stl_sha256_match": markers.get("WALL_STL_SHA256") == expected_wall_sha256,
+        "binary_sha256_match": markers.get("SEEDER_BINARY_SHA256")
+        == expected_binary_sha256,
+        "pinned_source_head_match": markers.get("SEEDER_SOURCE_HEAD")
+        == expected_source_head,
+    }
+    return {
+        "status": "PASS" if all(checks.values()) else "FAIL",
+        "checks": checks,
+        "markers": markers,
+    }
+
+
+def seeder_mesh_semantic_success(
+    mesh_dir: Path, *, returncode: int, stdout: str
+) -> dict[str, Any]:
+    """Require all non-empty mesh artifacts and reject semantic log failures."""
+
+    mesh = Path(mesh_dir)
+    files = {
+        name: {
+            "exists": (mesh / name).is_file(),
+            "size_bytes": int((mesh / name).stat().st_size)
+            if (mesh / name).is_file()
+            else 0,
+        }
+        for name in REQUIRED_SEEDER_MESH_FILES
+    }
+    checks = {
+        "returncode_zero": int(returncode) == 0,
+        "configuration_loaded": "Cannot load configuration file" not in stdout,
+        "all_required_mesh_files_nonempty": all(
+            row["exists"] and row["size_bytes"] > 0 for row in files.values()
+        ),
+    }
+    return {
+        "status": "PASS" if all(checks.values()) else "FAIL",
+        "semantic_success": bool(all(checks.values())),
+        "checks": checks,
+        "required_mesh_files": files,
     }
 
 
