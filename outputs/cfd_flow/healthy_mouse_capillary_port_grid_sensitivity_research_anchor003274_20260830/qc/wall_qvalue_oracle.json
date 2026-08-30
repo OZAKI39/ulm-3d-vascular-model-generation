@@ -1,0 +1,465 @@
+{
+  "status": "CFD_FLOW_WALL_QVALUE_CONTRACT_ERROR_IDENTIFIED",
+  "decision_basis": "No numerical q-error threshold was invented. Contract status uses source revision/mapping proof, finite in-range q-values, and existence of a forward analytic cylinder intersection for every declared D3Q19 wall link; error distributions remain diagnostic evidence.",
+  "source_contract": {
+    "status": "PASS",
+    "revisions": {
+      "seeder": {
+        "path": "/home/lzy/apes-pinned/seeder_official",
+        "expected_commit": "667109df6fafdcb39f4409e3f5d90f04d75cd33c",
+        "actual_commit": "667109df6fafdcb39f4409e3f5d90f04d75cd33c",
+        "commit_match": true
+      },
+      "musubi": {
+        "path": "/home/lzy/apes-worktrees/musubi_mcclure_adaptive_flux_20260829_1300",
+        "expected_commit": "4e8b277b66226277171ef93bf054d21270812793",
+        "actual_commit": "4e8b277b66226277171ef93bf054d21270812793",
+        "commit_match": true
+      },
+      "musubi_scheme": {
+        "path": "/home/lzy/apes-worktrees/musubi_mcclure_adaptive_flux_20260829_1300/mus",
+        "expected_commit": "81f8c4f13772f6d4af31f335e1e3f99b02726e25",
+        "actual_commit": "81f8c4f13772f6d4af31f335e1e3f99b02726e25",
+        "commit_match": true
+      },
+      "treelm": {
+        "path": "/home/lzy/apes-worktrees/musubi_mcclure_adaptive_flux_20260829_1300/tem",
+        "expected_commit": "9899d1376992c4fafc8a343d2b4ccef81de670d1",
+        "actual_commit": "9899d1376992c4fafc8a343d2b4ccef81de670d1",
+        "commit_match": true
+      }
+    },
+    "evidence": {
+      "seeder_ray_direction": {
+        "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-pinned\\seeder_official\\sdr\\source\\sdr_boundary_module.f90",
+        "sha256": "eabdc414ec3fa0fedd739ce0e6805fc47a682ae94a21b81f4d0b1809b0e7aa33",
+        "evidence": [
+          {
+            "token": "line%origin = origin",
+            "line": 834
+          },
+          {
+            "token": "line%vec = qOffset(iDir, :) * dx",
+            "line": 835
+          },
+          {
+            "token": "qVal_t = min( qVal_t, fraction_PointLine(intersect_p, line) )",
+            "line": 867
+          },
+          {
+            "token": "qVal(iDir) = 0.5_rk",
+            "line": 302
+          }
+        ]
+      },
+      "seeder_element_major_26_direction_storage": {
+        "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-pinned\\seeder_official\\sdr\\source\\sdr_proto2treelm_module.f90",
+        "sha256": "4b109abddf10fc8e11ebd57778e3ffb91d7595a04701e833adc27a9607aefad1",
+        "evidence": [
+          {
+            "token": "do iElem=1,temData%qVal(1)%nVals",
+            "line": 1145
+          },
+          {
+            "token": "do iDir=1,qQQQ",
+            "line": 193
+          },
+          {
+            "token": "write(distunit, rec=iElem) qVal",
+            "line": 1149
+          }
+        ]
+      },
+      "musubi_mesh_to_stencil_mapping": {
+        "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\mus\\source\\mus_construction_module.fpp",
+        "sha256": "c2eea0f440dc2880fb74c64d44fd9d8ac9c7a78de575598d73357f9981a27960",
+        "evidence": [
+          {
+            "token": "iMeshDir = stencil%map( iDir )",
+            "line": 2075
+          },
+          {
+            "token": "! q-values stored in outgoing direction",
+            "line": 2328
+          },
+          {
+            "token": "= bc_prop%qVal(iMeshDir, iElem_qVal)",
+            "line": 2330
+          }
+        ]
+      },
+      "musubi_wall_libb_inverse_lookup": {
+        "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\mus\\source\\bc\\mus_bc_header_module.fpp",
+        "sha256": "e09d115d4c01d9e8948d002b600909b2000855ce7a781175d6161f053bfafb51",
+        "evidence": [
+          {
+            "token": "invDir = cxDirInv(iDir)",
+            "line": 1808
+          },
+          {
+            "token": "%qVal%val( invDir, iElem )",
+            "line": 1811
+          },
+          {
+            "token": "call set_bouzidi_coeff",
+            "line": 1812
+          }
+        ]
+      },
+      "musubi_wall_libb_application": {
+        "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\mus\\source\\bc\\mus_bc_fluid_wall_module.fpp",
+        "sha256": "663b53b56d6bdd11b89eced65927e9d66f73303302fbe4d8c3df98d5d3af73e8",
+        "evidence": [
+          {
+            "token": "subroutine wall_libb",
+            "line": 331
+          },
+          {
+            "token": "fIn  = bcBuffer( me%bouzidi(iLevel)% inPos(iLink) )",
+            "line": 388
+          },
+          {
+            "token": "state( me%links(iLevel)%val(iLink) ) = cIn*fIn + cOut*fOut + cNgh*fNgh",
+            "line": 392
+          }
+        ]
+      },
+      "musubi_pull_fetch": {
+        "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\mus\\source\\header\\lbm_macros.inc",
+        "sha256": "6ec8847e27ee89f55899e15ef86ad119c352b6ce0ed0e02d22c64b46fccd1569",
+        "evidence": [
+          {
+            "token": "PULL:  read adjacent element pdf and store to local element",
+            "line": 40
+          },
+          {
+            "token": "else !PULL",
+            "line": 69
+          },
+          {
+            "token": "macro :: FETCH(iDir,iField,node,QQ,nScalars,nElems,neigh)",
+            "line": 70
+          }
+        ]
+      }
+    },
+    "proven_contract": "Seeder stores q in element-major TreElm qOffset direction; Musubi maps mesh direction to the D3Q19 outgoing direction, marks the inverse as the incoming boundary write, then wall_libb deliberately fetches qVal(invDir)."
+  },
+  "cases": [
+    {
+      "status": "FAIL",
+      "mesh_dir": "E:\\ULM\\hatimb-particle_flow_simulator\\ulm_3D_vascular\\outputs\\cfd_flow\\healthy_mouse_capillary_port_grid_sensitivity_research_anchor003274_20260830\\pressure_bc_benchmark\\meshes\\axis_aligned\\n16\\mesh",
+      "mesh_summary": "E:\\ULM\\hatimb-particle_flow_simulator\\ulm_3D_vascular\\outputs\\cfd_flow\\healthy_mouse_capillary_port_grid_sensitivity_research_anchor003274_20260830\\pressure_bc_benchmark\\meshes\\axis_aligned\\n16\\mesh_summary.json",
+      "cells_across_diameter": 16,
+      "dx_m": 1.9721119725502463e-07,
+      "uniform_level": 8,
+      "bounding_cube_origin_m": [
+        -2.5243033248643153e-05,
+        -2.5243033248643153e-05,
+        -2.5243033248643153e-05
+      ],
+      "bounding_cube_length_m": 5.0486066497286306e-05,
+      "axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "radius_m": 1.577689578040197e-06,
+      "links_tested": 27448,
+      "valid_q_fraction": 1.0,
+      "q_value_distribution_on_declared_wall_links": {
+        "0.5": 27448
+      },
+      "uniform_halfway_fallback_fraction": 1.0,
+      "out_of_range_q_count": 0,
+      "direction_mismatch_count": 12032,
+      "q_seeder_minus_q_exact": {
+        "count": 15416,
+        "mean": 0.22404432505971947,
+        "mean_absolute": 0.22404432505971947,
+        "rms": 0.278778857030897,
+        "p95": 0.42555421745389316,
+        "max": 0.4322356371699761
+      },
+      "distance_error_over_dx": {
+        "count": 15416,
+        "mean": 0.29777647190245354,
+        "mean_absolute": 0.29777647190245354,
+        "rms": 0.37330543026476126,
+        "p95": 0.601824545848365,
+        "max": 0.6112735002267565
+      },
+      "systematic_q_bias": {
+        "mean_signed_q_error": 0.22404432505971947,
+        "sign": "positive",
+        "interpretation": "Reported without an invented pass threshold; this contains both STL polygon approximation and floating-point ray-intersection effects."
+      },
+      "storage_inversion_diagnostic": {
+        "same_direction_comparable_links": 15416,
+        "same_direction_rms_q_error": 0.278778857030897,
+        "inverse_slot_comparable_links": 0,
+        "inverse_slot_rms_q_error": null,
+        "source_proven_selection": "same outgoing mesh/stencil direction; wall_libb later accesses invDir because its bitmask is incoming"
+      },
+      "orientation": "axis_aligned"
+    },
+    {
+      "status": "FAIL",
+      "mesh_dir": "E:\\ULM\\hatimb-particle_flow_simulator\\ulm_3D_vascular\\outputs\\cfd_flow\\healthy_mouse_capillary_port_grid_sensitivity_research_anchor003274_20260830\\pressure_bc_benchmark\\meshes\\axis_aligned\\n20\\mesh",
+      "mesh_summary": "E:\\ULM\\hatimb-particle_flow_simulator\\ulm_3D_vascular\\outputs\\cfd_flow\\healthy_mouse_capillary_port_grid_sensitivity_research_anchor003274_20260830\\pressure_bc_benchmark\\meshes\\axis_aligned\\n20\\mesh_summary.json",
+      "cells_across_diameter": 20,
+      "dx_m": 1.577689578040197e-07,
+      "uniform_level": 8,
+      "bounding_cube_origin_m": [
+        -2.0194426598914522e-05,
+        -2.0194426598914522e-05,
+        -2.0194426598914522e-05
+      ],
+      "bounding_cube_length_m": 4.0388853197829045e-05,
+      "axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "radius_m": 1.577689578040197e-06,
+      "links_tested": 42952,
+      "valid_q_fraction": 1.0,
+      "q_value_distribution_on_declared_wall_links": {
+        "0.5": 42952
+      },
+      "uniform_halfway_fallback_fraction": 1.0,
+      "out_of_range_q_count": 0,
+      "direction_mismatch_count": 23128,
+      "q_seeder_minus_q_exact": {
+        "count": 19824,
+        "mean": 0.19431804074894873,
+        "mean_absolute": 0.19431804074894918,
+        "rms": 0.2485193813560632,
+        "p95": 0.40065792321467325,
+        "max": 0.44663201016706155
+      },
+      "distance_error_over_dx": {
+        "count": 19824,
+        "mean": 0.25816277801347504,
+        "mean_absolute": 0.25816277801347565,
+        "rms": 0.3323568441107958,
+        "p95": 0.5666158688824291,
+        "max": 0.6316330461682166
+      },
+      "systematic_q_bias": {
+        "mean_signed_q_error": 0.19431804074894873,
+        "sign": "positive",
+        "interpretation": "Reported without an invented pass threshold; this contains both STL polygon approximation and floating-point ray-intersection effects."
+      },
+      "storage_inversion_diagnostic": {
+        "same_direction_comparable_links": 19824,
+        "same_direction_rms_q_error": 0.2485193813560632,
+        "inverse_slot_comparable_links": 0,
+        "inverse_slot_rms_q_error": null,
+        "source_proven_selection": "same outgoing mesh/stencil direction; wall_libb later accesses invDir because its bitmask is incoming"
+      },
+      "orientation": "axis_aligned"
+    },
+    {
+      "status": "FAIL",
+      "mesh_dir": "E:\\ULM\\hatimb-particle_flow_simulator\\ulm_3D_vascular\\outputs\\cfd_flow\\healthy_mouse_capillary_port_grid_sensitivity_research_anchor003274_20260830\\pressure_bc_benchmark\\meshes\\axis_aligned\\n27\\mesh",
+      "mesh_summary": "E:\\ULM\\hatimb-particle_flow_simulator\\ulm_3D_vascular\\outputs\\cfd_flow\\healthy_mouse_capillary_port_grid_sensitivity_research_anchor003274_20260830\\pressure_bc_benchmark\\meshes\\axis_aligned\\n27\\mesh_summary.json",
+      "cells_across_diameter": 27,
+      "dx_m": 1.1686589466964423e-07,
+      "uniform_level": 8,
+      "bounding_cube_origin_m": [
+        -1.4958834517714462e-05,
+        -1.4958834517714462e-05,
+        -1.4958834517714462e-05
+      ],
+      "bounding_cube_length_m": 2.9917669035428923e-05,
+      "axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "radius_m": 1.577689578040197e-06,
+      "links_tested": 80000,
+      "valid_q_fraction": 1.0,
+      "q_value_distribution_on_declared_wall_links": {
+        "0.5": 80000
+      },
+      "uniform_halfway_fallback_fraction": 1.0,
+      "out_of_range_q_count": 0,
+      "direction_mismatch_count": 70400,
+      "q_seeder_minus_q_exact": {
+        "count": 9600,
+        "mean": 0.24225990762259983,
+        "mean_absolute": 0.24225990762259983,
+        "rms": 0.2658643581122778,
+        "p95": 0.4540584539816032,
+        "max": 0.45405845398161765
+      },
+      "distance_error_over_dx": {
+        "count": 9600,
+        "mean": 0.32758079735138795,
+        "mean_absolute": 0.32758079735138795,
+        "rms": 0.3626258768154015,
+        "p95": 0.6421356237309431,
+        "max": 0.6421356237309636
+      },
+      "systematic_q_bias": {
+        "mean_signed_q_error": 0.24225990762259983,
+        "sign": "positive",
+        "interpretation": "Reported without an invented pass threshold; this contains both STL polygon approximation and floating-point ray-intersection effects."
+      },
+      "storage_inversion_diagnostic": {
+        "same_direction_comparable_links": 9600,
+        "same_direction_rms_q_error": 0.2658643581122778,
+        "inverse_slot_comparable_links": 0,
+        "inverse_slot_rms_q_error": null,
+        "source_proven_selection": "same outgoing mesh/stencil direction; wall_libb later accesses invDir because its bitmask is incoming"
+      },
+      "orientation": "axis_aligned"
+    },
+    {
+      "status": "FAIL",
+      "mesh_dir": "E:\\ULM\\hatimb-particle_flow_simulator\\ulm_3D_vascular\\outputs\\cfd_flow\\healthy_mouse_capillary_port_grid_sensitivity_research_anchor003274_20260830\\pressure_bc_benchmark\\meshes\\worst_real_outlet\\n20\\mesh",
+      "mesh_summary": "E:\\ULM\\hatimb-particle_flow_simulator\\ulm_3D_vascular\\outputs\\cfd_flow\\healthy_mouse_capillary_port_grid_sensitivity_research_anchor003274_20260830\\pressure_bc_benchmark\\meshes\\worst_real_outlet\\n20\\mesh_summary.json",
+      "cells_across_diameter": 20,
+      "dx_m": 1.577689578040197e-07,
+      "uniform_level": 8,
+      "bounding_cube_origin_m": [
+        -2.0194426598914522e-05,
+        -2.0194426598914522e-05,
+        -2.0194426598914522e-05
+      ],
+      "bounding_cube_length_m": 4.0388853197829045e-05,
+      "axis": [
+        0.018388404769920114,
+        0.8046101061009614,
+        0.5935186970350784
+      ],
+      "radius_m": 1.577689578040197e-06,
+      "links_tested": 45866,
+      "valid_q_fraction": 1.0,
+      "q_value_distribution_on_declared_wall_links": {
+        "0.5": 45086,
+        "1": 780
+      },
+      "uniform_halfway_fallback_fraction": 0.9829939388653904,
+      "out_of_range_q_count": 0,
+      "direction_mismatch_count": 36396,
+      "q_seeder_minus_q_exact": {
+        "count": 9470,
+        "mean": 0.32514711464758406,
+        "mean_absolute": 0.32682230416178676,
+        "rms": 0.35538130451465705,
+        "p95": 0.49327842688328466,
+        "max": 0.9938840174205363
+      },
+      "distance_error_over_dx": {
+        "count": 9470,
+        "mean": 0.44314749501255096,
+        "mean_absolute": 0.4451483244734537,
+        "rms": 0.48403855967973236,
+        "p95": 0.6942296863931351,
+        "max": 1.40556425686198
+      },
+      "systematic_q_bias": {
+        "mean_signed_q_error": 0.32514711464758406,
+        "sign": "positive",
+        "interpretation": "Reported without an invented pass threshold; this contains both STL polygon approximation and floating-point ray-intersection effects."
+      },
+      "storage_inversion_diagnostic": {
+        "same_direction_comparable_links": 9470,
+        "same_direction_rms_q_error": 0.35538130451465705,
+        "inverse_slot_comparable_links": 20,
+        "inverse_slot_rms_q_error": 0.1782377645723717,
+        "source_proven_selection": "same outgoing mesh/stencil direction; wall_libb later accesses invDir because its bitmask is incoming"
+      },
+      "orientation": "worst_real_outlet"
+    },
+    {
+      "status": "FAIL",
+      "mesh_dir": "E:\\ULM\\hatimb-particle_flow_simulator\\ulm_3D_vascular\\outputs\\cfd_flow\\healthy_mouse_capillary_port_grid_sensitivity_research_anchor003274_20260830\\pressure_bc_benchmark\\meshes\\worst_real_outlet\\n27\\mesh",
+      "mesh_summary": "E:\\ULM\\hatimb-particle_flow_simulator\\ulm_3D_vascular\\outputs\\cfd_flow\\healthy_mouse_capillary_port_grid_sensitivity_research_anchor003274_20260830\\pressure_bc_benchmark\\meshes\\worst_real_outlet\\n27\\mesh_summary.json",
+      "cells_across_diameter": 27,
+      "dx_m": 1.1686589466964423e-07,
+      "uniform_level": 8,
+      "bounding_cube_origin_m": [
+        -1.4958834517714462e-05,
+        -1.4958834517714462e-05,
+        -1.4958834517714462e-05
+      ],
+      "bounding_cube_length_m": 2.9917669035428923e-05,
+      "axis": [
+        0.018388404769920114,
+        0.8046101061009614,
+        0.5935186970350784
+      ],
+      "radius_m": 1.577689578040197e-06,
+      "links_tested": 82242,
+      "valid_q_fraction": 1.0,
+      "q_value_distribution_on_declared_wall_links": {
+        "0.5": 81458,
+        "1": 784
+      },
+      "uniform_halfway_fallback_fraction": 0.9904671578998565,
+      "out_of_range_q_count": 0,
+      "direction_mismatch_count": 65952,
+      "q_seeder_minus_q_exact": {
+        "count": 16290,
+        "mean": 0.32522084909842475,
+        "mean_absolute": 0.3260975735024565,
+        "rms": 0.3506070044493636,
+        "p95": 0.4888710920053425,
+        "max": 0.9926424606987023
+      },
+      "distance_error_over_dx": {
+        "count": 16290,
+        "mean": 0.4445920570325931,
+        "mean_absolute": 0.4456746762489913,
+        "rms": 0.47998453249550727,
+        "p95": 0.6893379911953825,
+        "max": 1.403808430507507
+      },
+      "systematic_q_bias": {
+        "mean_signed_q_error": 0.32522084909842475,
+        "sign": "positive",
+        "interpretation": "Reported without an invented pass threshold; this contains both STL polygon approximation and floating-point ray-intersection effects."
+      },
+      "storage_inversion_diagnostic": {
+        "same_direction_comparable_links": 16290,
+        "same_direction_rms_q_error": 0.3506070044493636,
+        "inverse_slot_comparable_links": 30,
+        "inverse_slot_rms_q_error": 0.2777484356038235,
+        "source_proven_selection": "same outgoing mesh/stencil direction; wall_libb later accesses invDir because its bitmask is incoming"
+      },
+      "orientation": "worst_real_outlet"
+    }
+  ],
+  "links_tested": 278508,
+  "worst_case_q_error": {
+    "rms": 0.35538130451465705,
+    "p95": 0.49327842688328466,
+    "max": 0.9938840174205363
+  },
+  "aggregate_q_error": {
+    "count": 70600,
+    "mean": 0.25508093591544917,
+    "mean_absolute": 0.25550793145710904,
+    "rms": 0.29871069693832825,
+    "p95": 0.46404903760174,
+    "max": 0.9938840174205363
+  },
+  "direction_mismatch_count": 207908,
+  "all_declared_wall_qvalues_equal_halfway": false,
+  "overall_halfway_fallback_fraction": 0.994384362388154,
+  "observed_qvalue_support": [
+    "0.5",
+    "1"
+  ],
+  "seeder_calls": 0,
+  "musubi_calls": 0,
+  "harvester_calls": 0,
+  "vascular_cfd_calls": 0,
+  "first_failure": "A source/storage/direction structural q-value invariant failed.",
+  "next": "FIX QVALUE CONTRACT BEFORE ANY CFD",
+  "runtime_s": 12.181699799999478
+}

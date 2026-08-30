@@ -82,6 +82,7 @@ def test_candidate_comparison_requires_all_gates() -> None:
                     {
                         "candidate": candidate,
                         "orientation": orientation,
+                        "cells_across_diameter": grid.cells_across_diameter,
                         "dx_m": grid.dx_m,
                         "relative_delta_p_error": error,
                         "delta_p_numerical_pa": 100.0 * (1.0 - error),
@@ -92,3 +93,31 @@ def test_candidate_comparison_requires_all_gates() -> None:
     assert report["benchmark_conclusive"] is False
     assert report["winner"] is None
 
+
+def test_base_to_fine_uses_n16_to_n20_and_keeps_n27_diagnostic() -> None:
+    cases = []
+    delta_by_n = {12: 70.0, 16: 80.0, 20: 88.0, 27: 120.0}
+    for candidate in CANDIDATES:
+        for orientation in ("axis_aligned", "worst_real_outlet"):
+            for grid in benchmark_grids():
+                cases.append(
+                    {
+                        "candidate": candidate,
+                        "orientation": orientation,
+                        "cells_across_diameter": grid.cells_across_diameter,
+                        "dx_m": grid.dx_m,
+                        "relative_delta_p_error": 0.1,
+                        "delta_p_numerical_pa": delta_by_n[grid.cells_across_diameter],
+                        "numerical_safety_pass": True,
+                    }
+                )
+    orientation = compare_candidates(cases)["candidates"]["pressure_eq"]["orientations"][
+        "axis_aligned"
+    ]
+    assert math.isclose(
+        orientation["base_to_fine_delta_p_relative_difference"],
+        abs(88.0 - 80.0) / 80.0,
+    )
+    assert orientation["resolution_semantics"]["fine_like"] == 20
+    assert orientation["extra_fine_diagnostic"]["cells_across_diameter"] == 27
+    assert orientation["extra_fine_diagnostic"]["excluded_from_base_to_fine"] is True

@@ -8,8 +8,6 @@ validate that replay with one, and only one, frozen-binary timestep.
 from __future__ import annotations
 
 import csv
-import hashlib
-import json
 import math
 import re
 import shutil
@@ -233,6 +231,45 @@ def _property_definition(header_text: str, label: str) -> tuple[int, int]:
     raise ValueError(f"mesh property is missing: {label}")
 
 
+def read_qvalue_rows(
+    path: Path,
+    *,
+    element_count: int,
+    side_count: int,
+) -> np.ndarray:
+    """Read the source-proven TreElm qVal property record layout.
+
+    ``qval.lsb`` is a little-endian sequence of double-precision, element-major
+    records.  Within each record the values follow TreElm ``qOffset(1:qQQQ)``.
+    """
+
+    values = np.fromfile(Path(path), dtype="<f8")
+    expected = int(element_count) * int(side_count)
+    if values.size != expected:
+        raise ValueError(
+            f"qVal property has {values.size} values; expected {expected} "
+            f"({element_count} elements x {side_count} sides)"
+        )
+    return values.reshape(int(element_count), int(side_count))
+
+
+def scatter_qvalue_rows(
+    rows: np.ndarray,
+    *,
+    cell_count: int,
+    property_cells: np.ndarray,
+) -> np.ndarray:
+    """Scatter qVal rows onto ascending tree elements carrying the property."""
+
+    values = np.asarray(rows, dtype=np.float64)
+    cells = np.asarray(property_cells, dtype=np.int64)
+    if values.ndim != 2 or values.shape[0] != len(cells):
+        raise ValueError("qVal rows and property-cell ordering do not match")
+    result = np.full((int(cell_count), values.shape[1]), np.nan, dtype=np.float64)
+    result[cells] = values
+    return result
+
+
 def load_mesh_contract(
     mesh: Path,
     *,
@@ -283,11 +320,16 @@ def load_mesh_contract(
     q_cells = extract_boundary_property_indices(property_bits, q_bit)
     if len(q_cells) != q_count:
         raise ValueError("q-value property count does not match header")
-    q_raw = np.fromfile(mesh / "qval.lsb", dtype="<f8")
-    if q_raw.size != q_count * boundary_header.side_count:
-        raise ValueError("qval.lsb size does not match mesh header")
-    q_by_cell = np.full((cell_count, boundary_header.side_count), np.nan)
-    q_by_cell[q_cells] = q_raw.reshape(q_count, boundary_header.side_count)
+    q_rows = read_qvalue_rows(
+        mesh / "qval.lsb",
+        element_count=q_count,
+        side_count=boundary_header.side_count,
+    )
+    q_by_cell = scatter_qvalue_rows(
+        q_rows,
+        cell_count=cell_count,
+        property_cells=q_cells,
+    )
     return MeshContract(
         mesh=mesh,
         tree_ids=np.asarray(tree_ids),

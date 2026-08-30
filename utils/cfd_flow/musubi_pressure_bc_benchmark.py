@@ -8,11 +8,9 @@ pinned Musubi source.  It never launches the vascular model.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import re
-import shutil
 import subprocess
 import time
 from dataclasses import dataclass
@@ -305,22 +303,60 @@ def compare_candidates(cases: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         safe = True
         monotone = True
         for orientation, rows in orientations.items():
+            by_resolution = {
+                int(row["cells_across_diameter"]): row for row in rows
+            }
+            required = {12, 16, 20, 27}
+            missing = sorted(required - set(by_resolution))
+            if missing:
+                raise ValueError(
+                    f"Missing pressure benchmark resolutions for {candidate}/"
+                    f"{orientation}: {missing}"
+                )
             errors = [float(row["relative_delta_p_error"]) for row in rows]
-            deltas = [float(row["delta_p_numerical_pa"]) for row in rows]
             dx = [float(row["dx_m"]) for row in rows]
+            base_delta = float(by_resolution[16]["delta_p_numerical_pa"])
+            fine_delta = float(by_resolution[20]["delta_p_numerical_pa"])
+            base_to_fine = abs(fine_delta - base_delta) / abs(base_delta)
             per_orientation[orientation] = {
+                "resolution_semantics": {
+                    "coarse_like": 12,
+                    "base_like": 16,
+                    "fine_like": 20,
+                    "extra_fine_diagnostic": 27,
+                },
                 "analytic_relative_errors": errors,
                 "observed_order": observed_order(dx, errors),
                 "monotone_error_decrease": bool(np.all(np.diff(errors) <= 0.0)),
-                "base_to_fine_delta_p_relative_difference": abs(deltas[-1] - deltas[1]) / abs(deltas[1]),
-                "fine_analytic_relative_error": errors[-1],
+                "base_to_fine_delta_p_relative_difference": base_to_fine,
+                "fine_analytic_relative_error": float(
+                    by_resolution[20]["relative_delta_p_error"]
+                ),
+                "extra_fine_diagnostic": {
+                    "cells_across_diameter": 27,
+                    "delta_p_numerical_pa": float(
+                        by_resolution[27]["delta_p_numerical_pa"]
+                    ),
+                    "analytic_relative_error": float(
+                        by_resolution[27]["relative_delta_p_error"]
+                    ),
+                    "excluded_from_base_to_fine": True,
+                },
             }
-            fine_errors.append(errors[-1])
+            fine_errors.append(per_orientation[orientation]["fine_analytic_relative_error"])
             base_fine.append(per_orientation[orientation]["base_to_fine_delta_p_relative_difference"])
             monotone &= per_orientation[orientation]["monotone_error_decrease"]
             safe &= all(bool(row["numerical_safety_pass"]) for row in rows)
-        fine_axis = orientations["axis_aligned"][-1]["delta_p_numerical_pa"]
-        fine_oblique = orientations["worst_real_outlet"][-1]["delta_p_numerical_pa"]
+        fine_axis = next(
+            row["delta_p_numerical_pa"]
+            for row in orientations["axis_aligned"]
+            if int(row["cells_across_diameter"]) == 20
+        )
+        fine_oblique = next(
+            row["delta_p_numerical_pa"]
+            for row in orientations["worst_real_outlet"]
+            if int(row["cells_across_diameter"]) == 20
+        )
         spread = abs(float(fine_axis) - float(fine_oblique)) / hagen_poiseuille_delta_p()
         candidate_pass = (
             max(fine_errors) <= 0.02
@@ -657,6 +693,34 @@ def run_pressure_bc_benchmark(project_root: Path) -> dict[str, Any]:
         },
     }
     write_json(qc / "pressure_bc_benchmark.json", result)
+    return result
+
+
+def refresh_pressure_benchmark_derived_summary(project_root: Path) -> dict[str, Any]:
+    """Correct derived N16->N20 semantics without touching raw case results."""
+
+    root = Path(project_root).resolve()
+    path = (
+        root
+        / "outputs"
+        / "cfd_flow"
+        / RESEARCH_RUN
+        / "qc"
+        / "pressure_bc_benchmark.json"
+    )
+    result = json.loads(path.read_text(encoding="utf-8"))
+    original_cases = result["case_results"]
+    result["comparison"] = compare_candidates(original_cases)
+    result["resolution_semantics"] = {
+        "N12": "COARSE_LIKE",
+        "N16": "BASE_LIKE",
+        "N20": "FINE_LIKE",
+        "N27": "EXTRA_FINE_DIAGNOSTIC",
+        "base_to_fine_definition": "N16_TO_N20",
+        "raw_case_results_modified": False,
+    }
+    result["derived_summary_revision"] = "PRESSURE_BENCHMARK_RESOLUTION_SEMANTICS_V2"
+    write_json(path, result)
     return result
 
 
