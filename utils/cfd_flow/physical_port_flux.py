@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 import time
 from dataclasses import dataclass
 from functools import lru_cache
@@ -47,21 +48,12 @@ from .tau1_grid_convergence import (
     RUN_NAME,
     TARGET_Q_M3_S,
     _base_mesh,
-    _mesh_origin_dx,
-    build_physical_port_plane_contract,
-    build_plane_quadrature,
-    plane_from_record,
 )
 
 
 PLANE_CONTRACT_REVISION = "STANDARDIZED_INTERIOR_PHYSICAL_PORT_PLANES_V3"
 FLUX_ALGORITHM_REVISION = "CONTINUOUS_APERTURE_GAUSS_MLS_QUADRATIC_V2"
 FLUX_DEFINITION = "PHYSICAL_INTERIOR_CROSS_SECTION_VELOCITY_FLUX"
-LEGACY_ALGORITHM_REVISION = "CELL_CUBE_PLANE_APERTURE_CLIPPING_V1"
-LEGACY_CLASSIFICATION = "HISTORICAL_FAILED_FLUX_EXTRACTOR"
-LEGACY_RETIREMENT = "RETIRED_FOR_PHYSICAL_PORT_FLUX"
-LEGACY_ROOT_CAUSE = "LBM_NODE_IS_NOT_PHYSICAL_CONTROL_VOLUME"
-
 DX_COARSE_M = 2.6e-7
 MINIMUM_CLEARANCE_M = 3.0 * DX_COARSE_M
 AREA_RELATIVE_ERROR_GATE = 1.0e-10
@@ -142,6 +134,26 @@ class MLSStencilMap:
 
 def _run_root(project_root: Path) -> Path:
     return Path(project_root).resolve() / "outputs" / "cfd_flow" / RUN_NAME
+
+
+def _mesh_origin_dx(mesh_dir: Path) -> tuple[np.ndarray, float]:
+    text = (mesh_dir / "header.lua").read_text(encoding="utf-8")
+    block = re.search(r"boundingbox\s*=\s*\{(.*?)\n\}", text, re.DOTALL)
+    level = re.search(r"(?m)^\s*minLevel\s*=\s*(\d+)", text)
+    if block is None or level is None:
+        raise ValueError("TreElm header has no uniform bounding-box contract")
+    origin = re.search(r"origin\s*=\s*\{(.*?)\}", block.group(1), re.DOTALL)
+    length = re.search(r"length\s*=\s*([^\s]+)", block.group(1))
+    if origin is None or length is None:
+        raise ValueError("TreElm bounding-box contract is incomplete")
+    origin_value = np.asarray(
+        [
+            float(token.replace("D", "E"))
+            for token in origin.group(1).replace(",", " ").split()
+        ]
+    )
+    length_value = float(length.group(1).replace("D", "E"))
+    return origin_value, length_value / 2 ** int(level.group(1))
 
 
 def _hash_payload(payload: Mapping[str, Any]) -> str:
@@ -1129,89 +1141,6 @@ def run_analytic_flux_oracles() -> dict[str, Any]:
     }
 
 
-def build_legacy_cell_cube_forensic(project_root: Path) -> dict[str, Any]:
-    """Explain deterministically why V1 did not tessellate physical apertures."""
-
-    root = Path(project_root).resolve()
-    legacy_contract = build_physical_port_plane_contract(root)
-    mesh_dir = _base_mesh(root)
-    mesh = load_mesh_contract(mesh_dir, expected_cells=182_320)
-    origin, dx_m = _mesh_origin_dx(mesh_dir)
-    centers = origin + (mesh.cell_ijk.astype(np.float64) + 0.5) * dx_m
-    ports: dict[str, Any] = {}
-    for label in PORTS:
-        plane = plane_from_record(label, legacy_contract["ports"][label])
-        quadrature = build_plane_quadrature(centers, dx_m=dx_m, plane=plane)
-        signed = (centers - plane.origin_m) @ plane.unit_normal
-        aperture = plane.aperture
-        projected = np.column_stack(
-            (
-                (centers - plane.origin_m) @ plane.basis_u,
-                (centers - plane.origin_m) @ plane.basis_v,
-            )
-        )
-        normal_extent = 0.5 * dx_m * float(np.sum(np.abs(plane.unit_normal)))
-        u_extent = 0.5 * dx_m * float(np.sum(np.abs(plane.basis_u)))
-        v_extent = 0.5 * dx_m * float(np.sum(np.abs(plane.basis_v)))
-        min_u, min_v, max_u, max_v = aperture.bounds
-        candidate = (
-            (np.abs(signed) <= normal_extent + 1.0e-15)
-            & (projected[:, 0] >= min_u - u_extent - 1.0e-15)
-            & (projected[:, 0] <= max_u + u_extent + 1.0e-15)
-            & (projected[:, 1] >= min_v - v_extent - 1.0e-15)
-            & (projected[:, 1] <= max_v + v_extent + 1.0e-15)
-        )
-        distances = signed[candidate]
-        virtual_area = math.fsum(
-            float(value) for value in quadrature.clipped_areas_m2
-        )
-        physical_area = float(aperture.area)
-        ports[label] = {
-            "physical_aperture_area_m2": physical_area,
-            "dx_squared_m2": dx_m**2,
-            "aperture_area_over_dx_squared": physical_area / dx_m**2,
-            "candidate_fluid_node_count": int(np.count_nonzero(candidate)),
-            "contributing_node_count": int(len(quadrature.cell_indices)),
-            "sum_clipped_virtual_cube_area_m2": virtual_area,
-            "coverage_fraction": virtual_area / physical_area,
-            "coverage_relative_error": abs(virtual_area - physical_area) / physical_area,
-            "candidate_signed_distance_to_boundary_plane_m": {
-                "minimum": float(np.min(distances)),
-                "median": float(np.median(distances)),
-                "p95": float(np.percentile(distances, 95.0)),
-            },
-            "candidate_absolute_distance_to_boundary_plane_m": {
-                "minimum": float(np.min(np.abs(distances))),
-                "median": float(np.median(np.abs(distances))),
-                "p95": float(np.percentile(np.abs(distances), 95.0)),
-            },
-        }
-    result = {
-        "status": LEGACY_CLASSIFICATION,
-        "algorithm_revision": LEGACY_ALGORITHM_REVISION,
-        "classification": LEGACY_RETIREMENT,
-        "root_cause": LEGACY_ROOT_CAUSE,
-        "hypothesis_supported": True,
-        "explanation": (
-            "TreElm/Musubi lattice nodes store distribution states; they are not "
-            "finite-volume cells with a natural dx^3 ownership clipped to the "
-            "sub-grid lumen. The sparse boundary-adjacent node layer therefore "
-            "cannot be used as an aperture tessellation. Inlet has about 195.49 "
-            "dx^2 of physical area but only 17 nearby existing lattice nodes."
-        ),
-        "historical_q_classification": "NON_ACCEPTED_PARTIAL_APERTURE_DIAGNOSTIC",
-        "historical_code_preserved": True,
-        "legacy_contract_sha256": legacy_contract["contract_sha256"],
-        "ports": ports,
-        "seeder_calls": 0,
-        "musubi_calls": 0,
-        "harvester_calls": 0,
-    }
-    output = _run_root(root) / "qc" / "cell_cube_plane_aperture_clipping_v1_forensic.json"
-    write_json(output, result)
-    return result
-
-
 def _relative_range(values: Iterable[float]) -> float:
     array = np.asarray(tuple(float(value) for value in values), dtype=np.float64)
     return float(np.ptp(array) / max(abs(float(np.mean(array))), np.finfo(float).tiny))
@@ -1667,7 +1596,6 @@ def run_physical_port_flux_validation(project_root: Path) -> dict[str, Any]:
             for iteration in BASE_ITERATIONS
         },
     }
-    legacy = build_legacy_cell_cube_forensic(root)
     plane_contract = build_interior_plane_contract(root)
     oracles = run_analytic_flux_oracles()
     extractor_validation = {
@@ -1675,7 +1603,6 @@ def run_physical_port_flux_validation(project_root: Path) -> dict[str, Any]:
         "flux_algorithm_revision": FLUX_ALGORITHM_REVISION,
         "physical_plane_contract_revision": PLANE_CONTRACT_REVISION,
         "physical_plane_contract_sha256": plane_contract["contract_sha256"],
-        "legacy_classification": legacy["classification"],
         "analytic_flux_oracles": oracles,
         "seeder_calls": 0,
         "musubi_calls": 0,
@@ -1732,7 +1659,6 @@ def run_physical_port_flux_validation(project_root: Path) -> dict[str, Any]:
         "physical_plane_contract_sha256": plane_contract["contract_sha256"],
         "flux_definition": FLUX_DEFINITION,
         "flux_algorithm_revision": FLUX_ALGORITHM_REVISION,
-        "old_cell_cube_v1_classification": legacy["classification"],
         "protected_base_evidence_before": protected_before,
         "protected_base_evidence_after": protected_after,
         "protected_base_evidence_unchanged": protected_unchanged,

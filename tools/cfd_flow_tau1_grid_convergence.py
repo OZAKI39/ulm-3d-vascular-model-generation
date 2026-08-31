@@ -18,8 +18,6 @@ from utils.cfd_flow.physical_port_flux import (  # noqa: E402
     run_physical_port_flux_validation,
 )
 from utils.cfd_flow.tau1_grid_convergence import (  # noqa: E402
-    build_physical_port_plane_contract as build_legacy_physical_port_plane_contract,
-    run_base_physical_flux_preflight as run_legacy_base_physical_flux_preflight,
     write_grid_design,
 )
 
@@ -32,8 +30,6 @@ def main() -> int:
             "grid-design",
             "physical-plane-contract",
             "base-preflight",
-            "legacy-physical-plane-contract",
-            "legacy-base-preflight",
         ),
     )
     args = parser.parse_args()
@@ -43,10 +39,8 @@ def main() -> int:
         result = build_interior_plane_contract(PROJECT_ROOT)
     elif args.action == "base-preflight":
         result = run_physical_port_flux_validation(PROJECT_ROOT)
-    elif args.action == "legacy-physical-plane-contract":
-        result = build_legacy_physical_port_plane_contract(PROJECT_ROOT)
     else:
-        result = run_legacy_base_physical_flux_preflight(PROJECT_ROOT)
+        result = run_physical_port_flux_validation(PROJECT_ROOT)
     print(json.dumps(result, indent=2))
     return 0 if result.get("status") == "PASS" else 2
 
