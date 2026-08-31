@@ -1,0 +1,30 @@
+ binary_name = {
+    '/home/lzy/u3da/tau1_base_20260830/dense_diagnostic_3117927_32/restart/tau1_base_6.357E-03.lsb' 
+}
+ solver_configFile = 'musubi.lua'
+ mesh = '/mnt/e/ULM/hatimb-particle_flow_simulator/ulm_3D_vascular/outputs/cfd_flow/healthy_mouse_capillary_dimensionless_qvalue_base_preflight_anchor003274_20260830/seeder/mesh/'
+ weights = ''
+ time_point = {
+    sim =    6.356695208970443E-03,
+    iter = 3117959,
+    clock =    1.976324103000000E+00 
+}
+ nElems = 182320
+ nDofs = 1
+ solver = 'Musubi_v2.0.0-4-g4e8b27'
+ varsys = {
+    systemname = 'fluid',
+    variable = {
+        {
+            name = 'pdf',
+            ncomponents = 19,
+            state_varpos = { 1, 2, 3, 4, 5, 6, 7, 8,
+                9, 10, 11, 12, 13, 14, 15, 16,
+                17, 18, 19 } 
+        } 
+    },
+    nScalars = 19,
+    nStateVars = 1,
+    nAuxScalars = 4,
+    nAuxVars = 2 
+}
