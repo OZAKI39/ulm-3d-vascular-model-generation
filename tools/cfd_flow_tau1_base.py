@@ -15,6 +15,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from utils.cfd_flow.tau1_base import (  # noqa: E402
     audit_continuous_q_referee,
     audit_latest_base_window,
+    forensic_dense_discrete_failure,
     forensic_boundary_window_audit,
     prepare_tau1_base,
     run_dense_discrete_diagnostic,
@@ -33,6 +34,7 @@ def main() -> int:
             "audit-base",
             "forensic",
             "dense-diagnostic",
+            "forensic-dense-failure",
             "salvage-dense",
             "run-base",
         ),
@@ -48,6 +50,8 @@ def main() -> int:
         result = forensic_boundary_window_audit(PROJECT_ROOT)
     elif args.action == "dense-diagnostic":
         result = run_dense_discrete_diagnostic(PROJECT_ROOT)
+    elif args.action == "forensic-dense-failure":
+        result = forensic_dense_discrete_failure(PROJECT_ROOT)
     elif args.action == "salvage-dense":
         result = salvage_incomplete_dense_diagnostic(PROJECT_ROOT)
     else:

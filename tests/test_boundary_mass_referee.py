@@ -11,6 +11,7 @@ from utils.cfd_flow.musubi_boundary_mass_referee import (
     RUN_NAME,
     TARGET_MASS_FLOW,
     _pressure_selected_rows,
+    _wall_operations,
     boundary_window_closure,
     conservation_identity_residual,
     detect_slot_overlaps,
@@ -65,6 +66,45 @@ def test_runtime_solid_pull_maps_current_and_source_to_local_inverse() -> None:
     assert fetched[0, 3] == values[1, INVERSE_DIRECTIONS[3]]
     # solid target 2 uses local inverse even where a non-solid source exists.
     assert fetched[1, 3] == values[2, INVERSE_DIRECTIONS[3]]
+
+
+def test_wall_libb_neighbor_uses_runtime_solid_pull_connectivity() -> None:
+    from utils.cfd_flow.exact_link_flux import BoundaryReconstruction
+    from utils.cfd_flow.musubi_boundary_mass_referee import MeshContract
+
+    coordinates = np.asarray(((0, 0, 0), (1, 0, 0)), dtype=np.int64)
+    values = np.arange(2 * 19, dtype=np.float64).reshape(2, 19) + 1.0
+    incoming = np.zeros((1, 18), dtype=bool)
+    incoming[0, 3] = True
+    wall = BoundaryReconstruction(
+        label="wall",
+        boundary_id=1,
+        property_rows=np.asarray((0,), dtype=np.int64),
+        cell_indices=np.asarray((0,), dtype=np.int64),
+        outward_masks=np.zeros((1, 18), dtype=bool),
+        incoming_masks=incoming,
+        raw_normals=np.zeros((1, 3), dtype=np.int64),
+        normal_indices=np.asarray((3,), dtype=np.int64),
+    )
+    qvalues = np.ones((2, 18), dtype=np.float64)
+    inverse = int(INVERSE_DIRECTIONS[3])
+    qvalues[0, inverse] = 0.25
+    mesh = MeshContract(
+        mesh=Path("."),
+        tree_ids=np.arange(2),
+        cell_ijk=coordinates,
+        lookup={tuple(row): index for index, row in enumerate(coordinates)},
+        boundaries={"wall": wall},
+        boundary_labels=("wall",),
+        qvalues_by_cell=qvalues,
+    )
+
+    coordinate_only = _wall_operations(values, mesh)[0][3]
+    runtime_solid = _wall_operations(values, mesh, {1})[0][3]
+    expected = 0.5 * values[0, inverse] + 0.5 * values[0, 3]
+
+    assert coordinate_only != runtime_solid
+    assert runtime_solid == expected
 
 
 def test_runtime_order_overlap_and_sequential_last_writer() -> None:

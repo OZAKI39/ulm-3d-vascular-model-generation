@@ -435,15 +435,26 @@ def _pressure_operations(
 
 
 def _wall_operations(
-    pdf: np.ndarray, mesh: MeshContract
+    pdf: np.ndarray,
+    mesh: MeshContract,
+    runtime_solid: set[int] | None = None,
 ) -> list[tuple[str, int, int, float]]:
     boundary = mesh.boundaries["wall"]
-    fetched = pull_fetch_pdfs(
-        pdf,
-        mesh.cell_ijk,
-        boundary.cell_indices,
-        coordinate_lookup=mesh.lookup,
-    )
+    if runtime_solid is None:
+        fetched = pull_fetch_pdfs(
+            pdf,
+            mesh.cell_ijk,
+            boundary.cell_indices,
+            coordinate_lookup=mesh.lookup,
+        )
+    else:
+        # wall_libb obtains fNgh through computeNeighBuf/FETCH.  The same
+        # runtime connectivity used by pressure buffers must therefore be
+        # applied here: a solid current element or solid source element maps
+        # the read to the current element's inverse PDF.
+        fetched = pull_fetch_pdfs_runtime(
+            pdf, mesh, boundary.cell_indices, runtime_solid
+        )
     operations: list[tuple[str, int, int, float]] = []
     for row, cell_value in enumerate(boundary.cell_indices):
         cell = int(cell_value)
@@ -488,7 +499,7 @@ def replay_boundary_step(
     for label in mesh.boundary_labels:
         boundary = mesh.boundaries[label]
         if label == "wall":
-            operations = _wall_operations(original, mesh)
+            operations = _wall_operations(original, mesh, runtime_solid)
             selected_rows[label] = np.arange(len(boundary.cell_indices), dtype=np.int64)
         else:
             selected, neighbor1, neighbor2 = _pressure_selected_rows(
