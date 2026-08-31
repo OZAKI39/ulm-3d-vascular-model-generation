@@ -384,22 +384,49 @@ def runtime_solid_cells(mesh: MeshContract) -> set[int]:
     return result
 
 
+def boundary_blocked_pull_mask(mesh: MeshContract) -> np.ndarray:
+    """Return PULL directions whose TreElm neighbor entry is a boundary ID.
+
+    A coordinate-adjacent tree element is not sufficient to prove a usable
+    TreElm link.  ``assignBCList`` obtains a negative boundary ID from the
+    neighbor table and stores its inverse direction in ``globBC%bitmask``.
+    Consequently a PULL fetch in a stored bitmask direction is an implicit
+    local inverse bounce even when a coordinate lookup happens to find a cell
+    across a thin or diagonally touching wall.
+    """
+
+    blocked = np.zeros((len(mesh.cell_ijk), 19), dtype=bool)
+    for boundary in mesh.boundaries.values():
+        blocked[boundary.cell_indices, : boundary.incoming_masks.shape[1]] |= (
+            boundary.incoming_masks
+        )
+    return blocked
+
+
 def pull_fetch_pdfs_runtime(
     pdf: np.ndarray,
     mesh: MeshContract,
     target_indices: np.ndarray,
     runtime_solid: set[int],
+    blocked_pull: np.ndarray | None = None,
 ) -> np.ndarray:
     """Mirror PULL connectivity after TreElm has set ``prp_solid``.
 
-    This differs from a raw coordinate lookup at the three outlet_02 neighbor
-    cells adjacent to the 18 runtime-solid stencil elements.  The pinned
-    ``mus_construct_connectivity`` maps a link to the current element's inverse
-    PDF whenever either the current element or its source is solid.
+    The pinned ``mus_construct_connectivity`` maps a link to the current
+    element's inverse PDF whenever either the current element or its source is
+    solid.  TreElm boundary-neighbor entries are negative rather than ordinary
+    coordinate sources and require the same local-inverse PULL mapping.
     """
 
     values = np.asarray(pdf, dtype=np.float64)
     targets = np.asarray(target_indices, dtype=np.int64).reshape(-1)
+    blocked = (
+        boundary_blocked_pull_mask(mesh)
+        if blocked_pull is None
+        else np.asarray(blocked_pull, dtype=bool)
+    )
+    if blocked.shape != (values.shape[0], values.shape[1]):
+        raise ValueError("boundary-blocked PULL mask does not match PDF state")
     fetched = np.empty((len(targets), 19), dtype=np.float64)
     for row, target_value in enumerate(targets):
         target = int(target_value)
@@ -409,7 +436,12 @@ def pull_fetch_pdfs_runtime(
             source = mesh.lookup.get(
                 tuple(int(value) for value in coordinate - direction)
             )
-            if target_is_solid or source is None or int(source) in runtime_solid:
+            if (
+                target_is_solid
+                or blocked[target, direction_index]
+                or source is None
+                or int(source) in runtime_solid
+            ):
                 fetched[row, direction_index] = values[
                     target, int(INVERSE_DIRECTIONS[direction_index])
                 ]
@@ -438,6 +470,7 @@ def _wall_operations(
     pdf: np.ndarray,
     mesh: MeshContract,
     runtime_solid: set[int] | None = None,
+    blocked_pull: np.ndarray | None = None,
 ) -> list[tuple[str, int, int, float]]:
     boundary = mesh.boundaries["wall"]
     if runtime_solid is None:
@@ -453,7 +486,7 @@ def _wall_operations(
         # applied here: a solid current element or solid source element maps
         # the read to the current element's inverse PDF.
         fetched = pull_fetch_pdfs_runtime(
-            pdf, mesh, boundary.cell_indices, runtime_solid
+            pdf, mesh, boundary.cell_indices, runtime_solid, blocked_pull
         )
     operations: list[tuple[str, int, int, float]] = []
     for row, cell_value in enumerate(boundary.cell_indices):
@@ -495,11 +528,14 @@ def replay_boundary_step(
     conversion = kg_s_per_lattice_population(density_kg_m3, dx_m, dt_s)
     target_flux_lattice = float(target_mass_flow_kg_s) / conversion
     runtime_solid = runtime_solid_cells(mesh)
+    blocked_pull = boundary_blocked_pull_mask(mesh)
 
     for label in mesh.boundary_labels:
         boundary = mesh.boundaries[label]
         if label == "wall":
-            operations = _wall_operations(original, mesh, runtime_solid)
+            operations = _wall_operations(
+                original, mesh, runtime_solid, blocked_pull
+            )
             selected_rows[label] = np.arange(len(boundary.cell_indices), dtype=np.int64)
         else:
             selected, neighbor1, neighbor2 = _pressure_selected_rows(
@@ -507,10 +543,18 @@ def replay_boundary_step(
             )
             selected_rows[label] = selected
             fetched1 = pull_fetch_pdfs_runtime(
-                original, mesh, neighbor1[selected], runtime_solid
+                original,
+                mesh,
+                neighbor1[selected],
+                runtime_solid,
+                blocked_pull,
             )
             fetched2 = pull_fetch_pdfs_runtime(
-                original, mesh, neighbor2[selected], runtime_solid
+                original,
+                mesh,
+                neighbor2[selected],
+                runtime_solid,
+                blocked_pull,
             )
             velocity = 1.5 * velocity_from_pdf(fetched1) - 0.5 * velocity_from_pdf(fetched2)
             if label == "inlet":

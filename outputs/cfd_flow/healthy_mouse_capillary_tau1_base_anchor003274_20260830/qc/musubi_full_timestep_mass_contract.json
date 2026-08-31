@@ -1,0 +1,233 @@
+{
+  "status": "SOURCE_PROVEN",
+  "referee_revision": "MUSUBI_ONE_STEP_DISCRETE_MASS_IDENTITY_V2",
+  "musubi_source_revision": "81f8c4f13772f6d4af31f335e1e3f99b02726e25",
+  "apes_link_revision": "4e8b277b66226277171ef93bf054d21270812793",
+  "treelm_revision": "9899d1376992c4fafc8a343d2b4ccef81de670d1",
+  "binary_sha256": "e80162fb7e0e657d2e41aafc40a1b13b32204ff34692e24b7ab02c51aa97c588",
+  "restart_state": {
+    "serialized_buffer": "nNext",
+    "phase": "post-collision/post-source and post-halo-exchange output; pre-boundary for the following timestep",
+    "continuation_restore_buffer": "nNext",
+    "set_boundary_write_buffer": "nNext"
+  },
+  "timestep_order": [
+    "advance time",
+    "fill boundary buffers from original nNext",
+    "set_boundary writes nNext",
+    "swap nNow/nNext",
+    "aux density/velocity from PULL FETCH on nNow",
+    "BGK compute reads nNow and writes nNext",
+    "apply source terms",
+    "exchange nNext halos",
+    "serialize nNext"
+  ],
+  "boundary_order": [
+    "wall",
+    "outlet_02",
+    "outlet_03",
+    "inlet",
+    "outlet_01"
+  ],
+  "boundary_order_source": "mesh bnd.lua/globBC iBnd order",
+  "neighbor_buffer": {
+    "construction": "once before the boundary loop",
+    "reads": "original pre-boundary nNext (and nNow where requested)",
+    "shared_snapshot": true,
+    "sees_prior_boundary_writes": false
+  },
+  "swap": "after all boundary writes and immediately before aux/compute",
+  "compute_targets": {
+    "formula": "nElems_solve = nFluids + nGhostFromCoarser",
+    "single_level_nFluids_global": 182320,
+    "ghost_from_coarser": 0,
+    "ghost_from_finer": 0,
+    "halo_per_logged_rank": 400,
+    "halo_is_solve_target": false,
+    "boundary_elements_are_fluid_targets": true,
+    "prp_solid_elements_are_fluid_targets_with_special_connectivity": true,
+    "compute_target_count": 182320,
+    "runtime_log_count_proof": true
+  },
+  "pull_connectivity": {
+    "normal_fluid_source": "same direction PDF at PULL source element",
+    "missing_source": "current element inverse-direction PDF",
+    "current_prp_solid": "current element inverse-direction PDF",
+    "source_prp_solid": "current element inverse-direction PDF",
+    "boundary_source": "negative TreElm boundary neighbor entry; PULL maps to the current element inverse-direction PDF even when a coordinate-adjacent tree element exists",
+    "save": "current target element/same direction in AOS/PULL"
+  },
+  "density": "sum of all 19 PULL-fetched PDFs per solve target, not raw row",
+  "tau1_bgk": {
+    "omega": 1.0,
+    "formula": "f_post=(1-omega)*f_fetch+omega*f_eq(rho,u)",
+    "omega_one_reduction": "f_post=f_eq(rho,u)",
+    "mathematical_local_mass_delta": "sum_q(f_post-f_fetch)=sum_q(f_eq)-rho=0 because sum_q w_q=1, sum_q w_q c_q=0, and D3Q19 isotropy cancels the quadratic velocity terms",
+    "numerical_delta": "measured explicitly by the Python replay"
+  },
+  "other_sources": {
+    "status": "SOURCE_PROVEN_NONE",
+    "glob_source": false,
+    "body_force": false,
+    "adaptive_inlet_is_boundary_not_glob_source": true
+  },
+  "runtime_solid_count": 47,
+  "mesh_cells": 182320,
+  "mesh_sha256": {
+    "elemlist.lsb": "f7d7b1d55273c78c336ac04e39bc018dd9ebb470a9f29ce833ff01711de8c386",
+    "bnd.lsb": "520d7dd1e4a46a45f9b1218a5807cfd89d6f054e0a247872362b130ff6bcfe69",
+    "qval.lsb": "35884406b5f0111cd4ab471f7b08ac3df00e478d3458a57636d1bd8921cb0fe6"
+  },
+  "source_evidence": {
+    "control": {
+      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\mus\\source\\mus_control_module.f90",
+      "sha256": "ba01842e5eba943a8d6f2aaec9545e0f4b264d545ceae2568859f095bc83a18f",
+      "token_lines": {
+        "call set_boundary(": 294,
+        "call mus_swap_now_next(": 313,
+        "call mus_calcAuxFieldAndExchange(": 322,
+        "call me%scheme%compute(": 376,
+        "call mus_apply_sourceTerms(": 396,
+        "exchange_real(": 415
+      }
+    },
+    "boundary_general": {
+      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\mus\\source\\bc\\mus_bc_general_module.fpp",
+      "sha256": "fbf94f93f88eabbe6c6cabf6ce181e5837d71a452c80f4da36f52449a8df176a",
+      "token_lines": {
+        "currState = state( :, pdf%nNext )": 221,
+        "call fill_neighBuffer(": 235,
+        "do iBnd = 1, nBCs": 251,
+        "%fnct(": 256,
+        "currstate( ?FETCH?(": 1711
+      }
+    },
+    "boundary_fluid": {
+      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\mus\\source\\bc\\mus_bc_fluid_module.fpp",
+      "sha256": "4385b30cc804791fb0e50e73ab4e15d92a014f20eaaa7a71c8746a6aa08f6e29",
+      "token_lines": {
+        "adaptive_flux_pressure": 78,
+        "pressure_eq": 87
+      }
+    },
+    "boundary_wall": {
+      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\mus\\source\\bc\\mus_bc_fluid_wall_module.fpp",
+      "sha256": "663b53b56d6bdd11b89eced65927e9d66f73303302fbe4d8c3df98d5d3af73e8",
+      "token_lines": {
+        "subroutine wall_libb(": 331,
+        "fNgh = me%neigh(iLevel)%computeNeighBuf": 390,
+        "state( me%links(iLevel)%val(iLink) )": 392
+      }
+    },
+    "boundary_setup": {
+      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\mus\\source\\bc\\mus_bc_header_module.fpp",
+      "sha256": "e09d115d4c01d9e8948d002b600909b2000855ce7a781175d6161f053bfafb51",
+      "token_lines": {
+        "subroutine set_bouzidi_coeff(": 1762,
+        "subroutine mus_set_bouzidi(": 1786,
+        "bouzidi%nghPos( iLink ) = invDir": 1823
+      }
+    },
+    "connectivity": {
+      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\mus\\source\\mus_connectivity_module.fpp",
+      "sha256": "d082c43bd71d3e08ade3a7f96b1850393d1b56ebfee63e500a66afa6719237de",
+      "token_lines": {
+        "solidified = ( btest(neighProp, prp_solid)": 154,
+        "missing_neigh_for_nonghost .or. solidified": 158,
+        "GetFromPos = iElem": 170
+      }
+    },
+    "boundary_neighbor_ids": {
+      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\mus\\source\\mus_construction_module.fpp",
+      "sha256": "c2eea0f440dc2880fb74c64d44fd9d8ac9c7a78de575598d73357f9981a27960",
+      "token_lines": {
+        "subroutine assignBCList(": 2212,
+        "bID      = bc_prop%boundary_ID": 2282,
+        "stencil%cxDirInv(iDir)": 2324
+      }
+    },
+    "treelm_boundary_neighbor_entry": {
+      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\tem\\source\\tem_construction_module.f90",
+      "sha256": "8520039a7e3f03b86c014f204cb4f96487f558864fdc3da954380593b0d98cfc",
+      "token_lines": {
+        "If the entry in the stencil is < 0, it must be a boundary ID": 3304,
+        "neighVal = int(nTreeID)": 3306
+      }
+    },
+    "pdf_targets": {
+      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\mus\\source\\mus_pdf_module.f90",
+      "sha256": "3a4763cb4a96d8a22d7aa1ab63742acff3717fd13d4dae859a31f83ffe600ac1",
+      "token_lines": {
+        "me%nElems_solve = nFluids + nGhostFromCoarser": 125,
+        "me%nElems_local = nFluids + nGhostFromCoarser + nGhostFromFiner + nHalos": 123,
+        "subroutine mus_swap_Now_Next(": 167
+      }
+    },
+    "aux_density": {
+      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\mus\\source\\derived\\mus_auxFieldVar_module.fpp",
+      "sha256": "51aedff7e654045100e8602aaed92c821f46cd9dc90fbcead005ead5819e2f8a",
+      "token_lines": {
+        "subroutine mus_calcAuxField_fluid_d3q19": 605,
+        "state(?FETCH?( 1, 1, elemPos": 655,
+        "rho(iElem) = sum(pdf(:,iElem))": 679
+      }
+    },
+    "bgk_kernel": {
+      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\mus\\source\\compute\\mus_compute_d3q19_module.fpp",
+      "sha256": "15ee32ec353da3d1e6d8dfe5bab2fe50260e7bfc588f047629e144713c2c4078",
+      "token_lines": {
+        "subroutine mus_advRel_kFluid_rBGK_vStd_lD3Q19": 122,
+        "cmpl_o = 1._rk - omega": 541,
+        "f000*cmpl_o+omega*rho": 545
+      }
+    },
+    "bgk_selection": {
+      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\mus\\source\\init\\mus_initFluid_module.f90",
+      "sha256": "9f2945bdd0cc6dc2a3ff85ea42bab59bf0efd227aa27c9743011fd6f7f71bd0d",
+      "token_lines": {
+        "compute => mus_advRel_kFluid_rBGK_vStd_lD3Q19": 294
+      }
+    },
+    "restart": {
+      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\mus\\source\\mus_buffer_module.fpp",
+      "sha256": "765146e97c558bea487a0d23407278bf875fc1816f6068a85adeb6636aca95a4",
+      "token_lines": {
+        "subroutine mus_pdf_serialize(": 80,
+        "scheme%pdf( iLevel )%nNext": 129,
+        "subroutine mus_pdf_unserialize(": 143,
+        "Only set nNext": 189
+      }
+    },
+    "lbm_macros": {
+      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\build\\mus\\source\\header\\lbm_macros.inc",
+      "sha256": "6ec8847e27ee89f55899e15ef86ad119c352b6ce0ed0e02d22c64b46fccd1569",
+      "token_lines": {
+        "else !PULL": 69,
+        "macro :: FETCH": 60,
+        "macro :: SAVE": 62
+      }
+    },
+    "treelm_runtime_solid": {
+      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\tem\\source\\tem_construction_module.f90",
+      "sha256": "8520039a7e3f03b86c014f204cb4f96487f558864fdc3da954380593b0d98cfc",
+      "token_lines": {
+        "prp_solid": 83
+      }
+    },
+    "mesh_boundary_order": {
+      "path": "E:\\ULM\\hatimb-particle_flow_simulator\\ulm_3D_vascular\\outputs\\cfd_flow\\healthy_mouse_capillary_dimensionless_qvalue_base_preflight_anchor003274_20260830\\seeder\\mesh\\bnd.lua",
+      "sha256": "bb04968645139579e3277277efbd1f30316b35f19eaaaf7c9042fd5541e71de6"
+    },
+    "runtime_log": {
+      "path": "E:\\ULM\\hatimb-particle_flow_simulator\\ulm_3D_vascular\\outputs\\cfd_flow\\healthy_mouse_capillary_tau1_base_anchor003274_20260830\\dense_diagnostic_corrected\\attempt_1_8_steps\\musubi_stdout.log",
+      "sha256": "22c42921957f069e11a22881c841dacdc7205e0f756b586d1fd2e0bec52c7d57"
+    },
+    "lua": {
+      "path": "E:\\ULM\\hatimb-particle_flow_simulator\\ulm_3D_vascular\\outputs\\cfd_flow\\healthy_mouse_capillary_tau1_base_anchor003274_20260830\\dense_diagnostic_corrected\\attempt_1_8_steps\\musubi.lua",
+      "sha256": "236bc5d4e9bb9b140b8a27bd79a98a913bfbc2a66b175def20158dcd79a57ce5"
+    }
+  },
+  "production_pipeline_modified": false,
+  "seeder_calls": 0,
+  "musubi_calls": 0
+}

@@ -17,6 +17,17 @@ from typing import Any, Mapping, Sequence
 import numpy as np
 
 from .healthy_capillary_calibration import OUTLET_GAUGE_PRESSURE_PA
+from .full_timestep_mass_referee import (
+    BOUNDARY_FLUX_DEFINITION,
+    DEFERRED_PHYSICAL_FLUX,
+    FULL_IDENTITY_GATE,
+    full_identity_pass,
+    pull_link_counts,
+    public_step_record,
+    replay_full_timestep,
+    source_token_evidence,
+    stable_delta,
+)
 from .io import sha256_file, write_json
 from .musubi_boundary_mass_referee import (
     REFEREE_REVISION_NEW,
@@ -1168,6 +1179,7 @@ def forensic_boundary_window_audit(
                 "inlet_mass_normalizer_kg": inlet_normalizer,
                 "closure": closure,
                 "per_boundary_contribution_kg_domain_signed": per_boundary_mass,
+                "flux_definition": BOUNDARY_FLUX_DEFINITION,
             }
             csv_rows.append(
                 {
@@ -1211,6 +1223,7 @@ def forensic_boundary_window_audit(
         writer.writerows(csv_rows)
     result = {
         "status": "ZERO_LONG_RUN_FORENSICS_COMPLETE",
+        "flux_definition": BOUNDARY_FLUX_DEFINITION,
         "musubi_calls": 0,
         "exact_restart_iterations": exact_iterations,
         "exact_restart_sha256": {
@@ -2634,3 +2647,327 @@ def run_fresh_base(project_root: Path) -> dict[str, Any]:
     }
     write_json(qc / "tau1_base_final.json", final)
     return final
+
+
+def write_full_timestep_mass_contract(project_root: Path) -> dict[str, Any]:
+    """Write the pinned source/runtime contract for the full V2 referee."""
+
+    root = Path(project_root).resolve()
+    run_root = _run_root(root)
+    qc = run_root / "qc"
+    source_root = _tem_windows().parent
+    mus = source_root / "mus" / "source"
+    tem = source_root / "tem" / "source"
+    built_macro = source_root / "build" / "mus" / "source" / "header" / "lbm_macros.inc"
+    archived = run_root / "dense_diagnostic_corrected" / "attempt_1_8_steps"
+    lua_path = archived / "musubi.lua"
+    stdout_path = archived / "musubi_stdout.log"
+    mesh = load_mesh_contract(_mesh_path(root), expected_cells=EXPECTED_CELLS)
+    lua_text = lua_path.read_text(encoding="utf-8")
+    stdout = stdout_path.read_text(encoding="utf-8")
+    source_absence = all(
+        token not in lua_text
+        for token in ("glob_source", "source =", "source=", "body_force")
+    )
+    runtime_count_proof = all(
+        token in stdout
+        for token in (
+            "Total number of elements: 182320",
+            "Local number of elements: 45580",
+            "fluid: 45580",
+            "halo: 400",
+            "Fluid:   182320",
+        )
+    )
+    evidence = {
+        "control": source_token_evidence(
+            mus / "mus_control_module.f90",
+            "call set_boundary(",
+            "call mus_swap_now_next(",
+            "call mus_calcAuxFieldAndExchange(",
+            "call me%scheme%compute(",
+            "call mus_apply_sourceTerms(",
+            "exchange_real(",
+        ),
+        "boundary_general": source_token_evidence(
+            mus / "bc" / "mus_bc_general_module.fpp",
+            "currState = state( :, pdf%nNext )",
+            "call fill_neighBuffer(",
+            "do iBnd = 1, nBCs",
+            "%fnct(",
+            "currstate( ?FETCH?(",
+        ),
+        "boundary_fluid": source_token_evidence(
+            mus / "bc" / "mus_bc_fluid_module.fpp",
+            "adaptive_flux_pressure",
+            "pressure_eq",
+        ),
+        "boundary_wall": source_token_evidence(
+            mus / "bc" / "mus_bc_fluid_wall_module.fpp",
+            "subroutine wall_libb(",
+            "fNgh = me%neigh(iLevel)%computeNeighBuf",
+            "state( me%links(iLevel)%val(iLink) )",
+        ),
+        "boundary_setup": source_token_evidence(
+            mus / "bc" / "mus_bc_header_module.fpp",
+            "subroutine set_bouzidi_coeff(",
+            "subroutine mus_set_bouzidi(",
+            "bouzidi%nghPos( iLink ) = invDir",
+        ),
+        "connectivity": source_token_evidence(
+            mus / "mus_connectivity_module.fpp",
+            "solidified = ( btest(neighProp, prp_solid)",
+            "missing_neigh_for_nonghost .or. solidified",
+            "GetFromPos = iElem",
+        ),
+        "boundary_neighbor_ids": source_token_evidence(
+            mus / "mus_construction_module.fpp",
+            "subroutine assignBCList(",
+            "bID      = bc_prop%boundary_ID",
+            "stencil%cxDirInv(iDir)",
+        ),
+        "treelm_boundary_neighbor_entry": source_token_evidence(
+            tem / "tem_construction_module.f90",
+            "If the entry in the stencil is < 0, it must be a boundary ID",
+            "neighVal = int(nTreeID)",
+        ),
+        "pdf_targets": source_token_evidence(
+            mus / "mus_pdf_module.f90",
+            "me%nElems_solve = nFluids + nGhostFromCoarser",
+            "me%nElems_local = nFluids + nGhostFromCoarser + nGhostFromFiner + nHalos",
+            "subroutine mus_swap_Now_Next(",
+        ),
+        "aux_density": source_token_evidence(
+            mus / "derived" / "mus_auxFieldVar_module.fpp",
+            "subroutine mus_calcAuxField_fluid_d3q19",
+            "state(?FETCH?( 1, 1, elemPos",
+            "rho(iElem) = sum(pdf(:,iElem))",
+        ),
+        "bgk_kernel": source_token_evidence(
+            mus / "compute" / "mus_compute_d3q19_module.fpp",
+            "subroutine mus_advRel_kFluid_rBGK_vStd_lD3Q19",
+            "cmpl_o = 1._rk - omega",
+            "f000*cmpl_o+omega*rho",
+        ),
+        "bgk_selection": source_token_evidence(
+            mus / "init" / "mus_initFluid_module.f90",
+            "compute => mus_advRel_kFluid_rBGK_vStd_lD3Q19",
+        ),
+        "restart": source_token_evidence(
+            mus / "mus_buffer_module.fpp",
+            "subroutine mus_pdf_serialize(",
+            "scheme%pdf( iLevel )%nNext",
+            "subroutine mus_pdf_unserialize(",
+            "Only set nNext",
+        ),
+        "lbm_macros": source_token_evidence(
+            built_macro,
+            "else !PULL",
+            "macro :: FETCH",
+            "macro :: SAVE",
+        ),
+        "treelm_runtime_solid": source_token_evidence(
+            tem / "tem_construction_module.f90",
+            "prp_solid",
+        ),
+        "mesh_boundary_order": {
+            "path": str(_mesh_path(root) / "bnd.lua"),
+            "sha256": sha256_file(_mesh_path(root) / "bnd.lua"),
+        },
+        "runtime_log": {
+            "path": str(stdout_path),
+            "sha256": sha256_file(stdout_path),
+        },
+        "lua": {"path": str(lua_path), "sha256": sha256_file(lua_path)},
+    }
+    contract = Tau1BaseRuntimeContract()
+    result = {
+        "status": "SOURCE_PROVEN",
+        "referee_revision": REFEREE_REVISION_NEW,
+        "musubi_source_revision": "81f8c4f13772f6d4af31f335e1e3f99b02726e25",
+        "apes_link_revision": TEM_GIT_SHA,
+        "treelm_revision": "9899d1376992c4fafc8a343d2b4ccef81de670d1",
+        "binary_sha256": sha256_file(_binary_windows()),
+        "restart_state": {
+            "serialized_buffer": "nNext",
+            "phase": (
+                "post-collision/post-source and post-halo-exchange output; "
+                "pre-boundary for the following timestep"
+            ),
+            "continuation_restore_buffer": "nNext",
+            "set_boundary_write_buffer": "nNext",
+        },
+        "timestep_order": [
+            "advance time",
+            "fill boundary buffers from original nNext",
+            "set_boundary writes nNext",
+            "swap nNow/nNext",
+            "aux density/velocity from PULL FETCH on nNow",
+            "BGK compute reads nNow and writes nNext",
+            "apply source terms",
+            "exchange nNext halos",
+            "serialize nNext",
+        ],
+        "boundary_order": list(mesh.boundary_labels),
+        "boundary_order_source": "mesh bnd.lua/globBC iBnd order",
+        "neighbor_buffer": {
+            "construction": "once before the boundary loop",
+            "reads": "original pre-boundary nNext (and nNow where requested)",
+            "shared_snapshot": True,
+            "sees_prior_boundary_writes": False,
+        },
+        "swap": "after all boundary writes and immediately before aux/compute",
+        "compute_targets": {
+            "formula": "nElems_solve = nFluids + nGhostFromCoarser",
+            "single_level_nFluids_global": EXPECTED_CELLS,
+            "ghost_from_coarser": 0,
+            "ghost_from_finer": 0,
+            "halo_per_logged_rank": 400,
+            "halo_is_solve_target": False,
+            "boundary_elements_are_fluid_targets": True,
+            "prp_solid_elements_are_fluid_targets_with_special_connectivity": True,
+            "compute_target_count": EXPECTED_CELLS,
+            "runtime_log_count_proof": runtime_count_proof,
+        },
+        "pull_connectivity": {
+            "normal_fluid_source": "same direction PDF at PULL source element",
+            "missing_source": "current element inverse-direction PDF",
+            "current_prp_solid": "current element inverse-direction PDF",
+            "source_prp_solid": "current element inverse-direction PDF",
+            "boundary_source": (
+                "negative TreElm boundary neighbor entry; PULL maps to the "
+                "current element inverse-direction PDF even when a coordinate-"
+                "adjacent tree element exists"
+            ),
+            "save": "current target element/same direction in AOS/PULL",
+        },
+        "density": "sum of all 19 PULL-fetched PDFs per solve target, not raw row",
+        "tau1_bgk": {
+            "omega": contract.omega,
+            "formula": "f_post=(1-omega)*f_fetch+omega*f_eq(rho,u)",
+            "omega_one_reduction": "f_post=f_eq(rho,u)",
+            "mathematical_local_mass_delta": (
+                "sum_q(f_post-f_fetch)=sum_q(f_eq)-rho=0 because "
+                "sum_q w_q=1, sum_q w_q c_q=0, and D3Q19 isotropy cancels "
+                "the quadratic velocity terms"
+            ),
+            "numerical_delta": "measured explicitly by the Python replay",
+        },
+        "other_sources": {
+            "status": "SOURCE_PROVEN_NONE" if source_absence else "UNPROVEN",
+            "glob_source": False,
+            "body_force": False,
+            "adaptive_inlet_is_boundary_not_glob_source": True,
+        },
+        "runtime_solid_count": len(runtime_solid_cells(mesh)),
+        "mesh_cells": len(mesh.cell_ijk),
+        "mesh_sha256": dict(MESH_HASHES),
+        "source_evidence": evidence,
+        "production_pipeline_modified": False,
+        "seeder_calls": 0,
+        "musubi_calls": 0,
+    }
+    write_json(qc / "musubi_full_timestep_mass_contract.json", result)
+    return result
+
+
+def audit_full_timestep_replay_8step(project_root: Path) -> dict[str, Any]:
+    """Zero-MUSUBI replay of the nine archived late non-equilibrium states."""
+
+    root = Path(project_root).resolve()
+    run_root = _run_root(root)
+    qc = run_root / "qc"
+    contract = Tau1BaseRuntimeContract()
+    mesh = load_mesh_contract(_mesh_path(root), expected_cells=EXPECTED_CELLS)
+    main_pairs = _restart_pairs(_runtime_windows() / "restart")
+    archived_pairs = _restart_pairs(
+        run_root / "dense_diagnostic_corrected" / "attempt_1_8_steps" / "restart"
+    )
+    start_iteration = 3_117_927
+    expected = list(range(start_iteration + 1, start_iteration + 9))
+    if start_iteration not in main_pairs or sorted(archived_pairs) != expected:
+        raise RuntimeError("the exact 3117927..3117935 restart sequence is incomplete")
+    outlet_pressures = {
+        label: PRESSURE_REFERENCE_PA + gauge
+        for label, gauge in OUTLET_GAUGE_PRESSURE_PA.items()
+    }
+    start_pdf = _read_pdf(main_pairs[start_iteration][1])
+    endpoint_start = start_pdf.copy()
+    current = start_pdf
+    records: list[dict[str, Any]] = []
+    predicted_values: list[float] = []
+    for iteration_end in expected:
+        following = _read_pdf(archived_pairs[iteration_end][1])
+        replay = replay_full_timestep(
+            current,
+            following,
+            mesh,
+            dx_m=contract.dx_m,
+            dt_s=contract.dt_s,
+            density_kg_m3=contract.rho_kg_m3,
+            target_mass_flow_kg_s=contract.target_mass_flow_kg_s,
+            outlet_pressures_pa=outlet_pressures,
+        )
+        record = public_step_record(replay)
+        record["iteration_start"] = iteration_end - 1
+        record["iteration_end"] = iteration_end
+        records.append(record)
+        predicted_values.append(float(record["delta_full_predicted"]))
+        current = following
+    cumulative_predicted = math.fsum(predicted_values)
+    cumulative_actual = stable_delta(current, endpoint_start)
+    cumulative_normalizer = abs(contract.target_lattice_flux * len(records))
+    cumulative_residual = abs(cumulative_predicted - cumulative_actual) / max(
+        cumulative_normalizer, np.finfo(np.float64).tiny
+    )
+    individual = [float(item["R_full_one_step_identity"]) for item in records]
+    boundary_only = [float(item["R_boundary_only"]) for item in records]
+    passed = full_identity_pass(individual, cumulative_residual)
+    result = {
+        "status": (
+            "FULL_TIMESTEP_DISCRETE_MASS_IDENTITY_PROVEN"
+            if passed
+            else "ZERO_RUN_FULL_TIMESTEP_REPLAY_FAILED"
+        ),
+        "referee_revision": REFEREE_REVISION_NEW,
+        "analysis_mode": "ZERO_MUSUBI_CALLS_EXISTING_9_RESTARTS",
+        "musubi_calls": 0,
+        "seeder_calls": 0,
+        "new_long_cfd_iterations": 0,
+        "start_iteration": start_iteration,
+        "end_iteration": expected[-1],
+        "steps": len(records),
+        "R_boundary_only_min": min(boundary_only),
+        "R_boundary_only_median": float(np.median(boundary_only)),
+        "R_boundary_only_max": max(boundary_only),
+        "R_full_one_step_identity_min": min(individual),
+        "R_full_one_step_identity_median": float(np.median(individual)),
+        "R_full_one_step_identity_max": max(individual),
+        "cumulative_predicted": cumulative_predicted,
+        "cumulative_actual": cumulative_actual,
+        "R_full_8step_identity": cumulative_residual,
+        "hard_gate": FULL_IDENTITY_GATE,
+        "hard_gate_pass": passed,
+        "classification": (
+            "REFEREE_BOUNDARY_ONLY_ACCOUNTING_INCOMPLETE"
+            if passed
+            else "INSTRUMENTED_ONE_TIMESTEP_REQUIRED"
+        ),
+        "runtime_solid_count": records[0]["runtime_solid_count"],
+        "compute_target_count": records[0]["compute_target_count"],
+        "pull_link_counts": pull_link_counts(
+            mesh, runtime_solid_cells(mesh)
+        ),
+        "flux_definition": BOUNDARY_FLUX_DEFINITION,
+        "physical_Q1_Q2_Q3": DEFERRED_PHYSICAL_FLUX,
+        "restart_sha256": {
+            str(start_iteration): sha256_file(main_pairs[start_iteration][1]),
+            **{
+                str(iteration): sha256_file(archived_pairs[iteration][1])
+                for iteration in expected
+            },
+        },
+        "per_step": records,
+    }
+    write_json(qc / "tau1_full_timestep_replay_8step.json", result)
+    return result

@@ -14,6 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from utils.cfd_flow.tau1_base import (  # noqa: E402
     audit_continuous_q_referee,
+    audit_full_timestep_replay_8step,
     audit_latest_base_window,
     forensic_dense_discrete_failure,
     forensic_boundary_window_audit,
@@ -21,6 +22,11 @@ from utils.cfd_flow.tau1_base import (  # noqa: E402
     run_dense_discrete_diagnostic,
     run_fresh_base,
     salvage_incomplete_dense_diagnostic,
+    write_full_timestep_mass_contract,
+)
+from utils.cfd_flow.full_timestep_evidence import (  # noqa: E402
+    write_final_referee_and_acceptance,
+    write_instrumented_phase_oracle,
 )
 
 
@@ -35,6 +41,10 @@ def main() -> int:
             "forensic",
             "dense-diagnostic",
             "forensic-dense-failure",
+            "full-timestep-contract",
+            "full-timestep-replay",
+            "instrumented-phase-oracle",
+            "finalize-full-timestep-referee",
             "salvage-dense",
             "run-base",
         ),
@@ -52,6 +62,14 @@ def main() -> int:
         result = run_dense_discrete_diagnostic(PROJECT_ROOT)
     elif args.action == "forensic-dense-failure":
         result = forensic_dense_discrete_failure(PROJECT_ROOT)
+    elif args.action == "full-timestep-contract":
+        result = write_full_timestep_mass_contract(PROJECT_ROOT)
+    elif args.action == "full-timestep-replay":
+        result = audit_full_timestep_replay_8step(PROJECT_ROOT)
+    elif args.action == "instrumented-phase-oracle":
+        result = write_instrumented_phase_oracle(PROJECT_ROOT)
+    elif args.action == "finalize-full-timestep-referee":
+        result = write_final_referee_and_acceptance(PROJECT_ROOT)
     elif args.action == "salvage-dense":
         result = salvage_incomplete_dense_diagnostic(PROJECT_ROOT)
     else:
