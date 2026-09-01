@@ -13,8 +13,6 @@ from utils.cfd_flow.restart_decode import (
     EXPECTED_CELL_COUNT,
     EXPECTED_DT_S,
     EXPECTED_DX_M,
-    MUSUBI_MEAN_PRESSURE_PA,
-    MUSUBI_MEAN_SPEED_M_S,
     PRESSURE_REFERENCE_PA,
     REFERENCE_DENSITY_KG_M3,
     first_id_at_level,
@@ -151,11 +149,7 @@ def test_unit_density_pressure_is_frozen_physical_reference() -> None:
 
 @pytest.mark.parametrize(
     ("actual", "reference", "absolute_tolerance", "expected"),
-    [
-        (MUSUBI_MEAN_PRESSURE_PA + 1.0e-8, MUSUBI_MEAN_PRESSURE_PA, 1.0e-6, "PASS"),
-        (MUSUBI_MEAN_SPEED_M_S + 1.0e-14, MUSUBI_MEAN_SPEED_M_S, 1.0e-12, "PASS"),
-        (2.0, 1.0, 1.0e-12, "FAIL"),
-    ],
+    [(1.0 + 1.0e-8, 1.0, 1.0e-6, "PASS"), (1.0 + 1.0e-14, 1.0, 1.0e-12, "PASS"), (2.0, 1.0, 1.0e-12, "FAIL")],
 )
 def test_musubi_reference_validation_helper(
     actual: float,
@@ -199,7 +193,7 @@ def test_known_treeid_to_coordinate_cases_follow_treelm_morton_order() -> None:
     assert tree_ids_to_ijk(np.asarray([tree_id])).tolist() == [[1, 2, 1]]
 
 
-def test_exact_221109_unique_cell_gate() -> None:
+def test_exact_base_unique_cell_gate() -> None:
     indices = np.column_stack(
         (
             np.arange(EXPECTED_CELL_COUNT, dtype=np.int64),

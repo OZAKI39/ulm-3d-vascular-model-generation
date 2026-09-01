@@ -1,4 +1,4 @@
-"""Research-only, source-proven replay of one complete Musubi timestep.
+"""Canonical source-proven replay of one complete Musubi timestep.
 
 The production solver and its configuration deliberately do not import this
 module.  It decomposes an existing restart-to-restart transition into the
@@ -25,9 +25,9 @@ from .musubi_boundary_mass_referee import (
     runtime_solid_cells,
 )
 from .restart_decode import D3Q19_DIRECTIONS
+from .validated_contract import FULL_TIMESTEP_IDENTITY_GATE as FULL_IDENTITY_GATE
 
 
-FULL_IDENTITY_GATE = 1.0e-8
 PREFERRED_FULL_IDENTITY_GATE = 1.0e-9
 BOUNDARY_FLUX_DEFINITION = "BOUNDARY_PDF_ACCOUNTING_FLUX"
 PHYSICAL_FLUX_DEFINITION = "PHYSICAL_CROSS_SECTION_FLUX"

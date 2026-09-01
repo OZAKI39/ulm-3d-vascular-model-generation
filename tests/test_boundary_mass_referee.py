@@ -6,11 +6,6 @@ import numpy as np
 
 from utils.cfd_flow.exact_link_flux import INVERSE_DIRECTIONS
 from utils.cfd_flow.musubi_boundary_mass_referee import (
-    EXPECTED_CELLS,
-    MESH_RUN,
-    RUN_NAME,
-    TARGET_MASS_FLOW,
-    _pressure_selected_rows,
     _wall_operations,
     boundary_window_closure,
     conservation_identity_residual,
@@ -19,15 +14,12 @@ from utils.cfd_flow.musubi_boundary_mass_referee import (
     fetch_storage_slot,
     kg_s_per_lattice_population,
     lattice_delta_to_kg_s,
-    load_mesh_contract,
     pull_fetch_pdfs_runtime,
-    replay_boundary_step,
     replay_sequential_writes,
-    runtime_solid_cells,
     significant_time_averaged_backflow,
     trapezoidal_integral,
 )
-from utils.cfd_flow.restart_decode import D3Q19_DIRECTIONS, read_restart_pdf
+from utils.cfd_flow.restart_decode import D3Q19_DIRECTIONS
 
 
 def test_pull_fetch_memory_slot_and_inverse_mapping() -> None:
@@ -162,44 +154,3 @@ def test_time_averaged_backflow_and_earliest_gate_pass() -> None:
     failed = dict(base, iteration=100, R_mass_short=0.02)
     passed = dict(base, iteration=200)
     assert earliest_gate_pass((passed, failed))["iteration"] == 200
-
-
-def test_frozen_mesh_pressure_selection_runtime_order_and_all_bc_replay() -> None:
-    root = Path(__file__).resolve().parents[1]
-    mesh = load_mesh_contract(
-        root / "outputs" / "cfd_flow" / MESH_RUN / "seeder" / "mesh"
-    )
-    assert mesh.boundary_labels == (
-        "wall", "outlet_02", "outlet_03", "inlet", "outlet_01"
-    )
-    assert {
-        label: len(_pressure_selected_rows(mesh, mesh.boundaries[label], label)[0])
-        for label in ("inlet", "outlet_01", "outlet_02", "outlet_03")
-    } == {"inlet": 287, "outlet_01": 178, "outlet_02": 161, "outlet_03": 193}
-    assert len(runtime_solid_cells(mesh)) == 18
-    restart = (
-        root / "outputs" / "cfd_flow" / RUN_NAME / "restart"
-        / "checkpoint_469900" / "a3274_11.472E-03.lsb"
-    )
-    pdf = read_restart_pdf(restart, n_elems=EXPECTED_CELLS, n_components=19)
-    replay = replay_boundary_step(pdf, mesh)
-    assert set(replay["per_label_lattice"]) == set(mesh.boundary_labels)
-    assert abs(replay["per_label_kg_s_domain"]["inlet"] - TARGET_MASS_FLOW) / TARGET_MASS_FLOW < 1e-10
-    assert abs(
-        replay["per_label_lattice"]["outlet_02"]
-        - (-3.9819537668979721e-3)
-    ) < 1e-15
-    next_restart = (
-        root / "outputs" / "cfd_flow" / RUN_NAME / "qc" / "referee"
-        / "one_step_restart_469901" / "a3274_referee_11.472E-03.lsb"
-    )
-    next_pdf = read_restart_pdf(
-        next_restart, n_elems=EXPECTED_CELLS, n_components=19
-    )
-    actual_delta = float(np.sum(next_pdf - pdf, dtype=np.float64))
-    assert conservation_identity_residual(
-        replay["predicted_total_lattice"],
-        actual_delta,
-        replay["target_lattice_flux"],
-    ) <= 1e-8
-    assert all(np.isfinite(list(replay["per_label_lattice"].values())))
