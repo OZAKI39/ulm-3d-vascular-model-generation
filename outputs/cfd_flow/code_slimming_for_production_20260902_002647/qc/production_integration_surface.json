@@ -1,0 +1,541 @@
+{
+  "status": "PASS",
+  "scientific_status": "VALIDATED_RESEARCH_READY_FOR_PRODUCTION_INTEGRATION",
+  "production_behavior_promoted": false,
+  "entrypoints": [
+    "cfd_flow.py"
+  ],
+  "active_modules": [
+    {
+      "path": "cfd_flow.py",
+      "role": "production CLI entrypoint",
+      "loc": 44,
+      "public_functions_or_classes": [
+        "main"
+      ],
+      "direct_dependencies": [
+        "utils.cfd_flow.config",
+        "utils.cfd_flow.io",
+        "utils.cfd_flow.pipeline"
+      ],
+      "next_phase_action": "MODIFY"
+    },
+    {
+      "path": "utils/cfd_flow/adaptive_target_population.py",
+      "role": "375/376 active-population oracle",
+      "loc": 86,
+      "public_functions_or_classes": [
+        "AdaptiveTargetPopulationError",
+        "audit_adaptive_target_population"
+      ],
+      "direct_dependencies": [],
+      "next_phase_action": "KEEP"
+    },
+    {
+      "path": "utils/cfd_flow/apes.py",
+      "role": "APES config rendering and process plumbing",
+      "loc": 567,
+      "public_functions_or_classes": [
+        "BoundaryConditions",
+        "LatticeScaling",
+        "ApesEnvironment",
+        "ExternalRun",
+        "load_boundary_conditions",
+        "diffusive_time_step",
+        "bulk_viscosity_from_kinematic",
+        "compute_lattice_scaling",
+        "generate_seeder_lua",
+        "generate_musubi_lua",
+        "generate_harvester_lua",
+        "inspect_apes_environment",
+        "windows_to_wsl",
+        "run_wsl_tool",
+        "parse_mesh_header",
+        "save_lua_files",
+        "environment_report",
+        "save_environment"
+      ],
+      "direct_dependencies": [
+        "utils.cfd_flow.config",
+        "utils.cfd_flow.geometry",
+        "utils.cfd_flow.io"
+      ],
+      "next_phase_action": "MODIFY"
+    },
+    {
+      "path": "utils/cfd_flow/config.py",
+      "role": "current production configuration contract",
+      "loc": 354,
+      "public_functions_or_classes": [
+        "PathsConfig",
+        "ExecutionConfig",
+        "ApesConfig",
+        "MeshConfig",
+        "PhysicsConfig",
+        "SolverConfig",
+        "ResourcesConfig",
+        "QCConfig",
+        "FlowConfig",
+        "load_cfd_flow_config"
+      ],
+      "direct_dependencies": [],
+      "next_phase_action": "MODIFY"
+    },
+    {
+      "path": "utils/cfd_flow/exact_link_flux.py",
+      "role": "generic D3Q19 PDF and boundary primitives",
+      "loc": 248,
+      "public_functions_or_classes": [
+        "BoundaryReconstruction",
+        "mfr_eq_area_proxy",
+        "closest_discrete_direction",
+        "reconstruct_boundary",
+        "equilibrium_pdf",
+        "build_coordinate_lookup",
+        "pull_fetch_pdfs",
+        "velocity_from_pdf",
+        "signed_mass_balance",
+        "classify_exact_flux"
+      ],
+      "direct_dependencies": [
+        "utils.cfd_flow.restart_decode"
+      ],
+      "next_phase_action": "KEEP"
+    },
+    {
+      "path": "utils/cfd_flow/full_timestep_mass_referee.py",
+      "role": "Full V2 conservation identity",
+      "loc": 292,
+      "public_functions_or_classes": [
+        "full_identity_pass",
+        "stable_delta",
+        "stable_total",
+        "pull_compute_targets",
+        "pull_link_counts",
+        "tau1_bgk_collision",
+        "replay_full_timestep",
+        "public_step_record",
+        "source_token_evidence"
+      ],
+      "direct_dependencies": [
+        "utils.cfd_flow.exact_link_flux",
+        "utils.cfd_flow.io",
+        "utils.cfd_flow.musubi_boundary_mass_referee",
+        "utils.cfd_flow.restart_decode",
+        "utils.cfd_flow.validated_contract"
+      ],
+      "next_phase_action": "KEEP"
+    },
+    {
+      "path": "utils/cfd_flow/geometry.py",
+      "role": "production geometry and surface partition",
+      "loc": 326,
+      "public_functions_or_classes": [
+        "BoundaryPatch",
+        "SurfacePartition",
+        "BoundingCube",
+        "SeedPoint",
+        "partition_surface",
+        "load_frozen_surface_partition",
+        "robust_inside",
+        "find_seed_point",
+        "compute_bounding_cube",
+        "cells_across_diameter",
+        "parabolic_velocity"
+      ],
+      "direct_dependencies": [
+        "utils.cfd_flow.io"
+      ],
+      "next_phase_action": "KEEP"
+    },
+    {
+      "path": "utils/cfd_flow/io.py",
+      "role": "paths, input loading, JSON, and hashes",
+      "loc": 159,
+      "public_functions_or_classes": [
+        "FlowInputs",
+        "RunLayout",
+        "FlowError",
+        "read_json",
+        "write_json",
+        "sha256_file",
+        "load_flow_inputs",
+        "create_run_layout",
+        "save_input_provenance"
+      ],
+      "direct_dependencies": [],
+      "next_phase_action": "KEEP"
+    },
+    {
+      "path": "utils/cfd_flow/musubi_boundary_mass_referee.py",
+      "role": "diagnostic boundary replay support",
+      "loc": 683,
+      "public_functions_or_classes": [
+        "MeshContract",
+        "kg_s_per_lattice_population",
+        "lattice_delta_to_kg_s",
+        "conservation_identity_residual",
+        "boundary_window_closure",
+        "trapezoidal_integral",
+        "significant_time_averaged_backflow",
+        "fetch_storage_slot",
+        "boundary_write_slots",
+        "detect_slot_overlaps",
+        "replay_sequential_writes",
+        "read_qvalue_rows",
+        "scatter_qvalue_rows",
+        "load_mesh_contract",
+        "pressure_neighbor_indices",
+        "runtime_solid_cells",
+        "boundary_blocked_pull_mask",
+        "pull_fetch_pdfs_runtime",
+        "replay_boundary_step",
+        "window_statistics",
+        "earliest_gate_pass"
+      ],
+      "direct_dependencies": [
+        "utils.cfd_flow.exact_link_flux",
+        "utils.cfd_flow.port_flux_audit",
+        "utils.cfd_flow.restart_decode",
+        "utils.cfd_flow.validated_contract"
+      ],
+      "next_phase_action": "KEEP"
+    },
+    {
+      "path": "utils/cfd_flow/physical_port_flux.py",
+      "role": "V3 planes and continuous physical flux V2",
+      "loc": 1209,
+      "public_functions_or_classes": [
+        "InteriorPlane",
+        "PolygonQuadrature",
+        "MLSStencil",
+        "MLSStencilMap",
+        "slice_continuous_lumen",
+        "build_interior_plane_contract",
+        "plane_from_v3_record",
+        "triangulate_aperture",
+        "build_polygon_quadrature",
+        "plane_uv_to_xyz",
+        "sample_polygon_boundary",
+        "build_mls_stencil_map",
+        "evaluate_mls_stencil_map",
+        "integrate_reconstructed_flux",
+        "run_analytic_flux_oracles"
+      ],
+      "direct_dependencies": [
+        "utils.cfd_flow.io",
+        "utils.cfd_flow.port_grid_sensitivity",
+        "utils.cfd_flow.tau1_grid_convergence",
+        "utils.cfd_flow.validated_contract"
+      ],
+      "next_phase_action": "KEEP"
+    },
+    {
+      "path": "utils/cfd_flow/pipeline.py",
+      "role": "current production orchestration",
+      "loc": 1194,
+      "public_functions_or_classes": [
+        "FlowResult",
+        "run_cfd_flow",
+        "print_result"
+      ],
+      "direct_dependencies": [
+        "utils.cfd_flow.apes",
+        "utils.cfd_flow.config",
+        "utils.cfd_flow.geometry",
+        "utils.cfd_flow.io",
+        "utils.cfd_flow.qc",
+        "utils.cfd_flow.visualization"
+      ],
+      "next_phase_action": "REPLACE"
+    },
+    {
+      "path": "utils/cfd_flow/port_flux_audit.py",
+      "role": "source-proven APES boundary readers",
+      "loc": 439,
+      "public_functions_or_classes": [
+        "BoundaryPropertyHeader",
+        "BoundaryHeader",
+        "PortFaceTopology",
+        "parse_boundary_property_header",
+        "extract_boundary_property_indices",
+        "parse_bnd_header",
+        "parse_treelm_side_contract",
+        "boundary_binary_contract",
+        "read_boundary_ids",
+        "build_source_contract"
+      ],
+      "direct_dependencies": [
+        "utils.cfd_flow.io",
+        "utils.cfd_flow.validated_contract"
+      ],
+      "next_phase_action": "KEEP"
+    },
+    {
+      "path": "utils/cfd_flow/port_grid_sensitivity.py",
+      "role": "continuous physical port geometry",
+      "loc": 247,
+      "public_functions_or_classes": [
+        "PlaneFrame",
+        "orthonormal_plane_basis",
+        "recover_continuous_ports"
+      ],
+      "direct_dependencies": [
+        "utils.cfd_flow.io"
+      ],
+      "next_phase_action": "KEEP"
+    },
+    {
+      "path": "utils/cfd_flow/qc.py",
+      "role": "current production quality gates",
+      "loc": 249,
+      "public_functions_or_classes": [
+        "percentile_summary",
+        "evaluate_mass_conservation",
+        "numerical_port_fluxes",
+        "fluid_domain_geometry_qc",
+        "validate_and_convert_flow_vtu",
+        "reynolds_diagnostics",
+        "write_proteus_metadata",
+        "boundary_condition_qc"
+      ],
+      "direct_dependencies": [
+        "utils.cfd_flow.apes",
+        "utils.cfd_flow.geometry",
+        "utils.cfd_flow.io"
+      ],
+      "next_phase_action": "MODIFY"
+    },
+    {
+      "path": "utils/cfd_flow/restart_decode.py",
+      "role": "restart PDF and macroscopic-field decoder",
+      "loc": 726,
+      "public_functions_or_classes": [
+        "DirectDecodeLayout",
+        "RestartHeader",
+        "DirectMacroscopicField",
+        "parse_restart_header",
+        "parse_d3q19_layout",
+        "build_direct_decode_source_contract",
+        "restart_binary_size_contract",
+        "read_restart_pdf",
+        "reconstruct_macroscopic_field",
+        "reference_reproduction",
+        "first_id_at_level",
+        "tree_levels",
+        "tree_ids_to_ijk",
+        "read_treelm_elemlist",
+        "unique_cell_gate"
+      ],
+      "direct_dependencies": [
+        "utils.cfd_flow.io",
+        "utils.cfd_flow.validated_contract"
+      ],
+      "next_phase_action": "KEEP"
+    },
+    {
+      "path": "utils/cfd_flow/steady_export.py",
+      "role": "decoded Cartesian VTK reconstruction",
+      "loc": 106,
+      "public_functions_or_classes": [
+        "LatticeMapping",
+        "quantize_cell_centers",
+        "reconstruct_hexahedral_field",
+        "build_proteus_metadata"
+      ],
+      "direct_dependencies": [],
+      "next_phase_action": "KEEP"
+    },
+    {
+      "path": "utils/cfd_flow/steady_state.py",
+      "role": "generic physical-time steady auditor",
+      "loc": 168,
+      "public_functions_or_classes": [
+        "trapezoidal_mean",
+        "audit_steady_window",
+        "acceptance_transition"
+      ],
+      "direct_dependencies": [
+        "utils.cfd_flow.validated_contract"
+      ],
+      "next_phase_action": "KEEP"
+    },
+    {
+      "path": "utils/cfd_flow/validated_contract.py",
+      "role": "sole validated Tau=1 inputs and formulas",
+      "loc": 230,
+      "public_functions_or_classes": [
+        "tau1_time_step_s",
+        "pressure_reference_pa",
+        "target_lattice_flux",
+        "relaxation_from_physical",
+        "gauge_pressure_pa",
+        "absolute_pressure_pa",
+        "ValidatedTau1Contract",
+        "restart_compatibility"
+      ],
+      "direct_dependencies": [],
+      "next_phase_action": "KEEP"
+    },
+    {
+      "path": "utils/cfd_flow/validated_evidence.py",
+      "role": "compact accepted-evidence loader",
+      "loc": 73,
+      "public_functions_or_classes": [
+        "load_validated_evidence",
+        "artifact_manifest"
+      ],
+      "direct_dependencies": [
+        "utils.cfd_flow.io"
+      ],
+      "next_phase_action": "KEEP"
+    },
+    {
+      "path": "utils/cfd_flow/visualization.py",
+      "role": "production visualization infrastructure",
+      "loc": 77,
+      "public_functions_or_classes": [
+        "create_flow_figures"
+      ],
+      "direct_dependencies": [
+        "utils.cfd_flow.geometry"
+      ],
+      "next_phase_action": "MODIFY"
+    }
+  ],
+  "active_tests": [
+    "tests/test_adaptive_target_population.py",
+    "tests/test_boundary_mass_referee.py",
+    "tests/test_boundary_only_vs_full_identity.py",
+    "tests/test_cfd_flow.py",
+    "tests/test_cfd_flow_exact_link_flux.py",
+    "tests/test_cfd_flow_restart_decode.py",
+    "tests/test_cfd_flow_steady_export.py",
+    "tests/test_cli_smoke.py",
+    "tests/test_cylinder_qvalue_oracle.py",
+    "tests/test_dimensionless_edge_vertex_cases.py",
+    "tests/test_dimensionless_ray_triangle.py",
+    "tests/test_dimensionless_scale_invariance.py",
+    "tests/test_full_timestep_identity_non_equilibrium.py",
+    "tests/test_full_timestep_pull_connectivity_mass.py",
+    "tests/test_full_timestep_tau1_collision_mass.py",
+    "tests/test_grid_base_is_read_only.py",
+    "tests/test_grid_convergence_gate.py",
+    "tests/test_grid_gci_uses_physical_flux_only.py",
+    "tests/test_grid_restart_resume_contract.py",
+    "tests/test_historical_bad_q_evidence_excluded.py",
+    "tests/test_interior_plane_geometry_contract.py",
+    "tests/test_mls_interpolation_stencil_contract.py",
+    "tests/test_old_cell_cube_flux_rejected.py",
+    "tests/test_physical_aperture_polygon_area.py",
+    "tests/test_physical_flux_affine_field.py",
+    "tests/test_physical_flux_constant_field.py",
+    "tests/test_physical_flux_grid_translation.py",
+    "tests/test_physical_flux_poiseuille_axis.py",
+    "tests/test_physical_flux_poiseuille_oblique.py",
+    "tests/test_physical_flux_sign_convention.py",
+    "tests/test_referee_full_identity_gate.py",
+    "tests/test_referee_v2_continuous_q_runtime.py",
+    "tests/test_runtime_solid_compute_connectivity.py",
+    "tests/test_steady_state.py",
+    "tests/test_tau1_grid_specs.py",
+    "tests/test_validated_contract.py",
+    "tests/test_validated_evidence.py",
+    "tests/test_wall_qvalue_oracle.py"
+  ],
+  "canonical_contract": "utils/cfd_flow/validated_contract.py",
+  "canonical_evidence": [
+    "outputs/cfd_flow/healthy_mouse_capillary_dimensionless_qvalue_base_preflight_anchor003274_20260830/qc/final_base_geometry_validation.json",
+    "outputs/cfd_flow/healthy_mouse_capillary_tau1_base_anchor003274_20260830/qc/tau1_referee_v2_final.json",
+    "outputs/cfd_flow/healthy_mouse_capillary_tau1_reference_scaled_base_anchor003274_20260901/qc/reference_scaled_base_final.json",
+    "outputs/cfd_flow/healthy_mouse_capillary_tau1_reference_scaled_base_anchor003274_20260901/qc/reference_scaled_base_full_referee.json",
+    "outputs/cfd_flow/healthy_mouse_capillary_tau1_reference_scaled_grid_convergence_anchor003274_20260901/fine_postfix/qc/fine_5000_safety_gate.json",
+    "outputs/cfd_flow/healthy_mouse_capillary_tau1_reference_scaled_grid_convergence_anchor003274_20260901/qc/coarse_base_resolution_sensitivity.json",
+    "outputs/cfd_flow/healthy_mouse_capillary_tau1_reference_scaled_grid_convergence_anchor003274_20260901/qc/coarse_steady_acceptance.json",
+    "outputs/cfd_flow/healthy_mouse_capillary_tau1_reference_scaled_grid_convergence_anchor003274_20260901/qc/fine_adaptive_target_375_376_forensics.json",
+    "outputs/cfd_flow/healthy_mouse_capillary_tau1_reference_scaled_grid_convergence_anchor003274_20260901/qc/fine_adaptive_target_fix_validation.json",
+    "outputs/cfd_flow/healthy_mouse_capillary_tau1_reference_scaled_grid_convergence_anchor003274_20260901/qc/physical_port_flux_plane_contract_v3.json",
+    "outputs/cfd_flow/healthy_mouse_capillary_tau1_reference_scaled_grid_convergence_anchor003274_20260901/qc/resource_budget_termination.json"
+  ],
+  "production_files_to_modify_next": [
+    "cfd_flow.py",
+    "configs/cfd_flow.yaml",
+    "utils/cfd_flow/config.py",
+    "utils/cfd_flow/apes.py",
+    "utils/cfd_flow/pipeline.py",
+    "utils/cfd_flow/qc.py",
+    "utils/cfd_flow/visualization.py"
+  ],
+  "production_baseline_contract": "NEXT_PHASE_REPLACE",
+  "files_not_to_read_by_default": [
+    "outputs/cfd_flow/** except canonical paths in validated_evidence.py",
+    "**/*.lsb",
+    "**/*.vtu",
+    "**/*.pvtu",
+    "**/*stdout*.log",
+    "utils/cfd_flow/dimensionless_geometry_kernel.py",
+    "utils/cfd_flow/tau1_grid_convergence.py",
+    "utils/cfd_flow/wall_qvalue_oracle.py",
+    "docs historical CFD forensic narratives",
+    "Git history for the 127 retired paths"
+  ],
+  "retired_components": [
+    "outputs/cfd_flow/code_slimming_for_production_20260902_002647/qc/retired_cfd_components.json"
+  ],
+  "large_artifacts": [
+    {
+      "path": "outputs/cfd_flow/healthy_mouse_capillary_tau1_reference_scaled_base_anchor003274_20260901/accepted_restart/tau1_reference_scaled_base_598755.lsb",
+      "size_bytes": 27712640,
+      "sha256": "ffcd98b2dc684d1569d937d915b603805809c581d5341e71b17afac2ac64c39f"
+    },
+    {
+      "path": "outputs/cfd_flow/healthy_mouse_capillary_tau1_reference_scaled_grid_convergence_anchor003274_20260901/coarse/accepted_restart/tau1_reference_scaled_coarse_354295.lsb",
+      "size_bytes": 12609464,
+      "sha256": "9eda88e685e5eaa6af650757b8c97accba392c88988df2766d2bb4de825fcfbb"
+    },
+    {
+      "path": "outputs/cfd_flow/healthy_mouse_capillary_tau1_reference_scaled_grid_convergence_anchor003274_20260901/fine_postfix/resource_budget_termination/restart/tau1_reference_scaled_fine_postfix_70313.lsb",
+      "size_bytes": 60944248,
+      "sha256": "462234ee8b59ae7b7be2234a5c1ef1ede24db6065a54b82af8cb6871d3ac7f9a"
+    },
+    {
+      "path": "outputs/cfd_flow/healthy_mouse_capillary_dimensionless_qvalue_base_preflight_anchor003274_20260830/seeder/mesh/elemlist.lsb",
+      "size_bytes": 2917120,
+      "sha256": "f7d7b1d55273c78c336ac04e39bc018dd9ebb470a9f29ce833ff01711de8c386"
+    },
+    {
+      "path": "outputs/cfd_flow/healthy_mouse_capillary_dimensionless_qvalue_base_preflight_anchor003274_20260830/seeder/mesh/bnd.lsb",
+      "size_bytes": 14304160,
+      "sha256": "520d7dd1e4a46a45f9b1218a5807cfd89d6f054e0a247872362b130ff6bcfe69"
+    },
+    {
+      "path": "outputs/cfd_flow/healthy_mouse_capillary_dimensionless_qvalue_base_preflight_anchor003274_20260830/seeder/mesh/qval.lsb",
+      "size_bytes": 14221168,
+      "sha256": "35884406b5f0111cd4ab471f7b08ac3df00e478d3458a57636d1bd8921cb0fe6"
+    },
+    {
+      "path": "patches/musubi/adaptive_flux_pressure.patch",
+      "size_bytes": 22862,
+      "sha256": "90efce400bb4b6ad5ad22ddd6518ccbeb8ba8a8eece2f76f2109a26dae92758f"
+    }
+  ],
+  "context_priority_order": [
+    "docs/CFD_PRODUCTION_INTEGRATION_CONTEXT.md",
+    "utils/cfd_flow/validated_contract.py",
+    "outputs/cfd_flow/code_slimming_for_production_20260902_002647/qc/production_integration_surface.json",
+    "cfd_flow.py",
+    "configs/cfd_flow.yaml",
+    "utils/cfd_flow/config.py",
+    "utils/cfd_flow/apes.py",
+    "utils/cfd_flow/pipeline.py",
+    "utils/cfd_flow/qc.py",
+    "utils/cfd_flow/visualization.py",
+    "utils/cfd_flow/validated_evidence.py",
+    "utils/cfd_flow/restart_decode.py",
+    "utils/cfd_flow/full_timestep_mass_referee.py",
+    "utils/cfd_flow/physical_port_flux.py",
+    "utils/cfd_flow/steady_state.py",
+    "utils/cfd_flow/adaptive_target_population.py"
+  ],
+  "next": "PROMOTE VALIDATED TAU1 CFD CONTRACT TO PRODUCTION PIPELINE WITH LOW-COST SOLVER SMOKE AND NEW VISUAL ACCEPTANCE PACKAGE"
+}

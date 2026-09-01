@@ -19,6 +19,7 @@ from typing import Any
 import numpy as np
 from .io import FlowError, sha256_file
 from .validated_contract import (
+    BASE_DX_M,
     LATTICE_CS2,
     MAXIMUM_LATTICE_SPEED,
     RHO0_KG_M3,
@@ -44,7 +45,7 @@ EXPECTED_NDOFS = 1
 EXPECTED_RESTART_BYTES = 27_712_640
 EXPECTED_ELEMLIST_BYTES = 2_917_120
 EXPECTED_LEVEL = 9
-EXPECTED_DX_M = 2.0e-7
+EXPECTED_DX_M = BASE_DX_M
 EXPECTED_DT_S = ValidatedTau1Contract().dt_s
 REFERENCE_DENSITY_KG_M3 = RHO0_KG_M3
 PRESSURE_REFERENCE_PA = ValidatedTau1Contract().pressure_reference_pa

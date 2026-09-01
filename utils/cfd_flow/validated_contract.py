@@ -182,8 +182,7 @@ class ValidatedTau1Contract:
         }
 
     def lattice_density(self, physical_pressure_pa: float) -> float:
-        unit_density_pressure = self.rho0_kg_m3 * self.cs2 * (self.dx_m / self.dt_s) ** 2
-        return float(physical_pressure_pa) / unit_density_pressure
+        return float(physical_pressure_pa) / self.pressure_reference_pa
 
     def as_dict(self) -> dict[str, Any]:
         value = asdict(self)
@@ -229,4 +228,3 @@ def restart_compatibility(
     )
     checks = {field: saved.get(field) == expected.get(field) for field in fields}
     return {"status": "PASS" if all(checks.values()) else "FAIL", "checks": checks}
-
