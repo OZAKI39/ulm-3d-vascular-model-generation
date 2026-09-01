@@ -466,7 +466,7 @@ def _write_oracle_state(project_root: Path, record: dict[str, Any]) -> None:
     if not oracle:
         oracle = {
             "status": "CB_ORACLE_DEFERRED_UNTIL_FINE_COMPLETION",
-            "reason": "Fine is the primary task; the oracle has not been launched.",
+            "deferred_reason": "Fine is the primary task; the oracle has not been launched.",
             "solver_calls": 0,
         }
     fine_status = str(record["status"])
@@ -478,12 +478,22 @@ def _write_oracle_state(project_root: Path, record: dict[str, Any]) -> None:
         next_action = "VERIFY_COMPATIBILITY_BEFORE_ANY_CHECKPOINT_RESUME"
     else:
         next_action = "STOP_AND_PRESERVE_EVIDENCE"
+    fine = _public_record(record)
+    fine.update(
+        {
+            "last_checkpoint": record.get("latest_restart_iteration"),
+            "last_checkpoint_sha": record.get("latest_restart_sha256"),
+            "completion_classification": (
+                None if fine_status == "HEALTHY_RUNNING" else fine_status
+            ),
+        }
+    )
     _write_json_atomic(
         qc / "monitor_and_cb_oracle_state.json",
         {
             "timestamp": record["timestamp"],
             "git_head": _git_head(project_root),
-            "fine": _public_record(record),
+            "fine": fine,
             "cb_oracle": oracle,
             "next_action": next_action,
         },

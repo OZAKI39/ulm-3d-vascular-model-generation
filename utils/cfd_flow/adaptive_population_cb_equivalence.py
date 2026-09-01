@@ -377,6 +377,10 @@ def prepare_deferred(project_root: Path) -> dict[str, Any]:
         }
     evidence = {
         "status": "CB_ORACLE_DEFERRED_UNTIL_FINE_COMPLETION",
+        "deferred_reason": (
+            "Fine iteration throughput is not observable between filtered cadence records, "
+            "so a <=10% concurrent slowdown cannot be proven."
+        ),
         "git_head": _git_head(root),
         **provenance,
         "source_diff_scope": _source_scope(),
@@ -400,6 +404,8 @@ def prepare_deferred(project_root: Path) -> dict[str, Any]:
         "solver_calls": 0,
         "coarse": grids["coarse"],
         "base": grids["base"],
+        "coarse_status": grids["coarse"]["status"],
+        "base_status": grids["base"]["status"],
         "overall_verdict": "PENDING_FINE_COMPLETION",
         "accepted_coarse_base_require_rerun": None,
     }
@@ -554,6 +560,8 @@ def run_oracle(project_root: Path) -> dict[str, Any]:
             "as observed for Fine."
         )
         evidence["solver_calls"] = calls
+    evidence["coarse_status"] = evidence["coarse"]["status"]
+    evidence["base_status"] = evidence["base"]["status"]
     qc = root / RUN_RELATIVE / "qc"
     _write_json(qc / "adaptive_active_population_cb_equivalence.json", evidence)
     _write_csv(qc / "adaptive_active_population_cb_equivalence.csv", evidence)
