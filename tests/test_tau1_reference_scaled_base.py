@@ -15,6 +15,7 @@ from utils.cfd_flow.tau1_reference_scaled_base import (
     SHORT_WINDOW_ITERATIONS,
     acceptance_transition,
     generate_segment_lua,
+    next_segment_iterations,
     outlet_absolute_pressures,
     plateau_failure,
     restart_compatibility,
@@ -179,6 +180,8 @@ def test_early_stop_requires_one_additional_checkpoint() -> None:
         iteration=EARLIEST_AUDIT_ITERATION + SHORT_WINDOW_ITERATIONS,
     )
     assert action == "CONFIRMED"
+    assert next_segment_iterations(None) == LONG_WINDOW_ITERATIONS
+    assert next_segment_iterations(candidate) == SHORT_WINDOW_ITERATIONS
 
 
 def test_plateau_fail_safe_requires_four_same_single_gate_audits() -> None:

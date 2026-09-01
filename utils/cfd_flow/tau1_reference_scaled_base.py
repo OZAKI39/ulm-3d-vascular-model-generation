@@ -17,6 +17,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
+from xml.etree import ElementTree
 
 import numpy as np
 
@@ -716,6 +717,16 @@ def acceptance_transition(
     return "CANDIDATE", int(iteration)
 
 
+def next_segment_iterations(candidate_iteration: int | None) -> int:
+    """Avoid a speculative second checkpoint after a steady candidate."""
+
+    return (
+        SHORT_WINDOW_ITERATIONS
+        if candidate_iteration is not None
+        else SEGMENT_ITERATIONS
+    )
+
+
 def _all_controller_records(paths: RunPaths) -> dict[int, dict[str, Any]]:
     records: dict[int, dict[str, Any]] = {}
     roots = (paths.runtime / "segments", paths.segments)
@@ -979,7 +990,10 @@ def run(project_root: Path) -> dict[str, Any]:
         audit_new_checkpoints(pairs)
 
     while state["status"] == "IN_PROGRESS" and current < LAST_REGULAR_CHECKPOINT:
-        maximum = min(current + SEGMENT_ITERATIONS, LAST_REGULAR_CHECKPOINT)
+        # Once a candidate exists, launch exactly its one required short-window
+        # confirmation and no second speculative checkpoint.
+        segment_step = next_segment_iterations(state.get("candidate_iteration"))
+        maximum = min(current + segment_step, LAST_REGULAR_CHECKPOINT)
         if maximum - current not in {SHORT_WINDOW_ITERATIONS, SEGMENT_ITERATIONS}:
             maximum = current + SHORT_WINDOW_ITERATIONS
         segment_name = f"segment_{current:07d}_to_{maximum:07d}"
@@ -1087,6 +1101,34 @@ def finalize(project_root: Path) -> dict[str, Any]:
         if state["status"] == "CFD_FLOW_OPERATIONAL_INFRASTRUCTURE_BLOCKED"
         else "CFD_FLOW_REPAIRED_BASE_TAU1_STEADY_FAILED"
     )
+    pytest_path = paths.qc / "targeted_pytest.xml"
+    ruff_path = paths.qc / "targeted_ruff.json"
+    verification: dict[str, Any] = {}
+    if pytest_path.is_file():
+        root = ElementTree.parse(pytest_path).getroot()
+        suite = root if root.tag == "testsuite" else root.find("testsuite")
+        if suite is not None:
+            failures = int(suite.attrib.get("failures", 0))
+            errors = int(suite.attrib.get("errors", 0))
+            verification["targeted_pytest"] = {
+                "status": "PASS" if failures == errors == 0 else "FAIL",
+                "tests": int(suite.attrib.get("tests", 0)),
+                "failures": failures,
+                "errors": errors,
+                "seconds": float(suite.attrib.get("time", 0.0)),
+                "sha256": sha256_file(pytest_path),
+            }
+    if ruff_path.is_file():
+        findings = json.loads(ruff_path.read_text(encoding="utf-8"))
+        verification["targeted_ruff"] = {
+            "status": "PASS" if not findings else "FAIL",
+            "findings": len(findings),
+            "sha256": sha256_file(ruff_path),
+        }
+    diagnostic_restart_reads = int(
+        (paths.qc / "reference_scaled_base_full_referee.json").is_file()
+    )
+    candidate_iteration = state.get("candidate_iteration")
     final = {
         "status": status,
         "failure_mode": (
@@ -1103,11 +1145,31 @@ def finalize(project_root: Path) -> dict[str, Any]:
         "seeder_calls": 0,
         "fresh_base_logical_simulations": 1,
         "musubi_process_launches": state["process_launches"],
-        "restart_resumes": state["restart_resumes"],
+        "primary_restart_resumes": state["restart_resumes"],
+        "diagnostic_restart_reads": diagnostic_restart_reads,
+        "restart_resumes": state["restart_resumes"] + diagnostic_restart_reads,
         "operational_recoveries": state["operational_recoveries"],
         "total_primary_iterations": state["total_primary_iterations"],
         "total_referee_iterations": state.get("full_referee_iterations", 0),
+        "total_executed_iterations": state["total_primary_iterations"]
+        + state.get("full_referee_iterations", 0),
         "total_solver_wall_clock_s": state["total_solver_wall_clock_s"],
+        "early_stop": {
+            "candidate_iteration": candidate_iteration,
+            "confirmation_iteration": accepted_iteration,
+            "safe_process_stop_iteration": state["total_primary_iterations"],
+            "post_confirmation_sim_control_steps": (
+                state["total_primary_iterations"] - int(accepted_iteration)
+                if accepted_iteration is not None
+                else None
+            ),
+            "accepted_state_is_confirmation_checkpoint": (
+                accepted_iteration is not None
+                and candidate_iteration is not None
+                and int(accepted_iteration)
+                == int(candidate_iteration) + SHORT_WINDOW_ITERATIONS
+            ),
+        },
         "accepted_restart": accepted,
         "steady_audit": final_audit,
         "plateau": state.get("plateau"),
@@ -1117,6 +1179,7 @@ def finalize(project_root: Path) -> dict[str, Any]:
             if final_audit and final_audit.get("failed_gates")
             else None
         ),
+        "verification": verification,
     }
     write_json(paths.qc / "reference_scaled_base_final.json", final)
     return final
