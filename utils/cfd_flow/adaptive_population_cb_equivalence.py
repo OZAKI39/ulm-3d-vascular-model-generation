@@ -22,7 +22,7 @@ from typing import Any
 import numpy as np
 
 from .fine_continuation_monitor import RUN_RELATIVE
-from .io import sha256_file, write_json
+from .io import sha256_file
 from .musubi_boundary_mass_referee import load_mesh_contract
 from .restart_decode import D3Q19_DIRECTIONS, read_restart_pdf
 from .tau1_base import _controller_records
@@ -314,6 +314,12 @@ def _git_head(project_root: Path) -> str:
     ).strip()
 
 
+def _write_json(path: Path, value: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="\n") as stream:
+        stream.write(json.dumps(value, indent=2, ensure_ascii=False, allow_nan=False) + "\n")
+
+
 def _write_csv(path: Path, evidence: dict[str, Any]) -> None:
     fields = [
         "grid",
@@ -397,7 +403,7 @@ def prepare_deferred(project_root: Path) -> dict[str, Any]:
         "overall_verdict": "PENDING_FINE_COMPLETION",
         "accepted_coarse_base_require_rerun": None,
     }
-    write_json(qc / "adaptive_active_population_cb_equivalence.json", evidence)
+    _write_json(qc / "adaptive_active_population_cb_equivalence.json", evidence)
     _write_csv(qc / "adaptive_active_population_cb_equivalence.csv", evidence)
     return evidence
 
@@ -549,7 +555,7 @@ def run_oracle(project_root: Path) -> dict[str, Any]:
         )
         evidence["solver_calls"] = calls
     qc = root / RUN_RELATIVE / "qc"
-    write_json(qc / "adaptive_active_population_cb_equivalence.json", evidence)
+    _write_json(qc / "adaptive_active_population_cb_equivalence.json", evidence)
     _write_csv(qc / "adaptive_active_population_cb_equivalence.csv", evidence)
     return evidence
 
