@@ -1,84 +1,50 @@
 {
-  "status": "FAIL",
-  "final_status": "CFD_FLOW_TAU1_GRID_MEMBER_STEADY_FAILED",
-  "failed_grid": "fine",
-  "first_failed_gate": "controller_target",
-  "failure_iteration": 5000,
-  "failure_forensic": {
-    "status": "CONFIRMED_FINE_SAFETY_TARGET_MISMATCH",
-    "classification": "FINE_ADAPTIVE_TARGET_SAMPLE_DEFICIT_AT_SAFETY_GATE",
-    "iteration": 5000,
-    "expected_target_lattice_formula": "target_mass_flow * dt / (rho0 * dx^3)",
-    "expected_target_lattice": 0.0009067245695254185,
-    "observed_target_lattice": 0.0009043130680107285,
-    "relative_error": 0.002659574468079341,
-    "observed_over_expected": 0.9973404255319207,
-    "globBC_count": 376,
-    "implied_nonzero_mass_flow_samples": 375.00000000000216,
-    "exact_count_ratio_hypothesis": 0.9973404255319149,
-    "ratio_matches_375_over_376": true,
-    "source_accounting": {
-      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\mus\\source\\bc\\mus_bc_fluid_module.fpp",
-      "sha256": "4385b30cc804791fb0e50e73ab4e15d92a014f20eaaa7a71c8746a6aa08f6e29",
-      "sequence": [
-        "massLocal = sum(massFlowRate)",
-        "MPI allreduce massLocal -> massGlobal",
-        "targetMassFlow = massGlobal / globBC%nElems_total",
-        "targetFlux = targetMassFlow / rho0 * dtLvl / dxLvl**3"
-      ],
-      "inference": "The printed target and count imply 375 constant-valued samples plus one zero/missing point-index evaluation before division by 376."
-    },
-    "other_safety_gates": {
-      "rho_sanity": true,
-      "controller_controlled_flux": true,
-      "minimum_pdf_positive": true,
-      "maximum_lattice_speed": true,
-      "all_finite": true
-    },
-    "controlled_flux_relative_error": 3.8529803947003554e-12,
-    "mesh_contract_status": "PASS",
-    "actions": {
-      "long_fine_cfd_started": false,
-      "physical_parameters_changed": false,
-      "controller_changed": false,
-      "mesh_changed": false,
-      "fine_5000_restart_preserved": true
-    }
-  },
+  "status": "PASS_RESOURCE_CONSTRAINED_SCOPE",
+  "final_status": "CFD_FLOW_TAU1_COARSE_BASE_RESOLUTION_VALIDATED",
   "production_pipeline_modified": false,
-  "coarse_status": "PASS",
-  "base_status": "PASS",
-  "fine_status": "CFD_FLOW_TAU1_GRID_MEMBER_STEADY_FAILED",
-  "three_grid_analysis": "UNAVAILABLE_FINE_NOT_ACCEPTED",
-  "WSS_status": "DEFERRED_TO_POST_GRID_PRODUCTION_VALIDATION",
-  "scientific_wall_clock_s": 3691.8563555,
-  "seeder_calls": {
-    "coarse": 1,
-    "base": 0,
-    "fine": 1
+  "coarse": {
+    "accepted": true,
+    "iteration": 354295,
+    "restart_sha256": "9eda88e685e5eaa6af650757b8c97accba392c88988df2766d2bb4de825fcfbb"
   },
-  "logical_cfd": {
-    "coarse": 1,
-    "base": 0,
-    "fine": 1
+  "base": {
+    "accepted": true,
+    "iteration": 598755,
+    "restart_sha256": "ffcd98b2dc684d1569d937d915b603805809c581d5341e71b17afac2ac64c39f"
   },
-  "process_launches": 6,
-  "restart_resumes": 4,
-  "operational_recoveries": 0,
-  "next": "STOP AND REVIEW THE SPECIFIC FAILED GRID-CONVERGENCE METRIC",
+  "fine": {
+    "mesh_contract": true,
+    "q_contract": true,
+    "controller_fix": true,
+    "target_oracle": true,
+    "safety_5000": true,
+    "final_executed_iteration": 70313,
+    "final_restart_sha256": "462234ee8b59ae7b7be2234a5c1ef1ede24db6065a54b82af8cb6871d3ac7f9a",
+    "steady_accepted": false,
+    "scientific_failure": false,
+    "terminated_by_user_resource_budget": true,
+    "status": "FINE_LONG_RUN_TERMINATED_BY_RESOURCE_BUDGET"
+  },
+  "coarse_base_resolution_sensitivity": "PASS_TWO_GRID_RESOLUTION_SENSITIVITY",
+  "three_grid_convergence_status": "NOT_COMPLETED_RESOURCE_BUDGET",
+  "formal_three_grid_metrics": "NOT_AVAILABLE_FINE_STEADY_NOT_COMPLETED",
+  "fine_base_to_fine_difference": "NOT_AVAILABLE_FINE_STEADY_NOT_COMPLETED",
+  "observed_order_p": "NOT_AVAILABLE_FINE_STEADY_NOT_COMPLETED",
+  "richardson_extrapolation": "NOT_AVAILABLE_FINE_STEADY_NOT_COMPLETED",
+  "gci": "NOT_AVAILABLE_FINE_STEADY_NOT_COMPLETED",
+  "scientific_scope": "Validated Base with partial Coarse-to-Base resolution sensitivity; no formal three-grid convergence claim.",
+  "next": "PROCEED USING THE VALIDATED BASE SOLUTION AND PARTIAL COARSE-TO-BASE RESOLUTION SENSITIVITY, WITHOUT FURTHER FINE CFD.",
   "verification": {
+    "status": "PASS",
     "targeted_pytest": {
-      "status": "PASS",
-      "tests": 46,
+      "tests": 22,
       "failures": 0,
       "errors": 0,
-      "seconds": 4.759,
-      "sha256": "330afa9c0f9323c72f51c881756789f9fb19037839b7eadd9d9b70137d26f4c0"
+      "sha256": "366983f7788f2440c7ac1855caa77fe8ba23b1eaab4595fd0b20510563cf28f5"
     },
     "targeted_ruff": {
-      "status": "PASS",
       "findings": 0,
-      "sha256": "50056c08ce479cc2f54c4d6595a4264bdf32bf84f2995d59ff3bd513897ab414"
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
     }
   }
 }
