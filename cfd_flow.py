@@ -1,4 +1,4 @@
-"""Run the one supported Seeder + Musubi steady-flow baseline."""
+"""Run the schema-v2 validated Tau1 production CFD entry point."""
 
 from __future__ import annotations
 
@@ -19,7 +19,10 @@ def main(argv: list[str] | None = None) -> int:
 
     arguments = list(sys.argv[1:] if argv is None else argv)
     if len(arguments) > 1:
-        print("Usage: python cfd_flow.py [configs/cfd_flow.yaml]")
+        print(
+            "Usage: python cfd_flow.py "
+            "[configs/cfd_flow.yaml|configs/cfd_flow_promotion_regression.yaml]"
+        )
         return 1
     config_path = Path(arguments[0]) if arguments else DEFAULT_CONFIG
     try:

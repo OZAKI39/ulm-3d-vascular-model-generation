@@ -1,355 +1,356 @@
-"""Wrapper-level tests for the one production Seeder/Musubi flow stage."""
+"""Production Tau1 contract, replay, provenance, and visual-package tests."""
 
 from __future__ import annotations
 
-import math
+import dataclasses
+import json
 import subprocess
-from datetime import datetime
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
-import pyvista as pv
 import pytest
+import yaml
 
 from utils.cfd_flow.apes import (
-    bulk_viscosity_from_kinematic,
     compute_lattice_scaling,
     diffusive_time_step,
     generate_musubi_lua,
-    generate_seeder_lua,
-    load_boundary_conditions,
-    parse_mesh_header,
+    inspect_apes_environment,
 )
-from utils.cfd_flow.config import METHOD, load_cfd_flow_config
-from utils.cfd_flow.geometry import (
-    BOUNDARY_LABELS,
-    cells_across_diameter,
-    compute_bounding_cube,
-    find_seed_point,
-    parabolic_velocity,
-    partition_surface,
+from utils.cfd_flow.config import METHOD, SCHEMA_VERSION, load_cfd_flow_config
+from utils.cfd_flow.io import sha256_file
+from utils.cfd_flow.physical_port_flux import (
+    FLUX_ALGORITHM_REVISION,
+    FLUX_DEFINITION,
+    evaluate_physical_port_fluxes,
+    mesh_origin_dx,
 )
-from utils.cfd_flow.io import create_run_layout, load_flow_inputs
-from utils.cfd_flow.qc import (
-    evaluate_mass_conservation,
-    validate_and_convert_flow_vtu,
-    write_proteus_metadata,
+from utils.cfd_flow.production import (
+    ACCEPTED_ITERATION,
+    ACCEPTED_RESTART_SHA256,
+    parse_controller_records,
+    validate_full_v2,
+    validate_local_artifacts,
+    validated_scaling_record,
 )
+from utils.cfd_flow.restart_decode import (
+    parse_restart_header,
+    read_restart_pdf,
+    read_treelm_elemlist,
+    reconstruct_macroscopic_field,
+    tree_ids_to_ijk,
+)
+from utils.cfd_flow.visualization import _validate_png, _write_html
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-CONFIG_PATH = PROJECT_ROOT / "configs" / "cfd_flow.yaml"
+DEFAULT_CONFIG = PROJECT_ROOT / "configs" / "cfd_flow.yaml"
+REGRESSION_CONFIG = PROJECT_ROOT / "configs" / "cfd_flow_promotion_regression.yaml"
 
 
 @pytest.fixture(scope="module")
 def config():
-    return load_cfd_flow_config(CONFIG_PATH, project_root=PROJECT_ROOT)
+    return load_cfd_flow_config(REGRESSION_CONFIG, project_root=PROJECT_ROOT)
 
 
 @pytest.fixture(scope="module")
-def inputs(config):
-    return load_flow_inputs(config.paths.source_surface_run)
+def plane_contract(config):
+    return json.loads(config.paths.physical_plane_contract.read_text(encoding="utf-8"))
 
 
 @pytest.fixture(scope="module")
-def partition(inputs, tmp_path_factory):
-    return partition_surface(inputs, tmp_path_factory.mktemp("solver_patches"))
+def scaling(config, plane_contract):
+    area = plane_contract["ports"]["inlet"]["planes"]["central"]["aperture_physical_area_m2"]
+    return compute_lattice_scaling(config, None, area)
 
 
 @pytest.fixture(scope="module")
-def boundary_conditions(inputs):
-    return load_boundary_conditions(inputs.boundary_conditions)
+def lua(config, scaling):
+    return generate_musubi_lua(
+        config, None, None, scaling, mesh_path="/validated/base/mesh/", maximum_iterations=5000
+    )
 
 
 @pytest.fixture(scope="module")
-def scaling(config, boundary_conditions, partition):
-    area = partition.patch("inlet").area_um2 * 1.0e-12
-    return compute_lattice_scaling(config, boundary_conditions, area)
+def replay(config, scaling, plane_contract):
+    header = parse_restart_header(config.paths.accepted_base_restart_header)
+    pdf = read_restart_pdf(
+        config.paths.accepted_base_restart_binary,
+        n_elems=header.n_elems,
+        n_components=header.n_components,
+    )
+    field = reconstruct_macroscopic_field(
+        pdf,
+        dx_m=scaling.dx_m,
+        dt_s=scaling.dt_s,
+        rho0_kg_m3=config.physics.density_kg_m3,
+    )
+    tree_ids, _, _ = read_treelm_elemlist(
+        config.paths.frozen_base_mesh / "elemlist.lsb", n_elems=header.n_elems
+    )
+    origin, dx = mesh_origin_dx(config.paths.frozen_base_mesh)
+    points = origin + (tree_ids_to_ijk(tree_ids) + 0.5) * dx
+    flux = evaluate_physical_port_fluxes(
+        plane_contract, points, field.velocity_phy, field.density_lattice, dx_m=dx
+    )
+    return header, pdf, field, flux
 
 
-def test_01_cfd_flow_config_parse(config):
+def test_01_schema_v2_load_and_modes(config):
+    default = load_cfd_flow_config(DEFAULT_CONFIG, project_root=PROJECT_ROOT)
+    assert config.schema_version == SCHEMA_VERSION == 2
+    assert config.execution.mode == "VALIDATED_BASE_PROMOTION_REPLAY"
+    assert default.execution.mode == "FRESH_STEADY"
+
+
+def test_02_old_schema_cannot_silently_migrate(tmp_path):
+    value = yaml.safe_load(REGRESSION_CONFIG.read_text(encoding="utf-8"))
+    value["schema_version"] = 1
+    value["method"] = "PROTEUS_COMPATIBLE_SEEDER_MUSUBI_STEADY_LBM_BASELINE"
+    path = tmp_path / "old.yaml"
+    path.write_text(yaml.safe_dump(value), encoding="utf-8")
+    with pytest.raises(ValueError):
+        load_cfd_flow_config(path, project_root=PROJECT_ROOT)
+
+
+def test_03_method_and_base_dx(config):
     assert config.method == METHOD
-    assert config.mesh.dx_target_um == 0.20
+    assert config.mesh.dx_m == 2.0e-7
 
 
-def test_02_final_surface_path_resolution(inputs):
-    assert inputs.tagged_surface_vtp.name.endswith("_um.vtp")
-    assert inputs.meter_surface_stl.name.endswith("_m.stl")
-    assert inputs.tagged_surface_vtp.is_file()
-
-
-def test_03_cell_entity_ids_map_to_five_patches(partition):
-    assert tuple(item.label for item in partition.patches) == BOUNDARY_LABELS
-    assert {item.entity_id for item in partition.patches} == {1, 2, 3, 4, 5}
-
-
-def test_04_patch_union_exact_reconstruction(partition):
-    assert partition.qc["status"] == "PASS"
-    assert partition.qc["missing_triangles"] == 0
-    assert partition.qc["duplicate_triangles"] == 0
-    assert partition.qc["patch_triangle_count_sum"] == len(partition.faces)
-
-
-def test_05_um_to_m_exact_scaling(partition):
-    inlet = partition.patch("inlet")
-    loaded = pv.read(inlet.path_m)
-    source_points = partition.points_um[np.unique(partition.faces[inlet.face_indices])]
-    assert np.allclose(np.sort(loaded.bounds), np.sort(pv.PolyData(source_points * 1.0e-6).bounds), rtol=0.0, atol=2e-12)
-    assert partition.qc["translation_applied"] is False
-
-
-def test_06_seed_point_inside_lumen(partition):
-    seed = find_seed_point(partition)
-    assert seed.seed_inside_lumen is True
-    assert seed.candidate_offset_radius in {0.5, 1.0, 2.0}
-
-
-def test_07_boundary_labels_are_exact():
-    assert BOUNDARY_LABELS == ("wall", "inlet", "outlet_01", "outlet_02", "outlet_03")
-
-
-def test_08_flow_rate_to_mean_velocity(boundary_conditions, partition, scaling):
-    expected = boundary_conditions.inlet_flow_m3_s / (partition.patch("inlet").area_um2 * 1e-12)
-    assert scaling.velocity_mean_m_s == pytest.approx(expected)
-
-
-def test_09_flow_rate_to_mass_flow(boundary_conditions):
-    expected = 1056.0 * 7.693508475538942e-16
-    assert boundary_conditions.density_kg_m3 * boundary_conditions.inlet_flow_m3_s == pytest.approx(expected)
-
-
-def test_10_parabolic_profile_calculation():
-    velocity = parabolic_velocity(
-        np.array([0.5, 0.0, 0.0]),
-        np.zeros(3),
-        np.array([0.0, 0.0, 1.0]),
-        1.0,
-        2.0,
+def test_04_dt_direct_tau1_formula(config, scaling):
+    assert diffusive_time_step(config.mesh.dx_m, config.physics.kinematic_viscosity_m2_s) == pytest.approx(
+        config.mesh.dx_m**2 / (6 * config.physics.kinematic_viscosity_m2_s), rel=0, abs=0
     )
-    assert velocity == pytest.approx([0.0, 0.0, 1.5])
-    outside = parabolic_velocity(np.array([2.0, 0.0, 0.0]), np.zeros(3), np.array([0.0, 0.0, 1.0]), 1.0, 2.0)
-    assert outside == pytest.approx([0.0, 0.0, 0.0])
+    assert scaling.dt_s == pytest.approx(2.038735983690112e-9, rel=1e-15)
 
 
-def test_11_arbitrary_3d_inlet_normal():
-    normal = np.array([1.0, 2.0, 3.0])
-    normal /= np.linalg.norm(normal)
-    velocity = parabolic_velocity(np.zeros(3), np.zeros(3), normal, 1.0, 4.0)
-    assert velocity == pytest.approx(normal * 4.0)
-    assert np.cross(velocity, normal) == pytest.approx(np.zeros(3), abs=1e-12)
+def test_05_nu_tau_omega_exact(scaling):
+    assert scaling.nu_lattice == pytest.approx(1 / 6, rel=1e-15)
+    assert scaling.tau == 1.0
+    assert scaling.omega == 1.0
 
 
-def test_12_proteus_diffusive_dt_scaling(config):
-    dt = diffusive_time_step(2.0e-7, config.physics.reference_dx_m, config.physics.reference_dt_s)
-    assert dt == pytest.approx(2.44140625e-8)
+def test_06_dynamic_pressure_reference(config, scaling):
+    expected = config.physics.density_kg_m3 * config.physics.lattice_cs_squared * (
+        config.mesh.dx_m / scaling.dt_s
+    ) ** 2
+    assert scaling.pressure_reference_pa == pytest.approx(expected, rel=1e-15)
+    assert scaling.pressure_reference_pa == pytest.approx(3387510.7199999993)
 
 
-def test_13_lattice_nu_tau_omega(scaling):
-    assert scaling.nu_lattice == pytest.approx(1.995849609375)
-    assert scaling.tau == pytest.approx(scaling.nu_lattice / (1 / 3) + 0.5)
-    assert scaling.omega == pytest.approx(1.0 / scaling.tau)
-    assert 0.0 < scaling.omega < 2.0
-
-
-def test_14_expected_mach_calculation(scaling):
-    expected = scaling.velocity_max_expected_m_s * scaling.dt_s / scaling.dx_m / math.sqrt(1 / 3)
-    assert scaling.mach_max_expected == pytest.approx(expected)
-    assert scaling.mach_max_expected < 0.05
-
-
-def test_15_gauge_pressure_common_offset(scaling, boundary_conditions):
-    offsets = np.asarray(scaling.outlet_absolute_pressures_pa) - np.asarray(boundary_conditions.outlet_gauge_pressures_pa)
-    assert offsets == pytest.approx(np.full(3, scaling.pressure_reference_pa))
-
-
-def test_16_pressure_differences_preserved(scaling, boundary_conditions):
-    gauge = np.asarray(boundary_conditions.outlet_gauge_pressures_pa)
+def test_07_gauge_pressures_preserved_and_absolute_derived(config, scaling):
     absolute = np.asarray(scaling.outlet_absolute_pressures_pa)
-    assert gauge[:, None] - gauge[None, :] == pytest.approx(absolute[:, None] - absolute[None, :], abs=1e-10)
-
-
-def test_17_negative_gauge_pressure_is_safe(scaling, boundary_conditions):
-    assert min(boundary_conditions.outlet_gauge_pressures_pa) < 0.0
-    assert min(scaling.outlet_absolute_pressures_pa) > 0.0
-    assert min(scaling.outlet_lattice_densities) > 0.0
-
-
-def test_18_musubi_lua_generation(config, partition, boundary_conditions, scaling):
-    text = generate_musubi_lua(config, partition, boundary_conditions, scaling)
-    assert "kind = 'fluid'" in text
-    assert "layout = 'd3q19'" in text
-    assert "relaxation = 'bgk'" in text
-    assert "kind = 'wall_libb'" in text
-    assert "kind = 'mfr_eq'" in text
-    assert "mass_flowrate =" in text
-    assert "massflowrate" not in text
-    assert text.count("kind = 'pressure_eq'") == 3
-    assert "bulk_viscosity_phy = (2.0 / 3.0) * nu_phy" in text
-    assert "bulk_viscosity = bulk_viscosity_phy" in text
-
-
-def test_19_seeder_lua_generation(config, partition):
-    seed = find_seed_point(partition)
-    points = partition.points_um
-    bounds = (points[:, 0].min(), points[:, 0].max(), points[:, 1].min(), points[:, 1].max(), points[:, 2].min(), points[:, 2].max())
-    cube = compute_bounding_cube(bounds, config.mesh.dx_target_m, 4)
-    text = generate_seeder_lua(partition, seed, cube)
-    for label in BOUNDARY_LABELS:
-        assert f"label = '{label}'" in text
-        assert f"{label}.stl' }}}}" in text
-    assert text.count("calc_dist = true") == 1
-    assert "kind = 'seed'" in text
-    assert text.count("{") == text.count("}")
-
-
-def test_20_vtu_velocity_phy_field_validation(tmp_path):
-    grid = pv.ImageData(dimensions=(3, 3, 3), spacing=(2e-7, 2e-7, 2e-7)).cast_to_unstructured_grid()
-    grid.cell_data["velocity_phy"] = np.tile([1e-4, 0.0, 0.0], (grid.n_cells, 1))
-    grid.cell_data["pressure_phy"] = np.full(grid.n_cells, 100.0)
-    source = tmp_path / "source.vtu"
-    output = tmp_path / "flow_field.vtu"
-    grid.save(source)
-    _, result = validate_and_convert_flow_vtu(source, output, pressure_reference_pa=90.0)
-    assert result["velocity_phy_components"] == 3
-    assert output.is_file()
-
-
-def test_21_proteus_metadata(tmp_path):
-    flow = tmp_path / "flow.vtu"
-    flow.touch()
-    metadata = write_proteus_metadata(tmp_path / "proteus.json", inlet_equivalent_diameter_m=3e-6, source_flow_vtu=flow)
-    assert metadata["lengthUnit"] == 1.0
-    assert metadata["velocityUnit"] == 1.0
-    assert metadata["velocityField"] == "velocity_phy"
-    assert metadata["inletNormal"] is None
-
-
-def test_22_mass_conservation_evaluator():
-    result = evaluate_mass_conservation(10.0, (2.0, 3.0, 5.0))
-    assert result["relative_error"] == 0.0
-    assert result["flow_signs_pass"] is True
-
-
-def test_23_no_automatic_resolution_sweep(config):
-    assert config.mesh.automatic_resolution_sweep is False
-    assert config.mesh.dx_target_um == 0.20
-
-
-def test_24_no_geometry_regeneration():
-    entry = (PROJECT_ROOT / "cfd_flow.py").read_text(encoding="utf-8")
-    pipeline = (PROJECT_ROOT / "utils" / "cfd_flow" / "pipeline.py").read_text(encoding="utf-8")
-    forbidden_calls = ("run_cfd_preprocess(", "run_vmtk_surface_prepare(", "ultraVessMorpho2Mesh")
-    assert not any(value in entry + pipeline for value in forbidden_calls)
-    assert "find_seed_point" not in pipeline
-
-
-def test_25_boundary_manifest_triangle_counts(partition):
-    assert {item.label: item.triangle_count for item in partition.patches} == {
-        "wall": 67071,
-        "inlet": 56,
-        "outlet_01": 44,
-        "outlet_02": 42,
-        "outlet_03": 49,
-    }
-
-
-def test_26_bounding_cube_is_power_of_two_and_safe(config, partition):
-    points = partition.points_um
-    bounds = (points[:, 0].min(), points[:, 0].max(), points[:, 1].min(), points[:, 1].max(), points[:, 2].min(), points[:, 2].max())
-    cube = compute_bounding_cube(bounds, config.mesh.dx_target_m, 4)
-    assert cube.cells_per_axis == 2**cube.level
-    assert cube.margin_cells_minimum >= 4.0
-
-
-def test_27_cells_across_diameter_report(partition):
-    result = cells_across_diameter(partition, 0.20)
-    assert len(result["per_port"]) == 4
-    assert result["minimum"] > 10.0
-
-
-def test_28_corrected_outlet_pressure_source(boundary_conditions):
-    assert boundary_conditions.outlet_gauge_pressures_pa == pytest.approx(
-        (14.544978101274268, 132.20454922317552, -13.700626673311461)
+    gauge = np.asarray(config.boundary.outlet_gauge_pressures_pa)
+    assert absolute - scaling.pressure_reference_pa == pytest.approx(gauge, abs=3e-10)
+    assert absolute == pytest.approx(
+        (3387525.2649781005, 3387642.9245492225, 3387497.019373326)
     )
 
 
-def test_29_official_boundary_cell_count_parser(tmp_path):
-    (tmp_path / "header.lua").write_text(
-        """nElems = 12
-minLevel = 9
-maxLevel = 9
-property = {
-  { label = 'has boundaries', bitpos = 0, nElems = 4 }
-}
-""",
-        encoding="utf-8",
-    )
-    (tmp_path / "bnd.lua").write_text(
-        """nSides = 3
-nBCtypes = 5
-bclabel = { 'wall', 'inlet', 'outlet_01', 'outlet_02', 'outlet_03' }
-""",
-        encoding="utf-8",
-    )
-    boundary_ids = np.asarray(
-        (
-            (1, 2, 0),
-            (1, 3, 0),
-            (4, 0, 0),
-            (5, 0, 0),
-        ),
-        dtype="<i8",
-    )
-    (tmp_path / "bnd.lsb").write_bytes(boundary_ids.tobytes())
-    result = parse_mesh_header(tmp_path)
-    assert result["fluid_element_count"] == 12
-    assert result["minimum_level"] == result["maximum_level"] == 9
-    assert result["boundary_cell_counts"] == {
-        "wall": 2,
-        "inlet": 1,
-        "outlet_01": 1,
-        "outlet_02": 1,
-        "outlet_03": 1,
-    }
+def test_08_target_lattice_formula(config, scaling):
+    record = validated_scaling_record(config, scaling)
+    expected = config.boundary.target_mass_flow_kg_s / 1056 * scaling.dt_s / config.mesh.dx_m**3
+    assert record["target_lattice_flux"] == pytest.approx(expected, rel=0, abs=0)
+    assert expected == pytest.approx(0.0006974804380964758)
 
 
-def test_30_recovery_run_directory_is_separate(tmp_path):
-    layout = create_run_layout(
-        tmp_path,
-        timestamp=datetime(2026, 8, 28, 17, 0, 0),
-        recovery=True,
-    )
-    assert layout.root.name == "musubi_recovery_anchor003274_20260828_170000"
+def test_09_lua_uses_validated_boundaries(lua):
+    assert "kind = 'wall_libb'" in lua
+    assert "kind = 'adaptive_flux_pressure'" in lua
+    assert lua.count("kind = 'pressure_eq'") == 3
+    assert "mfr_eq" not in lua
 
 
-def test_31_bulk_viscosity_policy_does_not_change_lattice_scaling(config, scaling):
-    before = (scaling.dt_s, scaling.nu_lattice, scaling.tau, scaling.omega)
-    bulk = bulk_viscosity_from_kinematic(3.27e-6)
-    after = (scaling.dt_s, scaling.nu_lattice, scaling.tau, scaling.omega)
-    assert bulk == pytest.approx(2.18e-6, rel=0.0, abs=1.0e-18)
-    assert before == after
-    assert config.physics.bulk_viscosity_source == "MUSUBI_D3Q19_REQUIRED_EXPLICIT_PARAMETER"
-    assert config.physics.bulk_viscosity_policy == "OFFICIAL_MUSUBI_BASELINE_TWO_THIRDS_KINEMATIC_VISCOSITY"
+def test_10_lua_fresh_initialization(lua, scaling):
+    assert f"pressure_reference_phy = {scaling.pressure_reference_pa:.17g}" in lua
+    assert "initial_condition = { pressure = pressure_reference_phy" in lua
+    assert all(name + " = 0.0" in lua for name in ("velocityX", "velocityY", "velocityZ"))
+    assert "read =" not in lua
 
 
-def test_32_generated_musubi_lua_passes_luac(config, partition, boundary_conditions, scaling):
-    text = generate_musubi_lua(config, partition, boundary_conditions, scaling)
+def test_11_lua_has_exact_physics(lua, scaling):
+    assert f"dx = {scaling.dx_m:.17g}" in lua
+    assert f"dt = {scaling.dt_s:.17g}" in lua
+    assert "rho0_phy = 1056" in lua
+    assert "nu_phy = 3.27e-06" in lua
+    assert "bulk_viscosity_phy = 2.1799999999999999e-06" in lua
+
+
+def test_12_lua_passes_luac(config, lua):
     result = subprocess.run(
         ["wsl.exe", "-d", config.apes.wsl_distribution, "--", "/home/lzy/.local/bin/luac", "-p", "-"],
-        input=text,
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=30,
+        input=lua, capture_output=True, text=True, check=False, timeout=30,
     )
     assert result.returncode == 0, result.stderr
 
 
-def test_33_solver_recovery_directory_is_separate(tmp_path):
-    layout = create_run_layout(
-        tmp_path,
-        timestamp=datetime(2026, 8, 28, 18, 0, 0),
-        solver_recovery=True,
+def test_13_corrected_binary_sha_is_enforced(config):
+    environment = inspect_apes_environment(config.apes)
+    assert environment.status == "PASS"
+    checks = next(
+        record["binary_sha256_checks"]
+        for record in environment.commands if "binary_sha256_checks" in record
     )
-    assert layout.root.name == "musubi_solver_recovery_anchor003274_20260828_180000"
-    assert not layout.seeder_mesh.exists()
+    assert checks["musubi"]["actual_sha256"] == config.apes.musubi_expected_sha256
+    bad = dataclasses.replace(config.apes, musubi_expected_sha256="0" * 64)
+    assert inspect_apes_environment(bad).status != "PASS"
+
+
+def test_14_mesh_and_restart_hash_enforcement(config):
+    result = validate_local_artifacts(config)
+    assert result["status"] == "PASS"
+    assert result["accepted_restart"]["sha256"] == ACCEPTED_RESTART_SHA256
+    assert all(value["status"] == "PASS" for value in result["mesh_hashes"].values())
+
+
+def test_15_physical_plane_contract(plane_contract):
+    assert plane_contract["contract_sha256"] == "ffaa49bdb6e43fb7208ff29df07a90d4e92ef9bfa4b96ca4f997d4f453a7f005"
+    assert plane_contract["revision"] == "STANDARDIZED_INTERIOR_PHYSICAL_PORT_PLANES_V3"
+
+
+def test_16_accepted_restart_decode_statistics(replay):
+    header, pdf, field, _ = replay
+    assert header.iteration == ACCEPTED_ITERATION
+    assert np.mean(field.density_lattice) == pytest.approx(1.0000492996793002, rel=1e-14)
+    assert np.percentile(field.density_lattice, 1) == pytest.approx(0.9999980621262552, rel=1e-14)
+    assert np.percentile(field.density_lattice, 99) == pytest.approx(1.0001547035004035, rel=1e-14)
+    assert np.min(pdf) == pytest.approx(0.027777432554529028, rel=1e-14)
+
+
+def test_17_physical_flux_reproduction(replay):
+    _, _, _, flux = replay
+    assert flux["flux_definition"] == FLUX_DEFINITION
+    assert flux["algorithm_revision"] == FLUX_ALGORITHM_REVISION
+    assert flux["Qin_m3_s"] == pytest.approx(2.728393297831303e-15, rel=1e-13)
+    assert flux["Qout_m3_s"] == pytest.approx(2.724180907077963e-15, rel=1e-13)
+    assert flux["closure"] == pytest.approx(0.0015439089213012042, rel=1e-12)
+
+
+def test_18_outlet_fluxes_and_fractions(replay):
+    flux = replay[3]
+    expected_q = (1.417617879220853e-16, 1.9936341084531973e-15, 5.887850107026804e-16)
+    expected_f = (0.052038316381177195, 0.7318288235826557, 0.21613286003616722)
+    for index, (q, fraction) in enumerate(zip(expected_q, expected_f), start=1):
+        label = f"outlet_{index:02d}"
+        assert flux["ports"][label]["physical_q_m3_s"] == pytest.approx(q, rel=1e-13)
+        assert flux["flow_fractions"][label] == pytest.approx(fraction, rel=1e-13)
+
+
+def test_19_gauge_pressure_conversion_from_accepted_controller(config, scaling):
+    history = json.loads(config.paths.accepted_base_checkpoint_history.read_text(encoding="utf-8"))
+    record = next(item for item in history["checkpoint_history"] if item["iteration"] == ACCEPTED_ITERATION)
+    inlet_gauge = record["controller"]["pressure_pa"] - scaling.pressure_reference_pa
+    assert inlet_gauge == pytest.approx(531.431946845226, abs=1e-9)
+    drops = [inlet_gauge - value for value in config.boundary.outlet_gauge_pressures_pa]
+    assert drops == pytest.approx((516.8869687439517, 399.2273976220505, 545.1325735185375), abs=1e-9)
+
+
+def test_20_steady_gates_are_accepted_artifact(config):
+    value = json.loads(config.paths.accepted_base_qc.read_text(encoding="utf-8"))
+    steady = value["steady_audit"]
+    assert steady["status"] == "PASS_NON_REFEREE"
+    assert not steady["failed_gates"]
+    assert all(steady["gates"].values())
+
+
+def test_21_full_timestep_v2_lineage(config):
+    result = validate_full_v2(config)
+    assert result["status"] == "PASS"
+    assert result["residual"] == pytest.approx(7.913943402747673e-10)
+    assert result["new_solver_calls"] == 0
+
+
+def test_22_controller_log_parser():
+    text = "ADAPTIVE_FLUX_PRESSURE iter=5000 target_lattice= 6.9748043809647912E-004 controlled_lattice= 6.9748043810104361E-004 relative_error= 6.5442568663590096E-012 rho_boundary= 1.0000890779025819E+000 pressure_pa= 3.3878124723499105E+006 max_lattice_velocity= 8.2216649264649707E-006 minimum_pdf= 2.7779565620380503E-002 globBC_count=223"
+    record = parse_controller_records(text)[0]
+    assert record["iteration"] == 5000
+    assert record["active_global_boundary_count"] == 223
+    assert record["relative_error"] < 1e-8
+
+
+def test_23_visual_nonblank_hard_gate(tmp_path, config):
+    path = tmp_path / "figure.png"
+    figure, axis = plt.subplots(
+        figsize=(config.visualization.width_px / config.visualization.dpi, config.visualization.height_px / config.visualization.dpi),
+        dpi=config.visualization.dpi,
+    )
+    axis.plot([0, 1], [0, 1])
+    axis.set_title("finite nonblank CFD test")
+    figure.savefig(path)
+    plt.close(figure)
+    assert _validate_png(path, config)["status"] == "PASS"
+
+
+def test_24_offline_html_generation_and_disclaimers(tmp_path, config):
+    metrics = {
+        "Qin_m3_s": 2.728e-15, "physical_volume_closure": 0.0015,
+        "inlet_gauge_pressure_pa": 531.4, "rho_mean": 1.00005,
+        "flow_fractions": {"outlet_01": 0.052, "outlet_02": 0.732, "outlet_03": 0.216},
+    }
+    steady = {"R_mass_short": 0.0015, "R_mass_long": 0.0015, "R_velocity": 1e-10, "R_pressure": 1e-10, "R_inlet": 0.0031}
+    full = {"status": "PASS", "residual": 7.9e-10, "gate": 1e-8}
+    coarse = {"maximum_absolute_percent_difference": 1.45}
+    path = tmp_path / "production_review.html"
+    _write_html(path, config, metrics, steady, full, coarse, "PASS")
+    text = path.read_text(encoding="utf-8")
+    assert "Formal three-grid GCI was not completed because Fine steady computation was terminated under resource-budget constraints." in text
+    assert "DEFERRED_TO_POST_GRID_PRODUCTION_VALIDATION" in text
+    assert "https://" not in text and "http://" not in text
+
+
+def test_25_visual_manifest_contract_is_implemented():
+    source = (PROJECT_ROOT / "utils/cfd_flow/visualization.py").read_text(encoding="utf-8")
+    for key in ("filename", "purpose", "source_data", "units", "raw_min", "raw_max", "display_min", "display_max", "sha256", "width_px", "height_px", "status"):
+        assert key in source
+    assert "visual_manifest.json" in source
+
+
+def test_26_fine_transient_cannot_be_steady_source():
+    source = (PROJECT_ROOT / "utils/cfd_flow/pipeline.py").read_text(encoding="utf-8")
+    assert '"steady_solution_source": "VALIDATED_RESEARCH_BASE_ACCEPTED_RESTART"' in source
+    assert '"fresh_full_production_steady_solve": False' in source
+    assert '"fine_transient_used": False' in (PROJECT_ROOT / "utils/cfd_flow/visualization.py").read_text(encoding="utf-8")
+
+
+def test_27_three_grid_cannot_be_false_pass(config):
+    evidence = json.loads(config.paths.coarse_base_grid_evidence.read_text(encoding="utf-8"))
+    assert evidence["formal_asymptotic_grid_convergence"] is False
+    assert evidence["three_grid_metrics"] == "NOT_AVAILABLE_FINE_STEADY_NOT_COMPLETED"
+    assert "grid independent proven" in evidence["claims_not_made"]
+
+
+def test_28_wss_cannot_be_false_validated():
+    source = (PROJECT_ROOT / "utils/cfd_flow/pipeline.py").read_text(encoding="utf-8")
+    assert '"WSS_status": "DEFERRED_TO_POST_GRID_PRODUCTION_VALIDATION"' in source
+
+
+def test_29_corrected_source_and_patch_provenance(config):
+    evidence = json.loads(
+        (PROJECT_ROOT / "outputs/cfd_flow/healthy_mouse_capillary_tau1_reference_scaled_grid_convergence_anchor003274_20260901/qc/fine_adaptive_target_fix_validation.json").read_text(encoding="utf-8")
+    )
+    assert evidence["candidate_binary_sha256"] == config.apes.musubi_expected_sha256
+    assert evidence["candidate_patch_sha256"] == config.apes.musubi_patch_sha256
+    assert evidence["candidate_source_sha256"] == config.apes.musubi_patched_source_sha256
+
+
+def test_30_production_csv_and_vtu_contract_are_implemented():
+    production = (PROJECT_ROOT / "utils/cfd_flow/production.py").read_text(encoding="utf-8")
+    assert "production_primary_metrics.csv" in (PROJECT_ROOT / "utils/cfd_flow/pipeline.py").read_text(encoding="utf-8")
+    for field in ("velocity_phy", "velocity_magnitude_m_s", "velocity_magnitude_mm_s", "pressure_gauge_pa", "pressure_absolute_solver_pa", "rho_lattice"):
+        assert field in production
+
+
+def test_31_no_old_production_contract_tokens(lua):
+    combined = lua + DEFAULT_CONFIG.read_text(encoding="utf-8") + REGRESSION_CONFIG.read_text(encoding="utf-8")
+    assert "MUSUBI_ONLY_RECOVERY" not in combined
+    assert "reference_dx_m" not in combined
+    assert "reference_dt_s" not in combined
+    assert "mfr_eq" not in combined
+
+
+def test_32_mesh_hash_values_are_exact(config):
+    assert sha256_file(config.paths.frozen_base_mesh / "elemlist.lsb") == config.mesh.elemlist_sha256
+    assert sha256_file(config.paths.frozen_base_mesh / "bnd.lsb") == config.mesh.bnd_sha256
+    assert sha256_file(config.paths.frozen_base_mesh / "qval.lsb") == config.mesh.qval_sha256

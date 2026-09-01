@@ -128,8 +128,10 @@ def load_boundary_conditions(value: dict[str, Any]) -> BoundaryConditions:
     )
 
 
-def diffusive_time_step(dx_m: float, reference_dx_m: float, reference_dt_s: float) -> float:
-    return reference_dt_s * (dx_m / reference_dx_m) ** 2
+def diffusive_time_step(dx_m: float, kinematic_viscosity_m2_s: float) -> float:
+    """Tau1 scaling: choose nu_lattice=1/6 directly, without a reference pair."""
+
+    return float(dx_m) ** 2 / (6.0 * float(kinematic_viscosity_m2_s))
 
 
 def bulk_viscosity_from_kinematic(kinematic_viscosity_m2_s: float) -> float:
@@ -139,33 +141,36 @@ def bulk_viscosity_from_kinematic(kinematic_viscosity_m2_s: float) -> float:
 
 
 def compute_lattice_scaling(
-    config: FlowConfig, bc: BoundaryConditions, inlet_area_m2: float
+    config: FlowConfig, bc: BoundaryConditions | None, inlet_area_m2: float
 ) -> LatticeScaling:
     """Compute the exact pinned single-level physical/lattice relationship."""
 
-    dx = config.mesh.dx_target_m
-    dt = diffusive_time_step(dx, config.physics.reference_dx_m, config.physics.reference_dt_s)
-    nu_lat = bc.kinematic_viscosity_m2_s * dt / dx**2
+    dx = config.mesh.dx_m
+    dt = diffusive_time_step(dx, config.physics.kinematic_viscosity_m2_s)
+    nu_lat = config.physics.kinematic_viscosity_m2_s * dt / dx**2
     tau = nu_lat / config.physics.lattice_cs_squared + 0.5
     omega = 1.0 / tau
-    mean_velocity = bc.inlet_flow_m3_s / inlet_area_m2
+    mean_velocity = config.boundary.target_volume_flow_m3_s / inlet_area_m2
     maximum_velocity = 2.0 * mean_velocity
     maximum_lattice_velocity = maximum_velocity * dt / dx
     mach = maximum_lattice_velocity / math.sqrt(config.physics.lattice_cs_squared)
-    pressure_factor = bc.density_kg_m3 * dx**2 / dt**2
+    pressure_factor = config.physics.density_kg_m3 * dx**2 / dt**2
     pressure_reference = pressure_factor * config.physics.lattice_cs_squared
-    absolute = tuple(pressure_reference + value for value in bc.outlet_gauge_pressures_pa)
+    absolute = tuple(pressure_reference + value for value in config.boundary.outlet_gauge_pressures_pa)
     densities = tuple(value / (pressure_factor * config.physics.lattice_cs_squared) for value in absolute)
-    if not 0.0 < omega < 2.0 or mach >= config.solver.maximum_lattice_mach:
+    if not 0.0 < omega < 2.0 or maximum_lattice_velocity >= config.solver.maximum_lattice_speed:
         raise FlowError(
             "CFD_FLOW_LBM_SCALING_INVALID",
             f"omega={omega:.12g}, expected_Ma={mach:.12g}",
         )
     if not all(value > 0.0 for value in densities):
         raise FlowError("CFD_FLOW_LBM_SCALING_INVALID", "Pressure offset produced non-positive lattice density")
-    source_differences = np.subtract.outer(bc.outlet_gauge_pressures_pa, bc.outlet_gauge_pressures_pa)
+    source_differences = np.subtract.outer(
+        config.boundary.outlet_gauge_pressures_pa,
+        config.boundary.outlet_gauge_pressures_pa,
+    )
     absolute_differences = np.subtract.outer(absolute, absolute)
-    if not np.allclose(source_differences, absolute_differences, rtol=0.0, atol=1.0e-10):
+    if not np.allclose(source_differences, absolute_differences, rtol=0.0, atol=1.0e-9):
         raise FlowError("CFD_FLOW_LBM_SCALING_INVALID", "Common pressure offset did not preserve differences")
     return LatticeScaling(
         dx_m=dx,
@@ -228,18 +233,15 @@ def generate_seeder_lua(
 
 def generate_musubi_lua(
     config: FlowConfig,
-    partition: SurfacePartition,
-    bc: BoundaryConditions,
+    partition: SurfacePartition | None,
+    bc: BoundaryConditions | None,
     scaling: LatticeScaling,
     *,
     mesh_path: str = "../seeder/mesh/",
+    maximum_iterations: int | None = None,
 ) -> str:
-    """Generate D3Q19/BGK Lua using only boundary kinds in the pinned source."""
+    """Render the validated Tau1/adaptive/continuous-q production contract."""
 
-    inlet = partition.patch("inlet")
-    center_m = inlet.center_um * 1.0e-6
-    inward = -inlet.outward_normal
-    radius_m = inlet.equivalent_radius_um * 1.0e-6
     outlet_functions: list[str] = []
     outlet_entries: list[str] = []
     for index, pressure in enumerate(scaling.outlet_absolute_pressures_pa, start=1):
@@ -254,67 +256,36 @@ def generate_musubi_lua(
             + label
             + "_pressure }"
         )
-    mass_flow = bc.density_kg_m3 * bc.inlet_flow_m3_s
-    return f"""-- Generated production configuration; official Musubi syntax.
-simulation_name = 'roi003274_steady_lbm'
+    iterations = maximum_iterations or config.execution.fresh_maximum_iterations
+    target_lattice = (
+        config.boundary.target_mass_flow_kg_s
+        / config.physics.density_kg_m3
+        * scaling.dt_s
+        / scaling.dx_m**3
+    )
+    return f"""-- Validated Tau1 production configuration.
+-- pressure_reference_phy is an LBM numerical offset, not physiological pressure.
+simulation_name = 'roi003274_production_tau1'
 printRuntimeInfo = true
-timing_file = 'mus_timing.res'
+timing_file = 'tracking/timing.res'
 mesh = '{mesh_path}'
 scaling = 'diffusive'
 logging = {{ level = 5 }}
 
 dx = {_lua_number(scaling.dx_m)}
 dt = {_lua_number(scaling.dt_s)}
-rho0_phy = {_lua_number(bc.density_kg_m3)}
-nu_phy = {_lua_number(bc.kinematic_viscosity_m2_s)}
-bulk_viscosity_phy = (2.0 / 3.0) * nu_phy
+rho0_phy = {_lua_number(config.physics.density_kg_m3)}
+nu_phy = {_lua_number(config.physics.kinematic_viscosity_m2_s)}
+bulk_viscosity_phy = {_lua_number(config.physics.bulk_viscosity_m2_s)}
 pressure_reference_phy = {_lua_number(scaling.pressure_reference_pa)}
-maximum_iterations = {config.solver.maximum_iterations}
-
--- Requested upstream parabola, retained explicitly for reproducibility.
--- The effective official BC is mfr_eq so exact Q takes priority.
-inlet_center = {_lua_vector(center_m)}
-inlet_inward_normal = {_lua_vector(inward)}
-inlet_equivalent_radius = {_lua_number(radius_m)}
-inlet_maximum_velocity = {_lua_number(scaling.velocity_max_expected_m_s)}
-function requested_parabolic_velocity(x, y, z, t)
-  local rx = x - inlet_center[1]
-  local ry = y - inlet_center[2]
-  local rz = z - inlet_center[3]
-  local axial = rx*inlet_inward_normal[1] + ry*inlet_inward_normal[2] + rz*inlet_inward_normal[3]
-  rx = rx - axial*inlet_inward_normal[1]
-  ry = ry - axial*inlet_inward_normal[2]
-  rz = rz - axial*inlet_inward_normal[3]
-  local factor = math.max(0.0, 1.0 - (rx*rx + ry*ry + rz*rz)/(inlet_equivalent_radius^2))
-  return {{ inlet_inward_normal[1]*inlet_maximum_velocity*factor,
-            inlet_inward_normal[2]*inlet_maximum_velocity*factor,
-            inlet_inward_normal[3]*inlet_maximum_velocity*factor }}
-end
+target_lattice_flux_expected = {_lua_number(target_lattice)}
+maximum_iterations = {iterations}
 
 {chr(10).join(outlet_functions)}
 
 sim_control = {{
-  time_control = {{
-    max = {{ iter = maximum_iterations, clock = {config.solver.wallclock_limit_s} }},
-    interval = {{ iter = {config.solver.convergence_interval_iterations} }}
-  }},
-  abort_criteria = {{
-    stop_file = 'stop',
-    steady_state = true,
-    convergence = {{
-      variable = {{ 'pressure_phy', 'vel_mag_phy' }},
-      shape = {{ kind = 'all' }},
-      reduction = {{ 'average', 'average' }},
-      time_control = {{ min = {{ iter = 0 }}, max = {{ iter = maximum_iterations }}, interval = {{ iter = {config.solver.convergence_interval_iterations} }} }},
-      norm = 'average',
-      nvals = {config.solver.convergence_nvals},
-      absolute = true,
-      condition = {{
-        {{ threshold = {_lua_number(config.solver.pressure_absolute_threshold_pa)}, operator = '<=' }},
-        {{ threshold = {_lua_number(config.solver.velocity_absolute_threshold_m_s)}, operator = '<=' }}
-      }}
-    }}
-  }}
+  time_control = {{ max = {{ iter = maximum_iterations }}, interval = {{ iter = 100 }} }},
+  abort_criteria = {{ stop_file = 'stop' }}
 }}
 
 physics = {{ dt = dt, rho0 = rho0_phy }}
@@ -327,11 +298,15 @@ initial_condition = {{ pressure = pressure_reference_phy, velocityX = 0.0, veloc
 
 boundary_condition = {{
   {{ label = 'wall', kind = 'wall_libb' }},
-  {{ label = 'inlet', kind = 'mfr_eq', mass_flowrate = {_lua_number(mass_flow)} }},
+  {{ label = 'inlet', kind = 'adaptive_flux_pressure', mass_flowrate = {_lua_number(config.boundary.target_mass_flow_kg_s)} }},
 {','.join(chr(10) + entry for entry in outlet_entries)}
 }}
 
-restart = {{ write = 'restart/' }}
+restart = {{
+  write = 'restart/',
+  timeformat = {{ use_iter = true }},
+  time_control = {{ min = {{ iter = maximum_iterations }}, max = {{ iter = maximum_iterations }}, interval = {{ iter = 1 }} }}
+}}
 """
 
 
@@ -360,14 +335,14 @@ def _run_probe(distribution: str, script: str) -> subprocess.CompletedProcess[st
 
 
 def inspect_apes_environment(config: ApesConfig) -> ApesEnvironment:
-    """Inspect WSL2 only; do not install, compile, or alter official source."""
+    """Inspect and SHA-pin WSL2 tools; never fall back to a same-name binary."""
 
     commands: list[dict[str, Any]] = []
     names = {
-        "seeder": "seeder" if config.seeder_executable == "auto" else config.seeder_executable,
-        "musubi": "musubi" if config.musubi_executable == "auto" else config.musubi_executable,
-        "mus_harvesting": "mus_harvesting" if config.harvesting_executable == "auto" else config.harvesting_executable,
-        "mpi_launcher": "mpirun" if config.mpi_launcher == "auto" else config.mpi_launcher,
+        "seeder": config.seeder_executable,
+        "musubi": config.musubi_executable,
+        "mus_harvesting": config.harvesting_executable,
+        "mpi_launcher": config.mpi_launcher,
         "lua_compiler": "luac",
     }
     binaries: dict[str, str | None] = {}
@@ -386,7 +361,33 @@ def inspect_apes_environment(config: ApesConfig) -> ApesEnvironment:
     memory_match = re.search(r"MemAvailable:\s*(\d+)\s*kB", memory_probe.stdout)
     available_ram = int(memory_match.group(1)) * 1024 if memory_match else 0
     ranks = config.mpi_ranks if config.mpi_ranks is not None else min(cpu_count, 8)
-    status = "PASS" if all(binaries.values()) and any(compilers.values()) else "CFD_FLOW_ENVIRONMENT_BLOCKED"
+    expected_hashes = {
+        "seeder": config.seeder_expected_sha256,
+        "musubi": config.musubi_expected_sha256,
+        "mus_harvesting": config.harvesting_expected_sha256,
+    }
+    hash_checks: dict[str, dict[str, Any]] = {}
+    for label, expected in expected_hashes.items():
+        executable = binaries[label]
+        probe = _run_probe(
+            config.wsl_distribution,
+            f"sha256sum -- {shlex.quote(executable or '')}",
+        )
+        actual = probe.stdout.split(maxsplit=1)[0] if probe.returncode == 0 else None
+        hash_checks[label] = {
+            "path": executable,
+            "expected_sha256": expected,
+            "actual_sha256": actual,
+            "status": "PASS" if actual == expected else "FAIL",
+        }
+        commands.append({"command": ["sha256sum", executable], "returncode": probe.returncode, "stdout": probe.stdout.strip(), "stderr": probe.stderr.strip()})
+    status = (
+        "PASS"
+        if all(binaries.values())
+        and all(item["status"] == "PASS" for item in hash_checks.values())
+        else "CFD_FLOW_ENVIRONMENT_BLOCKED"
+    )
+    commands.append({"binary_sha256_checks": hash_checks})
     return ApesEnvironment(
         status=status,
         execution_environment="WSL2",

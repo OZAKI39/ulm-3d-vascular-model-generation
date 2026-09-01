@@ -139,6 +139,12 @@ def _mesh_origin_dx(mesh_dir: Path) -> tuple[np.ndarray, float]:
     return origin_value, length_value / 2 ** int(level.group(1))
 
 
+def mesh_origin_dx(mesh_dir: Path) -> tuple[np.ndarray, float]:
+    """Public uniform TreElm coordinate contract used by production replay."""
+
+    return _mesh_origin_dx(Path(mesh_dir))
+
+
 def _hash_payload(payload: Mapping[str, Any]) -> str:
     encoded = json.dumps(
         payload, sort_keys=True, separators=(",", ":"), allow_nan=False
@@ -1207,3 +1213,52 @@ def _evaluate_prepared_plane(
     )
     result["interpolation_stencil_qc"] = prepared["stencil_qc"]
     return result
+
+
+def evaluate_physical_port_fluxes(
+    plane_contract: Mapping[str, Any],
+    fluid_points_m: np.ndarray,
+    velocity_m_s: np.ndarray,
+    density_lattice: np.ndarray,
+    *,
+    dx_m: float,
+    position: str = "central",
+) -> dict[str, Any]:
+    """Evaluate all four production ports with the validated V3/V2 implementation."""
+
+    if plane_contract.get("contract_sha256") != (
+        "ffaa49bdb6e43fb7208ff29df07a90d4e92ef9bfa4b96ca4f997d4f453a7f005"
+    ):
+        raise ValueError("physical plane contract SHA-256 is not the validated V3 contract")
+    ports: dict[str, Any] = {}
+    for label in ("inlet", "outlet_01", "outlet_02", "outlet_03"):
+        record = plane_contract["ports"][label]["planes"][position]
+        plane = plane_from_v3_record(label, position, record)
+        prepared = _prepare_plane_numerics(plane, fluid_points_m, dx_m=dx_m)
+        ports[label] = _evaluate_prepared_plane(
+            prepared,
+            velocity_m_s,
+            density_lattice,
+        )
+    q_in = float(ports["inlet"]["physical_q_m3_s"])
+    q_out = math.fsum(
+        float(ports[label]["physical_q_m3_s"])
+        for label in ("outlet_01", "outlet_02", "outlet_03")
+    )
+    fractions = {
+        label: float(ports[label]["physical_q_m3_s"]) / q_out
+        for label in ("outlet_01", "outlet_02", "outlet_03")
+    }
+    return {
+        "status": "PASS" if _closure(q_in, [ports[label]["physical_q_m3_s"] for label in ("outlet_01", "outlet_02", "outlet_03")])["pass"] else "FAIL",
+        "flux_definition": FLUX_DEFINITION,
+        "algorithm_revision": FLUX_ALGORITHM_REVISION,
+        "plane_contract_revision": PLANE_CONTRACT_REVISION,
+        "plane_contract_sha256": plane_contract["contract_sha256"],
+        "plane_position": position,
+        "ports": ports,
+        "Qin_m3_s": q_in,
+        "Qout_m3_s": q_out,
+        "closure": abs(q_in - q_out) / abs(q_in),
+        "flow_fractions": fractions,
+    }
