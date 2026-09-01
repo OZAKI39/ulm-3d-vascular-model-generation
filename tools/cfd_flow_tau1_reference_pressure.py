@@ -14,9 +14,13 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from utils.cfd_flow.tau1_reference_pressure import (  # noqa: E402
+    CORRECTED_ATTEMPT_NAME,
+    RUN_NAME,
     audit_reference_scaled_smoke,
+    finalize_authorized_corrected_smoke,
     finalize_reference_scaled_smoke_blocked,
     prepare_reference_pressure_zero_run,
+    run_authorized_corrected_smoke,
     run_reference_scaled_smoke,
 )
 
@@ -25,13 +29,36 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "action",
-        choices=("zero-run", "run-smoke", "audit-smoke", "diagnose-blocked"),
+        choices=(
+            "zero-run",
+            "run-smoke",
+            "run-authorized-corrected-smoke",
+            "audit-authorized-corrected-smoke",
+            "finalize-authorized-corrected-smoke",
+            "audit-smoke",
+            "diagnose-blocked",
+        ),
     )
     args = parser.parse_args()
     if args.action == "zero-run":
         result = prepare_reference_pressure_zero_run(PROJECT_ROOT)
     elif args.action == "run-smoke":
         result = run_reference_scaled_smoke(PROJECT_ROOT)
+    elif args.action == "run-authorized-corrected-smoke":
+        result = run_authorized_corrected_smoke(PROJECT_ROOT)
+    elif args.action == "audit-authorized-corrected-smoke":
+        result = audit_reference_scaled_smoke(
+            PROJECT_ROOT,
+            smoke_root=(
+                PROJECT_ROOT
+                / "outputs"
+                / "cfd_flow"
+                / RUN_NAME
+                / CORRECTED_ATTEMPT_NAME
+            ),
+        )
+    elif args.action == "finalize-authorized-corrected-smoke":
+        result = finalize_authorized_corrected_smoke(PROJECT_ROOT)
     elif args.action == "audit-smoke":
         result = audit_reference_scaled_smoke(PROJECT_ROOT)
     else:

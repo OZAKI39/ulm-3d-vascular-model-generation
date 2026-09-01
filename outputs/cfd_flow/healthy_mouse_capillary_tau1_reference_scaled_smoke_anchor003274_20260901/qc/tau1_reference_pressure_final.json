@@ -1,84 +1,25 @@
 {
-  "status": "OPERATIONAL_INFRASTRUCTURE_BLOCKED",
-  "next": "STOP; DO NOT CONSUME A SECOND SMOKE CALL WITHOUT EXPLICIT AUTHORIZATION",
-  "first_failure_layer": "TRACKING_OUTPUT_FORMAT_INITIALIZATION",
-  "failure_reason": "Full-domain density/velocity tracking used scalar ASCII output, which has a 50-entry limit; Musubi reported 91160 entries and aborted before the first timestep.",
-  "scientific_interpretation": "No pressure-scaling, controller, PDF, flux, or conservation gate was reached; this attempt cannot validate or falsify the scaling hypothesis.",
-  "returncode": 1,
-  "runtime_seconds": 1.2681561000063084,
+  "status": "CFD_FLOW_TAU1_REFERENCE_PRESSURE_SCALING_VALIDATED",
+  "next": "RUN ONE FRESH REFERENCE-SCALED TAU1 BASE TO STEADY STATE",
   "pressure_reference_role": "LBM_NUMERICAL_OFFSET_NOT_PHYSIOLOGICAL_ABSOLUTE_PRESSURE",
   "production_pipeline_modified": false,
   "seeder_calls": 0,
   "long_cfd_calls": 0,
   "short_smoke_musubi_calls": 1,
-  "new_short_smoke_iterations": 0,
-  "fresh_initialization_used": true,
-  "old_restart_read": false,
-  "source_contract_status": "PASS",
-  "scaling_contract_status": "PASS",
-  "zero_run_config_oracle_status": "PREPARED_ZERO_RUN_PASS",
-  "smoke_evidence": {
-    "tracking_abort_marker_found": true,
-    "entered_timestep_loop": false,
-    "successful_run_marker_found": false,
-    "restart_file_count": 0,
-    "stdout_initial_iteration": 0,
-    "files": {
-      "musubi_stdout.log": {
-        "bytes": 29077,
-        "sha256": "8d190f1ff9b923ab54bcd0061d5f256fde2ec96e8cf096e5fbb6d2ed107f64ed"
-      },
-      "musubi_stderr.log": {
-        "bytes": 2258,
-        "sha256": "98e49a3d76bb222b4a894a1594db4b4234f38e039cd193dedd61b8be8b95dac2"
-      },
-      "musubi.lua": {
-        "bytes": 3013,
-        "sha256": "07f58f4da9b72a782821bbae0aaf20c6e880213767064e56818737fb9bd0e7a1"
-      },
-      "musubi_corrected_next_authorized.lua": {
-        "bytes": 3181,
-        "sha256": "92e03795f95ae6b154375f5a2c7e6f68aaf9dc5025a5bf8fadad2d27695d68e1"
-      }
-    }
+  "corrected_smoke_musubi_calls": 1,
+  "prior_pre_iteration_operational_attempts": 1,
+  "operational_recoveries": {
+    "prior_pre_iteration_solver_recovery": 1,
+    "post_run_audit_only_recoveries": 3,
+    "additional_musubi_calls_for_post_run_recovery": 0,
+    "details": [
+      "full-field scalar ascii changed to frozen asciiSpatial candidate",
+      "Windows extended-length path reads for existing tracking files",
+      "deterministic selection of requested-time MPI files; final-time duplicates ignored",
+      "numpy bool normalized for strict JSON serialization"
+    ]
   },
-  "unexecuted_correction": {
-    "change": "full-field tracking ascii -> asciiSpatial",
-    "candidate": "E:\\ULM\\hatimb-particle_flow_simulator\\ulm_3D_vascular\\outputs\\cfd_flow\\healthy_mouse_capillary_tau1_reference_scaled_smoke_anchor003274_20260901\\musubi_corrected_next_authorized.lua",
-    "candidate_sha256": "92e03795f95ae6b154375f5a2c7e6f68aaf9dc5025a5bf8fadad2d27695d68e1",
-    "contract": {
-      "status": "PASS",
-      "checks": {
-        "dx": true,
-        "dt": true,
-        "rho0": true,
-        "tau_one": true,
-        "omega_one": true,
-        "dynamic_pressure_reference": true,
-        "formula_outlet_pressures": true,
-        "target_mass_flow": true,
-        "wall_libb": true,
-        "adaptive_flux_pressure": true,
-        "three_pressure_eq": true,
-        "fresh_no_restart_read": true,
-        "zero_initial_velocity": true,
-        "initial_density_one": true,
-        "final_two_restarts": true,
-        "requested_checkpoints": true,
-        "full_field_uses_ascii_spatial": true,
-        "hard_max": true,
-        "no_vtk": true
-      },
-      "initial_rho_lattice": 1.0,
-      "outlet_rho_lattice": {
-        "outlet_01": 1.000004293706885,
-        "outlet_02": 1.0000390270496984,
-        "outlet_03": 0.9999959555473604
-      },
-      "pressure_reference_role": "LBM_NUMERICAL_OFFSET_NOT_PHYSIOLOGICAL_ABSOLUTE_PRESSURE"
-    },
-    "musubi_calls": 0
-  },
+  "new_short_smoke_iterations": 5000,
   "old_unit_density_pressure_pa": 23622.320127999996,
   "old_reference_pressure_pa": 23622.320128,
   "old_rho_lattice_implied_by_new_scaling": 0.006973356567857593,
@@ -93,24 +34,82 @@
     "outlet_03": 3387497.019373326
   },
   "preserved_outlet_gauge_pressures": true,
-  "initial_rho_lattice_formula_oracle": 1.0,
-  "smoke_mean_rho_lattice": null,
+  "fresh_initialization_used": true,
+  "initial_rho_lattice": 1.0,
+  "final_rho_lattice": {
+    "mean": 1.0000237981212745,
+    "median": 1.000003986269215,
+    "p1": 0.9999965705818654,
+    "p99": 1.0000868842676902,
+    "minimum": 0.9999960337608561,
+    "maximum": 1.0000895316961695
+  },
   "adaptive_target_lattice_expected": 0.0006974804380964758,
-  "adaptive_target_lattice_observed": null,
-  "controller_relative_error": null,
-  "final_physical_flux": null,
-  "minimum_pdf": null,
-  "maximum_lattice_speed": null,
-  "full_timestep_referee_residual": null,
+  "adaptive_target_lattice_observed": 0.0006974804380964791,
+  "controller_relative_error": 4.818811469290505e-15,
+  "controller_internal_relative_error": 6.54425686635901e-12,
+  "final_physical_flux": {
+    "inlet": {
+      "Q_velocity_m3_s": 2.674134958250452e-15,
+      "Q_rho_u_over_rho0_m3_s": 2.6743688618938696e-15,
+      "R_Q_density_consistency": 8.746124992348522e-05,
+      "Q_velocity_over_Q_target": 0.9770623781771838,
+      "area_weighted_rho_lattice": 1.000087465102726
+    },
+    "outlet_01": {
+      "Q_velocity_m3_s": -3.278310376527521e-17,
+      "Q_rho_u_over_rho0_m3_s": -3.278324260884095e-17,
+      "R_Q_density_consistency": 4.235199287653454e-06,
+      "Q_velocity_over_Q_target": -0.01197813043433137,
+      "area_weighted_rho_lattice": 1.0000042351208613
+    },
+    "outlet_02": {
+      "Q_velocity_m3_s": 1.8525492292059118e-16,
+      "Q_rho_u_over_rho0_m3_s": 1.8526222478532494e-16,
+      "R_Q_density_consistency": 3.9413672928829525e-05,
+      "Q_velocity_over_Q_target": 0.06768753947865305,
+      "area_weighted_rho_lattice": 1.0000394161661885
+    },
+    "outlet_03": {
+      "Q_velocity_m3_s": 1.7119795919999882e-16,
+      "Q_rho_u_over_rho0_m3_s": 1.71197323542496e-16,
+      "R_Q_density_consistency": 3.7130107508404647e-06,
+      "Q_velocity_over_Q_target": 0.06255147468864779,
+      "area_weighted_rho_lattice": 0.9999962872190281
+    }
+  },
+  "minimum_pdf": 0.027777597793164733,
+  "maximum_lattice_speed": 8.221664926461486e-06,
+  "pressure_observables": {
+    "absolute_pressure_pa": {
+      "mean": 3387591.336390933,
+      "median": 3387524.2235296974,
+      "p1": 3387499.102809305,
+      "p99": 3387805.0413882,
+      "minimum": 3387497.2843223815,
+      "maximum": 3387814.0095805526
+    },
+    "gauge_pressure_pa": {
+      "mean": 80.61639093309881,
+      "median": 13.503529698355123,
+      "p1": -11.617190694357268,
+      "p99": 294.3213882008102,
+      "minimum": -13.435677617788315,
+      "maximum": 303.2895805533044
+    },
+    "pressure_reference_pa": 3387510.7199999993,
+    "pressure_reference_role": "LBM_NUMERICAL_OFFSET_NOT_PHYSIOLOGICAL_ABSOLUTE_PRESSURE"
+  },
+  "full_timestep_referee_residual": 5.917376127863727e-11,
   "old_base_classification": "NUMERICALLY_VALIDATED_TAU1_BASE_WITH_MIS_SCALED_REFERENCE_PRESSURE_OFFSET",
   "verification": {
     "targeted_pytest": {
       "status": "PASS",
-      "tests": 29,
+      "tests": 30,
       "failures": 0,
       "errors": 0,
-      "seconds": 90.836,
-      "sha256": "662788f54f84f782c08db68534c13ee2a0633bcc6ccbb42a1aea3595088bac03"
+      "seconds": 71.862,
+      "sha256": "203664333bdf501265d3dcdce4add6233d7bbfd33756165edc4b418693c39874"
     },
     "targeted_ruff": {
       "status": "PASS",
@@ -138,5 +137,55 @@
       "bytes": 83141300,
       "manifest_sha256": "4697ae025af68e7cd4917ba08d61c3a53810c3f7a3b973af4f157b6636aaba1b"
     }
+  },
+  "smoke_gates": {
+    "zero_run_config_oracle": true,
+    "fresh_no_old_restart": true,
+    "mean_rho_lattice_0p9_to_1p1": true,
+    "old_rho_0p007_not_recurrent": true,
+    "controller_target_relative_error_le_1e8": true,
+    "controller_internal_relative_error_le_1e8": true,
+    "minimum_pdf_positive": true,
+    "max_lattice_speed_lt_0p05": true,
+    "all_finite": true,
+    "velocity_vs_density_weighted_q_le_5pct": true,
+    "old_140x_q_signature_absent": true,
+    "full_timestep_referee_le_1e8": true
+  },
+  "corrected_attempt_root": "E:\\ULM\\hatimb-particle_flow_simulator\\ulm_3D_vascular\\outputs\\cfd_flow\\healthy_mouse_capillary_tau1_reference_scaled_smoke_anchor003274_20260901\\corrected_authorized_attempt_2",
+  "total_musubi_process_launches_including_prior_zero_step_abort": 2,
+  "executed_timesteps": 5000,
+  "solver_wall_clock_seconds": 84.54,
+  "final_physical_volume_closure": {
+    "velocity": {
+      "inlet": 2.674134958250452e-15,
+      "outlet_sum": 3.236697783553148e-16,
+      "absolute_mismatch": 2.3504651798951373e-15,
+      "relative_error": 0.8789628109992343,
+      "acceptance_role": "DIAGNOSTIC_ONLY_FOR_5000_STEP_TRANSIENT",
+      "steady_state_gate_evaluated": false
+    },
+    "rho_u_over_rho0": {
+      "inlet": 2.6743688618938696e-15,
+      "outlet_sum": 3.2367630571898e-16,
+      "absolute_mismatch": 2.3506925561748895e-15,
+      "relative_error": 0.8789709563512615,
+      "acceptance_role": "DIAGNOSTIC_ONLY_FOR_5000_STEP_TRANSIENT",
+      "steady_state_gate_evaluated": false
+    }
+  },
+  "corrected_attempt_core_hashes": {
+    "musubi.lua": "92e03795f95ae6b154375f5a2c7e6f68aaf9dc5025a5bf8fadad2d27695d68e1",
+    "run_smoke.sh": "682e45d9673f05c18ec682a4e30caecdda8689dc12d672408b736ee22f6bb7fe",
+    "musubi_stdout.log": "1afbdc6bdab01c0b800537eeb145efe0df2afb80e8b831d422a72f784b2af586",
+    "musubi_stderr.log": "7153d86f1f0be116c4662eb3943dc9398fbf1df11b10044cada3eb9ffbee22a9",
+    "semantic_status.log": "62be8b89246045e8e5aecdd310dfceac781d3c2878c0e424b39cc1d01ac33bc0"
+  },
+  "tracking_archive": {
+    "path": "E:\\ULM\\hatimb-particle_flow_simulator\\ulm_3D_vascular\\outputs\\cfd_flow\\healthy_mouse_capillary_tau1_reference_scaled_smoke_anchor003274_20260901\\corrected_authorized_attempt_2\\tracking_all_checkpoints.tar.gz",
+    "format": "tar.gz",
+    "bytes": 56599434,
+    "sha256": "27f28cc36330b3602f744f1e2ac478fac39b36c42f8c0a33cdef677616971b81",
+    "contents": "complete raw tracking directory, including all MPI files"
   }
 }

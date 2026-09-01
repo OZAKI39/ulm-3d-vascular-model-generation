@@ -10,6 +10,8 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -31,6 +33,7 @@ from .physical_port_flux import (
     FLUX_ALGORITHM_REVISION,
     PLANE_CONTRACT_REVISION,
     PORTS,
+    _closure,
     _evaluate_prepared_plane,
     _mesh_origin_dx,
     _prepare_plane_numerics,
@@ -49,6 +52,7 @@ from .tau1_base import (
     OUTLET_GAUGE_PRESSURE_PA,
     PROJECT_WSL,
     RHO_KG_M3,
+    TAU1_DT_S,
     TARGET_MASS_FLOW_KG_S,
     TARGET_Q_M3_S,
     Tau1BaseRuntimeContract,
@@ -62,6 +66,8 @@ from .tau1_base import (
 
 
 RUN_NAME = "healthy_mouse_capillary_tau1_reference_scaled_smoke_anchor003274_20260901"
+CORRECTED_ATTEMPT_NAME = "corrected_authorized_attempt_2"
+CORRECTED_LUA_SHA256 = "92e03795f95ae6b154375f5a2c7e6f68aaf9dc5025a5bf8fadad2d27695d68e1"
 PHYSICAL_FLUX_RUN = "healthy_mouse_capillary_tau1_grid_convergence_anchor003274_20260831"
 PLANE_CONTRACT_SHA256 = "ffaa49bdb6e43fb7208ff29df07a90d4e92ef9bfa4b96ca4f997d4f453a7f005"
 MUSUBI_SOURCE_REVISION = "81f8c4f13772f6d4af31f335e1e3f99b02726e25"
@@ -85,6 +91,10 @@ def _qc(project_root: Path) -> Path:
     path = _run_root(project_root) / "qc"
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def _corrected_attempt_root(project_root: Path) -> Path:
+    return _run_root(project_root) / CORRECTED_ATTEMPT_NAME
 
 
 def _verification_evidence(project_root: Path) -> dict[str, Any]:
@@ -620,12 +630,32 @@ def prepare_reference_pressure_zero_run(project_root: Path) -> dict[str, Any]:
 def _tracking_snapshot(folder: Path, mesh: Any, origin: np.ndarray) -> dict[str, Any]:
     rows: list[np.ndarray] = []
     columns: list[str] | None = None
-    files = sorted(folder.glob("*.res"))
-    if not files:
+    all_files = sorted(folder.glob("*.res"))
+    if not all_files:
         raise RuntimeError(f"tracking snapshot is absent: {folder}")
+    iteration_match = re.fullmatch(r"state_(\d+)", folder.name)
+    if iteration_match is None:
+        raise RuntimeError(f"tracking folder has no iteration label: {folder}")
+    target_time = int(iteration_match.group(1)) * TAU1_DT_S
+    time_pattern = re.compile(r"_t([-+0-9.Ee]+)\.res$")
+    time_groups: dict[float, list[Path]] = {}
+    for path in all_files:
+        match = time_pattern.search(path.name)
+        if match is None:
+            raise RuntimeError(f"tracking filename has no physical time: {path}")
+        time_groups.setdefault(float(match.group(1)), []).append(path)
+    selected_time = min(time_groups, key=lambda value: abs(value - target_time))
+    files = sorted(time_groups[selected_time])
+    if len(files) != MPI_RANKS:
+        raise RuntimeError(
+            f"tracking snapshot has {len(files)} rank files, expected {MPI_RANKS}"
+        )
     for path in files:
+        readable = (
+            Path("\\\\?\\" + str(path.resolve())) if os.name == "nt" else path
+        )
         header = None
-        for line in path.read_text(encoding="utf-8").splitlines()[:5]:
+        for line in readable.read_text(encoding="utf-8").splitlines()[:5]:
             if "coordX" in line and "density_phy" in line:
                 header = line.lstrip("#").split()
                 break
@@ -635,7 +665,7 @@ def _tracking_snapshot(folder: Path, mesh: Any, origin: np.ndarray) -> dict[str,
             columns = header
         elif columns != header:
             raise RuntimeError("ranked tracking headers disagree")
-        data = np.loadtxt(path, comments="#", ndmin=2)
+        data = np.loadtxt(readable, comments="#", ndmin=2)
         rows.append(np.asarray(data, dtype=np.float64))
     assert columns is not None
     data = np.vstack(rows)
@@ -659,8 +689,20 @@ def _tracking_snapshot(folder: Path, mesh: Any, origin: np.ndarray) -> dict[str,
     return {
         "density_lattice": density,
         "velocity_phy": velocity_ordered,
+        "requested_iteration": int(iteration_match.group(1)),
+        "requested_physical_time_s": target_time,
+        "selected_file_time_s": selected_time,
+        "ignored_non_target_files": len(all_files) - len(files),
         "files": [
-            {"path": str(path), "sha256": sha256_file(path)} for path in files
+            {
+                "path": str(path),
+                "sha256": sha256_file(
+                    Path("\\\\?\\" + str(path.resolve()))
+                    if os.name == "nt"
+                    else path
+                ),
+            }
+            for path in files
         ],
     }
 
@@ -724,11 +766,36 @@ def _flux_snapshot(
     return ports
 
 
-def audit_reference_scaled_smoke(project_root: Path) -> dict[str, Any]:
+def _physical_closure(
+    snapshot: Mapping[str, Mapping[str, float]], field: str
+) -> dict[str, Any]:
+    result = _closure(
+        snapshot["inlet"][field],
+        [snapshot[label][field] for label in PORTS if label != "inlet"],
+    )
+    result.pop("gate")
+    result.pop("pass")
+    result["acceptance_role"] = "DIAGNOSTIC_ONLY_FOR_5000_STEP_TRANSIENT"
+    result["steady_state_gate_evaluated"] = False
+    return result
+
+
+def audit_reference_scaled_smoke(
+    project_root: Path, *, smoke_root: Path | None = None
+) -> dict[str, Any]:
     root = Path(project_root).resolve()
-    run_root = _run_root(root)
+    run_root = (
+        Path(smoke_root).resolve()
+        if smoke_root is not None
+        else _run_root(root)
+    )
+    preflight_name = (
+        "tau1_reference_corrected_smoke_preflight.json"
+        if smoke_root is not None
+        else "tau1_reference_scaled_smoke.json"
+    )
     prepared_zero = json.loads(
-        (_qc(root) / "tau1_reference_scaled_smoke.json").read_text(encoding="utf-8")
+        (_qc(root) / preflight_name).read_text(encoding="utf-8")
     )
     contract = Tau1BaseRuntimeContract()
     mesh = load_mesh_contract(_mesh_path(root), expected_cells=EXPECTED_CELLS)
@@ -765,7 +832,12 @@ def audit_reference_scaled_smoke(project_root: Path) -> dict[str, Any]:
             ),
             "max_lattice_speed": float(np.max(speed_lattice)),
         }
-        tracking_hashes[str(iteration)] = snapshot["files"]
+        tracking_hashes[str(iteration)] = {
+            "requested_physical_time_s": snapshot["requested_physical_time_s"],
+            "selected_file_time_s": snapshot["selected_file_time_s"],
+            "ignored_non_target_files": snapshot["ignored_non_target_files"],
+            "files": snapshot["files"],
+        }
     pairs = _restart_pairs(run_root / "restart")
     if set(pairs) != {SMOKE_MAX_ITERATIONS - 1, SMOKE_MAX_ITERATIONS}:
         raise RuntimeError(f"fresh smoke restart pair is incomplete: {sorted(pairs)}")
@@ -820,6 +892,24 @@ def audit_reference_scaled_smoke(project_root: Path) -> dict[str, Any]:
     controller = _controller_records(stdout)
     if not controller:
         raise RuntimeError("fresh smoke controller evidence is absent")
+    controller_by_iteration = {
+        str(item["iteration"]): item
+        for item in controller
+        if item["iteration"] in checkpoint_iterations(SMOKE_MAX_ITERATIONS)
+    }
+    for iteration in checkpoint_iterations(SMOKE_MAX_ITERATIONS):
+        record = controller_by_iteration.get(str(iteration))
+        if record is not None:
+            safety[str(iteration)].update(
+                {
+                    "minimum_pdf": record["minimum_pdf"],
+                    "controller_max_lattice_speed": record[
+                        "max_lattice_velocity"
+                    ],
+                }
+            )
+        elif iteration == 0:
+            safety[str(iteration)]["minimum_pdf_formula_oracle"] = 1.0 / 36.0
     final_controller = max(controller, key=lambda item: int(item["iteration"]))
     expected_target = contract.target_lattice_flux
     controller_error = abs(
@@ -828,7 +918,8 @@ def audit_reference_scaled_smoke(project_root: Path) -> dict[str, Any]:
     final_density = densities[str(SMOKE_MAX_ITERATIONS)]["domain"]
     final_inlet = fluxes[str(SMOKE_MAX_ITERATIONS)]["inlet"]
     gates = {
-        "zero_run_config_oracle": prepared_zero["status"] == "PREPARED_ZERO_RUN_PASS",
+        "zero_run_config_oracle": prepared_zero["status"]
+        in {"PASS", "PREPARED_ZERO_RUN_PASS"},
         "fresh_no_old_restart": prepared_zero["old_restart_read"] is False,
         "mean_rho_lattice_0p9_to_1p1": (
             RHO_MEAN_GATE[0] <= final_density["mean"] <= RHO_MEAN_GATE[1]
@@ -871,6 +962,7 @@ def audit_reference_scaled_smoke(project_root: Path) -> dict[str, Any]:
         "adaptive_target_lattice_observed": final_controller["target_lattice"],
         "controller_target_relative_error": controller_error,
         "controller": final_controller,
+        "controller_by_checkpoint": controller_by_iteration,
         "minimum_pdf": min_pdf,
         "maximum_lattice_speed": max_speed,
         "all_finite": all_pdf_finite,
@@ -898,6 +990,19 @@ def audit_reference_scaled_smoke(project_root: Path) -> dict[str, Any]:
         "flux_algorithm_revision": FLUX_ALGORITHM_REVISION,
         "snapshots": fluxes,
         "final_inlet": final_inlet,
+        "physical_volume_closure_by_iteration": {
+            iteration: {
+                "velocity": _physical_closure(
+                    snapshot,
+                    "Q_velocity_m3_s",
+                ),
+                "rho_u_over_rho0": _physical_closure(
+                    snapshot,
+                    "Q_rho_u_over_rho0_m3_s",
+                ),
+            }
+            for iteration, snapshot in fluxes.items()
+        },
         "Q_target_m3_s": TARGET_Q_M3_S,
         "R_Q_density_consistency_gate": Q_DENSITY_CONSISTENCY_GATE,
     }
@@ -929,6 +1034,9 @@ def audit_reference_scaled_smoke(project_root: Path) -> dict[str, Any]:
         "seeder_calls": 0,
         "long_cfd_calls": 0,
         "short_smoke_musubi_calls": 1,
+        "corrected_smoke_musubi_calls": 1,
+        "prior_pre_iteration_operational_attempts": 1,
+        "operational_recoveries": 1,
         "new_short_smoke_iterations": SMOKE_MAX_ITERATIONS,
         "old_unit_density_pressure_pa": Tau1ReferencePressureContract(
             dt_s=OLD_DT_S
@@ -957,17 +1065,218 @@ def audit_reference_scaled_smoke(project_root: Path) -> dict[str, Any]:
         "adaptive_target_lattice_expected": expected_target,
         "adaptive_target_lattice_observed": final_controller["target_lattice"],
         "controller_relative_error": controller_error,
+        "controller_internal_relative_error": float(
+            final_controller["relative_error"]
+        ),
         "final_physical_flux": fluxes[str(SMOKE_MAX_ITERATIONS)],
         "minimum_pdf": min_pdf,
         "maximum_lattice_speed": max_speed,
         "pressure_observables": pressure_observables,
         "full_timestep_referee_residual": replay["R_full_one_step_identity"],
         "old_base_classification": OLD_BASE_CLASSIFICATION,
+        "verification": _verification_evidence(root),
         "protected_old_base_evidence_unchanged": protected_unchanged,
         "protected_after": protected_after,
         "smoke_gates": gates,
     }
     write_json(_qc(root) / "tau1_reference_pressure_final.json", final)
+    return final
+
+
+def prepare_authorized_corrected_smoke(project_root: Path) -> dict[str, Any]:
+    """Prepare the explicitly authorized retry without touching prior evidence."""
+
+    root = Path(project_root).resolve()
+    source = _run_root(root) / "musubi_corrected_next_authorized.lua"
+    attempt = _corrected_attempt_root(root)
+    if attempt.exists() and any(attempt.rglob("*")):
+        raise RuntimeError(f"corrected attempt directory is not fresh: {attempt}")
+    text = source.read_text(encoding="utf-8")
+    contract = smoke_lua_contract(text)
+    checks = {
+        "source_sha256": sha256_file(source) == CORRECTED_LUA_SHA256,
+        "lua_contract": contract["status"] == "PASS",
+        "maximum_iterations_5000": "maximum_iterations = 5000" in text,
+        "full_field_ascii_spatial": text.count("format='asciiSpatial'")
+        == len(checkpoint_iterations(SMOKE_MAX_ITERATIONS)),
+        "no_full_field_scalar_ascii": "format='ascii'" not in text,
+        "fresh_no_restart_read": "read=" not in text and "read =" not in text,
+        "binary_sha256": sha256_file(
+            Path(
+                r"\\wsl.localhost\Ubuntu\home\lzy\apes-worktrees"
+                r"\musubi_mcclure_adaptive_flux_20260829_1300\build"
+                r"\musubi_adaptive_flux"
+            )
+        )
+        == MUSUBI_SHA256,
+    }
+    if not all(checks.values()):
+        raise RuntimeError(f"corrected smoke preflight failed: {checks}")
+    attempt.mkdir(parents=True, exist_ok=False)
+    (attempt / "musubi.lua").write_text(text, encoding="utf-8", newline="\n")
+    (attempt / "run_smoke.sh").write_text(
+        _smoke_launcher(), encoding="utf-8", newline="\n"
+    )
+    result = {
+        "status": "PASS",
+        "attempt_root": str(attempt),
+        "fresh_initialization": True,
+        "old_restart_read": False,
+        "maximum_iterations": SMOKE_MAX_ITERATIONS,
+        "mpi_ranks": MPI_RANKS,
+        "source_candidate": str(source),
+        "source_candidate_sha256": sha256_file(source),
+        "attempt_lua_sha256": sha256_file(attempt / "musubi.lua"),
+        "lua_contract": contract,
+        "checks": checks,
+        "protected_before": protected_old_base_manifests(root),
+        "production_pipeline_modified": False,
+        "seeder_calls": 0,
+        "long_cfd_calls": 0,
+        "corrected_smoke_musubi_calls": 0,
+    }
+    write_json(
+        _qc(root) / "tau1_reference_corrected_smoke_preflight.json", result
+    )
+    return result
+
+
+def run_authorized_corrected_smoke(project_root: Path) -> dict[str, Any]:
+    """Run exactly one authorized corrected 5000-step logical smoke."""
+
+    root = Path(project_root).resolve()
+    prepared = prepare_authorized_corrected_smoke(root)
+    attempt = _corrected_attempt_root(root)
+    script_wsl = (
+        f"{PROJECT_WSL}/outputs/cfd_flow/{RUN_NAME}/"
+        f"{CORRECTED_ATTEMPT_NAME}/run_smoke.sh"
+    )
+    started = time.perf_counter()
+    completed = subprocess.run(
+        ["wsl.exe", "-d", "Ubuntu", "--", "bash", script_wsl],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=1_800,
+    )
+    (attempt / "launcher_stdout.log").write_text(
+        completed.stdout, encoding="utf-8", newline="\n"
+    )
+    (attempt / "launcher_stderr.log").write_text(
+        completed.stderr, encoding="utf-8", newline="\n"
+    )
+    if completed.returncode != 0:
+        stdout_path = attempt / "musubi_stdout.log"
+        stdout = (
+            stdout_path.read_text(encoding="utf-8", errors="replace")
+            if stdout_path.is_file()
+            else ""
+        )
+        records = _controller_records(stdout)
+        result = {
+            "status": (
+                "RECOVERABLE_OPERATIONAL_ERROR"
+                if not records
+                else "OPERATIONAL_INFRASTRUCTURE_BLOCKED"
+            ),
+            "returncode": completed.returncode,
+            "runtime_seconds": time.perf_counter() - started,
+            "fresh_initialization": True,
+            "old_restart_read": False,
+            "corrected_smoke_musubi_calls": 1,
+            "executed_timesteps": max(
+                (int(item["iteration"]) for item in records), default=0
+            ),
+            "automatic_retry_allowed": not records,
+            "preflight": prepared,
+            "seeder_calls": 0,
+            "long_cfd_calls": 0,
+        }
+        write_json(
+            _qc(root) / "tau1_reference_corrected_smoke_attempt.json", result
+        )
+        return result
+    result = audit_reference_scaled_smoke(root, smoke_root=attempt)
+    result["runtime_seconds"] = time.perf_counter() - started
+    result["corrected_smoke_musubi_calls"] = 1
+    result["prior_pre_iteration_operational_attempts"] = 1
+    result["operational_recoveries"] = 1
+    write_json(
+        _qc(root) / "tau1_reference_corrected_smoke_attempt.json", result
+    )
+    write_json(_qc(root) / "tau1_reference_pressure_final.json", result)
+    return result
+
+
+def finalize_authorized_corrected_smoke(project_root: Path) -> dict[str, Any]:
+    """Attach operational provenance to an already-audited corrected smoke."""
+
+    root = Path(project_root).resolve()
+    qc = _qc(root)
+    final_path = qc / "tau1_reference_pressure_final.json"
+    final = json.loads(final_path.read_text(encoding="utf-8"))
+    if final.get("status") != "CFD_FLOW_TAU1_REFERENCE_PRESSURE_SCALING_VALIDATED":
+        raise RuntimeError("corrected smoke scientific gates have not all passed")
+    attempt = _corrected_attempt_root(root)
+    stdout_path = attempt / "musubi_stdout.log"
+    stdout = stdout_path.read_text(encoding="utf-8", errors="replace")
+    wall_clock_match = re.search(r"Done with Musubi in\s+([-+0-9.Ee]+)\s+s", stdout)
+    physical = json.loads(
+        (qc / "tau1_reference_scaled_physical_flux_smoke.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    tracking_archive = attempt / "tracking_all_checkpoints.tar.gz"
+    final.update(
+        {
+            "corrected_attempt_root": str(attempt),
+            "corrected_smoke_musubi_calls": 1,
+            "total_musubi_process_launches_including_prior_zero_step_abort": 2,
+            "executed_timesteps": SMOKE_MAX_ITERATIONS,
+            "solver_wall_clock_seconds": (
+                float(wall_clock_match.group(1)) if wall_clock_match else None
+            ),
+            "operational_recoveries": {
+                "prior_pre_iteration_solver_recovery": 1,
+                "post_run_audit_only_recoveries": 3,
+                "additional_musubi_calls_for_post_run_recovery": 0,
+                "details": [
+                    "full-field scalar ascii changed to frozen asciiSpatial candidate",
+                    "Windows extended-length path reads for existing tracking files",
+                    "deterministic selection of requested-time MPI files; final-time duplicates ignored",
+                    "numpy bool normalized for strict JSON serialization",
+                ],
+            },
+            "final_physical_volume_closure": physical[
+                "physical_volume_closure_by_iteration"
+            ][str(SMOKE_MAX_ITERATIONS)],
+            "corrected_attempt_core_hashes": {
+                name: sha256_file(attempt / name)
+                for name in (
+                    "musubi.lua",
+                    "run_smoke.sh",
+                    "musubi_stdout.log",
+                    "musubi_stderr.log",
+                    "semantic_status.log",
+                )
+            },
+            "tracking_archive": (
+                {
+                    "path": str(tracking_archive),
+                    "format": "tar.gz",
+                    "bytes": tracking_archive.stat().st_size,
+                    "sha256": sha256_file(tracking_archive),
+                    "contents": "complete raw tracking directory, including all MPI files",
+                }
+                if tracking_archive.is_file()
+                else None
+            ),
+            "verification": _verification_evidence(root),
+        }
+    )
+    write_json(final_path, final)
+    write_json(qc / "tau1_reference_corrected_smoke_attempt.json", final)
     return final
 
 

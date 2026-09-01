@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 
 from utils.cfd_flow.tau1_base import (
@@ -12,6 +13,7 @@ from utils.cfd_flow.tau1_base import (
 )
 from utils.cfd_flow.tau1_reference_pressure import (
     OLD_BASE_CLASSIFICATION,
+    _physical_closure,
     generate_smoke_lua,
     smoke_lua_contract,
 )
@@ -98,3 +100,15 @@ def test_old_misscaled_base_classification() -> None:
     old_density = contract.lattice_density(OLD_PRESSURE_REFERENCE_PA)
     assert OLD_BASE_CLASSIFICATION.endswith("MIS_SCALED_REFERENCE_PRESSURE_OFFSET")
     assert math.isclose(old_density, 0.006973356567857592, rel_tol=2.0e-15)
+
+
+def test_zero_flow_transient_closure_is_json_diagnostic_not_steady_gate() -> None:
+    snapshot = {
+        label: {"Q_velocity_m3_s": 0.0}
+        for label in ("wall", "inlet", "outlet_01", "outlet_02", "outlet_03")
+    }
+    result = _physical_closure(snapshot, "Q_velocity_m3_s")
+    assert result["acceptance_role"] == "DIAGNOSTIC_ONLY_FOR_5000_STEP_TRANSIENT"
+    assert result["steady_state_gate_evaluated"] is False
+    assert "pass" not in result and "gate" not in result
+    json.dumps(result, allow_nan=False)
