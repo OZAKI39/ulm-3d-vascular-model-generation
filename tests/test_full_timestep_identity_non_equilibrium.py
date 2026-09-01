@@ -8,10 +8,9 @@ from utils.cfd_flow.restart_decode import read_restart_pdf
 from utils.cfd_flow.tau1_base import (
     EXPECTED_CELLS,
     OUTLET_GAUGE_PRESSURE_PA,
-    PRESSURE_REFERENCE_PA,
-    Tau1BaseRuntimeContract,
     _mesh_path,
     _run_root,
+    historical_tau1_runtime_contract,
 )
 
 
@@ -33,7 +32,7 @@ def test_late_non_equilibrium_3117927_transition_closes() -> None:
         n_components=19,
     )
     mesh = load_mesh_contract(_mesh_path(root), expected_cells=EXPECTED_CELLS)
-    contract = Tau1BaseRuntimeContract()
+    contract = historical_tau1_runtime_contract()
 
     replay = replay_full_timestep(
         start,
@@ -44,7 +43,7 @@ def test_late_non_equilibrium_3117927_transition_closes() -> None:
         density_kg_m3=contract.rho_kg_m3,
         target_mass_flow_kg_s=contract.target_mass_flow_kg_s,
         outlet_pressures_pa={
-            label: PRESSURE_REFERENCE_PA + gauge
+            label: contract.pressure_reference_pa + gauge
             for label, gauge in OUTLET_GAUGE_PRESSURE_PA.items()
         },
     )

@@ -19,6 +19,7 @@ from .grid_convergence import (
     three_grid_scalar_analysis,
 )
 from .io import write_json
+from .tau1_base import PRESSURE_REFERENCE_PA
 
 
 RUN_NAME = "healthy_mouse_capillary_tau1_grid_convergence_anchor003274_20260831"
@@ -37,7 +38,6 @@ BULK_NU_M2_S = 2.18e-6
 TARGET_U_MEAN_M_S = 0.35e-3
 TARGET_Q_M3_S = 2.7369132390905703e-15
 TARGET_MASS_FLOW_KG_S = 2.890180380479642e-12
-PRESSURE_REFERENCE_PA = 23622.320128
 OUTLET_GAUGE_PRESSURE_PA = {
     "outlet_01": 14.544978101,
     "outlet_02": 132.204549223,

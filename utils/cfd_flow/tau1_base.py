@@ -57,8 +57,11 @@ BULK_NU_M2_S = 2.18e-6
 TARGET_MEAN_VELOCITY_M_S = 0.35e-3
 TARGET_Q_M3_S = 2.7369132390905703e-15
 TARGET_MASS_FLOW_KG_S = 2.890180380479642e-12
-PRESSURE_REFERENCE_PA = 23622.32012800001
+CS2 = 1.0 / 3.0
 OLD_DT_S = 2.44140625e-8
+OLD_PRESSURE_REFERENCE_PA = 23622.320128
+TAU1_DT_S = DX_M**2 / (6.0 * NU_M2_S)
+PRESSURE_REFERENCE_PA = CS2 * (RHO_KG_M3 * DX_M**2 / TAU1_DT_S**2)
 MUSUBI_WSL = (
     "/home/lzy/apes-worktrees/musubi_mcclure_adaptive_flux_20260829_1300/"
     "build/musubi_adaptive_flux"
@@ -92,9 +95,60 @@ MESH_HASHES = {
 
 
 @dataclass(frozen=True, slots=True)
+class Tau1ReferencePressureContract:
+    """Map a numerical reference density to the current physical scaling."""
+
+    rho0_kg_m3: float = RHO_KG_M3
+    cs2: float = CS2
+    dx_m: float = DX_M
+    dt_s: float = TAU1_DT_S
+    reference_lattice_density: float = 1.0
+
+    @property
+    def pressure_conversion_pa(self) -> float:
+        return self.rho0_kg_m3 * self.dx_m**2 / self.dt_s**2
+
+    @property
+    def unit_density_pressure_pa(self) -> float:
+        return self.cs2 * self.pressure_conversion_pa
+
+    @property
+    def pressure_reference_pa(self) -> float:
+        return self.reference_lattice_density * self.unit_density_pressure_pa
+
+    def lattice_density(self, pressure_pa: float) -> float:
+        return float(pressure_pa) / self.unit_density_pressure_pa
+
+    def gauge_pressure(self, pressure_pa: float) -> float:
+        return float(pressure_pa) - self.pressure_reference_pa
+
+    def outlet_absolute_pressures(
+        self, gauge_pressures_pa: Mapping[str, float]
+    ) -> dict[str, float]:
+        return {
+            label: self.pressure_reference_pa + float(gauge)
+            for label, gauge in gauge_pressures_pa.items()
+        }
+
+    def as_evidence(self) -> dict[str, Any]:
+        values = asdict(self)
+        values.update(
+            {
+                "pressure_conversion_pa": self.pressure_conversion_pa,
+                "unit_density_pressure_pa": self.unit_density_pressure_pa,
+                "pressure_reference_pa": self.pressure_reference_pa,
+                "pressure_reference_role": (
+                    "LBM_NUMERICAL_OFFSET_NOT_PHYSIOLOGICAL_ABSOLUTE_PRESSURE"
+                ),
+            }
+        )
+        return values
+
+
+@dataclass(frozen=True, slots=True)
 class Tau1BaseRuntimeContract:
     dx_m: float = DX_M
-    dt_s: float = DX_M**2 / (6.0 * NU_M2_S)
+    dt_s: float = TAU1_DT_S
     rho_kg_m3: float = RHO_KG_M3
     nu_m2_s: float = NU_M2_S
     bulk_nu_m2_s: float = BULK_NU_M2_S
@@ -144,6 +198,14 @@ class Tau1BaseRuntimeContract:
             }
         )
         return values
+
+
+def historical_tau1_runtime_contract() -> Tau1BaseRuntimeContract:
+    """Return the immutable pressure offset used by the archived Tau1 Base."""
+
+    return Tau1BaseRuntimeContract(
+        pressure_reference_pa=OLD_PRESSURE_REFERENCE_PA
+    )
 
 
 def rescale_physical_window(old_iterations: int, *, old_dt_s: float = OLD_DT_S) -> int:
@@ -328,7 +390,7 @@ def fast_zero_run_preflight(project_root: Path) -> dict[str, Any]:
 
 def _physics_and_boundaries_lua(contract: Tau1BaseRuntimeContract) -> str:
     outlets = {
-        label: PRESSURE_REFERENCE_PA + gauge
+        label: contract.pressure_reference_pa + gauge
         for label, gauge in OUTLET_GAUGE_PRESSURE_PA.items()
     }
     return f"""dx = {contract.dx_m:.17g}
@@ -704,7 +766,7 @@ def audit_continuous_q_referee(project_root: Path) -> dict[str, Any]:
     pairs = _restart_pairs(referee / "restart")
     if set(pairs) != {0, 1}:
         raise RuntimeError(f"expected referee restart iterations 0 and 1, got {sorted(pairs)}")
-    contract = Tau1BaseRuntimeContract()
+    contract = historical_tau1_runtime_contract()
     pre = _state(pairs[0][1], contract=contract, with_velocity=False)
     post = _state(pairs[1][1], contract=contract, with_velocity=False)
     replay = replay_boundary_step(
@@ -712,7 +774,7 @@ def audit_continuous_q_referee(project_root: Path) -> dict[str, Any]:
         density_kg_m3=contract.rho_kg_m3,
         target_mass_flow_kg_s=contract.target_mass_flow_kg_s,
         outlet_pressures_pa={
-            label: PRESSURE_REFERENCE_PA + gauge
+            label: contract.pressure_reference_pa + gauge
             for label, gauge in OUTLET_GAUGE_PRESSURE_PA.items()
         },
     )
@@ -796,7 +858,7 @@ def audit_base_window(
         raise ValueError("Base steady audit requires start/mid/end restarts")
     root = Path(project_root).resolve()
     mesh = load_mesh_contract(_mesh_path(root), expected_cells=EXPECTED_CELLS)
-    contract = Tau1BaseRuntimeContract()
+    contract = historical_tau1_runtime_contract()
     iterations = [int(item[0]) for item in restart_triplet]
     if iterations[1] - iterations[0] != CONFIRMATION_INTERVAL or iterations[2] - iterations[1] != CONFIRMATION_INTERVAL:
         raise ValueError(f"restart triplet does not preserve physical windows: {iterations}")
@@ -810,7 +872,7 @@ def audit_base_window(
             density_kg_m3=contract.rho_kg_m3,
             target_mass_flow_kg_s=contract.target_mass_flow_kg_s,
             outlet_pressures_pa={
-                label: PRESSURE_REFERENCE_PA + gauge
+                label: contract.pressure_reference_pa + gauge
                 for label, gauge in OUTLET_GAUGE_PRESSURE_PA.items()
             },
         )
@@ -835,7 +897,7 @@ def audit_base_window(
     current_inlet_rho = float(replays[2]["details"]["inlet"]["rho"])
     pressure_scale = contract.rho_kg_m3 * contract.dx_m**2 / contract.dt_s**2 / 3.0
     inlet_absolute = current_inlet_rho * pressure_scale
-    inlet_gauge = inlet_absolute - PRESSURE_REFERENCE_PA
+    inlet_gauge = inlet_absolute - contract.pressure_reference_pa
     pressure_drops = {
         label: inlet_gauge - gauge for label, gauge in OUTLET_GAUGE_PRESSURE_PA.items()
     }
@@ -1055,7 +1117,7 @@ def forensic_boundary_window_audit(
 
     root = Path(project_root).resolve()
     run_root = _run_root(root)
-    contract = Tau1BaseRuntimeContract()
+    contract = historical_tau1_runtime_contract()
     pairs = _restart_pairs(_runtime_windows() / "restart")
     iterations = sorted(pairs)
     if len(iterations) < 3:
@@ -1080,7 +1142,7 @@ def forensic_boundary_window_audit(
             density_kg_m3=contract.rho_kg_m3,
             target_mass_flow_kg_s=contract.target_mass_flow_kg_s,
             outlet_pressures_pa={
-                label: PRESSURE_REFERENCE_PA + gauge
+                label: contract.pressure_reference_pa + gauge
                 for label, gauge in OUTLET_GAUGE_PRESSURE_PA.items()
             },
         )
@@ -1439,10 +1501,10 @@ def _run_dense_discrete_diagnostic_attempt(
         write_json(result_path, failure)
         return failure
 
-    contract = Tau1BaseRuntimeContract()
+    contract = historical_tau1_runtime_contract()
     mesh = load_mesh_contract(_mesh_path(root), expected_cells=EXPECTED_CELLS)
     outlet_pressures = {
-        label: PRESSURE_REFERENCE_PA + gauge
+        label: contract.pressure_reference_pa + gauge
         for label, gauge in OUTLET_GAUGE_PRESSURE_PA.items()
     }
     labels = ("wall", "inlet", "outlet_01", "outlet_02", "outlet_03")
@@ -1752,11 +1814,11 @@ def forensic_dense_discrete_failure(project_root: Path) -> dict[str, Any]:
     if sorted(diagnostic_pairs) != expected_iterations:
         raise RuntimeError("archived dense restart sequence is incomplete")
 
-    contract = Tau1BaseRuntimeContract()
+    contract = historical_tau1_runtime_contract()
     mesh = load_mesh_contract(_mesh_path(root), expected_cells=EXPECTED_CELLS)
     solid = runtime_solid_cells(mesh)
     outlet_pressures = {
-        label: PRESSURE_REFERENCE_PA + gauge
+        label: contract.pressure_reference_pa + gauge
         for label, gauge in OUTLET_GAUGE_PRESSURE_PA.items()
     }
     labels = ("wall", "inlet", "outlet_01", "outlet_02", "outlet_03")
@@ -2037,14 +2099,14 @@ def salvage_incomplete_dense_diagnostic(project_root: Path) -> dict[str, Any]:
     if start_iteration not in main_pairs:
         raise RuntimeError("the preserved long-Base start restart is unavailable")
 
-    contract = Tau1BaseRuntimeContract()
+    contract = historical_tau1_runtime_contract()
     mesh = load_mesh_contract(_mesh_path(root), expected_cells=EXPECTED_CELLS)
     start_binary = main_pairs[start_iteration][1]
     end_header, end_binary = diagnostic_pairs[end_iteration]
     start_state = _state(start_binary, contract=contract, with_velocity=False)
     end_state = _state(end_binary, contract=contract, with_velocity=False)
     outlet_pressures = {
-        label: PRESSURE_REFERENCE_PA + gauge
+        label: contract.pressure_reference_pa + gauge
         for label, gauge in OUTLET_GAUGE_PRESSURE_PA.items()
     }
     endpoint_replays = [
@@ -2877,7 +2939,7 @@ def audit_full_timestep_replay_8step(project_root: Path) -> dict[str, Any]:
     root = Path(project_root).resolve()
     run_root = _run_root(root)
     qc = run_root / "qc"
-    contract = Tau1BaseRuntimeContract()
+    contract = historical_tau1_runtime_contract()
     mesh = load_mesh_contract(_mesh_path(root), expected_cells=EXPECTED_CELLS)
     main_pairs = _restart_pairs(_runtime_windows() / "restart")
     archived_pairs = _restart_pairs(
@@ -2888,7 +2950,7 @@ def audit_full_timestep_replay_8step(project_root: Path) -> dict[str, Any]:
     if start_iteration not in main_pairs or sorted(archived_pairs) != expected:
         raise RuntimeError("the exact 3117927..3117935 restart sequence is incomplete")
     outlet_pressures = {
-        label: PRESSURE_REFERENCE_PA + gauge
+        label: contract.pressure_reference_pa + gauge
         for label, gauge in OUTLET_GAUGE_PRESSURE_PA.items()
     }
     start_pdf = _read_pdf(main_pairs[start_iteration][1])

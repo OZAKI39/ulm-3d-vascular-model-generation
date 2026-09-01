@@ -39,9 +39,9 @@ from .tau1_base import (
     MESH_HASHES,
     MUSUBI_SHA256,
     OUTLET_GAUGE_PRESSURE_PA,
-    PRESSURE_REFERENCE_PA,
     RUN_NAME,
     Tau1BaseRuntimeContract,
+    historical_tau1_runtime_contract,
     _mesh_path,
     _read_pdf,
     _restart_pairs,
@@ -125,7 +125,7 @@ def write_instrumented_phase_oracle(project_root: Path) -> dict[str, Any]:
     log_path = evidence_root / "musubi_stdout.log"
     parsed = _parse_instrumented_log(log_path)
     mesh = load_mesh_contract(_mesh_path(root), expected_cells=EXPECTED_CELLS)
-    contract = Tau1BaseRuntimeContract()
+    contract = historical_tau1_runtime_contract()
     main_pairs = _restart_pairs(_runtime_windows() / "restart")
     archived_pairs = _restart_pairs(
         run_root / "dense_diagnostic_corrected" / "attempt_1_8_steps" / "restart"
@@ -145,7 +145,7 @@ def write_instrumented_phase_oracle(project_root: Path) -> dict[str, Any]:
         density_kg_m3=contract.rho_kg_m3,
         target_mass_flow_kg_s=contract.target_mass_flow_kg_s,
         outlet_pressures_pa={
-            label: PRESSURE_REFERENCE_PA + gauge
+            label: contract.pressure_reference_pa + gauge
             for label, gauge in OUTLET_GAUGE_PRESSURE_PA.items()
         },
     )
