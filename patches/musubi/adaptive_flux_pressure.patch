@@ -6,6 +6,7 @@ index 1ee8086..f1203e9 100644
  ?? include 'tem/source/logMacros.inc'
  module mus_bc_fluid_module
    use iso_c_binding, only: c_f_pointer
++  use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
 +  use mpi
  
    ! include treelm modules
@@ -226,6 +227,8 @@ index 1ee8086..f1203e9 100644
 +    real(kind=rk) :: minPdfLocal, minPdf, maxSpeedLocal, maxSpeed
 +    real(kind=rk) :: fVal, rhoElem, momentum(3), speed
 +    integer :: bcMfr_pos, iElem, iDir, elemPos, QQ, iErr
++    integer :: activeCountLocal, activeCountGlobal
++    integer :: pointCount, sampleCountLocal, sampleCountGlobal
 +
 +    if (layout%fStencil%QQ /= 19 .or. layout%fStencil%QQN /= 18) then
 +      call tem_abort('adaptive_flux_pressure supports only D3Q19')
@@ -235,6 +238,34 @@ index 1ee8086..f1203e9 100644
 +    end if
 +    QQ = layout%fStencil%QQ
 +
++    ! remove_solid_in_bc rewrites the local active list but intentionally
++    ! leaves globBC%nElems_total as the original mesh population.  The
++    ! controller must average over the same active population sampled below
++    ! and used by native pressure_eq reconstruction.
++    activeCountLocal = globBC%nElems(iLevel)
++    pointCount = me%bc_states%massFlowRate%pntIndex%indexLvl(iLevel)%nVals
++    if (pointCount /= activeCountLocal) then
++      call tem_abort('adaptive_flux_pressure point population mismatch')
++    end if
++    if (activeCountLocal > 0) then
++      if (any(me%bc_states%massFlowRate%pntIndex%indexLvl(iLevel) &
++        &       %val(1:activeCountLocal) <= 0)) then
++        call tem_abort('adaptive_flux_pressure invalid point index')
++      end if
++      do iElem = 1, activeCountLocal
++        if (.not. any(globBC%elemLvl(iLevel)%bitmask%val(:, iElem))) then
++          call tem_abort('adaptive_flux_pressure inactive element in active list')
++        end if
++      end do
++    end if
++    call mpi_allreduce(activeCountLocal, activeCountGlobal, 1, mpi_integer, &
++      &                mpi_sum, tree%global%comm, iErr)
++    if (iErr /= mpi_success) then
++      call tem_abort('adaptive_flux_pressure active-count reduction failed')
++    end if
++    if (activeCountGlobal <= 0) then
++      call tem_abort('adaptive_flux_pressure has no active boundary elements')
++    end if
 +    bcMfr_pos = me%bc_states%massFlowRate%varPos
 +    call varSys%method%val(bcMfr_pos)%get_valOfIndex( &
 +      & varSys  = varSys,                             &
@@ -245,13 +276,25 @@ index 1ee8086..f1203e9 100644
 +      &           %val(1:globBC%nElems(iLevel)),      &
 +      & nVals   = globBC%nElems(iLevel),              &
 +      & res     = massFlowRate                        )
++    if (any(.not. ieee_is_finite(massFlowRate))) then
++      call tem_abort('adaptive_flux_pressure non-finite mass-flow sample')
++    end if
++    sampleCountLocal = size(massFlowRate)
++    call mpi_allreduce(sampleCountLocal, sampleCountGlobal, 1, mpi_integer, &
++      &                mpi_sum, tree%global%comm, iErr)
++    if (iErr /= mpi_success) then
++      call tem_abort('adaptive_flux_pressure sample-count reduction failed')
++    end if
++    if (sampleCountGlobal /= activeCountGlobal) then
++      call tem_abort('adaptive_flux_pressure global sample population mismatch')
++    end if
 +    massLocal = sum(massFlowRate)
 +    call mpi_allreduce(massLocal, massGlobal, 1, rk_mpi, mpi_sum, &
 +      &                tree%global%comm, iErr)
-+    if (globBC%nElems_total <= 0) then
-+      call tem_abort('adaptive_flux_pressure has no boundary elements')
++    if (iErr /= mpi_success) then
++      call tem_abort('adaptive_flux_pressure mass-flow reduction failed')
 +    end if
-+    targetMassFlow = massGlobal / real(globBC%nElems_total, kind=rk)
++    targetMassFlow = massGlobal / real(activeCountGlobal, kind=rk)
 +    targetFlux = targetMassFlow / physics%rho0 * physics%dtLvl(iLevel) &
 +      &          / physics%dxLvl(iLevel)**3
 +
@@ -286,8 +329,14 @@ index 1ee8086..f1203e9 100644
 +    end do
 +    call mpi_allreduce(alphaLocal, alpha, 1, rk_mpi, mpi_sum, &
 +      &                tree%global%comm, iErr)
++    if (iErr /= mpi_success) then
++      call tem_abort('adaptive_flux_pressure alpha reduction failed')
++    end if
 +    call mpi_allreduce(betaLocal, beta, 1, rk_mpi, mpi_sum, &
 +      &                tree%global%comm, iErr)
++    if (iErr /= mpi_success) then
++      call tem_abort('adaptive_flux_pressure beta reduction failed')
++    end if
 +    if (abs(alpha) <= tiny(alpha)) then
 +      call tem_abort('adaptive_flux_pressure alpha is zero')
 +    end if
@@ -332,10 +381,16 @@ index 1ee8086..f1203e9 100644
 +    end do
 +    call mpi_allreduce(minPdfLocal, minPdf, 1, rk_mpi, mpi_min, &
 +      &                tree%global%comm, iErr)
++    if (iErr /= mpi_success) then
++      call tem_abort('adaptive_flux_pressure minimum-pdf reduction failed')
++    end if
 +    call mpi_allreduce(maxSpeedLocal, maxSpeed, 1, rk_mpi, mpi_max, &
 +      &                tree%global%comm, iErr)
++    if (iErr /= mpi_success) then
++      call tem_abort('adaptive_flux_pressure maximum-speed reduction failed')
++    end if
 +    if (tree%global%myPart == 0) then
-+      write(logUnit(1),'(A,I0,7(A,ES24.16E3),A,I0)') &
++      write(logUnit(1),'(A,I0,7(A,ES24.16E3),2(A,I0))') &
 +        & 'ADAPTIVE_FLUX_PRESSURE iter=', sim_time%iter, &
 +        & ' target_lattice=', targetFlux,                &
 +        & ' controlled_lattice=', controlledFlux,        &
@@ -344,7 +399,8 @@ index 1ee8086..f1203e9 100644
 +        & ' pressure_pa=', pressure,                     &
 +        & ' max_lattice_velocity=', maxSpeed,            &
 +        & ' minimum_pdf=', minPdf,                       &
-+        & ' globBC_count=', globBC%nElems_total
++        & ' globBC_count=', activeCountGlobal,           &
++        & ' initial_globBC_count=', globBC%nElems_total
 +      flush(logUnit(1))
 +    end if
 +  end subroutine adaptive_flux_pressure

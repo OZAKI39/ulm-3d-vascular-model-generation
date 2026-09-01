@@ -1,0 +1,208 @@
+diff --git a/mus/source/bc/mus_bc_header_module.fpp b/mus/source/bc/mus_bc_header_module.fpp
+index 67dd0f4..1ad42a1 100644
+--- a/mus/source/bc/mus_bc_header_module.fpp
++++ b/mus/source/bc/mus_bc_header_module.fpp
+@@ -50,6 +50,7 @@ module mus_bc_header_module
+ 
+   ! include treelm modules
++  use mpi
+   use env_module,               only: rk, LabelLen
+   use tem_aux_module,           only: tem_abort
+   use tem_float_module,         only: operator(.feq.)
+@@ -1582,7 +1583,7 @@ contains
+   !!
+   subroutine check_solid_in_bc( minLevel, maxLevel, levelPointer, levelDesc, &
+-    &                           nElems, elemLvl, nValid, posInBCElem )
++    &                           nElems, elemLvl, nValid, posInBCElem, bcLabel )
+     ! -------------------------------------------------------------------- !
+     integer, intent(in) :: minLevel, maxLevel
+     !> Level Pointer ( position of a element in level desc )
+@@ -1598,7 +1599,9 @@ contains
+     integer, intent(out) :: nValid(minLevel:maxLevel)
+     !> positions of valid elements in globBC elements list
+     integer, intent(out) :: posInBCElem(maxval(nElems),minLevel:maxLevel)
++    character(len=*), intent(in) :: bcLabel
+     ! -------------------------------------------------------------------- !
+-    integer :: iElem, iLevel, posInTotal
++    integer :: iElem, iLevel, posInTotal, rank, iErr
++    integer :: activeLinks
+     ! -------------------------------------------------------------------- !
+ 
++    call mpi_comm_rank(MPI_COMM_WORLD, rank, iErr)
+     write(dbgUnit(1), *) 'Inside check solid in bc routine ...'
+     write(dbgUnit(1), *) 'If any solid are found, they are listed as below.'
+@@ -1611,6 +1614,14 @@ contains
+       do iElem = 1, nElems( iLevel )
+         posInTotal = levelPointer( elemLvl( iLevel )%elem%val( iElem ) )
+         if ( btest( levelDesc(iLevel)%property(posInTotal), prp_solid ) ) then
++          activeLinks = count(elemLvl(iLevel)%bitmask%val(:, iElem))
++          write(*,'(A,I0,A,A,A,I0,A,I0,A,I0,A,I0,A,I0,A)') &
++            & 'PREF_FIX_FILTER rank=', rank, ' bc=', trim(bcLabel), &
++            & ' level=', iLevel, ' original_iElem=', iElem, &
++            & ' posInTotal=', posInTotal, &
++            & ' treeID=', levelDesc(iLevel)%total(posInTotal), &
++            & ' active_links=', activeLinks, ' reason=solid'
++          flush(6)
+           write(dbgUnit(3), "(A,I2,2(A,I0))")    &
+             &  'found a Solid! level: ', iLevel, &
+             &  ', posInTotal: ', posInTotal,     &
+@@ -1629,6 +1640,11 @@ contains
+           &  ' Removed ', nElems(iLevel) - nValid(iLevel), &
+           &  ' elements on level ', iLevel
+       end if
++      write(*,'(A,I0,A,A,A,I0,A,I0,A,I0,A,I0)') &
++        & 'PREF_FIX_FILTER_COUNT rank=', rank, ' bc=', trim(bcLabel), &
++        & ' level=', iLevel, ' initial_local=', nElems(iLevel), &
++        & ' active_local=', nValid(iLevel), ' removed=', nElems(iLevel)-nValid(iLevel)
++      flush(6)
+       write(dbgUnit(3), *) 'nElems: ', nElems( iLevel )
+       write(dbgUnit(3), *) 'nValid: ', nValid( iLevel )
+ 
+diff --git a/mus/source/mus_field_module.f90 b/mus/source/mus_field_module.f90
+index 4e77218..76c785b 100644
+--- a/mus/source/mus_field_module.f90
++++ b/mus/source/mus_field_module.f90
+@@ -948,7 +948,8 @@ contains
+         ! check number of valid elements in each BC
+         call check_solid_in_bc( minLevel, maxLevel, levelPointer, levelDesc,   &
+           &                     globBC(iBC)%nElems, globBC(iBC)%elemLvl,       &
+-          &                     nValid, posInBCElem )
++          &                     nValid, posInBCElem,                           &
++          &                     trim(globBC(iBC)%label) )
+ 
+         ! remove solid in globBC%elemLvl
+         call rearrange_bc_elems( minLevel, maxLevel, nValid, posInBCElem, &
+diff --git a/mus/source/bc/mus_bc_fluid_module.fpp b/mus/source/bc/mus_bc_fluid_module.fpp
+index 731ddaa..2ab420e 100644
+--- a/mus/source/bc/mus_bc_fluid_module.fpp
++++ b/mus/source/bc/mus_bc_fluid_module.fpp
+@@ -41,6 +41,7 @@
+ ?? include 'tem/source/logMacros.inc'
+ module mus_bc_fluid_module
+   use iso_c_binding, only: c_f_pointer
++  use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
+   use mpi
+ 
+   ! include treelm modules
+@@ -985,7 +986,12 @@ module mus_bc_fluid_module
+     real(kind=rk) :: controlledFlux, relativeError, pressure, rhoBoundary
+     real(kind=rk) :: minPdfLocal, minPdf, maxSpeedLocal, maxSpeed
+     real(kind=rk) :: fVal, rhoElem, momentum(3), speed
+-    integer :: bcMfr_pos, iElem, iDir, elemPos, QQ, iErr
++    real(kind=rk) :: sampleMin, sampleMax
++    integer :: bcMfr_pos, iElem, iDir, elemPos, QQ, iErr, iPoint, jPoint
++    integer :: localActive, globalActive, pointCount, pointPositive
++    integer :: pointZero, pointNegative, pointDuplicates
++    integer :: elemsWithLinks, elemsWithoutLinks, activeLinks
++    integer :: sampleFinite, sampleNonzero, sampleZero
++    integer :: forensicLocal(12), forensicGlobal(12)
+ 
+     if (layout%fStencil%QQ /= 19 .or. layout%fStencil%QQN /= 18) then
+       call tem_abort('adaptive_flux_pressure supports only D3Q19')
+@@ -994,6 +1000,43 @@ module mus_bc_fluid_module
+     end if
+     QQ = layout%fStencil%QQ
+ 
++    localActive = globBC%nElems(iLevel)
++    pointCount = me%bc_states%massFlowRate%pntIndex%indexLvl(iLevel)%nVals
++    pointPositive = 0
++    pointZero = 0
++    pointNegative = 0
++    pointDuplicates = 0
++    do iPoint = 1, min(localActive, pointCount)
++      if (me%bc_states%massFlowRate%pntIndex%indexLvl(iLevel)%val(iPoint) > 0) then
++        pointPositive = pointPositive + 1
++      else if (me%bc_states%massFlowRate%pntIndex%indexLvl(iLevel)%val(iPoint) == 0) then
++        pointZero = pointZero + 1
++      else
++        pointNegative = pointNegative + 1
++      end if
++      do jPoint = 1, iPoint-1
++        if (me%bc_states%massFlowRate%pntIndex%indexLvl(iLevel)%val(iPoint) &
++          & == me%bc_states%massFlowRate%pntIndex%indexLvl(iLevel)%val(jPoint)) then
++          pointDuplicates = pointDuplicates + 1
++          exit
++        end if
++      end do
++    end do
++    elemsWithLinks = 0
++    elemsWithoutLinks = 0
++    activeLinks = 0
++    do iElem = 1, localActive
++      iDir = count(globBC%elemLvl(iLevel)%bitmask%val(:, iElem))
++      activeLinks = activeLinks + iDir
++      if (iDir > 0) then
++        elemsWithLinks = elemsWithLinks + 1
++      else
++        elemsWithoutLinks = elemsWithoutLinks + 1
++      end if
++    end do
++
+     bcMfr_pos = me%bc_states%massFlowRate%varPos
+     call varSys%method%val(bcMfr_pos)%get_valOfIndex( &
+       & varSys  = varSys,                             &
+@@ -1004,6 +1047,52 @@ module mus_bc_fluid_module
+       & nVals   = globBC%nElems(iLevel),              &
+       & res     = massFlowRate                        )
+     massLocal = sum(massFlowRate)
++    sampleFinite = count(ieee_is_finite(massFlowRate))
++    sampleNonzero = count(massFlowRate /= 0.0_rk)
++    sampleZero = count(massFlowRate == 0.0_rk)
++    if (localActive > 0) then
++      sampleMin = minval(massFlowRate)
++      sampleMax = maxval(massFlowRate)
++    else
++      sampleMin = 0.0_rk
++      sampleMax = 0.0_rk
++    end if
++    forensicLocal = [ localActive, pointCount, pointPositive, pointZero, &
++      & pointNegative, pointDuplicates, elemsWithLinks, elemsWithoutLinks, &
++      & activeLinks, sampleFinite, sampleNonzero, sampleZero ]
++    call mpi_allreduce(forensicLocal, forensicGlobal, size(forensicLocal), &
++      &                mpi_integer, mpi_sum, tree%global%comm, iErr)
++    call mpi_allreduce(localActive, globalActive, 1, mpi_integer, mpi_sum, &
++      &                tree%global%comm, iErr)
++    write(*,'(A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,I0)') &
++      & 'PREF_FIX_ADAPTIVE_INDEX rank=', tree%global%myPart, &
++      & ' local_active=', localActive, ' stale_total=', globBC%nElems_total, &
++      & ' pnt_nvals=', pointCount, ' pnt_positive=', pointPositive, &
++      & ' pnt_zero=', pointZero, ' pnt_negative=', pointNegative
++    write(*,'(A,I0,A,I0,A,I0,A,I0,A,I0,A,I0)') &
++      & 'PREF_FIX_ADAPTIVE_LINK rank=', tree%global%myPart, &
++      & ' duplicates=', pointDuplicates, ' elems_with_links=', elemsWithLinks, &
++      & ' elems_without_links=', elemsWithoutLinks, &
++      & ' active_links=', activeLinks, ' sample_finite=', sampleFinite
++    write(*,'(A,I0,A,I0,A,I0,A,ES24.16E3,A,ES24.16E3,A,ES24.16E3)') &
++      & 'PREF_FIX_ADAPTIVE_SAMPLE rank=', tree%global%myPart, &
++      & ' sample_nonzero=', sampleNonzero, ' sample_zero=', sampleZero, &
++      & ' sample_sum=', massLocal, ' sample_min=', sampleMin, &
++      & ' sample_max=', sampleMax
++    flush(6)
++    if (tree%global%myPart == 0) then
++      write(*,'(A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,I0)') &
++        & 'PREF_FIX_ADAPTIVE_GLOBAL active=', globalActive, &
++        & ' stale_total=', globBC%nElems_total, &
++        & ' pnt_nvals_sum=', forensicGlobal(2), &
++        & ' pnt_positive_sum=', forensicGlobal(3), &
++        & ' elems_with_links_sum=', forensicGlobal(7), &
++        & ' sample_finite_sum=', forensicGlobal(10)
++      flush(6)
++    end if
+     call mpi_allreduce(massLocal, massGlobal, 1, rk_mpi, mpi_sum, &
+       &                tree%global%comm, iErr)
+     if (globBC%nElems_total <= 0) then
+@@ -1011,6 +1100,13 @@ module mus_bc_fluid_module
+     end if
+     targetMassFlow = massGlobal / real(globBC%nElems_total, kind=rk)
++    if (tree%global%myPart == 0) then
++      write(*,'(A,ES24.16E3,A,ES24.16E3,A,I0,A,I0,A,ES24.16E3)') &
++        & 'PREF_FIX_ADAPTIVE_TARGET mass_global=', massGlobal, &
++        & ' target_mass_old=', targetMassFlow, &
++        & ' active_denominator=', globalActive, &
++        & ' stale_denominator=', globBC%nElems_total, &
++        & ' target_mass_active=', massGlobal/real(globalActive, kind=rk)
++      flush(6)
++    end if
+     targetFlux = targetMassFlow / physics%rho0 * physics%dtLvl(iLevel) &
+       &          / physics%dxLvl(iLevel)**3
+ 
