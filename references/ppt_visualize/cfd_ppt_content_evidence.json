@@ -1,0 +1,467 @@
+{
+  "status": "PASS",
+  "deck_story": "1D boundary data -> solver-ready surface -> validated 3D velocity and gauge pressure",
+  "exact_entry_points": [
+    {
+      "path": "cfd_1D_data_preprocess.py",
+      "sha256": "9f36b6c708888284b6b07428817bf37e76bd096cb698c281576424dea62e20e9",
+      "exists": true
+    },
+    {
+      "path": "cfd_surface_prepare.py",
+      "sha256": "7ae0ef5f8b2332a5d03d52c695b90fba2ecbd40dd803597ca4a0324468d7cd96",
+      "exists": true
+    },
+    {
+      "path": "cfd_flow_solve.py",
+      "sha256": "60aa46e74c8df4e02ee50f5588b47ede667ea6f294d0a2a5f395a25c04b0b8c3",
+      "exists": true
+    }
+  ],
+  "local_to_repository_filename_mapping": [],
+  "source_priority": "exact local entry points, implementation imports, current configs, then frozen run evidence",
+  "claims": [
+    {
+      "slide": 2,
+      "claim": "The workflow contains one 1D preprocessing stage, one surface-preparation stage, and one 3D flow stage.",
+      "value": 3,
+      "unit": "stages",
+      "source_file": "cfd_1D_data_preprocess.py",
+      "source_key": "entry-point sequence",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 2,
+      "claim": "The 1D stage transfers flow and pressure to the ROI ports.",
+      "value": true,
+      "unit": "boolean",
+      "source_file": "utils/cfd_preprocess/pipeline.py",
+      "source_key": "run_cfd_preprocess -> transfer_all_boundaries",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 2,
+      "claim": "The surface stage extends, remeshes, and caps the lumen boundary regions.",
+      "value": true,
+      "unit": "boolean",
+      "source_file": "utils/cfd_surface_prepare/vmtk_pipeline.py",
+      "source_key": "run_vmtk_surface_prepare",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 2,
+      "claim": "The 3D stage resolves steady velocity and gauge pressure from the accepted Base field.",
+      "value": true,
+      "unit": "boolean",
+      "source_file": "outputs/cfd_flow/production_tau1_base_promotion_anchor003274_20260902_013637/flow/production_steady_flow_field_manifest.json",
+      "source_key": "cell_arrays, source_restart_sha256",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 3,
+      "claim": "The sparse global vascular model contains 7,419 nodes.",
+      "value": 7419,
+      "unit": "nodes",
+      "source_file": "outputs/cfd_preprocess/global_to_roi_anchor003274_20260825_183628/qc/run_summary.json",
+      "source_key": "global_node_count",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 3,
+      "claim": "The ROI has one inlet and three outlets.",
+      "value": [
+        1,
+        3
+      ],
+      "unit": "ports",
+      "source_file": "outputs/cfd_preprocess/global_to_roi_anchor003274_20260825_183628/qc/run_summary.json",
+      "source_key": "assumed_inlet_count, assumed_outlet_count",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 3,
+      "claim": "Transferred inlet flow is 0.769 pL/s.",
+      "value": 0.7693508475538942,
+      "unit": "pL/s",
+      "source_file": "outputs/cfd_preprocess/global_to_roi_anchor003274_20260825_183628/qc/run_summary.json",
+      "source_key": "boundaries[ASSUMED_INLET].flow_rate_m3_s",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 3,
+      "claim": "Transferred outlet flows are 0.0485, 0.3815, and 0.3393 pL/s.",
+      "value": [
+        0.04848702368821955,
+        0.38152115839442513,
+        0.3393426654712128
+      ],
+      "unit": "pL/s",
+      "source_file": "outputs/cfd_preprocess/global_to_roi_anchor003274_20260825_183628/qc/run_summary.json",
+      "source_key": "boundaries[ASSUMED_OUTLET].flow_rate_m3_s",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 3,
+      "claim": "Transferred outlet flows sum to the inlet flow.",
+      "value": 0.7693508475538574,
+      "unit": "pL/s",
+      "source_file": "outputs/cfd_preprocess/global_to_roi_anchor003274_20260825_183628/qc/run_summary.json",
+      "source_key": "all_outlet_total_m3_s",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 3,
+      "claim": "Boundary-transfer mass mismatch is below 5e-14.",
+      "value": 4.7807368800426434e-14,
+      "unit": "dimensionless",
+      "source_file": "outputs/cfd_preprocess/global_to_roi_anchor003274_20260825_183628/qc/port_transfer_qc.json",
+      "source_key": "relative_boundary_mass_error",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 4,
+      "claim": "The final CFD surface is watertight and single-component.",
+      "value": [
+        true,
+        1
+      ],
+      "unit": "boolean,count",
+      "source_file": "outputs/cfd_surface_prepare/vmtk_tps_boundarynormal_crossseam_finalized_recovery_anchor003274_20260826_221611/qc/final_surface_qc.json",
+      "source_key": "topology.watertight, topology.component_count",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 4,
+      "claim": "The final surface has four solver boundaries.",
+      "value": 4,
+      "unit": "boundaries",
+      "source_file": "outputs/cfd_surface_prepare/vmtk_tps_boundarynormal_crossseam_finalized_recovery_anchor003274_20260826_221611/qc/final_surface_qc.json",
+      "source_key": "boundary_mapping.distal_boundary_count",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 4,
+      "claim": "No true self-intersections were detected.",
+      "value": 0,
+      "unit": "count",
+      "source_file": "outputs/cfd_surface_prepare/vmtk_tps_boundarynormal_crossseam_finalized_recovery_anchor003274_20260826_221611/qc/final_surface_qc.json",
+      "source_key": "intersection.true_self_intersection_count",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 4,
+      "claim": "Far-core vertices are exactly preserved after output casting.",
+      "value": 0.0,
+      "unit": "um",
+      "source_file": "outputs/cfd_surface_prepare/vmtk_tps_boundarynormal_crossseam_finalized_recovery_anchor003274_20260826_221611/qc/final_surface_qc.json",
+      "source_key": "far_core_exact_preservation.far_core_vertex_max_motion_um",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 4,
+      "claim": "Boundary-normal extensions and capping create clean solver boundaries while the far core is preserved.",
+      "value": true,
+      "unit": "boolean",
+      "source_file": "configs/cfd_surface_prepare.yaml",
+      "source_key": "vmtk.flowextensions, vmtk.cap, extension_mesh.far_core",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 5,
+      "claim": "Base lattice spacing is 0.20 um.",
+      "value": 0.19999999999999998,
+      "unit": "um",
+      "source_file": "outputs/cfd_flow/production_tau1_base_promotion_anchor003274_20260902_013637/input/production_numerical_contract.json",
+      "source_key": "dx_m",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 5,
+      "claim": "The diffusive time step is 2.039 ns.",
+      "value": 2.038735983690112,
+      "unit": "ns",
+      "source_file": "outputs/cfd_flow/production_tau1_base_promotion_anchor003274_20260902_013637/input/production_numerical_contract.json",
+      "source_key": "dt_s",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 5,
+      "claim": "The relaxation time tau is 1.0.",
+      "value": 1.0,
+      "unit": "dimensionless",
+      "source_file": "outputs/cfd_flow/production_tau1_base_promotion_anchor003274_20260902_013637/input/production_numerical_contract.json",
+      "source_key": "tau",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 5,
+      "claim": "The Base mesh contains 182,320 cells.",
+      "value": 182320,
+      "unit": "cells",
+      "source_file": "outputs/cfd_flow/production_tau1_base_promotion_anchor003274_20260902_013637/flow/production_steady_flow_field_manifest.json",
+      "source_key": "cell_count",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 5,
+      "claim": "Target inflow is 0.164 nL/min.",
+      "value": 0.1642147943454342,
+      "unit": "nL/min",
+      "source_file": "outputs/cfd_flow/production_tau1_base_promotion_anchor003274_20260902_013637/input/production_numerical_contract.json",
+      "source_key": "target_volume_flow_m3_s",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 5,
+      "claim": "The solver uses D3Q19 BGK lattice-Boltzmann dynamics.",
+      "value": true,
+      "unit": "boolean",
+      "source_file": "configs/cfd_flow.yaml",
+      "source_key": "solver model configuration",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 5,
+      "claim": "Adaptive flux-pressure control drives the inlet and three gauge-pressure conditions drive the outlets.",
+      "value": [
+        "adaptive_flux_pressure",
+        "pressure_eq"
+      ],
+      "unit": "boundary schemes",
+      "source_file": "outputs/cfd_flow/production_tau1_base_promotion_anchor003274_20260902_013637/input/production_numerical_contract.json",
+      "source_key": "inlet_boundary, outlet_boundary",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 6,
+      "claim": "The accepted Base field is at iteration 598,755.",
+      "value": 598755,
+      "unit": "iteration",
+      "source_file": "outputs/cfd_flow/production_tau1_base_promotion_anchor003274_20260902_013637/qc/production_primary_metrics.json",
+      "source_key": "iteration",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 6,
+      "claim": "Mean physical speed is 0.177 mm/s.",
+      "value": 0.17678388724062852,
+      "unit": "mm/s",
+      "source_file": "outputs/cfd_flow/production_tau1_base_promotion_anchor003274_20260902_013637/qc/production_primary_metrics.json",
+      "source_key": "mean_speed_m_s",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 6,
+      "claim": "Higher-speed colors are localized around the inlet and selected branch segments.",
+      "value": true,
+      "unit": "qualitative visual observation",
+      "source_file": "outputs/cfd_flow/production_tau1_base_promotion_anchor003274_20260902_013637/visualization/interactive_v3_redesign/01_after_velocity_overview.json",
+      "source_key": "screenshot, scalar, display_range",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 7,
+      "claim": "Inlet flow is 0.164 nL/min.",
+      "value": 0.16370359786987818,
+      "unit": "nL/min",
+      "source_file": "outputs/cfd_flow/production_tau1_base_promotion_anchor003274_20260902_013637/qc/production_primary_metrics.json",
+      "source_key": "Qin_m3_s",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 7,
+      "claim": "Outlet flow is 0.163 nL/min.",
+      "value": 0.16345085442467777,
+      "unit": "nL/min",
+      "source_file": "outputs/cfd_flow/production_tau1_base_promotion_anchor003274_20260902_013637/qc/production_primary_metrics.json",
+      "source_key": "Qout_m3_s",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 7,
+      "claim": "Physical volume closure is 0.154%.",
+      "value": 0.15439089213012042,
+      "unit": "%",
+      "source_file": "outputs/cfd_flow/production_tau1_base_promotion_anchor003274_20260902_013637/qc/production_primary_metrics.json",
+      "source_key": "physical_volume_closure",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 7,
+      "claim": "Outlet flow fractions are 5.2%, 73.2%, and 21.6%.",
+      "value": [
+        5.20383163811772,
+        73.18288235826557,
+        21.61328600361672
+      ],
+      "unit": "%",
+      "source_file": "outputs/cfd_flow/production_tau1_base_promotion_anchor003274_20260902_013637/qc/production_primary_metrics.json",
+      "source_key": "flow_fractions",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 7,
+      "claim": "Inlet gauge pressure is 531 Pa.",
+      "value": 531.4319468452595,
+      "unit": "Pa",
+      "source_file": "outputs/cfd_flow/production_tau1_base_promotion_anchor003274_20260902_013637/qc/production_primary_metrics.json",
+      "source_key": "inlet_gauge_pressure_pa",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 7,
+      "claim": "The visible pressure field is gauge pressure, not solver absolute pressure.",
+      "value": "pressure_gauge_pa",
+      "unit": "field",
+      "source_file": "outputs/cfd_flow/production_tau1_base_promotion_anchor003274_20260902_013637/visualization/interactive_v3_redesign/02_after_pressure_overview.json",
+      "source_key": "array, units",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 7,
+      "claim": "The outlet split is strongly asymmetric.",
+      "value": {
+        "outlet_01": 0.052038316381177195,
+        "outlet_02": 0.7318288235826557,
+        "outlet_03": 0.21613286003616722
+      },
+      "unit": "dimensionless fractions",
+      "source_file": "outputs/cfd_flow/production_tau1_base_promotion_anchor003274_20260902_013637/qc/production_primary_metrics.json",
+      "source_key": "flow_fractions",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 8,
+      "claim": "The Full V2 mass-identity residual is 7.91e-10 against a 1e-8 gate.",
+      "value": [
+        7.913943402747673e-10,
+        1e-08
+      ],
+      "unit": "dimensionless",
+      "source_file": "outputs/cfd_flow/production_tau1_base_promotion_anchor003274_20260902_013637/qc/production_full_timestep_v2.json",
+      "source_key": "residual, gate",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 8,
+      "claim": "Particle populations remain positive.",
+      "value": 0.027777432554529028,
+      "unit": "lattice PDF",
+      "source_file": "outputs/cfd_flow/production_tau1_base_promotion_anchor003274_20260902_013637/qc/production_steady_qc.json",
+      "source_key": "minimum_pdf",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 8,
+      "claim": "The maximum lattice speed is below 0.05.",
+      "value": [
+        1.227357835717639e-05,
+        0.05
+      ],
+      "unit": "lattice units",
+      "source_file": "outputs/cfd_flow/production_tau1_base_promotion_anchor003274_20260902_013637/qc/production_steady_qc.json",
+      "source_key": "maximum_lattice_speed and production gate",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 8,
+      "claim": "The maximum Coarse-to-Base difference across reported observables is 1.45%.",
+      "value": 1.4489452134840546,
+      "unit": "%",
+      "source_file": "outputs/cfd_flow/production_tau1_base_promotion_anchor003274_20260902_013637/qc/two_grid_resolution_sensitivity.json",
+      "source_key": "maximum_absolute_percent_difference",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 8,
+      "claim": "Formal three-grid convergence was not completed.",
+      "value": false,
+      "unit": "boolean",
+      "source_file": "outputs/cfd_flow/production_tau1_base_promotion_anchor003274_20260902_013637/qc/two_grid_resolution_sensitivity.json",
+      "source_key": "formal_asymptotic_grid_convergence",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 8,
+      "claim": "Fine mesh, controller, and 5,000-step safety passed; Fine steady state was not completed.",
+      "value": {
+        "mesh": "PASS",
+        "controller_fix": "PASS",
+        "safety_5000": "PASS",
+        "steady": "NOT_COMPLETED_RESOURCE_BUDGET",
+        "classification": "FINE_LONG_RUN_TERMINATED_BY_RESOURCE_BUDGET",
+        "scientific_failure": false
+      },
+      "unit": "status",
+      "source_file": "outputs/cfd_flow/production_tau1_base_promotion_anchor003274_20260902_013637/qc/run_summary.json",
+      "source_key": "fine_status",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 8,
+      "claim": "Wall-shear-stress validation is deferred.",
+      "value": "DEFERRED_TO_POST_GRID_PRODUCTION_VALIDATION",
+      "unit": "status",
+      "source_file": "outputs/cfd_flow/production_tau1_base_promotion_anchor003274_20260902_013637/qc/run_summary.json",
+      "source_key": "WSS_status",
+      "source_status": "PASS",
+      "verified": true
+    },
+    {
+      "slide": 8,
+      "claim": "The accepted Base field is the promoted production flow solution.",
+      "value": "VALIDATED_RESEARCH_BASE_ACCEPTED_RESTART",
+      "unit": "status",
+      "source_file": "outputs/cfd_flow/production_tau1_base_promotion_anchor003274_20260902_013637/qc/run_summary.json",
+      "source_key": "steady_solution_source, execution_mode",
+      "source_status": "PASS",
+      "verified": true
+    }
+  ],
+  "all_claims_verified": true,
+  "new_solver_calls": {
+    "seeder": 0,
+    "musubi": 0,
+    "one_d_solver": 0,
+    "surface_generation": 0,
+    "cfd_solve": 0
+  }
+}
