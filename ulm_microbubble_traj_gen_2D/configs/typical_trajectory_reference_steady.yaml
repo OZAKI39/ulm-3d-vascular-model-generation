@@ -1,0 +1,114 @@
+﻿# Steady-flow reference trajectory for the 2x2 typical-mode GIF.
+#
+# This reproduces the short full-diagnostics reference run used by the
+# visualization while explicitly disabling cardiac pulsatility.  Reuse the
+# accepted field in results/20260723_082654 when generating it.
+
+random_seed: 42
+
+input:
+  model_dir: ulm_vascular_model_generator/vessel_swc_models/20260726_013533_071076_seed_105
+
+output:
+  results_dir: figure_draw/outputs
+  timestamp_format: steady_reference_demo_data
+  save_run_config: true
+  save_npz: true
+
+domain:
+  grid_spacing_um: 1.5
+  padding_um: 80.0
+  min_lumen_radius_cells: 0.5
+  min_resolved_diameter_cells: 10.0
+  max_grid_cells: 4000000
+
+field:
+  hybrid_finite_element_distance_um: 2.0
+  hybrid_transition_width_um: 2.0
+  effective_thickness_um: 10.0
+  boundary_depth_cells: 1.5
+  flux_tolerance: 1.0e-3
+  kinematic_viscosity_um2_s: 3.0e6
+
+particles:
+  inlet_number_concentration_mb_per_ml: 20000000.0
+  n_steps: 1000
+  dt_s: 0.001
+  bubble_diameter_min_um: 1.5
+  bubble_diameter_max_um: 2.5
+  contact_geometry_tolerance_um: 0.0015
+  contact_max_time_refinements: 12
+  wall_contact_threshold_um: 0.05
+  max_unique_bubbles: 0
+  max_particle_frame_records: 5000000
+  acceleration_backend: auto
+
+particle_dynamics:
+  time_integrator: euler
+  integration_substeps: 80
+  near_wall_enabled: true
+  collisions_enabled: true
+  xi_min: 1.0e-3
+  xi_near: 0.1
+  xi_far: 1.0
+  collision_layer_um: 0.05
+  collision_relaxation_time_s: 0.01
+  neighbor_search: auto
+  store_full_diagnostics: true
+  two_wall_warning_gap_ratio: 1.0
+
+cardiac_pulsatility:
+  enabled: false
+  waveform: synthetic_ecg_envelope
+  bpm: 300.0
+  pulse_propagation_velocity_um_s: 25000.0
+  initial_phase_fraction: 0.0
+  waveform_samples_per_cycle: 2048
+  preserve_cycle_mean_flow: true
+  modulation_strength: 0.0
+
+molecular_target_selection:
+  default_mode: manual
+  influence_region_endothelial_wall_area_fraction: 0.10
+  target_positive_wall_fraction_within_influence: 0.35
+  target_correlation_length_um: 7.5
+  random_seed: 42
+  random_field_modes: 512
+
+molecular_target:
+  enabled: true
+  region_mode: continuous_wall_npz
+  mask_npz_path: ../study_inputs/fixed_target_v16_20260720/continuous_wall_target.npz
+  mask_array_key: target_mask
+  x_coordinates_key: x_um
+  z_coordinates_key: z_um
+  target_density_molecules_per_m2: 2.70e14
+
+molecular_binding:
+  enabled: true
+  model: deterministic_mean_field
+  ligand_density_molecules_per_m2: 1.00e14
+  capture_distance_um: 0.0435
+  rest_length_um: 0.029
+  association_rate_m2_per_molecule_s: 3.7037037037037035e-15
+  zero_force_dissociation_rate_s: 0.06
+  bond_stiffness_pn_per_um: 10000.0
+  reactive_compliance_nm: 0.039
+  temperature_k: 310.0
+  mean_field_warning_count: 10.0
+  bell_exponent_limit: 80.0
+
+binding_scenario_sweep:
+  enabled: false
+  da_on_reference_time_s: 0.0
+  da_on_levels: []
+  capture_distance_to_rest_length_ratios: []
+  target_density_molecules_per_um2_levels: []
+  ligand_density_molecules_per_um2_levels: []
+
+quick_test:
+  enabled: false
+  grid_spacing_um: 8.0
+  n_steps: 40
+  dt_s: 0.001
+  integration_substeps: 2
