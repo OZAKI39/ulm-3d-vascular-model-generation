@@ -7,6 +7,7 @@ It validates and reads the accepted production VTU without modifying it on disk.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 from dataclasses import dataclass
@@ -22,7 +23,7 @@ from matplotlib.colors import LinearSegmentedColormap
 from PIL import Image
 from scipy.spatial import cKDTree
 
-from utils.cfd_flow.io import read_json, sha256_file, write_json
+from utils.cfd_flow.io import read_json, sha256_file
 from utils.cfd_flow.visualization import _nearest_cell_streamlines
 
 
@@ -40,19 +41,18 @@ REQUIRED_ARRAYS = (
 FIELD_ORDER = ("velocity", "pressure", "rho")
 PORT_ORDER = ("inlet", "outlet_01", "outlet_02", "outlet_03")
 PORT_LABELS = {
-    "inlet": "INLET",
-    "outlet_01": "OUTLET 01",
-    "outlet_02": "OUTLET 02",
-    "outlet_03": "OUTLET 03",
+    "inlet": "Inlet",
+    "outlet_01": "Outlet 1",
+    "outlet_02": "Outlet 2",
+    "outlet_03": "Outlet 3",
 }
 PORT_COLORS = {
-    "inlet": "#176B68",
-    "outlet_01": "#4C78A8",
-    "outlet_02": "#D18F2F",
-    "outlet_03": "#7A5195",
+    "inlet": "#0072B2",
+    "outlet_01": "#009E73",
+    "outlet_02": "#E69F00",
+    "outlet_03": "#CC79A7",
 }
-BACKGROUND = "#FAF8F3"
-CONTEXT_COLOR = "#AEB5BA"
+RENDER_INTERPOLATION = "CELL_TO_POINT_DISPLAY_ONLY"
 
 
 class VisualizerInputError(RuntimeError):
@@ -72,6 +72,62 @@ class VisualConfig:
     full_range: bool = False
     debug_cells: bool = False
     numerical_pressure_debug: bool = False
+    projection: str = "parallel"
+    ui_mode: str = "clean"
+
+
+@dataclass(frozen=True, slots=True)
+class AcademicStyle:
+    """Central publication styling; no global PyVista theme is mutated."""
+
+    background: str = "#FBFBFA"
+    text_color: str = "#202124"
+    muted_color: str = "#5F6368"
+    context_color: str = "#D5D9DD"
+    context_opacity: float = 0.10
+    title_font_size: int = 13
+    metadata_font_size: int = 9
+    port_font_size: int = 10
+    scalar_title_font_size: int = 11
+    scalar_label_font_size: int = 9
+    scalar_bar_x: float = 0.945
+    scalar_bar_y: float = 0.31
+    scalar_bar_width: float = 0.028
+    scalar_bar_height: float = 0.38
+    scalar_bar_labels: int = 5
+    camera_padding: float = 1.04
+
+
+@dataclass(frozen=True, slots=True)
+class AcademicLayout:
+    """Normalized layout shared by interactive and publication renders."""
+
+    title_position: str = "upper_left"
+    help_position: str = "lower_left"
+    info_position: str = "upper_right"
+    pick_position: str = "lower_right"
+    orientation_viewport: tuple[float, float, float, float] = (
+        0.015,
+        0.015,
+        0.09,
+        0.105,
+    )
+
+    def scalar_bar_args(self, field: "FieldSpec", style: AcademicStyle) -> dict[str, Any]:
+        return {
+            "title": f"{field.title}\n{field.units}",
+            "vertical": True,
+            "position_x": style.scalar_bar_x,
+            "position_y": style.scalar_bar_y,
+            "width": style.scalar_bar_width,
+            "height": style.scalar_bar_height,
+            "n_labels": style.scalar_bar_labels,
+            "title_font_size": style.scalar_title_font_size,
+            "label_font_size": style.scalar_label_font_size,
+            "color": style.text_color,
+            "fmt": "%.3g",
+            "outline": False,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,7 +170,10 @@ class VisualData:
     run_summary: dict[str, Any]
     physical_flux: dict[str, Any]
     plane_contract: dict[str, Any]
+    # grid_um retains the original cell-centred quantitative arrays.
     grid_um: pv.UnstructuredGrid
+    # display_grid_um contains point-interpolated scalars for rendering only.
+    display_grid_um: pv.UnstructuredGrid
     surface_um: pv.PolyData
     centers_um: np.ndarray
     center_tree_um: cKDTree
@@ -122,6 +181,8 @@ class VisualData:
     ranges: dict[str, FieldRange]
     streamlines_um: pv.PolyData | None
     valid_streamline_count: int
+    original_cell_array_sha256: dict[str, str]
+    rendering_scalar_interpolation: str = RENDER_INTERPOLATION
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -144,6 +205,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-ports", action="store_true")
     parser.add_argument("--full-range", action="store_true")
     parser.add_argument("--publication-screenshot", type=Path)
+    parser.add_argument("--publication-suite", type=Path)
+    parser.add_argument(
+        "--projection", choices=("parallel", "perspective"), default="parallel"
+    )
+    parser.add_argument("--ui-mode", choices=("clean", "analysis"), default="clean")
     parser.add_argument("--debug-cells", action="store_true")
     parser.add_argument("--show-numerical-pressure-debug", action="store_true")
     parser.add_argument("--off-screen", action="store_true")
@@ -158,6 +224,15 @@ def _load_json_object(path: Path, role: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise VisualizerInputError(f"{role} is not a JSON object: {path}")
     return value
+
+
+def _write_viewer_json(path: Path, value: dict[str, Any]) -> None:
+    """Write portable UTF-8/LF viewer evidence without touching production records."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="\n") as stream:
+        json.dump(value, stream, indent=2, ensure_ascii=False)
+        stream.write("\n")
 
 
 def _candidate_timestamp(run_dir: Path) -> float:
@@ -247,6 +322,17 @@ def calculate_field_range(values: np.ndarray) -> FieldRange:
     if not low < high:
         low, high = raw_min, raw_max
     return FieldRange(raw_min, raw_max, low, high)
+
+
+def _array_sha256(values: np.ndarray) -> str:
+    """Hash an in-memory scientific array without changing its representation."""
+
+    array = np.ascontiguousarray(values)
+    digest = hashlib.sha256()
+    digest.update(str(array.dtype).encode("ascii"))
+    digest.update(np.asarray(array.shape, dtype=np.int64).tobytes())
+    digest.update(array.tobytes())
+    return digest.hexdigest()
 
 
 def _pressure_colormap(low: float, high: float) -> Any:
@@ -464,6 +550,29 @@ def build_streamlines(
     return poly, len(lines)
 
 
+def _build_display_grid(grid_um: pv.UnstructuredGrid) -> pv.UnstructuredGrid:
+    """Interpolate scalars for display while retaining cell arrays in the copy."""
+
+    display = grid_um.cell_data_to_point_data(pass_cell_data=True)
+    if not isinstance(display, pv.UnstructuredGrid):
+        display = display.cast_to_unstructured_grid()
+    return display
+
+
+def _build_overview_surface(display_grid_um: pv.UnstructuredGrid) -> pv.PolyData:
+    """Extract an unsmoothed surface and compute shading normals only."""
+
+    surface = display_grid_um.extract_surface(algorithm="dataset_surface")
+    return surface.compute_normals(
+        cell_normals=False,
+        point_normals=True,
+        consistent_normals=True,
+        auto_orient_normals=True,
+        split_vertices=False,
+        inplace=False,
+    )
+
+
 def load_and_validate_data(
     run_dir: Path,
     vtu_path: Path,
@@ -521,15 +630,20 @@ def load_and_validate_data(
             seed_count=config.streamline_seeds,
         )
 
+    original_hashes = {
+        name: _array_sha256(np.asarray(grid.cell_data[name])) for name in REQUIRED_ARRAYS
+    }
+
     # Centralized display-only coordinate conversion; the source VTU is never saved.
     grid.points = np.asarray(grid.points, dtype=np.float64) * 1.0e6
     centers_um = centers_m * 1.0e6
-    surface = grid.extract_surface(algorithm="dataset_surface")
+    display_grid = _build_display_grid(grid)
+    surface = _build_overview_surface(display_grid)
     pressure_range = calculate_field_range(grid.cell_data["pressure_gauge_pa"])
     pressure_clim = pressure_range.selected(config.full_range)
     fields: dict[str, FieldSpec] = {
         "velocity": FieldSpec(
-            "velocity_magnitude_mm_s", "Velocity magnitude", "mm/s", "viridis"
+            "velocity_magnitude_mm_s", "Velocity magnitude", "mm s⁻¹", "viridis"
         ),
         "pressure": FieldSpec(
             "pressure_gauge_pa",
@@ -537,7 +651,7 @@ def load_and_validate_data(
             "Pa",
             _pressure_colormap(*pressure_clim),
         ),
-        "rho": FieldSpec("rho_lattice", "Lattice density", "dimensionless", "cividis"),
+        "rho": FieldSpec("rho_lattice", "Lattice density", "–", "cividis"),
     }
     if config.numerical_pressure_debug:
         fields["numerical-pressure"] = FieldSpec(
@@ -561,6 +675,7 @@ def load_and_validate_data(
         physical_flux=flux,
         plane_contract=plane_contract,
         grid_um=grid,
+        display_grid_um=display_grid,
         surface_um=surface,
         centers_um=centers_um,
         center_tree_um=cKDTree(centers_um),
@@ -568,15 +683,99 @@ def load_and_validate_data(
         ranges=ranges,
         streamlines_um=streamlines,
         valid_streamline_count=valid_streamlines,
+        original_cell_array_sha256=original_hashes,
     )
 
 
-def _camera_record(plotter: pv.Plotter) -> dict[str, list[float]]:
+# Publication-grade viewer implementation follows.
+
+
+def _normalise(vector: np.ndarray) -> np.ndarray:
+    length = float(np.linalg.norm(vector))
+    if length <= np.finfo(float).tiny:
+        raise VisualizerInputError("Cannot construct a camera from degenerate geometry")
+    return vector / length
+
+
+def _stable_axis(vector: np.ndarray) -> np.ndarray:
+    """Remove the arbitrary sign from a PCA eigenvector."""
+
+    axis = _normalise(np.asarray(vector, dtype=np.float64))
+    largest = int(np.argmax(np.abs(axis)))
+    return axis if axis[largest] >= 0.0 else -axis
+
+
+def academic_camera_parameters(
+    points_um: np.ndarray,
+    aspect: float,
+    *,
+    padding: float = 1.04,
+) -> dict[str, Any]:
+    """Return a deterministic PCA camera fitted to vessel points only."""
+
+    points = np.asarray(points_um, dtype=np.float64)
+    if points.ndim != 2 or points.shape[1] != 3 or len(points) < 4:
+        raise VisualizerInputError("Vessel surface has insufficient points for camera fit")
+    center = np.mean(points, axis=0)
+    centered = points - center
+    _, eigenvectors = np.linalg.eigh(np.cov(centered, rowvar=False))
+    view_out = _stable_axis(eigenvectors[:, 0])
+    axis_major = _stable_axis(eigenvectors[:, 2])
+    axis_minor = _stable_axis(eigenvectors[:, 1])
+    view_to_focal = -view_out
+    best: tuple[float, np.ndarray, np.ndarray, float, float, float] | None = None
+    for angle in np.linspace(0.0, math.pi, 361, endpoint=False):
+        view_up = _normalise(math.cos(angle) * axis_major + math.sin(angle) * axis_minor)
+        right = _normalise(np.cross(view_to_focal, view_up))
+        vertical_extent = float(np.ptp(centered @ view_up))
+        horizontal_extent = float(np.ptp(centered @ right))
+        parallel_scale = padding * max(
+            vertical_extent / (2.0 * 0.76),
+            horizontal_extent / (2.0 * max(aspect, 1.0e-9) * 0.72),
+        )
+        height_coverage = vertical_extent / (2.0 * parallel_scale)
+        width_coverage = horizontal_extent / (2.0 * parallel_scale * aspect)
+        penalty = (
+            (height_coverage - 0.72) ** 2
+            + (width_coverage - 0.62) ** 2
+            + 6.0 * max(0.0, 0.65 - height_coverage) ** 2
+            + 6.0 * max(0.0, 0.55 - width_coverage) ** 2
+        )
+        candidate = (
+            penalty,
+            view_up,
+            right,
+            parallel_scale,
+            width_coverage,
+            height_coverage,
+        )
+        if best is None or candidate[0] < best[0]:
+            best = candidate
+    assert best is not None
+    _, view_up, right, parallel_scale, width_coverage, height_coverage = best
+    diagonal = float(np.linalg.norm(np.ptp(points, axis=0)))
+    distance = max(diagonal * 3.0, parallel_scale * 4.0)
+    return {
+        "position_um": center + view_out * distance,
+        "focal_point_um": center,
+        "view_up": view_up,
+        "view_out": view_out,
+        "right": right,
+        "parallel_scale": float(parallel_scale),
+        "projected_width_fraction": float(width_coverage),
+        "projected_height_fraction": float(height_coverage),
+        "bounds_um": [float(value) for value in pv.PolyData(points).bounds],
+    }
+
+
+def _camera_record(plotter: pv.Plotter) -> dict[str, Any]:
     position, focal_point, view_up = plotter.camera_position
     return {
         "position_um": [float(value) for value in position],
         "focal_point_um": [float(value) for value in focal_point],
         "view_up": [float(value) for value in view_up],
+        "parallel_scale_um": float(plotter.camera.parallel_scale),
+        "projection": "parallel" if plotter.camera.parallel_projection else "perspective",
     }
 
 
@@ -604,7 +803,7 @@ def _image_qc(path: Path) -> dict[str, Any]:
 
 
 class AcademicCFDViewer:
-    """PyVista/VTK desktop viewer with deliberately compact academic controls."""
+    """Figure-first PyVista viewer for validated production CFD evidence."""
 
     def __init__(
         self,
@@ -613,159 +812,280 @@ class AcademicCFDViewer:
         *,
         off_screen: bool = False,
         publication: bool = False,
+        style: AcademicStyle | None = None,
+        layout: AcademicLayout | None = None,
     ) -> None:
         self.data = data
         self.config = config
         self.publication = publication
+        self.style = style or AcademicStyle()
+        self.layout = layout or AcademicLayout()
         self.current_field = config.initial_scalar
         self.full_range = config.full_range
-        self.plane_mode = "clip"
-        self.plane_origin = np.asarray(data.grid_um.center, dtype=float)
+        self.visual_mode = "overview"
+        self.plane_mode = self.visual_mode
+        self.plane_origin = np.asarray(data.surface_um.center, dtype=float)
         self.plane_normal = np.array((1.0, 0.0, 0.0))
+        self.projection = config.projection
         self.show_vectors = False
-        self.show_streamlines = bool(
-            config.build_streamlines and data.valid_streamline_count > 0
-        )
-        self.show_outlet_split = False
-        self.show_pressure_drop = False
-        self.show_help = not publication
+        self.show_streamlines = False
+        self.show_port_normals = False
+        self.show_help = False
+        self.show_info = config.ui_mode == "analysis"
         self.show_edges = False
-        size = (
-            max(config.width, 2400) if publication else config.width,
-            max(config.height, 1600) if publication else config.height,
-        )
-        self.plotter = pv.Plotter(off_screen=off_screen or publication, window_size=size)
-        self.plotter.set_background(BACKGROUND)
+        self.bounding_box_visible = False
+        self.plane_widget: Any = None
+        self.plane_widget_visible = False
+        self.picked_marker_visible = False
+        self.picked_point_um: np.ndarray | None = None
+        self.picked_cell_id: int | None = None
         self.field_actor: Any = None
         self.context_actor: Any = None
         self.glyph_mesh: pv.PolyData | None = None
+        self.streamline_tubes: pv.PolyData | None = None
+        size = (
+            (max(config.width, 3200), max(config.height, 2200))
+            if publication
+            else (config.width, config.height)
+        )
+        self.plotter = pv.Plotter(off_screen=off_screen or publication, window_size=size)
+        self.plotter.set_background(self.style.background)
+        self.camera_parameters = academic_camera_parameters(
+            np.asarray(data.surface_um.points),
+            size[0] / size[1],
+            padding=self.style.camera_padding,
+        )
+        self.anti_aliasing = "none"
+        self.depth_peeling = False
+        self._configure_render_quality()
         self._build_scene()
 
-    def _current_limits(self) -> tuple[float, float]:
-        return self.data.ranges[self.current_field].selected(self.full_range)
-
-    def _field_subset(self) -> pv.DataSet:
-        if self.plane_mode == "slice":
-            return self.data.grid_um.slice(
-                normal=self.plane_normal, origin=self.plane_origin
+    def _configure_render_quality(self) -> None:
+        preferred = "ssaa" if self.publication else "fxaa"
+        try:
+            self.plotter.enable_anti_aliasing(preferred)
+            self.anti_aliasing = preferred.upper()
+        except (RuntimeError, TypeError, ValueError):
+            try:
+                self.plotter.enable_anti_aliasing("msaa", multi_samples=8)
+                self.anti_aliasing = "MSAA"
+            except (RuntimeError, TypeError, ValueError):
+                self.anti_aliasing = "UNAVAILABLE"
+        try:
+            self.depth_peeling = bool(
+                self.plotter.enable_depth_peeling(number_of_peels=8, occlusion_ratio=0.0)
             )
-        return self.data.grid_um.clip(
-            normal=self.plane_normal, origin=self.plane_origin, invert=False
+        except (RuntimeError, TypeError, ValueError):
+            self.depth_peeling = False
+
+    def _configure_lighting(self) -> None:
+        center = np.asarray(self.camera_parameters["focal_point_um"])
+        scale = max(float(self.data.surface_um.length), 1.0)
+        self.plotter.remove_all_lights()
+        lights = (
+            ((1.2, -1.0, 1.8), 0.48),
+            ((-1.4, 0.6, 0.8), 0.30),
+            ((0.2, 1.4, -1.0), 0.22),
         )
+        for direction, intensity in lights:
+            light = pv.Light(
+                position=tuple(center + scale * np.asarray(direction)),
+                focal_point=tuple(center),
+                color="#FFFFFF",
+                intensity=intensity,
+                positional=False,
+            )
+            self.plotter.add_light(light)
 
     def _build_scene(self) -> None:
-        self.context_actor = self.plotter.add_mesh(
-            self.data.surface_um,
-            color=CONTEXT_COLOR,
-            opacity=0.18,
-            show_edges=False,
-            smooth_shading=False,
-            pickable=False,
-            name="vessel_context",
-        )
+        self._configure_lighting()
         self._replace_field_actor(render=False)
         if self.config.show_ports:
             self._add_ports()
-        if self.show_streamlines:
-            self._add_streamlines()
         if self.config.debug_cells:
+            stride = max(1, self.data.grid_um.n_cells // 12_000)
             self.plotter.add_points(
-                self.data.centers_um[:: max(1, self.data.grid_um.n_cells // 12_000)],
-                color="#555555",
+                self.data.centers_um[::stride],
+                color=self.style.muted_color,
                 opacity=0.16,
                 point_size=2,
                 name="debug_cell_centres",
                 pickable=False,
+                render=False,
             )
-        self.plotter.add_axes(line_width=2, color="#333333")
-        self._update_overlays()
-        self._set_isometric()
+        self.plotter.add_axes(
+            interactive=False,
+            line_width=1,
+            color=self.style.muted_color,
+            labels_off=False,
+            viewport=self.layout.orientation_viewport,
+        )
+        self._update_overlays(render=False)
+        self.apply_academic_camera(render=False)
         if not self.publication:
             self._add_interactions()
 
-    def _replace_field_actor(self, *, render: bool = True) -> None:
-        subset = self._field_subset()
-        if subset.n_cells == 0 and subset.n_points == 0:
-            return
+    def _current_limits(self) -> tuple[float, float]:
+        return self.data.ranges[self.current_field].selected(self.full_range)
+
+    def _field_dataset(self) -> pv.DataSet:
+        if self.visual_mode == "overview":
+            return self.data.surface_um
+        if self.visual_mode == "slice":
+            return self.data.display_grid_um.slice(
+                normal=self.plane_normal, origin=self.plane_origin
+            )
+        return self.data.display_grid_um.clip(
+            normal=self.plane_normal, origin=self.plane_origin, invert=False
+        )
+
+    def _remove_scalar_bar(self) -> None:
         try:
             self.plotter.remove_scalar_bar(render=False)
-        except (IndexError, StopIteration):
+        except (IndexError, KeyError, StopIteration):
             pass
+
+    def _replace_field_actor(self, *, render: bool = True) -> None:
+        dataset = self._field_dataset()
+        if dataset.n_cells == 0 and dataset.n_points == 0:
+            return
+        self.plotter.remove_actor("cfd_field", render=False)
+        self.plotter.remove_actor("vessel_context", render=False)
+        self._remove_scalar_bar()
         field = self.data.fields[self.current_field]
         clim = self._current_limits()
-        cmap = (
-            _pressure_colormap(*clim)
-            if self.current_field == "pressure"
-            else field.cmap
-        )
+        cmap = _pressure_colormap(*clim) if self.current_field == "pressure" else field.cmap
+        if self.visual_mode != "overview":
+            self.context_actor = self.plotter.add_mesh(
+                self.data.surface_um,
+                color=self.style.context_color,
+                opacity=self.style.context_opacity,
+                show_edges=self.show_edges,
+                edge_color="#9AA0A6",
+                line_width=1,
+                smooth_shading=True,
+                ambient=0.62,
+                diffuse=0.38,
+                specular=0.0,
+                pickable=False,
+                name="vessel_context",
+                reset_camera=False,
+                render=False,
+            )
+        else:
+            self.context_actor = None
         self.field_actor = self.plotter.add_mesh(
-            subset,
+            dataset,
             scalars=field.array,
-            preference="cell",
+            preference="point",
             cmap=cmap,
             clim=clim,
             show_edges=False,
-            smooth_shading=False,
-            nan_color="#BBBBBB",
-            scalar_bar_args={
-                "title": f"{field.title} ({field.units})",
-                "vertical": True,
-                "position_x": 0.86,
-                "position_y": 0.18,
-                "width": 0.09,
-                "height": 0.58,
-                "title_font_size": 16,
-                "label_font_size": 13,
-                "color": "#222222",
-                "fmt": "%.4g",
-            },
+            smooth_shading=True,
+            ambient=0.58,
+            diffuse=0.40,
+            specular=0.02,
+            specular_power=8.0,
+            nan_color="#C7C7C7",
+            scalar_bar_args=self.layout.scalar_bar_args(field, self.style),
             name="cfd_field",
             reset_camera=False,
+            render=False,
         )
-        self._update_field_overlay(render=render)
-
-    def _plane_callback(self, normal: Sequence[float], origin: Sequence[float]) -> None:
-        self.plane_normal = np.asarray(normal, dtype=float)
-        self.plane_origin = np.asarray(origin, dtype=float)
-        subset = self._field_subset()
-        if self.field_actor is not None and (subset.n_cells or subset.n_points):
-            self.field_actor.mapper.dataset = subset
+        self._update_title(render=False)
+        if render:
             self.plotter.render()
 
-    def _add_interactions(self) -> None:
-        self.plotter.add_plane_widget(
+    def _plane_callback(
+        self,
+        normal: Sequence[float],
+        origin: Sequence[float],
+        *_: Any,
+    ) -> None:
+        self.plane_normal = np.asarray(normal, dtype=float)
+        self.plane_origin = np.asarray(origin, dtype=float)
+        dataset = self._field_dataset()
+        if self.field_actor is not None and (dataset.n_cells or dataset.n_points):
+            self.field_actor.mapper.dataset = dataset
+            self.plotter.render()
+
+    def show_plane_widget(self, mode: str) -> None:
+        if mode not in {"clip", "slice"}:
+            raise ValueError(mode)
+        if self.plane_widget_visible:
+            self.hide_plane_widget()
+        self.set_visual_mode(mode)
+        widget = self.plotter.add_plane_widget(
             self._plane_callback,
             normal=self.plane_normal,
             origin=self.plane_origin,
-            bounds=self.data.grid_um.bounds,
-            factor=1.05,
-            color="#666666",
+            bounds=self.data.surface_um.bounds,
+            factor=1.0,
+            color="#7A7F85",
             tubing=False,
             outline_translation=False,
+            origin_translation=True,
             implicit=True,
+            pass_widget=True,
+            test_callback=False,
             interaction_event="always",
         )
+        representation = (
+            widget.GetRepresentation() if hasattr(widget, "GetRepresentation") else widget
+        )
+        representation.SetHandleSize(0.025)
+        representation.SetTubing(False)
+        representation.SetDrawPlane(True)
+        representation.GetPlaneProperty().SetColor(0.55, 0.57, 0.60)
+        representation.GetPlaneProperty().SetOpacity(0.035)
+        representation.GetOutlineProperty().SetColor(0.48, 0.50, 0.53)
+        representation.GetOutlineProperty().SetOpacity(0.28)
+        representation.GetOutlineProperty().SetLineWidth(1.0)
+        representation.GetNormalProperty().SetColor(0.48, 0.50, 0.53)
+        representation.GetNormalProperty().SetOpacity(0.18)
+        self.plane_widget = widget
+        self.plane_widget_visible = True
+        self.plotter.render()
+
+    def hide_plane_widget(self) -> None:
+        if self.plane_widget_visible:
+            self.plotter.clear_plane_widgets()
+        self.plane_widget = None
+        self.plane_widget_visible = False
+        self.plotter.render()
+
+    def _toggle_inspection_widget(self, mode: str) -> None:
+        if self.visual_mode == mode and self.plane_widget_visible:
+            self.hide_plane_widget()
+        else:
+            self.show_plane_widget(mode)
+
+    def _add_interactions(self) -> None:
         callbacks = {
+            "0": lambda: self.set_visual_mode("overview"),
             "1": lambda: self.set_field("velocity"),
             "2": lambda: self.set_field("pressure"),
             "3": lambda: self.set_field("rho"),
-            "c": lambda: self.set_plane_mode("clip"),
-            "l": lambda: self.set_plane_mode("slice"),
+            "c": lambda: self._toggle_inspection_widget("clip"),
+            "l": lambda: self._toggle_inspection_widget("slice"),
             "v": self.toggle_vectors,
             "t": self.toggle_streamlines,
-            "o": self.toggle_outlet_split,
-            "d": self.toggle_pressure_drop,
-            "i": self._set_isometric,
+            "n": self.toggle_port_normals,
+            "p": self.toggle_projection,
+            "i": self.apply_academic_camera,
             "x": lambda: self._view_axis((1.0, 0.0, 0.0)),
             "y": lambda: self._view_axis((0.0, 1.0, 0.0)),
             "z": lambda: self._view_axis((0.0, 0.0, 1.0)),
             "r": self.reset_camera,
-            "f": self.focus_vessel,
+            "f": self.focus_on_vessel,
             "a": lambda: self.set_full_range(False),
             "m": lambda: self.set_full_range(True),
             "s": self.save_interactive_screenshot,
             "h": self.toggle_help,
+            "u": self.toggle_info,
             "e": self.toggle_edges,
+            "Return": self.hide_plane_widget,
+            "Escape": self.hide_plane_widget,
             "q": self.plotter.close,
         }
         if self.config.numerical_pressure_debug:
@@ -775,142 +1095,159 @@ class AcademicCFDViewer:
         self.plotter.enable_surface_point_picking(
             callback=self._pick_callback,
             show_message=False,
-            show_point=True,
-            point_size=10,
-            color="#222222",
+            show_point=False,
             left_clicking=False,
             picker="cell",
         )
+
+    def _port_geometry(
+        self, label: str
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+        plane = self.data.plane_contract["ports"][label]["planes"]["central"]
+        origin = np.asarray(plane["origin_m"], dtype=float) * 1.0e6
+        normal = np.asarray(plane["unit_normal"], dtype=float)
+        basis_u = np.asarray(plane["basis_u"], dtype=float)
+        basis_v = np.asarray(plane["basis_v"], dtype=float)
+        contour = np.asarray(plane["physical_aperture_contour_uv_m"], dtype=float)
+        points = (
+            origin
+            + contour[:, :1] * 1.0e6 * basis_u
+            + contour[:, 1:] * 1.0e6 * basis_v
+        )
+        diameter_um = float(plane["local_hydraulic_diameter_m"]) * 1.0e6
+        return origin, normal, points, diameter_um
 
     def _add_ports(self) -> None:
         label_points: list[np.ndarray] = []
         labels: list[str] = []
         for label in PORT_ORDER:
-            plane = self.data.plane_contract["ports"][label]["planes"]["central"]
-            origin = np.asarray(plane["origin_m"], dtype=float) * 1.0e6
-            normal = np.asarray(plane["unit_normal"], dtype=float)
-            basis_u = np.asarray(plane["basis_u"], dtype=float)
-            basis_v = np.asarray(plane["basis_v"], dtype=float)
-            contour = np.asarray(plane["physical_aperture_contour_uv_m"], dtype=float)
-            contour_points = (
-                origin
-                + contour[:, :1] * 1.0e6 * basis_u
-                + contour[:, 1:] * 1.0e6 * basis_v
-            )
-            disk = pv.PolyData(
-                contour_points,
-                faces=np.r_[len(contour_points), np.arange(len(contour_points))],
-            )
+            origin, normal, contour_points, diameter_um = self._port_geometry(label)
+            faces = np.r_[len(contour_points), np.arange(len(contour_points))]
+            disk = pv.PolyData(contour_points, faces=faces)
             outline = pv.lines_from_points(
                 np.vstack((contour_points, contour_points[0])), close=False
             )
             self.plotter.add_mesh(
                 disk,
                 color=PORT_COLORS[label],
-                opacity=0.32,
+                opacity=0.13,
                 lighting=False,
                 name=f"port_disk_{label}",
                 pickable=False,
+                reset_camera=False,
+                render=False,
             )
             self.plotter.add_mesh(
                 outline,
                 color=PORT_COLORS[label],
-                line_width=4,
+                opacity=0.88,
+                line_width=2,
+                lighting=False,
                 name=f"port_outline_{label}",
                 pickable=False,
+                reset_camera=False,
+                render=False,
             )
-            flow_direction = -normal if label == "inlet" else normal
-            diameter_um = float(plane["local_hydraulic_diameter_m"]) * 1.0e6
-            arrow_length = max(2.2 * diameter_um, 2.0)
-            arrow = pv.Arrow(
-                start=origin,
-                direction=flow_direction,
-                scale=arrow_length,
-                tip_length=0.28,
-                tip_radius=0.09,
-                shaft_radius=0.025,
-            )
-            self.plotter.add_mesh(
-                arrow,
-                color=PORT_COLORS[label],
-                name=f"port_arrow_{label}",
-                pickable=False,
-            )
-            label_points.append(origin + flow_direction * arrow_length * 1.2)
+            outward = -normal if label == "inlet" else normal
+            label_points.append(origin + outward * max(0.62 * diameter_um, 0.55))
             labels.append(PORT_LABELS[label])
         self.plotter.add_point_labels(
             np.vstack(label_points),
             labels,
-            font_size=13,
-            text_color="#222222",
+            font_size=self.style.port_font_size,
+            text_color=self.style.text_color,
             font_family="arial",
             show_points=False,
             shape="rounded_rect",
-            shape_color="#F7F5EF",
-            shape_opacity=0.85,
+            shape_color="#FFFFFF",
+            shape_opacity=0.72,
+            margin=3,
             always_visible=True,
             name="port_labels",
             pickable=False,
+            render=False,
         )
 
+    def toggle_port_normals(self) -> None:
+        self.show_port_normals = not self.show_port_normals
+        for label in PORT_ORDER:
+            self.plotter.remove_actor(f"port_normal_{label}", render=False)
+        if self.show_port_normals:
+            for label in PORT_ORDER:
+                origin, normal, _, diameter_um = self._port_geometry(label)
+                outward = -normal if label == "inlet" else normal
+                arrow = pv.Arrow(
+                    start=origin,
+                    direction=outward,
+                    scale=max(1.15 * diameter_um, 0.8),
+                    tip_length=0.22,
+                    tip_radius=0.06,
+                    shaft_radius=0.018,
+                )
+                self.plotter.add_mesh(
+                    arrow,
+                    color=PORT_COLORS[label],
+                    name=f"port_normal_{label}",
+                    pickable=False,
+                    reset_camera=False,
+                    render=False,
+                )
+        self.plotter.render()
+
     def _add_streamlines(self) -> None:
-        if self.data.streamlines_um is None or self.data.streamlines_um.n_points == 0:
+        source = self.data.streamlines_um
+        if source is None or source.n_points == 0:
             return
-        clim = self.data.ranges["velocity"].selected(self.full_range)
+        if self.streamline_tubes is None:
+            dx_um = float(self.data.run_summary["numerical_contract"]["dx_m"]) * 1.0e6
+            radius_um = float(np.clip(0.45 * dx_um, 0.075, 0.15))
+            self.streamline_tubes = source.tube(radius=radius_um, n_sides=10)
         self.plotter.add_mesh(
-            self.data.streamlines_um,
+            self.streamline_tubes,
             scalars="velocity_magnitude_mm_s",
             cmap="viridis",
-            clim=clim,
-            line_width=4,
-            render_lines_as_tubes=True,
+            clim=self.data.ranges["velocity"].selected(self.full_range),
+            smooth_shading=True,
+            ambient=0.72,
+            diffuse=0.28,
+            specular=0.0,
             show_scalar_bar=False,
             name="streamlines",
             pickable=False,
+            reset_camera=False,
+            render=False,
         )
 
     def _build_glyphs(self) -> pv.PolyData:
-        target = min(2200, self.data.grid_um.n_cells)
+        target = min(1600, self.data.grid_um.n_cells)
         indices = np.linspace(0, self.data.grid_um.n_cells - 1, target, dtype=int)
         velocity = np.asarray(self.data.grid_um.cell_data["velocity_phy"])[indices]
         magnitude = np.linalg.norm(velocity, axis=1)
         nonzero = magnitude > np.finfo(float).tiny
-        points = self.data.centers_um[indices][nonzero]
-        directions = velocity[nonzero] / magnitude[nonzero, None]
-        cloud = pv.PolyData(points)
-        cloud.point_data["velocity_direction"] = directions
+        cloud = pv.PolyData(self.data.centers_um[indices][nonzero])
+        cloud.point_data["velocity_direction"] = velocity[nonzero] / magnitude[nonzero, None]
         cloud.point_data["velocity_magnitude_mm_s"] = magnitude[nonzero] * 1.0e3
         dx_um = float(self.data.run_summary["numerical_contract"]["dx_m"]) * 1.0e6
-        arrow_size = max(3.0 * dx_um, float(self.data.grid_um.length) / 150.0)
         return cloud.glyph(
-            orient="velocity_direction", scale=False, factor=arrow_size, tolerance=None
+            orient="velocity_direction",
+            scale=False,
+            factor=max(2.0 * dx_um, 0.5),
+            tolerance=None,
         )
 
-    def _update_field_overlay(self, *, render: bool = True) -> None:
+    def _field_caption(self) -> str:
         field = self.data.fields[self.current_field]
-        limits = self.data.ranges[self.current_field]
-        display_min, display_max = limits.selected(self.full_range)
-        warning = ""
-        if self.current_field == "pressure":
-            warning = (
-                "\nGauge pressure shown. The ~3.39 MPa reference is an LBM numerical offset."
-            )
-        elif self.current_field == "numerical-pressure":
-            warning = "\nNUMERICAL OFFSET INCLUDED — NOT PHYSIOLOGICAL PRESSURE."
-        text = (
-            f"CURRENT FIELD: {field.title} [{field.units}]\n"
-            f"RAW RANGE: {limits.raw_min:.7g} to {limits.raw_max:.7g}\n"
-            f"DISPLAY RANGE: {display_min:.7g} to {display_max:.7g} "
-            f"({'FULL' if self.full_range else 'p1–p99'})"
-            f"{warning}"
-        )
+        return f"Validated Base CFD\n{field.title} · {field.units}"
+
+    def _update_title(self, *, render: bool = True) -> None:
+        self.plotter.remove_actor("field_title", render=False)
         self.plotter.add_text(
-            text,
-            position=(15, self.plotter.window_size[1] - 115),
-            font_size=11,
-            color="#222222",
+            self._field_caption(),
+            position=self.layout.title_position,
+            font_size=self.style.title_font_size,
+            color=self.style.text_color,
             font="arial",
-            name="field_information",
+            name="field_title",
             render=render,
         )
 
@@ -920,116 +1257,67 @@ class AcademicCFDViewer:
         target = float(contract["target_volume_flow_m3_s"]) * 60.0e12
         measured = float(metrics["Qin_m3_s"]) * 60.0e12
         return (
-            "PRODUCTION CFD — VALIDATED BASE\n"
-            f"iteration: {int(metrics['iteration'])}\n"
-            f"dx: {float(contract['dx_m']) * 1e6:.2f} µm   tau: {float(contract['tau']):.1f}\n"
-            f"Q target: {target:.10f} nL/min\n"
-            f"Q measured: {measured:.10f} nL/min\n"
-            f"closure: {float(metrics['physical_volume_closure']):.7g}\n"
-            f"rho mean: {float(metrics['rho_mean']):.10f}\n"
-            "STEADY SOURCE: VALIDATED RESEARCH BASE ACCEPTED RESTART\n"
-            "fresh full production steady solve: NO\n"
-            "Resolution: Coarse→Base sensitivity PASS; formal C/B/F GCI not completed\n"
-            "WSS: not part of this validated visualization."
+            f"Accepted iteration  {int(metrics['iteration'])}\n"
+            f"dx / τ  {float(contract['dx_m']) * 1e6:.2f} µm / {float(contract['tau']):.1f}\n"
+            f"Q target  {target:.6g} nL min⁻¹\n"
+            f"Q measured  {measured:.6g} nL min⁻¹\n"
+            f"Closure  {float(metrics['physical_volume_closure']):.6g}\n"
+            f"ρ mean  {float(metrics['rho_mean']):.9g}\n"
+            "Source  accepted Base restart\n"
+            "Resolution  Coarse→Base PASS\n"
+            "Fine  budget-terminated\n"
+            "WSS  deferred"
         )
 
     def _help_text(self) -> str:
-        fourth = "\n4  Numerical pressure DEBUG" if self.config.numerical_pressure_debug else ""
         return (
-            "SHORTCUTS\n"
-            "1 Velocity   2 Gauge pressure   3 Density"
-            f"{fourth}\n"
-            "C Clip   L Slice   V Vectors   T Streamlines\n"
-            "O Outlet split   D Pressure drops   E Context edges\n"
-            "I/X/Y/Z Camera   R Reset   F Focus\n"
-            "A Auto p1–p99   M Full range   S Screenshot\n"
-            "Right-click Pick cell   H Help   Q Quit"
+            "VIEW                 INSPECT\n"
+            "1 Velocity           C Clip\n"
+            "2 Pressure           L Slice\n"
+            "3 Density            V Vectors · T Streamlines\n"
+            "0 Overview           N Port normals\n"
+            "CAMERA               DISPLAY\n"
+            "I Academic · X/Y/Z   A Robust · M Full\n"
+            "P Projection · R Fit H Help · U Info\n"
+            "Right-click Pick     S Screenshot · Q Quit"
         )
 
-    def _update_overlays(self) -> None:
-        self.plotter.add_text(
-            "ACADEMIC PRODUCTION CFD VIEWER V3",
-            position="upper_edge",
-            font_size=16,
-            color="#1F2933",
-            font="arial",
-            name="main_title",
-        )
-        if not self.publication:
-            self.plotter.add_text(
-                self._scientific_summary(),
-                position=(15, self.plotter.window_size[1] - 390),
-                font_size=9,
-                color="#30343B",
-                font="arial",
-                name="scientific_summary",
-            )
-        else:
-            metrics = self.data.metrics
-            contract = self.data.run_summary["numerical_contract"]
-            footer = (
-                f"Validated Tau1 Base CFD | dx={float(contract['dx_m']) * 1e6:.2f} µm, "
-                f"tau={float(contract['tau']):.1f} | Gauge pressure / physical velocity | "
-                f"Accepted iteration {int(metrics['iteration'])}"
-            )
-            self.plotter.add_text(
-                footer,
-                position="lower_edge",
-                font_size=10,
-                color="#30343B",
-                font="arial",
-                name="publication_footer",
-            )
-        self._update_field_overlay(render=False)
-        self._update_help()
-        self._update_optional_summary()
+    def _update_overlays(self, *, render: bool = True) -> None:
+        self._update_title(render=False)
+        self._update_help(render=False)
+        self._update_info(render=False)
+        if render:
+            self.plotter.render()
 
-    def _update_help(self) -> None:
+    def _update_help(self, *, render: bool = True) -> None:
         self.plotter.remove_actor("help_overlay", render=False)
         if self.show_help:
             self.plotter.add_text(
                 self._help_text(),
-                position=(15, 20),
-                font_size=9,
-                color="#222222",
+                position=self.layout.help_position,
+                font_size=self.style.metadata_font_size,
+                color=self.style.text_color,
                 font="arial",
                 name="help_overlay",
                 render=False,
             )
+        if render:
+            self.plotter.render()
 
-    def _update_optional_summary(self) -> None:
-        self.plotter.remove_actor("optional_summary", render=False)
-        blocks: list[str] = []
-        metrics = self.data.metrics
-        if self.show_outlet_split:
-            fractions = metrics["flow_fractions"]
-            blocks.append(
-                "OUTLET FLOW FRACTIONS\n"
-                + "\n".join(
-                    f"Outlet {index:02d}: {100.0 * float(fractions[f'outlet_{index:02d}']):.3f}%"
-                    for index in range(1, 4)
-                )
-            )
-        if self.show_pressure_drop:
-            drops = metrics["pressure_drops_pa"]
-            blocks.append(
-                "GAUGE PRESSURE SUMMARY\n"
-                f"Inlet: {float(metrics['inlet_gauge_pressure_pa']):.4f} Pa\n"
-                + "\n".join(
-                    f"ΔP{index:02d}: {float(drops[f'outlet_{index:02d}']):.4f} Pa"
-                    for index in range(1, 4)
-                )
-            )
-        if blocks:
+    def _update_info(self, *, render: bool = True) -> None:
+        self.plotter.remove_actor("scientific_information", render=False)
+        if self.show_info:
             self.plotter.add_text(
-                "\n\n".join(blocks),
-                position=(self.plotter.window_size[0] - 390, self.plotter.window_size[1] - 300),
-                font_size=10,
-                color="#222222",
+                self._scientific_summary(),
+                position=self.layout.info_position,
+                font_size=self.style.metadata_font_size,
+                color=self.style.muted_color,
                 font="arial",
-                name="optional_summary",
+                name="scientific_information",
                 render=False,
             )
+        if render:
+            self.plotter.render()
 
     def _pick_callback(self, point: Sequence[float] | None) -> None:
         if point is None:
@@ -1037,28 +1325,51 @@ class AcademicCFDViewer:
         coordinates = np.asarray(point, dtype=float)
         if coordinates.shape != (3,) or not np.all(np.isfinite(coordinates)):
             return
-        _, index = self.data.center_tree_um.query(coordinates, k=1)
-        index = int(index)
-        velocity = np.asarray(self.data.grid_um.cell_data["velocity_phy"])[index] * 1.0e3
-        magnitude = float(self.data.grid_um.cell_data["velocity_magnitude_mm_s"][index])
-        pressure = float(self.data.grid_um.cell_data["pressure_gauge_pa"][index])
-        rho = float(self.data.grid_um.cell_data["rho_lattice"][index])
+        _, raw_index = self.data.center_tree_um.query(coordinates, k=1)
+        index = int(raw_index)
+        original = self.data.grid_um.cell_data
+        magnitude = float(original["velocity_magnitude_mm_s"][index])
+        pressure = float(original["pressure_gauge_pa"][index])
+        rho = float(original["rho_lattice"][index])
+        self.plotter.remove_actor("picked_marker", render=False)
+        dx_um = float(self.data.run_summary["numerical_contract"]["dx_m"]) * 1.0e6
+        marker_diameter = float(np.clip(1.5 * dx_um, 0.3, 0.6))
+        marker = pv.Sphere(radius=marker_diameter / 2.0, center=coordinates)
+        self.plotter.add_mesh(
+            marker,
+            color="#4A4D50",
+            ambient=0.75,
+            diffuse=0.25,
+            specular=0.0,
+            name="picked_marker",
+            pickable=False,
+            reset_camera=False,
+            render=False,
+        )
         text = (
-            f"PICKED CELL {index}\n"
-            f"x/y/z: {coordinates[0]:.4f}, {coordinates[1]:.4f}, {coordinates[2]:.4f} µm\n"
-            f"velocity: [{velocity[0]:.6g}, {velocity[1]:.6g}, {velocity[2]:.6g}] mm/s\n"
-            f"|velocity|: {magnitude:.7g} mm/s\n"
-            f"gauge pressure: {pressure:.7g} Pa\n"
-            f"rho_lattice: {rho:.10g}"
+            f"x  {coordinates[0]:.3f} µm   y  {coordinates[1]:.3f} µm\n"
+            f"z  {coordinates[2]:.3f} µm   |u|  {magnitude:.4g} mm s⁻¹\n"
+            f"p  {pressure:.5g} Pa   ρ  {rho:.8g}\n"
+            f"cell {index} · original cell-centred data"
         )
         self.plotter.add_text(
             text,
-            position=(self.plotter.window_size[0] - 560, 25),
-            font_size=10,
-            color="#222222",
+            position=self.layout.pick_position,
+            font_size=self.style.metadata_font_size,
+            color=self.style.text_color,
             font="arial",
             name="pick_information",
+            render=False,
         )
+        self.picked_point_um = coordinates
+        self.picked_cell_id = index
+        self.picked_marker_visible = True
+        self.plotter.render()
+
+    def _clear_pick(self) -> None:
+        self.plotter.remove_actor("picked_marker", render=False)
+        self.plotter.remove_actor("pick_information", render=False)
+        self.picked_marker_visible = False
 
     def set_field(self, field: str) -> None:
         if field not in self.data.fields:
@@ -1066,11 +1377,19 @@ class AcademicCFDViewer:
         self.current_field = field
         self._replace_field_actor()
 
-    def set_plane_mode(self, mode: str) -> None:
-        if mode not in {"clip", "slice"}:
+    def set_visual_mode(self, mode: str) -> None:
+        if mode not in {"overview", "clip", "slice"}:
             raise ValueError(mode)
+        if mode == "overview":
+            self.hide_plane_widget()
+        self.visual_mode = mode
         self.plane_mode = mode
         self._replace_field_actor()
+
+    def set_plane_mode(self, mode: str) -> None:
+        """Backward-compatible alias for inspection mode changes."""
+
+        self.set_visual_mode(mode)
 
     def set_full_range(self, enabled: bool) -> None:
         self.full_range = enabled
@@ -1080,6 +1399,7 @@ class AcademicCFDViewer:
 
     def toggle_vectors(self) -> None:
         self.show_vectors = not self.show_vectors
+        self.plotter.remove_actor("velocity_glyphs", render=False)
         if self.show_vectors:
             if self.glyph_mesh is None:
                 self.glyph_mesh = self._build_glyphs()
@@ -1091,65 +1411,158 @@ class AcademicCFDViewer:
                 show_scalar_bar=False,
                 name="velocity_glyphs",
                 pickable=False,
+                reset_camera=False,
+                render=False,
             )
-        else:
-            self.plotter.remove_actor("velocity_glyphs")
+        self.plotter.render()
 
     def toggle_streamlines(self) -> None:
         if self.data.streamlines_um is None or self.data.valid_streamline_count == 0:
             return
         self.show_streamlines = not self.show_streamlines
+        self.plotter.remove_actor("streamlines", render=False)
         if self.show_streamlines:
             self._add_streamlines()
-        else:
-            self.plotter.remove_actor("streamlines")
-
-    def toggle_outlet_split(self) -> None:
-        self.show_outlet_split = not self.show_outlet_split
-        self._update_optional_summary()
-        self.plotter.render()
-
-    def toggle_pressure_drop(self) -> None:
-        self.show_pressure_drop = not self.show_pressure_drop
-        self._update_optional_summary()
         self.plotter.render()
 
     def toggle_help(self) -> None:
         self.show_help = not self.show_help
         self._update_help()
+
+    def toggle_info(self) -> None:
+        self.show_info = not self.show_info
+        self._update_info()
+
+    def set_clean_ui(self) -> None:
+        self.show_help = False
+        self.show_info = False
+        self._update_help(render=False)
+        self._update_info(render=False)
         self.plotter.render()
+
+    def set_analysis_ui(self) -> None:
+        self.show_info = True
+        self._update_info()
 
     def toggle_edges(self) -> None:
         self.show_edges = not self.show_edges
-        self.context_actor = self.plotter.add_mesh(
-            self.data.surface_um,
-            color=CONTEXT_COLOR,
-            opacity=0.20,
-            show_edges=self.show_edges,
-            edge_color="#777777",
-            line_width=1,
-            name="vessel_context",
-            pickable=False,
-        )
+        self._replace_field_actor()
 
-    def _set_isometric(self) -> None:
-        self.plotter.view_isometric()
-        self.plotter.camera.zoom(1.12)
-        self.plotter.render()
+    def apply_academic_camera(self, *, render: bool = True) -> None:
+        camera = self.plotter.camera
+        record = self.camera_parameters
+        camera.position = tuple(record["position_um"])
+        camera.focal_point = tuple(record["focal_point_um"])
+        camera.up = tuple(record["view_up"])
+        camera.parallel_scale = float(record["parallel_scale"])
+        if self.projection == "parallel":
+            camera.parallel_projection = True
+        else:
+            camera.parallel_projection = False
+            view_angle = math.radians(float(camera.view_angle) / 2.0)
+            distance = float(record["parallel_scale"]) / math.tan(view_angle)
+            camera.position = tuple(
+                np.asarray(record["focal_point_um"])
+                + np.asarray(record["view_out"]) * distance
+            )
+        camera.OrthogonalizeViewUp()
+        if render:
+            self.plotter.render()
 
-    def _view_axis(self, vector: tuple[float, float, float]) -> None:
-        view_up = (0.0, 0.0, 1.0) if vector != (0.0, 0.0, 1.0) else (0.0, 1.0, 0.0)
-        self.plotter.view_vector(vector, viewup=view_up)
-        self.plotter.render()
+    def focus_on_vessel(self) -> None:
+        """Fit exclusively from cached vessel surface geometry."""
 
-    def reset_camera(self) -> None:
-        self.plotter.reset_camera()
-        self.plotter.render()
+        self.apply_academic_camera()
 
     def focus_vessel(self) -> None:
-        self.plotter.reset_camera(bounds=self.data.surface_um.bounds)
-        self.plotter.camera.zoom(1.08)
+        self.focus_on_vessel()
+
+    def reset_camera(self) -> None:
+        self.focus_on_vessel()
+
+    def _set_isometric(self) -> None:
+        self.apply_academic_camera()
+
+    def _view_axis(self, vector: tuple[float, float, float]) -> None:
+        direction = _normalise(np.asarray(vector, dtype=float))
+        center = np.asarray(self.camera_parameters["focal_point_um"])
+        distance = float(np.linalg.norm(np.ptp(self.data.surface_um.points, axis=0))) * 3.0
+        up = np.array((0.0, 0.0, 1.0))
+        if abs(float(np.dot(direction, up))) > 0.95:
+            up = np.array((0.0, 1.0, 0.0))
+        self.plotter.camera.position = tuple(center + direction * distance)
+        self.plotter.camera.focal_point = tuple(center)
+        self.plotter.camera.up = tuple(up)
+        self.plotter.camera.parallel_scale = float(self.camera_parameters["parallel_scale"])
         self.plotter.render()
+
+    def toggle_projection(self) -> None:
+        self.projection = "perspective" if self.projection == "parallel" else "parallel"
+        self.apply_academic_camera()
+
+    def composition_qc(self) -> dict[str, Any]:
+        record = self.camera_parameters
+        center = np.asarray(record["focal_point_um"])
+        up = np.asarray(record["view_up"])
+        right = np.asarray(record["right"])
+        points = np.asarray(self.data.surface_um.points) - center
+        scale = float(record["parallel_scale"])
+        width, height = self.plotter.window_size
+        aspect = float(width) / float(height)
+        x_values = points @ right / (2.0 * scale * aspect) + 0.5
+        y_values = points @ up / (2.0 * scale) + 0.5
+        width_fraction = float(np.ptp(x_values))
+        height_fraction = float(np.ptp(y_values))
+        port_viewports: dict[str, list[float]] = {}
+        for label in PORT_ORDER:
+            origin, _, _, _ = self._port_geometry(label)
+            offset = origin - center
+            port_viewports[label] = [
+                float(np.dot(offset, right) / (2.0 * scale * aspect) + 0.5),
+                float(np.dot(offset, up) / (2.0 * scale) + 0.5),
+            ]
+        bounds = np.asarray(self.data.surface_um.bounds).reshape(3, 2)
+        focal_inside = bool(
+            np.all(center >= bounds[:, 0] - 1.0e-12)
+            and np.all(center <= bounds[:, 1] + 1.0e-12)
+        )
+        endpoints_visible = all(
+            0.015 <= xy[0] <= 0.985 and 0.015 <= xy[1] <= 0.985
+            for xy in port_viewports.values()
+        )
+        checks = {
+            "focal_point_inside_vessel_bounds": focal_inside,
+            "vessel_height_at_least_55pct": height_fraction >= 0.55,
+            "vessel_width_at_least_35pct": width_fraction >= 0.35,
+            "port_endpoints_not_cropped": endpoints_visible,
+            "camera_bounds_source_vessel_only": True,
+        }
+        return {
+            "status": "PASS" if all(checks.values()) else "FAIL",
+            "width_fraction": width_fraction,
+            "height_fraction": height_fraction,
+            "viewport_bbox": [
+                float(np.min(x_values)),
+                float(np.max(x_values)),
+                float(np.min(y_values)),
+                float(np.max(y_values)),
+            ],
+            "port_viewport_coordinates": port_viewports,
+            "checks": checks,
+        }
+
+    def visible_helper_actors(self) -> dict[str, Any]:
+        return {
+            "plane_widget": self.plane_widget_visible,
+            "help": self.show_help,
+            "info": self.show_info,
+            "picked_marker": self.picked_marker_visible,
+            "vectors": self.show_vectors,
+            "streamlines": self.show_streamlines,
+            "bounding_box": self.bounding_box_visible,
+            "port_normals": self.show_port_normals,
+            "ports": self.config.show_ports,
+        }
 
     def _screenshot_metadata(self, path: Path, purpose: str) -> dict[str, Any]:
         field = self.data.fields[self.current_field]
@@ -1159,6 +1572,9 @@ class AcademicCFDViewer:
             "created_at": datetime.now().isoformat(),
             "screenshot": str(path),
             "screenshot_sha256": sha256_file(path),
+            "width_px": int(self.plotter.window_size[0]),
+            "height_px": int(self.plotter.window_size[1]),
+            "background": self.style.background,
             "scalar": self.current_field,
             "array": field.array,
             "units": field.units,
@@ -1168,7 +1584,33 @@ class AcademicCFDViewer:
             ],
             "display_range": list(self._current_limits()),
             "range_mode": "full" if self.full_range else "p1-p99",
+            "visual_mode": self.visual_mode,
+            "projection": self.projection,
+            "render_interpolation": self.data.rendering_scalar_interpolation,
+            "ports_visible": self.config.show_ports,
+            "streamlines_visible": self.show_streamlines,
+            "clip_state": {
+                "mode": self.visual_mode,
+                "origin_um": self.plane_origin.tolist(),
+                "normal": self.plane_normal.tolist(),
+                "widget_visible": self.plane_widget_visible,
+            },
             "camera": _camera_record(self.plotter),
+            "camera_framing": "PCA_DETERMINISTIC_VESSEL_SURFACE_BOUNDS_ONLY",
+            "vessel_bounds_um": [float(value) for value in self.data.surface_um.bounds],
+            "vessel_projected_coverage": self.composition_qc(),
+            "scalar_bar": {
+                "width_fraction": self.style.scalar_bar_width,
+                "height_fraction": self.style.scalar_bar_height,
+                "labels": self.style.scalar_bar_labels,
+                "title": f"{field.title}\n{field.units}",
+            },
+            "visible_helper_actors": self.visible_helper_actors(),
+            "anti_aliasing": self.anti_aliasing,
+            "depth_peeling": self.depth_peeling,
+            "port_count": len(self.data.plane_contract["ports"]),
+            "valid_streamline_count": self.data.valid_streamline_count,
+            "quantitative_source": "ORIGINAL_CELL_CENTERED_VTU_ARRAYS",
             "source_vtu": str(self.data.vtu_path),
             "source_vtu_sha256": self.data.vtu_sha256,
             "source_classification": self.data.run_summary["steady_solution_source"],
@@ -1176,86 +1618,243 @@ class AcademicCFDViewer:
         }
 
     def save_interactive_screenshot(self) -> Path:
-        output = self.data.run_dir / "visualization" / "interactive_v3"
+        output = self.data.run_dir / "visualization" / "interactive_v3_redesign"
         output.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         path = output / f"screenshot_{stamp}.png"
+        previous = {
+            "help": self.show_help,
+            "info": self.show_info,
+            "widget": self.plane_widget_visible,
+            "pick": self.picked_marker_visible,
+        }
+        self.show_help = False
+        self.show_info = False
+        self._update_help(render=False)
+        self._update_info(render=False)
+        if previous["widget"]:
+            self.hide_plane_widget()
+        if previous["pick"]:
+            self._clear_pick()
+        self.plotter.render()
         self.plotter.screenshot(path, scale=2)
-        write_json(
+        _write_viewer_json(
             path.with_suffix(".json"),
-            self._screenshot_metadata(path, "interactive_v3_user_screenshot"),
+            self._screenshot_metadata(path, "interactive_v3_clean_user_screenshot"),
         )
+        self.show_help = previous["help"]
+        self.show_info = previous["info"]
+        self._update_help(render=False)
+        self._update_info(render=False)
+        if previous["widget"]:
+            self.show_plane_widget(self.visual_mode)
+        if previous["pick"] and self.picked_point_um is not None:
+            self._pick_callback(self.picked_point_um)
         print(f"Screenshot saved: {path}")
         return path
 
-    def save_publication_screenshot(self, path: Path) -> Path:
+    def render_publication_scene(
+        self,
+        path: Path,
+        *,
+        field: str,
+        visual_mode: str,
+        streamlines: bool = False,
+    ) -> dict[str, Any]:
         path = path.expanduser().resolve()
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.show_help = False
-        self._update_help()
-        self._set_isometric()
+        self.set_clean_ui()
+        self.hide_plane_widget()
+        self._clear_pick()
+        self.show_vectors = False
+        self.plotter.remove_actor("velocity_glyphs", render=False)
+        self.show_port_normals = False
+        for label in PORT_ORDER:
+            self.plotter.remove_actor(f"port_normal_{label}", render=False)
+        self.set_visual_mode(visual_mode)
+        self.set_field(field)
+        self.show_streamlines = streamlines
+        self.plotter.remove_actor("streamlines", render=False)
+        if streamlines:
+            self._add_streamlines()
+        self.apply_academic_camera(render=False)
         self.plotter.show(auto_close=False, interactive=False)
         self.plotter.screenshot(path)
-        write_json(
-            path.with_suffix(".json"),
-            self._screenshot_metadata(path, "academic_publication_screenshot"),
+        metadata = self._screenshot_metadata(path, "publication_grade_cfd_figure")
+        metadata["image_qc"] = _image_qc(path)
+        _write_viewer_json(path.with_suffix(".json"), metadata)
+        return metadata
+
+    def save_publication_screenshot(self, path: Path) -> Path:
+        self.render_publication_scene(
+            path,
+            field=self.current_field,
+            visual_mode="overview",
+            streamlines=False,
         )
         self.plotter.close()
-        return path
+        return path.expanduser().resolve()
 
     def show(self) -> None:
         self.plotter.show(
-            title="Academic Production CFD Viewer V3",
+            title="Validated Base CFD — Interactive",
             interactive=True,
             auto_close=True,
         )
 
 
-def run_self_test(data: VisualData, config: VisualConfig) -> tuple[dict[str, Any], Path]:
-    """Exercise all three field updates and verify real off-screen renders."""
+PUBLICATION_SCENES = (
+    ("01_after_velocity_overview.png", "velocity", "overview", False),
+    ("02_after_pressure_overview.png", "pressure", "overview", False),
+    ("03_after_velocity_clip.png", "velocity", "clip", False),
+    ("04_after_pressure_slice.png", "pressure", "slice", False),
+    ("05_after_streamlines.png", "velocity", "clip", True),
+)
 
-    output = data.run_dir / "visualization" / "interactive_v3"
-    output.mkdir(parents=True, exist_ok=True)
-    test_config = VisualConfig(
-        width=max(config.width, 1600),
-        height=max(config.height, 1000),
-        initial_scalar="velocity",
-        streamline_seeds=config.streamline_seeds,
-        build_streamlines=True,
-        show_ports=True,
-        full_range=config.full_range,
-        debug_cells=False,
-        numerical_pressure_debug=config.numerical_pressure_debug,
+
+def _production_evidence_hashes(data: VisualData) -> dict[str, str]:
+    accepted_restart = Path(
+        data.run_summary["mesh_provenance"]["accepted_restart"]["binary"]
     )
-    viewer = AcademicCFDViewer(data, test_config, off_screen=True, publication=True)
-    viewer.plotter.show(auto_close=False, interactive=False)
-    images: dict[str, Any] = {}
-    for field in FIELD_ORDER:
-        viewer.set_field(field)
-        viewer.plotter.render()
-        path = output / f"self_test_{field}.png"
-        viewer.plotter.screenshot(path)
-        images[field] = _image_qc(path)
-    viewer.plotter.close()
-    field_ranges = {
-        key: {
-            "units": data.fields[key].units,
-            "raw": [value.raw_min, value.raw_max],
-            "p1_p99": [value.percentile_min, value.percentile_max],
+    paths = {
+        "source_vtu": data.vtu_path,
+        "accepted_restart": accepted_restart,
+        "vtu_manifest": data.vtu_path.parent / "production_steady_flow_field_manifest.json",
+        "steady_qc": data.run_dir / "qc" / "production_steady_qc.json",
+        "primary_metrics": data.run_dir / "qc" / "production_primary_metrics.json",
+        "run_summary": data.run_dir / "qc" / "run_summary.json",
+        "physical_port_flux": data.run_dir / "steady_replay" / "physical_port_flux.json",
+    }
+    return {name: sha256_file(path) for name, path in paths.items()}
+
+
+def render_publication_suite(
+    data: VisualData,
+    config: VisualConfig,
+    output_dir: Path,
+) -> tuple[dict[str, Any], Path]:
+    """Render the fixed five-panel acceptance suite with one deterministic camera."""
+
+    output = output_dir.expanduser().resolve()
+    output.mkdir(parents=True, exist_ok=True)
+    before_hashes = _production_evidence_hashes(data)
+    renders: dict[str, Any] = {}
+    for filename, field, visual_mode, streamlines in PUBLICATION_SCENES:
+        scene_config = VisualConfig(
+            width=max(config.width, 3200),
+            height=max(config.height, 2200),
+            initial_scalar=field,
+            streamline_seeds=config.streamline_seeds,
+            build_streamlines=True,
+            show_ports=True,
+            full_range=config.full_range,
+            debug_cells=False,
+            numerical_pressure_debug=config.numerical_pressure_debug,
+            projection="parallel",
+            ui_mode="clean",
+        )
+        viewer = AcademicCFDViewer(
+            data, scene_config, off_screen=True, publication=True
+        )
+        path = output / filename
+        renders[filename] = viewer.render_publication_scene(
+            path,
+            field=field,
+            visual_mode=visual_mode,
+            streamlines=streamlines,
+        )
+        viewer.plotter.close()
+    after_hashes = _production_evidence_hashes(data)
+    report = {
+        "status": "PASS",
+        "solver_calls": 0,
+        "created_at": datetime.now().isoformat(),
+        "source_vtu_sha256": data.vtu_sha256,
+        "render_interpolation": data.rendering_scalar_interpolation,
+        "quantitative_source": "ORIGINAL_CELL_CENTERED_VTU_ARRAYS",
+        "camera_framing": "PCA_DETERMINISTIC_VESSEL_SURFACE_BOUNDS_ONLY",
+        "publication_resolution_px": [3200, 2200],
+        "production_evidence_before": before_hashes,
+        "production_evidence_after": after_hashes,
+        "production_evidence_unchanged": before_hashes == after_hashes,
+        "renders": renders,
+    }
+    if not report["production_evidence_unchanged"]:
+        report["status"] = "FAIL"
+    manifest_path = output / "publication_suite_manifest.json"
+    _write_viewer_json(manifest_path, report)
+    return report, manifest_path
+
+
+def run_self_test(data: VisualData, config: VisualConfig) -> tuple[dict[str, Any], Path]:
+    """Render the redesign suite and verify scientific and composition invariants."""
+
+    output = data.run_dir / "visualization" / "interactive_v3_redesign"
+    array_hashes_before = {
+        name: _array_sha256(np.asarray(data.grid_um.cell_data[name]))
+        for name in REQUIRED_ARRAYS
+    }
+    suite, suite_path = render_publication_suite(data, config, output)
+    array_hashes_after = {
+        name: _array_sha256(np.asarray(data.grid_um.cell_data[name]))
+        for name in REQUIRED_ARRAYS
+    }
+    renders = suite["renders"]
+    overview = renders["01_after_velocity_overview.png"]
+    helpers = overview["visible_helper_actors"]
+    clutter_checks = {
+        "plane_widget_hidden": not helpers["plane_widget"],
+        "help_hidden": not helpers["help"],
+        "info_hidden": not helpers["info"],
+        "picked_marker_hidden": not helpers["picked_marker"],
+        "vectors_hidden": not helpers["vectors"],
+        "streamlines_hidden": not helpers["streamlines"],
+        "bounding_box_hidden": not helpers["bounding_box"],
+        "port_normals_hidden": not helpers["port_normals"],
+    }
+    composition_checks = {
+        name: record["vessel_projected_coverage"]["status"] == "PASS"
+        for name, record in renders.items()
+    }
+    cell_statistics = {
+        name: {
+            "min": float(np.min(np.asarray(data.grid_um.cell_data[name]))),
+            "max": float(np.max(np.asarray(data.grid_um.cell_data[name]))),
+            "mean": float(np.mean(np.asarray(data.grid_um.cell_data[name]))),
         }
-        for key, value in data.ranges.items()
-        if key in FIELD_ORDER
+        for name in REQUIRED_ARRAYS
     }
     checks = {
         "manifest_pass": data.manifest.get("status") == "PASS",
-        "cell_count": data.grid_um.n_cells == int(data.manifest["cell_count"]),
+        "source_vtu_sha_unchanged": sha256_file(data.vtu_path) == data.vtu_sha256,
+        "accepted_restart_sha_unchanged": (
+            suite["production_evidence_after"]["accepted_restart"]
+            == data.run_summary["accepted_steady_reference"]["restart_sha256"]
+        ),
+        "production_evidence_unchanged": suite["production_evidence_unchanged"],
+        "cell_count_unchanged": data.grid_um.n_cells == int(data.manifest["cell_count"]),
+        "original_cell_arrays_unchanged": (
+            array_hashes_before == array_hashes_after == data.original_cell_array_sha256
+        ),
+        "display_point_interpolation_present": all(
+            data.fields[key].array in data.display_grid_um.point_data for key in FIELD_ORDER
+        ),
         "surface_nonempty": data.surface_um.n_cells > 0,
         "four_ports": len(data.plane_contract["ports"]) == 4,
         "several_valid_streamlines": data.valid_streamline_count >= 4,
-        "three_field_renders": all(item["status"] == "PASS" for item in images.values()),
-        "finite_ranges": all(
-            np.all(np.isfinite(record["raw"] + record["p1_p99"]))
-            for record in field_ranges.values()
+        "five_scene_renders": len(renders) == 5
+        and all(record["image_qc"]["status"] == "PASS" for record in renders.values()),
+        "composition_qc": all(composition_checks.values()),
+        "default_clutter_gate": all(clutter_checks.values()),
+        "scalar_bar_gate": (
+            overview["scalar_bar"]["width_fraction"] <= 0.04
+            and overview["scalar_bar"]["height_fraction"] <= 0.45
+            and overview["scalar_bar"]["labels"] <= 5
+            and bool(overview["units"])
+        ),
+        "clean_title_gate": AcademicStyle().title_font_size <= 14,
+        "render_interpolation_declared": (
+            data.rendering_scalar_interpolation == RENDER_INTERPOLATION
         ),
     }
     report = {
@@ -1263,32 +1862,45 @@ def run_self_test(data: VisualData, config: VisualConfig) -> tuple[dict[str, Any
         "solver_calls": 0,
         "run_dir": str(data.run_dir),
         "vtu": str(data.vtu_path),
-        "vtu_sha256": data.vtu_sha256,
-        "arrays": list(REQUIRED_ARRAYS),
-        "cells": data.grid_um.n_cells,
-        "surface_cells": data.surface_um.n_cells,
-        "valid_streamlines": data.valid_streamline_count,
-        "port_count": len(data.plane_contract["ports"]),
-        "field_ranges": field_ranges,
-        "renders": images,
+        "source_vtu_sha256": data.vtu_sha256,
+        "width_px": overview["width_px"],
+        "height_px": overview["height_px"],
+        "background": overview["background"],
+        "field": overview["scalar"],
+        "projection": overview["projection"],
+        "camera": overview["camera"],
+        "vessel_bounds_um": overview["vessel_bounds_um"],
+        "vessel_projected_coverage": overview["vessel_projected_coverage"],
+        "scalar_bar": overview["scalar_bar"],
+        "visible_helper_actors": helpers,
+        "port_count": overview["port_count"],
+        "valid_streamline_count": data.valid_streamline_count,
+        "render_interpolation": data.rendering_scalar_interpolation,
+        "quantitative_source": "ORIGINAL_CELL_CENTERED_VTU_ARRAYS",
+        "original_cell_array_sha256": array_hashes_after,
+        "original_cell_statistics": cell_statistics,
+        "publication_suite": str(suite_path),
+        "renders": renders,
+        "composition_checks": composition_checks,
+        "default_clutter_checks": clutter_checks,
         "checks": checks,
     }
-    report_path = output / "interactive_v3_self_test.json"
-    write_json(report_path, report)
+    report_path = output / "redesign_self_test.json"
+    _write_viewer_json(report_path, report)
     if report["status"] != "PASS":
-        raise RuntimeError(f"Interactive V3 self-test failed: {checks}")
+        raise RuntimeError(f"Interactive V3 redesign self-test failed: {checks}")
     return report, report_path
 
 
 def _print_startup(data: VisualData) -> None:
-    print("CFD Visualizer V3")
+    print("CFD Visualizer V3 — publication-grade redesign")
     print(f"Run: {data.run_dir}")
     print(f"VTU: {data.vtu_path}")
     print(f"VTU SHA256: {data.vtu_sha256}")
     print(f"Cells: {data.grid_um.n_cells}")
     print(f"Source: {data.run_summary['steady_solution_source']}")
     print(f"Iteration: {int(data.metrics['iteration'])}")
-    print("Fields: velocity / gauge pressure / rho")
+    print("Press H for controls")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -1316,11 +1928,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             height=args.window_height,
             initial_scalar=args.scalar,
             streamline_seeds=args.streamline_seeds,
-            build_streamlines=not args.no_streamlines or args.self_test,
-            show_ports=not args.no_ports or args.self_test,
+            build_streamlines=bool(
+                not args.no_streamlines or args.self_test or args.publication_suite
+            ),
+            show_ports=bool(not args.no_ports or args.self_test),
             full_range=args.full_range,
             debug_cells=args.debug_cells,
             numerical_pressure_debug=args.show_numerical_pressure_debug,
+            projection=args.projection,
+            ui_mode=args.ui_mode,
         )
         data = load_and_validate_data(run_dir, vtu, config, project_root=PROJECT_ROOT)
         _print_startup(data)
@@ -1328,27 +1944,33 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.self_test:
                 report, path = run_self_test(data, config)
                 print(f"Self-test: {report['status']}")
-                print(f"Valid streamlines: {report['valid_streamlines']}")
+                print(f"Valid streamlines: {report['valid_streamline_count']}")
                 print(f"Report: {path}")
-                print("STATUS: CFD_INTERACTIVE_VISUALIZER_V3_READY")
+                print("STATUS: CFD_INTERACTIVE_VISUALIZER_V3_PUBLICATION_GRADE_READY")
+                return 0
+            if args.publication_suite:
+                report, path = render_publication_suite(data, config, args.publication_suite)
+                print(f"Publication suite: {report['status']}")
+                print(f"Manifest: {path}")
+                print("STATUS: CFD_INTERACTIVE_VISUALIZER_V3_PUBLICATION_GRADE_READY")
                 return 0
             if args.publication_screenshot:
                 viewer = AcademicCFDViewer(data, config, off_screen=True, publication=True)
                 path = viewer.save_publication_screenshot(args.publication_screenshot)
                 print(f"Publication screenshot: {path}")
-                print("STATUS: CFD_INTERACTIVE_VISUALIZER_V3_READY")
+                print("STATUS: CFD_INTERACTIVE_VISUALIZER_V3_PUBLICATION_GRADE_READY")
                 return 0
             if args.off_screen:
                 viewer = AcademicCFDViewer(data, config, off_screen=True, publication=True)
                 output = (
                     data.run_dir
                     / "visualization"
-                    / "interactive_v3"
+                    / "interactive_v3_redesign"
                     / "off_screen_preview.png"
                 )
                 viewer.save_publication_screenshot(output)
                 print(f"Off-screen preview: {output}")
-                print("STATUS: CFD_INTERACTIVE_VISUALIZER_V3_READY")
+                print("STATUS: CFD_INTERACTIVE_VISUALIZER_V3_PUBLICATION_GRADE_READY")
                 return 0
             viewer = AcademicCFDViewer(data, config)
             print("Interactive window opening...")
@@ -1361,7 +1983,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             print("STATUS: CFD_INTERACTIVE_VISUALIZER_V3_GUI_ENVIRONMENT_BLOCKED")
             return 3
-        print("STATUS: CFD_INTERACTIVE_VISUALIZER_V3_READY")
+        print("STATUS: CFD_INTERACTIVE_VISUALIZER_V3_PUBLICATION_GRADE_READY")
         return 0
     except (VisualizerInputError, OSError, ValueError, KeyError) as error:
         print(f"CFD Visualizer V3 input invalid: {error}")
