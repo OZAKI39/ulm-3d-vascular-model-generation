@@ -504,6 +504,8 @@ def test_overview_has_no_information_panel_and_preserves_interactions(tmp_path: 
             "picked_marker": False,
             "vectors": False,
             "streamlines": False,
+            "streamline_arrows": False,
+            "streamline_module": True,
             "bounding_box": False,
             "port_normals": False,
             "ports": True,
@@ -523,6 +525,19 @@ def test_overview_has_no_information_panel_and_preserves_interactions(tmp_path: 
         pressure_widget.GetRepresentation().SetState(1)
         pressure_widget.InvokeEvent("StateChangedEvent")
         assert viewer.current_field == "pressure"
+        assert viewer.streamline_widget is not None
+        viewer.streamline_widget.GetRepresentation().SetState(1)
+        viewer.streamline_widget.InvokeEvent("StateChangedEvent")
+        assert viewer.current_field == "velocity"
+        assert viewer.show_streamlines
+        assert "streamlines" in viewer.plotter.actors
+        assert "streamline_direction_arrows" in viewer.plotter.actors
+        assert viewer.streamline_arrow_count == 1
+        pressure_widget.GetRepresentation().SetState(1)
+        pressure_widget.InvokeEvent("StateChangedEvent")
+        assert not viewer.show_streamlines
+        assert "streamlines" not in viewer.plotter.actors
+        assert "streamline_direction_arrows" not in viewer.plotter.actors
         viewer.show_plane_widget("clip")
         assert viewer.visual_mode == "clip"
         assert viewer.plane_widget_visible

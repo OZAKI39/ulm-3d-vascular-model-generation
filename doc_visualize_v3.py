@@ -1239,10 +1239,14 @@ class AcademicCFDViewer:
         self.picked_cell_id: int | None = None
         self.field_widgets: dict[str, Any] = {}
         self.field_selector_visible = False
+        self.streamline_widget: Any = None
+        self.streamline_module_visible = False
         self.field_actor: Any = None
         self.context_actor: Any = None
         self.glyph_mesh: pv.PolyData | None = None
         self.streamline_tubes: pv.PolyData | None = None
+        self.streamline_arrows: pv.PolyData | None = None
+        self.streamline_arrow_count = 0
         size = (
             (max(config.width, 3200), max(config.height, 2000))
             if publication
@@ -1393,6 +1397,7 @@ class AcademicCFDViewer:
             diffuse=0.40,
             specular=0.02,
             specular_power=8.0,
+            opacity=0.22 if self.show_streamlines else 1.0,
             nan_color="#C7C7C7",
             scalar_bar_args=scalar_bar_args,
             name="cfd_field",
@@ -1506,6 +1511,7 @@ class AcademicCFDViewer:
         for key, callback in callbacks.items():
             self.plotter.add_key_event(key, callback)
         self._add_field_selector()
+        self._add_streamline_module()
         self.plotter.enable_surface_point_picking(
             callback=self._pick_callback,
             show_message=False,
@@ -1551,16 +1557,6 @@ class AcademicCFDViewer:
                 actor.prop.font_size = self.style.control_font_size
                 actor.prop.color = self.style.text_color
                 actor.prop.bold = True
-        hint = self.plotter.add_text(
-            "Click circles or press 1–8",
-            position=(int(width) - 28, 28),
-            font_size=self.style.control_font_size,
-            color=self.style.muted_color,
-            font="arial",
-            name="field_selector_hint",
-            render=False,
-        )
-        self._style_text_panel(hint, opacity=0.65, horizontal="right")
         self.field_selector_visible = bool(self.field_widgets)
 
     def _sync_field_selector(self) -> None:
@@ -1569,6 +1565,56 @@ class AcademicCFDViewer:
         for key, widget in self.field_widgets.items():
             representation = widget.GetRepresentation()
             representation.SetState(1 if key == self.current_field else 0)
+
+    def _streamline_module_text(self) -> str:
+        state = "ON" if self.show_streamlines else "OFF"
+        return (
+            f"FLOW PATHS  {state}\n"
+            f"T / click · {self.data.valid_streamline_count} paths · arrows"
+        )
+
+    def _update_streamline_module_label(self, *, render: bool = True) -> None:
+        self.plotter.remove_actor("streamline_module_label", render=False)
+        if self.streamline_module_visible:
+            width = int(self.plotter.window_size[0])
+            actor = self.plotter.add_text(
+                self._streamline_module_text(),
+                position=(width - 392, 56),
+                font_size=self.style.control_font_size,
+                color=self.style.text_color,
+                font="arial",
+                name="streamline_module_label",
+                render=False,
+            )
+            actor.prop.bold = True
+        if render:
+            self.plotter.render()
+
+    def _sync_streamline_widget(self) -> None:
+        if self.streamline_widget is not None:
+            self.streamline_widget.GetRepresentation().SetState(
+                1 if self.show_streamlines else 0
+            )
+
+    def _add_streamline_module(self) -> None:
+        """Expose flow paths as a first-class mouse and keyboard module."""
+
+        source = self.data.streamlines_um
+        if source is None or source.n_points == 0:
+            return
+        width = float(self.plotter.window_size[0])
+        self.streamline_widget = self.plotter.add_checkbox_button_widget(
+            lambda enabled: self.set_streamlines(bool(enabled)),
+            value=self.show_streamlines,
+            position=(width - 442.0, 58.0),
+            size=34,
+            border_size=5,
+            color_on="#35B8FF",
+            color_off="#60788A",
+            background_color=self.style.panel_color,
+        )
+        self.streamline_module_visible = True
+        self._update_streamline_module_label(render=False)
 
     def _port_geometry(
         self, label: str
@@ -1686,6 +1732,7 @@ class AcademicCFDViewer:
         source = self.data.streamlines_um
         if source is None or source.n_points == 0:
             return
+        limits = self.data.ranges["velocity"].selected(self.full_range)
         if self.streamline_tubes is None:
             dx_um = float(self.data.run_summary["numerical_contract"]["dx_m"]) * 1.0e6
             radius_um = float(np.clip(0.45 * dx_um, 0.075, 0.15))
@@ -1694,7 +1741,7 @@ class AcademicCFDViewer:
             self.streamline_tubes,
             scalars="velocity_magnitude_mm_s",
             cmap="viridis",
-            clim=self.data.ranges["velocity"].selected(self.full_range),
+            clim=limits,
             smooth_shading=True,
             ambient=0.72,
             diffuse=0.28,
@@ -1704,6 +1751,82 @@ class AcademicCFDViewer:
             pickable=False,
             reset_camera=False,
             render=False,
+        )
+        if self.streamline_arrows is None:
+            self.streamline_arrows = self._build_streamline_arrows()
+        if self.streamline_arrows.n_points:
+            self.plotter.add_mesh(
+                self.streamline_arrows,
+                color=self.style.text_color,
+                smooth_shading=True,
+                ambient=0.76,
+                diffuse=0.24,
+                specular=0.0,
+                show_scalar_bar=False,
+                name="streamline_direction_arrows",
+                pickable=False,
+                reset_camera=False,
+                render=False,
+            )
+
+    def _build_streamline_arrows(self) -> pv.PolyData:
+        """Sample deterministic arrow glyphs that expose streamline direction."""
+
+        source = self.data.streamlines_um
+        if source is None or source.n_points == 0:
+            self.streamline_arrow_count = 0
+            return pv.PolyData()
+        connectivity = np.asarray(source.lines, dtype=np.int64)
+        points = np.asarray(source.points, dtype=np.float64)
+        speeds = np.asarray(
+            source.point_data["velocity_magnitude_mm_s"], dtype=np.float64
+        )
+        arrow_points: list[np.ndarray] = []
+        arrow_directions: list[np.ndarray] = []
+        arrow_speeds: list[float] = []
+        cursor = 0
+        path_index = 0
+        while cursor < len(connectivity):
+            count = int(connectivity[cursor])
+            point_ids = connectivity[cursor + 1 : cursor + 1 + count]
+            cursor += count + 1
+            sample_fraction = 0.25 + 0.50 * ((path_index % 5) / 4.0)
+            path_index += 1
+            if count < 2:
+                continue
+            sample_indices = (int(round(sample_fraction * (count - 1))),)
+            for sample in sample_indices:
+                sample = int(np.clip(sample, 0, count - 2))
+                lower = max(0, sample - 2)
+                upper = min(count - 1, sample + 2)
+                direction = points[point_ids[upper]] - points[point_ids[lower]]
+                length = float(np.linalg.norm(direction))
+                if length <= np.finfo(float).tiny:
+                    continue
+                arrow_points.append(points[point_ids[sample]])
+                arrow_directions.append(direction / length)
+                arrow_speeds.append(float(speeds[point_ids[sample]]))
+        if not arrow_points:
+            self.streamline_arrow_count = 0
+            return pv.PolyData()
+        self.streamline_arrow_count = len(arrow_points)
+        cloud = pv.PolyData(np.vstack(arrow_points))
+        cloud.point_data["flow_direction"] = np.vstack(arrow_directions)
+        cloud.point_data["velocity_magnitude_mm_s"] = np.asarray(arrow_speeds)
+        dx_um = float(self.data.run_summary["numerical_contract"]["dx_m"]) * 1.0e6
+        arrow = pv.Arrow(
+            start=(0.0, 0.0, 0.0),
+            direction=(1.0, 0.0, 0.0),
+            tip_length=0.34,
+            tip_radius=0.13,
+            shaft_radius=0.04,
+        )
+        return cloud.glyph(
+            orient="flow_direction",
+            scale=False,
+            factor=max(8.0 * dx_um, 1.4),
+            geom=arrow,
+            tolerance=None,
         )
 
     def _build_glyphs(self) -> pv.PolyData:
@@ -1727,10 +1850,13 @@ class AcademicCFDViewer:
         field = self.data.fields[self.current_field]
         range_mode = "Full" if self.full_range else "P1–P99"
         color_scale = "Log" if field.log_scale else "Linear"
+        view = self.visual_mode.title()
+        if self.show_streamlines:
+            view += " + flow paths"
         return (
             f"{field.title}  [{field.units}]\n"
             f"Original CFD surface  ·  {range_mode}  ·  {color_scale}  ·  "
-            f"{self.visual_mode.title()}"
+            f"{view}"
         )
 
     def _style_text_panel(
@@ -1863,6 +1989,11 @@ class AcademicCFDViewer:
     def set_field(self, field: str) -> None:
         if field not in self.data.fields:
             raise VisualizerInputError(f"Field is unavailable or debug-disabled: {field}")
+        if field != "velocity" and self.show_streamlines:
+            self.show_streamlines = False
+            self._remove_streamline_actors()
+            self._sync_streamline_widget()
+            self._update_streamline_module_label(render=False)
         self.current_field = field
         self._sync_field_selector()
         self._replace_field_actor()
@@ -1883,9 +2014,11 @@ class AcademicCFDViewer:
 
     def set_full_range(self, enabled: bool) -> None:
         self.full_range = enabled
-        self._replace_field_actor()
+        self._replace_field_actor(render=False)
         if self.show_streamlines:
+            self._remove_streamline_actors()
             self._add_streamlines()
+        self.plotter.render()
 
     def toggle_vectors(self) -> None:
         self.show_vectors = not self.show_vectors
@@ -1906,14 +2039,31 @@ class AcademicCFDViewer:
             )
         self.plotter.render()
 
-    def toggle_streamlines(self) -> None:
-        if self.data.streamlines_um is None or self.data.valid_streamline_count == 0:
-            return
-        self.show_streamlines = not self.show_streamlines
+    def _remove_streamline_actors(self) -> None:
         self.plotter.remove_actor("streamlines", render=False)
+        self.plotter.remove_actor("streamline_direction_arrows", render=False)
+
+    def set_streamlines(self, enabled: bool, *, render: bool = True) -> None:
+        available = (
+            self.data.streamlines_um is not None
+            and self.data.streamlines_um.n_points > 0
+            and self.data.valid_streamline_count > 0
+        )
+        self.show_streamlines = bool(enabled and available)
+        if self.show_streamlines and self.current_field != "velocity":
+            self.current_field = "velocity"
+            self._sync_field_selector()
+        self._remove_streamline_actors()
+        self._replace_field_actor(render=False)
         if self.show_streamlines:
             self._add_streamlines()
-        self.plotter.render()
+        self._sync_streamline_widget()
+        self._update_streamline_module_label(render=False)
+        if render:
+            self.plotter.render()
+
+    def toggle_streamlines(self) -> None:
+        self.set_streamlines(not self.show_streamlines)
 
     def toggle_help(self) -> None:
         self.show_help = not self.show_help
@@ -2039,6 +2189,9 @@ class AcademicCFDViewer:
             "picked_marker": self.picked_marker_visible,
             "vectors": self.show_vectors,
             "streamlines": self.show_streamlines,
+            "streamline_arrows": self.show_streamlines
+            and "streamline_direction_arrows" in self.plotter.actors,
+            "streamline_module": self.streamline_module_visible,
             "bounding_box": self.bounding_box_visible,
             "port_normals": self.show_port_normals,
             "ports": self.config.show_ports,
@@ -2081,6 +2234,16 @@ class AcademicCFDViewer:
             "surface_mapping": self.data.surface_mapping,
             "ports_visible": self.config.show_ports,
             "streamlines_visible": self.show_streamlines,
+            "streamline_direction_arrows_visible": self.show_streamlines
+            and "streamline_direction_arrows" in self.plotter.actors,
+            "streamline_module_visible": self.streamline_module_visible,
+            "streamline_arrow_count": self.streamline_arrow_count,
+            "streamline_rendering": {
+                "seed_location": "validated inlet aperture",
+                "path_color": "velocity_magnitude_mm_s",
+                "direction_arrow_color": self.style.text_color,
+                "surface_opacity_when_enabled": 0.22,
+            },
             "clip_state": {
                 "mode": self.visual_mode,
                 "origin_um": self.plane_origin.tolist(),
@@ -2172,10 +2335,7 @@ class AcademicCFDViewer:
             self.plotter.remove_actor(f"port_normal_{label}", render=False)
         self.set_visual_mode(visual_mode)
         self.set_field(field)
-        self.show_streamlines = streamlines
-        self.plotter.remove_actor("streamlines", render=False)
-        if streamlines:
-            self._add_streamlines()
+        self.set_streamlines(streamlines, render=False)
         self.apply_academic_camera(render=False)
         self.plotter.show(auto_close=False, interactive=False)
         self.plotter.screenshot(path)
@@ -2349,6 +2509,46 @@ def render_interactive_dashboard_preview(
         }
     viewer.set_field("velocity")
     metadata["field_switch_audit"] = switch_audit
+    streamline_path = output_dir.expanduser().resolve() / "09_interactive_streamline_module.png"
+    streamline_checks = {
+        "module_control_visible": viewer.streamline_module_visible,
+        "module_control_available": viewer.streamline_widget is not None,
+        "streamlines_enabled": False,
+        "speed_field_selected": False,
+        "tube_actor_present": False,
+        "direction_arrow_actor_present": False,
+        "direction_arrows_sampled": False,
+    }
+    if viewer.streamline_widget is not None:
+        representation = viewer.streamline_widget.GetRepresentation()
+        representation.SetState(1)
+        viewer.streamline_widget.InvokeEvent("StateChangedEvent")
+        streamline_checks.update(
+            {
+                "streamlines_enabled": viewer.show_streamlines,
+                "speed_field_selected": viewer.current_field == "velocity",
+                "tube_actor_present": "streamlines" in viewer.plotter.actors,
+                "direction_arrow_actor_present": (
+                    "streamline_direction_arrows" in viewer.plotter.actors
+                ),
+                "direction_arrows_sampled": viewer.streamline_arrow_count > 0,
+            }
+        )
+    viewer.plotter.screenshot(streamline_path)
+    streamline_metadata = viewer._screenshot_metadata(
+        streamline_path, "interactive_streamline_module_visual_regression"
+    )
+    streamline_metadata["image_qc"] = _image_qc(streamline_path)
+    _write_viewer_json(streamline_path.with_suffix(".json"), streamline_metadata)
+    metadata["streamline_module_preview"] = str(streamline_path)
+    metadata["streamline_module_audit"] = {
+        "status": "PASS" if all(streamline_checks.values()) else "FAIL",
+        "checks": streamline_checks,
+        "valid_streamline_count": data.valid_streamline_count,
+        "direction_arrow_count": viewer.streamline_arrow_count,
+        "screenshot": str(streamline_path),
+        "screenshot_sha256": sha256_file(streamline_path),
+    }
     _write_viewer_json(path.with_suffix(".json"), metadata)
     viewer.plotter.close()
     return metadata, path
@@ -2380,6 +2580,8 @@ def run_self_test(data: VisualData, config: VisualConfig) -> tuple[dict[str, Any
         "picked_marker_hidden": not helpers["picked_marker"],
         "vectors_hidden": not helpers["vectors"],
         "streamlines_hidden": not helpers["streamlines"],
+        "streamline_arrows_hidden": not helpers["streamline_arrows"],
+        "streamline_module_hidden": not helpers["streamline_module"],
         "bounding_box_hidden": not helpers["bounding_box"],
         "port_normals_hidden": not helpers["port_normals"],
         "field_selector_hidden": not helpers["field_selector"],
@@ -2446,6 +2648,15 @@ def run_self_test(data: VisualData, config: VisualConfig) -> tuple[dict[str, Any
         "interactive_field_selector_visible": bool(
             dashboard["visible_helper_actors"]["field_selector"]
         ),
+        "interactive_streamline_module_pass": (
+            dashboard["streamline_module_audit"]["status"] == "PASS"
+        ),
+        "streamline_scene_direction_arrows_present": bool(
+            renders["08_after_streamlines.png"]["visible_helper_actors"][
+                "streamline_arrows"
+            ]
+        )
+        and renders["08_after_streamlines.png"]["streamline_arrow_count"] > 0,
         "upper_right_information_panel_removed": not bool(
             dashboard["visible_helper_actors"]["info"]
         ),
