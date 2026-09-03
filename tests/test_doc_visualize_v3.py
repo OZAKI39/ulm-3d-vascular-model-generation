@@ -457,6 +457,7 @@ def test_academic_style_meets_scalarbar_typography_and_port_contracts():
     assert scalar_bar["position_x"] >= 0.88
     assert scalar_bar["position_y"] >= 0.28
     assert scalar_bar["n_labels"] <= 6
+    assert scalar_bar["outline"] is False
     assert scalar_bar["unconstrained_font_size"] is True
     assert scalar_bar["title"] == "Velocity magnitude\nmm s⁻¹"
     assert style.scalar_title_gap_px >= 18
@@ -509,6 +510,12 @@ def test_overview_has_no_information_panel_and_preserves_interactions(tmp_path: 
             "field_selector": True,
         }
         assert "scientific_information" not in viewer.plotter.actors
+        scalar_bar_actor = viewer.plotter.scalar_bars[
+            viewer.layout.scalar_bar_args(
+                viewer.data.fields[viewer.current_field], viewer.style
+            )["title"]
+        ]
+        assert scalar_bar_actor.GetDrawFrame() == 0
         assert "vessel_context" not in viewer.plotter.actors
         assert all(f"port_outline_{label}" in viewer.plotter.actors for label in visualizer.PORT_ORDER)
         assert not any(name.startswith("port_normal_") for name in viewer.plotter.actors)

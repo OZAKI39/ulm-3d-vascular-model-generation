@@ -185,7 +185,7 @@ class AcademicLayout:
             "font_family": "arial",
             "bold": True,
             "fmt": "%.4g",
-            "outline": True,
+            "outline": False,
             "fill": False,
             "unconstrained_font_size": True,
         }
@@ -2098,6 +2098,7 @@ class AcademicCFDViewer:
                 "height_fraction": self.style.scalar_bar_height,
                 "labels": self.style.scalar_bar_labels,
                 "title_gap_px": self.style.scalar_title_gap_px,
+                "outline_visible": False,
                 "title": f"{field.title}\n{field.units}",
             },
             "typography_px": {
@@ -2465,6 +2466,7 @@ def run_self_test(data: VisualData, config: VisualConfig) -> tuple[dict[str, Any
             and overview["scalar_bar"]["height_fraction"] <= 0.55
             and overview["scalar_bar"]["labels"] <= 6
             and overview["scalar_bar"]["title_gap_px"] >= 18
+            and not overview["scalar_bar"]["outline_visible"]
             and bool(overview["units"])
         ),
         "large_typography_gate": (
