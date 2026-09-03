@@ -170,6 +170,14 @@ def build_evidence() -> dict[str, Any]:
     flow_manifest = load_json(flow_manifest_path)
     surface_config_path = PROJECT / "configs/cfd_surface_prepare.yaml"
     flow_config_path = PROJECT / "configs/cfd_flow.yaml"
+    one_d_flow_path = PROJECT / "utils/cfd_preprocess/one_d_flow.py"
+    port_transfer_path = PROJECT / "utils/cfd_preprocess/port_transfer.py"
+    surface_qc_impl_path = PROJECT / "utils/cfd_surface_prepare/vmtk_qc.py"
+    healthy_target_path = PROJECT / (
+        "outputs/cfd_flow/healthy_mouse_capillary_calibration_anchor003274_20260829_180310/"
+        "qc/healthy_flow_target_calculation.json"
+    )
+    healthy_target = load_json(healthy_target_path)
     velocity_visual_path = FLOW / "visualization/interactive_v3_redesign/01_after_velocity_overview.json"
     pressure_visual_path = FLOW / "visualization/interactive_v3_redesign/02_after_pressure_overview.json"
 
@@ -187,6 +195,13 @@ def build_evidence() -> dict[str, Any]:
         claim(3, "Transferred outlet flows are 0.0485, 0.3815, and 0.3393 pL/s.", [b["flow_rate_m3_s"] * 1e15 for b in outlets], "pL/s", preprocess_summary_path, "boundaries[ASSUMED_OUTLET].flow_rate_m3_s"),
         claim(3, "Transferred outlet flows sum to the inlet flow.", sum(b["flow_rate_m3_s"] for b in outlets) * 1e15, "pL/s", preprocess_summary_path, "all_outlet_total_m3_s"),
         claim(3, "Boundary-transfer mass mismatch is below 5e-14.", port_qc["relative_boundary_mass_error"], "dimensionless", port_qc_path, "relative_boundary_mass_error"),
+        claim(3, "The 1D network uses Q = delta-p / R with exact resistance integration for linearly varying radius.", "R = (8 mu / pi) integral(ds / r(s)^4)", "hydraulic relation", one_d_flow_path, "edge_resistance"),
+        claim(3, "Pressure is transferred at the exact ROI cut by subtracting the partial-edge pressure loss.", "p_cut = p_parent - Q R(0->cut)", "pressure transfer", port_transfer_path, "transfer_cut_port"),
+        claim(3, "The final inlet target is computed from a healthy mean-velocity target times the measured inlet area.", healthy_target["selected_target"]["volume_flow_m3_s"], "m3/s", healthy_target_path, "selected_target.mean_velocity_m_s, smooth_inlet_area_m2, selected_target.volume_flow_m3_s"),
+        claim(3, "Adaptive flux-pressure control adjusts inlet pressure until the integrated inlet flux matches the target.", contract["inlet_boundary"], "boundary scheme", contract_path, "inlet_boundary, target_volume_flow_m3_s"),
+        claim(3, "Each outlet pressure subtracts the numerical extension pressure loss Q times R_extension.", "p_solver = p_1D - Q R_extension", "pressure correction", surface_qc_impl_path, "P_solver_boundary_pa"),
+        claim(3, "The final outlets use pressure_eq with the extension-corrected gauge pressures.", contract["outlet_boundary"], "boundary scheme", contract_path, "outlet_boundary, outlet_gauge_pressures_pa"),
+        claim(3, "The vessel wall uses the interpolated wall_libb no-slip treatment.", contract["wall_boundary"], "boundary scheme", contract_path, "wall_boundary"),
         claim(4, "The final CFD surface is watertight and single-component.", [surface_qc["topology"]["watertight"], surface_qc["topology"]["component_count"]], "boolean,count", surface_qc_path, "topology.watertight, topology.component_count"),
         claim(4, "The final surface has four solver boundaries.", surface_qc["boundary_mapping"]["distal_boundary_count"], "boundaries", surface_qc_path, "boundary_mapping.distal_boundary_count"),
         claim(4, "No true self-intersections were detected.", surface_qc["intersection"]["true_self_intersection_count"], "count", surface_qc_path, "intersection.true_self_intersection_count"),

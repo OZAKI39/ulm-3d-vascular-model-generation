@@ -55,7 +55,14 @@ def ensure_artifact_tool(workspace: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--skip-visuals", action="store_true")
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=OUTPUT,
+        help="PPTX destination; defaults to references/cfd.pptx",
+    )
     args = parser.parse_args()
+    output = args.output.resolve()
 
     if not args.skip_visuals:
         subprocess.run(
@@ -77,13 +84,13 @@ def main() -> None:
             "node",
             str(build_module),
             str(PROJECT),
-            str(OUTPUT),
+            str(output),
             str(HERE / "preview"),
         ],
         cwd=workspace,
         check=True,
     )
-    print(f"Wrote {OUTPUT}")
+    print(f"Wrote {output}")
 
 
 if __name__ == "__main__":

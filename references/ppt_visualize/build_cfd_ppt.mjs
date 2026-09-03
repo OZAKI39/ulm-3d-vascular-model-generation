@@ -165,7 +165,7 @@ const deck = Presentation.create({ slideSize: { width: W, height: H } });
   ]);
 }
 
-// Slide 3 — actual 1D/ROI views plus an editable chart.
+// Slide 3 — actual 1D/ROI views plus an editable boundary-condition derivation.
 {
   const slide = deck.slides.add();
   slide.background.fill = C.white;
@@ -177,38 +177,39 @@ const deck = Presentation.create({ slideSize: { width: W, height: H } });
   await addImage(slide, "01b_roi_boundary_transfer.png", 64, 391, 508, 238, "Actual ROI with transferred inlet and outlet data", "contain");
   addText(slide, "Local ROI ports", 76, 397, 160, 26, 13, C.navy, true);
 
-  addText(slide, "Transferred port flow", 626, 143, 520, 34, 22, C.ink, true);
-  const inlet = Number(value(3, "Transferred inlet flow"));
-  const outlets = value(3, "Transferred outlet flows").map(Number);
-  slide.charts.add("bar", {
-    position: { left: 612, top: 184, width: 580, height: 310 },
-    categories: ["Inlet", "Outlet 1", "Outlet 2", "Outlet 3"],
-    series: [{
-      name: "Flow",
-      values: [inlet, ...outlets],
-      valuesFormatCode: "0.000",
-      fill: C.navy,
-      points: [
-        { idx: 0, fill: C.inlet }, { idx: 1, fill: C.out1 },
-        { idx: 2, fill: C.out2 }, { idx: 3, fill: C.out3 },
-      ],
-    }],
-    hasLegend: false,
-    barOptions: { direction: "column", grouping: "clustered", gapWidth: 48, varyColors: true },
-    xAxis: { textStyle: { fill: C.muted, fontSize: 13 }, line: { style: "solid", fill: C.line, width: 1 }, majorGridlines: null },
-    yAxis: { title: { text: "Flow (pL/s)", textStyle: { fill: C.muted, fontSize: 13 } }, min: 0, max: 0.85, majorUnit: 0.2, numberFormatCode: "0.0", textStyle: { fill: C.muted, fontSize: 12 }, majorGridlines: { style: "solid", fill: "#E4EAED", width: 1 } },
-    dataLabels: { showValue: true, position: "outEnd", textStyle: { fill: C.ink, fontSize: 12, bold: true } },
-    chartFill: C.white,
-    chartLine: { style: "solid", fill: "none", width: 0 },
-    plotAreaFill: C.white,
-    plotAreaLine: { style: "solid", fill: "none", width: 0 },
-  });
-  addRect(slide, 626, 512, 556, 113, C.pale, "none", 4);
-  addText(slide, "1 inlet · 3 outlets", 648, 531, 220, 28, 20, C.navy, true);
-  addText(slide, "Outlet flows reproduce the inlet within 4.8 × 10⁻¹⁴ relative mismatch.", 648, 568, 492, 45, 16, C.muted, false);
+  addRect(slide, 606, 134, 616, 501, C.soft, C.line, 4);
+  addText(slide, "How the 3D boundary conditions are constructed", 632, 151, 552, 44, 22, C.ink, true);
+  addLine(slide, 632, 205, 564, 0, C.line, 1);
+
+  addText(slide, "1 · Solve the 1D hydraulic network", 632, 220, 520, 28, 18, C.navy, true);
+  addText(slide, "Q = Δp / R", 632, 253, 176, 33, 24, C.ink, true);
+  addText(slide, "R = (8μ/π) ∫₀ᴸ ds / r(s)⁴", 823, 255, 350, 30, 19, C.ink, true);
+  addText(slide, "Pressure drop, viscosity and vessel radius determine segment flow.", 632, 290, 538, 30, 16, C.muted, false);
+  addLine(slide, 632, 329, 564, 0, C.line, 1);
+
+  addText(slide, "2 · Map 1D pressure onto the prepared ports", 632, 344, 520, 28, 18, C.teal, true);
+  addText(slide, "p_cut = p_parent − Q R(0→cut)", 632, 376, 484, 31, 21, C.ink, true);
+  addText(slide, "p_out,i^3D = p_cut,i − Q_i^1D R_i,extension", 632, 406, 540, 31, 19, C.ink, true);
+  addText(slide, "The second term removes the artificial extension pressure loss.", 632, 435, 548, 28, 16, C.muted, false);
+  addLine(slide, 632, 469, 564, 0, C.line, 1);
+
+  addText(slide, "3 · Apply the final solver boundaries", 632, 482, 548, 28, 18, C.out2, true);
+  addText(slide, "INLET", 632, 518, 72, 24, 13, C.inlet, true);
+  addText(slide, "Q_target = u_mean,healthy A_inlet = ∫_A u·n dA", 708, 515, 464, 27, 17, C.ink, true);
+  addText(slide, "adaptive_flux_pressure adjusts inlet pressure to match Q_target", 708, 539, 470, 24, 16, C.muted, false);
+  addText(slide, "OUTLETS", 632, 570, 72, 24, 13, C.out1, true);
+  addText(slide, "pressure_eq: p_gauge,i = p_out,i^3D", 708, 567, 386, 27, 17, C.ink, true);
+  addText(slide, "WALL", 632, 598, 72, 24, 13, C.navy, true);
+  addText(slide, "wall_libb: u_wall = 0", 708, 595, 250, 27, 17, C.ink, true);
   addNotes(slide, [
     gh("outputs/cfd_preprocess/global_to_roi_anchor003274_20260825_183628/qc/run_summary.json"),
     gh("outputs/cfd_preprocess/global_to_roi_anchor003274_20260825_183628/qc/port_transfer_qc.json"),
+    gh("outputs/cfd_surface_prepare/vmtk_tps_boundarynormal_crossseam_finalized_recovery_anchor003274_20260826_221611/bc/boundary_conditions_vmtk_boundarynormal_crossseam.json"),
+    gh("utils/cfd_preprocess/one_d_flow.py"),
+    gh("utils/cfd_preprocess/port_transfer.py"),
+    gh("utils/cfd_surface_prepare/vmtk_qc.py"),
+    gh("outputs/cfd_flow/healthy_mouse_capillary_calibration_anchor003274_20260829_180310/qc/healthy_flow_target_calculation.json"),
+    gh("outputs/cfd_flow/production_tau1_base_promotion_anchor003274_20260902_013637/input/production_numerical_contract.json"),
   ]);
 }
 
@@ -422,8 +423,8 @@ await fs.writeFile(
     slide_size_px: { width: W, height: H },
     slide_size_inches: { width: 13.333333, height: 7.5 },
     slide_titles: titles,
-    native_editable_charts: 2,
-    native_editable_diagrams: 2,
+    native_editable_charts: 1,
+    native_editable_diagrams: 3,
     raster_scientific_render_objects: 9,
     unique_raster_scientific_files_used: 7,
     all_visible_text_english: true,
