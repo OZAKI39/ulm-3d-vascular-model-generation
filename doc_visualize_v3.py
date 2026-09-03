@@ -165,10 +165,10 @@ class AcademicLayout:
     info_position: str = "upper_right"
     pick_position: str = "lower_right"
     orientation_viewport: tuple[float, float, float, float] = (
-        0.015,
-        0.015,
-        0.09,
-        0.105,
+        0.012,
+        0.13,
+        0.12,
+        0.29,
     )
 
     def scalar_bar_args(self, field: "FieldSpec", style: AcademicStyle) -> dict[str, Any]:
@@ -1333,7 +1333,10 @@ class AcademicCFDViewer:
             axes.GetYAxisCaptionActor2D,
             axes.GetZAxisCaptionActor2D,
         ):
-            caption_getter().GetCaptionTextProperty().SetFontFamilyToArial()
+            caption_property = caption_getter().GetCaptionTextProperty()
+            caption_property.SetFontFamilyToArial()
+            caption_property.SetFontSize(self.style.control_font_size + 3)
+            caption_property.SetBold(True)
         self._update_overlays(render=False)
         self.apply_academic_camera(render=False)
         if not self.publication:
@@ -1889,16 +1892,17 @@ class AcademicCFDViewer:
 
     def _update_title(self, *, render: bool = True) -> None:
         self.plotter.remove_actor("field_title", render=False)
-        actor = self.plotter.add_text(
-            self._field_caption(),
-            position=(28, int(self.plotter.window_size[1]) - 28),
-            font_size=self.style.title_font_size,
-            color=self.style.text_color,
-            font=self.style.font_family,
-            name="field_title",
-            render=False,
-        )
-        self._style_text_panel(actor, opacity=0.82, vertical="top")
+        if self.publication:
+            actor = self.plotter.add_text(
+                self._field_caption(),
+                position=(28, int(self.plotter.window_size[1]) - 28),
+                font_size=self.style.title_font_size,
+                color=self.style.text_color,
+                font=self.style.font_family,
+                name="field_title",
+                render=False,
+            )
+            self._style_text_panel(actor, opacity=0.82, vertical="top")
         if render:
             self.plotter.render()
 
@@ -2194,6 +2198,7 @@ class AcademicCFDViewer:
             "plane_widget": self.plane_widget_visible,
             "help": self.show_help,
             "info": False,
+            "field_title": "field_title" in self.plotter.actors,
             "picked_marker": self.picked_marker_visible,
             "vectors": self.show_vectors,
             "streamlines": self.show_streamlines,
@@ -2280,6 +2285,11 @@ class AcademicCFDViewer:
                 "controls": self.style.control_font_size,
                 "scalar_title": self.style.scalar_title_font_size,
                 "scalar_labels": self.style.scalar_label_font_size,
+            },
+            "orientation_axes": {
+                "viewport": list(self.layout.orientation_viewport),
+                "font_size": self.style.control_font_size + 3,
+                "bold": True,
             },
             "visible_helper_actors": self.visible_helper_actors(),
             "anti_aliasing": self.anti_aliasing,
@@ -2656,6 +2666,19 @@ def run_self_test(data: VisualData, config: VisualConfig) -> tuple[dict[str, Any
         ),
         "interactive_field_selector_visible": bool(
             dashboard["visible_helper_actors"]["field_selector"]
+        ),
+        "interactive_upper_left_title_panel_removed": not bool(
+            dashboard["visible_helper_actors"]["field_title"]
+        ),
+        "interactive_orientation_axes_repositioned_and_enlarged": (
+            dashboard["orientation_axes"]["viewport"][1] >= 0.12
+            and dashboard["orientation_axes"]["viewport"][2]
+            - dashboard["orientation_axes"]["viewport"][0]
+            >= 0.10
+            and dashboard["orientation_axes"]["viewport"][3]
+            - dashboard["orientation_axes"]["viewport"][1]
+            >= 0.15
+            and dashboard["orientation_axes"]["font_size"] >= 18
         ),
         "interactive_streamline_module_pass": (
             dashboard["streamline_module_audit"]["status"] == "PASS"
