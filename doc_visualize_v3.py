@@ -114,11 +114,12 @@ class AcademicStyle:
     control_font_size: int = 15
     scalar_title_font_size: int = 20
     scalar_label_font_size: int = 16
-    scalar_bar_x: float = 0.84
-    scalar_bar_y: float = 0.18
+    scalar_bar_x: float = 0.89
+    scalar_bar_y: float = 0.30
     scalar_bar_width: float = 0.035
     scalar_bar_height: float = 0.50
     scalar_bar_labels: int = 6
+    scalar_title_gap_px: int = 20
     camera_padding: float = 1.02
 
 
@@ -150,6 +151,7 @@ def academic_style(theme: str, *, publication: bool = False) -> AcademicStyle:
         control_font_size=18,
         scalar_title_font_size=22,
         scalar_label_font_size=18,
+        scalar_title_gap_px=26,
     )
 
 
@@ -1356,6 +1358,7 @@ class AcademicCFDViewer:
         field = self.data.fields[self.current_field]
         clim = self._current_limits()
         cmap = _pressure_colormap(*clim) if self.current_field == "pressure" else field.cmap
+        scalar_bar_args = self.layout.scalar_bar_args(field, self.style)
         if self.visual_mode != "overview":
             self.context_actor = self.plotter.add_mesh(
                 self.data.surface_um,
@@ -1391,11 +1394,13 @@ class AcademicCFDViewer:
             specular=0.02,
             specular_power=8.0,
             nan_color="#C7C7C7",
-            scalar_bar_args=self.layout.scalar_bar_args(field, self.style),
+            scalar_bar_args=scalar_bar_args,
             name="cfd_field",
             reset_camera=False,
             render=False,
         )
+        scalar_bar = self.plotter.scalar_bars[scalar_bar_args["title"]]
+        scalar_bar.SetVerticalTitleSeparation(self.style.scalar_title_gap_px)
         self._update_title(render=False)
         if render:
             self.plotter.render()
@@ -2087,9 +2092,12 @@ class AcademicCFDViewer:
             "vessel_bounds_um": [float(value) for value in self.data.surface_um.bounds],
             "vessel_projected_coverage": self.composition_qc(),
             "scalar_bar": {
+                "position_x": self.style.scalar_bar_x,
+                "position_y": self.style.scalar_bar_y,
                 "width_fraction": self.style.scalar_bar_width,
                 "height_fraction": self.style.scalar_bar_height,
                 "labels": self.style.scalar_bar_labels,
+                "title_gap_px": self.style.scalar_title_gap_px,
                 "title": f"{field.title}\n{field.units}",
             },
             "typography_px": {
@@ -2448,9 +2456,15 @@ def run_self_test(data: VisualData, config: VisualConfig) -> tuple[dict[str, Any
         "composition_qc": all(composition_checks.values()),
         "default_clutter_gate": all(clutter_checks.values()),
         "scalar_bar_gate": (
-            overview["scalar_bar"]["width_fraction"] <= 0.05
+            overview["scalar_bar"]["position_x"] >= 0.88
+            and overview["scalar_bar"]["position_x"]
+            + overview["scalar_bar"]["width_fraction"]
+            <= 0.95
+            and overview["scalar_bar"]["position_y"] >= 0.28
+            and overview["scalar_bar"]["width_fraction"] <= 0.05
             and overview["scalar_bar"]["height_fraction"] <= 0.55
             and overview["scalar_bar"]["labels"] <= 6
+            and overview["scalar_bar"]["title_gap_px"] >= 18
             and bool(overview["units"])
         ),
         "large_typography_gate": (

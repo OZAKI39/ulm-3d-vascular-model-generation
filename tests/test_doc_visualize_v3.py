@@ -454,9 +454,12 @@ def test_academic_style_meets_scalarbar_typography_and_port_contracts():
     assert style.metadata_font_size >= 15
     assert 0.030 <= scalar_bar["width"] <= 0.050
     assert 0.48 <= scalar_bar["height"] <= 0.55
+    assert scalar_bar["position_x"] >= 0.88
+    assert scalar_bar["position_y"] >= 0.28
     assert scalar_bar["n_labels"] <= 6
     assert scalar_bar["unconstrained_font_size"] is True
     assert scalar_bar["title"] == "Velocity magnitude\nmm s⁻¹"
+    assert style.scalar_title_gap_px >= 18
     assert visualizer.PORT_COLORS == {
         "inlet": "#0072B2",
         "outlet_01": "#009E73",
