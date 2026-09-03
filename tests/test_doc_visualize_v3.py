@@ -87,6 +87,8 @@ def test_cli_defaults_and_required_options_are_available():
             "run",
             "--vtu",
             "field.vtu",
+            "--surface",
+            "surface.vtp",
             "--scalar",
             "pressure",
             "--no-streamlines",
@@ -107,6 +109,7 @@ def test_cli_defaults_and_required_options_are_available():
         ]
     )
     assert explicit.vtu == Path("field.vtu")
+    assert explicit.surface == Path("surface.vtp")
     assert explicit.publication_screenshot == Path("figure.png")
     assert explicit.publication_suite == Path("figures")
     assert explicit.projection == "perspective"
@@ -173,6 +176,70 @@ def test_derived_fields_are_formula_grounded_and_signed_ranges_are_symmetric():
     )
     assert result.raw_min == -result.raw_max
     assert result.percentile_min == -result.percentile_max
+
+
+def test_cell_fields_map_to_unchanged_continuous_surface(tmp_path: Path):
+    grid = _small_grid()
+    visualizer.add_derived_cell_fields(
+        grid,
+        physical_density_kg_m3=1000.0,
+        rho_lattice_mean=1.0,
+    )
+    centers = np.asarray(grid.cell_centers().points)
+    original = pv.Cube(bounds=(0.0, 2.0, 0.0, 1.0, 0.0, 1.0)).triangulate()
+    path = tmp_path / "original_surface_um.vtp"
+    original.save(path)
+    points_before = np.asarray(original.points).copy()
+    faces_before = np.asarray(original.faces).copy()
+    mapped, report = visualizer.map_cell_fields_to_original_surface(
+        path,
+        grid,
+        centers,
+        dx_um=1.0,
+    )
+    assert report["status"] == "PASS"
+    assert report["method"] == visualizer.RENDER_INTERPOLATION
+    assert np.array_equal(mapped.points, points_before)
+    assert np.array_equal(mapped.faces, faces_before)
+    assert set(visualizer.DERIVED_ARRAYS).issubset(mapped.point_data)
+    assert "pressure_gauge_pa" in mapped.point_data
+
+
+def test_original_surface_is_resolved_from_accepted_mesh_provenance(tmp_path: Path):
+    mesh = tmp_path / "outputs" / "cfd_flow" / "base" / "seeder" / "mesh" / "elemlist.lsb"
+    mesh.parent.mkdir(parents=True)
+    mesh.write_bytes(b"mesh")
+    axis_root = tmp_path / "outputs" / "cfd_flow" / "axis_aligned"
+    surface = axis_root / "geometry" / "model_um.vtp"
+    surface.parent.mkdir(parents=True)
+    pv.Sphere().save(surface)
+    _write_json(
+        mesh.parents[2] / "qc" / "final_base_geometry_validation.json",
+        {
+            "status": "PASS",
+            "full_fluid_center_containment": {
+                "surface_path": str(axis_root / "geometry" / "model_m.stl")
+            },
+        },
+    )
+    _write_json(
+        axis_root / "qc" / "geometry_rigid_transform_qc.json",
+        {
+            "status": "PASS",
+            "transform_kind": "GLOBAL_RIGID_ROTATION_ONLY",
+            "scale": 1.0,
+            "remeshing": False,
+            "checks": {"geometry_unchanged": True},
+        },
+    )
+    summary = {
+        "mesh_provenance": {
+            "mesh_hashes": {"elemlist.lsb": {"path": str(mesh)}}
+        }
+    }
+    assert visualizer.resolve_original_surface(
+        summary, project_root=tmp_path
+    ) == surface.resolve()
 
 
 def test_required_vtu_field_contract_is_strict():
@@ -349,6 +416,9 @@ def _small_visual_data(tmp_path: Path) -> visualizer.VisualData:
         },
         physical_flux={"status": "PASS"},
         plane_contract=_viewer_plane_contract(),
+        original_surface_path=tmp_path / "original_surface.vtp",
+        original_surface_sha256="e" * 64,
+        surface_mapping={"status": "PASS", "method": visualizer.RENDER_INTERPOLATION},
         grid_um=grid,
         display_grid_um=display,
         surface_um=surface,
@@ -362,14 +432,17 @@ def _small_visual_data(tmp_path: Path) -> visualizer.VisualData:
     )
 
 
-def test_display_interpolation_is_point_only_and_original_cells_are_unchanged():
+def test_legacy_display_copy_does_not_change_original_cells():
     grid = _small_grid()
     original = np.asarray(grid.cell_data["pressure_gauge_pa"]).copy()
     display = visualizer._build_display_grid(grid)
     assert "pressure_gauge_pa" in display.point_data
     assert "pressure_gauge_pa" in display.cell_data
     assert np.array_equal(grid.cell_data["pressure_gauge_pa"], original)
-    assert visualizer.RENDER_INTERPOLATION == "CELL_TO_POINT_DISPLAY_ONLY"
+    assert (
+        visualizer.RENDER_INTERPOLATION
+        == "CELL_CENTER_TO_ORIGINAL_SURFACE_IDW_K8_DISPLAY_ONLY"
+    )
 
 
 def test_academic_style_meets_scalarbar_typography_and_port_contracts():
@@ -399,7 +472,10 @@ def test_camera_is_deterministic_and_fitted_to_vessel_only():
     first = visualizer.academic_camera_parameters(points, 1.5)
     second = visualizer.academic_camera_parameters(points, 1.5)
     assert np.allclose(first["position_um"], second["position_um"])
-    assert np.allclose(first["focal_point_um"], np.mean(points, axis=0))
+    focal = np.asarray(first["focal_point_um"])
+    bounds = np.asarray(pv.PolyData(points).bounds).reshape(3, 2)
+    assert np.all(focal >= bounds[:, 0])
+    assert np.all(focal <= bounds[:, 1])
     assert first["projected_height_fraction"] >= 0.55
     assert first["projected_width_fraction"] >= 0.35
 
@@ -432,6 +508,10 @@ def test_clean_overview_defaults_widget_lifecycle_and_original_cell_pick(tmp_pat
         assert "vessel_context" not in viewer.plotter.actors
         assert all(f"port_outline_{label}" in viewer.plotter.actors for label in visualizer.PORT_ORDER)
         assert not any(name.startswith("port_normal_") for name in viewer.plotter.actors)
+        pressure_widget = viewer.field_widgets["pressure"]
+        pressure_widget.GetRepresentation().SetState(1)
+        pressure_widget.InvokeEvent("StateChangedEvent")
+        assert viewer.current_field == "pressure"
         viewer.show_plane_widget("clip")
         assert viewer.visual_mode == "clip"
         assert viewer.plane_widget_visible

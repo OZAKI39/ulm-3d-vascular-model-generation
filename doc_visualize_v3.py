@@ -69,7 +69,8 @@ PORT_COLORS = {
     "outlet_02": "#E69F00",
     "outlet_03": "#CC79A7",
 }
-RENDER_INTERPOLATION = "CELL_TO_POINT_DISPLAY_ONLY"
+RENDER_INTERPOLATION = "CELL_CENTER_TO_ORIGINAL_SURFACE_IDW_K8_DISPLAY_ONLY"
+SURFACE_MAPPING_NEIGHBORS = 8
 
 
 class VisualizerInputError(RuntimeError):
@@ -233,6 +234,9 @@ class VisualData:
     run_summary: dict[str, Any]
     physical_flux: dict[str, Any]
     plane_contract: dict[str, Any]
+    original_surface_path: Path
+    original_surface_sha256: str
+    surface_mapping: dict[str, Any]
     # grid_um retains the original cell-centred quantitative arrays.
     grid_um: pv.UnstructuredGrid
     # display_grid_um contains point-interpolated scalars for rendering only.
@@ -256,6 +260,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--run-dir", type=Path, help="Explicit production run directory")
     parser.add_argument("--vtu", type=Path, help="Explicit production VTU (highest priority)")
+    parser.add_argument(
+        "--surface",
+        type=Path,
+        help="Explicit continuous original vessel surface (.vtp or .stl)",
+    )
     parser.add_argument(
         "--scalar",
         choices=SCALAR_CHOICES,
@@ -368,6 +377,84 @@ def resolve_run_and_vtu(
     else:
         run_dir = locate_latest_run(project_root)
     return run_dir, run_dir / "flow" / "production_steady_flow_field.vtu"
+
+
+def _rebase_provenance_path(path_value: str | Path, project_root: Path) -> Path:
+    """Resolve an evidence path after a repository has moved to another machine."""
+
+    recorded = Path(path_value).expanduser()
+    if recorded.exists():
+        return recorded.resolve()
+    parts = recorded.parts
+    output_index = next(
+        (index for index, part in enumerate(parts) if part.lower() == "outputs"),
+        None,
+    )
+    if output_index is not None:
+        portable = project_root.joinpath(*parts[output_index:])
+        if portable.exists():
+            return portable.resolve()
+    return recorded.resolve()
+
+
+def resolve_original_surface(
+    run_summary: dict[str, Any],
+    *,
+    project_root: Path = PROJECT_ROOT,
+    explicit_surface: Path | None = None,
+) -> Path:
+    """Resolve the accepted continuous vessel surface used to build the CFD mesh."""
+
+    root = Path(project_root).resolve()
+    if explicit_surface is not None:
+        candidate = explicit_surface.expanduser().resolve()
+        if not candidate.is_file():
+            raise VisualizerInputError(f"Explicit original surface missing: {candidate}")
+        return candidate
+
+    mesh_hashes = run_summary.get("mesh_provenance", {}).get("mesh_hashes", {})
+    validation_paths: list[Path] = []
+    for record in mesh_hashes.values():
+        try:
+            mesh_file = _rebase_provenance_path(record["path"], root)
+            validation_paths.append(
+                mesh_file.parents[2] / "qc" / "final_base_geometry_validation.json"
+            )
+        except (KeyError, IndexError, TypeError):
+            continue
+    for validation_path in dict.fromkeys(validation_paths):
+        if not validation_path.is_file():
+            continue
+        validation = _load_json_object(validation_path, "accepted mesh geometry QC")
+        if validation.get("status") != "PASS":
+            continue
+        try:
+            meter_surface = _rebase_provenance_path(
+                validation["full_fluid_center_containment"]["surface_path"], root
+            )
+        except (KeyError, TypeError):
+            continue
+        if meter_surface.stem.endswith("_m"):
+            continuous = meter_surface.with_name(
+                f"{meter_surface.stem[:-2]}_um.vtp"
+            )
+        else:
+            continuous = meter_surface.with_suffix(".vtp")
+        transform_qc = continuous.parents[1] / "qc" / "geometry_rigid_transform_qc.json"
+        if continuous.is_file() and transform_qc.is_file():
+            transform = _load_json_object(transform_qc, "rigid-transform geometry QC")
+            checks = transform.get("checks", {})
+            if (
+                transform.get("status") == "PASS"
+                and transform.get("transform_kind") == "GLOBAL_RIGID_ROTATION_ONLY"
+                and transform.get("scale") == 1.0
+                and not transform.get("remeshing", True)
+                and all(bool(value) for value in checks.values())
+            ):
+                return continuous.resolve()
+    raise VisualizerInputError(
+        "Accepted continuous original vessel surface could not be resolved from mesh provenance"
+    )
 
 
 def calculate_field_range(values: np.ndarray) -> FieldRange:
@@ -678,12 +765,109 @@ def _build_overview_surface(display_grid_um: pv.UnstructuredGrid) -> pv.PolyData
     )
 
 
+def map_cell_fields_to_original_surface(
+    surface_path: Path,
+    grid_um: pv.UnstructuredGrid,
+    centers_um: np.ndarray,
+    *,
+    dx_um: float,
+) -> tuple[pv.PolyData, dict[str, Any]]:
+    """Map cell evidence onto the unchanged continuous surface for display only."""
+
+    source = pv.read(surface_path)
+    if not isinstance(source, pv.PolyData):
+        source = source.extract_surface(algorithm="dataset_surface")
+    if source.n_points < 4 or source.n_cells < 1:
+        raise VisualizerInputError(f"Original vessel surface is empty: {surface_path}")
+    source_points = np.asarray(source.points, dtype=np.float64)
+    source_faces = np.asarray(source.faces).copy()
+    coordinate_unit = "um"
+    if float(np.max(np.ptp(source_points, axis=0))) < 1.0:
+        source.points = source_points * 1.0e6
+        source_points = np.asarray(source.points, dtype=np.float64)
+        coordinate_unit = "m_converted_to_um"
+    if source.n_open_edges != 0:
+        raise VisualizerInputError("Accepted continuous vessel surface is not watertight")
+
+    neighbors = min(SURFACE_MAPPING_NEIGHBORS, grid_um.n_cells)
+    distances, indices = cKDTree(np.asarray(centers_um)).query(
+        source_points,
+        k=neighbors,
+    )
+    if neighbors == 1:
+        distances = distances[:, None]
+        indices = indices[:, None]
+    regularizer = max(float(dx_um) * 0.05, np.finfo(float).eps)
+    weights = 1.0 / np.square(np.asarray(distances) + regularizer)
+    weights /= np.sum(weights, axis=1, keepdims=True)
+    for name in REQUIRED_ARRAYS + DERIVED_ARRAYS:
+        values = np.asarray(grid_um.cell_data[name], dtype=np.float64)
+        selected = values[np.asarray(indices)]
+        if selected.ndim == 2:
+            mapped = np.sum(weights * selected, axis=1)
+        else:
+            mapped = np.sum(weights[..., None] * selected, axis=1)
+        source.point_data[name] = mapped
+
+    surface = source.compute_normals(
+        cell_normals=False,
+        point_normals=True,
+        consistent_normals=True,
+        auto_orient_normals=True,
+        split_vertices=False,
+        inplace=False,
+    )
+    if not np.array_equal(np.asarray(surface.points), source_points) or not np.array_equal(
+        np.asarray(surface.faces), source_faces
+    ):
+        raise VisualizerInputError("Display mapping unexpectedly changed original geometry")
+    nearest = np.asarray(distances)[:, 0]
+    checks = {
+        "watertight": surface.n_open_edges == 0,
+        "geometry_points_unchanged": bool(
+            np.array_equal(np.asarray(surface.points), source_points)
+        ),
+        "geometry_faces_unchanged": bool(
+            np.array_equal(np.asarray(surface.faces), source_faces)
+        ),
+        "nearest_distance_p99_within_dx": float(np.percentile(nearest, 99.0))
+        <= float(dx_um),
+        "nearest_distance_max_within_2dx": float(np.max(nearest))
+        <= 2.0 * float(dx_um),
+        "all_display_fields_present": all(
+            name in surface.point_data for name in REQUIRED_ARRAYS + DERIVED_ARRAYS
+        ),
+    }
+    report = {
+        "status": "PASS" if all(checks.values()) else "FAIL",
+        "method": RENDER_INTERPOLATION,
+        "neighbors": neighbors,
+        "inverse_distance_power": 2,
+        "regularizer_um": regularizer,
+        "coordinate_unit": coordinate_unit,
+        "surface_points": surface.n_points,
+        "surface_triangles": surface.n_cells,
+        "nearest_distance_um": {
+            "minimum": float(np.min(nearest)),
+            "median": float(np.median(nearest)),
+            "p95": float(np.percentile(nearest, 95.0)),
+            "p99": float(np.percentile(nearest, 99.0)),
+            "maximum": float(np.max(nearest)),
+        },
+        "checks": checks,
+    }
+    if report["status"] != "PASS":
+        raise VisualizerInputError(f"Original-surface mapping QC failed: {checks}")
+    return surface, report
+
+
 def load_and_validate_data(
     run_dir: Path,
     vtu_path: Path,
     config: VisualConfig,
     *,
     project_root: Path = PROJECT_ROOT,
+    explicit_surface: Path | None = None,
 ) -> VisualData:
     """Read, validate, and cache all geometry required by the viewer."""
 
@@ -751,7 +935,18 @@ def load_and_validate_data(
     grid.points = np.asarray(grid.points, dtype=np.float64) * 1.0e6
     centers_um = centers_m * 1.0e6
     display_grid = _build_display_grid(grid)
-    surface = _build_overview_surface(display_grid)
+    original_surface_path = resolve_original_surface(
+        summary,
+        project_root=Path(project_root).resolve(),
+        explicit_surface=explicit_surface,
+    )
+    original_surface_sha256 = sha256_file(original_surface_path)
+    surface, surface_mapping = map_cell_fields_to_original_surface(
+        original_surface_path,
+        grid,
+        centers_um,
+        dx_um=dx_m * 1.0e6,
+    )
     pressure_range = calculate_field_range(grid.cell_data["pressure_gauge_pa"])
     pressure_clim = pressure_range.selected(config.full_range)
     fields: dict[str, FieldSpec] = {
@@ -862,6 +1057,9 @@ def load_and_validate_data(
         run_summary=summary,
         physical_flux=flux,
         plane_contract=plane_contract,
+        original_surface_path=original_surface_path,
+        original_surface_sha256=original_surface_sha256,
+        surface_mapping=surface_mapping,
         grid_um=grid,
         display_grid_um=display_grid,
         surface_um=surface,
@@ -941,11 +1139,22 @@ def academic_camera_parameters(
             best = candidate
     assert best is not None
     _, view_up, right, parallel_scale, width_coverage, height_coverage = best
+    vertical_projection = centered @ view_up
+    horizontal_projection = centered @ right
+    focal_point = (
+        center
+        + view_up
+        * 0.5
+        * (float(np.min(vertical_projection)) + float(np.max(vertical_projection)))
+        + right
+        * 0.5
+        * (float(np.min(horizontal_projection)) + float(np.max(horizontal_projection)))
+    )
     diagonal = float(np.linalg.norm(np.ptp(points, axis=0)))
     distance = max(diagonal * 3.0, parallel_scale * 4.0)
     return {
-        "position_um": center + view_out * distance,
-        "focal_point_um": center,
+        "position_um": focal_point + view_out * distance,
+        "focal_point_um": focal_point,
         "view_up": view_up,
         "view_out": view_out,
         "right": right,
@@ -1125,10 +1334,10 @@ class AcademicCFDViewer:
         if self.visual_mode == "overview":
             return self.data.surface_um
         if self.visual_mode == "slice":
-            return self.data.display_grid_um.slice(
+            return self.data.surface_um.slice(
                 normal=self.plane_normal, origin=self.plane_origin
             )
-        return self.data.display_grid_um.clip(
+        return self.data.surface_um.clip(
             normal=self.plane_normal, origin=self.plane_origin, invert=False
         )
 
@@ -1318,7 +1527,7 @@ class AcademicCFDViewer:
             column = index % column_count
             row = index // column_count
             widget = self.plotter.add_radio_button_widget(
-                lambda enabled, selected=key: enabled and self.set_field(selected),
+                lambda selected=key: self.set_field(selected),
                 radio_button_group="cfd_fields",
                 value=key == self.current_field,
                 title=f"{spec.shortcut}  {spec.control_label}",
@@ -1326,8 +1535,8 @@ class AcademicCFDViewer:
                     start_x + slot * column,
                     22.0 + 48.0 * (row_count - 1 - row),
                 ),
-                size=28,
-                border_size=4,
+                size=34,
+                border_size=5,
                 color_on="#35B8FF",
                 color_off="#60788A",
                 background_color=self.style.panel_color,
@@ -1339,6 +1548,16 @@ class AcademicCFDViewer:
                 actor.prop.font_size = self.style.control_font_size
                 actor.prop.color = self.style.text_color
                 actor.prop.bold = True
+        hint = self.plotter.add_text(
+            "Click circles or press 1–8",
+            position=(int(width) - 28, 28),
+            font_size=self.style.control_font_size,
+            color=self.style.muted_color,
+            font="arial",
+            name="field_selector_hint",
+            render=False,
+        )
+        self._style_text_panel(hint, opacity=0.65, horizontal="right")
         self.field_selector_visible = bool(self.field_widgets)
 
     def _sync_field_selector(self) -> None:
@@ -1507,7 +1726,7 @@ class AcademicCFDViewer:
         color_scale = "Log" if field.log_scale else "Linear"
         return (
             f"{field.title}  [{field.units}]\n"
-            f"Base CFD  ·  validated  ·  {range_mode}  ·  {color_scale}  ·  "
+            f"Original CFD surface  ·  {range_mode}  ·  {color_scale}  ·  "
             f"{self.visual_mode.title()}"
         )
 
@@ -1583,12 +1802,14 @@ class AcademicCFDViewer:
             f"{100.0 * float(fractions.get('outlet_02', 0.0)):.1f} / "
             f"{100.0 * float(fractions.get('outlet_03', 0.0)):.1f}%\n"
             f"volume closure  {float(metrics.get('physical_volume_closure', 0.0)):.6g}\n"
+            "geometry  original continuous surface · no voxel shell\n"
             "evidence  accepted Base restart · Coarse→Base PASS"
         )
 
     def _help_text(self) -> str:
         return (
-            "FIELDS  1 Speed · 2 Pressure · 3 Density Δ · 4 Dynamic p\n"
+            "FIELDS  click circles or use 1–8\n"
+            "        1 Speed · 2 Pressure · 3 Density Δ · 4 Dynamic p\n"
             "        5 uₓ · 6 uᵧ · 7 u_z · 8 ρ lattice\n"
             "INSPECT C Clip · L Slice · V Vectors · T Streamlines · N Normals\n"
             "CAMERA  I Academic · X/Y/Z Axis · P Projection · R/F Fit\n"
@@ -1927,6 +2148,11 @@ class AcademicCFDViewer:
             "visual_mode": self.visual_mode,
             "projection": self.projection,
             "render_interpolation": self.data.rendering_scalar_interpolation,
+            "display_geometry": "ORIGINAL_CONTINUOUS_CFD_SURFACE",
+            "voxel_geometry_visible": False,
+            "original_surface": str(self.data.original_surface_path),
+            "original_surface_sha256": self.data.original_surface_sha256,
+            "surface_mapping": self.data.surface_mapping,
             "ports_visible": self.config.show_ports,
             "streamlines_visible": self.show_streamlines,
             "clip_state": {
@@ -2069,6 +2295,7 @@ def _production_evidence_hashes(data: VisualData) -> dict[str, str]:
     )
     paths = {
         "source_vtu": data.vtu_path,
+        "original_continuous_surface": data.original_surface_path,
         "accepted_restart": accepted_restart,
         "vtu_manifest": data.vtu_path.parent / "production_steady_flow_field_manifest.json",
         "steady_qc": data.run_dir / "qc" / "production_steady_qc.json",
@@ -2122,6 +2349,11 @@ def render_publication_suite(
         "solver_calls": 0,
         "created_at": datetime.now().isoformat(),
         "source_vtu_sha256": data.vtu_sha256,
+        "display_geometry": "ORIGINAL_CONTINUOUS_CFD_SURFACE",
+        "voxel_geometry_visible": False,
+        "original_surface": str(data.original_surface_path),
+        "original_surface_sha256": data.original_surface_sha256,
+        "surface_mapping": data.surface_mapping,
         "render_interpolation": data.rendering_scalar_interpolation,
         "quantitative_source": "ORIGINAL_CELL_CENTERED_VTU_ARRAYS",
         "camera_framing": "PCA_DETERMINISTIC_VESSEL_SURFACE_BOUNDS_ONLY",
@@ -2149,7 +2381,7 @@ def render_interactive_dashboard_preview(
     """Render the default interactive workstation, including native controls."""
 
     dashboard_config = VisualConfig(
-        width=max(config.width, 2200),
+        width=max(config.width, 2240),
         height=max(config.height, 1400),
         initial_scalar="velocity",
         streamline_seeds=config.streamline_seeds,
@@ -2170,6 +2402,28 @@ def render_interactive_dashboard_preview(
     viewer.plotter.screenshot(path)
     metadata = viewer._screenshot_metadata(path, "interactive_dashboard_visual_regression")
     metadata["image_qc"] = _image_qc(path)
+    switch_audit: dict[str, Any] = {}
+    for field, widget in viewer.field_widgets.items():
+        widget.GetRepresentation().SetState(1)
+        widget.InvokeEvent("StateChangedEvent")
+        expected_array = data.fields[field].array
+        mapped_dataset = viewer.field_actor.mapper.dataset
+        checks = {
+            "selected_field_updated": viewer.current_field == field,
+            "expected_array_on_display_geometry": (
+                expected_array in mapped_dataset.point_data
+                or expected_array in mapped_dataset.cell_data
+            ),
+            "field_actor_present": viewer.field_actor is not None,
+        }
+        switch_audit[field] = {
+            "status": "PASS" if all(checks.values()) else "FAIL",
+            "expected_array": expected_array,
+            "selected_field": viewer.current_field,
+            "checks": checks,
+        }
+    viewer.set_field("velocity")
+    metadata["field_switch_audit"] = switch_audit
     _write_viewer_json(path.with_suffix(".json"), metadata)
     viewer.plotter.close()
     return metadata, path
@@ -2231,14 +2485,24 @@ def run_self_test(data: VisualData, config: VisualConfig) -> tuple[dict[str, Any
         "original_cell_arrays_unchanged": (
             array_hashes_before == array_hashes_after == data.original_cell_array_sha256
         ),
-        "display_point_interpolation_present": all(
-            data.fields[key].array in data.display_grid_um.point_data for key in FIELD_ORDER
+        "original_surface_sha_unchanged": (
+            sha256_file(data.original_surface_path) == data.original_surface_sha256
+        ),
+        "original_surface_mapping_pass": data.surface_mapping["status"] == "PASS",
+        "original_surface_field_mapping_present": all(
+            data.fields[key].array in data.surface_um.point_data for key in FIELD_ORDER
         ),
         "derived_cell_arrays_present": all(
             name in data.grid_um.cell_data for name in DERIVED_ARRAYS
         ),
         "expanded_field_catalogue": set(FIELD_ORDER).issubset(data.fields),
-        "surface_nonempty": data.surface_um.n_cells > 0,
+        "original_surface_nonempty_and_watertight": (
+            data.surface_um.n_cells > 0 and data.surface_um.n_open_edges == 0
+        ),
+        "no_voxel_geometry_rendered": (
+            not dashboard["voxel_geometry_visible"]
+            and all(not record["voxel_geometry_visible"] for record in renders.values())
+        ),
         "four_ports": len(data.plane_contract["ports"]) == 4,
         "several_valid_streamlines": data.valid_streamline_count >= 4,
         "eight_scene_renders": len(renders) == 8
@@ -2251,12 +2515,20 @@ def run_self_test(data: VisualData, config: VisualConfig) -> tuple[dict[str, Any
             "velocity-x",
         }.issubset(rendered_fields),
         "interactive_dashboard_render": dashboard["image_qc"]["status"] == "PASS",
+        "interactive_dashboard_composition": (
+            dashboard["vessel_projected_coverage"]["status"] == "PASS"
+        ),
         "interactive_field_selector_visible": bool(
             dashboard["visible_helper_actors"]["field_selector"]
         ),
         "interactive_information_visible": bool(
             dashboard["visible_helper_actors"]["info"]
         ),
+        "interactive_all_fields_switchable": all(
+            record["status"] == "PASS"
+            for record in dashboard["field_switch_audit"].values()
+        )
+        and set(dashboard["field_switch_audit"]) == set(FIELD_ORDER),
         "composition_qc": all(composition_checks.values()),
         "default_clutter_gate": all(clutter_checks.values()),
         "scalar_bar_gate": (
@@ -2281,6 +2553,11 @@ def run_self_test(data: VisualData, config: VisualConfig) -> tuple[dict[str, Any
         "run_dir": str(data.run_dir),
         "vtu": str(data.vtu_path),
         "source_vtu_sha256": data.vtu_sha256,
+        "original_surface": str(data.original_surface_path),
+        "original_surface_sha256": data.original_surface_sha256,
+        "surface_mapping": data.surface_mapping,
+        "display_geometry": "ORIGINAL_CONTINUOUS_CFD_SURFACE",
+        "voxel_geometry_visible": False,
         "width_px": overview["width_px"],
         "height_px": overview["height_px"],
         "background": overview["background"],
@@ -2320,6 +2597,8 @@ def _print_startup(data: VisualData) -> None:
     print(f"Run: {data.run_dir}")
     print(f"VTU: {data.vtu_path}")
     print(f"VTU SHA256: {data.vtu_sha256}")
+    print(f"Original surface: {data.original_surface_path}")
+    print(f"Original surface SHA256: {data.original_surface_sha256}")
     print(f"Cells: {data.grid_um.n_cells}")
     print(f"Source: {data.run_summary['steady_solution_source']}")
     print(f"Iteration: {int(data.metrics['iteration'])}")
@@ -2362,7 +2641,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             ui_mode=args.ui_mode,
             theme=args.theme,
         )
-        data = load_and_validate_data(run_dir, vtu, config, project_root=PROJECT_ROOT)
+        data = load_and_validate_data(
+            run_dir,
+            vtu,
+            config,
+            project_root=PROJECT_ROOT,
+            explicit_surface=args.surface,
+        )
         _print_startup(data)
         try:
             if args.self_test:
