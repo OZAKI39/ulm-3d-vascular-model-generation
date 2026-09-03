@@ -1228,7 +1228,6 @@ class AcademicCFDViewer:
         self.show_streamlines = False
         self.show_port_normals = False
         self.show_help = False
-        self.show_info = config.ui_mode == "analysis"
         self.show_edges = False
         self.bounding_box_visible = False
         self.plane_widget: Any = None
@@ -1492,7 +1491,6 @@ class AcademicCFDViewer:
             "m": lambda: self.set_full_range(True),
             "s": self.save_interactive_screenshot,
             "h": self.toggle_help,
-            "u": self.toggle_info,
             "e": self.toggle_edges,
             "Return": self.hide_plane_widget,
             "Escape": self.hide_plane_widget,
@@ -1765,47 +1763,6 @@ class AcademicCFDViewer:
         if render:
             self.plotter.render()
 
-    @staticmethod
-    def _format_scalar(value: float) -> str:
-        magnitude = abs(value)
-        if magnitude == 0.0:
-            return "0"
-        if magnitude >= 1.0e4 or magnitude < 1.0e-3:
-            return f"{value:.3e}"
-        return f"{value:.5g}"
-
-    def _scientific_summary(self) -> str:
-        metrics = self.data.metrics
-        contract = self.data.run_summary["numerical_contract"]
-        field = self.data.fields[self.current_field]
-        values = np.asarray(self.data.grid_um.cell_data[field.array], dtype=np.float64)
-        selected = self._current_limits()
-        target = float(contract.get("target_volume_flow_m3_s", 0.0)) * 60.0e12
-        measured = float(metrics.get("Qin_m3_s", 0.0)) * 60.0e12
-        output = float(metrics.get("Qout_m3_s", 0.0)) * 60.0e12
-        fractions = metrics.get("flow_fractions", {})
-        return (
-            "FIELD STATISTICS\n"
-            f"min / mean / max  {self._format_scalar(float(np.min(values)))} / "
-            f"{self._format_scalar(float(np.mean(values)))} / "
-            f"{self._format_scalar(float(np.max(values)))} {field.units}\n"
-            f"display  {self._format_scalar(selected[0])} → "
-            f"{self._format_scalar(selected[1])} {field.units}\n"
-            f"meaning  {field.description}\n\n"
-            "ACCEPTED SOLUTION\n"
-            f"iteration  {int(metrics.get('iteration', 0)):,}\n"
-            f"dx / τ  {float(contract.get('dx_m', 0.0)) * 1e6:.2f} μm / "
-            f"{float(contract.get('tau', 0.0)):.2g}\n"
-            f"Q target / in / out  {target:.4g} / {measured:.4g} / {output:.4g} nL/min\n"
-            f"flow split O1 / O2 / O3  "
-            f"{100.0 * float(fractions.get('outlet_01', 0.0)):.1f} / "
-            f"{100.0 * float(fractions.get('outlet_02', 0.0)):.1f} / "
-            f"{100.0 * float(fractions.get('outlet_03', 0.0)):.1f}%\n"
-            f"volume closure  {float(metrics.get('physical_volume_closure', 0.0)):.6g}\n"
-            "geometry  original continuous surface · no voxel shell\n"
-            "evidence  accepted Base restart · Coarse→Base PASS"
-        )
-
     def _help_text(self) -> str:
         return (
             "FIELDS  click circles or use 1–8\n"
@@ -1813,14 +1770,13 @@ class AcademicCFDViewer:
             "        5 uₓ · 6 uᵧ · 7 u_z · 8 ρ lattice\n"
             "INSPECT C Clip · L Slice · V Vectors · T Streamlines · N Normals\n"
             "CAMERA  I Academic · X/Y/Z Axis · P Projection · R/F Fit\n"
-            "DISPLAY A Robust · M Full · E Edges · U Info · 0 Overview\n"
+            "DISPLAY A Robust · M Full · E Edges · 0 Overview\n"
             "PICK    Right-click · S Screenshot · H Help · Q Quit"
         )
 
     def _update_overlays(self, *, render: bool = True) -> None:
         self._update_title(render=False)
         self._update_help(render=False)
-        self._update_info(render=False)
         if render:
             self.plotter.render()
 
@@ -1837,29 +1793,6 @@ class AcademicCFDViewer:
                 render=False,
             )
             self._style_text_panel(actor)
-        if render:
-            self.plotter.render()
-
-    def _update_info(self, *, render: bool = True) -> None:
-        self.plotter.remove_actor("scientific_information", render=False)
-        if self.show_info:
-            actor = self.plotter.add_text(
-                self._scientific_summary(),
-                position=(
-                    int(self.plotter.window_size[0]) - 28,
-                    int(self.plotter.window_size[1]) - 28,
-                ),
-                font_size=self.style.metadata_font_size,
-                color=self.style.muted_color,
-                font="arial",
-                name="scientific_information",
-                render=False,
-            )
-            self._style_text_panel(
-                actor,
-                horizontal="right",
-                vertical="top",
-            )
         if render:
             self.plotter.render()
 
@@ -1928,8 +1861,6 @@ class AcademicCFDViewer:
         self.current_field = field
         self._sync_field_selector()
         self._replace_field_actor()
-        if self.show_info:
-            self._update_info()
 
     def set_visual_mode(self, mode: str) -> None:
         if mode not in {"overview", "clip", "slice"}:
@@ -1983,20 +1914,10 @@ class AcademicCFDViewer:
         self.show_help = not self.show_help
         self._update_help()
 
-    def toggle_info(self) -> None:
-        self.show_info = not self.show_info
-        self._update_info()
-
     def set_clean_ui(self) -> None:
         self.show_help = False
-        self.show_info = False
         self._update_help(render=False)
-        self._update_info(render=False)
         self.plotter.render()
-
-    def set_analysis_ui(self) -> None:
-        self.show_info = True
-        self._update_info()
 
     def toggle_edges(self) -> None:
         self.show_edges = not self.show_edges
@@ -2109,7 +2030,7 @@ class AcademicCFDViewer:
         return {
             "plane_widget": self.plane_widget_visible,
             "help": self.show_help,
-            "info": self.show_info,
+            "info": False,
             "picked_marker": self.picked_marker_visible,
             "vectors": self.show_vectors,
             "streamlines": self.show_streamlines,
@@ -2198,14 +2119,11 @@ class AcademicCFDViewer:
         path = output / f"screenshot_{stamp}.png"
         previous = {
             "help": self.show_help,
-            "info": self.show_info,
             "widget": self.plane_widget_visible,
             "pick": self.picked_marker_visible,
         }
         self.show_help = False
-        self.show_info = False
         self._update_help(render=False)
-        self._update_info(render=False)
         if previous["widget"]:
             self.hide_plane_widget()
         if previous["pick"]:
@@ -2217,9 +2135,7 @@ class AcademicCFDViewer:
             self._screenshot_metadata(path, "interactive_v3_clean_user_screenshot"),
         )
         self.show_help = previous["help"]
-        self.show_info = previous["info"]
         self._update_help(render=False)
-        self._update_info(render=False)
         if previous["widget"]:
             self.show_plane_widget(self.visual_mode)
         if previous["pick"] and self.picked_point_um is not None:
@@ -2521,7 +2437,7 @@ def run_self_test(data: VisualData, config: VisualConfig) -> tuple[dict[str, Any
         "interactive_field_selector_visible": bool(
             dashboard["visible_helper_actors"]["field_selector"]
         ),
-        "interactive_information_visible": bool(
+        "upper_right_information_panel_removed": not bool(
             dashboard["visible_helper_actors"]["info"]
         ),
         "interactive_all_fields_switchable": all(

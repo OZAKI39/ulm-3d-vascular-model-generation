@@ -480,14 +480,14 @@ def test_camera_is_deterministic_and_fitted_to_vessel_only():
     assert first["projected_width_fraction"] >= 0.35
 
 
-def test_clean_overview_defaults_widget_lifecycle_and_original_cell_pick(tmp_path: Path):
+def test_overview_has_no_information_panel_and_preserves_interactions(tmp_path: Path):
     data = _small_visual_data(tmp_path)
     config = visualizer.VisualConfig(
         width=1200,
         height=800,
         build_streamlines=True,
         show_ports=True,
-        ui_mode="clean",
+        ui_mode="analysis",
     )
     viewer = visualizer.AcademicCFDViewer(data, config, off_screen=True)
     try:
@@ -505,6 +505,7 @@ def test_clean_overview_defaults_widget_lifecycle_and_original_cell_pick(tmp_pat
             "ports": True,
             "field_selector": True,
         }
+        assert "scientific_information" not in viewer.plotter.actors
         assert "vessel_context" not in viewer.plotter.actors
         assert all(f"port_outline_{label}" in viewer.plotter.actors for label in visualizer.PORT_ORDER)
         assert not any(name.startswith("port_normal_") for name in viewer.plotter.actors)
