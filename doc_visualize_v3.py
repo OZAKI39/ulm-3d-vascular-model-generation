@@ -10,7 +10,7 @@ import argparse
 import hashlib
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Sequence
@@ -38,7 +38,24 @@ REQUIRED_ARRAYS = (
     "pressure_absolute_solver_pa",
     "rho_lattice",
 )
-FIELD_ORDER = ("velocity", "pressure", "rho")
+DERIVED_ARRAYS = (
+    "density_deviation_ppm",
+    "dynamic_pressure_mpa",
+    "velocity_x_mm_s",
+    "velocity_y_mm_s",
+    "velocity_z_mm_s",
+)
+FIELD_ORDER = (
+    "velocity",
+    "pressure",
+    "density-deviation",
+    "dynamic-pressure",
+    "velocity-x",
+    "velocity-y",
+    "velocity-z",
+    "rho",
+)
+SCALAR_CHOICES = FIELD_ORDER + ("numerical-pressure",)
 PORT_ORDER = ("inlet", "outlet_01", "outlet_02", "outlet_03")
 PORT_LABELS = {
     "inlet": "Inlet",
@@ -63,8 +80,8 @@ class VisualizerInputError(RuntimeError):
 class VisualConfig:
     """User-selected display options."""
 
-    width: int = 1800
-    height: int = 1100
+    width: int = 1920
+    height: int = 1200
     initial_scalar: str = "velocity"
     streamline_seeds: int = 24
     build_streamlines: bool = True
@@ -73,29 +90,66 @@ class VisualConfig:
     debug_cells: bool = False
     numerical_pressure_debug: bool = False
     projection: str = "parallel"
-    ui_mode: str = "clean"
+    ui_mode: str = "analysis"
+    theme: str = "dark"
 
 
 @dataclass(frozen=True, slots=True)
 class AcademicStyle:
     """Central publication styling; no global PyVista theme is mutated."""
 
-    background: str = "#FBFBFA"
-    text_color: str = "#202124"
-    muted_color: str = "#5F6368"
-    context_color: str = "#D5D9DD"
-    context_opacity: float = 0.10
-    title_font_size: int = 13
-    metadata_font_size: int = 9
-    port_font_size: int = 10
-    scalar_title_font_size: int = 11
-    scalar_label_font_size: int = 9
-    scalar_bar_x: float = 0.945
-    scalar_bar_y: float = 0.31
-    scalar_bar_width: float = 0.028
-    scalar_bar_height: float = 0.38
-    scalar_bar_labels: int = 5
-    camera_padding: float = 1.04
+    theme: str = "dark"
+    background: str = "#07131F"
+    background_top: str = "#142A3D"
+    panel_color: str = "#0D2234"
+    panel_border: str = "#36536A"
+    text_color: str = "#F4F7FA"
+    muted_color: str = "#B7C5D1"
+    context_color: str = "#91A4B5"
+    context_opacity: float = 0.16
+    title_font_size: int = 22
+    metadata_font_size: int = 15
+    port_font_size: int = 14
+    control_font_size: int = 15
+    scalar_title_font_size: int = 20
+    scalar_label_font_size: int = 16
+    scalar_bar_x: float = 0.84
+    scalar_bar_y: float = 0.18
+    scalar_bar_width: float = 0.035
+    scalar_bar_height: float = 0.50
+    scalar_bar_labels: int = 6
+    camera_padding: float = 1.02
+
+
+def academic_style(theme: str, *, publication: bool = False) -> AcademicStyle:
+    """Return a high-contrast style with typography scaled for raster export."""
+
+    if theme == "dark":
+        style = AcademicStyle()
+    elif theme == "light":
+        style = AcademicStyle(
+            theme="light",
+            background="#EDF2F6",
+            background_top="#FFFFFF",
+            panel_color="#FFFFFF",
+            panel_border="#B7C7D3",
+            text_color="#17232E",
+            muted_color="#526574",
+            context_color="#7F929F",
+        )
+    else:
+        raise ValueError(f"Unsupported visual theme: {theme}")
+    if not publication:
+        return style
+    return replace(
+        style,
+        title_font_size=28,
+        metadata_font_size=18,
+        port_font_size=19,
+        control_font_size=18,
+        scalar_title_font_size=22,
+        scalar_label_font_size=18,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,8 +179,12 @@ class AcademicLayout:
             "title_font_size": style.scalar_title_font_size,
             "label_font_size": style.scalar_label_font_size,
             "color": style.text_color,
-            "fmt": "%.3g",
-            "outline": False,
+            "font_family": "arial",
+            "bold": True,
+            "fmt": "%.4g",
+            "outline": True,
+            "fill": False,
+            "unconstrained_font_size": True,
         }
 
 
@@ -155,6 +213,11 @@ class FieldSpec:
     title: str
     units: str
     cmap: Any
+    shortcut: str = ""
+    control_label: str = ""
+    description: str = ""
+    symmetric_range: bool = False
+    log_scale: bool = False
 
 
 @dataclass(slots=True)
@@ -195,11 +258,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--vtu", type=Path, help="Explicit production VTU (highest priority)")
     parser.add_argument(
         "--scalar",
-        choices=("velocity", "pressure", "rho", "numerical-pressure"),
+        choices=SCALAR_CHOICES,
         default="velocity",
     )
-    parser.add_argument("--window-width", type=int, default=1800)
-    parser.add_argument("--window-height", type=int, default=1100)
+    parser.add_argument("--window-width", type=int, default=1920)
+    parser.add_argument("--window-height", type=int, default=1200)
     parser.add_argument("--streamline-seeds", type=int, default=24)
     parser.add_argument("--no-streamlines", action="store_true")
     parser.add_argument("--no-ports", action="store_true")
@@ -209,7 +272,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--projection", choices=("parallel", "perspective"), default="parallel"
     )
-    parser.add_argument("--ui-mode", choices=("clean", "analysis"), default="clean")
+    parser.add_argument("--ui-mode", choices=("clean", "analysis"), default="analysis")
+    parser.add_argument("--theme", choices=("dark", "light"), default="dark")
     parser.add_argument("--debug-cells", action="store_true")
     parser.add_argument("--show-numerical-pressure-debug", action="store_true")
     parser.add_argument("--off-screen", action="store_true")
@@ -322,6 +386,47 @@ def calculate_field_range(values: np.ndarray) -> FieldRange:
     if not low < high:
         low, high = raw_min, raw_max
     return FieldRange(raw_min, raw_max, low, high)
+
+
+def calculate_symmetric_field_range(values: np.ndarray) -> FieldRange:
+    """Return zero-centred raw and robust limits for signed scalar fields."""
+
+    regular = calculate_field_range(values)
+    array = np.asarray(values, dtype=np.float64).reshape(-1)
+    raw = max(abs(regular.raw_min), abs(regular.raw_max))
+    robust = float(np.percentile(np.abs(array), 99.0))
+    if robust <= np.finfo(float).tiny:
+        robust = raw
+    if raw <= np.finfo(float).tiny:
+        raw = 1.0e-12
+    return FieldRange(-raw, raw, -robust, robust)
+
+
+def add_derived_cell_fields(
+    grid: pv.UnstructuredGrid,
+    *,
+    physical_density_kg_m3: float,
+    rho_lattice_mean: float,
+) -> None:
+    """Add transparent, display-only derivatives to the in-memory VTU copy."""
+
+    density = float(physical_density_kg_m3)
+    rho_mean = float(rho_lattice_mean)
+    if not np.isfinite(density) or density <= 0.0 or not np.isfinite(rho_mean):
+        raise VisualizerInputError("Derived-field reference values are invalid")
+    velocity_m_s = np.asarray(grid.cell_data["velocity_phy"], dtype=np.float64)
+    speed_m_s = np.asarray(
+        grid.cell_data["velocity_magnitude_m_s"], dtype=np.float64
+    )
+    rho_lattice = np.asarray(grid.cell_data["rho_lattice"], dtype=np.float64)
+    grid.cell_data["density_deviation_ppm"] = (
+        (rho_lattice - rho_mean) / rho_mean * 1.0e6
+    )
+    grid.cell_data["dynamic_pressure_mpa"] = (
+        0.5 * density * np.square(speed_m_s) * 1.0e3
+    )
+    for index, axis in enumerate("xyz"):
+        grid.cell_data[f"velocity_{axis}_mm_s"] = velocity_m_s[:, index] * 1.0e3
 
 
 def _array_sha256(values: np.ndarray) -> str:
@@ -634,6 +739,14 @@ def load_and_validate_data(
         name: _array_sha256(np.asarray(grid.cell_data[name])) for name in REQUIRED_ARRAYS
     }
 
+    add_derived_cell_fields(
+        grid,
+        physical_density_kg_m3=float(
+            summary["numerical_contract"]["rho0_kg_m3"]
+        ),
+        rho_lattice_mean=float(metrics["rho_mean"]),
+    )
+
     # Centralized display-only coordinate conversion; the source VTU is never saved.
     grid.points = np.asarray(grid.points, dtype=np.float64) * 1.0e6
     centers_um = centers_m * 1.0e6
@@ -643,15 +756,83 @@ def load_and_validate_data(
     pressure_clim = pressure_range.selected(config.full_range)
     fields: dict[str, FieldSpec] = {
         "velocity": FieldSpec(
-            "velocity_magnitude_mm_s", "Velocity magnitude", "mm s⁻¹", "viridis"
+            "velocity_magnitude_mm_s",
+            "Velocity magnitude",
+            "mm/s",
+            "viridis",
+            "1",
+            "Speed",
+            "Local speed reconstructed from the validated velocity vector.",
+            log_scale=True,
         ),
         "pressure": FieldSpec(
             "pressure_gauge_pa",
             "Gauge pressure",
             "Pa",
             _pressure_colormap(*pressure_clim),
+            "2",
+            "Pressure",
+            "Physical gauge pressure after removing the LBM reference offset.",
         ),
-        "rho": FieldSpec("rho_lattice", "Lattice density", "–", "cividis"),
+        "density-deviation": FieldSpec(
+            "density_deviation_ppm",
+            "Density deviation",
+            "ppm",
+            "coolwarm",
+            "3",
+            "Density Δ",
+            "Small compressibility signal relative to the accepted field mean.",
+            True,
+        ),
+        "dynamic-pressure": FieldSpec(
+            "dynamic_pressure_mpa",
+            "Dynamic pressure",
+            "mPa",
+            "magma",
+            "4",
+            "Dynamic p",
+            "Kinetic-energy density q = 1/2 rho |u|^2.",
+            log_scale=True,
+        ),
+        "velocity-x": FieldSpec(
+            "velocity_x_mm_s",
+            "Velocity X component",
+            "mm/s",
+            "coolwarm",
+            "5",
+            "Vx",
+            "Signed global x-component of the validated velocity vector.",
+            True,
+        ),
+        "velocity-y": FieldSpec(
+            "velocity_y_mm_s",
+            "Velocity Y component",
+            "mm/s",
+            "coolwarm",
+            "6",
+            "Vy",
+            "Signed global y-component of the validated velocity vector.",
+            True,
+        ),
+        "velocity-z": FieldSpec(
+            "velocity_z_mm_s",
+            "Velocity Z component",
+            "mm/s",
+            "coolwarm",
+            "7",
+            "Vz",
+            "Signed global z-component of the validated velocity vector.",
+            True,
+        ),
+        "rho": FieldSpec(
+            "rho_lattice",
+            "Lattice density",
+            "lattice units",
+            "cividis",
+            "8",
+            "Rho lattice",
+            "Raw lattice density retained for numerical diagnostics.",
+        ),
     }
     if config.numerical_pressure_debug:
         fields["numerical-pressure"] = FieldSpec(
@@ -659,11 +840,18 @@ def load_and_validate_data(
             "Numerical pressure (OFFSET INCLUDED — NOT PHYSIOLOGICAL)",
             "Pa",
             "cividis",
+            "9",
+            "p numerical",
+            "Absolute LBM pressure including the numerical reference offset.",
         )
-    ranges = {
-        key: calculate_field_range(grid.cell_data[spec.array])
-        for key, spec in fields.items()
-    }
+    ranges = {}
+    for key, spec in fields.items():
+        values = np.asarray(grid.cell_data[spec.array])
+        ranges[key] = (
+            calculate_symmetric_field_range(values)
+            if spec.symmetric_range
+            else calculate_field_range(values)
+        )
     return VisualData(
         run_dir=run_dir,
         vtu_path=vtu_path,
@@ -818,7 +1006,7 @@ class AcademicCFDViewer:
         self.data = data
         self.config = config
         self.publication = publication
-        self.style = style or AcademicStyle()
+        self.style = style or academic_style(config.theme, publication=publication)
         self.layout = layout or AcademicLayout()
         self.current_field = config.initial_scalar
         self.full_range = config.full_range
@@ -839,17 +1027,22 @@ class AcademicCFDViewer:
         self.picked_marker_visible = False
         self.picked_point_um: np.ndarray | None = None
         self.picked_cell_id: int | None = None
+        self.field_widgets: dict[str, Any] = {}
+        self.field_selector_visible = False
         self.field_actor: Any = None
         self.context_actor: Any = None
         self.glyph_mesh: pv.PolyData | None = None
         self.streamline_tubes: pv.PolyData | None = None
         size = (
-            (max(config.width, 3200), max(config.height, 2200))
+            (max(config.width, 3200), max(config.height, 2000))
             if publication
             else (config.width, config.height)
         )
         self.plotter = pv.Plotter(off_screen=off_screen or publication, window_size=size)
-        self.plotter.set_background(self.style.background)
+        self.plotter.set_background(
+            self.style.background,
+            top=self.style.background_top,
+        )
         self.camera_parameters = academic_camera_parameters(
             np.asarray(data.surface_um.points),
             size[0] / size[1],
@@ -861,7 +1054,7 @@ class AcademicCFDViewer:
         self._build_scene()
 
     def _configure_render_quality(self) -> None:
-        preferred = "ssaa" if self.publication else "fxaa"
+        preferred = "ssaa"
         try:
             self.plotter.enable_anti_aliasing(preferred)
             self.anti_aliasing = preferred.upper()
@@ -980,6 +1173,9 @@ class AcademicCFDViewer:
             preference="point",
             cmap=cmap,
             clim=clim,
+            n_colors=512,
+            log_scale=field.log_scale,
+            interpolate_before_map=True,
             show_edges=False,
             smooth_shading=True,
             ambient=0.58,
@@ -1065,7 +1261,12 @@ class AcademicCFDViewer:
             "0": lambda: self.set_visual_mode("overview"),
             "1": lambda: self.set_field("velocity"),
             "2": lambda: self.set_field("pressure"),
-            "3": lambda: self.set_field("rho"),
+            "3": lambda: self.set_field("density-deviation"),
+            "4": lambda: self.set_field("dynamic-pressure"),
+            "5": lambda: self.set_field("velocity-x"),
+            "6": lambda: self.set_field("velocity-y"),
+            "7": lambda: self.set_field("velocity-z"),
+            "8": lambda: self.set_field("rho"),
             "c": lambda: self._toggle_inspection_widget("clip"),
             "l": lambda: self._toggle_inspection_widget("slice"),
             "v": self.toggle_vectors,
@@ -1089,9 +1290,10 @@ class AcademicCFDViewer:
             "q": self.plotter.close,
         }
         if self.config.numerical_pressure_debug:
-            callbacks["4"] = lambda: self.set_field("numerical-pressure")
+            callbacks["9"] = lambda: self.set_field("numerical-pressure")
         for key, callback in callbacks.items():
             self.plotter.add_key_event(key, callback)
+        self._add_field_selector()
         self.plotter.enable_surface_point_picking(
             callback=self._pick_callback,
             show_message=False,
@@ -1099,6 +1301,52 @@ class AcademicCFDViewer:
             left_clicking=False,
             picker="cell",
         )
+
+    def _add_field_selector(self) -> None:
+        """Add a large, visible scalar selector instead of hiding fields behind keys."""
+
+        field_keys = [key for key in FIELD_ORDER if key in self.data.fields]
+        if self.config.numerical_pressure_debug:
+            field_keys.append("numerical-pressure")
+        width = float(self.plotter.window_size[0])
+        column_count = 4
+        row_count = int(math.ceil(len(field_keys) / column_count))
+        slot = min(330.0, max(190.0, (width - 440.0) / column_count))
+        start_x = max(130.0, (width - slot * column_count - 260.0) / 2.0)
+        for index, key in enumerate(field_keys):
+            spec = self.data.fields[key]
+            column = index % column_count
+            row = index // column_count
+            widget = self.plotter.add_radio_button_widget(
+                lambda enabled, selected=key: enabled and self.set_field(selected),
+                radio_button_group="cfd_fields",
+                value=key == self.current_field,
+                title=f"{spec.shortcut}  {spec.control_label}",
+                position=(
+                    start_x + slot * column,
+                    22.0 + 48.0 * (row_count - 1 - row),
+                ),
+                size=28,
+                border_size=4,
+                color_on="#35B8FF",
+                color_off="#60788A",
+                background_color=self.style.panel_color,
+            )
+            self.field_widgets[key] = widget
+        title_dict = getattr(self.plotter.widgets, "radio_button_title_dict", {})
+        for actors in title_dict.values():
+            for actor in actors:
+                actor.prop.font_size = self.style.control_font_size
+                actor.prop.color = self.style.text_color
+                actor.prop.bold = True
+        self.field_selector_visible = bool(self.field_widgets)
+
+    def _sync_field_selector(self) -> None:
+        """Keep mouse and keyboard field selection states synchronized."""
+
+        for key, widget in self.field_widgets.items():
+            representation = widget.GetRepresentation()
+            representation.SetState(1 if key == self.current_field else 0)
 
     def _port_geometry(
         self, label: str
@@ -1120,6 +1368,13 @@ class AcademicCFDViewer:
     def _add_ports(self) -> None:
         label_points: list[np.ndarray] = []
         labels: list[str] = []
+        flows = {
+            "inlet": float(self.data.metrics.get("Qin_m3_s", 0.0)),
+            "outlet_01": float(self.data.metrics.get("Q1_m3_s", 0.0)),
+            "outlet_02": float(self.data.metrics.get("Q2_m3_s", 0.0)),
+            "outlet_03": float(self.data.metrics.get("Q3_m3_s", 0.0)),
+        }
+        fractions = self.data.metrics.get("flow_fractions", {})
         for label in PORT_ORDER:
             origin, normal, contour_points, diameter_um = self._port_geometry(label)
             faces = np.r_[len(contour_points), np.arange(len(contour_points))]
@@ -1130,7 +1385,7 @@ class AcademicCFDViewer:
             self.plotter.add_mesh(
                 disk,
                 color=PORT_COLORS[label],
-                opacity=0.13,
+                opacity=0.24,
                 lighting=False,
                 name=f"port_disk_{label}",
                 pickable=False,
@@ -1140,17 +1395,28 @@ class AcademicCFDViewer:
             self.plotter.add_mesh(
                 outline,
                 color=PORT_COLORS[label],
-                opacity=0.88,
-                line_width=2,
+                opacity=1.0,
+                line_width=4,
                 lighting=False,
                 name=f"port_outline_{label}",
                 pickable=False,
                 reset_camera=False,
                 render=False,
             )
-            outward = -normal if label == "inlet" else normal
-            label_points.append(origin + outward * max(0.62 * diameter_um, 0.55))
-            labels.append(PORT_LABELS[label])
+            toward_center = _normalise(
+                np.asarray(self.data.surface_um.center, dtype=float) - origin
+            )
+            label_points.append(
+                origin + toward_center * max(4.00 * diameter_um, 3.00)
+            )
+            flow_nl_min = flows[label] * 60.0e12
+            if label == "inlet":
+                labels.append(f"{PORT_LABELS[label]}\nQ = {flow_nl_min:.4g} nL/min")
+            else:
+                split = float(fractions.get(label, 0.0)) * 100.0
+                labels.append(
+                    f"{PORT_LABELS[label]}\nQ = {flow_nl_min:.4g} nL/min · {split:.1f}%"
+                )
         self.plotter.add_point_labels(
             np.vstack(label_points),
             labels,
@@ -1159,9 +1425,9 @@ class AcademicCFDViewer:
             font_family="arial",
             show_points=False,
             shape="rounded_rect",
-            shape_color="#FFFFFF",
-            shape_opacity=0.72,
-            margin=3,
+            shape_color=self.style.panel_color,
+            shape_opacity=0.90,
+            margin=6,
             always_visible=True,
             name="port_labels",
             pickable=False,
@@ -1237,49 +1503,97 @@ class AcademicCFDViewer:
 
     def _field_caption(self) -> str:
         field = self.data.fields[self.current_field]
-        return f"Validated Base CFD\n{field.title} · {field.units}"
+        range_mode = "Full" if self.full_range else "P1–P99"
+        color_scale = "Log" if field.log_scale else "Linear"
+        return (
+            f"{field.title}  [{field.units}]\n"
+            f"Base CFD  ·  validated  ·  {range_mode}  ·  {color_scale}  ·  "
+            f"{self.visual_mode.title()}"
+        )
+
+    def _style_text_panel(
+        self,
+        actor: Any,
+        *,
+        opacity: float = 0.88,
+        horizontal: str = "left",
+        vertical: str = "bottom",
+    ) -> Any:
+        """Apply a readable high-contrast panel to a VTK text actor."""
+
+        actor.prop.background_color = self.style.panel_color
+        actor.prop.background_opacity = opacity
+        actor.prop.show_frame = True
+        actor.prop.frame_color = self.style.panel_border
+        actor.prop.frame_width = 2
+        if hasattr(actor.prop, "justification_horizontal"):
+            actor.prop.justification_horizontal = horizontal
+            actor.prop.justification_vertical = vertical
+        return actor
 
     def _update_title(self, *, render: bool = True) -> None:
         self.plotter.remove_actor("field_title", render=False)
-        self.plotter.add_text(
+        actor = self.plotter.add_text(
             self._field_caption(),
-            position=self.layout.title_position,
+            position=(28, int(self.plotter.window_size[1]) - 28),
             font_size=self.style.title_font_size,
             color=self.style.text_color,
             font="arial",
             name="field_title",
-            render=render,
+            render=False,
         )
+        self._style_text_panel(actor, opacity=0.82, vertical="top")
+        if render:
+            self.plotter.render()
+
+    @staticmethod
+    def _format_scalar(value: float) -> str:
+        magnitude = abs(value)
+        if magnitude == 0.0:
+            return "0"
+        if magnitude >= 1.0e4 or magnitude < 1.0e-3:
+            return f"{value:.3e}"
+        return f"{value:.5g}"
 
     def _scientific_summary(self) -> str:
         metrics = self.data.metrics
         contract = self.data.run_summary["numerical_contract"]
-        target = float(contract["target_volume_flow_m3_s"]) * 60.0e12
-        measured = float(metrics["Qin_m3_s"]) * 60.0e12
+        field = self.data.fields[self.current_field]
+        values = np.asarray(self.data.grid_um.cell_data[field.array], dtype=np.float64)
+        selected = self._current_limits()
+        target = float(contract.get("target_volume_flow_m3_s", 0.0)) * 60.0e12
+        measured = float(metrics.get("Qin_m3_s", 0.0)) * 60.0e12
+        output = float(metrics.get("Qout_m3_s", 0.0)) * 60.0e12
+        fractions = metrics.get("flow_fractions", {})
         return (
-            f"Accepted iteration  {int(metrics['iteration'])}\n"
-            f"dx / τ  {float(contract['dx_m']) * 1e6:.2f} µm / {float(contract['tau']):.1f}\n"
-            f"Q target  {target:.6g} nL min⁻¹\n"
-            f"Q measured  {measured:.6g} nL min⁻¹\n"
-            f"Closure  {float(metrics['physical_volume_closure']):.6g}\n"
-            f"ρ mean  {float(metrics['rho_mean']):.9g}\n"
-            "Source  accepted Base restart\n"
-            "Resolution  Coarse→Base PASS\n"
-            "Fine  budget-terminated\n"
-            "WSS  deferred"
+            "FIELD STATISTICS\n"
+            f"min / mean / max  {self._format_scalar(float(np.min(values)))} / "
+            f"{self._format_scalar(float(np.mean(values)))} / "
+            f"{self._format_scalar(float(np.max(values)))} {field.units}\n"
+            f"display  {self._format_scalar(selected[0])} → "
+            f"{self._format_scalar(selected[1])} {field.units}\n"
+            f"meaning  {field.description}\n\n"
+            "ACCEPTED SOLUTION\n"
+            f"iteration  {int(metrics.get('iteration', 0)):,}\n"
+            f"dx / τ  {float(contract.get('dx_m', 0.0)) * 1e6:.2f} μm / "
+            f"{float(contract.get('tau', 0.0)):.2g}\n"
+            f"Q target / in / out  {target:.4g} / {measured:.4g} / {output:.4g} nL/min\n"
+            f"flow split O1 / O2 / O3  "
+            f"{100.0 * float(fractions.get('outlet_01', 0.0)):.1f} / "
+            f"{100.0 * float(fractions.get('outlet_02', 0.0)):.1f} / "
+            f"{100.0 * float(fractions.get('outlet_03', 0.0)):.1f}%\n"
+            f"volume closure  {float(metrics.get('physical_volume_closure', 0.0)):.6g}\n"
+            "evidence  accepted Base restart · Coarse→Base PASS"
         )
 
     def _help_text(self) -> str:
         return (
-            "VIEW                 INSPECT\n"
-            "1 Velocity           C Clip\n"
-            "2 Pressure           L Slice\n"
-            "3 Density            V Vectors · T Streamlines\n"
-            "0 Overview           N Port normals\n"
-            "CAMERA               DISPLAY\n"
-            "I Academic · X/Y/Z   A Robust · M Full\n"
-            "P Projection · R Fit H Help · U Info\n"
-            "Right-click Pick     S Screenshot · Q Quit"
+            "FIELDS  1 Speed · 2 Pressure · 3 Density Δ · 4 Dynamic p\n"
+            "        5 uₓ · 6 uᵧ · 7 u_z · 8 ρ lattice\n"
+            "INSPECT C Clip · L Slice · V Vectors · T Streamlines · N Normals\n"
+            "CAMERA  I Academic · X/Y/Z Axis · P Projection · R/F Fit\n"
+            "DISPLAY A Robust · M Full · E Edges · U Info · 0 Overview\n"
+            "PICK    Right-click · S Screenshot · H Help · Q Quit"
         )
 
     def _update_overlays(self, *, render: bool = True) -> None:
@@ -1292,29 +1606,38 @@ class AcademicCFDViewer:
     def _update_help(self, *, render: bool = True) -> None:
         self.plotter.remove_actor("help_overlay", render=False)
         if self.show_help:
-            self.plotter.add_text(
+            actor = self.plotter.add_text(
                 self._help_text(),
-                position=self.layout.help_position,
+                position=(28, 126),
                 font_size=self.style.metadata_font_size,
                 color=self.style.text_color,
                 font="arial",
                 name="help_overlay",
                 render=False,
             )
+            self._style_text_panel(actor)
         if render:
             self.plotter.render()
 
     def _update_info(self, *, render: bool = True) -> None:
         self.plotter.remove_actor("scientific_information", render=False)
         if self.show_info:
-            self.plotter.add_text(
+            actor = self.plotter.add_text(
                 self._scientific_summary(),
-                position=self.layout.info_position,
+                position=(
+                    int(self.plotter.window_size[0]) - 28,
+                    int(self.plotter.window_size[1]) - 28,
+                ),
                 font_size=self.style.metadata_font_size,
                 color=self.style.muted_color,
                 font="arial",
                 name="scientific_information",
                 render=False,
+            )
+            self._style_text_panel(
+                actor,
+                horizontal="right",
+                vertical="top",
             )
         if render:
             self.plotter.render()
@@ -1331,13 +1654,16 @@ class AcademicCFDViewer:
         magnitude = float(original["velocity_magnitude_mm_s"][index])
         pressure = float(original["pressure_gauge_pa"][index])
         rho = float(original["rho_lattice"][index])
+        density_deviation = float(original["density_deviation_ppm"][index])
+        dynamic_pressure = float(original["dynamic_pressure_mpa"][index])
+        velocity = np.asarray(original["velocity_phy"][index], dtype=np.float64) * 1.0e3
         self.plotter.remove_actor("picked_marker", render=False)
         dx_um = float(self.data.run_summary["numerical_contract"]["dx_m"]) * 1.0e6
         marker_diameter = float(np.clip(1.5 * dx_um, 0.3, 0.6))
         marker = pv.Sphere(radius=marker_diameter / 2.0, center=coordinates)
         self.plotter.add_mesh(
             marker,
-            color="#4A4D50",
+            color="#FFFFFF",
             ambient=0.75,
             diffuse=0.25,
             specular=0.0,
@@ -1347,20 +1673,24 @@ class AcademicCFDViewer:
             render=False,
         )
         text = (
-            f"x  {coordinates[0]:.3f} µm   y  {coordinates[1]:.3f} µm\n"
-            f"z  {coordinates[2]:.3f} µm   |u|  {magnitude:.4g} mm s⁻¹\n"
-            f"p  {pressure:.5g} Pa   ρ  {rho:.8g}\n"
-            f"cell {index} · original cell-centred data"
+            f"x  {coordinates[0]:.3f} μm   y  {coordinates[1]:.3f} μm\n"
+            f"z  {coordinates[2]:.3f} μm   |u|  {magnitude:.4g} mm/s\n"
+            f"uₓ / uᵧ / u_z  {velocity[0]:.4g} / {velocity[1]:.4g} / "
+            f"{velocity[2]:.4g} mm/s\n"
+            f"p  {pressure:.5g} Pa   q  {dynamic_pressure:.5g} mPa\n"
+            f"ρ  {rho:.9g}   Δρ  {density_deviation:.4g} ppm\n"
+            f"cell {index:,} · original cell-centred evidence"
         )
-        self.plotter.add_text(
+        actor = self.plotter.add_text(
             text,
-            position=self.layout.pick_position,
+            position=(int(self.plotter.window_size[0]) - 28, 126),
             font_size=self.style.metadata_font_size,
             color=self.style.text_color,
             font="arial",
             name="pick_information",
             render=False,
         )
+        self._style_text_panel(actor, horizontal="right")
         self.picked_point_um = coordinates
         self.picked_cell_id = index
         self.picked_marker_visible = True
@@ -1375,7 +1705,10 @@ class AcademicCFDViewer:
         if field not in self.data.fields:
             raise VisualizerInputError(f"Field is unavailable or debug-disabled: {field}")
         self.current_field = field
+        self._sync_field_selector()
         self._replace_field_actor()
+        if self.show_info:
+            self._update_info()
 
     def set_visual_mode(self, mode: str) -> None:
         if mode not in {"overview", "clip", "slice"}:
@@ -1562,6 +1895,7 @@ class AcademicCFDViewer:
             "bounding_box": self.bounding_box_visible,
             "port_normals": self.show_port_normals,
             "ports": self.config.show_ports,
+            "field_selector": self.field_selector_visible,
         }
 
     def _screenshot_metadata(self, path: Path, purpose: str) -> dict[str, Any]:
@@ -1575,15 +1909,21 @@ class AcademicCFDViewer:
             "width_px": int(self.plotter.window_size[0]),
             "height_px": int(self.plotter.window_size[1]),
             "background": self.style.background,
+            "background_top": self.style.background_top,
+            "theme": self.style.theme,
             "scalar": self.current_field,
             "array": field.array,
             "units": field.units,
+            "field_description": field.description,
+            "available_fields": list(self.data.fields),
+            "derived_arrays": list(DERIVED_ARRAYS),
             "raw_range": [
                 self.data.ranges[self.current_field].raw_min,
                 self.data.ranges[self.current_field].raw_max,
             ],
             "display_range": list(self._current_limits()),
             "range_mode": "full" if self.full_range else "p1-p99",
+            "color_scale": "logarithmic" if field.log_scale else "linear",
             "visual_mode": self.visual_mode,
             "projection": self.projection,
             "render_interpolation": self.data.rendering_scalar_interpolation,
@@ -1604,6 +1944,14 @@ class AcademicCFDViewer:
                 "height_fraction": self.style.scalar_bar_height,
                 "labels": self.style.scalar_bar_labels,
                 "title": f"{field.title}\n{field.units}",
+            },
+            "typography_px": {
+                "title": self.style.title_font_size,
+                "metadata": self.style.metadata_font_size,
+                "ports": self.style.port_font_size,
+                "controls": self.style.control_font_size,
+                "scalar_title": self.style.scalar_title_font_size,
+                "scalar_labels": self.style.scalar_label_font_size,
             },
             "visible_helper_actors": self.visible_helper_actors(),
             "anti_aliasing": self.anti_aliasing,
@@ -1697,7 +2045,7 @@ class AcademicCFDViewer:
 
     def show(self) -> None:
         self.plotter.show(
-            title="Validated Base CFD — Interactive",
+            title="Validated Base CFD - Interactive",
             interactive=True,
             auto_close=True,
         )
@@ -1706,9 +2054,12 @@ class AcademicCFDViewer:
 PUBLICATION_SCENES = (
     ("01_after_velocity_overview.png", "velocity", "overview", False),
     ("02_after_pressure_overview.png", "pressure", "overview", False),
-    ("03_after_velocity_clip.png", "velocity", "clip", False),
-    ("04_after_pressure_slice.png", "pressure", "slice", False),
-    ("05_after_streamlines.png", "velocity", "clip", True),
+    ("03_after_density_deviation.png", "density-deviation", "overview", False),
+    ("04_after_dynamic_pressure.png", "dynamic-pressure", "overview", False),
+    ("05_after_velocity_x.png", "velocity-x", "overview", False),
+    ("06_after_velocity_clip.png", "velocity", "clip", False),
+    ("07_after_pressure_slice.png", "pressure", "slice", False),
+    ("08_after_streamlines.png", "velocity", "clip", True),
 )
 
 
@@ -1733,7 +2084,7 @@ def render_publication_suite(
     config: VisualConfig,
     output_dir: Path,
 ) -> tuple[dict[str, Any], Path]:
-    """Render the fixed five-panel acceptance suite with one deterministic camera."""
+    """Render a deterministic eight-panel, multi-field acceptance suite."""
 
     output = output_dir.expanduser().resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -1742,7 +2093,7 @@ def render_publication_suite(
     for filename, field, visual_mode, streamlines in PUBLICATION_SCENES:
         scene_config = VisualConfig(
             width=max(config.width, 3200),
-            height=max(config.height, 2200),
+            height=max(config.height, 2000),
             initial_scalar=field,
             streamline_seeds=config.streamline_seeds,
             build_streamlines=True,
@@ -1752,6 +2103,7 @@ def render_publication_suite(
             numerical_pressure_debug=config.numerical_pressure_debug,
             projection="parallel",
             ui_mode="clean",
+            theme=config.theme,
         )
         viewer = AcademicCFDViewer(
             data, scene_config, off_screen=True, publication=True
@@ -1773,7 +2125,10 @@ def render_publication_suite(
         "render_interpolation": data.rendering_scalar_interpolation,
         "quantitative_source": "ORIGINAL_CELL_CENTERED_VTU_ARRAYS",
         "camera_framing": "PCA_DETERMINISTIC_VESSEL_SURFACE_BOUNDS_ONLY",
-        "publication_resolution_px": [3200, 2200],
+        "publication_resolution_px": [
+            max(config.width, 3200),
+            max(config.height, 2000),
+        ],
         "production_evidence_before": before_hashes,
         "production_evidence_after": after_hashes,
         "production_evidence_unchanged": before_hashes == after_hashes,
@@ -1786,6 +2141,40 @@ def render_publication_suite(
     return report, manifest_path
 
 
+def render_interactive_dashboard_preview(
+    data: VisualData,
+    config: VisualConfig,
+    output_dir: Path,
+) -> tuple[dict[str, Any], Path]:
+    """Render the default interactive workstation, including native controls."""
+
+    dashboard_config = VisualConfig(
+        width=max(config.width, 2200),
+        height=max(config.height, 1400),
+        initial_scalar="velocity",
+        streamline_seeds=config.streamline_seeds,
+        build_streamlines=True,
+        show_ports=True,
+        full_range=config.full_range,
+        debug_cells=False,
+        numerical_pressure_debug=config.numerical_pressure_debug,
+        projection="parallel",
+        ui_mode="analysis",
+        theme=config.theme,
+    )
+    viewer = AcademicCFDViewer(data, dashboard_config, off_screen=True)
+    path = output_dir.expanduser().resolve() / "00_interactive_dashboard.png"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    viewer.apply_academic_camera(render=False)
+    viewer.plotter.show(auto_close=False, interactive=False)
+    viewer.plotter.screenshot(path)
+    metadata = viewer._screenshot_metadata(path, "interactive_dashboard_visual_regression")
+    metadata["image_qc"] = _image_qc(path)
+    _write_viewer_json(path.with_suffix(".json"), metadata)
+    viewer.plotter.close()
+    return metadata, path
+
+
 def run_self_test(data: VisualData, config: VisualConfig) -> tuple[dict[str, Any], Path]:
     """Render the redesign suite and verify scientific and composition invariants."""
 
@@ -1795,6 +2184,9 @@ def run_self_test(data: VisualData, config: VisualConfig) -> tuple[dict[str, Any
         for name in REQUIRED_ARRAYS
     }
     suite, suite_path = render_publication_suite(data, config, output)
+    dashboard, dashboard_path = render_interactive_dashboard_preview(
+        data, config, output
+    )
     array_hashes_after = {
         name: _array_sha256(np.asarray(data.grid_um.cell_data[name]))
         for name in REQUIRED_ARRAYS
@@ -1811,6 +2203,7 @@ def run_self_test(data: VisualData, config: VisualConfig) -> tuple[dict[str, Any
         "streamlines_hidden": not helpers["streamlines"],
         "bounding_box_hidden": not helpers["bounding_box"],
         "port_normals_hidden": not helpers["port_normals"],
+        "field_selector_hidden": not helpers["field_selector"],
     }
     composition_checks = {
         name: record["vessel_projected_coverage"]["status"] == "PASS"
@@ -1822,8 +2215,10 @@ def run_self_test(data: VisualData, config: VisualConfig) -> tuple[dict[str, Any
             "max": float(np.max(np.asarray(data.grid_um.cell_data[name]))),
             "mean": float(np.mean(np.asarray(data.grid_um.cell_data[name]))),
         }
-        for name in REQUIRED_ARRAYS
+        for name in REQUIRED_ARRAYS + DERIVED_ARRAYS
     }
+    interactive_style = academic_style(config.theme)
+    rendered_fields = {record["scalar"] for record in renders.values()}
     checks = {
         "manifest_pass": data.manifest.get("status") == "PASS",
         "source_vtu_sha_unchanged": sha256_file(data.vtu_path) == data.vtu_sha256,
@@ -1839,20 +2234,43 @@ def run_self_test(data: VisualData, config: VisualConfig) -> tuple[dict[str, Any
         "display_point_interpolation_present": all(
             data.fields[key].array in data.display_grid_um.point_data for key in FIELD_ORDER
         ),
+        "derived_cell_arrays_present": all(
+            name in data.grid_um.cell_data for name in DERIVED_ARRAYS
+        ),
+        "expanded_field_catalogue": set(FIELD_ORDER).issubset(data.fields),
         "surface_nonempty": data.surface_um.n_cells > 0,
         "four_ports": len(data.plane_contract["ports"]) == 4,
         "several_valid_streamlines": data.valid_streamline_count >= 4,
-        "five_scene_renders": len(renders) == 5
+        "eight_scene_renders": len(renders) == 8
         and all(record["image_qc"]["status"] == "PASS" for record in renders.values()),
+        "multi_field_scene_coverage": {
+            "velocity",
+            "pressure",
+            "density-deviation",
+            "dynamic-pressure",
+            "velocity-x",
+        }.issubset(rendered_fields),
+        "interactive_dashboard_render": dashboard["image_qc"]["status"] == "PASS",
+        "interactive_field_selector_visible": bool(
+            dashboard["visible_helper_actors"]["field_selector"]
+        ),
+        "interactive_information_visible": bool(
+            dashboard["visible_helper_actors"]["info"]
+        ),
         "composition_qc": all(composition_checks.values()),
         "default_clutter_gate": all(clutter_checks.values()),
         "scalar_bar_gate": (
-            overview["scalar_bar"]["width_fraction"] <= 0.04
-            and overview["scalar_bar"]["height_fraction"] <= 0.45
-            and overview["scalar_bar"]["labels"] <= 5
+            overview["scalar_bar"]["width_fraction"] <= 0.05
+            and overview["scalar_bar"]["height_fraction"] <= 0.55
+            and overview["scalar_bar"]["labels"] <= 6
             and bool(overview["units"])
         ),
-        "clean_title_gate": AcademicStyle().title_font_size <= 14,
+        "large_typography_gate": (
+            interactive_style.title_font_size >= 22
+            and interactive_style.metadata_font_size >= 15
+            and interactive_style.control_font_size >= 14
+            and interactive_style.scalar_label_font_size >= 15
+        ),
         "render_interpolation_declared": (
             data.rendering_scalar_interpolation == RENDER_INTERPOLATION
         ),
@@ -1866,6 +2284,7 @@ def run_self_test(data: VisualData, config: VisualConfig) -> tuple[dict[str, Any
         "width_px": overview["width_px"],
         "height_px": overview["height_px"],
         "background": overview["background"],
+        "theme": config.theme,
         "field": overview["scalar"],
         "projection": overview["projection"],
         "camera": overview["camera"],
@@ -1873,6 +2292,8 @@ def run_self_test(data: VisualData, config: VisualConfig) -> tuple[dict[str, Any
         "vessel_projected_coverage": overview["vessel_projected_coverage"],
         "scalar_bar": overview["scalar_bar"],
         "visible_helper_actors": helpers,
+        "available_fields": list(data.fields),
+        "derived_arrays": list(DERIVED_ARRAYS),
         "port_count": overview["port_count"],
         "valid_streamline_count": data.valid_streamline_count,
         "render_interpolation": data.rendering_scalar_interpolation,
@@ -1880,6 +2301,8 @@ def run_self_test(data: VisualData, config: VisualConfig) -> tuple[dict[str, Any
         "original_cell_array_sha256": array_hashes_after,
         "original_cell_statistics": cell_statistics,
         "publication_suite": str(suite_path),
+        "interactive_dashboard": str(dashboard_path),
+        "interactive_dashboard_metadata": dashboard,
         "renders": renders,
         "composition_checks": composition_checks,
         "default_clutter_checks": clutter_checks,
@@ -1893,7 +2316,7 @@ def run_self_test(data: VisualData, config: VisualConfig) -> tuple[dict[str, Any
 
 
 def _print_startup(data: VisualData) -> None:
-    print("CFD Visualizer V3 — publication-grade redesign")
+    print("CFD Visualizer V3 - high-definition multi-field workstation")
     print(f"Run: {data.run_dir}")
     print(f"VTU: {data.vtu_path}")
     print(f"VTU SHA256: {data.vtu_sha256}")
@@ -1937,6 +2360,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             numerical_pressure_debug=args.show_numerical_pressure_debug,
             projection=args.projection,
             ui_mode=args.ui_mode,
+            theme=args.theme,
         )
         data = load_and_validate_data(run_dir, vtu, config, project_root=PROJECT_ROOT)
         _print_startup(data)

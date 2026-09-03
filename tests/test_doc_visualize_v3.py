@@ -77,8 +77,10 @@ def test_cli_defaults_and_required_options_are_available():
     parser = visualizer.build_parser()
     args = parser.parse_args([])
     assert args.scalar == "velocity"
-    assert (args.window_width, args.window_height) == (1800, 1100)
+    assert (args.window_width, args.window_height) == (1920, 1200)
     assert args.streamline_seeds == 24
+    assert args.ui_mode == "analysis"
+    assert args.theme == "dark"
     explicit = parser.parse_args(
         [
             "--run-dir",
@@ -97,7 +99,9 @@ def test_cli_defaults_and_required_options_are_available():
             "--projection",
             "perspective",
             "--ui-mode",
-            "analysis",
+            "clean",
+            "--theme",
+            "light",
             "--debug-cells",
             "--self-test",
         ]
@@ -106,7 +110,8 @@ def test_cli_defaults_and_required_options_are_available():
     assert explicit.publication_screenshot == Path("figure.png")
     assert explicit.publication_suite == Path("figures")
     assert explicit.projection == "perspective"
-    assert explicit.ui_mode == "analysis"
+    assert explicit.ui_mode == "clean"
+    assert explicit.theme == "light"
 
 
 def test_explicit_vtu_has_priority_over_explicit_run(tmp_path: Path):
@@ -149,6 +154,25 @@ def test_field_range_reports_raw_and_robust_limits():
 def test_field_range_rejects_nonfinite_values():
     with pytest.raises(visualizer.VisualizerInputError, match="non-finite"):
         visualizer.calculate_field_range(np.array((1.0, np.nan)))
+
+
+def test_derived_fields_are_formula_grounded_and_signed_ranges_are_symmetric():
+    grid = _small_grid()
+    visualizer.add_derived_cell_fields(
+        grid,
+        physical_density_kg_m3=1000.0,
+        rho_lattice_mean=1.0,
+    )
+    assert set(visualizer.DERIVED_ARRAYS).issubset(grid.cell_data)
+    assert np.allclose(grid.cell_data["density_deviation_ppm"], (-1000.0, 1000.0))
+    assert np.allclose(grid.cell_data["dynamic_pressure_mpa"], (500000.0, 2000000.0))
+    assert np.allclose(grid.cell_data["velocity_x_mm_s"], (1000.0, 0.0))
+    assert np.allclose(grid.cell_data["velocity_y_mm_s"], (0.0, 2000.0))
+    result = visualizer.calculate_symmetric_field_range(
+        grid.cell_data["velocity_x_mm_s"]
+    )
+    assert result.raw_min == -result.raw_max
+    assert result.percentile_min == -result.percentile_max
 
 
 def test_required_vtu_field_contract_is_strict():
@@ -219,6 +243,11 @@ def _viewer_plane_contract() -> dict:
 
 def _small_visual_data(tmp_path: Path) -> visualizer.VisualData:
     grid = _small_grid()
+    visualizer.add_derived_cell_fields(
+        grid,
+        physical_density_kg_m3=1000.0,
+        rho_lattice_mean=1.0,
+    )
     centers = np.asarray(grid.cell_centers().points)
     original_hashes = {
         name: visualizer._array_sha256(np.asarray(grid.cell_data[name]))
@@ -228,15 +257,61 @@ def _small_visual_data(tmp_path: Path) -> visualizer.VisualData:
     surface = visualizer._build_overview_surface(display)
     fields = {
         "velocity": visualizer.FieldSpec(
-            "velocity_magnitude_mm_s", "Velocity magnitude", "mm s⁻¹", "viridis"
+            "velocity_magnitude_mm_s",
+            "Velocity magnitude",
+            "mm s⁻¹",
+            "turbo",
+            "1",
+            "Speed",
+            "Local speed.",
         ),
         "pressure": visualizer.FieldSpec(
-            "pressure_gauge_pa", "Gauge pressure", "Pa", "cividis"
+            "pressure_gauge_pa",
+            "Gauge pressure",
+            "Pa",
+            "coolwarm",
+            "2",
+            "Pressure",
+            "Physical gauge pressure.",
         ),
-        "rho": visualizer.FieldSpec("rho_lattice", "Lattice density", "–", "cividis"),
+        "density-deviation": visualizer.FieldSpec(
+            "density_deviation_ppm",
+            "Density deviation",
+            "ppm",
+            "coolwarm",
+            "3",
+            "Density Δ",
+            "Compressibility signal.",
+            True,
+        ),
+        "dynamic-pressure": visualizer.FieldSpec(
+            "dynamic_pressure_mpa",
+            "Dynamic pressure",
+            "mPa",
+            "magma",
+            "4",
+            "Dynamic p",
+            "Kinetic-energy density.",
+        ),
+        "velocity-x": visualizer.FieldSpec(
+            "velocity_x_mm_s", "Velocity uₓ", "mm s⁻¹", "coolwarm", "5", "uₓ", "Signed x.", True
+        ),
+        "velocity-y": visualizer.FieldSpec(
+            "velocity_y_mm_s", "Velocity uᵧ", "mm s⁻¹", "coolwarm", "6", "uᵧ", "Signed y.", True
+        ),
+        "velocity-z": visualizer.FieldSpec(
+            "velocity_z_mm_s", "Velocity u_z", "mm s⁻¹", "coolwarm", "7", "u_z", "Signed z.", True
+        ),
+        "rho": visualizer.FieldSpec(
+            "rho_lattice", "Lattice density", "lattice units", "cividis", "8", "ρ lattice", "Raw density."
+        ),
     }
     ranges = {
-        key: visualizer.calculate_field_range(grid.cell_data[field.array])
+        key: (
+            visualizer.calculate_symmetric_field_range(grid.cell_data[field.array])
+            if field.symmetric_range
+            else visualizer.calculate_field_range(grid.cell_data[field.array])
+        )
         for key, field in fields.items()
     }
     line = pv.lines_from_points(np.array(((0.0, 0.5, 0.5), (2.0, 0.5, 0.5))))
@@ -251,6 +326,15 @@ def _small_visual_data(tmp_path: Path) -> visualizer.VisualData:
             "iteration": 10,
             "rho_mean": 1.0,
             "Qin_m3_s": 1.0e-15,
+            "Qout_m3_s": 0.99e-15,
+            "Q1_m3_s": 0.2e-15,
+            "Q2_m3_s": 0.5e-15,
+            "Q3_m3_s": 0.29e-15,
+            "flow_fractions": {
+                "outlet_01": 0.2,
+                "outlet_02": 0.5,
+                "outlet_03": 0.3,
+            },
             "physical_volume_closure": 1.0e-6,
         },
         steady_qc={"status": "PASS"},
@@ -260,6 +344,7 @@ def _small_visual_data(tmp_path: Path) -> visualizer.VisualData:
                 "dx_m": 0.2e-6,
                 "tau": 1.0,
                 "target_volume_flow_m3_s": 1.0e-15,
+                "rho0_kg_m3": 1000.0,
             },
         },
         physical_flux={"status": "PASS"},
@@ -288,14 +373,16 @@ def test_display_interpolation_is_point_only_and_original_cells_are_unchanged():
 
 
 def test_academic_style_meets_scalarbar_typography_and_port_contracts():
-    style = visualizer.AcademicStyle()
+    style = visualizer.academic_style("dark")
     field = visualizer.FieldSpec("v", "Velocity magnitude", "mm s⁻¹", "viridis")
     scalar_bar = visualizer.AcademicLayout().scalar_bar_args(field, style)
-    assert style.background == "#FBFBFA"
-    assert style.title_font_size <= 14
-    assert 0.020 <= scalar_bar["width"] <= 0.032
-    assert 0.32 <= scalar_bar["height"] <= 0.42
-    assert scalar_bar["n_labels"] <= 5
+    assert style.background == "#07131F"
+    assert style.title_font_size >= 22
+    assert style.metadata_font_size >= 15
+    assert 0.030 <= scalar_bar["width"] <= 0.050
+    assert 0.48 <= scalar_bar["height"] <= 0.55
+    assert scalar_bar["n_labels"] <= 6
+    assert scalar_bar["unconstrained_font_size"] is True
     assert scalar_bar["title"] == "Velocity magnitude\nmm s⁻¹"
     assert visualizer.PORT_COLORS == {
         "inlet": "#0072B2",
@@ -320,7 +407,11 @@ def test_camera_is_deterministic_and_fitted_to_vessel_only():
 def test_clean_overview_defaults_widget_lifecycle_and_original_cell_pick(tmp_path: Path):
     data = _small_visual_data(tmp_path)
     config = visualizer.VisualConfig(
-        width=1200, height=800, build_streamlines=True, show_ports=True
+        width=1200,
+        height=800,
+        build_streamlines=True,
+        show_ports=True,
+        ui_mode="clean",
     )
     viewer = visualizer.AcademicCFDViewer(data, config, off_screen=True)
     try:
@@ -336,6 +427,7 @@ def test_clean_overview_defaults_widget_lifecycle_and_original_cell_pick(tmp_pat
             "bounding_box": False,
             "port_normals": False,
             "ports": True,
+            "field_selector": True,
         }
         assert "vessel_context" not in viewer.plotter.actors
         assert all(f"port_outline_{label}" in viewer.plotter.actors for label in visualizer.PORT_ORDER)
@@ -357,11 +449,14 @@ def test_clean_overview_defaults_widget_lifecycle_and_original_cell_pick(tmp_pat
         viewer.plotter.close()
 
 
-def test_publication_suite_contract_covers_five_clean_scenes():
+def test_publication_suite_contract_covers_eight_multi_field_scenes():
     assert visualizer.PUBLICATION_SCENES == (
         ("01_after_velocity_overview.png", "velocity", "overview", False),
         ("02_after_pressure_overview.png", "pressure", "overview", False),
-        ("03_after_velocity_clip.png", "velocity", "clip", False),
-        ("04_after_pressure_slice.png", "pressure", "slice", False),
-        ("05_after_streamlines.png", "velocity", "clip", True),
+        ("03_after_density_deviation.png", "density-deviation", "overview", False),
+        ("04_after_dynamic_pressure.png", "dynamic-pressure", "overview", False),
+        ("05_after_velocity_x.png", "velocity-x", "overview", False),
+        ("06_after_velocity_clip.png", "velocity", "clip", False),
+        ("07_after_pressure_slice.png", "pressure", "slice", False),
+        ("08_after_streamlines.png", "velocity", "clip", True),
     )
