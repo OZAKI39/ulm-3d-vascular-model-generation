@@ -100,6 +100,7 @@ class AcademicStyle:
     """Central publication styling; no global PyVista theme is mutated."""
 
     theme: str = "dark"
+    font_family: str = "arial"
     background: str = "#07131F"
     background_top: str = "#142A3D"
     panel_color: str = "#0D2234"
@@ -182,7 +183,7 @@ class AcademicLayout:
             "title_font_size": style.scalar_title_font_size,
             "label_font_size": style.scalar_label_font_size,
             "color": style.text_color,
-            "font_family": "arial",
+            "font_family": style.font_family,
             "bold": True,
             "fmt": "%.4g",
             "outline": False,
@@ -1320,13 +1321,19 @@ class AcademicCFDViewer:
                 pickable=False,
                 render=False,
             )
-        self.plotter.add_axes(
+        axes = self.plotter.add_axes(
             interactive=False,
             line_width=1,
             color=self.style.muted_color,
             labels_off=False,
             viewport=self.layout.orientation_viewport,
         )
+        for caption_getter in (
+            axes.GetXAxisCaptionActor2D,
+            axes.GetYAxisCaptionActor2D,
+            axes.GetZAxisCaptionActor2D,
+        ):
+            caption_getter().GetCaptionTextProperty().SetFontFamilyToArial()
         self._update_overlays(render=False)
         self.apply_academic_camera(render=False)
         if not self.publication:
@@ -1557,6 +1564,7 @@ class AcademicCFDViewer:
                 actor.prop.font_size = self.style.control_font_size
                 actor.prop.color = self.style.text_color
                 actor.prop.bold = True
+                actor.prop.font_family = self.style.font_family
         self.field_selector_visible = bool(self.field_widgets)
 
     def _sync_field_selector(self) -> None:
@@ -1582,7 +1590,7 @@ class AcademicCFDViewer:
                 position=(width - 392, 56),
                 font_size=self.style.control_font_size,
                 color=self.style.text_color,
-                font="arial",
+                font=self.style.font_family,
                 name="streamline_module_label",
                 render=False,
             )
@@ -1690,7 +1698,7 @@ class AcademicCFDViewer:
             labels,
             font_size=self.style.port_font_size,
             text_color=self.style.text_color,
-            font_family="arial",
+            font_family=self.style.font_family,
             show_points=False,
             shape="rounded_rect",
             shape_color=self.style.panel_color,
@@ -1886,7 +1894,7 @@ class AcademicCFDViewer:
             position=(28, int(self.plotter.window_size[1]) - 28),
             font_size=self.style.title_font_size,
             color=self.style.text_color,
-            font="arial",
+            font=self.style.font_family,
             name="field_title",
             render=False,
         )
@@ -1919,7 +1927,7 @@ class AcademicCFDViewer:
                 position=(28, 126),
                 font_size=self.style.metadata_font_size,
                 color=self.style.text_color,
-                font="arial",
+                font=self.style.font_family,
                 name="help_overlay",
                 render=False,
             )
@@ -1971,7 +1979,7 @@ class AcademicCFDViewer:
             position=(int(self.plotter.window_size[0]) - 28, 126),
             font_size=self.style.metadata_font_size,
             color=self.style.text_color,
-            font="arial",
+            font=self.style.font_family,
             name="pick_information",
             render=False,
         )
@@ -2265,6 +2273,7 @@ class AcademicCFDViewer:
                 "title": f"{field.title}\n{field.units}",
             },
             "typography_px": {
+                "font_family": "Arial",
                 "title": self.style.title_font_size,
                 "metadata": self.style.metadata_font_size,
                 "ports": self.style.port_font_size,
@@ -2681,7 +2690,9 @@ def run_self_test(data: VisualData, config: VisualConfig) -> tuple[dict[str, Any
             and bool(overview["units"])
         ),
         "large_typography_gate": (
-            interactive_style.title_font_size >= 22
+            interactive_style.font_family == "arial"
+            and dashboard["typography_px"]["font_family"] == "Arial"
+            and interactive_style.title_font_size >= 22
             and interactive_style.metadata_font_size >= 15
             and interactive_style.control_font_size >= 14
             and interactive_style.scalar_label_font_size >= 15

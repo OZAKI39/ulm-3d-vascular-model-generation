@@ -450,6 +450,8 @@ def test_academic_style_meets_scalarbar_typography_and_port_contracts():
     field = visualizer.FieldSpec("v", "Velocity magnitude", "mm s⁻¹", "viridis")
     scalar_bar = visualizer.AcademicLayout().scalar_bar_args(field, style)
     assert style.background == "#07131F"
+    assert style.font_family == "arial"
+    assert scalar_bar["font_family"] == "arial"
     assert style.title_font_size >= 22
     assert style.metadata_font_size >= 15
     assert 0.030 <= scalar_bar["width"] <= 0.050
@@ -518,6 +520,20 @@ def test_overview_has_no_information_panel_and_preserves_interactions(tmp_path: 
             )["title"]
         ]
         assert scalar_bar_actor.GetDrawFrame() == 0
+        assert scalar_bar_actor.GetTitleTextProperty().GetFontFamilyAsString() == "Arial"
+        assert scalar_bar_actor.GetLabelTextProperty().GetFontFamilyAsString() == "Arial"
+        assert viewer.plotter.actors["field_title"].prop.font_family == "arial"
+        assert all(
+            actor.prop.font_family == "arial"
+            for actors in viewer.plotter.widgets.radio_button_title_dict.values()
+            for actor in actors
+        )
+        assert (
+            viewer.plotter.renderer.axes_actor.GetXAxisCaptionActor2D()
+            .GetCaptionTextProperty()
+            .GetFontFamilyAsString()
+            == "Arial"
+        )
         assert "vessel_context" not in viewer.plotter.actors
         assert all(f"port_outline_{label}" in viewer.plotter.actors for label in visualizer.PORT_ORDER)
         assert not any(name.startswith("port_normal_") for name in viewer.plotter.actors)
