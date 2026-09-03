@@ -23,6 +23,13 @@ from ..sampling.sampling_io import load_sampling_display_rois
 from ..sampling.sampling_types import ROIRecord
 
 
+UI_FONT_FAMILY = "arial"
+COORDINATE_TICK_FONT_SIZE = 11
+COORDINATE_TITLE_FONT_SIZE = 12
+ORIENTATION_AXIS_FONT_SIZE = 12
+LEGEND_FONT_SIZE = 11
+
+
 @dataclass(frozen=True, slots=True)
 class InteractiveSceneGeometry:
     """Small, renderer-independent subset of a directed vascular graph."""
@@ -45,6 +52,54 @@ class InteractiveSceneGeometry:
 class Figure2aArtifacts:
     screenshot_path: Path
     manifest_path: Path
+
+
+def _style_text_property(
+    text_property: Any,
+    *,
+    font_size: int,
+    bold: bool,
+) -> None:
+    """Apply the shared readable Arial typography to a VTK text property."""
+
+    text_property.SetFontFamilyToArial()
+    text_property.SetFontSize(font_size)
+    text_property.SetBold(bold)
+
+
+def _style_orientation_axes(axes_actor: Any) -> None:
+    for caption_getter in (
+        axes_actor.GetXAxisCaptionActor2D,
+        axes_actor.GetYAxisCaptionActor2D,
+        axes_actor.GetZAxisCaptionActor2D,
+    ):
+        _style_text_property(
+            caption_getter().GetCaptionTextProperty(),
+            font_size=ORIENTATION_AXIS_FONT_SIZE,
+            bold=True,
+        )
+
+
+def _style_bounds_axes(bounds_actor: Any) -> None:
+    for axis_index in range(3):
+        _style_text_property(
+            bounds_actor.GetLabelTextProperty(axis_index),
+            font_size=COORDINATE_TICK_FONT_SIZE,
+            bold=False,
+        )
+        _style_text_property(
+            bounds_actor.GetTitleTextProperty(axis_index),
+            font_size=COORDINATE_TITLE_FONT_SIZE,
+            bold=True,
+        )
+
+
+def _style_legend(legend_actor: Any) -> None:
+    _style_text_property(
+        legend_actor.GetEntryTextProperty(),
+        font_size=LEGEND_FONT_SIZE,
+        bold=False,
+    )
 
 
 def scene_geometry_from_graph(
@@ -166,9 +221,15 @@ def _add_physical_coordinate_axes(
     import pyvista as pv
 
     if add_orientation_axes:
-        plotter.add_axes(xlabel="X (um)", ylabel="Y (um)", zlabel="Z (um)", color="white")
+        axes_actor = plotter.add_axes(
+            xlabel="X (um)",
+            ylabel="Y (um)",
+            zlabel="Z (um)",
+            color="white",
+        )
+        _style_orientation_axes(axes_actor)
     reference_box = pv.Box(bounds=bounds)
-    plotter.show_bounds(
+    bounds_actor = plotter.show_bounds(
         mesh=reference_box,
         axes_ranges=bounds,
         xtitle="X (um)",
@@ -178,7 +239,8 @@ def _add_physical_coordinate_axes(
         n_ylabels=4,
         n_zlabels=5,
         fmt="%.1f",
-        font_size=9,
+        font_size=COORDINATE_TICK_FONT_SIZE,
+        font_family=UI_FONT_FAMILY,
         color="#BFC7D5",
         grid="back",
         location="outer",
@@ -186,6 +248,7 @@ def _add_physical_coordinate_axes(
         all_edges=True,
         use_3d_text=False,
     )
+    _style_bounds_axes(bounds_actor)
 
 
 def _set_full_scene_title(plotter: Any, *, sampling_available: bool) -> None:
@@ -200,6 +263,7 @@ def _set_full_scene_title(plotter: Any, *, sampling_available: bool) -> None:
         position="upper_left",
         font_size=11,
         color="white",
+        font=UI_FONT_FAMILY,
         name="full_scene_title",
     )
 
@@ -242,8 +306,8 @@ def _add_full_scene(
         plotter.add_mesh(
             branch_mesh,
             color="#35D6E3",
-            line_width=1.7,
-            opacity=0.72,
+            line_width=2.4,
+            opacity=0.86,
             label="SWC centerline",
             pickable=False,
         )
@@ -260,7 +324,7 @@ def _add_full_scene(
         glyphs = arrows.glyph(
             orient="parent_to_current",
             scale=False,
-            factor=max(2.0, diagonal * 0.018),
+            factor=max(2.0, diagonal * 0.022),
         )
         plotter.add_mesh(
             glyphs,
@@ -271,10 +335,10 @@ def _add_full_scene(
         )
 
     role_styles = {
-        "inferred_inlet": ("#4ADE80", 8.0, "structural root (not flow inlet)"),
-        "inferred_outlet": ("#F87171", 6.0, "structural leaf (not flow outlet)"),
-        "divergence_junction": ("#FACC15", 8.0, "divergence junction"),
-        "convergence_junction": ("#C084FC", 8.0, "convergence junction"),
+        "inferred_inlet": ("#4ADE80", 12.0, "structural root (not flow inlet)"),
+        "inferred_outlet": ("#F87171", 10.0, "structural leaf (not flow outlet)"),
+        "divergence_junction": ("#FACC15", 12.0, "divergence junction"),
+        "convergence_junction": ("#C084FC", 12.0, "convergence junction"),
     }
     roles = np.asarray(geometry.critical_roles, dtype=object)
     for role, (color, size, display_label) in role_styles.items():
@@ -291,7 +355,13 @@ def _add_full_scene(
 
     _set_full_scene_title(plotter, sampling_available=sampling_available)
     model_bounds = _model_bounds(volume_zyx, spacing_xyz_um, geometry)
-    plotter.add_legend(bcolor="#101010", face=None, size=(0.30, 0.27))
+    legend = plotter.add_legend(
+        bcolor="#101010",
+        face=None,
+        size=(0.255, 0.235),
+        font_family=UI_FONT_FAMILY,
+    )
+    _style_legend(legend)
     plotter.view_isometric()
     plotter.camera.zoom(1.12)
     _add_physical_coordinate_axes(plotter, model_bounds)
@@ -305,6 +375,13 @@ def _add_full_scene(
         "critical_node_count": len(geometry.critical_points_um),
         "global_coordinate_bounds_xyz_um": list(model_bounds),
         "coordinate_units": "um",
+        "interface_style": {
+            "font_family": "Arial",
+            "coordinate_tick_font_size": COORDINATE_TICK_FONT_SIZE,
+            "coordinate_title_font_size": COORDINATE_TITLE_FONT_SIZE,
+            "legend_font_size": LEGEND_FONT_SIZE,
+            "overlay_emphasis": "enhanced in both viewports",
+        },
         "intensity_window": intensity_window,
         "direction_rule": "SWC parent_id node -> current node",
         "direction_is_measured_flow": False,
@@ -349,7 +426,7 @@ def _add_sampling_roi_scene(
         box,
         style="wireframe",
         color="#FF5C5C",
-        line_width=3.0,
+        line_width=4.0,
         label="spatial ROI boundary",
         pickable=False,
     )
@@ -368,14 +445,14 @@ def _add_sampling_roi_scene(
             tubes,
             color="#F5F7FA",
             smooth_shading=True,
-            opacity=0.75,
+            opacity=0.88,
             label="source SWC radius",
             pickable=False,
         )
         plotter.add_mesh(
             mesh,
             color="#51E5FF",
-            line_width=2.2,
+            line_width=3.0,
             label="connected ROI centerline",
             pickable=False,
         )
@@ -394,7 +471,7 @@ def _add_sampling_roi_scene(
             glyphs = arrows.glyph(
                 orient="parent_to_current",
                 scale=False,
-                factor=max(2.0, diagonal * 0.045),
+                factor=max(2.0, diagonal * 0.055),
             )
             plotter.add_mesh(
                 glyphs,
@@ -407,7 +484,7 @@ def _add_sampling_roi_scene(
         plotter.add_points(
             points,
             color="#4ADE80",
-            point_size=15,
+            point_size=19,
             render_points_as_spheres=True,
             label="TRUE_TERMINAL",
             pickable=False,
@@ -417,7 +494,7 @@ def _add_sampling_roi_scene(
         plotter.add_points(
             points,
             color="#F87171",
-            point_size=17,
+            point_size=21,
             render_points_as_spheres=True,
             label="CUT_PORT",
             pickable=False,
@@ -437,9 +514,17 @@ def _add_sampling_roi_scene(
         position="upper_left",
         font_size=10,
         color="white",
+        font=UI_FONT_FAMILY,
         name="sampling_roi_information",
     )
-    plotter.add_legend(bcolor="#101010", face=None, size=(0.34, 0.25), loc="lower right")
+    legend = plotter.add_legend(
+        bcolor="#101010",
+        face=None,
+        size=(0.285, 0.22),
+        loc="lower right",
+        font_family=UI_FONT_FAMILY,
+    )
+    _style_legend(legend)
     plotter.view_isometric()
     plotter.reset_camera(bounds=bounds)
     _add_physical_coordinate_axes(
@@ -473,10 +558,10 @@ def _add_sampling_boxes(
         actor = plotter.add_mesh(
             pv.Box(bounds=bounds),
             color=color,
-            opacity=0.11 if roi.is_representative else 0.035,
+            opacity=0.16 if roi.is_representative else 0.05,
             show_edges=True,
             edge_color=color,
-            line_width=3.0 if roi.is_representative else 1.2,
+            line_width=4.0 if roi.is_representative else 1.6,
             pickable=True,
             reset_camera=False,
             name=f"sampling_roi_pick_{index}",
@@ -492,6 +577,7 @@ def _add_sampling_boxes(
                 np.asarray(label_points),
                 labels,
                 font_size=9,
+                font_family=UI_FONT_FAMILY,
                 text_color="white",
                 shape_color="#202020",
                 shape_opacity=0.70,
@@ -507,6 +593,7 @@ def _add_sampling_boxes(
             position="lower_left",
             font_size=10,
             color="white",
+            font=UI_FONT_FAMILY,
             name="sampling_layer_mode",
         )
     )

@@ -368,6 +368,91 @@ class _FakeInteractivePlotter:
         self.picking_callbacks.append(callback)
 
 
+class _FakeTextProperty:
+    def __init__(self) -> None:
+        self.family = ""
+        self.font_size = 0
+        self.bold = False
+
+    def SetFontFamilyToArial(self) -> None:
+        self.family = "Arial"
+
+    def SetFontSize(self, font_size: int) -> None:
+        self.font_size = int(font_size)
+
+    def SetBold(self, bold: bool) -> None:
+        self.bold = bool(bold)
+
+
+class _FakeCaptionActor:
+    def __init__(self, text_property: _FakeTextProperty) -> None:
+        self.text_property = text_property
+
+    def GetCaptionTextProperty(self) -> _FakeTextProperty:
+        return self.text_property
+
+
+class _FakeAxesActor:
+    def __init__(self) -> None:
+        self.properties = [_FakeTextProperty() for _ in range(3)]
+        self.captions = [_FakeCaptionActor(prop) for prop in self.properties]
+
+    def GetXAxisCaptionActor2D(self) -> _FakeCaptionActor:
+        return self.captions[0]
+
+    def GetYAxisCaptionActor2D(self) -> _FakeCaptionActor:
+        return self.captions[1]
+
+    def GetZAxisCaptionActor2D(self) -> _FakeCaptionActor:
+        return self.captions[2]
+
+
+class _FakeBoundsActor:
+    def __init__(self) -> None:
+        self.labels = [_FakeTextProperty() for _ in range(3)]
+        self.titles = [_FakeTextProperty() for _ in range(3)]
+
+    def GetLabelTextProperty(self, index: int) -> _FakeTextProperty:
+        return self.labels[index]
+
+    def GetTitleTextProperty(self, index: int) -> _FakeTextProperty:
+        return self.titles[index]
+
+
+class _FakeLegendActor:
+    def __init__(self) -> None:
+        self.text_property = _FakeTextProperty()
+
+    def GetEntryTextProperty(self) -> _FakeTextProperty:
+        return self.text_property
+
+
+def test_interactive_typography_uses_arial_with_rebalanced_sizes() -> None:
+    axes = _FakeAxesActor()
+    bounds = _FakeBoundsActor()
+    legend = _FakeLegendActor()
+
+    interactive_module._style_orientation_axes(axes)
+    interactive_module._style_bounds_axes(bounds)
+    interactive_module._style_legend(legend)
+
+    assert interactive_module.UI_FONT_FAMILY == "arial"
+    assert all(prop.family == "Arial" for prop in axes.properties)
+    assert all(
+        prop.font_size == interactive_module.ORIENTATION_AXIS_FONT_SIZE
+        for prop in axes.properties
+    )
+    assert all(prop.family == "Arial" for prop in bounds.labels + bounds.titles)
+    assert all(
+        prop.font_size == interactive_module.COORDINATE_TICK_FONT_SIZE
+        for prop in bounds.labels
+    )
+    assert interactive_module.COORDINATE_TICK_FONT_SIZE > 9
+    assert legend.text_property.family == "Arial"
+    assert legend.text_property.font_size == interactive_module.LEGEND_FONT_SIZE
+    assert interactive_module.LEGEND_FONT_SIZE <= interactive_module.COORDINATE_TITLE_FONT_SIZE
+
+
 def test_roi_switch_callbacks_preserve_existing_orientation_axes(monkeypatch) -> None:
     """Replacing local actors must not recreate VTK orientation widgets."""
 
