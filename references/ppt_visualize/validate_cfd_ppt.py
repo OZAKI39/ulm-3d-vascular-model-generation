@@ -100,6 +100,17 @@ def main() -> None:
                 "wall_libb: u_wall = 0",
             ]
         ),
+        "slide_3_global_pressure_colorbar_labeled": any(
+            "color bar: pressure, p (Pa)" in text for text in visible_text
+        ),
+        "slide_3_local_roi_port_legend_present": any(
+            text.startswith("Local ROI ports")
+            and "Q [pL/s]" in text
+            and "p [Pa]" in text
+            and "IN   0.769" in text
+            and "O3   0.339" in text
+            for text in visible_text
+        ),
         "embedded_images_present": image_count >= 9 and media_count >= 7,
         "source_notes_on_every_slide": source_blocks == 8,
     }

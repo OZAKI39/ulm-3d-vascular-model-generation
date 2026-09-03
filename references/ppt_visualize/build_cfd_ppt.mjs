@@ -172,10 +172,37 @@ const deck = Presentation.create({ slideSize: { width: W, height: H } });
   addTitle(slide, titles[2], 3, "STAGE 1");
   addRect(slide, 58, 134, 520, 235, C.soft, C.line, 3);
   await addImage(slide, "01_pipeline_stage1_1d.png", 64, 140, 508, 223, "Actual global 1D pressure network", "contain");
-  addText(slide, "Global network", 76, 146, 160, 26, 13, C.navy, true);
+  addText(slide, "Global network · color bar: pressure, p (Pa)", 76, 144, 395, 30, 15, C.navy, true);
   addRect(slide, 58, 385, 520, 250, C.soft, C.line, 3);
-  await addImage(slide, "01b_roi_boundary_transfer.png", 64, 391, 508, 238, "Actual ROI with transferred inlet and outlet data", "contain");
-  addText(slide, "Local ROI ports", 76, 397, 160, 26, 13, C.navy, true);
+  const roiImage = await addImage(
+    slide,
+    "01b_roi_boundary_transfer.png",
+    65,
+    397,
+    350,
+    230,
+    "Enlarged local ROI with transferred inlet and outlet data",
+    "cover",
+  );
+  roiImage.crop = { left: 0.02, top: 0.08, right: 0.02, bottom: 0.10 };
+  addText(
+    slide,
+    [
+      "Local ROI ports",
+      "Q [pL/s] · p [Pa]",
+      "IN   0.769 · 216",
+      "O1   0.0485 · 17",
+      "O2   0.382 · 152",
+      "O3   0.339 · 0",
+    ].join("\n"),
+    425,
+    400,
+    145,
+    222,
+    17,
+    C.navy,
+    true,
+  );
 
   addRect(slide, 606, 134, 616, 501, C.soft, C.line, 4);
   addText(slide, "How the 3D boundary conditions are constructed", 632, 151, 552, 44, 22, C.ink, true);
@@ -429,6 +456,9 @@ await fs.writeFile(
     unique_raster_scientific_files_used: 7,
     all_visible_text_english: true,
     all_main_claims_source_verified: evidence.all_claims_verified === true,
+    slide_3_global_pressure_colorbar_labeled: true,
+    slide_3_local_roi_image_enlarged: true,
+    slide_3_local_roi_legend_font_px: 17,
     new_cfd_solve_performed: false,
   }, null, 2) + "\n",
   "utf8",
