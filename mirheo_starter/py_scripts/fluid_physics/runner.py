@@ -11,7 +11,7 @@ from pathlib import Path
 import signal
 import subprocess
 import time
-from .common import output, read_json, write_json, atomic_state, now, resource_snapshot, fingerprint
+from .common import PROJECT_ROOT, output, read_json, write_json, atomic_state, now, resource_snapshot, fingerprint
 
 
 @contextmanager
@@ -132,11 +132,52 @@ def used_budget(ledger):
     return sum(a.get('charged_s',a['reserved_s']) for a in ledger['attempts'])
 
 
+def shared_budget_state(campaign, c, ledger=None):
+    """Registered campaigns share the original authorization; missing ledgers fail closed.
+
+    Old callers automatically join when their exact directory is registered.
+    Unregistered synthetic tests and independent campaigns retain their behavior.
+    Call while holding the pool GPU lock when reserving or charging work.
+    """
+    campaign=output(campaign)
+    pool_path=output(c.get('shared_budget_pool',PROJECT_ROOT/'runs/fluid_calibration/shared_budget_pool.json'))
+    if not pool_path.exists():
+        if c.get('require_shared_budget'):raise ValueError('SHARED_BUDGET_MISSING')
+        return None
+    pool=read_json(pool_path)
+    members={str(Path(m['directory']).resolve()):m for m in pool['members']}
+    if str(campaign) not in members:
+        if c.get('require_shared_budget'):raise ValueError('CAMPAIGN_NOT_REGISTERED_IN_SHARED_BUDGET')
+        return None
+    if not 0<float(pool['limit_s'])<=3600:raise ValueError('SHARED_BUDGET_LIMIT_INVALID')
+    rows=[]
+    for path,member in members.items():
+        lp=output(path)/'budget_ledger.json'
+        if not lp.exists():
+            if member['ledger_required']:raise ValueError('SHARED_BUDGET_LEDGER_MISSING '+str(lp))
+            value={'attempts':[]}
+        else:
+            value=read_json(lp)
+            if value['campaign_id']!=member['campaign_id']:raise ValueError('SHARED_BUDGET_ID_MISMATCH')
+        charge=used_budget(value)
+        if charge<0 or not __import__('math').isfinite(charge):raise ValueError('INVALID_BUDGET_CHARGE')
+        rows.append({'directory':path,'campaign_id':member['campaign_id'],'charged_or_reserved_s':charge,
+                     'running_reservation_s':sum(a['reserved_s'] for a in value['attempts'] if a['status']=='RUNNING')})
+    total=sum(r['charged_or_reserved_s'] for r in rows)
+    return {'pool_path':str(pool_path),'pool':pool,'members':rows,'total_charged_or_reserved_s':total,
+            'remaining_s':max(0.,pool['limit_s']-total),'limit_s':pool['limit_s']}
+
+
 def run_attempt(campaign,c,task_id,cache_identity,create_command,allocation,*,retry_failed=False,monitor_gpu=True):
     campaign=output(campaign);campaign.mkdir(parents=True,exist_ok=True)
     budget=c['budget'];key=fingerprint(cache_identity)
-    with exclusive_lock(campaign.parent/'.gpu_exclusive.lock'),exclusive_lock(campaign/'.campaign.lock'):
+    shared=shared_budget_state(campaign,c)
+    lock=Path(shared['pool']['gpu_lock']) if shared else campaign.parent/'.gpu_exclusive.lock'
+    with exclusive_lock(lock),exclusive_lock(campaign/'.campaign.lock'):
         ledger=ledger_read(campaign,c['campaign_id'],budget)
+        shared=shared_budget_state(campaign,c,ledger)
+        if shared and any(r['running_reservation_s'] for r in shared['members']):
+            raise RuntimeError('UNRECONCILED_SHARED_RUNNING_RESERVATION')
         for old in ledger['attempts']:
             if old['status']=='RUNNING':
                 raise RuntimeError('UNRECONCILED_RUNNING_RESERVATION: retain charge, check recorded process before explicit reconciliation')
@@ -152,6 +193,7 @@ def run_attempt(campaign,c,task_id,cache_identity,create_command,allocation,*,re
         if previous and not retry_failed:
             raise RuntimeError('EXISTING_DIFFERENT_OR_FAILED_ATTEMPT: explicit --retry-failed required; budget is preserved')
         remaining=budget['campaign_limit_s']-used_budget(ledger)
+        if shared:remaining=min(remaining,shared['remaining_s'])
         allocation=min(float(allocation),float(budget['task_limit_s']),remaining)
         if allocation<budget['minimum_launch_budget_s']:
             return None,{'status':'BUDGET_EXHAUSTED','remaining_s':remaining},False
@@ -166,6 +208,10 @@ def run_attempt(campaign,c,task_id,cache_identity,create_command,allocation,*,re
         entry={'task_id':task_id,'directory':str(directory),'cache_key':key,'cache_identity':cache_identity,
                'reserved_s':allocation,'charged_s':allocation,'status':'RUNNING','created_at':now()}
         ledger['attempts'].append(entry);atomic_state(campaign/'budget_ledger.json',ledger)
+        if shared:
+            for member in shared['pool']['members']:
+                if Path(member['directory']).resolve()==campaign:member['ledger_required']=True
+            atomic_state(Path(shared['pool_path']),shared['pool'])
         try:
             command=create_command(directory)
             record=bounded_process(command,directory,allocation,budget,monitor_gpu=monitor_gpu)

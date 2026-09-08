@@ -12,10 +12,20 @@ from .boundary_plan import build_boundary_plan
 from .runner import used_budget
 
 
-def eos_analysis(tasks,case,u,tolerances):
+def evidence_group(tasks, *, method=None, candidate_id=None, comparison_group=None):
+    rows=[t for t in tasks if (method is None or t.get('method','DPD')==method)
+          and (candidate_id is None or t.get('candidate_id')==candidate_id)
+          and (comparison_group is None or t.get('comparison_group',t.get('candidate_id'))==comparison_group)]
+    identities={(t.get('method','DPD'),t.get('candidate_id'),t.get('comparison_group',t.get('candidate_id'))) for t in rows}
+    if len(identities)>1:raise ValueError('MIXED_CANDIDATE_EVIDENCE')
+    return rows
+
+
+def eos_analysis(tasks,case,u,tolerances, *, method=None, candidate_id=None, comparison_group=None):
+    tasks=evidence_group(tasks,method=method,candidate_id=candidate_id,comparison_group=comparison_group)
     points=[]
     for task in tasks:
-        if task['candidate_id']=='thermal_baseline' and task['kind']=='equilibrium' and task.get('pressure',{}).get('mean') is not None:
+        if task['kind']=='equilibrium' and task.get('pressure',{}).get('mean') is not None:
             p=task['pressure'];points.append({'task_id':task['task_id'],'n_star':task['actual_n_star'],'rho_star':task['actual_n_star']*task['parameters']['m_star'],
                                            'mean_pressure_star':p['mean'],'ci95_halfwidth_star':p['ci95_halfwidth'],'statistics_status':p['status'],
                                            'mean_pressure_pa':u.to_si(p['mean'],'pressure'),'temperature_status':task['temperature_status']})
@@ -30,11 +40,19 @@ def eos_analysis(tasks,case,u,tolerances):
     coef=np.linalg.solve(X.T@W@X,X.T@W@y);pred=X@coef;res=y-pred
     cov=np.linalg.inv(X.T@W@X)*max(1,float(np.sum((res/sig)**2)/max(1,len(x)-2)))
     slope=float(coef[0]);slope_hw=1.96*float(np.sqrt(cov[0,0]))
-    baseline=next((p for p in points if p['task_id']=='equilibrium'),None)
+    reference_rho=u.to_star(case['density_kg_m3'],'mass_density') if 'density_kg_m3' in case else float(np.median(x))
+    baseline=min(points,key=lambda p:abs(p['rho_star']-reference_rho))
     if not baseline:result['reason']='Missing measured baseline reference';return result
     p0=baseline['mean_pressure_star'];targets={name:pressure_target_star(p0,p,0,u) for name,p in case['outlet_gauge_pressures_pa'].items()}
-    lower=min(y[i]-(h[i] or 0) for i in range(len(y)));upper=max(y[i]+(h[i] or 0) for i in range(len(y)))
+    lower=float(y.min());upper=float(y.max())  # Uncertainty must never artificially enlarge the measured range.
     coverage={k:bool(lower<=v<=upper) for k,v in targets.items()}
+    # Coverage of point estimates is distinct from coverage allowing for the
+    # independently measured baseline and endpoint pressure uncertainty.
+    base_hw=baseline['ci95_halfwidth_star']
+    robust_lower=min(y[i]+h[i] for i in range(len(y))) if not uncertain else None
+    robust_upper=max(y[i]-h[i] for i in range(len(y))) if not uncertain else None
+    robust={k:bool(robust_lower is not None and base_hw is not None and robust_lower<=v-base_hw and v+base_hw<=robust_upper) for k,v in targets.items()}
+    coverage_status=('COVERED' if all(robust.values()) else 'NOMINAL_COVERAGE_UNCERTAIN') if all(coverage.values()) else 'OUTSIDE_MEASURED_EOS_RANGE'
     enough=all(p['statistics_status']=='SUFFICIENT' for p in points) and not uncertain
     result.update(status='MEASURED_LOCAL_RESPONSE' if enough and slope>slope_hw else 'INCONCLUSIVE',
                   thermal_target_status='PASS_PROPOSED' if all(p['temperature_status']=='PASS_PROPOSED' for p in points) else 'NOT_AT_ACCEPTABLE_TARGET_TEMPERATURE',
@@ -45,22 +63,37 @@ def eos_analysis(tasks,case,u,tolerances):
                   equilibrium_reference_pressure_star=p0,equilibrium_reference_pressure_pa=u.to_si(p0,'pressure'),
                   target_pressure_star=targets,target_pressure_pa={k:u.to_si(v,'pressure') for k,v in targets.items()},
                   target_within_measured_range=coverage,
-                  target_pressure_coverage_status='COVERED' if all(coverage.values()) else 'OUTSIDE_MEASURED_EOS_RANGE',
+                  target_pressure_coverage_status=coverage_status,
+                  target_pressure_nominal_coverage_status='COVERED' if all(coverage.values()) else 'OUTSIDE_MEASURED_EOS_RANGE',
+                  target_within_conservative_CI_range=robust,
+                  pressure_coverage_uncertainty='Endpoint inward 95% block-CI bounds must contain baseline-referenced target plus/minus the baseline 95% CI. Conservative individual bounds, not a claim of simultaneous 95% family coverage.',
                   sound_speed_star=math.sqrt(slope) if slope>0 else None,
                   sound_speed_si=u.to_si(math.sqrt(slope),'velocity') if slope>0 else None,
-                  compressibility_1_pa=1/(8*slope*u.scales['pressure']) if slope>0 else None,
-                  bulk_modulus_pa=8*slope*u.scales['pressure'] if slope>0 else None,
+                  compressibility_1_pa=1/(baseline['rho_star']*slope*u.scales['pressure']) if slope>0 else None,
+                  bulk_modulus_pa=baseline['rho_star']*slope*u.scales['pressure'] if slope>0 else None,
                   density_target_solution=None,
                   density_solution_reason='No control densities selected or extrapolated outside measured range; no claim of matching old bulk viscosity or absolute compressibility')
     return result
 
 
-def sensitivity(tasks,tol):
-    by={t['task_id']:t for t in tasks};rows=[]
+def sensitivity(tasks,tol, *, method=None, candidate_id=None, comparison_group=None):
+    tasks=evidence_group(tasks,method=method,candidate_id=candidate_id,comparison_group=comparison_group)
+    legacy_roles={'flow_half_dt':'half_dt','flow_half_force':'half_force'}
+    by={t.get('test_kind',legacy_roles.get(t['task_id'],t['task_id'])):t for t in tasks};rows=[]
     base=by.get('flow',{}).get('viscosity',{})
-    for name,kind in [('flow_half_force','force / 2'),('flow_half_dt','dt / 2')]:
+    for name,kind in [('half_force','force / 2'),('half_dt','dt / 2')]:
         other=by.get(name,{}).get('viscosity',{});a=base.get('nu_star');b=other.get('nu_star')
         r={'task_id':name,'comparison':kind,'locked_same_units':True,'status':'INCONCLUSIVE'}
+        sa=by.get('flow',{}).get('parameters');sb=by.get(name,{}).get('parameters')
+        if sa is not None and sb is not None:
+            same=all(sa.get(k)==sb.get(k) for k in ('locked_units','m_star','kBT_star','rc_star','domain_star','candidate'))
+            same=same and sa['task']['n_star']==sb['task']['n_star']
+            ratio_dt=sb['dt_star']/sa['dt_star'];ratio_force=sb['task']['force_star']/sa['task']['force_star']
+            expected_dt=.5 if name=='half_dt' else 1.;expected_force=.5 if name=='half_force' else 1.
+            same=same and math.isclose(ratio_dt,expected_dt,rel_tol=1e-12) and math.isclose(ratio_force,expected_force,rel_tol=1e-12)
+            r['locked_same_units']=same
+            if not same:
+                r['reason']='INCOMPATIBLE_HALF_TEST_PARAMETERS';rows.append(r);continue
         if a and b:
             r.update(reference_nu_star=a,nu_star=b,relative_difference=abs(b/a-1),reference_ci95_star=base.get('ci95_star'),ci95_star=other.get('ci95_star'))
             enough=base.get('sampling_status')=='SUFFICIENT' and other.get('sampling_status')=='SUFFICIENT'
@@ -75,6 +108,7 @@ def sensitivity(tasks,tol):
 
 def summarize(c,prepared):
     prepared=Path(prepared);verify_package(prepared);case=read_json(prepared/'physical_case.json');um=read_json(prepared/'unit_mapping.json');u=Units(um['L0'],um['M0'],um['t0'])
+    c=dict(c);c['legacy_windows']=read_json(prepared/'legacy_acceptance_mapping.json')
     campaign=output(Path(c['runs_root'])/c['campaign_id']);ledger=read_json(campaign/'budget_ledger.json') if (campaign/'budget_ledger.json').exists() else {'attempts':[],'campaign_limit_s':c['budget']['campaign_limit_s']}
     if any(a['status']=='RUNNING' for a in ledger['attempts']):raise RuntimeError('Campaign still running; review committed data after exit')
     newest={a['task_id']:a for a in ledger['attempts']};tasks=[]
@@ -93,10 +127,12 @@ def summarize(c,prepared):
             t['execution']['started_at_utc']=read_json(d/'process_identity.json')['started_at']
             t['execution']['utc_annotation']='Corrected report labels from actual process_identity launch UTC and original execution completion UTC; immutable raw execution field had a mislabeled name. Monotonic accounting unchanged.'
         tasks.append(t)
-    eos=eos_analysis(tasks,case,u,c['proposed_acceptance']);sens=sensitivity(tasks,c['proposed_acceptance'])
+    first=c['candidates'][0]['id']
+    eos=eos_analysis(tasks,case,u,c['proposed_acceptance'],candidate_id=first);sens=sensitivity(tasks,c['proposed_acceptance'],candidate_id=first)
     target=case['kinematic_viscosity_m2_s'];candidate_results=[]
     for candidate in c['candidates']:
         ct=[t for t in tasks if t['candidate_id']==candidate['id']]
+        ceos=eos_analysis(ct,case,u,c['proposed_acceptance']);csens=sensitivity(ct,c['proposed_acceptance'])
         flows=[t for t in ct if t['kind']=='flow' and t.get('viscosity',{}).get('nu_star')]
         reasons=[]
         if any(t['execution']['status']!='COMPLETED' for t in ct):reasons.append('INCOMPLETE_OR_FAILED_EXECUTION_RETAINS_PARTIAL_DATA')
@@ -112,15 +148,13 @@ def summarize(c,prepared):
             if f.get('temperature_status')!='PASS_PROPOSED':reasons.append('MEASURED_TEMPERATURE_NOT_WITHIN_PROPOSED_GATE')
             if f.get('stationarity_status')!='PASS_PROPOSED':reasons.append('UNSTABLE_FLOW_MEAN')
             if v.get('relative_rms',1)>c['proposed_acceptance']['profile_relative_rms']:reasons.append('PROFILE_RESIDUAL_TOO_LARGE')
-            if eos.get('sound_speed_star') and candidate['id']=='thermal_baseline':
-                v['mach_using_measured_local_EOS']=max(abs(x) for x in v['measured_profile_star'])/eos['sound_speed_star']
+            if ceos.get('sound_speed_star'):
+                v['mach_using_measured_local_EOS']=max(abs(x) for x in v['measured_profile_star'])/ceos['sound_speed_star']
                 if v['mach_using_measured_local_EOS']>c['proposed_acceptance']['mach_max']:reasons.append('CALIBRATION_MACH_TOO_HIGH')
-        if candidate['id']=='thermal_baseline':
-            if sens['status']!='PASS_PROPOSED':reasons.append('TIMESTEP_OR_FORCING_SENSITIVITY_INCONCLUSIVE')
-            if eos.get('target_pressure_coverage_status')!='COVERED':reasons.append('TARGET_PRESSURES_OUTSIDE_MEASURED_EOS')
-            if eos['status']!='MEASURED_LOCAL_RESPONSE':reasons.append('EOS_STATISTICS_INSUFFICIENT')
-            if eos.get('thermal_target_status')!='PASS_PROPOSED':reasons.append('EOS_NOT_AT_ACCEPTABLE_TARGET_TEMPERATURE')
-        else:reasons.extend(['CANDIDATE_SPECIFIC_EOS_NOT_MEASURED','CANDIDATE_SPECIFIC_DT_AND_FORCE_SENSITIVITY_NOT_MEASURED'])
+        if csens['status']!='PASS_PROPOSED':reasons.append('TIMESTEP_OR_FORCING_SENSITIVITY_INCONCLUSIVE')
+        if ceos.get('target_pressure_coverage_status')!='COVERED':reasons.append('TARGET_PRESSURES_OUTSIDE_MEASURED_EOS')
+        if ceos['status']!='MEASURED_LOCAL_RESPONSE':reasons.append('EOS_STATISTICS_INSUFFICIENT')
+        if ceos.get('thermal_target_status')!='PASS_PROPOSED':reasons.append('EOS_NOT_AT_ACCEPTABLE_TARGET_TEMPERATURE')
         if not any(t.get('temperature_status')=='PASS_PROPOSED' for t in ct if t['kind']=='equilibrium'):reasons.append('EQUILIBRIUM_TEMPERATURE_NOT_QUALIFIED')
         candidate_results.append({'candidate_id':candidate['id'],'status':'NOT_QUALIFIED' if reasons else 'QUALIFIED_PROPOSED','reasons':sorted(set(reasons))})
     selection=None

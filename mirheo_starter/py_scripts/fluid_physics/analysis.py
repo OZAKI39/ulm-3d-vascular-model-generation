@@ -93,8 +93,12 @@ def native_pressure(stats, virial, mass, volume, dt=0.0):
     # virial_pressure.cu saves time in afterIntegration. Observed Stats time is
     # virial time + dt, although both sampled the same hook. Account for native
     # CSV %g rounding (6 significant figures), never shift the physical samples.
-    rounding=max(1e-7,2e-6*float(np.max(np.abs(stats['time']))))
-    if len(stats)!=len(virial) or not np.allclose(stats['time'],virial['time']+dt,rtol=0,atol=rounding):
+    def csv_quantum(t):
+        t=np.abs(np.asarray(t,float))
+        return np.where(t>0,10.**(np.floor(np.log10(np.where(t>0,t,1.)))-5),0.)
+    if len(stats)!=len(virial):raise ValueError("PRESSURE_TIMESTAMP_MISMATCH")
+    rounding=.5*(csv_quantum(stats['time'])+csv_quantum(virial['time']))+1e-10
+    if not np.all(np.abs(stats['time']-(virial['time']+dt))<=rounding):
         raise ValueError("PRESSURE_TIMESTAMP_MISMATCH")
     N=stats['num_particles']; v2=sum((stats[k]/mass)**2 for k in ('vx','vy','vz'))
     k_unbiased=(stats['kBT']-mass*v2/3)*N/(N-1)
@@ -116,6 +120,16 @@ def read_csv(path):
 def analyze_task(directory, c, units):
     directory=Path(directory); spec=read_json(directory/'actual_parameters.json'); task=spec['task']; cand=spec['candidate']
     result={"task_id":task['id'],"candidate_id":cand['id'],"kind":task['kind'],"directory":str(directory),"parameters":spec,"status":"INCONCLUSIVE"}
+    role=task.get('test_kind')
+    if role is None:
+        role=task['kind']
+        if role=='equilibrium':
+            role='eos_low' if task['n_star']<c['space']['n_star'] else ('eos_high' if task['n_star']>c['space']['n_star'] else 'equilibrium')
+        elif role=='flow':
+            group=[t for t in c.get('calibration',{}).get('tasks',[]) if t['candidate']==cand['id'] and t['kind']=='flow' and t['dt_factor']==1]
+            if task.get('dt_factor',1)<1:role='half_dt'
+            elif group and task['force_star']<max(t['force_star'] for t in group):role='half_force'
+    result.update(method=cand.get('method','DPD'),test_kind=role,comparison_group=task.get('comparison_group',cand['id']))
     try:
         moments=read_csv(directory/'moments.csv'); bins=read_csv(directory/'profile_samples.csv')
         native=read_csv(directory/'native_stats.csv'); virial=read_csv(directory/'pressure/pv.csv')
@@ -142,6 +156,10 @@ def analyze_task(directory, c, units):
         mid=len(ids)//2
         first,last=np.mean(signal[ids[:mid]]),np.mean(signal[ids[mid:]])
         this_drift=abs(float(last-first))/max(abs(float(last)),1e-20)
+        # A steady mean flow does not make a still-relaxing thermostat stationary.
+        first_T,last_T=np.mean(moments['kBT_thermal_star'][ids[:mid]]),np.mean(moments['kBT_thermal_star'][ids[mid:]])
+        thermal_drift=abs(float(last_T-first_T))/max(abs(float(last_T)),1e-20)
+        this_drift=max(this_drift,thermal_drift)
         chosen,drift=ids,this_drift
         if this_drift<=tol['max_stationarity_drift']:break
     if chosen is None:
@@ -163,8 +181,8 @@ def analyze_task(directory, c, units):
                   pressure_timestamp_note='Stats reports time at serializeAndSend, virial saves time at afterIntegration: native Stats labels are virial labels + dt. Matched same hook with explicit dt and native CSV rounding tolerance.',
                   temperature_status='PASS_PROPOSED' if temp['status']=='SUFFICIENT' and temp['ci95_halfwidth'] is not None and abs(temp['mean']/spec['kBT_star']-1)+temp['ci95_halfwidth']/spec['kBT_star']<=tol['temperature_relative_error'] else 'INCONCLUSIVE_OR_FAILED',
                   all_sampled_finite=True,max_speed_star=float(np.max(moments['max_speed_star'])),
-                  legacy_short_window_status='AVAILABLE_DURATION_ONLY' if physical_span>=0.0002441406727828746 else 'WINDOW_INSUFFICIENT',
-                  legacy_long_window_status='AVAILABLE_DURATION_ONLY' if physical_span>=0.0004882813455657492 else 'WINDOW_INSUFFICIENT',
+                  legacy_short_window_status='AVAILABLE_DURATION_ONLY' if physical_span>=c.get('legacy_windows',{}).get('short_window_s',0.0002441406727828746) else 'WINDOW_INSUFFICIENT',
+                  legacy_long_window_status='AVAILABLE_DURATION_ONLY' if physical_span>=c.get('legacy_windows',{}).get('long_window_s',0.0004882813455657492) else 'WINDOW_INSUFFICIENT',
                   legacy_vessel_gates_executed=False,
                   series={'time_star':t.tolist(),'kBT_thermal_star':moments['kBT_thermal_star'].tolist(), 'kBT_raw_star':moments['kBT_raw_star'].tolist(),
                           'pressure_time_star':native['time'].tolist(),'pressure_star':p.tolist(), 'native_COM_corrected_kBT_star':knative.tolist()})
