@@ -73,9 +73,16 @@ def block_statistics(t, values, *, min_duration, min_blocks=8, fixed_block_sampl
     centers=[float(np.mean(t[i*b:(i+1)*b])) for i in range(n)]
     sem=float(np.std(means,ddof=1)/math.sqrt(n)) if n>=2 else None
     hw=t95(n-1)*sem if sem is not None else None
+    used=n*b if n else len(x)
+    # The interval is estimated from complete blocks. Its point estimate must
+    # use those same samples; retain the full-window mean explicitly for audit.
+    selected=x[:used]
     # CI is descriptive when blocks are insufficient, never promoted to PASS.
-    return {"status":"SUFFICIENT" if n>=min_blocks else "WINDOW_INSUFFICIENT", "mean":float(np.mean(x)),
-            "std":float(np.std(x,ddof=1)),"ci95_halfwidth":hw,"block_count":n,"block_samples":b,
+    return {"status":"SUFFICIENT" if n>=min_blocks else "WINDOW_INSUFFICIENT", "mean":float(np.mean(selected)),
+            "all_sample_mean":float(np.mean(x)),"estimator_sample_count":used,
+            "estimator_interval_star":[float(t[0]),float(t[used-1])],
+            "estimator_scope":"complete_blocks" if n else "full_window_without_complete_block_or_CI",
+            "std":float(np.std(selected,ddof=1)),"ci95_halfwidth":hw,"block_count":n,"block_samples":b,
             "block_duration_star":b*spacing,"block_means":means,"block_times_star":centers,
             "discarded_tail_samples":len(x)-n*b,"correlation_time_samples":tau,"effective_sample_estimate":len(x)/tau,
             "sample_count":len(x),"sample_interval_star":spacing,"interval_star":[float(t[0]),float(t[-1])],
@@ -187,9 +194,12 @@ def analyze_task(directory, c, units):
                   series={'time_star':t.tolist(),'kBT_thermal_star':moments['kBT_thermal_star'].tolist(), 'kBT_raw_star':moments['kBT_raw_star'].tolist(),
                           'pressure_time_star':native['time'].tolist(),'pressure_star':p.tolist(), 'native_COM_corrected_kBT_star':knative.tolist()})
     if task['kind']=='flow':
-        average=np.mean(by[sel],axis=0)
-        fit=fit_viscosity(y,average,task['force_star'],spec['m_star'],Ly,c['space']['output_y_bin_star'])
         slope_stats=block_statistics(ts,slope_signal[sel],min_duration=min_block,min_blocks=tol['min_blocks'])
+        used=slope_stats['estimator_sample_count']
+        average=np.mean(by[sel[:used]],axis=0)
+        fit=fit_viscosity(y,average,task['force_star'],spec['m_star'],Ly,c['space']['output_y_bin_star'])
+        fit['all_sample_profile_star']=np.mean(by[sel],axis=0).tolist()
+        fit['estimator_sample_count']=used
         b=slope_stats['block_samples']; n=slope_stats['block_count']
         fits=[fit_viscosity(y,np.mean(by[sel[i*b:(i+1)*b]],axis=0),task['force_star'],spec['m_star'],Ly,c['space']['output_y_bin_star']) for i in range(n)]
         nus=[z['nu_star'] for z in fits]; finite_nus=[z for z in nus if z is not None]
