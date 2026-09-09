@@ -1,0 +1,63 @@
+test_actual_three_GPU_attempts_are_reported (test_code.test_sdpd_extended_execution.ActualExecutionRegressionTests.test_actual_three_GPU_attempts_are_reported) ... FAIL
+test_consumed_diagnostics_do_not_create_new_budget_request (test_code.test_sdpd_extended_execution.ActualExecutionRegressionTests.test_consumed_diagnostics_do_not_create_new_budget_request) ... FAIL
+test_execute_after_terminal_failure_cannot_retry (test_code.test_sdpd_extended_execution.ActualExecutionRegressionTests.test_execute_after_terminal_failure_cannot_retry) ... FAIL
+test_reanalysis_code_change_preserves_frozen_executed_plan (test_code.test_sdpd_extended_execution.ActualExecutionRegressionTests.test_reanalysis_code_change_preserves_frozen_executed_plan) ... ERROR
+test_unsupported_force_form_rejected_before_native_restart (test_code.test_sdpd_extended_execution.CheckpointReadabilityTests.test_unsupported_force_form_rejected_before_native_restart) ... FAIL
+
+======================================================================
+ERROR: test_reanalysis_code_change_preserves_frozen_executed_plan (test_code.test_sdpd_extended_execution.ActualExecutionRegressionTests.test_reanalysis_code_change_preserves_frozen_executed_plan)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/lzy/projects/mirheo_starter/test_code/test_sdpd_extended_execution.py", line 85, in test_reanalysis_code_change_preserves_frozen_executed_plan
+    package = self.export()
+              ^^^^^^^^^^^^^
+  File "/home/lzy/projects/mirheo_starter/test_code/test_sdpd_extended_execution.py", line 64, in export
+    return ext.export(self.c, analyze=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lzy/projects/mirheo_starter/py_scripts/sdpd_diagnostics/extended.py", line 184, in export
+    if restart['plan_sha256']!=plan['plan_sha256']:raise ValueError('EXISTING_RESTART_TEST_DIFFERENT_PLAN_NO_RETRY')
+                                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: EXISTING_RESTART_TEST_DIFFERENT_PLAN_NO_RETRY
+
+======================================================================
+FAIL: test_actual_three_GPU_attempts_are_reported (test_code.test_sdpd_extended_execution.ActualExecutionRegressionTests.test_actual_three_GPU_attempts_are_reported)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/lzy/projects/mirheo_starter/test_code/test_sdpd_extended_execution.py", line 68, in test_actual_three_GPU_attempts_are_reported
+    self.assertEqual(summary['execution_status'], 'RESTART_DIAGNOSTIC_FAILED')
+AssertionError: 'NOT_RUN' != 'RESTART_DIAGNOSTIC_FAILED'
+- NOT_RUN
++ RESTART_DIAGNOSTIC_FAILED
+
+
+======================================================================
+FAIL: test_consumed_diagnostics_do_not_create_new_budget_request (test_code.test_sdpd_extended_execution.ActualExecutionRegressionTests.test_consumed_diagnostics_do_not_create_new_budget_request)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/lzy/projects/mirheo_starter/test_code/test_sdpd_extended_execution.py", line 76, in test_consumed_diagnostics_do_not_create_new_budget_request
+    self.assertEqual(budget['additional_request_whole_seconds'], 0)
+AssertionError: 11 != 0
+
+======================================================================
+FAIL: test_execute_after_terminal_failure_cannot_retry (test_code.test_sdpd_extended_execution.ActualExecutionRegressionTests.test_execute_after_terminal_failure_cannot_retry)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/lzy/projects/mirheo_starter/test_code/test_sdpd_extended_execution.py", line 91, in test_execute_after_terminal_failure_cannot_retry
+    self.assertEqual(read_json(package/'equilibration_summary.json')['execution_status'], 'RESTART_DIAGNOSTIC_FAILED')
+AssertionError: 'NOT_RUN' != 'RESTART_DIAGNOSTIC_FAILED'
+- NOT_RUN
++ RESTART_DIAGNOSTIC_FAILED
+
+
+======================================================================
+FAIL: test_unsupported_force_form_rejected_before_native_restart (test_code.test_sdpd_extended_execution.CheckpointReadabilityTests.test_unsupported_force_form_rejected_before_native_restart)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/lzy/projects/mirheo_starter/test_code/test_sdpd_extended_execution.py", line 30, in test_unsupported_force_form_rejected_before_native_restart
+    with self.assertRaisesRegex(ValueError, 'UNSUPPORTED_CHECKPOINT_CHANNEL.*saved_forces'):
+AssertionError: ValueError not raised
+
+----------------------------------------------------------------------
+Ran 5 tests in 1.937s
+
+FAILED (failures=4, errors=1)

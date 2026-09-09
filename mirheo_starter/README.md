@@ -1,35 +1,50 @@
 # Mirheo starter：代码与实测数据归档
 
 本目录同步自 `/home/lzy/projects/mirheo_starter`，分支为
-`sync/mirheo-starter-20260908`。2026-09-09 本次同步包含 **18,425 个源文件、
-479,123,181 字节**，保留代码、配置、数据、原始运行、账本、报告与截图的原始字节和权限。
+`sync/mirheo-starter-20260908`。2026-09-09 本次同步包含 **19,022 个源文件、
+546,902,551 字节**，保留代码、配置、数据、原始运行、账本、报告与截图的原始字节和权限。
 文件级 SHA256 与排除清单见 [SYNC_MANIFEST.json](SYNC_MANIFEST.json)，
 同步验证见 [SYNC_VALIDATION.json](SYNC_VALIDATION.json)。
 
 ## 最新交付
 
-固定参数无驱动 SDPD 实验已完成 **400000 步 / 12.662309354 µs**。
-正式区间为 `t*∈(0.30,0.40]`，包含 500 个样本。
-科学状态为 **`STATIONARITY_OR_SAMPLING_INCONCLUSIVE`**：温度两半均值差约
-0.790%，超过事前 0.5% 门槛；压力和最近邻结构也未通过筛选。
-尚未建立有效稳态块数、稳定温度均值或 CI，`selection=null`。
-程序完整运行不等于液体全部物性通过。
+最新交付为 **`RESTART_NOT_VALIDATED / RESTART_DIAGNOSTIC_FAILED`**。
+已实际执行三进程非零 dt 恢复对照：A 连续 4000 步完成；B 推进 2001 步，
+归档第 2000 步的真实状态；B 恢复进程在原生读取时退出，未得到恢复后推进前状态。
+直接原因是 `saved_forces` 被写成 `Other / Force`、HDF 形状 `[4096,1]`，
+原生读取器不支持该格式。`saved_stresses` 的 Tensor6 格式正常。
+归档位置、速度和粒子 ID 与 B 自身保存边界完全一致，但不能据此宣布完整恢复通过。
+原生 SDPD 相互作用 RNG 未持久化的问题也仍存在；未启动后续长实验，未自动重试。
 
-- [实测中文报告](test_code/outputs/sdpd_equilibration/result_26300860927d8b87/fcb8821bfdea/report_zh.md)
-- [离线可视化 HTML](test_code/outputs/sdpd_equilibration/result_26300860927d8b87/fcb8821bfdea/sdpd_equilibration_review.html)：下载完整目录后直接用浏览器打开；无需 GPU。
-- [真实分析数据包](data/sdpd_equilibration/result_26300860927d8b87/)
-- [完整原始轨迹、快照、日志与执行记录](runs/sdpd_equilibration/unforced_plateau_20260909/longer_unforced_thermal_plateau/)
-- [原交付记录与验证哈希](test_code/outputs/sdpd_equilibration/execution_20260909T114110_487235Z/delivery_record.json)
-- [实验入口及细节](test_code/README_sdpd_equilibration.md)
+本次同步包含新的 Python 通道格式预检、固定执行计划重分析、完整失败证据、
+按 ID 的保存状态比较、实际状态与预算修复、独立短诊断曲线及保护测试。
+物理参数、单位、原生库和冻结 GPU 执行脚本保持不变。
 
-原实验的 200 项 CPU 测试、15 项真实浏览器检查均通过，人工验收仍为 PENDING。
-本次 GPU 任务实收 528.365623583 s；用户追加 493 s 后总授权为 4093 s，
-累计用量 4021.284952471 s，剩余 71.715047529 s。
+- [最新中文报告](data/sdpd_equilibration_extended/result_2f3922c3ebd6ca0d/report_zh.md)
+- [最新离线可视化 HTML](test_code/outputs/sdpd_equilibration_extended/result_2f3922c3ebd6ca0d/9c15803c55e3/sdpd_equilibration_extended_review.html)：下载完整目录后直接打开；无需 GPU。
+- [最新分析数据包](data/sdpd_equilibration_extended/result_2f3922c3ebd6ca0d/)
+- [三进程原始数据、冻结代码、checkpoint 与账本](runs/sdpd_equilibration_extended/fixed_late_restart_20260909/)
+- [最新交付记录及验证哈希](test_code/outputs/sdpd_equilibration_extended/execution_20260909T153829_890721Z/delivery_record.json)
+- [259 项 CPU 测试记录](test_code/outputs/sdpd_equilibration_extended/execution_20260909T153829_890721Z/validation_after_fixes/CPU_validation.json)
+- [20 项真实浏览器检查](test_code/outputs/sdpd_equilibration_extended/result_2f3922c3ebd6ca0d/9c15803c55e3/browser_final/browser_checks.json)
+
+液体长观察仍止于 **400000 步 / t*=0.40 / 12.662309354 µs**。
+旧正式区间 `(0.30,0.40]` 有 500 个样本；温度两半差约 0.790%，超过原 0.5% 门槛，
+补充分析仍支持冷却。压力瞬时波动强、持续总压力漂移未证实；核密度及最近邻分布仍变化。
+旧科学结论 `STATIONARITY_OR_SAMPLING_INCONCLUSIVE` 保留；新正式窗口 `(0.60,0.80]`
+没有实测样本。本次短恢复诊断不作为液体平衡证据，`selection=null`，人工验收 PENDING。
+[旧长实验报告](test_code/outputs/sdpd_equilibration/result_26300860927d8b87/fcb8821bfdea/report_zh.md)
+和[完整旧轨迹](runs/sdpd_equilibration/unforced_plateau_20260909/longer_unforced_thermal_plateau/)均保留。
+
+本次恢复诊断实收 **11.711100827 s**。追加 1379 s 的用户授权已登记，
+总授权为 **5472 s**，累计用量 **4032.996053298 s**，范围内剩余 **1439.003946702 s**。
+余额中原基额剩余 71.715047529 s，新用途扩展剩余 1367.288899173 s；旧 493 s 扩展已耗尽。
+1360 s 条件长段预算未支出，预算余额不会解除恢复限制。
 授权记录与所有历史用量一同归档；仓库复制不会产生新预算，也不允许重复记入追加授权。
 
-首次 JSON 导出失败后的原始证据保留；仅在 CPU 端修复 NumPy 布尔值序列化并重新分析，
-没有重跑 GPU。`data/sdpd_equilibration/result_aa25ea397a1f12de/` 为不完整失败导出，
-不能作为有效结果；应使用以上明确交付的数据包。历史输出中的旧状态不覆盖最新交付。
+历史失败证据均保留。`data/sdpd_equilibration/result_aa25ea397a1f12de/` 是旧的不完整导出；
+`data/sdpd_equilibration_extended/preparation_779eb32f8aae47f0/` 的执行状态和重复预算请求
+存在已修复的 Python 汇报错误。它们不覆盖上方明确交付的最新结果。
 
 ## 同步范围
 
@@ -56,6 +71,7 @@
 | DPD/SDPD 纯液体对照 | `py_scripts/compare_dpd_sdpd.py`；[说明](test_code/README_fluid_model_comparison.md) |
 | SDPD 原因排查 | `py_scripts/diagnose_sdpd.py`；[说明](test_code/README_sdpd_diagnostics.md) |
 | 固定参数持续无驱动演化 | `py_scripts/run_sdpd_equilibration.py`；[说明](test_code/README_sdpd_equilibration.md) |
+| checkpoint 恢复诊断与后段计划 | 同一入口配合 `py_scripts/sdpd_equilibration_extended.yaml`；[最新报告](data/sdpd_equilibration_extended/result_2f3922c3ebd6ca0d/report_zh.md) |
 | 离线复核 | `test_code/review_*.py`、`test_code/check_*_browser.cjs` |
 
 ## 核对与运行位置
@@ -77,7 +93,7 @@ PYTHON
 
 源码、YAML、HTML 和 provenance 中原 WSL 路径及哈希保持原样，不能批量替换路径后
 仍声称匹配原始证据。浏览已归档 HTML 不需要 Mirheo；重新运行完整诊断、GPU 或全部
-200 项测试仍需要原环境、固定的外部来源，以及本地 Mirheo 源码和编译库。
+259 项测试仍需要原环境、固定的外部来源，以及本地 Mirheo 源码和编译库。
 归档数据不是已经完成环境迁移的可执行 GPU 安装包。
 
 CPU 依赖见 [requirements-cpu.txt](requirements-cpu.txt)。在具备原环境的 WSL 中：
@@ -86,7 +102,7 @@ CPU 依赖见 [requirements-cpu.txt](requirements-cpu.txt)。在具备原环境�
 cd /home/lzy/projects/mirheo_starter
 .venv/bin/python -B -m unittest discover -s test_code -p 'test_*.py' -v
 .venv/bin/python -B -m test_code.review_sdpd_equilibration \
-  --config py_scripts/sdpd_equilibration.yaml --open
+  --config py_scripts/sdpd_equilibration_extended.yaml --open
 ```
 
 `--execute` 仍受原预算、精确计划与已有任务缓存约束。本次同步未新增 GPU 实验，

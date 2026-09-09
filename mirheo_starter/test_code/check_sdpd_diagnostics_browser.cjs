@@ -7,7 +7,8 @@ const {pathToFileURL}=require('node:url');
 const {createHash}=require('node:crypto');
 const {StringDecoder}=require('node:string_decoder');
 const [htmlPath,out]=process.argv.slice(2);
-const equilibration=process.env.MIRHEO_REVIEW_KIND==='equilibration';
+const extended=process.env.MIRHEO_REVIEW_KIND==='extended';
+const equilibration=extended||process.env.MIRHEO_REVIEW_KIND==='equilibration';
 const readyExpression=equilibration?'window.equilibrationReady===true':'window.diagnosticsReady===true';
 if(!htmlPath||!out)throw Error('Usage: node check_sdpd_diagnostics_browser.cjs <HTML> <new output directory>');
 fs.mkdirSync(out,{recursive:false});
@@ -34,7 +35,29 @@ const check=(condition,message)=>{if(!condition)throw Error(message);};
     await call('Emulation.setDeviceMetricsOverride',{width:1440,height:1050,deviceScaleFactor:1,mobile:false});
     await call('Page.navigate',{url:pathToFileURL(htmlPath).href});
     for(let i=0;i<100;i++){if(await ev(readyExpression))break;await wait(200);}
-    if(equilibration){
+    if(extended){
+      report.audit=await ev("JSON.parse(document.getElementById('equilibration-audit-data').textContent)");
+      const executed=(report.audit.GPU_attempt_count||0)>0;
+      report.checks.rendered=await ev(`window.equilibrationReady===true && document.querySelectorAll('.js-plotly-plot').length===${executed?5:4}`);
+      report.checks.fixed_extended_plan=report.audit.planned_steps===800000&&JSON.stringify(report.audit.formal_window_star)==='[0.6,0.8]';
+      report.checks.seven_separate_observables=await ev("document.querySelectorAll('#outcomes tbody tr').length===7");
+      report.checks.no_new_measurements_fabricated=report.audit.actual_steps===null&&report.audit.raw_csv_rows===0&&report.audit.new_temperature_mean===null;
+      report.checks.restart_not_falsely_validated=report.audit.restart_validity==='RESTART_NOT_VALIDATED';
+      report.checks.history_complete_and_labeled=await ev("(()=>{const t=document.getElementById('temperature')._fullData[0];return t.name.includes('历史参考')&&t.y.length===2001&&Math.max(...Array.from(t.y))>8})()");
+      report.checks.late_fixed_500_samples=await ev("document.getElementById('late')._fullData[0].y.length===500");
+      report.checks.pressure_500_actual_samples=await ev("document.getElementById('blocks')._fullData[0].y.length===500");
+      report.checks.complete_budget_request=executed?
+        report.audit.requested_additional_s===0&&report.audit.extra_authorized_gpu_seconds===1379&&report.audit.current_scope_remaining_s>1439:
+        report.audit.requested_additional_s===1379&&report.audit.extra_authorized_gpu_seconds===0;
+      if(executed){
+        report.checks.actual_failure_visible=report.audit.execution_status==='RESTART_DIAGNOSTIC_FAILED'&&
+          await ev("document.querySelectorAll('#restart-jobs tbody tr').length===3 && document.body.textContent.includes('saved_forces / Other / Force') && !document.body.textContent.includes('本轮 GPU：NOT_RUN')");
+        report.checks.independent_real_diagnostic_curves=await ev("(()=>{let t=document.getElementById('restart-diagnostic')._fullData;return t.length===8&&t[0].y.length===21&&t[4].y.length===11&&t[0].name.includes('restart_A')&&t[4].name.includes('restart_B_save')&&t[0].x[0]===0&&t[4].x[0]===0})()");
+        report.checks.save_and_failed_restore_distinct=report.audit.checkpoint_step===2000&&report.audit.restore_preadvance==='NOT_REACHED'&&report.audit.automatic_retry===false;
+        report.checks.real_charge_visible=Math.abs(report.audit.new_GPU_elapsed_s-11.711100826971233)<1e-10;
+      }
+      report.checks.human_review_pending=report.audit.human_review==='PENDING'&&report.audit.selection===null;
+    }else if(equilibration){
       report.checks.rendered=await ev("window.equilibrationReady===true && document.querySelectorAll('.js-plotly-plot').length===4");
       report.audit=await ev("JSON.parse(document.getElementById('equilibration-audit-data').textContent)");
       report.checks.fixed_plan=report.audit.planned_steps===400000&&JSON.stringify(report.audit.formal_window_star)==='[0.3,0.4]';
@@ -71,7 +94,9 @@ const check=(condition,message)=>{if(!condition)throw Error(message);};
     await call('Page.navigate',{url:pathToFileURL(htmlPath).href});
     for(let i=0;i<100;i++){if(await ev(readyExpression))break;await wait(200);}
     report.checks.default_view_restored=await ev(equilibration?readyExpression:"window.diagnosticsReady===true && document.getElementById('profile-caption').textContent.includes('sdpd_flow') && document.getElementById('temperature').data.every(t=>t.visible===(t.name.startsWith('sdpd_')?true:'legendonly'))");
-    for(const [name,id] of (equilibration?[['summary',null],['temperature','temperature'],['late','late'],['blocks','blocks'],['evolution','evolution'],['budget','budget-table']]:[['summary',null],['profile','profile'],['temperature','temperature'],['eos','eos'],['probe','probe']])){
+    const screenshots=equilibration?[['summary',null],['temperature','temperature'],['late','late'],['blocks','blocks'],['evolution','evolution'],['budget','budget-table']]:[['summary',null],['profile','profile'],['temperature','temperature'],['eos','eos'],['probe','probe']];
+    if(extended&&(report.audit.GPU_attempt_count||0)>0)screenshots.push(['restart','restart-jobs'],['restart-diagnostic','restart-diagnostic']);
+    for(const [name,id] of screenshots){
       await ev(id?`document.getElementById('${id}').scrollIntoView({block:'start'})`:'window.scrollTo(0,0)');await wait(300);
       const shot=await call('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});
       fs.writeFileSync(path.join(out,name+'.png'),Buffer.from(shot.data,'base64'),{flag:'wx'});

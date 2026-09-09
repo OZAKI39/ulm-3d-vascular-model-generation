@@ -1,0 +1,49 @@
+schema_version: 1
+mode: sdpd_equilibration_extended
+base_config: py_scripts/sdpd_equilibration.yaml
+history_delivery_record: test_code/outputs/sdpd_equilibration/execution_20260909T114110_487235Z/delivery_record.json
+history_delivery_sha256: a3d6f7e0f30aaa46e2ed9f157e960948881aa60be30092d1e47da3995cc0b064
+campaign_id: fixed_late_restart_20260909
+case_id: extended_fixed_unforced
+data_root: data/sdpd_equilibration_extended
+runs_root: runs/sdpd_equilibration_extended
+review_root: test_code/outputs/sdpd_equilibration_extended
+cpu_validation_record: test_code/outputs/sdpd_equilibration_extended/validation_final/CPU_validation.json
+extra_authorized_gpu_seconds: 0
+plan:
+  steps: 800000
+  dt_star: 0.000001
+  duration_star: 0.80
+  formal_window_star: [0.60, 0.80]
+  diagnostic_window_star: [0.40, 0.60]
+  sample_interval_star: 0.0002
+  segment_steps: 200000
+  segment_allocation_s: 340
+  checkpoint_mode: PingPong
+  safety_factor: 1.15
+  per_segment_setup_save_restore_output_reserve_s: 18
+  graceful_margin_s: 12
+  snapshot_times_star: [0.0002, 0.20, 0.40, 0.60, 0.65, 0.70, 0.75, 0.80]
+restart_test:
+  N1: 2000
+  N2: 2000
+  allocation_per_process_s: 30
+  process_count: 3
+  preadvance_position_atol_star: 0.000002
+  preadvance_velocity_atol_star: 0.000002
+  first_step_position_atol_star: 0.00002
+  first_step_velocity_atol_star: 0.00002
+  short_position_atol_star: 0.0002
+  short_velocity_atol_star: 0.0002
+  temperature_jump_atol_star: 0.00002
+  pressure_jump_atol_star: 0.05
+  kernel_mean_jump_atol_star: 0.00002
+  COM_jump_atol_star: 0.000002
+policy:
+  single_task_limit_s: 600
+  GPU_concurrency: 1
+  selection: null
+  no_automatic_retry: true
+  no_automatic_extension: true
+  no_window_search: true
+  human_review: PENDING
