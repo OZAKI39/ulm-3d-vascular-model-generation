@@ -1,0 +1,29 @@
+schema_version: 1
+source_project: /home/lzy/projects/ulm_3D_vascular
+source_run: outputs/cfd_surface_prepare/vmtk_tps_boundarynormal_crossseam_finalized_recovery_anchor003274_20260826_221611
+tagged_surface: geometry/cfd_surface_vmtk_tps_boundarynormal_crossseam_um.vtp
+boundary_manifest: boundaries/boundary_manifest.csv
+source_length_unit: um
+source_unit_config: input/cfd_surface_prepare.yaml
+identity_qc: qc/final_surface_qc.json
+scale_qc: qc/meter_scale_qc.json
+companion_stl: geometry/cfd_surface_vmtk_tps_boundarynormal_crossseam_m.stl
+source_selection_config: configs/cfd_flow.yaml
+reference_code:
+  - utils/cfd_flow/io.py
+  - utils/cfd_flow/geometry.py
+  - utils/cfd_surface_prepare/vmtk_qc.py
+  - s2_swc_stl_model_generate.py
+  - s4_cfd_surface_prepare.py
+  - s5_cfd_flow_solve.py
+# Source vmtk_qc.py computes mean(mean(triangle vertices)) in float32.
+# The formal exported center is always area weighted; both definitions are reported.
+reference_center_method: triangle_centroid_mean_source_dtype
+tolerances:
+  area_absolute_m2: 1.0e-18   # 1e-6 µm², plus the relative term below
+  area_relative: 1.0e-10
+  center_absolute_m: 5.0e-11 # 5e-5 µm; source float32 statistic precision
+  degenerate_area_m2: 1.0e-28
+  volume_m3: 1.0e-30
+output_root: data/geometry
+review_output_root: test_code/outputs/vessel_geometry

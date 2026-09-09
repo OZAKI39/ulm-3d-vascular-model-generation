@@ -1,0 +1,178 @@
+{
+  "status": "LOCAL_CALL_CHAIN_REVIEWED",
+  "sources": [
+    {
+      "path": "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/core/mirheo.cpp",
+      "sha256": "933f2a863983b553f8df734b0bd8e62957deeebd0c2f9aea1ccd392d42bcac5f",
+      "line": 660,
+      "anchor": "void Mirheo::run",
+      "meaning": "run sets dt, calls setup, then sim.run; the state object persists."
+    },
+    {
+      "path": "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/core/simulation.cpp",
+      "sha256": "793be193c6da6fc672d4f69c324164aca3f3a9073dd879839ae9bf54964dd58b",
+      "line": 1309,
+      "anchor": "void Simulation::init",
+      "meaning": "Rebuilds RunData, cell lists, interaction bindings and plugins; does not rerun UniformIC."
+    },
+    {
+      "path": "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/core/simulation.cpp",
+      "sha256": "793be193c6da6fc672d4f69c324164aca3f3a9073dd879839ae9bf54964dd58b",
+      "line": 1332,
+      "anchor": "void Simulation::run",
+      "meaning": "Loop begins at existing currentStep/currentTime; scheduler runs once per step; final cell-list rebuild can change summation order."
+    },
+    {
+      "path": "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/core/simulation.cpp",
+      "sha256": "793be193c6da6fc672d4f69c324164aca3f3a9073dd879839ae9bf54964dd58b",
+      "line": 1227,
+      "anchor": "static void buildDependencies",
+      "meaning": "Intermediate density accumulation/gather precedes final forces; exactly one integration task follows force accumulation."
+    },
+    {
+      "path": "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/core/integrators/vv.cu",
+      "sha256": "a065f2acbe9cf51d152bcee38639b8a078df489b17f816434d3fc5319e335be6",
+      "line": 67,
+      "anchor": "p.u +=",
+      "meaning": "Executed update is v += F dt/m; x += v_new dt. No second kick in this pure-liquid call chain."
+    },
+    {
+      "path": "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/core/integrators/integration_kernel.h",
+      "sha256": "4108335a05808c738cbea0ba3a55931f6e3fc92d7c0986c1bfb577a545748f56",
+      "line": 32,
+      "anchor": "real4 vel =",
+      "meaning": "Kernel reads existing velocity and old position, applies the transform, writes xyz and preserves packed IDs."
+    },
+    {
+      "path": "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/core/integrators/forcing_terms/periodic_poiseuille.h",
+      "sha256": "6a870c334c7d35269894ca2ab0bc0dd219828c57676597f4d352073c45161bc2",
+      "line": 61,
+      "anchor": "operator()",
+      "meaning": "Periodic force uses the y half-domain sign and the selected x component; parameter is force on a particle."
+    },
+    {
+      "path": "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/core/pvs/particle_vector.cpp",
+      "sha256": "a1286b83dd639f7dd2e5952d43ce1cd103a43c7eeccd550e471ad6646177ed6f",
+      "line": 150,
+      "anchor": "void ParticleVector::setVelocities_vector",
+      "meaning": "Setter copies xyz, preserving the fourth packed ID word, with no half-step conversion or temperature rescaling."
+    },
+    {
+      "path": "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/core/utils/common.cpp",
+      "sha256": "abeeaf38d9c1441f699da94c38b1636a800dcbb4b825984b2cdd1ad5efb11064",
+      "line": 19,
+      "anchor": "const std::string forces",
+      "meaning": "The reserved force channel is named __forces, not forces. Required by the new diagnostic saver; first failed attempt is preserved."
+    },
+    {
+      "path": "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/bindings/particle_vectors.cpp",
+      "sha256": "9509e619db25845f678a9616581d8267eb07b61499e72f39f58466f7feb46fb6",
+      "line": 70,
+      "anchor": "getPerParticlePositions",
+      "meaning": "Getters download owned local arrays; coordinates convert local to global, velocities expose xyz only."
+    },
+    {
+      "path": "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/bindings/cuda_array_interface.cpp",
+      "sha256": "5598fc08332fbf3b1925025a7cca94e367d3421886aed2b941fa349b77a5b88f",
+      "line": 97,
+      "anchor": "toCudaArrayInterface",
+      "meaning": "Shape is logical buffer size, stride[0] is C++ sizeof(T); fourth real4 component is not a physical coordinate."
+    },
+    {
+      "path": "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/core/initial_conditions/helpers.cpp",
+      "sha256": "b2c189f1119fa3c5bb6fd4e6e952cb0d12c9c05ba7cc29271434be9a44b9ad0d",
+      "line": 16,
+      "anchor": "static long genSeed",
+      "meaning": "Position RNG seed is compute rank + std::hash(PV name); each unit cell gets floor/ceil(n) random positions. Uniform is not a lattice."
+    },
+    {
+      "path": "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/core/initial_conditions/helpers.cpp",
+      "sha256": "b2c189f1119fa3c5bb6fd4e6e952cb0d12c9c05ba7cc29271434be9a44b9ad0d",
+      "line": 33,
+      "anchor": "p.u.x =",
+      "meaning": "Uniform starts at zero velocity; the frozen Python worker sets Gaussian velocities and removes COM once."
+    },
+    {
+      "path": "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/core/interactions/pairwise/kernels/density.h",
+      "sha256": "3c9d5519b6acb6fd5ed5d79cd95f5109841962e1f763dd87f58f7ae28c21037d",
+      "line": 44,
+      "anchor": "operator()",
+      "meaning": "Kernel number density sums W including self; SDPD separately multiplies by particle mass for EOS."
+    },
+    {
+      "path": "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/core/interactions/pairwise/kernels/sdpd.h",
+      "sha256": "2d2919a3ca2e9ae250177e1f56743bed23932c7e3f7288464ee0f22f8569c253",
+      "line": 58,
+      "anchor": "const real pi =",
+      "meaning": "EOS receives m*d; dissipative pair coefficient is -5*mu*(di^-2+dj^-2)*Wprime/r."
+    },
+    {
+      "path": "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/core/interactions/pairwise/kernels/sdpd.h",
+      "sha256": "2d2919a3ca2e9ae250177e1f56743bed23932c7e3f7288464ee0f22f8569c253",
+      "line": 144,
+      "anchor": "computeFRfact",
+      "meaning": "Noise amplitude is sqrt(2*5*mu*kBT/dt), multiplied once by dt in the velocity update."
+    },
+    {
+      "path": "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/core/interactions/utils/step_random_gen.cpp",
+      "sha256": "13a0f214a5763a21b7b9c1606d0d639770c979035e4c8d2324e1c15cc32ae7db",
+      "line": 15,
+      "anchor": "real StepRandomGen::generate",
+      "meaning": "Stored Mersenne Twister state advances when currentTime changes; repeated calls at the same time reuse the sample."
+    },
+    {
+      "path": "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/core/utils/cuda_rng.h",
+      "sha256": "6a18504283f5e2ecb6b8e0b92527c25e7ad7e5e3258da71243adf117d09f3f8d",
+      "line": 112,
+      "anchor": "inline __D__ real mean0var1( real seed, int",
+      "meaning": "Logistic pair hash sorts IDs in the SDPD caller, then produces intended zero-mean/unit-variance bounded arcsine noise; device variance not empirically validated here."
+    },
+    {
+      "path": "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/core/interactions/pairwise/kernels/stress_wrapper.h",
+      "sha256": "13991650a15123e4cc29835bee9398813d36965e4cc800bc69b9325470d22c76",
+      "line": 46,
+      "anchor": "0.5",
+      "meaning": "Stress wraps the same pair force; half contribution per ordered particle pair, not a second thermostat."
+    },
+    {
+      "path": "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/plugins/particle_channel_saver.cpp",
+      "sha256": "7531206914b94b02b0b1d666fbc936ae0b3d81bcf0e16942612ae6541b1798c0",
+      "line": 24,
+      "anchor": "void ParticleChannelSaverPlugin::beforeIntegration",
+      "meaning": "Copies density and positions at the same pre-integration phase into persistent channels."
+    },
+    {
+      "path": "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/core/pvs/data_manager.h",
+      "sha256": "27e255a271cf1082370c825a1b12014e51e0208108501728e772ca217218f8ce",
+      "line": 46,
+      "anchor": "enum class PersistenceMode",
+      "meaning": "Active saved channels follow particle redistribution/reordering. Saved positions have no shift flag, so use periodic minimum-image distances in this single periodic domain."
+    },
+    {
+      "path": "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/plugins/stats.cu",
+      "sha256": "0b9ff2dd2c92f435adcb45076b9188219f04229ffe462311dd12001d0016b4a4",
+      "line": 79,
+      "anchor": "void SimulationStats::afterIntegration",
+      "meaning": "Owned-particle kinetic energy and momentum sampled after integration; serialized time belongs to the following step boundary."
+    },
+    {
+      "path": "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/plugins/virial_pressure.cu",
+      "sha256": "e3c8ec3d35f55c5dd6e7fa46ac3df324a99d1dcf5802e4985a262f897667913c",
+      "line": 73,
+      "anchor": "void VirialPressurePlugin::afterIntegration",
+      "meaning": "Sums trace(stress)/3 without V or kinetic term. Stress was computed from pre-integration coordinates/velocities."
+    }
+  ],
+  "integrator_semantics": "One kick followed by drift. For a conservative force it has the algebra of symplectic Euler / staggered leapfrog, but this API does not reconstruct centered integer-time velocities; velocity-dependent stochastic forces use stored pre-kick velocities.",
+  "native_bug_status": "INSUFFICIENT_EVIDENCE: method semantics and finite-step bias are concerns, not proof of a native library defect.",
+  "repeated_run_status": "RULED_OUT_WITHIN_TESTED_SCOPE: no time, particle state or SDPD generator reset in this no-object path. Cell-list order may change floating-point trajectories; exact continuous-vs-chunk equivalence has not been experimentally tested.",
+  "pressure_phase": "Virial is pre-kick pair stress, kinetic momentum flux is post-kick; adjacent time phases differ by dt. The mean estimator is discrete-time mechanical pressure, not independently calibrated thermodynamic absolute pressure.",
+  "unavailable_old_observations": [
+    "initial coordinates before first force",
+    "particle velocity snapshots",
+    "force snapshots",
+    "random generator checkpoints",
+    "per-component kinetic variances"
+  ],
+  "no_native_library_changes": true
+}

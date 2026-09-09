@@ -1,0 +1,32 @@
+schema_version: 1
+comparison_config: /home/lzy/projects/mirheo_starter/py_scripts/fluid_model_comparison.yaml
+comparison_result: /home/lzy/projects/mirheo_starter/data/fluid_model_comparison/result_7cc1db5bcaec2c16
+comparison_manifest_sha256: 3a364d89eab8634d7ea5a84e24c4d385baba9db841c8ef59596aee982c662266
+setup_directory: /home/lzy/projects/mirheo_starter/test_code/outputs/sdpd_diagnostics/setup_20260908T221052_971138Z
+reproduction_sha256: 64d311aa73479acb91e6613ec99d093d93d7d6e1018e6ea9eafb9aa26cc2f69f
+output_root: data/sdpd_diagnostics
+review_root: test_code/outputs/sdpd_diagnostics
+runs_root: runs/sdpd_diagnostics
+campaign_id: thermal_cause_20260909
+window_fractions: [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+snapshot_tasks: [sdpd_probe, sdpd_equilibrium, sdpd_flow]
+probe:
+  id: equilibrium_half_dt_trend
+  duration_star: 0.08
+  dt_factor: 0.5
+  allocation_s: 260
+  cost_safety_factor: 1.15
+  purpose: Compare early unforced target-liquid heating/relaxation at dt and dt/2; also audit saved pre-kick and post-kick velocity channels. This is a transient diagnostic, not a qualification run.
+  decision_rule: Only run after source, moment, unit, timestamp and statistical CPU audits pass and predicted total time fits allocation minus shutdown margin. No retries or further probes are automatic.
+  interpretation_rule: A similar large peak and decay supports initialization-driven heating over a dominant time-step cause of that transient; late equilibrium bias remains unverified. One different-dt random path is not an independent repeated estimate.
+  initial_state_rule: Same pinned library, Uniform particle name/rank/domain/density and Python velocity seed as the old equilibrium task; save new actual initial state. Old t=0 positions were not saved, so direct cross-run initial hashes are unavailable.
+  predeclared_comparison_windows_star: [[0.0, 0.02], [0.02, 0.04], [0.04, 0.06], [0.06, 0.08]]
+  stop_conditions: Original shared-budget watchdog, nonfinite state, invalid particle count, or completed fixed steps. Partial results never imply completed discrimination.
+policy:
+  selection: null
+  human_review: PENDING
+  original_total_GPU_budget_s: 3600
+  task_limit_s: 600
+  GPU_concurrency: 1
+  no_new_budget: true
+  no_native_library_changes: true

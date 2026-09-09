@@ -1,0 +1,123 @@
+{
+  "selected_probe": {
+    "id": "equilibrium_half_dt_trend_corrected_channel",
+    "status": "COMPLETED_FIXED_PHYSICAL_WINDOW",
+    "unique_main_change": "Unforced dt is halved; same native model, units, Uniform constructor, mass, N, velocity seed and physical sample interval.",
+    "baseline_task": "sdpd_equilibrium",
+    "baseline_reused_steps": 80000,
+    "dt_star": 5e-07,
+    "steps": 160000,
+    "physical_duration_s": 2.5324618707356607e-06,
+    "predicted_total_wall_s": 233.95480478058636,
+    "measured_cost_source": "sdpd_half_dt total charged wall / actual steps",
+    "allocation_s": 260,
+    "purpose": "Compare early unforced target-liquid heating/relaxation at dt and dt/2; also audit saved pre-kick and post-kick velocity channels. This is a transient diagnostic, not a qualification run.",
+    "interpretation_rule": "A similar large peak and decay supports initialization-driven heating over a dominant time-step cause of that transient; late equilibrium bias remains unverified. One different-dt random path is not an independent repeated estimate.",
+    "initial_state_rule": "Same pinned library, Uniform particle name/rank/domain/density and Python velocity seed as the old equilibrium task; save new actual initial state. Old t=0 positions were not saved, so direct cross-run initial hashes are unavailable.",
+    "comparison_windows_star": [
+      [
+        0.0,
+        0.02
+      ],
+      [
+        0.02,
+        0.04
+      ],
+      [
+        0.04,
+        0.06
+      ],
+      [
+        0.06,
+        0.08
+      ]
+    ],
+    "stop_conditions": "Original shared-budget watchdog, nonfinite state, invalid particle count, or completed fixed steps. Partial results never imply completed discrimination.",
+    "qualification_capable": false,
+    "why_still_informative": "It spans the observed heating peak and substantial decay, so it tests transient time-step dependence without repeating an inadequate qualification attempt.",
+    "actual_charged_s": 195.86299424999743
+  },
+  "other_probes": [
+    {
+      "id": "official_low_parameter_smoke",
+      "status": "NOT_SELECTED",
+      "reason": "The actual target model already ran; a low-parameter smoke cannot explain this transient."
+    },
+    {
+      "id": "pre_equilibrated_restart",
+      "status": "NOT_TESTED",
+      "reason": "Old files do not contain full velocities and random state; a valid continuation has not been established."
+    },
+    {
+      "id": "continuous_vs_chunked_run",
+      "status": "NOT_SELECTED",
+      "reason": "Pinned call-chain review finds no particle/time/SDPD RNG reset in the present pure-liquid setup. Statistical floating-point trajectory equivalence is not claimed."
+    },
+    {
+      "id": "low_output_vs_current",
+      "status": "NOT_SELECTED",
+      "reason": "Getters/savers are read-only to physical channels; CPU moment identities and synchronization checks address the immediate observability question."
+    },
+    {
+      "id": "box_size_or_smooth_force",
+      "status": "REQUIRES_ADDITIONAL_AUTHORIZATION",
+      "reason": "Defer until temperature and stationarity are established; finite rc/channel remains an unconfirmed residual cause."
+    }
+  ],
+  "eight_block_cost_scenarios": [
+    {
+      "scenario": "optimistic_relaxation_floor",
+      "warmup_star": 0.3,
+      "block_star": 0.008,
+      "unrounded_block_requirement_star": 0.007830501204112257,
+      "block_samples": 40,
+      "sample_interval_star": 0.00019999999999999998,
+      "blocks": 8,
+      "steps": 364000,
+      "duration_star": 0.364,
+      "physical_duration_s": 1.1522701511847255e-05,
+      "predicted_wall_s": 523.3914378971085,
+      "single_task_600s_feasible": true,
+      "status": "REQUIRES_ADDITIONAL_AUTHORIZATION",
+      "additional_budget_needed_s": 416.3107667851573,
+      "assumptions": "Warmup of 0.30 star is a prospective design assumption; stationary correlation time and actual plateau have not been established. The ACF scenario includes trend and can overestimate stationary correlation."
+    },
+    {
+      "scenario": "observed_drifting_ACF_upper_scenario",
+      "warmup_star": 0.3,
+      "block_star": 0.08259999999999999,
+      "unrounded_block_requirement_star": 0.08260000000000237,
+      "block_samples": 413,
+      "sample_interval_star": 0.00019999999999999998,
+      "blocks": 8,
+      "steps": 960800,
+      "duration_star": 0.9608,
+      "physical_duration_s": 3.041486706753528e-05,
+      "predicted_wall_s": 1352.0112459657742,
+      "single_task_600s_feasible": false,
+      "status": "REQUIRES_ADDITIONAL_AUTHORIZATION",
+      "additional_budget_needed_s": 1244.930574853823,
+      "assumptions": "Warmup of 0.30 star is a prospective design assumption; stationary correlation time and actual plateau have not been established. The ACF scenario includes trend and can overestimate stationary correlation."
+    }
+  ],
+  "next_priority_experiment": {
+    "id": "longer_unforced_thermal_plateau",
+    "status": "REQUIRES_ADDITIONAL_AUTHORIZATION",
+    "steps": 400000,
+    "dt_star": 1e-06,
+    "duration_star": 0.39999999999999997,
+    "physical_duration_s": 1.26623093536783e-05,
+    "predicted_total_wall_s": 582.1243803313985,
+    "recommended_allocation_s": 600,
+    "additional_authorization_needed_for_allocation_s": 492.91932888804877,
+    "single_task_limit_s": 600,
+    "unique_main_change": "Longer unforced observation with unchanged native model, initialization, units and dt.",
+    "prospective_statistics_start_star": 0.3,
+    "prospective_observation_duration_star": 0.1,
+    "predeclared_decision": "Use the entire predeclared final 0.10 star interval, require at least 8 blocks with block >= max(5 ACF, 2 viscous relaxation times), two-half thermal drift <=0.005 and |mean/target-1| + CI_halfwidth/target <=0.02. If these fail, record the failure; do not shift the window or extend automatically.",
+    "assumptions": "The proposed 0.30-star warmup and stationary ACF are unverified. This run can establish or refute a plateau in its recorded interval; 8 blocks and qualification are not guaranteed. The 600-s allocation includes the original 12-s shutdown reserve.",
+    "cost_source": "Old unforced sdpd_equilibrium total charged wall/actual steps, 15% safety factor, plus 18 seconds."
+  },
+  "no_automatic_extra_budget": true,
+  "next_priority": "Establish a stable unforced target-liquid thermal plateau with sufficient independent blocks; any run exceeding 600 s first requires a verified state/random-process checkpoint strategy."
+}

@@ -1,0 +1,12 @@
+const {spawn}=require('node:child_process');
+const path=require('node:path');
+const fs=require('node:fs');
+const chrome='C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+const child=spawn(chrome,['--headless=new','--disable-gpu','--use-angle=swiftshader','--enable-unsafe-swiftshader','--no-first-run','--no-default-browser-check','--disable-background-networking','--remote-debugging-pipe','--user-data-dir='+path.join(__dirname,'browser_profile'),'about:blank'],{stdio:['ignore','ignore','pipe','pipe','pipe']});
+let pending='',done=false;
+const timer=setTimeout(()=>{console.error('PROBE_TIMEOUT');child.kill();process.exitCode=2;},20000);
+child.stderr.on('data',b=>fs.appendFileSync(path.join(__dirname,'browser_probe_stderr.log'),b));
+child.on('error',e=>{console.error(e);clearTimeout(timer);process.exitCode=2;});
+child.stdio[4].on('data',b=>{pending+=b.toString();let i;while((i=pending.indexOf('\0'))>=0){const m=JSON.parse(pending.slice(0,i));pending=pending.slice(i+1);if(m.id===1){console.log(JSON.stringify(m));fs.writeFileSync(path.join(__dirname,'browser_probe.json'),JSON.stringify(m,null,2));child.stdio[3].write(JSON.stringify({id:2,method:'Browser.close'})+'\0');clearTimeout(timer);done=true;}}});
+child.stdio[3].write(JSON.stringify({id:1,method:'Browser.getVersion'})+'\0');
+child.on('exit',()=>{clearTimeout(timer);if(!done)process.exitCode=2;});

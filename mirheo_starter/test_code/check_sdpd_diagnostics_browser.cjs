@@ -7,6 +7,8 @@ const {pathToFileURL}=require('node:url');
 const {createHash}=require('node:crypto');
 const {StringDecoder}=require('node:string_decoder');
 const [htmlPath,out]=process.argv.slice(2);
+const equilibration=process.env.MIRHEO_REVIEW_KIND==='equilibration';
+const readyExpression=equilibration?'window.equilibrationReady===true':'window.diagnosticsReady===true';
 if(!htmlPath||!out)throw Error('Usage: node check_sdpd_diagnostics_browser.cjs <HTML> <new output directory>');
 fs.mkdirSync(out,{recursive:false});
 const profile=path.join(out,'temporary_browser_profile');
@@ -31,13 +33,26 @@ const check=(condition,message)=>{if(!condition)throw Error(message);};
     await call('Page.enable');await call('Runtime.enable');await call('Network.enable');
     await call('Emulation.setDeviceMetricsOverride',{width:1440,height:1050,deviceScaleFactor:1,mobile:false});
     await call('Page.navigate',{url:pathToFileURL(htmlPath).href});
-    for(let i=0;i<100;i++){if(await ev('window.diagnosticsReady===true'))break;await wait(200);}
+    for(let i=0;i<100;i++){if(await ev(readyExpression))break;await wait(200);}
+    if(equilibration){
+      report.checks.rendered=await ev("window.equilibrationReady===true && document.querySelectorAll('.js-plotly-plot').length===4");
+      report.audit=await ev("JSON.parse(document.getElementById('equilibration-audit-data').textContent)");
+      report.checks.fixed_plan=report.audit.planned_steps===400000&&JSON.stringify(report.audit.formal_window_star)==='[0.3,0.4]';
+      report.checks.separate_outcomes=await ev("document.querySelectorAll('#outcomes tbody tr').length===4 && document.querySelectorAll('#budget-table tbody tr').length===6");
+      report.checks.pending_not_fabricated=report.audit.actual_steps!==null||(report.audit.new_temperature_mean===null&&report.audit.stationary===null&&report.audit.temperature_match===null&&report.audit.raw_csv_rows===0);
+      report.checks.history_labeled=await ev("document.getElementById('temperature').data.some(t=>t.name.includes('历史参考'))");
+      report.checks.full_startup_peak_kept=await ev("document.getElementById('temperature')._fullData.some(t=>t.name.includes('历史参考') && Math.max(...Array.from(t.y))>8)");
+      report.checks.actual_curve_complete=report.audit.actual_steps===null||await ev("(()=>{const a=JSON.parse(document.getElementById('equilibration-audit-data').textContent);const f=document.getElementById('temperature');const t=f._fullData.find(t=>t.name==='本次连续演化');return !!t && t.visible!==false && t.visible!=='legendonly' && t.y.length===a.raw_csv_rows && f.layout.xaxis.range[0]===0;})()");
+      report.checks.formal_window_visible=report.audit.actual_steps!==400000||await ev("(()=>{const f=document.getElementById('late');const y=Array.from(f._fullData[0].y);const lo=Math.min(.98,...y),hi=Math.max(1.02,...y),pad=.25*(hi-lo),r=f._fullLayout.yaxis.range;return y.length===500 && r[0]>=lo-pad && r[1]<=hi+pad;})()");
+      report.checks.human_review_pending=report.audit.human_review==='PENDING'&&report.audit.selection===null;
+    }else{
     report.checks.rendered=await ev("window.diagnosticsReady===true && document.querySelectorAll('.js-plotly-plot').length===8");
     report.audit=await ev("JSON.parse(document.getElementById('diagnostics-audit-data').textContent)");
     report.checks.evidence_and_budget=report.audit.evidence_count>=12&&report.audit.shared_budget.total_charged_or_reserved_s<=3600;
     report.checks.tables=await ev("document.querySelectorAll('#sampling-table tbody tr').length>10 && document.querySelectorAll('#repair-table tbody tr').length===18");
     report.checks.human_review_pending=report.audit.human_review==='PENDING';
     report.checks.profile_dropdown=await ev(`(async()=>{const a=JSON.parse(document.getElementById('diagnostics-audit-data').textContent);const e=document.getElementById('profile-select');e.value=String(a.profile_options.length-1);e.dispatchEvent(new Event('change'));await new Promise(r=>setTimeout(r,200));const selected=a.profile_options.at(-1).indices;return document.getElementById('profile').data.every((t,i)=>t.visible===selected.includes(i));})()`);
+    }
     await ev("document.getElementById('temperature').scrollIntoView({block:'start'})");
     await wait(200);
     const before=await ev("JSON.stringify(document.getElementById('temperature').layout.xaxis.range)");
@@ -54,9 +69,9 @@ const check=(condition,message)=>{if(!condition)throw Error(message);};
     // Capture the ordinary initial view after testing, without leftover zoom,
     // historical traces or the transient Plotly legend notification.
     await call('Page.navigate',{url:pathToFileURL(htmlPath).href});
-    for(let i=0;i<100;i++){if(await ev('window.diagnosticsReady===true'))break;await wait(200);}
-    report.checks.default_view_restored=await ev("window.diagnosticsReady===true && document.getElementById('profile-caption').textContent.includes('sdpd_flow') && document.getElementById('temperature').data.every(t=>t.visible===(t.name.startsWith('sdpd_')?true:'legendonly'))");
-    for(const [name,id] of [['summary',null],['profile','profile'],['temperature','temperature'],['eos','eos'],['probe','probe']]){
+    for(let i=0;i<100;i++){if(await ev(readyExpression))break;await wait(200);}
+    report.checks.default_view_restored=await ev(equilibration?readyExpression:"window.diagnosticsReady===true && document.getElementById('profile-caption').textContent.includes('sdpd_flow') && document.getElementById('temperature').data.every(t=>t.visible===(t.name.startsWith('sdpd_')?true:'legendonly'))");
+    for(const [name,id] of (equilibration?[['summary',null],['temperature','temperature'],['late','late'],['blocks','blocks'],['evolution','evolution'],['budget','budget-table']]:[['summary',null],['profile','profile'],['temperature','temperature'],['eos','eos'],['probe','probe']])){
       await ev(id?`document.getElementById('${id}').scrollIntoView({block:'start'})`:'window.scrollTo(0,0)');await wait(300);
       const shot=await call('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});
       fs.writeFileSync(path.join(out,name+'.png'),Buffer.from(shot.data,'base64'),{flag:'wx'});

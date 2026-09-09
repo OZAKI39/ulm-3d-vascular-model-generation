@@ -1,0 +1,497 @@
+{
+  "schema_version": 1,
+  "campaign_id": "dpd_sdpd_remaining_20260908",
+  "data_root": "data/fluid_model_comparison",
+  "runs_root": "runs/fluid_model_comparison",
+  "review_root": "test_code/outputs/fluid_model_comparison",
+  "historical_result": "/home/lzy/projects/mirheo_starter/data/fluid_physics/result_1b008103675eb6ff",
+  "historical_manifest_sha256": "83499e3dd2171176161af70050920037aea4637decea575851c5a9a23f75b7f7",
+  "historical_campaign": "/home/lzy/projects/mirheo_starter/runs/fluid_calibration/dpd_round1_20260908",
+  "historical_ledger_sha256": "7fc8aa5580631fd5dd8fbc6a221c486df11d4d83a852a30bc51b46e91740aaed",
+  "shared_budget_pool": "/home/lzy/projects/mirheo_starter/runs/fluid_calibration/shared_budget_pool.json",
+  "require_shared_budget": true,
+  "budget": {
+    "task_limit_s": 600,
+    "campaign_limit_s": 3600,
+    "gpu_concurrency": 1,
+    "vram_reserve_MiB": 1536,
+    "estimated_task_vram_MiB": 512,
+    "host_reserve_MiB": 1024,
+    "graceful_margin_s": 12,
+    "gpu_sample_interval_s": 2,
+    "minimum_launch_budget_s": 30
+  },
+  "space": {
+    "rc_star": 1.0,
+    "n_star": 8.0,
+    "output_y_bin_star": 0.25,
+    "m_star": 1.0,
+    "kBT_star": 1.0
+  },
+  "sampling": {
+    "domain_star": [
+      8.0,
+      8.0,
+      8.0
+    ],
+    "sample_interval_star": 0.0002,
+    "density_snapshots_max": 4,
+    "max_steps": 600000,
+    "speed_safety_factor": 1.2,
+    "initial_velocity_seed": 20260908
+  },
+  "proposed_additional": {
+    "status": "PROPOSED_FROZEN_BEFORE_GPU",
+    "global_density_relative_error": 0.001,
+    "eos_density_change_max": 0.05,
+    "kernel_density_cv_max": 0.1,
+    "kernel_density_time_drift_max": 0.02,
+    "temperature_bin_refinement_difference": 0.005,
+    "kernel_CPU_relative_check": 0.0001,
+    "rationale": "Periodic global density must match particle count; EOS density adjustment limited to 5%; local kernel fluctuations 10% and mean drift 2% are screening limits, not continuum convergence. Temperature bin refinement at 0.5% separates shear residue from the inherited 2% thermal gate. CPU kernel tolerance accounts for single-precision summation."
+  },
+  "candidates": [
+    {
+      "id": "sdpd_target_linear",
+      "method": "SDPD",
+      "dt_star": 1e-06,
+      "density_interaction": {
+        "kernel": "WendlandC2",
+        "rc_star": 1.0
+      },
+      "EOS": "Linear",
+      "sound_speed_star": 120.0,
+      "rho_0_star": 0.0,
+      "viscosity_source": "exact_required_mu_star_from_frozen_mapping",
+      "rationale": "cs=120 predicts max positive pressure demand within 3.5% density change; rho_0=0 keeps pair background pressure positive as in native tests, whose mechanical effect is measured. dt=1e-6 is below acoustic/viscous estimates and is still subject to probe and half-step checks."
+    },
+    {
+      "id": "dpd_cost_baseline",
+      "method": "DPD",
+      "dt_star": 1e-06,
+      "a": 25.0,
+      "gamma": 10.0,
+      "power": 0.5,
+      "nu_prior_star": 1.5,
+      "rationale": "Matched short execution-cost control only; known to miss target viscosity."
+    }
+  ],
+  "experiments": [
+    {
+      "id": "sdpd_probe",
+      "candidate": "sdpd_target_linear",
+      "test_kind": "probe",
+      "kind": "probe",
+      "comparison_group": "sdpd_target_linear",
+      "n_star": 8.0,
+      "force_star": 0.0,
+      "dt_factor": 1.0,
+      "desired_steps": 4000,
+      "allocation_s": 40
+    },
+    {
+      "id": "sdpd_equilibrium",
+      "candidate": "sdpd_target_linear",
+      "test_kind": "equilibrium",
+      "kind": "equilibrium",
+      "comparison_group": "sdpd_target_linear",
+      "n_star": 8.0,
+      "force_star": 0.0,
+      "dt_factor": 1.0,
+      "desired_time_star": 0.25,
+      "allocation_s": 240
+    },
+    {
+      "id": "sdpd_flow",
+      "candidate": "sdpd_target_linear",
+      "test_kind": "flow",
+      "kind": "flow",
+      "comparison_group": "sdpd_target_linear",
+      "n_star": 8.0,
+      "force_star": 100.0,
+      "dt_factor": 1.0,
+      "desired_time_star": 0.4,
+      "allocation_s": 360
+    },
+    {
+      "id": "sdpd_half_dt",
+      "candidate": "sdpd_target_linear",
+      "test_kind": "half_dt",
+      "kind": "flow",
+      "comparison_group": "sdpd_target_linear",
+      "n_star": 8.0,
+      "force_star": 100.0,
+      "dt_factor": 0.5,
+      "desired_time_star": 0.35,
+      "allocation_s": 400
+    },
+    {
+      "id": "sdpd_half_force",
+      "candidate": "sdpd_target_linear",
+      "test_kind": "half_force",
+      "kind": "flow",
+      "comparison_group": "sdpd_target_linear",
+      "n_star": 8.0,
+      "force_star": 50.0,
+      "dt_factor": 1.0,
+      "desired_time_star": 0.35,
+      "allocation_s": 300
+    },
+    {
+      "id": "sdpd_eos_low",
+      "candidate": "sdpd_target_linear",
+      "test_kind": "eos_low",
+      "kind": "equilibrium",
+      "comparison_group": "sdpd_target_linear",
+      "n_star": 7.92,
+      "force_star": 0.0,
+      "dt_factor": 1.0,
+      "desired_time_star": 0.2,
+      "allocation_s": 220
+    },
+    {
+      "id": "sdpd_eos_high",
+      "candidate": "sdpd_target_linear",
+      "test_kind": "eos_high",
+      "kind": "equilibrium",
+      "comparison_group": "sdpd_target_linear",
+      "n_star": 8.36,
+      "force_star": 0.0,
+      "dt_factor": 1.0,
+      "desired_time_star": 0.2,
+      "allocation_s": 220
+    },
+    {
+      "id": "dpd_cost",
+      "candidate": "dpd_cost_baseline",
+      "test_kind": "performance",
+      "kind": "probe",
+      "comparison_group": "cost_same_observation",
+      "n_star": 8.0,
+      "force_star": 0.0,
+      "dt_factor": 1.0,
+      "desired_steps": 4000,
+      "allocation_s": 30
+    },
+    {
+      "id": "dpd_cost_density",
+      "candidate": "dpd_cost_baseline",
+      "test_kind": "performance_density",
+      "kind": "probe",
+      "comparison_group": "cost_same_observation",
+      "n_star": 8.0,
+      "force_star": 0.0,
+      "dt_factor": 1.0,
+      "passive_density": true,
+      "desired_steps": 4000,
+      "allocation_s": 30
+    }
+  ],
+  "plan_policy": "Fixed priority; cap steps using measured probe and remaining shared budget, keep failed/short tasks visible. No automatic candidate tuning, no new total authorization, no trajectory stitching.",
+  "_config_path": "/home/lzy/projects/mirheo_starter/py_scripts/fluid_model_comparison.yaml",
+  "_config_sha256": "143f81940101a56ba3ec1c4c6f5e299e3d123f9dde44497816986d138b274a5c",
+  "proposed_acceptance": {
+    "status": "PROPOSED",
+    "frozen_before_gpu": true,
+    "temperature_relative_error": 0.02,
+    "viscosity_target_relative_error": 0.1,
+    "viscosity_ci_relative_halfwidth": 0.1,
+    "profile_relative_rms": 0.1,
+    "sensitivity_relative_difference": 0.1,
+    "eos_ci_relative_halfwidth": 0.1,
+    "mach_max": 0.15,
+    "min_blocks": 8,
+    "block_relaxation_multiples": 2.0,
+    "warmup_relaxation_multiples": 8.0,
+    "minimum_warmup_fraction": 0.2,
+    "max_stationarity_drift": 0.1,
+    "rationale": "温度2%限制积分偏差；材料参数、剖面与敏感性10%为首轮筛选而非最终定量误差标准；至少8块并估计相关时间，误差过宽不通过；不得替代旧真实血管1%稳态门槛。"
+  },
+  "legacy_windows": {
+    "status": "MAPPED",
+    "short_window_s": 0.0002441406727828746,
+    "long_window_s": 0.0004882813455657492,
+    "mean_rule": "Trapezoidal integration in physical time; old equally spaced iterations multiplied by fixed dt.",
+    "scope": "Future vessel validation on the frozen finite port polygons. Periodic material tests do not execute vessel gates.",
+    "criteria": [
+      {
+        "name": "R_mass_short",
+        "formula": "abs(mean Qin - sum mean Qout)/max(abs(mean Qin), tiny)",
+        "threshold": 0.01,
+        "unit": "1",
+        "category": "TIME_AVERAGED_CONSERVATION",
+        "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/steady_state.py:79",
+        "status": "SOURCE_VALUE"
+      },
+      {
+        "name": "R_mass_long",
+        "formula": "same formula over long window",
+        "threshold": 0.01,
+        "unit": "1",
+        "category": "TIME_AVERAGED_CONSERVATION",
+        "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/steady_state.py:88",
+        "status": "SOURCE_VALUE"
+      },
+      {
+        "name": "physical_volume_closure",
+        "formula": "abs(Qin-sum Qout)/max(abs(Qin),tiny), instantaneous physical aperture velocity flux checkpoint",
+        "threshold": 0.01,
+        "unit": "1",
+        "category": "CONSERVATION",
+        "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/physical_port_flux.py:1135,1262",
+        "status": "SOURCE_VALUE"
+      },
+      {
+        "name": "R_velocity",
+        "formula": "abs(U(c)-U(b))/max(abs(U(c)),1e-12 m/s)",
+        "threshold": 0.01,
+        "unit": "1",
+        "category": "TEMPORAL_RESIDUAL",
+        "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/steady_state.py:89",
+        "status": "SOURCE_VALUE"
+      },
+      {
+        "name": "R_pressure",
+        "formula": "max over inlet gauge and three inlet-outlet drops: abs(p(c)-p(b))/max(abs(p(c)),1 Pa)",
+        "threshold": 0.005,
+        "unit": "1",
+        "category": "TEMPORAL_RESIDUAL_NOT_TARGET_ERROR",
+        "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/steady_state.py:93",
+        "status": "SOURCE_VALUE"
+      },
+      {
+        "name": "R_inlet",
+        "formula": "abs(mean Qin_short-Qtarget)/Qtarget",
+        "threshold": 0.01,
+        "unit": "1",
+        "category": "TARGET_DEVIATION",
+        "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/steady_state.py:104",
+        "status": "SOURCE_VALUE"
+      },
+      {
+        "name": "flow_fraction_drift",
+        "formula": "max_j(max of three fj checkpoints - min), fj = Qj/sum Qout (NOT Qj/Qin)",
+        "threshold": 0.01,
+        "unit": "absolute fraction",
+        "category": "TEMPORAL_DRIFT",
+        "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/physical_port_flux.py:1248; steady_state.py:105",
+        "status": "SOURCE_VALUE"
+      },
+      {
+        "name": "no_significant_mean_backflow",
+        "formula": "fail if mean Qj < 0 and abs(mean Qj) > 0.05 abs(mean Qin); both windows",
+        "threshold": 0.05,
+        "unit": "fraction",
+        "category": "SIGNED_TIME_AVERAGE",
+        "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/steady_state.py:73",
+        "status": "SOURCE_VALUE"
+      },
+      {
+        "name": "Q_density_consistency",
+        "formula": "abs(Q_rho_u_over_rho0-Q_velocity)/abs(Q_rho_u_over_rho0); denominator_kind=abs_Q_rho_u_over_rho0 in accepted physical_flux_history.json; zero denominator has no accepted example",
+        "threshold": 0.01,
+        "unit": "1",
+        "category": "SCALING_DIAGNOSTIC_ONLY",
+        "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/steady_state.py:111; validated_contract.py:42",
+        "status": "SOURCE_VALUE"
+      },
+      {
+        "name": "rho_range",
+        "formula": "0.9 <= rho/rho_reference <= 1.1",
+        "threshold": [
+          0.9,
+          1.1
+        ],
+        "unit": "1",
+        "category": "ADAPTED_PHYSICAL_DENSITY_SANITY",
+        "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/validated_contract.py:43",
+        "status": "SOURCE_VALUE"
+      }
+    ],
+    "backend_specific": {
+      "minimum_pdf_positive": {
+        "source_value": ">0",
+        "status": "NOT_APPLICABLE_TO_DPD",
+        "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/validated_contract.py"
+      },
+      "tau": {
+        "source_value": "1",
+        "status": "NOT_APPLICABLE_TO_DPD",
+        "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/validated_contract.py"
+      },
+      "maximum_lattice_speed": {
+        "source_value": "<0.05",
+        "status": "NOT_APPLICABLE_TO_DPD",
+        "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/validated_contract.py"
+      },
+      "controller_target": {
+        "source_value": "<=1e-8",
+        "status": "NOT_APPLICABLE_TO_DPD",
+        "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/validated_contract.py"
+      },
+      "controller_controlled_flux": {
+        "source_value": "<=1e-8",
+        "status": "NOT_APPLICABLE_TO_DPD",
+        "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/validated_contract.py"
+      },
+      "full_timestep_identity": {
+        "source_value": "<=1e-8",
+        "status": "NOT_APPLICABLE_TO_DPD",
+        "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/validated_contract.py"
+      }
+    },
+    "instantaneous_reverse_particle_velocity": "ALLOWED; never clipped or removed to pass backflow gate",
+    "new_material_test_thresholds": "PROPOSED in config snapshot; not inherited or user approved",
+    "accepted_flux_history_source": "/home/lzy/projects/ulm_3D_vascular/outputs/cfd_flow/healthy_mouse_capillary_tau1_reference_scaled_base_anchor003274_20260901/qc/reference_scaled_base_physical_flux_history.json",
+    "density_flux_and_fraction_denominators_verified_from_actual_samples": true
+  },
+  "resolved_candidates": [
+    {
+      "m_star": 1.0,
+      "n_star": 8.0,
+      "kBT_star": 1.0,
+      "rc_star": 1.0,
+      "id": "sdpd_target_linear",
+      "method": "SDPD",
+      "dt_star": 1e-06,
+      "density_interaction": {
+        "kernel": "WendlandC2",
+        "rc_star": 1.0
+      },
+      "EOS": "Linear",
+      "sound_speed_star": 120.0,
+      "rho_0_star": 0.0,
+      "viscosity_source": "exact_required_mu_star_from_frozen_mapping",
+      "rationale": "cs=120 predicts max positive pressure demand within 3.5% density change; rho_0=0 keeps pair background pressure positive as in native tests, whose mechanical effect is measured. dt=1e-6 is below acoustic/viscous estimates and is still subject to probe and half-step checks.",
+      "viscosity_mu_star": 3312.4601269222444,
+      "nu_prior_star": 414.0575158652805
+    },
+    {
+      "m_star": 1.0,
+      "n_star": 8.0,
+      "kBT_star": 1.0,
+      "rc_star": 1.0,
+      "id": "dpd_cost_baseline",
+      "method": "DPD",
+      "dt_star": 1e-06,
+      "a": 25.0,
+      "gamma": 10.0,
+      "power": 0.5,
+      "nu_prior_star": 1.5,
+      "rationale": "Matched short execution-cost control only; known to miss target viscosity."
+    }
+  ],
+  "calibration": {
+    "tasks": [
+      {
+        "id": "sdpd_probe",
+        "candidate": "sdpd_target_linear",
+        "test_kind": "probe",
+        "kind": "probe",
+        "comparison_group": "sdpd_target_linear",
+        "n_star": 8.0,
+        "force_star": 0.0,
+        "dt_factor": 1.0,
+        "desired_steps": 4000,
+        "allocation_s": 40
+      },
+      {
+        "id": "sdpd_equilibrium",
+        "candidate": "sdpd_target_linear",
+        "test_kind": "equilibrium",
+        "kind": "equilibrium",
+        "comparison_group": "sdpd_target_linear",
+        "n_star": 8.0,
+        "force_star": 0.0,
+        "dt_factor": 1.0,
+        "desired_time_star": 0.25,
+        "allocation_s": 240
+      },
+      {
+        "id": "sdpd_flow",
+        "candidate": "sdpd_target_linear",
+        "test_kind": "flow",
+        "kind": "flow",
+        "comparison_group": "sdpd_target_linear",
+        "n_star": 8.0,
+        "force_star": 100.0,
+        "dt_factor": 1.0,
+        "desired_time_star": 0.4,
+        "allocation_s": 360
+      },
+      {
+        "id": "sdpd_half_dt",
+        "candidate": "sdpd_target_linear",
+        "test_kind": "half_dt",
+        "kind": "flow",
+        "comparison_group": "sdpd_target_linear",
+        "n_star": 8.0,
+        "force_star": 100.0,
+        "dt_factor": 0.5,
+        "desired_time_star": 0.35,
+        "allocation_s": 400
+      },
+      {
+        "id": "sdpd_half_force",
+        "candidate": "sdpd_target_linear",
+        "test_kind": "half_force",
+        "kind": "flow",
+        "comparison_group": "sdpd_target_linear",
+        "n_star": 8.0,
+        "force_star": 50.0,
+        "dt_factor": 1.0,
+        "desired_time_star": 0.35,
+        "allocation_s": 300
+      },
+      {
+        "id": "sdpd_eos_low",
+        "candidate": "sdpd_target_linear",
+        "test_kind": "eos_low",
+        "kind": "equilibrium",
+        "comparison_group": "sdpd_target_linear",
+        "n_star": 7.92,
+        "force_star": 0.0,
+        "dt_factor": 1.0,
+        "desired_time_star": 0.2,
+        "allocation_s": 220
+      },
+      {
+        "id": "sdpd_eos_high",
+        "candidate": "sdpd_target_linear",
+        "test_kind": "eos_high",
+        "kind": "equilibrium",
+        "comparison_group": "sdpd_target_linear",
+        "n_star": 8.36,
+        "force_star": 0.0,
+        "dt_factor": 1.0,
+        "desired_time_star": 0.2,
+        "allocation_s": 220
+      },
+      {
+        "id": "dpd_cost",
+        "candidate": "dpd_cost_baseline",
+        "test_kind": "performance",
+        "kind": "probe",
+        "comparison_group": "cost_same_observation",
+        "n_star": 8.0,
+        "force_star": 0.0,
+        "dt_factor": 1.0,
+        "desired_steps": 4000,
+        "allocation_s": 30
+      },
+      {
+        "id": "dpd_cost_density",
+        "candidate": "dpd_cost_baseline",
+        "test_kind": "performance_density",
+        "kind": "probe",
+        "comparison_group": "cost_same_observation",
+        "n_star": 8.0,
+        "force_star": 0.0,
+        "dt_factor": 1.0,
+        "passive_density": true,
+        "desired_steps": 4000,
+        "allocation_s": 30
+      }
+    ]
+  }
+}

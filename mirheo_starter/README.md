@@ -1,107 +1,93 @@
-# Mirheo starter
+# Mirheo starter：代码与实测数据归档
 
-本目录同步自 `/home/lzy/projects/mirheo_starter`，保留现有源码、配置、测试、
-可视化入口和环境记录的原始字节。该子工程使用独立的 Python 环境。
+本目录同步自 `/home/lzy/projects/mirheo_starter`，分支为
+`sync/mirheo-starter-20260908`。2026-09-09 本次同步包含 **18,425 个源文件、
+479,123,181 字节**，保留代码、配置、数据、原始运行、账本、报告与截图的原始字节和权限。
+文件级 SHA256 与排除清单见 [SYNC_MANIFEST.json](SYNC_MANIFEST.json)，
+同步验证见 [SYNC_VALIDATION.json](SYNC_VALIDATION.json)。
+
+## 最新交付
+
+固定参数无驱动 SDPD 实验已完成 **400000 步 / 12.662309354 µs**。
+正式区间为 `t*∈(0.30,0.40]`，包含 500 个样本。
+科学状态为 **`STATIONARITY_OR_SAMPLING_INCONCLUSIVE`**：温度两半均值差约
+0.790%，超过事前 0.5% 门槛；压力和最近邻结构也未通过筛选。
+尚未建立有效稳态块数、稳定温度均值或 CI，`selection=null`。
+程序完整运行不等于液体全部物性通过。
+
+- [实测中文报告](test_code/outputs/sdpd_equilibration/result_26300860927d8b87/fcb8821bfdea/report_zh.md)
+- [离线可视化 HTML](test_code/outputs/sdpd_equilibration/result_26300860927d8b87/fcb8821bfdea/sdpd_equilibration_review.html)：下载完整目录后直接用浏览器打开；无需 GPU。
+- [真实分析数据包](data/sdpd_equilibration/result_26300860927d8b87/)
+- [完整原始轨迹、快照、日志与执行记录](runs/sdpd_equilibration/unforced_plateau_20260909/longer_unforced_thermal_plateau/)
+- [原交付记录与验证哈希](test_code/outputs/sdpd_equilibration/execution_20260909T114110_487235Z/delivery_record.json)
+- [实验入口及细节](test_code/README_sdpd_equilibration.md)
+
+原实验的 200 项 CPU 测试、15 项真实浏览器检查均通过，人工验收仍为 PENDING。
+本次 GPU 任务实收 528.365623583 s；用户追加 493 s 后总授权为 4093 s，
+累计用量 4021.284952471 s，剩余 71.715047529 s。
+授权记录与所有历史用量一同归档；仓库复制不会产生新预算，也不允许重复记入追加授权。
+
+首次 JSON 导出失败后的原始证据保留；仅在 CPU 端修复 NumPy 布尔值序列化并重新分析，
+没有重跑 GPU。`data/sdpd_equilibration/result_aa25ea397a1f12de/` 为不完整失败导出，
+不能作为有效结果；应使用以上明确交付的数据包。历史输出中的旧状态不覆盖最新交付。
+
+## 同步范围
+
+| 目录 | 内容 |
+| --- | --- |
+| `py_scripts/`、`scripts/`、`test_code/` | 现有源码、配置、自动测试、复核入口 |
+| `data/` | 已验收几何、单位与工况、液体对照、SDPD 诊断及稳定性数据包 |
+| `runs/` | 原始轨迹、同相位快照、冻结执行代码、日志、完整预算与授权账本 |
+| `test_code/outputs/` | 交付记录、历史及最终报告、离线 HTML、截图、CPU 与浏览器验证记录 |
+| `metadata/`、`logs/` | 原 WSL 环境、原生版本、兼容补丁及安装/运行日志 |
+
+本次包含历史与失败证据，没有清理或改写它们。虚拟环境、第三方 Mirheo 检出/构建、
+下载目录、字节码、运行锁和临时浏览器配置不纳入 Git；精确排除项见同步清单。
+所有纳入的源文件均小于 10 MB，直接保存为 Git 对象；不使用 Git LFS 指针。
+`.gitattributes` 禁用换行转换，防止克隆后的字节与原 SHA256 不符。
+上游 Mirheo 许可证副本见 [MIRHEO_LICENSE.txt](MIRHEO_LICENSE.txt)。
 
 ## 代码入口
 
 | 内容 | 入口与说明 |
 | --- | --- |
-| 已验收血管形状、管壁与端口标签迁移 | `py_scripts/import_vessel_geometry.py`、`py_scripts/vessel_geometry/`；[几何核查说明](test_code/README_vessel_geometry.md) |
-| 旧 Musubi 工况冻结、SI/DPD 单位与有限端口边界设计 | `py_scripts/prepare_fluid_physics.py`、`py_scripts/fluid_physics/` |
-| 有持久预算与缓存的小规模 DPD 标定 | `py_scripts/calibrate_dpd_fluid.py`；[物理与标定说明](test_code/README_fluid_physics.md) |
-| 原生 DPD/SDPD 纯液体对照、共享剩余预算与候选独立判定 | `py_scripts/compare_dpd_sdpd.py`、`py_scripts/fluid_comparison/`；[对照测试说明](test_code/README_fluid_model_comparison.md) |
-| SDPD 原因排查、测量/统计/源码复核与受预算限制的诊断探针 | `py_scripts/diagnose_sdpd.py`、`py_scripts/sdpd_diagnostics/`；[诊断说明](test_code/README_sdpd_diagnostics.md) |
-| 离线交互核查页及浏览器检查 | `test_code/review_*.py`、`test_code/check_*_browser.cjs` |
-| 原有 RBC 入门示例与结果查看器 | `py_scripts/hello_rbc_flow.py`、`py_scripts/view_rbc_flow.py` |
-| 原有 WSL 激活与官方算例启动脚本 | `scripts/` |
+| 已验收血管几何与标签迁移 | `py_scripts/import_vessel_geometry.py`；[说明](test_code/README_vessel_geometry.md) |
+| 工况、单位与 DPD 标定 | `py_scripts/prepare_fluid_physics.py`、`py_scripts/calibrate_dpd_fluid.py`；[说明](test_code/README_fluid_physics.md) |
+| DPD/SDPD 纯液体对照 | `py_scripts/compare_dpd_sdpd.py`；[说明](test_code/README_fluid_model_comparison.md) |
+| SDPD 原因排查 | `py_scripts/diagnose_sdpd.py`；[说明](test_code/README_sdpd_diagnostics.md) |
+| 固定参数持续无驱动演化 | `py_scripts/run_sdpd_equilibration.py`；[说明](test_code/README_sdpd_equilibration.md) |
+| 离线复核 | `test_code/review_*.py`、`test_code/check_*_browser.cjs` |
 
-源码、配置、测试与环境记录按本地版本同步；仓库另附本说明、CPU 依赖清单、
-忽略规则和上游许可证副本。
-原始数据、运行结果、GPU 预算账本、截图、生成的 HTML、虚拟环境、Mirheo 第三方
-源码和编译库留在本地，由 `.gitignore` 排除。
+## 核对与运行位置
 
-## CPU 环境与测试
-
-已验证环境为 WSL、Python 3.12.3。以下命令从仓库根目录开始，创建独立环境：
+在本目录运行以下 CPU 命令，可以逐文件核对同步清单，不启动模拟：
 
 ```bash
-cd mirheo_starter
-python3.12 -m venv .venv
-.venv/bin/python -m pip install -r requirements-cpu.txt
-mkdir -p test_code/outputs/fluid_physics
-mkdir -p test_code/outputs/sdpd_diagnostics
+python3 - <<'PYTHON'
+import hashlib, json
+from pathlib import Path
+manifest = json.loads(Path('SYNC_MANIFEST.json').read_text())
+for name, expected in manifest['files'].items():
+    path = Path(name)
+    assert path.stat().st_size == expected['size'], name
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == expected['sha256'], name
+print('PASS:', len(manifest['files']), 'files')
+PYTHON
 ```
 
-111 项基础合成/CPU 测试可在没有真实几何数据或 Mirheo 库的情况下运行：
+源码、YAML、HTML 和 provenance 中原 WSL 路径及哈希保持原样，不能批量替换路径后
+仍声称匹配原始证据。浏览已归档 HTML 不需要 Mirheo；重新运行完整诊断、GPU 或全部
+200 项测试仍需要原环境、固定的外部来源，以及本地 Mirheo 源码和编译库。
+归档数据不是已经完成环境迁移的可执行 GPU 安装包。
+
+CPU 依赖见 [requirements-cpu.txt](requirements-cpu.txt)。在具备原环境的 WSL 中：
 
 ```bash
-.venv/bin/python -B -m unittest \
-  test_code.test_vessel_geometry \
-  test_code.test_vessel_geometry_migration \
-  test_code.test_fluid_physics.UnitsTests \
-  test_code.test_fluid_physics.StatisticsTests \
-  test_code.test_fluid_physics.ProtectionBudgetTests \
-  test_code.test_fluid_physics.EosReportTests \
-  test_code.test_fluid_model_comparison.EvidenceTests \
-  test_code.test_fluid_model_comparison.SharedBudgetTests \
-  test_code.test_sdpd_diagnostics.MeasurementTests -v
-```
-
-完整套件还包含旧工况核对、统计回归、原生源码契约和真实探针快照检查，读取配置
-固定的来源文件、冻结结果及本地 Mirheo 源码。具备这些外部输入和已保存的诊断
-campaign 后，可以运行全部 153 项测试；这些测试均不启动 GPU：
-
-```bash
+cd /home/lzy/projects/mirheo_starter
 .venv/bin/python -B -m unittest discover -s test_code -p 'test_*.py' -v
+.venv/bin/python -B -m test_code.review_sdpd_equilibration \
+  --config py_scripts/sdpd_equilibration.yaml --open
 ```
 
-2026-09-09 同步核查：在独立检出中使用原 WSL 的 Python 环境、配置指定的真实
-外部输入和临时的已保存探针副本，全部 153 项测试通过；Python、JavaScript 和
-Shell 语法检查通过。78 个同步文件及其文件权限与原工程一致。本次增加 14 个
-诊断相关文件，更新公共统计分析及本说明；同步核查没有重新运行 GPU 或浏览器交互。
-
-## 外部数据和运行环境
-
-YAML 配置保留原 WSL 绝对路径、指定 run ID 和来源哈希。几何输入来自
-`bloodflow_starter` 的已验收包，旧流体工况来自本地 `ulm_3D_vascular/outputs/`，
-第二阶段也引用本地 `mirheo_starter/data/geometry/`。这些输入不包含在此次代码同步中；
-缺失或哈希冲突时程序会明确阻断。DPD/SDPD 对照还引用已冻结的
-`data/fluid_physics/result_1b008103675eb6ff/` 和旧 DPD 原始任务。
-SDPD 诊断引用 `data/fluid_model_comparison/result_7cc1db5bcaec2c16/`、
-`test_code/outputs/sdpd_diagnostics/setup_20260908T221052_971138Z/` 中的修复前复现
-及验证记录，以及 `runs/sdpd_diagnostics/thermal_cause_20260909/` 中的真实探针。
-这些外部记录没有随代码发布，缺失时不能将诊断或完整 CPU 套件视为已复现。
-详细来源及许可证说明见各模块的 `SOURCES.md`。
-
-GPU 环境记录在 `metadata/`：Mirheo 提交
-`8fa67b9aaa7f04c9de2d74a335c9c8c4665068cf`、CUDA 12.6、GCC 12、Open MPI 4.1.6、
-单精度构建，以及已有的 CUDA 兼容补丁。`CMakeCache.txt` 和库哈希记录原机器的
-实际构建；`python_packages.txt` 是部署初期快照，当前 CPU 依赖见本目录依赖清单。
-上游 Mirheo 的 MIT 许可证副本为 [MIRHEO_LICENSE.txt](MIRHEO_LICENSE.txt)。
-
-原有 `scripts/activate_mirheo.sh` 与 `scripts/run_official_case.sh` 固定使用
-`/home/lzy/projects/mirheo_starter`。迁移 GPU 运行位置时，需先配置相应的本地环境、
-Mirheo 源码及编译库、实际构建记录和数据路径。继续原标定 campaign 时，必须保留其
-完整 `runs/fluid_calibration/dpd_round1_20260908/`，包括原预算账本及任务结果。
-继续 DPD/SDPD 对照时，还须保留
-`runs/fluid_calibration/shared_budget_pool.json` 和
-`runs/fluid_model_comparison/dpd_sdpd_remaining_20260908/`，确保旧任务、本轮任务和
-未结束预约累计使用同一份 3600 秒授权；缺少账本或未注册的 campaign 会阻断执行。
-继续 SDPD 诊断也必须保留已注册的诊断 campaign 及其费用，不能通过新目录获得新额度。
-Windows 浏览器检查脚本也依赖原机器已有的 Chrome/Node 路径。
-
-## 当前科学状态
-
-血管几何及标签迁移已完成。首轮 DPD 标定及本轮 DPD/SDPD 对照的科学结果均为
-`PARTIAL`。后续 SDPD 排查状态为 `DIAGNOSED_WITH_LIMITATIONS`，没有合格液体参数，
-`selection=null`。已确认启动过渡进入统计段，以及均值/CI 使用不同样本的问题；
-公共分析现使用相同完整块，并另外保留全窗均值和剖面。相同原始数据重算后，
-基准黏度拟合由约 `3.100e-6` 改为 `3.022e-6 m²/s`，仍只有一个有效块。
-已保存的无驱动半步长探针支持启动结构松弛，尚不能排除稳态积分温偏或有限尺度
-剖面效应；这不是原生数值模型修复。温度、统计充分性及含不确定性的压力范围
-仍未合格，诊断页面的人工验收保持 `PENDING`。
-短任务执行成本不能用作合格目标液体的效率排名。
-边界设计中的原生接口缺口仍标为 `REQUIRES_EXTENSION`。
-已有 RBC 文件属于入门示例。此次代码同步与 CPU 测试不增加 GPU 标定任务，
-也不表示已完成真实血管流动、SDF 或生产参数验收。
+`--execute` 仍受原预算、精确计划与已有任务缓存约束。本次同步未新增 GPU 实验，
+未修改液体物性结论，也未将人工验收状态改为通过。

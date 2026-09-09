@@ -1,0 +1,120 @@
+{
+  "plan": {
+    "id": "equilibrium_half_dt_trend_corrected_channel",
+    "status": "ELIGIBLE_WITHIN_EXISTING_AUTHORIZATION",
+    "unique_main_change": "Unforced dt is halved; same native model, units, Uniform constructor, mass, N, velocity seed and physical sample interval.",
+    "baseline_task": "sdpd_equilibrium",
+    "baseline_reused_steps": 80000,
+    "dt_star": 5e-07,
+    "steps": 160000,
+    "physical_duration_s": 2.5324618707356607e-06,
+    "predicted_total_wall_s": 233.95480478058636,
+    "measured_cost_source": "sdpd_half_dt total charged wall / actual steps",
+    "allocation_s": 260,
+    "purpose": "Compare early unforced target-liquid heating/relaxation at dt and dt/2; also audit saved pre-kick and post-kick velocity channels. This is a transient diagnostic, not a qualification run.",
+    "interpretation_rule": "A similar large peak and decay supports initialization-driven heating over a dominant time-step cause of that transient; late equilibrium bias remains unverified. One different-dt random path is not an independent repeated estimate.",
+    "initial_state_rule": "Same pinned library, Uniform particle name/rank/domain/density and Python velocity seed as the old equilibrium task; save new actual initial state. Old t=0 positions were not saved, so direct cross-run initial hashes are unavailable.",
+    "comparison_windows_star": [
+      [
+        0.0,
+        0.02
+      ],
+      [
+        0.02,
+        0.04
+      ],
+      [
+        0.04,
+        0.06
+      ],
+      [
+        0.06,
+        0.08
+      ]
+    ],
+    "stop_conditions": "Original shared-budget watchdog, nonfinite state, invalid particle count, or completed fixed steps. Partial results never imply completed discrimination.",
+    "qualification_capable": false,
+    "why_still_informative": "It spans the observed heating peak and substantial decay, so it tests transient time-step dependence without repeating an inadequate qualification attempt."
+  },
+  "CPU_validation": {
+    "status": "PASS",
+    "created_at": "2026-09-08T22:48:58.951248+00:00",
+    "command": [
+      ".venv/bin/python",
+      "-B",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "test_code",
+      "-p",
+      "test_*.py",
+      "-v"
+    ],
+    "exit_code": 0,
+    "elapsed_s": 7.255507064997801,
+    "log": "/home/lzy/projects/mirheo_starter/test_code/outputs/sdpd_diagnostics/setup_20260908T221052_971138Z/CPU_corrected_observer_tests.log",
+    "log_sha256": "73deea8f082c4a02cbea40afd49ed5836080f2c6f06c1d6c0ac26e2d9c7fda31",
+    "code_sha256": {
+      "/home/lzy/projects/mirheo_starter/py_scripts/sdpd_diagnostics/native.py": "a9b03a06fc2d2a3ecd2322cc7679a595ced701fe9b17df5fd0b1d8dbcc5dab29",
+      "/home/lzy/projects/mirheo_starter/py_scripts/sdpd_diagnostics/report.py": "c96ab3df13f33c61bbf6e17c51b375295d59d7ea292bf5e31805d901d6a6554c",
+      "/home/lzy/projects/mirheo_starter/py_scripts/sdpd_diagnostics/probes.py": "cfe446480648102d13444f8ce0e9bf1b150f8fd253d326fb53dce6725ef1dec3",
+      "/home/lzy/projects/mirheo_starter/py_scripts/sdpd_diagnostics/workflow.py": "5e426bf75dd12303c4700401673c9a7d03fca9963c2d9e980143f1b8884b351c",
+      "/home/lzy/projects/mirheo_starter/py_scripts/sdpd_diagnostics/__init__.py": "b474e530d0f093920aaee005b696b83478c5ea328ef70373bc53b70204de12c8",
+      "/home/lzy/projects/mirheo_starter/py_scripts/sdpd_diagnostics/observations.py": "0ec27898de701891920d1d08f477cdbbfd523daeb36bc88e5209b9d390993d7e",
+      "/home/lzy/projects/mirheo_starter/py_scripts/sdpd_diagnostics/calculations.py": "9e97fc3848a4a2a4badf5967b3bef7293cb6ad79b3a8b65147a15cf34e80ce38",
+      "/home/lzy/projects/mirheo_starter/py_scripts/sdpd_diagnostics/gpu_worker.py": "fb840efa5408e781a84fbe519c551a91b10035984b869bc330830cc9aa88c1de",
+      "/home/lzy/projects/mirheo_starter/py_scripts/fluid_physics/boundary_plan.py": "fb1c61c9409b9feed91b45428f5ff2858c68e7c77d997545a653167926625747",
+      "/home/lzy/projects/mirheo_starter/py_scripts/fluid_physics/runner.py": "ce1852d1cf52bd9ff5ec83d402b2cd22925a3c9cf1c7521a26400d2df3213e0b",
+      "/home/lzy/projects/mirheo_starter/py_scripts/fluid_physics/common.py": "475d70a27700a9312d0d064e801d644e7d88538916c7cc7b8bcd09f7b461730d",
+      "/home/lzy/projects/mirheo_starter/py_scripts/fluid_physics/analysis.py": "48d759819636e229b8ed00d0d7ed70b977f7e01af4ad1f8e1e8cf6d74b373c4c",
+      "/home/lzy/projects/mirheo_starter/py_scripts/fluid_physics/__init__.py": "a76d7705de4e5c2d16dee27311560698d3915dab139d7abb80576de5617b38c8",
+      "/home/lzy/projects/mirheo_starter/py_scripts/fluid_physics/calibration.py": "e6527c116ffb1e2627d4131648cba264fecc1268c1c5de9f34c315a3278874e7",
+      "/home/lzy/projects/mirheo_starter/py_scripts/fluid_physics/units.py": "afe1c805209b2f58b130c1759a3c30878c49adaac719c78652bae237f23518b8",
+      "/home/lzy/projects/mirheo_starter/py_scripts/fluid_physics/legacy_case.py": "56509158e5cf5ef557e6efb366d81a3451fe5615f7958720d0dba4cef5bf69b0",
+      "/home/lzy/projects/mirheo_starter/py_scripts/fluid_physics/gpu_worker.py": "989cbda0f57fc9238da51184713387809f911a80139fefd3fb0025eee3bbdb4c",
+      "/home/lzy/projects/mirheo_starter/py_scripts/fluid_physics/reporting.py": "0ce49e2173b4d9735ceb68519ab7daefd988f2f068992bac8b488e49af56d0bf",
+      "/home/lzy/projects/mirheo_starter/py_scripts/fluid_comparison/analysis.py": "3cece7acb101757a887f7c2ffa0e79668723b0eedd4ec2730f5234b1fa7086b7",
+      "/home/lzy/projects/mirheo_starter/py_scripts/fluid_comparison/__init__.py": "ebc2bdf32a18df3108e29580fc73551c8c9177486b7d94805a6258e6fb45b041",
+      "/home/lzy/projects/mirheo_starter/py_scripts/fluid_comparison/experiments.py": "71073b74b4b5f5e667175dd2f6fa8b36330424555462e31fd7e2b8f80029463d",
+      "/home/lzy/projects/mirheo_starter/py_scripts/fluid_comparison/gpu_worker.py": "2acbbbbd0a6cdee02e30081b1ed52096fdf21b1ceca7f0743fa1b668e47de82e",
+      "/home/lzy/projects/mirheo_starter/py_scripts/fluid_comparison/models.py": "0f65b317aec7dad1688caba7210559b433eca09c8621fdda0874b46365e277b5",
+      "/home/lzy/projects/mirheo_starter/py_scripts/fluid_comparison/reporting.py": "cccfd9a9f1bd78496cee5bd340f7874e6ca0760eaacd54a16c42802e5b8e081e",
+      "/home/lzy/projects/mirheo_starter/test_code/test_vessel_geometry_migration.py": "cbc2408d9dfd635e72f13a6a5f28d79f06de608199511ae60ceab79891b9671f",
+      "/home/lzy/projects/mirheo_starter/test_code/test_sdpd_diagnostics.py": "2a985ffc548064b454e8a3c96463d9b8699a710703bc5883f085b6fb4b008182",
+      "/home/lzy/projects/mirheo_starter/test_code/test_fluid_physics.py": "f117baaa382e0a88d19e3d4344978957a19992610fe44d2ef9d8230f830f22c7",
+      "/home/lzy/projects/mirheo_starter/test_code/test_vessel_geometry.py": "792f5bbcb61b2efc8393e6227f1f4a84a81c4a8aea7827aca8610dab8d31d986",
+      "/home/lzy/projects/mirheo_starter/test_code/test_fluid_model_comparison.py": "d588ae7a8d6a77582d2569dc2509a873267a3ffab457e42425e0b89e4c47de2f",
+      "/home/lzy/projects/mirheo_starter/py_scripts/diagnose_sdpd.py": "3a76bc281d82eb4f1d078494473760a0fcb095b54c2285a6fe13a652e8c8e7b3",
+      "/home/lzy/projects/mirheo_starter/py_scripts/sdpd_diagnostics.yaml": "c53121dae38c72e2bc1f8b19271052dd6fb545d1a94f43b2248c8202c46678db"
+    }
+  },
+  "diagnostic_package": "/home/lzy/projects/mirheo_starter/data/sdpd_diagnostics/result_6489bc30c06af435",
+  "diagnostic_manifest_sha256": "1d8b2e1f583cea65c7e2cf820bc793e3df2a53e24aaf897411d1a4990b5426b2",
+  "shared_budget_before_reservation": {
+    "pool_path": "/home/lzy/projects/mirheo_starter/runs/fluid_calibration/shared_budget_pool.json",
+    "members": [
+      {
+        "directory": "/home/lzy/projects/mirheo_starter/runs/fluid_calibration/dpd_round1_20260908",
+        "campaign_id": "dpd_round1_20260908",
+        "charged_or_reserved_s": 1695.861351206011,
+        "running_reservation_s": 0
+      },
+      {
+        "directory": "/home/lzy/projects/mirheo_starter/runs/fluid_model_comparison/dpd_sdpd_remaining_20260908",
+        "campaign_id": "dpd_sdpd_remaining_20260908",
+        "charged_or_reserved_s": 1599.3251577870396,
+        "running_reservation_s": 0
+      },
+      {
+        "directory": "/home/lzy/projects/mirheo_starter/runs/sdpd_diagnostics/thermal_cause_20260909",
+        "campaign_id": "thermal_cause_20260909",
+        "charged_or_reserved_s": 1.8698256450006738,
+        "running_reservation_s": 0
+      }
+    ],
+    "total_charged_or_reserved_s": 3297.0563346380513,
+    "remaining_s": 302.94366536194866,
+    "limit_s": 3600
+  }
+}

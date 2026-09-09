@@ -1,0 +1,87 @@
+schema_version: 1
+campaign_id: dpd_round1_20260908
+data_root: data/fluid_physics
+runs_root: runs/fluid_calibration
+review_root: test_code/outputs/fluid_physics
+geometry_package: /home/lzy/projects/mirheo_starter/data/geometry/migrate_20260908T140352_427750Z_78057496
+geometry_manifest_sha256: d322bf5a245d8a3bb302040c3bf1cba1e52f2a29be371d3f7b6886d0a8b9a66c
+geometry_selection_evidence: 第一阶段配置、源包哈希、迁移代码与依赖指纹共同匹配；非按时间选择。本轮用户确认第一阶段完成。
+legacy_project: /home/lzy/projects/ulm_3D_vascular
+legacy_config: configs/cfd_flow.yaml
+accepted_run: outputs/cfd_flow/healthy_mouse_capillary_tau1_reference_scaled_base_anchor003274_20260901
+plane_contract: outputs/cfd_flow/healthy_mouse_capillary_tau1_grid_convergence_anchor003274_20260831/qc/physical_port_flux_plane_contract_v3.json
+rigid_transform: outputs/cfd_flow/axis_aligned_inlet_geometry_anchor003274_20260829_111451/transform/anatomical_to_cfd_transform.json
+solver_wall: outputs/cfd_flow/axis_aligned_inlet_geometry_anchor003274_20260829_111451/geometry/geometry_solver_m/wall.stl
+surface_run: outputs/cfd_surface_prepare/vmtk_tps_boundarynormal_crossseam_finalized_recovery_anchor003274_20260826_221611
+temperature_K: 298.15
+temperature_source: user_approved_assumption
+budget:
+  task_limit_s: 600
+  campaign_limit_s: 3600
+  gpu_concurrency: 1
+  vram_reserve_MiB: 1536
+  estimated_task_vram_MiB: 512
+  host_reserve_MiB: 1024
+  graceful_margin_s: 12
+  gpu_sample_interval_s: 2
+  minimum_launch_budget_s: 45
+space:
+  L0_m: 5.0e-7
+  status: DESIGN_CHOICE
+  rc_star: 1.0
+  n_star: 8.0
+  m_star: 1.0
+  kBT_star: 1.0
+  future_sdf_spacing_m: null
+  old_geometry_reference_m: 2.0e-7
+  output_y_bin_star: 0.25
+proposed_acceptance:
+  status: PROPOSED
+  frozen_before_gpu: true
+  temperature_relative_error: 0.02
+  viscosity_target_relative_error: 0.10
+  viscosity_ci_relative_halfwidth: 0.10
+  profile_relative_rms: 0.10
+  sensitivity_relative_difference: 0.10
+  eos_ci_relative_halfwidth: 0.10
+  mach_max: 0.15
+  min_blocks: 8
+  block_relaxation_multiples: 2.0
+  warmup_relaxation_multiples: 8.0
+  minimum_warmup_fraction: 0.20
+  max_stationarity_drift: 0.10
+  rationale: 温度2%限制积分偏差；材料参数、剖面与敏感性10%为首轮筛选而非最终定量误差标准；至少8块并估计相关时间，误差过宽不通过；不得替代旧真实血管1%稳态门槛。
+candidates:
+  - id: thermal_baseline
+    a: 25.0
+    gamma: 10.0
+    power: 0.5
+    dt_star: 0.002
+    nu_prior_star: 1.5
+    status: DESIGN_CHOICE
+    rationale: 纯液体基线；与Hello World相同接口，参数独立设计，未标定。
+  - id: thermal_high_gamma
+    a: 25.0
+    gamma: 3700.0
+    power: 0.5
+    dt_star: 0.00001
+    nu_prior_star: 414.0
+    status: DESIGN_CHOICE
+    rationale: 功能探针。均场耗散项nu约为2*pi*n*gamma*rc^5/(15*m)*Beta(5,2*power+1)，忽略配对关联，仅用于量级与步长选择。
+calibration:
+  domain_star: [8.0, 8.0, 8.0]
+  snapshot_every: 200
+  native_stats_every: 200
+  max_steps: 600000
+  speed_safety_factor: 1.4
+  initial_velocity_seed: 20260908
+  tasks:
+    - {id: probe, candidate: thermal_baseline, kind: probe, n_star: 8.0, force_star: 0.0, dt_factor: 1.0, desired_steps: 2000, wall_allocation_s: 90}
+    - {id: equilibrium, candidate: thermal_baseline, kind: equilibrium, n_star: 8.0, force_star: 0.0, dt_factor: 1.0, desired_time_star: 250.0, wall_allocation_s: 360}
+    - {id: eos_low, candidate: thermal_baseline, kind: equilibrium, n_star: 7.6, force_star: 0.0, dt_factor: 1.0, desired_time_star: 250.0, wall_allocation_s: 360}
+    - {id: eos_high, candidate: thermal_baseline, kind: equilibrium, n_star: 8.4, force_star: 0.0, dt_factor: 1.0, desired_time_star: 250.0, wall_allocation_s: 360}
+    - {id: flow, candidate: thermal_baseline, kind: flow, n_star: 8.0, force_star: 0.10, dt_factor: 1.0, desired_time_star: 400.0, wall_allocation_s: 450}
+    - {id: flow_half_force, candidate: thermal_baseline, kind: flow, n_star: 8.0, force_star: 0.05, dt_factor: 1.0, desired_time_star: 400.0, wall_allocation_s: 450}
+    - {id: flow_half_dt, candidate: thermal_baseline, kind: flow, n_star: 8.0, force_star: 0.10, dt_factor: 0.5, desired_time_star: 400.0, wall_allocation_s: 450}
+    - {id: high_gamma_equilibrium, candidate: thermal_high_gamma, kind: equilibrium, n_star: 8.0, force_star: 0.0, dt_factor: 1.0, desired_time_star: 4.0, wall_allocation_s: 400}
+    - {id: high_gamma_flow, candidate: thermal_high_gamma, kind: flow, n_star: 8.0, force_star: 10.0, dt_factor: 1.0, desired_time_star: 4.0, wall_allocation_s: 400}

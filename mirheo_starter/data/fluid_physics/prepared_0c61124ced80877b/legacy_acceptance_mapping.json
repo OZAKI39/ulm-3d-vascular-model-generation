@@ -1,0 +1,136 @@
+{
+  "status": "MAPPED",
+  "short_window_s": 0.0002441406727828746,
+  "long_window_s": 0.0004882813455657492,
+  "mean_rule": "Trapezoidal integration in physical time; old equally spaced iterations multiplied by fixed dt.",
+  "scope": "Future vessel validation on the frozen finite port polygons. Periodic material tests do not execute vessel gates.",
+  "criteria": [
+    {
+      "name": "R_mass_short",
+      "formula": "abs(mean Qin - sum mean Qout)/max(abs(mean Qin), tiny)",
+      "threshold": 0.01,
+      "unit": "1",
+      "category": "TIME_AVERAGED_CONSERVATION",
+      "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/steady_state.py:79",
+      "status": "SOURCE_VALUE"
+    },
+    {
+      "name": "R_mass_long",
+      "formula": "same formula over long window",
+      "threshold": 0.01,
+      "unit": "1",
+      "category": "TIME_AVERAGED_CONSERVATION",
+      "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/steady_state.py:88",
+      "status": "SOURCE_VALUE"
+    },
+    {
+      "name": "physical_volume_closure",
+      "formula": "abs(sum signed physical port volume flux)/abs(Qin)",
+      "threshold": 0.01,
+      "unit": "1",
+      "category": "CONSERVATION",
+      "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/steady_state.py:126",
+      "status": "SOURCE_VALUE"
+    },
+    {
+      "name": "R_velocity",
+      "formula": "abs(U(c)-U(b))/max(abs(U(c)),1e-12 m/s)",
+      "threshold": 0.01,
+      "unit": "1",
+      "category": "TEMPORAL_RESIDUAL",
+      "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/steady_state.py:89",
+      "status": "SOURCE_VALUE"
+    },
+    {
+      "name": "R_pressure",
+      "formula": "max over inlet gauge and three inlet-outlet drops: abs(p(c)-p(b))/max(abs(p(c)),1 Pa)",
+      "threshold": 0.005,
+      "unit": "1",
+      "category": "TEMPORAL_RESIDUAL_NOT_TARGET_ERROR",
+      "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/steady_state.py:93",
+      "status": "SOURCE_VALUE"
+    },
+    {
+      "name": "R_inlet",
+      "formula": "abs(mean Qin_short-Qtarget)/Qtarget",
+      "threshold": 0.01,
+      "unit": "1",
+      "category": "TARGET_DEVIATION",
+      "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/steady_state.py:104",
+      "status": "SOURCE_VALUE"
+    },
+    {
+      "name": "flow_fraction_drift",
+      "formula": "max_j(max of three Qj/Qin checkpoints - min)",
+      "threshold": 0.01,
+      "unit": "absolute fraction",
+      "category": "TEMPORAL_DRIFT",
+      "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/steady_state.py:105",
+      "status": "SOURCE_VALUE"
+    },
+    {
+      "name": "no_significant_mean_backflow",
+      "formula": "fail if mean Qj < 0 and abs(mean Qj) > 0.05 abs(mean Qin); both windows",
+      "threshold": 0.05,
+      "unit": "fraction",
+      "category": "SIGNED_TIME_AVERAGE",
+      "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/steady_state.py:73",
+      "status": "SOURCE_VALUE"
+    },
+    {
+      "name": "Q_density_consistency",
+      "formula": "abs(Q_mass-Q_velocity)/max(abs(Q_mass),abs(Q_velocity),tiny)",
+      "threshold": 0.01,
+      "unit": "1",
+      "category": "PHYSICAL_DIAGNOSTIC_REQUIRES_DPD_MEASUREMENT",
+      "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/validated_contract.py:42; physical_port_flux.py",
+      "status": "SOURCE_VALUE"
+    },
+    {
+      "name": "rho_range",
+      "formula": "0.9 <= rho/rho_reference <= 1.1",
+      "threshold": [
+        0.9,
+        1.1
+      ],
+      "unit": "1",
+      "category": "ADAPTED_PHYSICAL_DENSITY_SANITY",
+      "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/validated_contract.py:43",
+      "status": "SOURCE_VALUE"
+    }
+  ],
+  "backend_specific": {
+    "minimum_pdf_positive": {
+      "source_value": ">0",
+      "status": "NOT_APPLICABLE_TO_DPD",
+      "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/validated_contract.py"
+    },
+    "tau": {
+      "source_value": "1",
+      "status": "NOT_APPLICABLE_TO_DPD",
+      "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/validated_contract.py"
+    },
+    "maximum_lattice_speed": {
+      "source_value": "<0.05",
+      "status": "NOT_APPLICABLE_TO_DPD",
+      "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/validated_contract.py"
+    },
+    "controller_target": {
+      "source_value": "<=1e-8",
+      "status": "NOT_APPLICABLE_TO_DPD",
+      "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/validated_contract.py"
+    },
+    "controller_controlled_flux": {
+      "source_value": "<=1e-8",
+      "status": "NOT_APPLICABLE_TO_DPD",
+      "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/validated_contract.py"
+    },
+    "full_timestep_identity": {
+      "source_value": "<=1e-8",
+      "status": "NOT_APPLICABLE_TO_DPD",
+      "source": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_flow/validated_contract.py"
+    }
+  },
+  "instantaneous_reverse_particle_velocity": "ALLOWED; never clipped or removed to pass backflow gate",
+  "new_material_test_thresholds": "PROPOSED in config snapshot; not inherited or user approved"
+}
