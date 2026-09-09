@@ -1,0 +1,52 @@
+schema_version: 1
+case_id: periodic_reverse_poiseuille_4um
+campaign_id: solver_benchmark_20260909
+hemocell_root: /home/lzy/projects/hemocell_starter
+hemocell_commit: 5a410848bd5c57d5ae1c171112e78eab4a82e650
+palabos_commit: 05712164d940a42e06afdd705249912fa0c49f14
+frozen_model_config: py_scripts/fluid_model_comparison.yaml
+shared_budget_pool: runs/fluid_calibration/shared_budget_pool.json
+physics:
+  acceleration_si: 50000.0
+  force_rationale: Independent small-box design, target Umax about 7.65 mm/s and Re about 0.00935. Not a PDMS pump flow or old vessel Q. No per-solver adjustment.
+  macro_initial_velocity_si: [0.0, 0.0, 0.0]
+  periodic: [true, true, true]
+  background_temperature_K: 298.15
+sampling:
+  bins: 16
+  interval_star: 0.0002
+  unforced_preparation_si: 0.000001
+  flow_establishment_end_si: 0.000003
+  formal_end_si: 0.000008
+  duration_policy: Nearest integer steps for phase boundaries, differences explicitly reported; same SI interval never implies same step count.
+lbm:
+  dx_candidates_si: [0.00000025, 0.000000125]
+  tau: 1.0
+  ranks: [1, 2, 4]
+  repetitions: 2
+  smoke_steps: 64
+criteria:
+  status: PROPOSED_FROZEN_BEFORE_RUN
+  profile_relative_l2: 0.05
+  half_flow_relative_error: 0.05
+  apparent_nu_relative_error: 0.05
+  stationarity_relative_drift: 0.01
+  global_density_relative_error: 0.001
+  local_density_relative_variation: 0.05
+  profile_ci_relative_l2: 0.05
+  refinement_relative_l2: 0.05
+  min_blocks: 8
+  block_relaxation_multiples: 2
+  mirheo_temperature_relative_error_including_ci: 0.02
+  scope: Proposed finite-box mean-flow screening only. Historical SDPD thresholds unchanged. No pressure-outlet or complete material qualification.
+budget:
+  cpu_limit_s: 1200
+  task_limit_s: 600
+  cpu_task_allocation_s: 120
+  gpu_requested_s: 600
+  concurrency: 1
+  automatic_retry: false
+policy:
+  GPU_authorization: PENDING_SCOPE_APPROVAL
+  pipe_benchmark: PIPE_BENCHMARK_DEFERRED
+  human_review: PENDING

@@ -1,0 +1,1224 @@
+diff -ruN a/src/atomicBlock/atomicBlock3D.h b/src/atomicBlock/atomicBlock3D.h
+--- a/src/atomicBlock/atomicBlock3D.h	2022-06-13 13:12:01.000000000 +0200
++++ b/src/atomicBlock/atomicBlock3D.h	2026-08-01 14:33:38.494387437 +0200
+@@ -207,6 +207,7 @@
+     StatSubscriber3D statisticsSubscriber;
+     DataProcessorVector explicitInternalProcessors;
+     DataProcessorVector automaticInternalProcessors;
++public:
+     mutable BlockDataTransfer3D *dataTransfer;
+ };
+ 
+diff -ruN a/src/atomicBlock/blockLattice3D.h b/src/atomicBlock/blockLattice3D.h
+--- a/src/atomicBlock/blockLattice3D.h	2022-06-13 13:12:01.000000000 +0200
++++ b/src/atomicBlock/blockLattice3D.h	2026-08-01 14:33:54.024246677 +0200
+@@ -55,6 +55,7 @@
+ struct Dynamics;
+ template <typename T, template <typename U> class Descriptor>
+ class BlockLattice3D;
++template <typename T, template <typename U> class Descriptor> struct ImplicitGrid3D;
+ 
+ template <typename T, template <typename U> class Descriptor>
+ class BlockLatticeDataTransfer3D : public BlockDataTransfer3D {
+@@ -152,7 +153,7 @@
+         PLB_PRECONDITION(iX < this->getNx());
+         PLB_PRECONDITION(iY < this->getNy());
+         PLB_PRECONDITION(iZ < this->getNz());
+-        return grid[iX][iY][iZ];
++        return grid(iX,iY,iZ);
+     }
+     /// Read only access to lattice cells
+     virtual Cell<T, Descriptor> const &get(plint iX, plint iY, plint iZ) const
+@@ -160,7 +161,7 @@
+         PLB_PRECONDITION(iX < this->getNx());
+         PLB_PRECONDITION(iY < this->getNy());
+         PLB_PRECONDITION(iZ < this->getNz());
+-        return grid[iX][iY][iZ];
++        return grid(iX,iY,iZ);
+     }
+     /// Specify wheter statistics measurements are done on a rect. domain
+     virtual void specifyStatisticsStatus(Box3D domain, bool status);
+@@ -220,8 +221,8 @@
+ private:
+     Dynamics<T, Descriptor> *backgroundDynamics;
+     Cell<T, Descriptor> *rawData;
+-    Cell<T, Descriptor> ***grid;
+-
++private:
++    ImplicitGrid3D<T,Descriptor> grid;
+ public:
+     static CachePolicy3D &cachePolicy();
+     template <typename T_, template <typename U_> class Descriptor_>
+@@ -236,6 +237,16 @@
+     friend class OnLinkExternalRhoJcollideAndStream3D;
+     template <typename T_, template <typename U_> class Descriptor_>
+     friend class GrayScaleCollideAndStream3D;
++    template <typename T_, template <typename U_> class Descriptor_>
++    friend class ImplicitGrid3D;
++};
++
++template<typename T, template<typename U> class Descriptor>
++struct ImplicitGrid3D {
++        BlockLattice3D<T,Descriptor>& parent;
++        ImplicitGrid3D(BlockLattice3D<T,Descriptor>& parent_);
++        const Cell<T,Descriptor> & operator () (int x,int y,int z) const;
++        Cell<T,Descriptor> & operator () (int x,int y,int z);
+ };
+ 
+ template <typename T, template <typename U> class Descriptor>
+diff -ruN a/src/atomicBlock/blockLattice3D.hh b/src/atomicBlock/blockLattice3D.hh
+--- a/src/atomicBlock/blockLattice3D.hh	2022-06-13 13:12:01.000000000 +0200
++++ b/src/atomicBlock/blockLattice3D.hh	2026-08-01 14:33:38.494602651 +0200
+@@ -64,7 +64,7 @@
+ BlockLattice3D<T, Descriptor>::BlockLattice3D(
+     plint nx_, plint ny_, plint nz_, Dynamics<T, Descriptor> *backgroundDynamics_) :
+     AtomicBlock3D(nx_, ny_, nz_, new BlockLatticeDataTransfer3D<T, Descriptor>()),
+-    backgroundDynamics(backgroundDynamics_)
++    backgroundDynamics(backgroundDynamics_), grid(*this)
+ {
+     plint nx = this->getNx();
+     plint ny = this->getNy();
+@@ -74,7 +74,7 @@
+     for (plint iX = 0; iX < nx; ++iX) {
+         for (plint iY = 0; iY < ny; ++iY) {
+             for (plint iZ = 0; iZ < nz; ++iZ) {
+-                grid[iX][iY][iZ].attributeDynamics(backgroundDynamics);
++                grid(iX,iY,iZ).attributeDynamics(backgroundDynamics);
+             }
+         }
+     }
+@@ -113,7 +113,8 @@
+ BlockLattice3D<T, Descriptor>::BlockLattice3D(BlockLattice3D<T, Descriptor> const &rhs) :
+     BlockLatticeBase3D<T, Descriptor>(rhs),
+     AtomicBlock3D(rhs),
+-    backgroundDynamics(rhs.backgroundDynamics->clone())
++    backgroundDynamics(rhs.backgroundDynamics->clone()),
++    grid(*this)
+ {
+     plint nx = this->getNx();
+     plint ny = this->getNy();
+@@ -122,9 +123,9 @@
+     for (plint iX = 0; iX < nx; ++iX) {
+         for (plint iY = 0; iY < ny; ++iY) {
+             for (plint iZ = 0; iZ < nz; ++iZ) {
+-                Cell<T, Descriptor> &cell = grid[iX][iY][iZ];
++                Cell<T, Descriptor> &cell = grid(iX,iY,iZ);
+                 // Assign cell from rhs
+-                cell = rhs.grid[iX][iY][iZ];
++                cell = rhs.grid(iX,iY,iZ);
+                 // Get an independent clone of the dynamics,
+                 //   or assign backgroundDynamics
+                 if (&cell.getDynamics() == rhs.backgroundDynamics) {
+@@ -164,7 +165,6 @@
+     AtomicBlock3D::swap(rhs);
+     std::swap(backgroundDynamics, rhs.backgroundDynamics);
+     std::swap(rawData, rhs.rawData);
+-    std::swap(grid, rhs.grid);
+     global::plbCounter("MEMORY_LATTICE").increment(allocatedMemory());
+ }
+ 
+@@ -177,7 +177,7 @@
+     for (plint iX = domain.x0; iX <= domain.x1; ++iX) {
+         for (plint iY = domain.y0; iY <= domain.y1; ++iY) {
+             for (plint iZ = domain.z0; iZ <= domain.z1; ++iZ) {
+-                grid[iX][iY][iZ].specifyStatisticsStatus(status);
++                grid(iX,iY,iZ).specifyStatisticsStatus(status);
+             }
+         }
+     }
+@@ -192,8 +192,8 @@
+     for (plint iX = domain.x0; iX <= domain.x1; ++iX) {
+         for (plint iY = domain.y0; iY <= domain.y1; ++iY) {
+             for (plint iZ = domain.z0; iZ <= domain.z1; ++iZ) {
+-                grid[iX][iY][iZ].collide(this->getInternalStatistics());
+-                grid[iX][iY][iZ].revert();
++                grid(iX,iY,iZ).collide(this->getInternalStatistics());
++                grid(iX,iY,iZ).revert();
+             }
+         }
+     }
+@@ -365,13 +365,6 @@
+     plint ny = this->getNy();
+     plint nz = this->getNz();
+     rawData = new Cell<T, Descriptor>[nx * ny * nz];
+-    grid = new Cell<T, Descriptor> **[nx];
+-    for (plint iX = 0; iX < nx; ++iX) {
+-        grid[iX] = new Cell<T, Descriptor> *[ny];
+-        for (plint iY = 0; iY < ny; ++iY) {
+-            grid[iX][iY] = rawData + nz * (iY + ny * iX);
+-        }
+-    }
+ }
+ 
+ template <typename T, template <typename U> class Descriptor>
+@@ -383,7 +376,7 @@
+     for (plint iX = 0; iX < nx; ++iX) {
+         for (plint iY = 0; iY < ny; ++iY) {
+             for (plint iZ = 0; iZ < nz; ++iZ) {
+-                Dynamics<T, Descriptor> *dynamics = &grid[iX][iY][iZ].getDynamics();
++                Dynamics<T, Descriptor> *dynamics = &grid(iX,iY,iZ).getDynamics();
+                 if (dynamics != backgroundDynamics) {
+                     delete dynamics;
+                 }
+@@ -392,21 +385,17 @@
+     }
+     delete backgroundDynamics;
+     delete[] rawData;
+-    for (plint iX = 0; iX < nx; ++iX) {
+-        delete[] grid[iX];
+-    }
+-    delete[] grid;
+ }
+ 
+ template <typename T, template <typename U> class Descriptor>
+ void BlockLattice3D<T, Descriptor>::attributeDynamics(
+     plint iX, plint iY, plint iZ, Dynamics<T, Descriptor> *dynamics)
+ {
+-    Dynamics<T, Descriptor> *previousDynamics = &grid[iX][iY][iZ].getDynamics();
++    Dynamics<T, Descriptor> *previousDynamics = &grid(iX,iY,iZ).getDynamics();
+     if (previousDynamics != backgroundDynamics) {
+         delete previousDynamics;
+     }
+-    grid[iX][iY][iZ].attributeDynamics(dynamics);
++    grid(iX,iY,iZ).attributeDynamics(dynamics);
+ }
+ 
+ template <typename T, template <typename U> class Descriptor>
+@@ -461,8 +450,8 @@
+                         && nextY <= bound.y1 && nextZ >= bound.z0 && nextZ <= bound.z1)
+                     {
+                         std::swap(
+-                            grid[iX][iY][iZ][iPop + Descriptor<T>::q / 2],
+-                            grid[nextX][nextY][nextZ][iPop]);
++                            grid(iX,iY,iZ)[iPop + Descriptor<T>::q / 2],
++                            grid(nextX,nextY,nextZ)[iPop]);
+                     }
+                 }
+             }
+@@ -489,8 +478,8 @@
+                     plint nextY = iY + Descriptor<T>::c[iPop][1];
+                     plint nextZ = iZ + Descriptor<T>::c[iPop][2];
+                     std::swap(
+-                        grid[iX][iY][iZ][iPop + Descriptor<T>::q / 2],
+-                        grid[nextX][nextY][nextZ][iPop]);
++                        grid(iX,iY,iZ)[iPop + Descriptor<T>::q / 2],
++                        grid(nextX,nextY,nextZ)[iPop]);
+                 }
+             }
+         }
+@@ -533,7 +522,7 @@
+     for (plint iX = domain.x0; iX <= domain.x1; ++iX) {
+         for (plint iY = domain.y0; iY <= domain.y1; ++iY) {
+             for (plint iZ = domain.z0; iZ <= domain.z1; ++iZ) {
+-                grid[iX][iY][iZ].collide(this->getInternalStatistics());
++                grid(iX,iY,iZ).collide(this->getInternalStatistics());
+                 latticeTemplates<T, Descriptor>::swapAndStream3D(grid, iX, iY, iZ);
+             }
+         }
+@@ -578,7 +567,7 @@
+                         for (plint innerZ = std::max(minZ, domain.z0);
+                              innerZ <= std::min(maxZ, domain.z1); ++innerZ) {
+                             // Collide the cell.
+-                            grid[innerX][innerY][innerZ].collide(this->getInternalStatistics());
++                            grid(innerX,innerY,innerZ).collide(this->getInternalStatistics());
+                             // Swap the populations on the cell, and then with post-collision
+                             //   neighboring cell, to perform the streaming step.
+                             latticeTemplates<T, Descriptor>::swapAndStream3D(
+@@ -662,9 +651,9 @@
+                         plint nextY = (iY + ny) % ny;
+                         plint nextZ = (iZ + nz) % nz;
+                         std::swap(
+-                            grid[prevX][prevY][prevZ]
++                            grid(prevX,prevY,prevZ)
+                                 [indexTemplates::opposite<Descriptor<T> >(iPop)],
+-                            grid[nextX][nextY][nextZ][iPop]);
++                            grid(nextX,nextY,nextZ)[iPop]);
+                     }
+                 }
+             }
+@@ -672,6 +661,19 @@
+     }
+ }
+ 
++
++template<typename T, template<typename U> class Descriptor>
++ImplicitGrid3D<T,Descriptor>::ImplicitGrid3D(BlockLattice3D<T,Descriptor>& parent_) : parent(parent_) {}
++
++template<typename T, template<typename U> class Descriptor>
++const Cell<T,Descriptor> & ImplicitGrid3D<T,Descriptor>::operator () (int x,int y,int z) const {
++            return parent.rawData[z + parent.getNz()*(y+parent.getNy()*x)];
++}
++template<typename T, template<typename U> class Descriptor>
++Cell<T,Descriptor> &ImplicitGrid3D<T,Descriptor>::operator () (int x,int y,int z) {
++            return parent.rawData[z + parent.getNz()*(y+parent.getNy()*x)];
++}
++
+ ////////////////////// Class BlockLatticeDataTransfer3D /////////////////////////
+ 
+ template <typename T, template <typename U> class Descriptor>
+diff -ruN a/src/basicDynamics/dynamicsProcessor3D.hh b/src/basicDynamics/dynamicsProcessor3D.hh
+--- a/src/basicDynamics/dynamicsProcessor3D.hh	2022-06-13 13:12:01.000000000 +0200
++++ b/src/basicDynamics/dynamicsProcessor3D.hh	2026-08-01 14:33:38.494717206 +0200
+@@ -102,8 +102,8 @@
+                         && nextY <= bound.y1 && nextZ >= bound.z0 && nextZ <= bound.z1)
+                     {
+                         std::swap(
+-                            lattice.grid[iX][iY][iZ][iPop + Descriptor<T>::q / 2],
+-                            lattice.grid[nextX][nextY][nextZ][iPop]);
++                            lattice.grid(iX,iY,iZ)[iPop + Descriptor<T>::q / 2],
++                            lattice.grid(nextX,nextY,nextZ)[iPop]);
+                     }
+                 }
+             }
+@@ -298,8 +298,8 @@
+                         && nextY <= bound.y1 && nextZ >= bound.z0 && nextZ <= bound.z1)
+                     {
+                         std::swap(
+-                            lattice.grid[iX][iY][iZ][iPop + Descriptor<T>::q / 2],
+-                            lattice.grid[nextX][nextY][nextZ][iPop]);
++                            lattice.grid(iX,iY,iZ)[iPop + Descriptor<T>::q / 2],
++                            lattice.grid(nextX,nextY,nextZ)[iPop]);
+                     }
+                 }
+             }
+@@ -536,8 +536,8 @@
+                         && nextY <= bound.y1 && nextZ >= bound.z0 && nextZ <= bound.z1)
+                     {
+                         std::swap(
+-                            lattice.grid[iX][iY][iZ][iPop + Descriptor<T>::q / 2],
+-                            lattice.grid[nextX][nextY][nextZ][iPop]);
++                            lattice.grid(iX,iY,iZ)[iPop + Descriptor<T>::q / 2],
++                            lattice.grid(nextX,nextY,nextZ)[iPop]);
+                     }
+                 }
+             }
+@@ -694,7 +694,7 @@
+ }
+ 
+ template <typename T, template <typename U> class Descriptor>
+-void onLinkSwapAndStream3D(Cell<T, Descriptor> ***grid, plint iX, plint iY, plint iZ)
++void onLinkSwapAndStream3D(ImplicitGrid3D<T, Descriptor> & grid, plint iX, plint iY, plint iZ)
+ {
+     static int bbId = BounceBack<T, Descriptor>().getId();
+     const plint half = Descriptor<T>::q / 2;
+@@ -702,15 +702,15 @@
+         plint nextX = iX + Descriptor<T>::c[iPop][0];
+         plint nextY = iY + Descriptor<T>::c[iPop][1];
+         plint nextZ = iZ + Descriptor<T>::c[iPop][2];
+-        if (grid[iX][iY][iZ].getDynamics().getId() == bbId
+-            || grid[nextX][nextY][nextZ].getDynamics().getId() == bbId)
++        if (grid(iX,iY,iZ).getDynamics().getId() == bbId
++            || grid(nextX,nextY,nextZ).getDynamics().getId() == bbId)
+         {
+-            std::swap(grid[iX][iY][iZ][iPop], grid[iX][iY][iZ][iPop + half]);
++            std::swap(grid(iX,iY,iZ)[iPop], grid(iX,iY,iZ)[iPop + half]);
+         } else {
+-            T fTmp = grid[iX][iY][iZ][iPop];
+-            grid[iX][iY][iZ][iPop] = grid[iX][iY][iZ][iPop + half];
+-            grid[iX][iY][iZ][iPop + half] = grid[nextX][nextY][nextZ][iPop];
+-            grid[nextX][nextY][nextZ][iPop] = fTmp;
++            T fTmp = grid(iX,iY,iZ)[iPop];
++            grid(iX,iY,iZ)[iPop] = grid(iX,iY,iZ)[iPop + half];
++            grid(iX,iY,iZ)[iPop + half] = grid(nextX,nextY,nextZ)[iPop];
++            grid(nextX,nextY,nextZ)[iPop] = fTmp;
+         }
+     }
+ }
+@@ -752,12 +752,12 @@
+                     if (nextX >= bound.x0 && nextX <= bound.x1 && nextY >= bound.y0
+                         && nextY <= bound.y1 && nextZ >= bound.z0 && nextZ <= bound.z1)
+                     {
+-                        if (lattice.grid[iX][iY][iZ].getDynamics().getId() != bbId
+-                            && lattice.grid[nextX][nextY][nextZ].getDynamics().getId() != bbId)
++                        if (lattice.grid(iX,iY,iZ).getDynamics().getId() != bbId
++                            && lattice.grid(nextX,nextY,nextZ).getDynamics().getId() != bbId)
+                         {
+                             std::swap(
+-                                lattice.grid[iX][iY][iZ][iPop + Descriptor<T>::q / 2],
+-                                lattice.grid[nextX][nextY][nextZ][iPop]);
++                                lattice.grid(iX,iY,iZ)[iPop + Descriptor<T>::q / 2],
++                                lattice.grid(nextX,nextY,nextZ)[iPop]);
+                         }
+                     }
+                 }
+diff -ruN a/src/core/cell.h b/src/core/cell.h
+--- a/src/core/cell.h	2022-06-13 13:12:01.000000000 +0200
++++ b/src/core/cell.h	2026-08-01 14:33:38.494796015 +0200
+@@ -61,7 +61,7 @@
+         return data + index;
+     }
+ 
+-private:
++public:
+     T data[ExternalField::numScalars];
+ };
+ 
+@@ -188,7 +188,7 @@
+         takesStat = status;
+     }
+ 
+-private:
++public:
+     /// You can't use this method. Use BlockLattice::attributeDynamics instead.
+     /** This is one of the rare cases of a method accepting a pointer but
+      *  not managing memory itself. Memory of the dynamics is handled by
+@@ -416,10 +416,12 @@
+     void iniExternal();
+ 
+ private:
+-    Array<T, Descriptor<T>::numPop> f;  ///< distribution functions
+-    External external;                  ///< external scalars
+-    bool takesStat;                     ///< is statistics taken?
+-    Dynamics<T, Descriptor> *dynamics;  ///< local LB dynamics
++    Array<T, Descriptor<T>::numPop> f;   ///< distribution functions
++public:
++    External external;                   ///< external scalars
++private:
++    bool takesStat;                      ///< is statistics taken?
++    Dynamics<T, Descriptor> *dynamics;   ///< local LB dynamics
+ };
+ 
+ template <typename T, template <typename U> class Descriptor>
+diff -ruN a/src/core/dynamics.h b/src/core/dynamics.h
+--- a/src/core/dynamics.h	2022-06-13 13:12:01.000000000 +0200
++++ b/src/core/dynamics.h	2026-08-01 14:33:38.494898486 +0200
+@@ -38,6 +38,10 @@
+ #ifndef DYNAMICS_H
+ #define DYNAMICS_H
+ 
++namespace plb {
++template<typename T, template<typename U> class Descriptor> struct Dynamics;
++}
++
+ #include "core/array.h"
+ #include "core/blockStatistics.h"
+ #include "core/globalDefs.h"
+diff -ruN a/src/core/globalDefs.h b/src/core/globalDefs.h
+--- a/src/core/globalDefs.h	2022-06-13 13:12:01.000000000 +0200
++++ b/src/core/globalDefs.h	2026-08-01 14:33:38.494961248 +0200
+@@ -198,10 +198,12 @@
+     dynamicVariables = 2,  //< Only content of dynamics objects, but no static content.
+     allVariables = 3,      //< Both the static and dynamic cell content.
+     dataStructure = 4,     //< Recreate dynamics and copy both static and dynamic content.
+-    undefined = 5
++    undefined = 5,
++    hemocell         =6,
++    hemocell_no_comm =7, //< Update envelopes but dont automatically send
+ };
+ 
+-enum { numConstants = 5 };
++enum { numConstants = 6 };
+ 
+ /// If two data processors act on a block, combine their ModifT modification to
+ ///   determine a resulting (worst-case) ModifT modification.
+diff -ruN a/src/core/plbInit.cpp b/src/core/plbInit.cpp
+--- a/src/core/plbInit.cpp	2022-06-13 13:12:01.000000000 +0200
++++ b/src/core/plbInit.cpp	2026-08-01 14:33:38.495005257 +0200
+@@ -49,7 +49,7 @@
+ void plbInit(int *argc, char ***argv, bool verbous)
+ {
+     global::mpi().init(argc, argv, verbous);
+-    global::mainArguments().setArgs(*argc, argv);
++    //global::mainArguments().setArgs(*argc, argv);
+     global::plbRandom<float>().seed(10);
+     global::plbRandom<double>().seed(10);
+     global::plbRandom<plint>().seed(10);
+diff -ruN a/src/dataProcessors/dataAnalysisFunctional3D.hh b/src/dataProcessors/dataAnalysisFunctional3D.hh
+--- a/src/dataProcessors/dataAnalysisFunctional3D.hh	2022-06-13 13:12:01.000000000 +0200
++++ b/src/dataProcessors/dataAnalysisFunctional3D.hh	2026-08-01 14:33:38.495335333 +0200
+@@ -2067,7 +2067,7 @@
+             for (plint iZ = domain.z0; iZ <= domain.z1; ++iZ) {
+                 Cell<T, Descriptor> const &cell = lattice.get(iX, iY, iZ);
+                 Array<T, SymmetricTensor<T, Descriptor>::n> &element =
+-                    S.get(iX + offset.x, iY + offset.y, iZ + offset.z);
++                    S.get(iX,iY,iZ);
+                 cell.computePiNeq(element);
+                 T omega = cell.getDynamics().getOmega();
+                 if (cell.getDynamics().hasMoments()) {
+diff -ruN a/src/dataProcessors/dataInitializerFunctional2D.h b/src/dataProcessors/dataInitializerFunctional2D.h
+--- a/src/dataProcessors/dataInitializerFunctional2D.h	2022-06-13 13:12:01.000000000 +0200
++++ b/src/dataProcessors/dataInitializerFunctional2D.h	2026-08-01 14:48:13.856760326 +0200
+@@ -31,6 +31,8 @@
+  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+  */
+ 
++#include <cstdint>
++
+ /** \file
+  * Functionals for domain initialization -- header file.
+  */
+diff -ruN a/src/dataProcessors/dataInitializerFunctional3D.h b/src/dataProcessors/dataInitializerFunctional3D.h
+--- a/src/dataProcessors/dataInitializerFunctional3D.h	2022-06-13 13:12:01.000000000 +0200
++++ b/src/dataProcessors/dataInitializerFunctional3D.h	2026-08-01 14:45:15.156785224 +0200
+@@ -31,6 +31,8 @@
+  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+  */
+ 
++#include <cstdint>
++
+ /** \file
+  * Functionals for domain initialization -- header file.
+  */
+diff -ruN a/src/latticeBoltzmann/latticeTemplates.h b/src/latticeBoltzmann/latticeTemplates.h
+--- a/src/latticeBoltzmann/latticeTemplates.h	2022-06-13 13:12:01.000000000 +0200
++++ b/src/latticeBoltzmann/latticeTemplates.h	2026-08-01 14:33:38.495690953 +0200
+@@ -64,17 +64,17 @@
+     }
+ 
+     /// Swap ("bounce-back") values of a cell (3D), and apply streaming step
+-    static void swapAndStream3D(Cell<T, Descriptor> ***grid, plint iX, plint iY, plint iZ)
++    static void swapAndStream3D(ImplicitGrid3D<T, Descriptor> & grid, plint iX, plint iY, plint iZ)
+     {
+         const plint half = Descriptor<T>::q / 2;
+         for (plint iPop = 1; iPop <= half; ++iPop) {
+             plint nextX = iX + Descriptor<T>::c[iPop][0];
+             plint nextY = iY + Descriptor<T>::c[iPop][1];
+             plint nextZ = iZ + Descriptor<T>::c[iPop][2];
+-            T fTmp = grid[iX][iY][iZ][iPop];
+-            grid[iX][iY][iZ][iPop] = grid[iX][iY][iZ][iPop + half];
+-            grid[iX][iY][iZ][iPop + half] = grid[nextX][nextY][nextZ][iPop];
+-            grid[nextX][nextY][nextZ][iPop] = fTmp;
++            T fTmp = grid(iX,iY,iZ)[iPop];
++            grid(iX,iY,iZ)[iPop] = grid(iX,iY,iZ)[iPop + half];
++            grid(iX,iY,iZ)[iPop + half] = grid(nextX,nextY,nextZ)[iPop];
++            grid(nextX,nextY,nextZ)[iPop] = fTmp;
+         }
+     }
+ };
+diff -ruN a/src/latticeBoltzmann/latticeTemplates3D.h b/src/latticeBoltzmann/latticeTemplates3D.h
+--- a/src/latticeBoltzmann/latticeTemplates3D.h	2022-06-13 13:12:01.000000000 +0200
++++ b/src/latticeBoltzmann/latticeTemplates3D.h	2026-08-01 14:33:38.495654627 +0200
+@@ -40,23 +40,27 @@
+ 
+ #include "core/globalDefs.h"
+ #include "latticeBoltzmann/nearestNeighborLattices3D.h"
++#include "nearestNeighborLattices3D.h"
++#include "atomicBlock/blockLattice3D.h"
++#include "nearestNeighborLattices3D.h"
++#include "atomicBlock/blockLattice3D.h"
+ 
+ namespace plb {
+ 
+ template <typename T>
+ struct latticeTemplates<T, descriptors::D3Q19Descriptor> {
+     static void swapAndStreamCell(
+-        Cell<T, descriptors::D3Q19Descriptor> ***grid, plint iX, plint iY, plint iZ, plint nX,
++        ImplicitGrid3D<T, descriptors::D3Q19Descriptor> & grid, plint iX, plint iY, plint iZ, plint nX,
+         plint nY, plint nZ, plint iPop, T &fTmp)
+     {
+-        fTmp = grid[iX][iY][iZ][iPop];
+-        grid[iX][iY][iZ][iPop] = grid[iX][iY][iZ][iPop + 9];
+-        grid[iX][iY][iZ][iPop + 9] = grid[nX][nY][nZ][iPop];
+-        grid[nX][nY][nZ][iPop] = fTmp;
++        fTmp = grid(iX,iY,iZ)[iPop];
++        grid(iX,iY,iZ)[iPop] = grid(iX,iY,iZ)[iPop + 9];
++        grid(iX,iY,iZ)[iPop + 9] = grid(nX,nY,nZ)[iPop];
++        grid(nX,nY,nZ)[iPop] = fTmp;
+     }
+ 
+     static void swapAndStream3D(
+-        Cell<T, descriptors::D3Q19Descriptor> ***grid, plint iX, plint iY, plint iZ)
++        ImplicitGrid3D<T, descriptors::D3Q19Descriptor> & grid, plint iX, plint iY, plint iZ)
+     {
+         T fTmp;
+         swapAndStreamCell(grid, iX, iY, iZ, iX - 1, iY, iZ, 1, fTmp);
+@@ -74,17 +78,17 @@
+ template <typename T>
+ struct latticeTemplates<T, descriptors::ForcedD3Q19Descriptor> {
+     static void swapAndStreamCell(
+-        Cell<T, descriptors::ForcedD3Q19Descriptor> ***grid, plint iX, plint iY, plint iZ, plint nX,
++        ImplicitGrid3D<T, descriptors::ForcedD3Q19Descriptor> & grid, plint iX, plint iY, plint iZ, plint nX,
+         plint nY, plint nZ, plint iPop, T &fTmp)
+     {
+-        fTmp = grid[iX][iY][iZ][iPop];
+-        grid[iX][iY][iZ][iPop] = grid[iX][iY][iZ][iPop + 9];
+-        grid[iX][iY][iZ][iPop + 9] = grid[nX][nY][nZ][iPop];
+-        grid[nX][nY][nZ][iPop] = fTmp;
++        fTmp = grid(iX,iY,iZ)[iPop];
++        grid(iX,iY,iZ)[iPop] = grid(iX,iY,iZ)[iPop + 9];
++        grid(iX,iY,iZ)[iPop + 9] = grid(nX,nY,nZ)[iPop];
++        grid(nX,nY,nZ)[iPop] = fTmp;
+     }
+ 
+     static void swapAndStream3D(
+-        Cell<T, descriptors::ForcedD3Q19Descriptor> ***grid, plint iX, plint iY, plint iZ)
++        ImplicitGrid3D<T, descriptors::ForcedD3Q19Descriptor> & grid, plint iX, plint iY, plint iZ)
+     {
+         T fTmp;
+         swapAndStreamCell(grid, iX, iY, iZ, iX - 1, iY, iZ, 1, fTmp);
+@@ -102,17 +106,17 @@
+ template <typename T>
+ struct latticeTemplates<T, descriptors::D3Q15Descriptor> {
+     static void swapAndStreamCell(
+-        Cell<T, descriptors::D3Q15Descriptor> ***grid, plint iX, plint iY, plint iZ, plint nX,
++        ImplicitGrid3D<T, descriptors::D3Q15Descriptor> & grid, plint iX, plint iY, plint iZ, plint nX,
+         plint nY, plint nZ, plint iPop, T &fTmp)
+     {
+-        fTmp = grid[iX][iY][iZ][iPop];
+-        grid[iX][iY][iZ][iPop] = grid[iX][iY][iZ][iPop + 7];
+-        grid[iX][iY][iZ][iPop + 7] = grid[nX][nY][nZ][iPop];
+-        grid[nX][nY][nZ][iPop] = fTmp;
++        fTmp = grid(iX,iY,iZ)[iPop];
++        grid(iX,iY,iZ)[iPop] = grid(iX,iY,iZ)[iPop + 7];
++        grid(iX,iY,iZ)[iPop + 7] = grid(nX,nY,nZ)[iPop];
++        grid(nX,nY,nZ)[iPop] = fTmp;
+     }
+ 
+     static void swapAndStream3D(
+-        Cell<T, descriptors::D3Q15Descriptor> ***grid, plint iX, plint iY, plint iZ)
++        ImplicitGrid3D<T, descriptors::D3Q15Descriptor> & grid, plint iX, plint iY, plint iZ)
+     {
+         T fTmp;
+         swapAndStreamCell(grid, iX, iY, iZ, iX - 1, iY, iZ, 1, fTmp);
+@@ -129,17 +133,17 @@
+ template <typename T>
+ struct latticeTemplates<T, descriptors::ForcedD3Q15Descriptor> {
+     static void swapAndStreamCell(
+-        Cell<T, descriptors::ForcedD3Q15Descriptor> ***grid, plint iX, plint iY, plint iZ, plint nX,
++        ImplicitGrid3D<T, descriptors::ForcedD3Q15Descriptor> & grid, plint iX, plint iY, plint iZ, plint nX,
+         plint nY, plint nZ, plint iPop, T &fTmp)
+     {
+-        fTmp = grid[iX][iY][iZ][iPop];
+-        grid[iX][iY][iZ][iPop] = grid[iX][iY][iZ][iPop + 7];
+-        grid[iX][iY][iZ][iPop + 7] = grid[nX][nY][nZ][iPop];
+-        grid[nX][nY][nZ][iPop] = fTmp;
++        fTmp = grid(iX,iY,iZ)[iPop];
++        grid(iX,iY,iZ)[iPop] = grid(iX,iY,iZ)[iPop + 7];
++        grid(iX,iY,iZ)[iPop + 7] = grid(nX,nY,nZ)[iPop];
++        grid(nX,nY,nZ)[iPop] = fTmp;
+     }
+ 
+     static void swapAndStream3D(
+-        Cell<T, descriptors::ForcedD3Q15Descriptor> ***grid, plint iX, plint iY, plint iZ)
++        ImplicitGrid3D<T, descriptors::ForcedD3Q15Descriptor> & grid, plint iX, plint iY, plint iZ)
+     {
+         T fTmp;
+         swapAndStreamCell(grid, iX, iY, iZ, iX - 1, iY, iZ, 1, fTmp);
+diff -ruN a/src/multiBlock/localMultiBlockInfo3D.cpp b/src/multiBlock/localMultiBlockInfo3D.cpp
+--- a/src/multiBlock/localMultiBlockInfo3D.cpp	2022-06-13 13:12:01.000000000 +0200
++++ b/src/multiBlock/localMultiBlockInfo3D.cpp	2026-08-01 14:33:38.495721445 +0200
+@@ -137,7 +137,8 @@
+         sparseBlock.getBulk(blockId, bulk);
+         // Speed optimization: execute the test for periodicity
+         //   only for bulk-domains which touch the bounding box.
+-        if (!contained(bulk.enlarge(1), sparseBlock.getBoundingBox())) {
++        //BUGFIXED to envelopewidth by HEMOCELL TEAM (victor)
++        if (!contained(bulk.enlarge(envelopeWidth), sparseBlock.getBoundingBox())) {
+             computePeriodicOverlaps(sparseBlock, blockId);
+         }
+     }
+diff -ruN a/src/multiBlock/localMultiBlockInfo3D.h b/src/multiBlock/localMultiBlockInfo3D.h
+--- a/src/multiBlock/localMultiBlockInfo3D.h	2022-06-13 13:12:01.000000000 +0200
++++ b/src/multiBlock/localMultiBlockInfo3D.h	2026-08-01 14:33:38.495751963 +0200
+@@ -161,6 +161,7 @@
+     /// Determine all blocks which are associated to the current MPI thread.
+     void computeMyBlocks(
+         SparseBlockStructure3D const &sparseBlock, ThreadAttribution const &attribution);
++public:
+     /// Compute normal overlaps for all local blocks.
+     void computeAllNormalOverlaps(SparseBlockStructure3D const &sparseBlock);
+     /// Compute normal overlaps for one local block.
+@@ -170,9 +171,11 @@
+     /// Compute periodic overlaps for one local block.
+     void computePeriodicOverlaps(SparseBlockStructure3D const &sparseBlock, plint blockId);
+ 
+-private:
++public:
+     plint envelopeWidth;
++private:
+     std::vector<plint> myBlocks;
++public:
+     std::vector<Overlap3D> normalOverlaps;
+     std::vector<PeriodicOverlap3D> periodicOverlaps;
+     std::vector<PeriodicOverlap3D> periodicOverlapWithRemoteData;
+diff -ruN a/src/multiBlock/multiBlock3D.cpp b/src/multiBlock/multiBlock3D.cpp
+--- a/src/multiBlock/multiBlock3D.cpp	2022-06-13 13:12:01.000000000 +0200
++++ b/src/multiBlock/multiBlock3D.cpp	2026-08-01 14:43:21.152786119 +0200
+@@ -255,7 +255,7 @@
+     internalStatistics(),
+     combinedStatistics(combinedStatistics_),
+     statSubscriber(*this),
+-    statisticsOn(true),
++    statisticsOn(false),
+     periodicitySwitch(*this),
+     internalModifT(modif::staticVariables)
+ {
+@@ -270,7 +270,7 @@
+     internalStatistics(),
+     combinedStatistics(defaultMultiBlockPolicy3D().getCombinedStatistics()),
+     statSubscriber(*this),
+-    statisticsOn(true),
++    statisticsOn(false),
+     periodicitySwitch(*this),
+     internalModifT(modif::staticVariables)
+ {
+@@ -302,7 +302,7 @@
+     internalStatistics(),
+     combinedStatistics(rhs.combinedStatistics->clone()),
+     statSubscriber(*this),
+-    statisticsOn(true),
++    statisticsOn(false),
+     periodicitySwitch(*this),
+     internalModifT(rhs.internalModifT)
+ {
+@@ -366,6 +366,9 @@
+     return multiBlockManagement;
+ }
+ 
++MultiBlockManagement3D & MultiBlock3D::getMultiBlockManagement() {
++    return multiBlockManagement;
++}
+ void MultiBlock3D::setCoProcessors(std::map<plint, int> const &coProcessors)
+ {
+     multiBlockManagement.setCoProcessors(coProcessors);
+diff -ruN a/src/multiBlock/multiBlock3D.h b/src/multiBlock/multiBlock3D.h
+--- a/src/multiBlock/multiBlock3D.h	2022-06-13 13:12:01.000000000 +0200
++++ b/src/multiBlock/multiBlock3D.h	2026-08-01 14:43:21.156786119 +0200
+@@ -171,6 +171,7 @@
+ 
+ public:
+     MultiBlockManagement3D const &getMultiBlockManagement() const;
++    MultiBlockManagement3D & getMultiBlockManagement();
+     void setCoProcessors(std::map<plint, int> const &coProcessors);
+     LocalMultiBlockInfo3D const &getLocalInfo() const;
+     SparseBlockStructure3D const &getSparseBlockStructure() const;
+diff -ruN a/src/multiBlock/multiBlockManagement3D.cpp b/src/multiBlock/multiBlockManagement3D.cpp
+--- a/src/multiBlock/multiBlockManagement3D.cpp	2022-06-13 13:12:01.000000000 +0200
++++ b/src/multiBlock/multiBlockManagement3D.cpp	2026-08-01 14:33:38.495910211 +0200
+@@ -215,8 +215,17 @@
+ 
+ void MultiBlockManagement3D::changeEnvelopeWidth(plint newEnvelopeWidth)
+ {
+-    envelopeWidth = newEnvelopeWidth;
+-    localInfo = LocalMultiBlockInfo3D(sparseBlock, getThreadAttribution(), envelopeWidth);
++    localInfo.envelopeWidth = newEnvelopeWidth;
++
++    localInfo.normalOverlaps.clear();
++    localInfo.periodicOverlapWithRemoteData.clear();
++    localInfo.periodicOverlaps.clear();
++
++    localInfo.computeAllNormalOverlaps(sparseBlock);
++    localInfo.computeAllPeriodicOverlaps(sparseBlock);
++
++    std::sort(localInfo.normalOverlaps.begin(), localInfo.normalOverlaps.end());
++    std::sort(localInfo.periodicOverlaps.begin(), localInfo.periodicOverlaps.end());
+ }
+ 
+ bool MultiBlockManagement3D::equivalentTo(MultiBlockManagement3D const &rhs) const
+diff -ruN a/src/multiBlock/multiDataField3D.hh b/src/multiBlock/multiDataField3D.hh
+--- a/src/multiBlock/multiDataField3D.hh	2022-06-13 13:12:01.000000000 +0200
++++ b/src/multiBlock/multiDataField3D.hh	2026-08-01 14:33:38.495965395 +0200
+@@ -831,9 +831,11 @@
+ template <typename T>
+ void MultiNTensorField3D<T>::allocateFields()
+ {
+-    std::vector<T> iniVal(this->getNdim());
+-    std::fill(iniVal.begin(), iniVal.end(), T());
+-    allocateFields(&iniVal[0]);
++    //std::vector<T> iniVal(this->getNdim());
++    //std::fill(iniVal.begin(), iniVal.end(), T());
++  const T * iniVal = new T[this->getNdim()];
++    allocateFields(iniVal);
++    delete[] iniVal;
+ }
+ 
+ template <typename T>
+diff -ruN a/src/multiBlock/sparseBlockStructure3D.cpp b/src/multiBlock/sparseBlockStructure3D.cpp
+--- a/src/multiBlock/sparseBlockStructure3D.cpp	2022-06-13 13:12:01.000000000 +0200
++++ b/src/multiBlock/sparseBlockStructure3D.cpp	2026-08-01 14:43:21.156786119 +0200
+@@ -88,6 +88,21 @@
+         gridNz = 1;
+ }
+ 
++SparseBlockStructure3D * SparseBlockStructure3D::clone() const{
++  SparseBlockStructure3D * newBlock = new SparseBlockStructure3D(1,1,1);
++  newBlock->boundingBox = boundingBox;
++  newBlock->bulks = bulks;
++  newBlock->uniqueBulks = uniqueBulks;
++  newBlock->grid = grid;
++  newBlock->gridLx = gridLx;
++  newBlock->gridLy = gridLy;
++  newBlock->gridLz = gridLz;
++  newBlock->gridNx = gridNx;
++  newBlock->gridNy = gridNy;
++  newBlock->gridNz = gridNz;
++  return newBlock;
++}
++
+ void SparseBlockStructure3D::addBlock(Box3D const &bulk, plint blockId)
+ {
+     addBlock(bulk, bulk, blockId);
+@@ -118,7 +133,7 @@
+     }
+ }
+ 
+-bool SparseBlockStructure3D::exists(plint blockId)
++bool SparseBlockStructure3D::exists(plint blockId) const
+ {
+     return bulks.find(blockId) != bulks.end();
+ }
+@@ -780,7 +795,6 @@
+     }
+     return newSparseBlock;
+ }
+-
+ EuclideanIterator3D::EuclideanIterator3D(SparseBlockStructure3D const &sparseBlock_) :
+     sparseBlock(sparseBlock_)
+ { }
+diff -ruN a/src/multiBlock/sparseBlockStructure3D.h b/src/multiBlock/sparseBlockStructure3D.h
+--- a/src/multiBlock/sparseBlockStructure3D.h	2022-06-13 13:12:01.000000000 +0200
++++ b/src/multiBlock/sparseBlockStructure3D.h	2026-08-01 14:43:21.156786119 +0200
+@@ -60,6 +60,8 @@
+     SparseBlockStructure3D(Box3D boundingBox_, plint gridNx_, plint gridNy_, plint gridNz_);
+     /// Restrict an existing SparseBlockStructure3D to a sub-domain.
+     SparseBlockStructure3D(SparseBlockStructure3D const &rhs, Box3D boundingBox_);
++    ///Clone the goddamned thing
++    SparseBlockStructure3D * clone() const;
+     /// Add a new block to the sparse block-structure.
+     void addBlock(Box3D const &bulk, Box3D const &uniqueBulk, plint blockId);
+     /// Add a new block to the sparse block-structure; uniqueBulk = bulk.
+@@ -67,7 +69,7 @@
+     /// Remove an existing block from the sparse block-structure.
+     void removeBlock(plint blockId);
+     /// Check if a block with the given ID already exists in the block-structure.
+-    bool exists(plint blockId);
++    bool exists(plint blockId) const;
+     /// Return 1 + the maximum block ID currently found in the structure.
+     plint nextIncrementalId() const;
+     /// Return outer bounding box.
+diff -ruN a/src/multiGrid/multiGridParameterManager.hh b/src/multiGrid/multiGridParameterManager.hh
+--- a/src/multiGrid/multiGridParameterManager.hh	2022-06-13 13:12:01.000000000 +0200
++++ b/src/multiGrid/multiGridParameterManager.hh	2026-08-01 14:43:53.840785092 +0200
+@@ -49,7 +49,7 @@
+ RefinementParameters<T>::RefinementParameters(RefinementParameters<T> const &rhs) :
+     levelNumber(rhs.levelNumber),
+     referenceLevel(rhs.referenceLevel),
+-    originalParameters(rhs.parameters_)
++    originalParameters(rhs.originalParameters)
+ { }
+ 
+ template <typename T>
+diff -ruN a/src/parallelism/parallelBlockCommunicator3D.cpp b/src/parallelism/parallelBlockCommunicator3D.cpp
+--- a/src/parallelism/parallelBlockCommunicator3D.cpp	2022-06-13 13:12:01.000000000 +0200
++++ b/src/parallelism/parallelBlockCommunicator3D.cpp	2026-08-01 14:52:37.240729523 +0200
+@@ -35,6 +35,10 @@
+  * Helper classes for parallel 3D multiblock lattice -- generic implementation.
+  */
+ 
++//For efficient c-style communication:
++#include "../../../core/hemoCellParticleDataTransfer.h"
++//For efficient c-style communication:
++#include "../../../core/hemoCellParticleDataTransfer.h"
+ #include "parallelism/parallelBlockCommunicator3D.h"
+ 
+ #include <algorithm>
+@@ -49,6 +53,8 @@
+ // DISABLE_WARNING_CAST_FUNCTION_TYPE
+ #include <mpi.h>
+ // DISABLE_WARNING_POP
++#include <numeric>
++#include <numeric>
+ #endif
+ 
+ namespace plb {
+@@ -111,7 +117,11 @@
+ 
+     sendComm = SendPoolCommunicator(sendPool);
+     recvComm = RecvPoolCommunicator(recvPool);
+-}
++  }
++
++  CommunicationStructure3D::CommunicationStructure3D(const CommunicationStructure3D& rhs) {
++   *this = rhs;
++  }
+ 
+ CommunicationPattern3D::CommunicationPattern3D(
+     std::vector<Overlap3D> const &overlaps, MultiBlockManagement3D const &originManagement,
+@@ -224,6 +234,30 @@
+     communicate(*communication, multiBlock, multiBlock, whichData);
+ }
+ 
++void ParallelBlockCommunicator3D::duplicateOverlaps( MultiBlockManagement3D& multiBlockManagement,
++                                                     PeriodicitySwitch3D const& periodicity  ) const
++{
++
++    // Implement a caching mechanism for the communication structure.
++    if (overlapsModified) {
++        overlapsModified = false;
++        LocalMultiBlockInfo3D const& localInfo = multiBlockManagement.getLocalInfo();
++        std::vector<Overlap3D> overlaps(multiBlockManagement.getLocalInfo().getNormalOverlaps());
++        for (pluint iOverlap=0; iOverlap<localInfo.getPeriodicOverlaps().size(); ++iOverlap) {
++            PeriodicOverlap3D const& pOverlap = localInfo.getPeriodicOverlaps()[iOverlap];
++            if (periodicity.get(pOverlap.normalX,pOverlap.normalY,pOverlap.normalZ)) {
++                overlaps.push_back(pOverlap.overlap);
++            }
++        }
++        delete communication;
++        communication = new CommunicationStructure3D (
++                                overlaps,
++                                multiBlockManagement, multiBlockManagement,
++                              0 );
++    }
++
++}
++
+ void ParallelBlockCommunicator3D::communicate(
+     std::vector<Overlap3D> const &overlaps, MultiBlock3D const &originMultiBlock,
+     MultiBlock3D &destinationMultiBlock, modif::ModifT whichData) const
+@@ -241,6 +275,7 @@
+     MultiBlock3D &destinationMultiBlock, modif::ModifT whichData) const
+ {
+     global::profiler().start("mpiCommunication");
++    if (whichData == modif::hemocell_no_comm) { return; }
+     bool staticMessage = whichData == modif::staticVariables;
+     // 1. Non-blocking receives.
+     communication.recvComm.startBeingReceptive(staticMessage);
+@@ -266,6 +301,51 @@
+             info.toDomain, deltaX, deltaY, deltaZ, fromBlock, whichData, info.absoluteOffset);
+     }
+ 
++    if (whichData == modif::hemocell) {
++        std::map<CommunicatorEntry *, std::vector<CommunicationInfo3D *> > infos;
++        std::vector<dynamicReceive_t> receives;
++        for (CommunicationInfo3D const &info : communication.recvPackage) {
++            communication.recvComm.startReceiving(info.fromProcessId, receives, info, infos);
++        }
++        std::vector<MPI_Request> reqs;
++        for (dynamicReceive_t &recv : receives) {
++            reqs.emplace_back(recv.req);
++        }
++        while (!reqs.empty()) {
++            int index;
++            MPI_Waitany(reqs.size(), &reqs[0], &index, MPI_STATUS_IGNORE);
++            if (index == MPI_UNDEFINED) {
++                break;
++            }
++            reqs[index] = MPI_REQUEST_NULL;
++            if (!receives[index].pre_req_received) {
++                receives[index].pre_req_received = true;
++                CommunicatorEntry &entry = *receives[index].entry;
++                std::vector<int> &messageSizes = receives[index].messageSizes;
++                for (pluint iMessage = 0; iMessage < entry.messages.size(); ++iMessage) {
++                    entry.messages[iMessage].resize(messageSizes[iMessage]);
++                }
++                entry.totalSize = std::accumulate(messageSizes.begin(), messageSizes.end(), 0);
++                entry.data.resize(entry.totalSize);
++                if (!entry.data.empty()) {
++                    global::mpi().iRecv(&entry.data[0], entry.totalSize,
++                                        receives[index].fromProc, &reqs[index]);
++                }
++            } else {
++                CommunicatorEntry &entry = *receives[index].entry;
++                int pos = 0;
++                for (pluint iMessage = 0; iMessage < entry.messages.size(); ++iMessage) {
++                    int length = entry.messages[iMessage].size();
++                    CommunicationInfo3D const &info = *infos[&entry][iMessage];
++                    AtomicBlock3D &toBlock = destinationMultiBlock.getComponent(info.toBlockId);
++                    dynamic_cast<hemo::HemoCellParticleDataTransfer &>(toBlock.getDataTransfer()).receive(
++                        info.toDomain, &entry.data[pos], sizeof(char) * length,
++                        modif::hemocell, info.absoluteOffset);
++                    pos += length;
++                }
++            }
++        }
++    } else {
+     // 4. Finalize the receives.
+     for (unsigned iRecv = 0; iRecv < communication.recvPackage.size(); ++iRecv) {
+         CommunicationInfo3D const &info = communication.recvPackage[iRecv];
+@@ -274,6 +354,7 @@
+             info.toDomain, communication.recvComm.receiveMessage(info.fromProcessId, staticMessage),
+             whichData, info.absoluteOffset);
+     }
++    }
+ 
+     // 5. Finalize the sends.
+     communication.sendComm.finalize(staticMessage);
+diff -ruN a/src/parallelism/parallelBlockCommunicator3D.h b/src/parallelism/parallelBlockCommunicator3D.h
+--- a/src/parallelism/parallelBlockCommunicator3D.h	2022-06-13 13:12:01.000000000 +0200
++++ b/src/parallelism/parallelBlockCommunicator3D.h	2026-08-01 14:43:53.840785092 +0200
+@@ -64,6 +64,7 @@
+     CommunicationStructure3D(
+         std::vector<Overlap3D> const &overlaps, MultiBlockManagement3D const &originManagement,
+         MultiBlockManagement3D const &destinationManagement, plint sizeOfCell);
++    CommunicationStructure3D ( const CommunicationStructure3D & rhs);
+     CommunicationPackage3D sendPackage;
+     CommunicationPackage3D recvPackage;
+     CommunicationPackage3D sendRecvPackage;
+@@ -80,12 +81,12 @@
+     void swap(ParallelBlockCommunicator3D &rhs);
+     virtual ParallelBlockCommunicator3D *clone() const;
+     virtual void duplicateOverlaps(MultiBlock3D &multiBlock, modif::ModifT whichData) const;
++    virtual void duplicateOverlaps(MultiBlockManagement3D&,PeriodicitySwitch3D const& ) const;
+     virtual void communicate(
+         std::vector<Overlap3D> const &overlaps, MultiBlock3D const &originMultiBlock,
+         MultiBlock3D &destinationMultiBlock, modif::ModifT whichData) const;
+     virtual void signalPeriodicity() const;
+ 
+-private:
+     void communicate(
+         CommunicationStructure3D &communication, MultiBlock3D const &originMultiBlock,
+         MultiBlock3D &destinationMultiBlock, modif::ModifT whichData) const;
+@@ -93,8 +94,9 @@
+         Overlap3D const &overlap, MultiBlockManagement3D const &multiBlockManagement,
+         SendRecvPool &sendPool, SendRecvPool &recvPool, plint sizeOfCell) const;
+ 
+-private:
++public:
+     mutable bool overlapsModified;
++public:
+     mutable CommunicationStructure3D *communication;
+ };
+ 
+diff -ruN a/src/parallelism/sendRecvPool.cpp b/src/parallelism/sendRecvPool.cpp
+--- a/src/parallelism/sendRecvPool.cpp	2022-06-13 13:12:01.000000000 +0200
++++ b/src/parallelism/sendRecvPool.cpp	2026-08-01 14:57:00.848695756 +0200
+@@ -123,9 +123,9 @@
+             !staticMessage || ((int)entry.messages[iMessage].size() == entry.lengths[iMessage]));
+         PLB_ASSERT(pos + entry.messages[iMessage].size() <= entry.data.size());
+         if (!entry.messages[iMessage].empty() && !entry.data.empty()) {
+-            std::copy(
+-                entry.messages[iMessage].begin(), entry.messages[iMessage].end(),
+-                entry.data.begin() + pos);
++          std::memcpy(&entry.data[pos],&entry.messages[iMessage][0],sizeof(char)*entry.messages[iMessage].size());
++            //std::copy(entry.messages[iMessage].begin(),
++            //          entry.messages[iMessage].end(), entry.data.begin()+pos);
+         }
+         pos += entry.messages[iMessage].size();
+     }
+@@ -167,6 +167,24 @@
+     }
+ }
+ 
++void RecvPoolCommunicator::startReceiving(int fromProc, std::vector<dynamicReceive_t> & ret,CommunicationInfo3D const & info,std::map<CommunicatorEntry*,std::vector<CommunicationInfo3D*>>& infos) {
++  std::map<int,CommunicatorEntry>::iterator entryPtr = subscriptions.find(fromProc);
++  CommunicatorEntry& entry = entryPtr->second;
++  infos[&entry].emplace_back(const_cast<CommunicationInfo3D*>(&info));
++  if (entry.currentMessage==0) {
++    ret.emplace_back(const_cast<CommunicationInfo3D*>(&info));
++    ret.back().entry = &entry;
++    ret.back().fromProc = fromProc;
++    pluint numMessages = entry.messages.size();
++    ret.back().messageSizes.resize(numMessages);
++    global::mpi().iRecv(&ret.back().messageSizes[0], numMessages, fromProc,&ret.back().req);
++  }
++  entry.currentMessage++;
++  if (entry.currentMessage==(int)entry.lengths.size()) {
++    entry.reset();
++  }
++}
++
+ std::vector<char> const &RecvPoolCommunicator::receiveMessage(int fromProc, bool staticMessage)
+ {
+     std::map<int, CommunicatorEntry>::iterator entryPtr = subscriptions.find(fromProc);
+diff -ruN a/src/parallelism/sendRecvPool.h b/src/parallelism/sendRecvPool.h
+--- a/src/parallelism/sendRecvPool.h	2022-06-13 13:12:01.000000000 +0200
++++ b/src/parallelism/sendRecvPool.h	2026-08-01 14:33:38.496365858 +0200
+@@ -45,6 +45,8 @@
+ #include "core/globalDefs.h"
+ #include "core/util.h"
+ #include "parallelism/mpiManager.h"
++#include "communicationPackage3D.h"
++#include "communicationPackage3D.h"
+ 
+ namespace plb {
+ 
+@@ -137,6 +139,17 @@
+     int currentMessage;
+     MPI_Request sizeRequest, messageRequest;
+     MPI_Status sizeStatus, messageStatus;
++    int totalSize;
++};
++
++struct dynamicReceive_t {
++  MPI_Request req;
++  bool pre_req_received = false;
++  CommunicatorEntry * entry;
++  CommunicationInfo3D * info;
++  std::vector<int> messageSizes;
++  int fromProc;
++  dynamicReceive_t(CommunicationInfo3D * info_) : info(info_) {}
+ };
+ 
+ /// The "in-action" device for all messages sent from a processor.
+@@ -151,7 +164,7 @@
+ private:
+     void startCommunication(int toProc, bool staticMessage);
+ 
+-private:
++public:
+     std::map<int, CommunicatorEntry> subscriptions;
+ };
+ 
+@@ -162,13 +175,15 @@
+     RecvPoolCommunicator(SendRecvPool const &pool);
+     /// Initiate non-blocking communication.
+     void startBeingReceptive(bool staticMessage);
++    /// Initiate non-blocking for dynamic data since this is perfectly easy (Hack it into palabos)
++    void startReceiving(int fromProc,std::vector<dynamicReceive_t> &, CommunicationInfo3D const&,std::map<CommunicatorEntry*,std::vector<CommunicationInfo3D*>>&);
+     std::vector<char> const &receiveMessage(int fromProc, bool staticMessage);
+ 
+ private:
+     void finalizeStatic(int fromProc);
+     void receiveDynamic(int fromProc);
+ 
+-private:
++public:
+     std::map<int, CommunicatorEntry> subscriptions;
+ };
+ 
+diff -ruN a/src/particles/particleField3D.h b/src/particles/particleField3D.h
+--- a/src/particles/particleField3D.h	2022-06-13 13:12:01.000000000 +0200
++++ b/src/particles/particleField3D.h	2026-08-01 14:43:53.840785092 +0200
+@@ -87,6 +87,7 @@
+ public:
+     /// Helper function: returns if a given particle is situated in the indicated (local) domain.
+     bool isContained(Array<T, 3> const &particlePos, Box3D box) const;
++    bool isContained(T iX, T iY, T iZ, Box3D box) const;
+     void computeGridPosition(Array<T, 3> const &position, plint &iX, plint &iY, plint &iZ) const;
+ 
+ private:
+diff -ruN a/src/particles/particleField3D.hh b/src/particles/particleField3D.hh
+--- a/src/particles/particleField3D.hh	2022-06-13 13:12:01.000000000 +0200
++++ b/src/particles/particleField3D.hh	2026-08-01 14:43:53.840785092 +0200
+@@ -61,6 +61,21 @@
+            && (y <= (T)box.y1 + (T)0.5) && (z > (T)box.z0 - (T)0.5) && (z <= (T)box.z1 + (T)0.5);
+ }
+ 
++template<typename T, template<typename U> class Descriptor>
++bool ParticleField3D<T,Descriptor>::isContained (
++        T iX, T iY, T iZ, Box3D box ) const
++{
++    Dot3D const& location = this->getLocation();
++    T x = iX-location.x;
++    T y = iY-location.y;
++    T z = iZ-location.z;
++
++    return (x > (T)box.x0-(T)0.5) && (x <= (T)box.x1+(T)0.5) &&
++           (y > (T)box.y0-(T)0.5) && (y <= (T)box.y1+(T)0.5) &&
++           (z > (T)box.z0-(T)0.5) && (z <= (T)box.z1+(T)0.5);
++}
++
++
+ template <typename T, template <typename U> class Descriptor>
+ plint ParticleField3D<T, Descriptor>::nearestCell(T pos)
+ {
+@@ -744,8 +759,9 @@
+     Box3D domain, Particle3D<T, Descriptor> *particle)
+ {
+     Box3D finalDomain;
++    Array<T,3> pos = particle->getPosition();
+     if (intersect(domain, this->getBoundingBox(), finalDomain)
+-        && this->isContained(particle->getPosition(), finalDomain))
++        && this->isContained(pos[0],pos[1],pos[2], finalDomain))
+     {
+         particles.push_back(particle);
+     } else {
+@@ -760,7 +776,8 @@
+     Box3D finalDomain;
+     if (intersect(domain, this->getBoundingBox(), finalDomain)) {
+         for (pluint i = 0; i < particles.size(); ++i) {
+-            if (this->isContained(particles[i]->getPosition(), finalDomain)) {
++            Array<T,3> pos = particles[i]->getPosition();
++            if (this->isContained(pos[0],pos[1],pos[2], finalDomain)) {
+                 delete particles[i];
+             } else {
+                 remainingParticles.push_back(particles[i]);
+@@ -777,7 +794,8 @@
+     Box3D finalDomain;
+     if (intersect(domain, this->getBoundingBox(), finalDomain)) {
+         for (pluint i = 0; i < particles.size(); ++i) {
+-            if (this->isContained(particles[i]->getPosition(), finalDomain)
++            Array<T,3> pos = particles[i]->getPosition();
++            if (this->isContained(pos[0],pos[1],pos[2], finalDomain)
+                 && particles[i]->getTag() == tag) {
+                 delete particles[i];
+             } else {
+@@ -795,7 +813,8 @@
+     found.clear();
+     PLB_ASSERT(contained(domain, this->getBoundingBox()));
+     for (pluint i = 0; i < particles.size(); ++i) {
+-        if (this->isContained(particles[i]->getPosition(), domain)) {
++        Array<T,3> pos = particles[i]->getPosition();
++        if (this->isContained(pos[0],pos[1],pos[2], domain)) {
+             found.push_back(particles[i]);
+         }
+     }
+@@ -808,7 +827,8 @@
+     found.clear();
+     PLB_ASSERT(contained(domain, this->getBoundingBox()));
+     for (pluint i = 0; i < particles.size(); ++i) {
+-        if (this->isContained(particles[i]->getPosition(), domain)) {
++        Array<T,3> pos = particles[i]->getPosition();
++        if (this->isContained(pos[0],pos[1],pos[2], domain)) {
+             found.push_back(particles[i]);
+         }
+     }
+@@ -821,7 +841,8 @@
+     Box3D finalDomain;
+     if (intersect(domain, this->getBoundingBox(), finalDomain)) {
+         for (pluint i = 0; i < particles.size(); ++i) {
+-            if (this->isContained(particles[i]->getPosition(), finalDomain)) {
++            Array<T,3> pos = particles[i]->getPosition();
++            if (this->isContained(pos[0],pos[1],pos[2], finalDomain)) {
+                 particles[i]->velocityToParticle(velocityField, scaling);
+             }
+         }
+@@ -835,7 +856,8 @@
+     Box3D finalDomain;
+     if (intersect(domain, this->getBoundingBox(), finalDomain)) {
+         for (pluint i = 0; i < particles.size(); ++i) {
+-            if (this->isContained(particles[i]->getPosition(), finalDomain)) {
++            Array<T,3> pos = particles[i]->getPosition();
++            if (this->isContained(pos[0],pos[1],pos[2], finalDomain)) {
+                 particles[i]->velocityToParticle(velocityField, scaling);
+             }
+         }
+@@ -849,7 +871,8 @@
+     Box3D finalDomain;
+     if (intersect(domain, this->getBoundingBox(), finalDomain)) {
+         for (pluint i = 0; i < particles.size(); ++i) {
+-            if (this->isContained(particles[i]->getPosition(), finalDomain)) {
++            Array<T,3> pos = particles[i]->getPosition();
++            if (this->isContained(pos[0],pos[1],pos[2], finalDomain)) {
+                 particles[i]->rhoBarJtoParticle(rhoBarJfield, velIsJ, scaling);
+             }
+         }
+@@ -863,7 +886,8 @@
+     Box3D finalDomain;
+     if (intersect(domain, this->getBoundingBox(), finalDomain)) {
+         for (pluint i = 0; i < particles.size(); ++i) {
+-            if (this->isContained(particles[i]->getPosition(), finalDomain)) {
++            Array<T,3> pos = particles[i]->getPosition();
++            if (this->isContained(pos[0],pos[1],pos[2], finalDomain)) {
+                 particles[i]->fluidToParticle(lattice, scaling);
+             }
+         }
+@@ -878,12 +902,14 @@
+     if (intersect(domain, this->getBoundingBox(), finalDomain)) {
+         for (pluint i = 0; i < particles.size(); ++i) {
+             Particle3D<T, Descriptor> *particle = particles[i];
+-            if (this->isContained(particle->getPosition(), finalDomain)) {
++            Array<T,3> pos = particle->getPosition();
++            if (this->isContained(pos[0],pos[1],pos[2], finalDomain)) {
+                 Array<T, 3> oldPos(particle->getPosition());
+                 particle->advance();
++                Array<T,3> newPos = particle->getPosition();
+                 if ((cutOffSpeedSqr >= T()
+                      && normSqr(oldPos - particle->getPosition()) < cutOffSpeedSqr)
+-                    || (!this->isContained(particle->getPosition(), this->getBoundingBox())))
++                    || (!this->isContained(newPos[0],newPos[1],newPos[2], this->getBoundingBox())))
+                 {
+                     delete particle;
+                 } else {
+diff -ruN a/src/particles/particleProcessingFunctional3D.h b/src/particles/particleProcessingFunctional3D.h
+--- a/src/particles/particleProcessingFunctional3D.h	2022-06-13 13:12:01.000000000 +0200
++++ b/src/particles/particleProcessingFunctional3D.h	2026-08-01 14:45:15.156785224 +0200
+@@ -31,6 +31,8 @@
+  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+  */
+ 
++#include <cstdint>
++
+ #ifndef PARTICLE_PROCESSING_FUNCTIONAL_3D_H
+ #define PARTICLE_PROCESSING_FUNCTIONAL_3D_H
+ 
