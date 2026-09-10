@@ -1,0 +1,42 @@
+{
+  "recorded_at": "2026-09-10T10:19:19.669010+00:00",
+  "status": "PREPARED_NOT_RUN",
+  "failures": [
+    {
+      "task": "main_mirheo_1",
+      "last_saved_strain": 0.6,
+      "coarse_candidates": 9185,
+      "capacity": 6400
+    },
+    {
+      "task": "main_mirheo_2",
+      "last_saved_strain": 2.9,
+      "coarse_candidates": 8244,
+      "capacity": 6400
+    }
+  ],
+  "hypothesis": "The native Local/Halo bounce task groups use separate CUDA streams and each BounceFromMesh instance owns shared mutable collision buffers. Scheduling dependence is a hypothesis, not a proven unique cause of overflow/leakage.",
+  "sources": {
+    "vendor/Mirheo/src/mirheo/core/simulation.cpp": "793be193c6da6fc672d4f69c324164aca3f3a9073dd879839ae9bf54964dd58b",
+    "vendor/Mirheo/src/mirheo/core/task_scheduler.cpp": "f8abe79d29d287790e3dd483733a80a493434c7edce7177d10de98980abffcee",
+    "vendor/Mirheo/src/mirheo/core/bouncers/from_mesh.cu": "c0be66b2544f791d9b4810d619d6286b5e660a0e4899a3db768c011690d36b24",
+    "vendor/Mirheo/src/mirheo/core/bouncers/from_mesh.h": "08637f4c6b561ae71bbc61eb17e09ade850d65329fd29fabdd5ed33edd44890d"
+  },
+  "diagnostic_environment": {
+    "CUDA_DEVICE_MAX_CONNECTIONS": "1",
+    "CUDA_DEVICE_MAX_COPY_CONNECTIONS": "1"
+  },
+  "current_environment": {
+    "CUDA_LAUNCH_BLOCKING": null,
+    "CUDA_DEVICE_MAX_CONNECTIONS": null,
+    "CUDA_DEVICE_MAX_COPY_CONNECTIONS": null
+  },
+  "source_documentation": "https://docs.nvidia.com/cuda/archive/12.9.1/pdf/CUDA_C_Programming_Guide.pdf",
+  "test": "After the planned strict task completes, at most one t*=5 rest + t*=5 coupled check (100 s ceiling); if it completes without sampled membership mismatch, at most one separate cold Gamma=4 diagnostic candidate (remaining combined budget, <=950 s).",
+  "physical_parameters_unchanged": true,
+  "native_source_unchanged": true,
+  "per_kernel_host_synchronization_added": false,
+  "counts_as_original_repeats": false,
+  "automatic_retries": 0,
+  "limitation": "A serialized-work-queue diagnostic is a distinct execution configuration. A short pass does not prove a race or general membrane impermeability. No equal-accuracy speed ratio will be reported."
+}

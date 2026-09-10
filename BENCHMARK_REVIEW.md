@@ -1,3 +1,39 @@
+# 最新归档：单个可变形红细胞简单剪切
+
+本分支 `sync/hemocell-mirheo-single-rbc-benchmark-20260910T120318Z` 从上一轮已发布的纯流体归档分支 `sync/hemocell-mirheo-benchmark-20260909T220959Z`（`bcac1d7cf8b6c596f663d047523febee82082b0a`）派生。本次增加单细胞基准的实际代码和全部成功/失败证据，保留下方原纯流体归档说明。没有重跑求解、编译或科学测试。
+
+本轮是 **HemoCell 原生 LBM + High Order RBC + IBM** 与 **Mirheo DPD + WLC/Kantor 膜 + 双向作用**。共同有效域 24³、X 流向/Z 梯度、同一参考细胞和 Γ=4 目标。HemoCell 为 CPU 2 MPI rank / double；Mirheo 为 RTX 4060 Laptop 单 GPU、1 compute + 1 postprocess rank / single。
+
+原报告结论：**工作流 PARTIAL、模型可比性 PARTIAL、BENCHMARK_SCREEN FAILED、qualified_speedup=null**；研究适用性 NOT_VALIDATED，人工 PENDING。HemoCell 两次完整成本为 58.172、60.783 秒（含必要分析）；Mirheo 两次主运行只存到 Γ=0.6、2.9 后失败，半步到 Γ=0.7，受限队列长诊断到 Γ=3.4。失败进程秒不当作完成 Γ=4 的端到端秒。
+
+- [最终中文说明及实际命令](mirheo_starter/test_code/README_single_rbc_benchmark.md)
+- [原始离线 HTML](mirheo_starter/test_code/outputs/single_rbc_benchmark/rbc_shear_20260910/single_rbc_review.html) · [原始结果 JSON](mirheo_starter/test_code/outputs/single_rbc_benchmark/rbc_shear_20260910/results.json) · [便于网页阅读的结果字段索引](sync_reports/20260910T120318Z/RESULT_INDEX.json)
+- [共同配置](mirheo_starter/py_scripts/single_rbc_benchmark.yaml) · [单位、几何与指标代码](mirheo_starter/py_scripts/single_rbc_benchmark/physics.py) · [新增 HemoCell 案例](hemocell_starter/cases/single_rbc_shear_benchmark/benchmark.cpp)
+- [全部原始运行目录](mirheo_starter/runs/single_rbc_benchmark/rbc_shear_20260910) · [计划、授权及数值证据](mirheo_starter/data/single_rbc_benchmark/rbc_shear_20260910) · [本次归档校验与排除说明](sync_reports/20260910T120318Z/README.md)
+
+GitHub 的 HTML 链接是源文件入口。请下载本分支，保留对应输出目录后在本地浏览器打开 HTML；Plotly 和数据已内嵌，浏览器证据链接使用同目录文件。原结果 JSON 为 57,568,143 字节，已单独审查并原样保留；若网页无法预览，请下载或使用 Git 读取。轻量字段索引不替代完整数据。
+
+| 原报告结论或核查项 | 精确证据入口与字段 |
+|---|---|
+| 双方没有完成共同终点比较 | [结果字段索引](sync_reports/20260910T120318Z/RESULT_INDEX.json)：`formal_cold_completed=2`、`workflow=PARTIAL`、`qualified_speedup=null` |
+| HemoCell 两次完整成本及散布 | [完整结果](mirheo_starter/test_code/outputs/single_rbc_benchmark/rbc_shear_20260910/results.json)：`repeat_statistics.hemocell`；[第 1 次原生计时](mirheo_starter/runs/single_rbc_benchmark/rbc_shear_20260910/solver/main_hemocell_1/timings.csv)、[第 2 次原生计时](mirheo_starter/runs/single_rbc_benchmark/rbc_shear_20260910/solver/main_hemocell_2/timings.csv) |
+| D、倾角、面积、体积来自实际膜 | [HemoCell 原始顶点](mirheo_starter/runs/single_rbc_benchmark/rbc_shear_20260910/solver/main_hemocell_1/vertices.csv)、[Mirheo 原始顶点](mirheo_starter/runs/single_rbc_benchmark/rbc_shear_20260910/solver/main_mirheo_2/vertices.csv)；`runs[].frames[].metrics` |
+| DPD 黏度半步未通过原门槛 | [材料测量](mirheo_starter/data/single_rbc_benchmark/rbc_shear_20260910/fluid_measured.json)：`primary.nu`、`strict.nu`、`strict_difference`；[原始剖面](mirheo_starter/runs/single_rbc_benchmark/rbc_shear_20260910/solver/material_dpd/profiles.csv)、[半步剖面](mirheo_starter/runs/single_rbc_benchmark/rbc_shear_20260910/solver/material_dpd_strict/profiles.csv) |
+| 原生膜响应及准备后形状未充分匹配 | [膜测量](mirheo_starter/data/single_rbc_benchmark/rbc_shear_20260910/membrane_measured.json)：`comparison`、`max_response_relative_difference`；完整结果 `prepared_shapes` |
+| 空通道与细胞对流体的实际影响 | [HemoCell 空流剖面](mirheo_starter/runs/single_rbc_benchmark/rbc_shear_20260910/solver/empty_hemocell/profiles.csv)、[DPD 空流剖面](mirheo_starter/runs/single_rbc_benchmark/rbc_shear_20260910/solver/empty_dpd/profiles.csv)、[有细胞局部流场](mirheo_starter/runs/single_rbc_benchmark/rbc_shear_20260910/solver/main_mirheo_2/local_flow.csv)；完整结果 `feedback` 保留不同可用窗口与热噪声限制 |
+| Mirheo 主运行和半步碰撞溢出失败 | [停止说明](mirheo_starter/data/single_rbc_benchmark/rbc_shear_20260910/native_failure_final.json)、[第 1 次日志](mirheo_starter/runs/single_rbc_benchmark/rbc_shear_20260910/solver/main_mirheo_1/console.log)、[第 2 次日志](mirheo_starter/runs/single_rbc_benchmark/rbc_shear_20260910/solver/main_mirheo_2/console.log)、[半步日志](mirheo_starter/runs/single_rbc_benchmark/rbc_shear_20260910/solver/strict_mirheo/console.log) |
+| 受限队列诊断未修复长任务 | [冻结诊断计划](mirheo_starter/data/single_rbc_benchmark/rbc_shear_20260910/runtime_candidate_frozen.json)、[长诊断日志](mirheo_starter/runs/single_rbc_benchmark/rbc_shear_20260910/solver/diagnostic_mirheo_full/console.log)、[原始探针所在目录](mirheo_starter/runs/single_rbc_benchmark/rbc_shear_20260910/solver/diagnostic_mirheo_full)；完整结果 `runtime_diagnostics` |
+| 26 次求解尝试、34 条执行记录与全部费用 | [求解账本](mirheo_starter/runs/single_rbc_benchmark/rbc_shear_20260910/solver/budget_ledger.json)、[构建账本](mirheo_starter/runs/single_rbc_benchmark/rbc_shear_20260910/preparation/budget_ledger.json)、[执行顺序核查](mirheo_starter/data/single_rbc_benchmark/rbc_shear_20260910/execution_integrity.json) |
+| 原有 CPU / 浏览器检查的身份 | [26 项 CPU 测试](mirheo_starter/data/single_rbc_benchmark/rbc_shear_20260910/cpu_tests_final.json)、[19 项最终浏览器检查](mirheo_starter/test_code/outputs/single_rbc_benchmark/rbc_shear_20260910/browser_delivery_verified/browser_check.json)、[原最终交付记录](mirheo_starter/data/single_rbc_benchmark/rbc_shear_20260910/final_delivery.json)；此前浏览器 FAIL 记录也保留 |
+| 精度、库身份、资源及 Palabos 来源更正 | [更正后的启动环境](mirheo_starter/data/single_rbc_benchmark/rbc_shear_20260910/environment_authorized_start_corrected.json)、[现有构建文本](hemocell_starter/metadata/single_rbc_benchmark/rbc_shear_20260910/build_evidence/CMakeCache.txt)、[具体任务资源](mirheo_starter/runs/single_rbc_benchmark/rbc_shear_20260910/solver/diagnostic_mirheo_full/host_resources.json) |
+| 原始 WSL 路径如何对应本仓库 | [PATH_MAPPING.json](sync_reports/20260910T120318Z/PATH_MAPPING.json)；原配置、provenance 和 HTML 均未改写 |
+
+本轮数值原始数据、NPZ 探针、分析缓存、冻结 worker/案例源码以及失败历史均已保留。排除临时锁、编译程序和对象、完整运行环境与第三方源码树；准确版本、已有补丁及许可证由上轮归档继承，新增构建文本另存。已有数据的主要结论可以离线核查；在另一台机器重新执行原生求解仍需要相应环境。没有对原文件脱敏或改变科学状态。
+
+---
+
+## 上轮纯流体归档说明（原文保留）
+
 # HemoCell / Mirheo 基准远程核查入口
 
 本分支仅归档已经完成的无壁周期双向 Poiseuille 纯流体基准，供远程读取代码和实测数据。

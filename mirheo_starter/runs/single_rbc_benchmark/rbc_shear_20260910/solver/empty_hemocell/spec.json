@@ -1,0 +1,174 @@
+{
+  "task": {
+    "id": "empty_hemocell",
+    "cell": false,
+    "ranks": 2,
+    "allocation_s": 80
+  },
+  "binary_sha256": "2096b9dc2aac9cb2f43ec5c4b34a95e9393f3246d13f921d4ebeeedd7906355d",
+  "xml_sha256": "325210cc154eddfe5d672706f67711d8cb6050fb23cffe18cf2cbd01ecc43c5e",
+  "material": {
+    "kLink": 0.15,
+    "kBend": 8.0,
+    "kArea": 5.0,
+    "kVolume": 0.2,
+    "eta_m": 0.0
+  },
+  "resolved_config": {
+    "schema_version": 1,
+    "campaign_id": "rbc_shear_20260910",
+    "description": "单个可变形 RBC 的有限盒瞬态简单剪切；共同模拟单位，非现实血液标定",
+    "geometry": {
+      "periodic_length": 24.0,
+      "gap": 24.0,
+      "wall_layer": 1.0,
+      "center": [
+        12.0,
+        12.0,
+        12.0
+      ],
+      "axes": {
+        "flow": "x",
+        "gradient": "z",
+        "periodic": [
+          "x",
+          "y"
+        ]
+      },
+      "hemocell_angles_degrees": [
+        90.0,
+        0.0,
+        0.0
+      ],
+      "radius": 3.91,
+      "min_triangles": 600
+    },
+    "protocol": {
+      "relaxation_time": 5.0,
+      "shear_rate": 0.02,
+      "end_strain": 4.0,
+      "sample_strain": 0.1,
+      "cold_repetitions": 2,
+      "start": "impulsive_symmetric_moving_walls_after_zero_shear_relaxation"
+    },
+    "dpd": {
+      "number_density": 8.0,
+      "mass": 1.0,
+      "kBT": 1.0,
+      "rc": 1.0,
+      "a": 10.0,
+      "gamma": 10.0,
+      "power": 0.5,
+      "dt": 0.001,
+      "strict_dt": 0.0005,
+      "membrane_gamma": 10.0,
+      "wall_relax_steps": 1000,
+      "source": "vendor/Mirheo/tests/doc_scripts/membranes_solvents.py"
+    },
+    "material_check": {
+      "domain": [
+        16.0,
+        8.0,
+        12.0
+      ],
+      "relaxation_time": 5.0,
+      "drive_time": 40.0,
+      "force_per_particle": 0.1,
+      "sample_time": 0.25,
+      "fit_final_fraction": 0.5,
+      "bins": 16,
+      "nu_candidate": 1.5,
+      "nu_admissible_range": [
+        0.4,
+        4.0
+      ]
+    },
+    "hemocell": {
+      "root": "/home/lzy/projects/hemocell_starter",
+      "dx": 0.5,
+      "ranks_candidate": 2,
+      "tau_candidate": 1.0,
+      "strict": "halve_dt_same_grid",
+      "material": {
+        "kLink": 0.15,
+        "kBend": 8.0,
+        "kArea": 5.0,
+        "kVolume": 0.2,
+        "eta_m": 0.0
+      }
+    },
+    "mirheo_membrane": {
+      "model": "wlc",
+      "bending": "Kantor",
+      "stress_free": true,
+      "mass": 1.0,
+      "x0": 0.457,
+      "mpow": 2.0,
+      "ks_candidate": 3.0,
+      "ka": 279.693130111,
+      "ka_tot": 0.0,
+      "kv_tot": 1188.746,
+      "kb_candidate": 8.0,
+      "theta": 6.97,
+      "gammaC": 0.0,
+      "kBT": 1.0,
+      "bouncer": "bounce_back",
+      "belonging_correction_every": 0
+    },
+    "membrane_check": {
+      "calibration_strain": 0.01,
+      "validation_strains": [
+        0.03,
+        0.05
+      ],
+      "modes": [
+        "shear",
+        "stretch"
+      ],
+      "max_candidate_revisions": 1,
+      "relaxation_check_time": 5.0
+    },
+    "screen": {
+      "name": "BENCHMARK_SCREEN_v1",
+      "empty_velocity_relative_l2": 0.05,
+      "effective_shear_relative_error": 0.05,
+      "viscosity_strict_relative_difference": 0.05,
+      "temperature_relative_error": 0.05,
+      "near_wall_density_relative_error": 0.1,
+      "mass_relative_drift": 0.001,
+      "area_relative_drift": 0.02,
+      "volume_relative_drift": 0.02,
+      "initial_relaxed_shape_relative_rms": 0.02,
+      "own_strict_D_relative_difference": 0.05,
+      "own_strict_D_absolute_noise_floor": 0.005,
+      "membrane_response_relative_difference": 0.1,
+      "angle_degenerate_axis_ratio": 1.05,
+      "required_complete_cell_count": 1,
+      "strict_impermeability_status_default": "NOT_VERIFIED",
+      "space_convergence_status_default": "NOT_VERIFIED"
+    },
+    "budget": {
+      "proposed_total_solver_s": 3600,
+      "proposed_max_task_s": 1800,
+      "gpu_concurrency": 1,
+      "maximum_retries_total": 2,
+      "authorized_gpu_s": 0,
+      "tasks": {
+        "material_dpd": 180,
+        "material_dpd_strict": 240,
+        "membrane_dpd": 180,
+        "empty_dpd": 360,
+        "main_dpd_1": 550,
+        "main_dpd_2": 550,
+        "strict_dpd": 900,
+        "hemocell_all": 440,
+        "reserved_failures": 200
+      },
+      "one_time_cpu_compile_limit_s": 180,
+      "cpu_preflight_solver_limit_s": 90,
+      "note": "提案不是 GPU 授权。新独立账本；旧账本和余额不挪用。"
+    },
+    "_config_path": "/home/lzy/projects/mirheo_starter/py_scripts/single_rbc_benchmark.yaml",
+    "_config_sha256": "152c7c591b3be5cf934f85ef25b7ea09c06882d0f75facc093269565242f98b7"
+  }
+}
