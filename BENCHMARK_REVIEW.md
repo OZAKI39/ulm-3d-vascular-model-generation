@@ -1,3 +1,40 @@
+# 最新归档：单红细胞剪切流 CPU 修复与证据
+
+本分支 `sync/hemocell-mirheo-single-rbc-repair-20260910T141046Z` 基于最近的单红细胞归档 `sync/hemocell-mirheo-single-rbc-benchmark-20260910T120318Z`，准确基础提交 `7a0be010fa4cfeee4073bba5bab929216cf4df7b`。本次原样归档 `rbc_repair_20260910T131105Z` 的修复代码、CPU 重分析、失败历史、冻结计划和离线核查页；旧基准的数据与说明继续继承。
+
+比较对象为 HemoCell LBM + 可变形细胞、Mirheo DPD + WLC/Kantor 膜。共同域 24³，剪切率 0.02，目标 Γ=4。**本轮修补版未编译、未运行；材料 NOT_MATCHED，根因 SUPPORTED_NOT_CONFIRMED，qualified_speedup=null，人工 PENDING。** 原有 16 项 CPU 测试与 21 项浏览器检查通过，不代表原生修复验证通过。
+
+- [最终中文报告](mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/report_zh.md) · [修复记录](mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/fix_log.md) · [结果 JSON](mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/comparison_results.json) · [最终交付回执](mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/delivery_receipt.json)
+- [离线 HTML 原件](mirheo_starter/test_code/outputs/single_rbc_repair/rbc_repair_20260910T131105Z/comparison_review.html) · [浏览器记录与截图](mirheo_starter/test_code/outputs/single_rbc_repair/rbc_repair_20260910T131105Z/browser_cpu_delivery/browser_check.json)
+- [新版配置](mirheo_starter/py_scripts/single_rbc_benchmark_repaired.yaml) · [修复入口](mirheo_starter/py_scripts/repair_single_rbc_benchmark.py) · [单位与几何代码](mirheo_starter/py_scripts/single_rbc_benchmark/physics.py) · [冻结短对照计划](mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/frozen_benchmark_plan.json)
+- [新派生数据、原生补丁与隔离 HemoCell 案例](mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z) · [继承的全部原始运行数据](mirheo_starter/runs/single_rbc_benchmark/rbc_shear_20260910/solver) · [本次同步清单和校验](sync_reports/20260910T141046Z/README.md)
+
+GitHub 的 HTML 链接用于读取源码。下载或检出本分支后，保留 `mirheo_starter` 的目录结构，用浏览器打开 `comparison_review.html`。脚本与绘图数据内嵌，9 个新证据链接指向同一归档的数据目录；下方动画与耗时明确属于旧 campaign。旧页面还带有一个浏览器记录相对链接，原修复输出目录缺少该文件；归档在该相对位置补入[旧浏览器记录的原样副本](mirheo_starter/test_code/outputs/single_rbc_repair/rbc_repair_20260910T131105Z/browser_delivery_verified/browser_check.json)，它仍属于旧 campaign，新页面的检查记录在 `browser_cpu_delivery`。HTML 原字节未变。没有新修复轨迹。没有启用 Pages 或 LFS。
+
+本轮新 GPU 求解、CPU 求解与编译用量均为 0。新 GPU 8500 秒、CPU 求解 600 秒、隔离编译 1800 秒仍为未批准申请；旧账本余额保持原用途。旧 HemoCell 两次完成 Γ=4，完整任务为 58.17194、60.78252 秒；旧 Mirheo 四次失败成本与最后存帧见原报告，均不能替代合格解耗时。
+
+硬件与精度依据原环境记录：i7-13700HX、WSL 可见 24 个逻辑 CPU；原 HemoCell 为 CPU 2 MPI rank / double，Mirheo 为 RTX 4060 Laptop 单 GPU、1 compute + 1 postprocess rank / single。新候选尚无原生测量。见[本轮环境快照](mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/environment.json)与[原任务启动环境](mirheo_starter/data/single_rbc_benchmark/rbc_shear_20260910/environment_authorized_start_corrected.json)。
+
+| 结论或核查项 | 精确证据 |
+|---|---|
+| 当前关口与未完成比较 | [结果](mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/comparison_results.json)：`status`、`runtime_fix_status`、`material_match`、`qualified_speedup`；[关口](mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/candidate_comparability.json)：`gate_A/B/C` |
+| 溢出是直接退出原因；准确失败步缺测 | [时间线](mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/failure_timeline.json)：`runs[].error.coarse_count/capacity/exact_native_step/failing_step_interval`；[主运行原始日志](mirheo_starter/runs/single_rbc_benchmark/rbc_shear_20260910/solver/main_mirheo_1/shear_00000.log) |
+| 准备阶段成员不符与长诊断自交 | [主运行逐帧表](mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/main_mirheo_1_frame_metrics.csv)、[独立诊断时间线](mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/diagnostic_mirheo_full_timeline.json)：`first_confirmed_nonadjacent_intersection`；[原始探针](mirheo_starter/runs/single_rbc_benchmark/rbc_shear_20260910/solver/main_mirheo_1/fluid_probes_relaxation_00002500.npz)、[原始膜顶点](mirheo_starter/runs/single_rbc_benchmark/rbc_shear_20260910/solver/diagnostic_mirheo_full/vertices.csv) |
+| 调度根因仍需运行对照 | [源码证据](mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/root_cause_evidence.json)：`hypotheses`、`source_sha256`；[补丁](mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/native/local_before_halo_v2.patch)、[完整新头文件](mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/native/source/src/mirheo/core/bouncers/repair_trace.h)、[来源与重建说明](sync_reports/20260910T141046Z/NATIVE_SOURCE_ARCHIVE.md) |
+| 初始弯曲力审计约 0.14% 相对差 | [CPU 能量核查](mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/initial_bending_force_audit.json)：`comparisons[0].relative_force_l2_error`；[逐顶点力 CSV](mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/initial_bending_cpu_vs_native.csv) |
+| 材料和液体可比性尚未通过 | [材料记录](mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/material_matching.json)：`status`、`old_failures`、`new_material_runs`；[隔离材料探针源码](mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/hemocell_case/benchmark.cpp) |
+| 没有新成本测量或新算力授权 | [结果](mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/comparison_results.json)：`new_solver_s/new_compile_s/new_end_to_end_s`；[申请](mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/authorization_request.json)：`approved=false`；[旧账本](mirheo_starter/runs/single_rbc_benchmark/rbc_shear_20260910/solver/budget_ledger.json) |
+| CPU / 浏览器 / 人工状态分开 | [CPU 记录](mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/cpu_tests.json)、[原浏览器记录](mirheo_starter/test_code/outputs/single_rbc_repair/rbc_repair_20260910T131105Z/browser_cpu_delivery/browser_check.json)、[交付回执](mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/delivery_receipt.json)：`human_review=PENDING` |
+| 原路径、源文件身份和归档完整性 | [路径映射](sync_reports/20260910T141046Z/PATH_MAPPING.json)、[文件清单](sync_reports/20260910T141046Z/SYNC_MANIFEST.json)、[归档校验](sync_reports/20260910T141046Z/SYNC_VALIDATION.json)、[机器可读结论索引](sync_reports/20260910T141046Z/RESULT_INDEX.json) |
+
+完整第三方 checkout（含嵌套 `.git`）、环境、编译库和缓存不新增上传；精确版本、许可证、兼容补丁、修复补丁、所有新头文件与被引用源码均保留。没有省略本轮已存在的数值观测，没有脱敏。旧记录原本缺少准确崩溃步与完整候选状态，归档无法补造；在新机器执行仍需重建原生环境。空的新 runs 目录没有文件，因此 Git 不创建占位结果。
+
+原报告中的“本轮未提交或推送”、结果里的 `git_commit_or_push=false` 是本次同步前的原始交付快照，保持原字节。本次 Git 归档状态见独立同步记录；这不改变实验授权或科学结论。
+
+---
+
+## 历史单红细胞与纯流体归档说明（原文保留）
+
 # 最新归档：单个可变形红细胞简单剪切
 
 本分支 `sync/hemocell-mirheo-single-rbc-benchmark-20260910T120318Z` 从上一轮已发布的纯流体归档分支 `sync/hemocell-mirheo-benchmark-20260909T220959Z`（`bcac1d7cf8b6c596f663d047523febee82082b0a`）派生。本次增加单细胞基准的实际代码和全部成功/失败证据，保留下方原纯流体归档说明。没有重跑求解、编译或科学测试。

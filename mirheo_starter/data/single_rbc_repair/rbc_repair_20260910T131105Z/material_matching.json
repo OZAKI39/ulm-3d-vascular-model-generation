@@ -1,0 +1,119 @@
+{
+  "status": "NOT_MATCHED",
+  "legacy_evidence_only": true,
+  "initial_force_audit": {
+    "HemoCell": {
+      "source": "/home/lzy/projects/mirheo_starter/runs/single_rbc_benchmark/rbc_shear_20260910/solver/candidate1_native_response/native_response.csv",
+      "sha256": "30bc470a32eb733336c8284bfe944bc0f7ed8b351d26bb5e1a718e9b466a0e47",
+      "n": 642,
+      "force_rms": 3.865202238143328e-10,
+      "force_max": 8.394225308518236e-10,
+      "net_force": [
+        2.563179475018595e-24,
+        -6.72084247699335e-25,
+        3.7223127564886245e-24
+      ]
+    },
+    "Mirheo": {
+      "source": "/home/lzy/projects/mirheo_starter/runs/single_rbc_benchmark/rbc_shear_20260910/solver/membrane_probe_candidate/native_response.csv",
+      "sha256": "bf2bcd2993ec33afae6463f43f52da87726b49492640c7aa7c5a13365924255f",
+      "n": 642,
+      "force_rms": 1.767956804060577,
+      "force_max": 11.779468764408719,
+      "net_force": [
+        1.3345082573568624e-05,
+        0.000134857330627014,
+        -0.00012324682860453962
+      ]
+    },
+    "reference_unsigned_dihedral_degrees": {
+      "min": 0.17355695948377844,
+      "max": 17.757680381284512,
+      "median": 6.216097699599162,
+      "constant_kantor_theta": 6.97
+    },
+    "interpretation": "stress_free selects WLC reference lengths/areas; native DihedralKantor uses one constant theta, not the OFF per-edge curvature. Initial total-force audit is independent of fitting the final shear trajectory."
+  },
+  "bending_energy_check": "/home/lzy/projects/mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/initial_bending_force_audit.json",
+  "old_failures": {
+    "stretch_response_relative_difference": 0.17820107707573496,
+    "prepared_shape_relative_rms": [
+      0.07716272011915491,
+      0.07700595418956209
+    ],
+    "viscosity_half_dt_relative_difference": 0.06473589364256638,
+    "membrane_to_displaced_fluid_mass": 0.98932,
+    "bending_response_match": "NOT_VERIFIED"
+  },
+  "criteria": {
+    "name": "BENCHMARK_SCREEN_v1",
+    "empty_velocity_relative_l2": 0.05,
+    "effective_shear_relative_error": 0.05,
+    "viscosity_strict_relative_difference": 0.05,
+    "temperature_relative_error": 0.05,
+    "near_wall_density_relative_error": 0.1,
+    "mass_relative_drift": 0.001,
+    "area_relative_drift": 0.02,
+    "volume_relative_drift": 0.02,
+    "initial_relaxed_shape_relative_rms": 0.02,
+    "own_strict_D_relative_difference": 0.05,
+    "own_strict_D_absolute_noise_floor": 0.005,
+    "membrane_response_relative_difference": 0.1,
+    "angle_degenerate_axis_ratio": 1.05,
+    "required_complete_cell_count": 1,
+    "strict_impermeability_status_default": "NOT_VERIFIED",
+    "space_convergence_status_default": "NOT_VERIFIED"
+  },
+  "training": {
+    "epsilon": [
+      -0.1,
+      -0.01,
+      0,
+      0.01,
+      0.1
+    ],
+    "modes": [
+      "shear",
+      "stretch",
+      "bend",
+      "dilate"
+    ]
+  },
+  "withheld": {
+    "epsilon": [
+      -0.3,
+      -0.2,
+      -0.05,
+      -0.03,
+      0.03,
+      0.05,
+      0.2,
+      0.3
+    ],
+    "modes": [
+      "shear",
+      "stretch",
+      "bend",
+      "dilate"
+    ]
+  },
+  "procedure": [
+    "Only after short runtime diagnostics are credible: fit at most two material candidates against independent native force responses. No final shear trajectory fitting.",
+    "Separate bending response using paired native kb or kBend settings; test release in actual coupled solvent, not fixed dynamics.",
+    "Inspect native Juelicher/reference options; current Kantor stress_free flag does not set per-edge rest curvature. Do not develop a replacement membrane model if native candidates cannot match.",
+    "Measure DPD viscosity by periodic Poiseuille, with independent cold seeds and time-block uncertainty; remeasure after any dt, kBT or solvent change. HemoCell viscosity must use the newly accepted measurement.",
+    "Do not reduce node mass until impulse, damping, one-step displacement and inertial sensitivity are checked.",
+    "Choose preparation duration from common state-quality criteria, with all preparation charged. Fixed t*=5 is only the first failure diagnostic."
+  ],
+  "common_preparation_criteria": {
+    "shape_rms_over_a": 0.02,
+    "residual_shape_rms_over_a_per_time": 0.002,
+    "window_time_star": 2.0,
+    "minimum_consecutive_windows": 3,
+    "orientation_change_degrees_per_time": 0.5,
+    "maximum_time_star": 30.0,
+    "note": "proposed before new preparation data; same criteria for both; thermal fluctuations assessed using matched windows, no coordinate rotation fitting"
+  },
+  "new_material_runs": [],
+  "formal_parameter_freeze": null
+}

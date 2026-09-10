@@ -1,0 +1,32 @@
+--- a/benchmark.cpp
++++ b/benchmark.cpp
+@@ -79,15 +79,15 @@
+  // No surrogate force model, no shear-trajectory fitting, no dynamic claim from this probe.
+  if(probe&&hasCell){
+   if(rank==0){std::ofstream f("native_response.csv");f<<std::setprecision(17)<<"mode,epsilon,vertex,x,y,z,fx,fy,fz\n";
+-   for(int mode=0;mode<2;mode++)for(double e:{-.05,-.03,-.01,0.,.01,.03,.05}){
++   for(int mode=0;mode<4;mode++)for(double e:{-.30,-.20,-.10,-.05,-.03,-.01,0.,.01,.03,.05,.10,.20,.30}){
+     std::vector<std::unique_ptr<HemoCellParticle>> owned;std::map<int,std::vector<HemoCellParticle*>> cells;std::map<int,bool> present{{0,true}};
+     for(int i=0;i<nv;i++){
+      double x=init[7*i+1]-L/2,y=init[7*i+2]-L/2,z=init[7*i+3]-H/2;
+-     if(mode==0)x+=e*z;else{x*=1+e;z/=1+e;}
++     if(mode==0)x+=e*z;else if(mode==1){x*=1+e;z/=1+e;}else if(mode==2){z+=e*(x*x-y*y)/3.2066079538901424;}else{x*=1+e;y*=1+e;z*=1+e;}
+      owned.emplace_back(new HemoCellParticle({x/dx,y/dx,z/dx},0,i,cf->ctype));cells[0].push_back(owned.back().get());
+     }
+     cf->mechanics->ParticleMechanics(cells,present,cf->ctype);
+-    for(int i=0;i<nv;i++){auto &p=*owned[i];f<<(mode==0?"shear":"stretch")<<','<<e<<','<<i;
++    for(int i=0;i<nv;i++){auto &p=*owned[i];f<<(mode==0?"shear":mode==1?"stretch":mode==2?"bend":"dilate")<<','<<e<<','<<i;
+      for(int j=0;j<3;j++)f<<','<<p.sv.position[j]*dx;
+      for(int j=0;j<3;j++)f<<','<<p.sv.force[j]*param::df/(energy/1e-6);f<<'\n';
+     }
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1,7 +1,7 @@
+ cmake_minimum_required(VERSION 3.10)
+ project(single_rbc_shear_benchmark LANGUAGES C CXX)
+ set(CMAKE_CXX_STANDARD 14)
+-get_filename_component(HEMO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
++set(HEMO_ROOT "/home/lzy/projects/hemocell_starter" CACHE PATH "Existing HemoCell project; no library rebuild")
+ set(HEMO_SOURCE "${HEMO_ROOT}/vendor/HemoCell")
+ find_package(MPI REQUIRED)
+ set(HDF5_PREFER_PARALLEL ON)

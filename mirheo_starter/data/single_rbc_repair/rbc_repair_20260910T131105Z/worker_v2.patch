@@ -1,0 +1,118 @@
+--- a/single_rbc_benchmark/mirheo_worker.py
++++ b/single_rbc_repair/mirheo_worker.py
+@@ -1,7 +1,7 @@
+ """Native DPD + one deformable membrane. Adapted from Mirheo MIT examples.
+ 
+ Sources: membranes_solvents.py, walls/analytic/couette.py, membrane/wlc.py.
+-Copyright ETH Zurich; see MIRHEO_LICENSE. No Mirheo source modifications.
++Copyright ETH Zurich; see MIRHEO_LICENSE. Repair worker: explicitly selected isolated library and per-PV bouncer control.
+ All checkpoint-free relaxation and in-memory wall-switch work is timed.
+ """
+ import argparse
+@@ -20,8 +20,13 @@
+     s=json.loads(Path(a.spec).read_text());c=s['config'];d=Path.cwd();role=s['role'];dt=s['dt']
+     if os.environ.get('OMPI_COMM_WORLD_SIZE')!='2' or os.environ.get('SINGLE_RBC_AUTHORIZED')!=s['plan_sha256']:raise RuntimeError('AUTHORIZED_TWO_RANK_LAUNCH_REQUIRED')
+     from py_scripts.solver_benchmark.native_mpi import NativeMPI
+-    from .physics import read_off, write_off, order_vertices, geometry
++    from py_scripts.single_rbc_benchmark.physics import read_off, write_off, order_vertices, geometry
+     mpi=NativeMPI();mpi.check(mpi.lib.MPI_Init(None,None));compute=mpi.rank==0
++    if s.get("native_library"):
++        import hashlib, sys
++        native=Path(s["native_library"])
++        if hashlib.sha256(native.read_bytes()).hexdigest()!=s["native_library_sha256"]:raise RuntimeError("NATIVE_LIBRARY_HASH_MISMATCH")
++        sys.path.insert(0,str(native.parent))
+     import mirheo as mir
+     runtime=C.CDLL('libcudart.so.12') if compute else None
+     if compute:runtime.cudaMemcpy.argtypes=[C.c_void_p,C.c_void_p,C.c_size_t,C.c_int]
+@@ -52,7 +57,9 @@
+     def dpd(u,name,first,second,mem=False):
+         interaction=mir.Interactions.Pairwise(name,dp['rc'],kind='DPD',a=0. if mem else dp['a'],gamma=dp['membrane_gamma'] if mem else dp['gamma'],kBT=dp['kBT'],power=dp['power'])
+         u.registerInteraction(interaction);u.setInteraction(interaction,first,second);handles.append(interaction);return interaction
+-    def coordinator(label):return mir.Mirheo((1,1,1),domain,debug_level=1,log_filename=label,no_splash=True)
++    def coordinator(label):
++        os.environ['RBC_REPAIR_PHASE']=label
++        return mir.Mirheo((1,1,1),domain,debug_level=s.get('debug_level',1),log_filename=label,no_splash=True)
+     def capture(pv):
+         if not compute:return None
+         ids=np.asarray(pv.get_indices(),np.int64);order=np.argsort(ids)
+@@ -69,18 +76,23 @@
+     if probe:
+         u=coordinator('probe');rbc=membrane(u);u.registerPlugins(mir.Plugins.createForceSaver('save',rbc))
+         # No integrator on the probe. These positions are prescribed solely for the independent material test.
+-        for mode in ('shear','stretch'):
+-            for eps in (-.05,-.03,-.01,0.,.01,.03,.05):
++        probe_modes=s.get('probe_modes',('shear','stretch','bend','dilate'))
++        probe_strains=s.get('probe_strains',(-.30,-.20,-.10,-.05,-.03,-.01,0.,.01,.03,.05,.10,.20,.30))
++        for mode in probe_modes:
++            for eps in probe_strains:
+                 v=vertices.copy()
+                 if mode=='shear':v[:,0]+=eps*v[:,2]
+-                else:v[:,0]*=1+eps;v[:,2]/=1+eps
++                elif mode=='stretch':v[:,0]*=1+eps;v[:,2]/=1+eps
++                elif mode=='bend':v[:,2]+=eps*(v[:,0]**2-v[:,1]**2)/shape['a']
++                elif mode=='dilate':v*=1+eps
++                else:raise ValueError('UNKNOWN_INDEPENDENT_MATERIAL_MODE')
+                 if compute:rbc.setCoordinates((v+[L/2,L/2,H/2+pad]).tolist())
+                 u.run(2,dt=dt);sync()
+                 if compute:
+                     ids=np.asarray(rbc.get_indices());force=order_vertices(ids,channel(rbc,'forces'),len(vertices))
+                     for i,(x,f) in enumerate(zip(v,force)):response.writerow([mode,eps,i,*x,*f])
+         for f in streams:f.close()
+-        if compute:(d/'completion.json').write_text(json.dumps(dict(completed=True,role=role,cell_count=1,native_membrane_force_evaluations=28,worker_elapsed_s=time.perf_counter()-before)))
++        if compute:(d/'completion.json').write_text(json.dumps(dict(completed=True,role=role,cell_count=1,native_membrane_force_evaluations=2*len(probe_modes)*len(probe_strains),worker_elapsed_s=time.perf_counter()-before)))
+         del u;handles.clear();gc.collect();mpi.Barrier();mpi.check(mpi.lib.MPI_Finalize());return
+     profile=writer('profiles.csv',['step','phase','time_star','strain','bin','z','count','ux','uy','uz','density'])
+     localflow=writer('local_flow.csv',['step','phase','time_star','strain','ix','iy','iz','x','y','z','count','ux','uy','uz','density']) if not material else None
+@@ -94,7 +106,7 @@
+     state=None;total_steps=0;initialN=None;initial_innerN=None;full=True
+     def stage(label,count,sample,wall_speed,prior):
+         nonlocal total_steps,initialN,initial_innerN,full
+-        t=time.perf_counter();u=coordinator(label);walls=[];wall_pvs=[]
++        t=time.perf_counter();u=coordinator(label);walls=[];wall_pvs=[];probe_ids={}
+         fluid=make_pv(u,'outer',prior['fluid'] if prior is not None else None)
+         if compute and prior is None:
+             rng=np.random.default_rng(s['seed']);v=rng.normal(0,math.sqrt(dp['kBT']/dp['mass']),(len(fluid.getCoordinates()),3));v-=v.mean(axis=0);fluid.setVelocities(v.tolist())
+@@ -119,8 +131,8 @@
+             inner=u.applyObjectBelongingChecker(checker,fluid,correct_every=0,inside='inner');handles.append(checker)
+             u.setInteraction(interaction,inner,inner);u.setInteraction(interaction,inner,fluid);u.setIntegrator(vv,inner);u.setIntegrator(vv,rbc)
+             dpd(u,'outer_membrane',fluid,rbc,True);dpd(u,'inner_membrane',inner,rbc,True)
+-            bounce=mir.Bouncers.Mesh('membrane_bounce','bounce_back');u.registerBouncer(bounce)
+-            u.setBouncer(bounce,rbc,fluid);u.setBouncer(bounce,rbc,inner);handles.append(bounce)
++            from .coupling import bind_bouncers
++            handles.extend(bind_bouncers(mir,u,rbc,fluid,inner,s.get('bouncer_policy','shared')))
+             u.registerPlugins(mir.Plugins.createForceSaver('membrane_force',rbc))
+         u.setInteraction(interaction,fluid,fluid);u.setIntegrator(vv,fluid)
+         for w,wp in zip(walls,wall_pvs):
+@@ -159,9 +171,14 @@
+                 # Deterministic identity-aware probes; analysis reports limited leakage evidence separately.
+                 chosen=[]
+                 for membership,st in enumerate(states):
+-                    take=np.arange(0,len(st['ids']),max(1,len(st['ids'])//96))[:96]
++                    if membership not in probe_ids:
++                        probe_ids[membership]=st['ids'][np.arange(0,len(st['ids']),max(1,len(st['ids'])//96))[:96]].copy()
++                    take=np.searchsorted(st['ids'],probe_ids[membership])
++                    if np.any(take>=len(st['ids'])) or not np.array_equal(st['ids'][take],probe_ids[membership]):raise RuntimeError('PROBE_IDS_CHANGED_WITHIN_PHASE')
+                     chosen.extend([[membership,int(st['ids'][i]),*(st['positions'][i]-[0,0,pad])] for i in take])
+-                np.savez_compressed(d/f'fluid_probes_{label}_{done:08d}.npz',probes=np.array(chosen),strain=strain)
++                np.savez_compressed(d/f'fluid_probes_{label}_{done:08d}.npz',probes=np.array(chosen),strain=strain,phase=label,global_step=total_steps+done,membrane_vertex_ids=rm['ids'])
++                if s.get('diagnostic_state',False):
++                    np.savez_compressed(d/f'membrane_state_{label}_{done:08d}.npz',ids=rm['ids'],positions=v,velocities=rm['velocities'],phase=label,global_step=total_steps+done,strain=strain)
+         # Initialize force channels before the first snapshot; run(0) performs no evolution.
+         u.run(0,dt=dt);sync();t=time.perf_counter();sample_state(0);timings_total['output_s']+=mpi.allreduce(time.perf_counter()-t)
+         done=0
+@@ -184,10 +201,13 @@
+     if compute:
+         import hashlib
+         (d/'handoff.json').write_text(json.dumps(dict(source='same process freshly computed relaxation',checkpoints=0,fluid_particles=initialN,inner_particles=initial_innerN,positions_sha256=hashlib.sha256(state['fluid']['positions'].tobytes()).hexdigest(),old_ids_sha256=hashlib.sha256(state['fluid']['ids'].tobytes()).hexdigest(),ids_remapped_by_sorted_old_id=True)))
+-    if full:state,done=stage('shear',steps,sample,c['protocol']['shear_rate']*H/2,state)
++    relaxation_done=done
++    if s.get('stop_after_relaxation',False):
++        done=0;steps=0;full=full and relaxation_done==prep
++    elif full:state,done=stage('shear',steps,sample,c['protocol']['shear_rate']*H/2,state)
+     if compute:
+         for f in streams:f.close()
+-        (d/'completion.json').write_text(json.dumps(dict(completed=full and done==steps,role=role,cell_count=int(has_cell),vertices=len(vertices) if has_cell else 0,actual_steps=total_steps,prep_steps=prep,shear_steps=done,strain_end=done*dt*c['protocol']['shear_rate'] if not material else None,dt_star=dt,fluid_particles=initialN,rank_count=2,precision_bits=32,**timings_total,worker_elapsed_s=time.perf_counter()-before,coordinators_sequential=2,wall_hidden_steps=2*dp['wall_relax_steps'] if not material else 0,checkpoints_loaded=0,membrane_updates=total_steps if has_cell else 0,interior_viscosity_ratio=1.,bouncer='bounce_back',membrane_thermostat_gammaC=0.,classifier_corrections=0),indent=2))
++        (d/'completion.json').write_text(json.dumps(dict(completed=full and done==steps,role=role,cell_count=int(has_cell),vertices=len(vertices) if has_cell else 0,actual_steps=total_steps,prep_steps=prep,shear_steps=done,strain_end=done*dt*c['protocol']['shear_rate'] if not material else None,dt_star=dt,fluid_particles=initialN,rank_count=2,precision_bits=32,**timings_total,worker_elapsed_s=time.perf_counter()-before,coordinators_sequential=1 if s.get('stop_after_relaxation',False) else 2,wall_hidden_steps=2*dp['wall_relax_steps'] if not material else 0,checkpoints_loaded=0,membrane_updates=total_steps if has_cell else 0,interior_viscosity_ratio=1.,bouncer='bounce_back',membrane_thermostat_gammaC=0.,classifier_corrections=0),indent=2))
+     mpi.Barrier();mpi.check(mpi.lib.MPI_Finalize())
+ 
+ if __name__=='__main__':main()
