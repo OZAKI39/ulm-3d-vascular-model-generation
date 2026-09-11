@@ -1,0 +1,74 @@
+{
+  "recorded_at": "2026-09-10T15:14:56.675457+00:00",
+  "status": "CONFIRMED_API_OBSERVATION_DEFECT",
+  "findings": [
+    "The pinned Mirheo::run invokes setup; Simulation::run executes initial splitters on every invocation, including run(0).",
+    "correct_every=0 disables scheduled correction tasks but does not prevent repeated initial splitting of outer into inner.",
+    "Simulation::run also clears object local/halo forces on entry. Bouncer reaction forces are accumulated after integration for the next step; a new run boundary can discard that pending contribution.",
+    "A2 inner population increases from 642 to 643 while total population remains 110592; its completion field classifier_corrections=0 is not a complete accounting of classification operations.",
+    "Existing probe-no-mismatch results do not establish impermeability in the presence of these implicit classification calls.",
+    "Native ParticleSenderPlugin::beforeForces observes positions/velocities and ids within the same run, avoiding these observation boundaries."
+  ],
+  "controls": [
+    {
+      "task": "A0_shared_installed",
+      "saved_frames": 42,
+      "inner_counts": [
+        642
+      ],
+      "fluid_counts": [
+        110592
+      ],
+      "moments_sha256": "1ec191e53baf6a3770bf7f146e43e7aef34d8c79b9867a411b9b9e9e00a48b60",
+      "run_calls_from_worker_protocol": 42,
+      "run_call_count_scope": "successful returned observation calls inferred from unchanged worker; failed pending call may add one"
+    },
+    {
+      "task": "A1_independent_installed",
+      "saved_frames": 49,
+      "inner_counts": [
+        642
+      ],
+      "fluid_counts": [
+        110592
+      ],
+      "moments_sha256": "4a89b564e3e0c21cb4eac8a0aec50407593ac0a2d1f06052a7fe32de12ac061e",
+      "run_calls_from_worker_protocol": 49,
+      "run_call_count_scope": "successful returned observation calls inferred from unchanged worker; failed pending call may add one"
+    },
+    {
+      "task": "A2_shared_ordered_isolated",
+      "saved_frames": 51,
+      "inner_counts": [
+        642,
+        643
+      ],
+      "fluid_counts": [
+        110592
+      ],
+      "moments_sha256": "cfe18ebf1359e37cdfa9666a70de42a2a4662e1aee9a839b58b881f1a3aa26af",
+      "run_calls_from_worker_protocol": 51,
+      "run_call_count_scope": "successful returned observation calls inferred from unchanged worker; failed pending call may add one"
+    },
+    {
+      "task": "A3_ordered_instrumented",
+      "saved_frames": 51,
+      "inner_counts": [
+        642
+      ],
+      "fluid_counts": [
+        110592
+      ],
+      "moments_sha256": "a1a849f685a12bdfac6c3aeedc10aa6d2ee7d505f01837786e4688266bb9e313",
+      "run_calls_from_worker_protocol": 51,
+      "run_call_count_scope": "successful returned observation calls inferred from unchanged worker; failed pending call may add one"
+    }
+  ],
+  "source_sha256": {
+    "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/core/simulation.cpp": "793be193c6da6fc672d4f69c324164aca3f3a9073dd879839ae9bf54964dd58b",
+    "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/core/mirheo.cpp": "933f2a863983b553f8df734b0bd8e62957deeebd0c2f9aea1ccd392d42bcac5f",
+    "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/plugins/dump_particles.cu": "240687070d96caee864c9036515a80b40c8ce7a98a7e8e63bae67bbcabb36b14"
+  },
+  "scope": "Confirmed API behavior and reporting defect, not a proof that it alone causes candidate overflow.",
+  "remedy": "Versioned continuous zero-shear diagnostic with one native run and built-in particle dumps; frozen worker and installed library retained."
+}

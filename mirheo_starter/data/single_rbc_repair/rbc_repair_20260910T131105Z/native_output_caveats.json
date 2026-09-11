@@ -1,0 +1,11 @@
+{
+  "recorded_at": "2026-09-10T15:43:49.663822+00:00",
+  "scope": "A4/A5/A6 native HDF5 observations",
+  "findings": [
+    "Position, velocity and id are captured by native beforeForces callbacks at the indexed step; these are the quantities used for current geometry and member checks.",
+    "The ForceSaver forces channel is populated at beforeIntegration. At the step-0 dump it has no initialized physical force sample. Subsequent native HDF5 force samples are lagged; do not use them to claim same-step force causality.",
+    "The current area, volume, D, angle, WLC and member conclusions do not use this uninitialized step-0 force channel. Initial bending-stress evidence uses the separate archived static native force probe after force evaluations.",
+    "The force entries in the A5 native pre-bounce failure trace have their own scheduling meaning: local object forces have been cleared before bounce to accumulate reactions. Zero there does not imply zero membrane force before integration."
+  ],
+  "qualification": "No full shear endpoint or matched-material speedup"
+}

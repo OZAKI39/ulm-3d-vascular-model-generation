@@ -1,0 +1,14 @@
+[
+  {
+    "path": "cmake/version.cmake",
+    "original_sha256": "72bff670f2a3229f1075fa6680f31c823ee40441bfc0ef31c5a8f7da49a83873",
+    "replacement": "# Cloud archive adapter: explicit provenance, no fabricated Git repository.\nmacro(getMirheoVersion version_str version_number)\n  if(NOT DEFINED MIR_ARCHIVED_VERSION)\n    message(FATAL_ERROR \"MIR_ARCHIVED_VERSION is required for this Git-free archive\")\n  endif()\n  set(${version_str} \"${MIR_ARCHIVED_VERSION}\")\n  string(REGEX REPLACE \"^v\" \"\" ${version_number} \"${MIR_ARCHIVED_VERSION}\")\nendmacro()\nmacro(getMirheoSHA1 sha1)\n  if(NOT DEFINED MIR_ARCHIVED_REVISION)\n    message(FATAL_ERROR \"MIR_ARCHIVED_REVISION is required for archive provenance\")\n  endif()\n  set(${sha1} \"${MIR_ARCHIVED_REVISION}\")\nendmacro()\n",
+    "replacement_sha256": "f74047f2b012775a043a942d8e057b568b6fe4fae378e41622c4fc2c2a0e1648"
+  },
+  {
+    "path": "setup.py",
+    "original_sha256": "d76e53bb7ae6b872d4b866bc444f72989d0a710ff80945ea64bfb9a046b31cbd",
+    "replacement": "#! /usr/bin/env python3\n\nimport os, glob\nimport shutil\n\nfrom setuptools import setup, Extension\nfrom setuptools.command.build_ext import build_ext\nfrom distutils.version import LooseVersion\n\nimport sys\nsys.path.insert(0, 'mirheo')\nimport version\n\n\nclass BinaryExtension(Extension):\n    def __init__(self, name, sourcedir=''):\n        Extension.__init__(self, name, sources=[])\n        self.sourcedir = os.path.abspath(sourcedir)\n\n\nclass CopyLibrary(build_ext):\n    def run(self):\n        for ext in self.extensions:\n            self.copy_extension(ext)\n\n    def copy_extension(self, ext):\n        extdir = os.path.abspath(os.path.dirname(self.get_ext_fullpath(ext.name)))\n        library = glob.glob(os.environ.get('MIRHEO_PREBUILT_LIBRARY', ext.sourcedir + '/build/src/mirheo/bindings/libmirheo.cpython*.so'))\n\n        if (len(library) == 0):\n            raise ValueError('No pre-build library found in folder ' +\n                    ext.sourcedir + '/build/')\n\n        shutil.copy2(library[0], extdir)\n\n\nsetup(\n    name='Mirheo',\n    version=version.mir_version,\n    author='Dmitry Alexeev, Lucas Amoudruz, Ivica Kicic',\n    author_email='alexeedm@ethz.ch, amlucas@ethz.ch, kicici@ethz.ch',\n    description='Computational Microfluidics',\n    long_description='',\n    packages = ['mirheo'],\n    package_dir = {'mirheo' : 'mirheo'},\n    ext_modules=[BinaryExtension('libmirheo', sourcedir='./')],\n    cmdclass=dict(build_ext=CopyLibrary),\n    url='https://mirheo.readthedocs.io/en/latest/',\n    license='MIT',\n    zip_safe=False,\n)\n",
+    "replacement_sha256": "4bf0964cf8a9f85d7c2cffcec5897bc744dcc098d68d353e89ec0d2284ce7aba"
+  }
+]

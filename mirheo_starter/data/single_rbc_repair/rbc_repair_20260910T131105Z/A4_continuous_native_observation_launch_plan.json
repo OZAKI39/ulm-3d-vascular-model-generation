@@ -1,0 +1,230 @@
+{
+  "recorded_at": "2026-09-10T15:14:57.348943+00:00",
+  "task": "A4_continuous_native_observation",
+  "category": "A",
+  "allocation_s": 90,
+  "used_A_s_before": 109.83241369499592,
+  "authorization_sha256": "fad3a754a13d15dc5349c55a023fd02c317b252738e3bda200e24a465c2a1356",
+  "prior_reviews": [
+    {
+      "task": "A0_shared_installed",
+      "review": "/home/lzy/projects/mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/runtime_reviews/A0_shared_installed/review.json",
+      "sha256": "fab65f8c1ba02d639e2db015c4bb30bbb55aee0d0de7cb26034d1c208a078582",
+      "status": "SHORT_CONTROL_HAS_UNRESOLVED_QUALITY_FAILURE"
+    },
+    {
+      "task": "A1_independent_installed",
+      "review": "/home/lzy/projects/mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/runtime_reviews/A1_independent_installed/review.json",
+      "sha256": "ddff40d8dfc32875a6490f9f62cd4419c6da8f5974ef283722d9a478f7f25cf8",
+      "status": "SHORT_CONTROL_HAS_UNRESOLVED_QUALITY_FAILURE"
+    },
+    {
+      "task": "A2_shared_ordered_isolated",
+      "review": "/home/lzy/projects/mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/runtime_reviews/A2_shared_ordered_isolated/review.json",
+      "sha256": "b05419a8e6aaa6040a48c189aff108aa2f4b26c13b35a9540af97e34092ee327",
+      "status": "SHORT_CONTROL_HAS_UNRESOLVED_QUALITY_FAILURE"
+    },
+    {
+      "task": "A3_ordered_instrumented",
+      "review": "/home/lzy/projects/mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/runtime_reviews/A3_ordered_instrumented/review.json",
+      "sha256": "8637187f544cf0a91932ea803538de0eab2a24a489b90fa9911c085988133c80",
+      "status": "SAVED_SHORT_CHECKS_PASS"
+    }
+  ],
+  "changed_factor": "Replace repeated run(0)/run(100) observation boundaries with one run(5000), observed by native HDF5 plugins.",
+  "unchanged_physics": "Same deformable membrane, two fluid species, forces, ordered shared bouncer, dt, geometry and zero-shear endpoint as A3.",
+  "purpose": "Remove implicit repeated initial classification and force resets; inspect saved physical quality before any long run.",
+  "limitations": "Native dump synchronization and stochastic trajectories can differ. This is not an exact deterministic race proof or a Gamma=4 result.",
+  "automatic_retry": false,
+  "artifact_sha256": {
+    "/home/lzy/projects/mirheo_starter/py_scripts/single_rbc_repair/continuous_worker.py": "d26478495935bfe23840068e0419ce9ed398dc75858898b89a2898e0618bd2f2",
+    "/home/lzy/projects/mirheo_starter/py_scripts/single_rbc_repair/continuous_protocol.py": "de56f2489bd69d1bd8d7432626f582bf5745ffb67b4ccaac6480b016a8e6ebdc",
+    "/home/lzy/projects/mirheo_starter/py_scripts/single_rbc_repair/continuous_control.py": "6d003e296231c05cfd5f79392aa805b43e280ac2c19b836e9a07dd23ae8de784",
+    "/home/lzy/projects/mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/run_boundary_audit.json": "bd0509c534b907c2cad8cd437771941b1ee1f9b1efa29cb0196ed108a7d5bf6d",
+    "/home/lzy/projects/mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/cpu_continuous_protocol_before_fix.log": "f2ad42ec95ead814383d583d1a8608b22dc256ab8a043426480ef1be224fdff8",
+    "/home/lzy/projects/mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/cpu_continuous_protocol_after_fix.log": "fb184ea57734512b1f088f9181209901b9cd46df3eb7eaa2500ea9e48dde20b5"
+  },
+  "spec": {
+    "config": {
+      "schema_version": 1,
+      "campaign_id": "rbc_repair_20260910T131105Z",
+      "description": "单个可变形 RBC 的有限盒瞬态简单剪切；共同模拟单位，非现实血液标定",
+      "geometry": {
+        "periodic_length": 24.0,
+        "gap": 24.0,
+        "wall_layer": 1.0,
+        "center": [
+          12.0,
+          12.0,
+          12.0
+        ],
+        "axes": {
+          "flow": "x",
+          "gradient": "z",
+          "periodic": [
+            "x",
+            "y"
+          ]
+        },
+        "hemocell_angles_degrees": [
+          90.0,
+          0.0,
+          0.0
+        ],
+        "radius": 3.91,
+        "min_triangles": 600
+      },
+      "protocol": {
+        "relaxation_time": 5.0,
+        "shear_rate": 0.02,
+        "end_strain": 4.0,
+        "sample_strain": 0.1,
+        "cold_repetitions": 2,
+        "start": "impulsive_symmetric_moving_walls_after_zero_shear_relaxation"
+      },
+      "dpd": {
+        "number_density": 8.0,
+        "mass": 1.0,
+        "kBT": 1.0,
+        "rc": 1.0,
+        "a": 10.0,
+        "gamma": 10.0,
+        "power": 0.5,
+        "dt": 0.001,
+        "strict_dt": 0.0005,
+        "membrane_gamma": 10.0,
+        "wall_relax_steps": 1000,
+        "source": "vendor/Mirheo/tests/doc_scripts/membranes_solvents.py"
+      },
+      "material_check": {
+        "domain": [
+          16.0,
+          8.0,
+          12.0
+        ],
+        "relaxation_time": 5.0,
+        "drive_time": 40.0,
+        "force_per_particle": 0.1,
+        "sample_time": 0.25,
+        "fit_final_fraction": 0.5,
+        "bins": 16,
+        "nu_candidate": 1.5,
+        "nu_admissible_range": [
+          0.4,
+          4.0
+        ]
+      },
+      "hemocell": {
+        "root": "/home/lzy/projects/hemocell_starter",
+        "dx": 0.5,
+        "ranks_candidate": 2,
+        "tau_candidate": 1.0,
+        "strict": "halve_dt_same_grid",
+        "material": {
+          "kLink": 0.15,
+          "kBend": 8.0,
+          "kArea": 5.0,
+          "kVolume": 0.2,
+          "eta_m": 0.0
+        }
+      },
+      "mirheo_membrane": {
+        "model": "wlc",
+        "bending": "Kantor",
+        "stress_free": true,
+        "mass": 1.0,
+        "x0": 0.457,
+        "mpow": 2.0,
+        "ks_candidate": 3.0,
+        "ka": 279.693130111,
+        "ka_tot": 0.0,
+        "kv_tot": 1188.746,
+        "kb_candidate": 8.0,
+        "theta": 6.97,
+        "gammaC": 0.0,
+        "kBT": 1.0,
+        "bouncer": "bounce_back",
+        "belonging_correction_every": 0
+      },
+      "membrane_check": {
+        "calibration_strain": 0.01,
+        "validation_strains": [
+          0.03,
+          0.05
+        ],
+        "modes": [
+          "shear",
+          "stretch"
+        ],
+        "max_candidate_revisions": 1,
+        "relaxation_check_time": 5.0
+      },
+      "screen": {
+        "name": "BENCHMARK_SCREEN_v1",
+        "empty_velocity_relative_l2": 0.05,
+        "effective_shear_relative_error": 0.05,
+        "viscosity_strict_relative_difference": 0.05,
+        "temperature_relative_error": 0.05,
+        "near_wall_density_relative_error": 0.1,
+        "mass_relative_drift": 0.001,
+        "area_relative_drift": 0.02,
+        "volume_relative_drift": 0.02,
+        "initial_relaxed_shape_relative_rms": 0.02,
+        "own_strict_D_relative_difference": 0.05,
+        "own_strict_D_absolute_noise_floor": 0.005,
+        "membrane_response_relative_difference": 0.1,
+        "angle_degenerate_axis_ratio": 1.05,
+        "required_complete_cell_count": 1,
+        "strict_impermeability_status_default": "NOT_VERIFIED",
+        "space_convergence_status_default": "NOT_VERIFIED"
+      },
+      "budget": {
+        "gpu_authorized_s": 0,
+        "cpu_solver_authorized_s": 0,
+        "native_build_authorized_s": 0,
+        "gpu_proposal_s": 8500,
+        "cpu_solver_proposal_s": 600,
+        "native_build_proposal_s": 1800,
+        "max_solver_task_s": 2400,
+        "gpu_concurrency": 1,
+        "allocation": {
+          "A_short_and_failure_range": 1600,
+          "B_material_and_preparation": 1900,
+          "C_empty_two_cold_and_strict": 5000
+        },
+        "old_remaining_s": 788.2967463160094,
+        "old_balance_usable_for_repair": false
+      },
+      "repair": {
+        "status": "CPU_INVESTIGATION_GPU_NOT_AUTHORIZED",
+        "legacy_campaign_id": "rbc_shear_20260910",
+        "legacy_config_sha256": "152c7c591b3be5cf934f85ef25b7ea09c06882d0f75facc093269565242f98b7",
+        "containment_band": 0.0001,
+        "intersection_tolerance": 1e-05,
+        "native_candidate": "local_before_halo_v2",
+        "bouncer_policy": "independent_per_pv_control",
+        "candidate_limit": 2,
+        "no_automatic_retries": true
+      },
+      "_config_path": "/home/lzy/projects/mirheo_starter/py_scripts/single_rbc_benchmark_repaired.yaml",
+      "_config_sha256": "280afcccc93d099609cc65074d324602e0b6d8b24ccdf574e51b1172ac4072c8"
+    },
+    "role": "main",
+    "dt": 0.001,
+    "seed": 20260910,
+    "mesh": "/home/lzy/projects/mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/common_reference.off",
+    "prep_steps": 5000,
+    "steps": 0,
+    "sample_steps": 100,
+    "stop_after_relaxation": true,
+    "bouncer_policy": "shared",
+    "debug_level": 1,
+    "diagnostic_state": true,
+    "ks": 3.0,
+    "kb": 8.0,
+    "native_library": "/home/lzy/projects/mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/native/build/src/mirheo/bindings/libmirheo.cpython-312-x86_64-linux-gnu.so",
+    "native_library_sha256": "768fa3f332b176ff7e9360e136c51182347a5fed66384202a316028c4dcfd899",
+    "plan_sha256": "0d10ef8d3e82fbb246be30bbde421ef95f764977d46d8b9262636535602f4c6d",
+    "continuous_observation": true
+  }
+}

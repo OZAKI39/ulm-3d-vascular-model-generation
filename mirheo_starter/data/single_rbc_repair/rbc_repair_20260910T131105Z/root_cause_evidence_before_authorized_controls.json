@@ -1,0 +1,102 @@
+{
+  "recorded_at": "2026-09-10T13:48:09.333755+00:00",
+  "overall_status": "SUPPORTED_NOT_CONFIRMED",
+  "runtime_fix_status": "NOT_TESTED",
+  "hypotheses": [
+    {
+      "id": "static_capacity_abort",
+      "status": "CONFIRMED",
+      "finding_zh": "四次原生退出均为粗候选计数超过 5×1280=6400；不是超时。固定容量是直接退出条件，超量候选的上游来源尚未全部确定。",
+      "evidence": [
+        "failure_timeline.json",
+        "native/source/src/mirheo/core/bouncers/drivers/common.h"
+      ]
+    },
+    {
+      "id": "write_before_bounds_check",
+      "status": "RULED_OUT_WITHIN_SCOPE",
+      "finding_zh": "实际 push_back 先以 i<maxSize 保护写入；计数仍递增，随后宿主检查并报错。正常未损坏状态下，单纯超过 6400 不会越界写候选表。",
+      "source": "src/mirheo/core/bouncers/drivers/common.h:30"
+    },
+    {
+      "id": "uncleared_accumulating_counter",
+      "status": "RULED_OUT_WITHIN_SCOPE",
+      "finding_zh": "每次 exec 对粗、精确计数器及碰撞时间清零；同一 stream 内不存在跨调用累计。此结论不排除跨 stream 对共享缓冲的干扰。",
+      "source": "src/mirheo/core/bouncers/from_mesh.cu:90"
+    },
+    {
+      "id": "shared_outer_inner_itself",
+      "status": "RULED_OUT_WITHIN_SCOPE",
+      "finding_zh": "outer、inner 的 local 调用位于同一任务组、同一 stream；共用实例本身不是这两个调用并发的证据。",
+      "source": "src/mirheo/core/simulation.cpp:685; src/mirheo/core/task_scheduler.cpp:353"
+    },
+    {
+      "id": "local_halo_scratch_ordering",
+      "status": "SUPPORTED_NOT_CONFIRMED",
+      "finding_zh": "local 与 halo 任务缺少先后依赖；exec 返回前最后的反弹核异步运行，而空 halo 也清零同一实例的候选表和碰撞时间。源码确认存在无依赖的冲突访问可能；尚未证明它导致了本机这四次失败。",
+      "source": "src/mirheo/core/simulation.cpp:1275; src/mirheo/core/bouncers/from_mesh.cu:71; src/mirheo/core/containers.h:553; src/mirheo/core/task_scheduler.cpp:281",
+      "prediction": "The last inner local bounce can race with an empty outer halo clear; independent per-PV objects alone do not establish local/halo ordering."
+    },
+    {
+      "id": "detector_false_positive_only",
+      "status": "RULED_OUT_WITHIN_SCOPE",
+      "finding_zh": "固体角法与独立三方向射线判定均确认远离膜面的成员不符；平面切线区间法确认 Γ=2.2 的 21 对真实自交。近膜带未将这些异常消除。",
+      "evidence": [
+        "failure_timeline.json"
+      ]
+    },
+    {
+      "id": "stage_handoff_as_only_cause",
+      "status": "RULED_OUT_WITHIN_SCOPE",
+      "finding_zh": "默认配置与半步的首个成员异常均在零剪切准备阶段、阶段交接前；交接不能解释全部异常。交接本身仍需新诊断检查。",
+      "evidence": [
+        "failure_timeline.json"
+      ]
+    },
+    {
+      "id": "physically_reasonable_overcapacity",
+      "status": "INSUFFICIENT_EVIDENCE",
+      "finding_zh": "旧文件缺少出错一步的 oldPositions、速度与完整候选分布，不能判定是否仅为合理候选超出容量估计。因此本候选保留容量报错，尚不扩大或丢弃候选。"
+    },
+    {
+      "id": "geometry_integrator_mass",
+      "status": "SUPPORTED_NOT_CONFIRMED",
+      "finding_zh": "受限队列诊断 Γ=2.2 的最大边长达到 WLC 上限的 1.652 倍，并有 21 对自交；该坏帧先于后续溢出。其他默认运行最后存帧未见同类超伸长，不能统一归因。半步失败没有排除积分问题。"
+    },
+    {
+      "id": "reference_bending_stress",
+      "status": "CONFIRMED",
+      "finding_zh": "两边初始无应力状态不相同。Mirheo 初始总力 RMS=1.768，HemoCell 约 3.9e-10；独立常参考角 Kantor 能量梯度与原生总力差 0.14%，支持弯曲参考应力是初态失配的重要来源，不证明其造成全部崩溃。",
+      "evidence": [
+        "initial_bending_force_audit.json",
+        "initial_bending_cpu_vs_native.csv"
+      ],
+      "source": "src/mirheo/core/interactions/membrane/force_kernels/dihedral/kantor.h:25"
+    },
+    {
+      "id": "finite_mass_bounce_recoil",
+      "status": "SUPPORTED_NOT_CONFIRMED",
+      "finding_zh": "triangleForces 接收节点质量但不使用它；先按给定表面速度反弹，再施加反作用冲量。减小节点质量会放大加速度，不能把降质量视为无条件正确的匹配办法。真实耦合稳定性须用短测试测量。",
+      "source": "src/mirheo/core/bouncers/drivers/mesh.h:406"
+    }
+  ],
+  "source_sha256": {
+    "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/core/bouncers/from_mesh.h": "08637f4c6b561ae71bbc61eb17e09ade850d65329fd29fabdd5ed33edd44890d",
+    "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/core/bouncers/from_mesh.cu": "c0be66b2544f791d9b4810d619d6286b5e660a0e4899a3db768c011690d36b24",
+    "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/core/bouncers/drivers/common.h": "1665656c2587583624f3f7dfffaaea0d4a7388ab1ec4862ae7128f563cd18489",
+    "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/core/bouncers/drivers/mesh.h": "07f34b472bcc3e17aabee82e87b55a29a6b3eadd586c82c54390e49503ae812b",
+    "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/core/bouncers/interface.cpp": "e1f6302e9fbbe371978d3e7b804b039b0a5a9f82dc848d17e880dc9e752ce214",
+    "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/core/simulation.cpp": "793be193c6da6fc672d4f69c324164aca3f3a9073dd879839ae9bf54964dd58b",
+    "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/core/task_scheduler.cpp": "f8abe79d29d287790e3dd483733a80a493434c7edce7177d10de98980abffcee",
+    "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/core/containers.h": "c179dc0ff5fd106e6bec89b715f947be18ace3cafb3f68fd5b200d33f9685264",
+    "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/core/integrators/integration_kernel.h": "4108335a05808c738cbea0ba3a55931f6e3fc92d7c0986c1bfb577a545748f56",
+    "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/core/interactions/membrane/force_kernels/dihedral/kantor.h": "701a31537a89460cc667b69b18ae4a010da365b119f0b1343c02e3fea85cbf8a",
+    "/home/lzy/projects/mirheo_starter/vendor/Mirheo/src/mirheo/plugins/force_saver.cu": "798516be7c619d195bc89144383326f23fc683c6b902b635453d82d77fe1afb1"
+  },
+  "remaining_native_audit": [
+    "actual halo object counts and reverse force exchange if nonempty",
+    "duplicate and per-triangle distributions beyond a truncated overflow table",
+    "exact one-step swept distance and state sorting at failure"
+  ],
+  "new_gpu_seconds": 0
+}

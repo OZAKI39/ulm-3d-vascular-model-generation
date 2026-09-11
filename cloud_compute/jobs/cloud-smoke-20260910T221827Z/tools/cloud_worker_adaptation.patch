@@ -1,0 +1,40 @@
+--- archived/continuous_worker.py
++++ cloud/cloud_repair_worker.py
+@@ -19,9 +19,9 @@
+     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--spec',required=True);a=p.parse_args()
+     s=json.loads(Path(a.spec).read_text());c=s['config'];d=Path.cwd();role=s['role'];dt=s['dt']
+     if not (s.get('continuous_observation') and s.get('stop_after_relaxation') and role=='main' and s['steps']==0):raise RuntimeError('CONTINUOUS_ZERO_SHEAR_DIAGNOSTIC_ONLY')
+-    if os.environ.get('OMPI_COMM_WORLD_SIZE')!='2' or os.environ.get('SINGLE_RBC_AUTHORIZED')!=s['plan_sha256']:raise RuntimeError('AUTHORIZED_TWO_RANK_LAUNCH_REQUIRED')
++    if os.environ.get('OMPI_COMM_WORLD_SIZE')!='2' or os.environ.get('CLOUD_JOB_AUTHORIZED')!=s['cloud_plan_sha256']:raise RuntimeError('CLOUD_AUTHORIZED_TWO_RANK_LAUNCH_REQUIRED')
+     from py_scripts.solver_benchmark.native_mpi import NativeMPI
+-    from py_scripts.single_rbc_benchmark.physics import read_off, write_off, order_vertices, geometry
++    from cloud_geometry import read_off, write_off, order_vertices, geometry
+     mpi=NativeMPI();mpi.check(mpi.lib.MPI_Init(None,None));compute=mpi.rank==0
+     if s.get("native_library"):
+         import hashlib, sys
+@@ -132,7 +132,7 @@
+             inner=u.applyObjectBelongingChecker(checker,fluid,correct_every=0,inside='inner');handles.append(checker)
+             u.setInteraction(interaction,inner,inner);u.setInteraction(interaction,inner,fluid);u.setIntegrator(vv,inner);u.setIntegrator(vv,rbc)
+             dpd(u,'outer_membrane',fluid,rbc,True);dpd(u,'inner_membrane',inner,rbc,True)
+-            from .coupling import bind_bouncers
++            from py_scripts.single_rbc_repair.coupling import bind_bouncers
+             handles.extend(bind_bouncers(mir,u,rbc,fluid,inner,s.get('bouncer_policy','shared')))
+             u.registerPlugins(mir.Plugins.createForceSaver('membrane_force',rbc))
+         u.setInteraction(interaction,fluid,fluid);u.setIntegrator(vv,fluid)
+@@ -185,12 +185,14 @@
+         dump_root=d/f'native_{label}'
+         if compute:dump_root.mkdir(exist_ok=False)
+         mpi.Barrier()
+-        for pv,name in ((fluid,'outer'),(inner,'inner'),(rbc,'rbc')):
++        # Cloud smoke observes native membrane frames only; no full-fluid frame stream.
++        for pv,name in ((rbc,'rbc'),):
+             channels=['forces'] if name=='rbc' else []
+             u.registerPlugins(mir.Plugins.createDumpParticles('observe_'+name,pv,dump_every=sample,channel_names=channels,path=str(dump_root/name)))
+-        from .continuous_protocol import evolve_stage
++        from py_scripts.single_rbc_repair.continuous_protocol import evolve_stage
+         mpi.Barrier();t=time.perf_counter()
+         done=evolve_stage(u,count,dt,sample);sync()
++        if compute and int(u.getState().current_step)!=count:raise RuntimeError('NATIVE_STEP_COUNT_MISMATCH')
+         cost=mpi.allreduce(time.perf_counter()-t)
+         timings_total['relaxation_s' if label=='relaxation' else 'coupled_s']+=cost
+         t=time.perf_counter();sample_state(done)

@@ -1,0 +1,72 @@
+diff --git a/src/mirheo/core/bouncers/from_mesh.cu b/src/mirheo/core/bouncers/from_mesh.cu
+index 3f5105af..5bf779e0 100644
+--- a/src/mirheo/core/bouncers/from_mesh.cu
++++ b/src/mirheo/core/bouncers/from_mesh.cu
+@@ -9,6 +9,7 @@
+ #include <mirheo/core/pvs/views/ov.h>
+ #include <mirheo/core/rigid/operations.h>
+ #include <mirheo/core/utils/kernel_launch.h>
++#include "repair_trace.h"
+ 
+ namespace mirheo
+ {
+@@ -67,6 +68,8 @@ std::vector<std::string> BounceFromMesh::getChannelsToBeSentBack() const
+ void BounceFromMesh::exec(ParticleVector *pv, CellList *cl, ParticleVectorLocality locality, cudaStream_t stream)
+ {
+     auto activeOV = ov_->get(locality);
++    // An empty halo has no physical collisions; do not reset active local scratch.
++    if (activeOV->getNumObjects() == 0 || pv->local()->size() == 0) return;
+ 
+     debug("Bouncing %d '%s' particles from %d '%s' objects (%s)",
+           pv->local()->size(), pv->getCName(),
+@@ -123,9 +126,12 @@ void BounceFromMesh::exec(ParticleVector *pv, CellList *cl, ParticleVectorLocali
+     coarseTable_.nCollisions.downloadFromDevice(stream);
+     debug("Found %d triangle collision candidates", coarseTable_.nCollisions[0]);
+ 
++    if (coarseTable_.nCollisions[0] > maxCoarseCollisions && rov_ == nullptr)
++        rbc_repair::trace(getState(), pv->getName(), getParticleVectorLocalityStr(locality), activeOV->getNumObjects(), vertexView, pvView, coarseTable_.nCollisions[0], maxCoarseCollisions, devCoarseTable.indices, -1, maxFineCollisions, devFineTable.indices, stream);
++
+     if (coarseTable_.nCollisions[0] > maxCoarseCollisions)
+-        die("Found too many triangle collision candidates (coarse) (%d, max %d) in bouncer '%s'.",
+-            coarseTable_.nCollisions[0], maxCoarseCollisions, getCName());
++        die("Found too many triangle collision candidates (coarse) (%d, max %d) in bouncer '%s'; phase_step_zero_based=%lld pv=%s locality=%s.",
++            coarseTable_.nCollisions[0], maxCoarseCollisions, getCName(), getState()->currentStep, pv->getCName(), getParticleVectorLocalityStr(locality).c_str());
+ 
+     // Step 2, filter the candidates
+     SAFE_KERNEL_LAUNCH(
+@@ -138,6 +144,9 @@ void BounceFromMesh::exec(ParticleVector *pv, CellList *cl, ParticleVectorLocali
+     fineTable_.nCollisions.downloadFromDevice(stream);
+     debug("Found %d precise triangle collisions", fineTable_.nCollisions[0]);
+ 
++    if (rov_ == nullptr)
++        rbc_repair::trace(getState(), pv->getName(), getParticleVectorLocalityStr(locality), activeOV->getNumObjects(), vertexView, pvView, coarseTable_.nCollisions[0], maxCoarseCollisions, devCoarseTable.indices, fineTable_.nCollisions[0], maxFineCollisions, devFineTable.indices, stream);
++
+     if (fineTable_.nCollisions[0] > maxFineCollisions)
+         die("Found too many triangle collisions (precise) (%d, max %d) in bouncer '%s'.",
+             fineTable_.nCollisions[0], maxFineCollisions, getCName());
+diff --git a/src/mirheo/core/simulation.cpp b/src/mirheo/core/simulation.cpp
+index 6a1ad383..df2094bb 100644
+--- a/src/mirheo/core/simulation.cpp
++++ b/src/mirheo/core/simulation.cpp
+@@ -1274,6 +1274,8 @@ static void buildDependencies(TaskScheduler *scheduler, SimulationTasks *tasks)
+     scheduler->addDependency(tasks->objClearHaloForces, {tasks->objHaloBounce}, {tasks->objHaloFinalFinalize});
+     scheduler->addDependency(tasks->objLocalBounce, {}, {tasks->integration, tasks->objClearLocalForces});
+     scheduler->addDependency(tasks->objHaloBounce, {}, {tasks->integration, tasks->objHaloFinalFinalize, tasks->objClearHaloForces});
++    // Shared per-bouncer storage and particle state must outlive all local bounce kernels.
++    scheduler->addDependency(tasks->objHaloBounce, {}, {tasks->objLocalBounce});
+ 
+     scheduler->addDependency(tasks->pluginsAfterIntegration, {tasks->objLocalBounce, tasks->objHaloBounce}, {tasks->integration, tasks->wallBounce});
+ 
+diff --git a/src/mirheo/core/utils/cuda_common.h b/src/mirheo/core/utils/cuda_common.h
+index 1d47ddbe..300cc3bd 100644
+--- a/src/mirheo/core/utils/cuda_common.h
++++ b/src/mirheo/core/utils/cuda_common.h
+@@ -4,7 +4,7 @@
+ #include "helper_math.h"
+ #include "cpu_gpu_defines.h"
+ 
+-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 700
++#if defined(__CUDACC__)
+ #include <cooperative_groups.h>
+ #endif
+ 

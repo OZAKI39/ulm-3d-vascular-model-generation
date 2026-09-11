@@ -1,3 +1,48 @@
+# 最新归档：修复版 Mirheo 的本地验证、云端部署与完整 RBC 尝试
+
+本分支 `sync/hemocell-mirheo-cloud-rbc-20260911T073240Z` 从 `sync/hemocell-mirheo-single-rbc-repair-20260910T141046Z`（`26c22ed53df1d867aa39443fd65173b0770409c0`）追加归档。以下是已有实验的记录，不是本次同步新跑的实验。旧血管项目根 README 保持原样。
+
+**最新云端任务没有完成 Γ=4。** 准备阶段发生粗碰撞候选溢出，正式剪切为 0 步、Γ=0。`CLOUD_RBC_RUN_COMPLETE=NOT_COMPLETE`、`CLOUD_RBC_NUMERICAL_SCREEN=FAILED`、`RESULTS_RETURN_VERIFIED=PASS`。这些状态逐字节保留，`qualified_speedup=null`。
+
+- [最终中文报告](cloud_results/cloud-rbc-full-20260911T000225Z-review/report_zh.md) · [离线中文 HTML](cloud_results/cloud-rbc-full-20260911T000225Z-review/rbc_full_review.html) · [最终执行交付记录](cloud_compute/rbc_full/execution_delivery_receipt.json)
+- [实际原始数据目录](cloud_results/cloud-rbc-full-20260911T000225Z/simulation) · [实际参数](cloud_results/cloud-rbc-full-20260911T000225Z/actual_parameters.json) · [冻结 spec](cloud_results/cloud-rbc-full-20260911T000225Z/full_spec.json) · [来源链](cloud_results/cloud-rbc-full-20260911T000225Z/provenance.json)
+- [当前调度及分析代码](cloud_compute) · [实际执行的冻结代码](cloud_results/cloud-rbc-full-20260911T000225Z/tools) · [云端部署报告](cloud_compute/report_zh.md) · [部署摘要](cloud_compute/deployment_summary.json)
+- [本地 A0–A6 修复报告](mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/report_zh.md) · [本地完整执行回执](mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/delivery_receipt.json) · [本地原始运行数据](mirheo_starter/runs/single_rbc_repair/rbc_repair_20260910T131105Z/gpu) · [本地核查页面](mirheo_starter/test_code/outputs/single_rbc_repair/rbc_repair_20260910T131105Z/comparison_review.html)
+- [本次同步说明](sync_reports/20260911T073240Z/README.md) · [文件清单](sync_reports/20260911T073240Z/SYNC_MANIFEST.json) · [路径映射](sync_reports/20260911T073240Z/PATH_MAPPING.json) · [排除说明](sync_reports/20260911T073240Z/EXCLUDED_FILES.json)
+
+本轮新增证据覆盖本地 A0–A6 全部成功/失败输出、隔离构建记录、云端失败构建与成功 sm_120 构建、smoke、唯一正式完整验证及本地 CPU 事后分析。核心 CSV/JSON、全部相关 HDF5/NPZ 与错误快照直接保存，没有删行、降精度或转 LFS。HemoCell 旧结果从基础分支继承，本次云端只验证 Mirheo DPD，没有 HemoCell 新运行或速度排名。
+
+| 结论 / 限制 | 具体原始证据与字段 |
+|---|---|
+| 实际使用修复库与最新 worker | [compile_identity](cloud_results/cloud-rbc-full-20260911T000225Z/provenance.json)：`identity.runtime_binary_hash`、`identity.original_source_sha256`；[实际 rank 0](cloud_results/cloud-rbc-full-20260911T000225Z/simulation/rank_0.json)、[rank 1](cloud_results/cloud-rbc-full-20260911T000225Z/simulation/rank_1.json)；[spec](cloud_results/cloud-rbc-full-20260911T000225Z/full_spec.json)：顶层 `bouncer_policy=shared`、`continuous_observation=true`、`dt=0.0005` |
+| 准备调用失败，未进入剪切 | [phase_relaxation](cloud_results/cloud-rbc-full-20260911T000225Z/simulation/phase_relaxation.json)：`native_returned=false`、`successful_returned_steps=null`；[失败摘要](cloud_results/cloud-rbc-full-20260911T000225Z-review/failure_summary.json)：`last_saved_progress_lower_bound.relaxation=45000`、`returned_shear_steps=0` |
+| 粗候选 18074 超过 6400 | [原始碰撞计数](cloud_results/cloud-rbc-full-20260911T000225Z/simulation/bounce_counts_relaxation.csv)：step 45040、outer/local、`coarse_count`、`coarse_capacity`、`fine_count=-1`；[console.log](cloud_results/cloud-rbc-full-20260911T000225Z/simulation/console.log)；细筛未执行不能解释成零碰撞 |
+| 46 个定期帧与失败瞬间有不同状态 | [geometry.csv](cloud_results/cloud-rbc-full-20260911T000225Z/geometry.csv)：定期帧 A/V 漂移上限约 1.9626% / 0.7920%；[事后诊断](cloud_results/cloud-rbc-full-20260911T000225Z-review/postmortem.json)：`failure_snapshots[0].membrane.z_wall_violations=7`、`geometry_status=INVALID_PERIODIC_GEOMETRY`；[失败原始膜快照](cloud_results/cloud-rbc-full-20260911T000225Z/simulation/bounce_relaxation_outer_local_45040_membrane.csv)。失败瞬间自交与 A/V 为 null，不拿定期帧零自交替代 |
+| 成员只检查初态 192 个探针 | [numerical_checks](cloud_results/cloud-rbc-full-20260911T000225Z-review/numerical_checks.json)：`membership.tested_point_frames=192`、`confirmed_mismatches=0`、`strict_impermeability=NOT_VERIFIED`；故障膜无有效周期展开，未进行强行分类 |
+| 速度和流体计数 / 动能统计 | [inner 原始 Stats](cloud_results/cloud-rbc-full-20260911T000225Z/simulation/native_stats_relaxation_inner.csv)、[fluid Stats](cloud_results/cloud-rbc-full-20260911T000225Z/simulation/native_stats_relaxation_fluid.csv)；[定期局部场](cloud_results/cloud-rbc-full-20260911T000225Z/simulation/native_relaxation)。原生 kBT 含整体流动动能，不是扣除流速的温度，也不是 K |
+| 实际退出及预算 | [execution](cloud_results/cloud-rbc-full-20260911T000225Z/execution.json)：退出码 255、`solver_process_wall_s=36.9039248029876`；[budget_usage](cloud_results/cloud-rbc-full-20260911T000225Z/budget_usage.json)：一次、1800 秒上限、未复用旧预算、未重试。进程墙钟不是 Vast 账单 |
+| MPI rank CPU/RSS 缺测 | [原资源采样](cloud_results/cloud-rbc-full-20260911T000225Z/resources.jsonl)、[事后诊断](cloud_results/cloud-rbc-full-20260911T000225Z-review/postmortem.json)：`resource_sampling_coverage`。只采到了两个管理进程，不能用其 RSS 代表全任务；GPU 是全设备采样 |
+| 返回完整、原始文件未被报告修复覆盖 | [云端清单](cloud_results/cloud-rbc-full-20260911T000225Z/results_manifest.json)、[本地回传校验](cloud_results/cloud-rbc-full-20260911T000225Z/LOCAL_ARCHIVE_VERIFIED.json)：970 文件 / 65021041 字节；[本地派生清单](cloud_results/cloud-rbc-full-20260911T000225Z-review/review_manifest.json)。原始封包中的回传 PENDING 是封包前状态，本地最终回执为 PASS |
+| 浏览器检查已发生，人工仍待验收 | [实际浏览器记录](cloud_results/cloud-rbc-full-20260911T000225Z-review/browser_final/browser_check.json)：`fixture_only=false`、`status=PASS`、`html_sha256`；[截图](cloud_results/cloud-rbc-full-20260911T000225Z-review/browser_final/review.png)。本次同步仅校对哈希，没有重新打开浏览器 |
+| 本地修复仍未解决共同终点和质量 | [本地交付](mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/delivery_receipt.json)：`GATE_A_UNRESOLVED_HALF_DT_PREPARATION_COMPLETED_QUALITY_FAILED`、`same_quality_same_endpoint_complete=false`；[A6 准备质量](mirheo_starter/data/single_rbc_repair/rbc_repair_20260910T131105Z/A6_preparation_quality.json)；[各 A0–A6 账本](mirheo_starter/runs/single_rbc_repair/rbc_repair_20260910T131105Z/gpu/budget_ledger.json) |
+| 物理验证保持限制 | [最终回执](cloud_compute/rbc_full/execution_delivery_receipt.json)：材料 NOT_MATCHED；材料标定、空间/时间收敛与 HemoCell 比较 NOT_TESTED；`qualified_speedup=null` |
+
+库身份：`mirheo-sm120-20731713865ae510`，SHA-256 `d45b4fd1b4498b6f365a012e758eec35bc58a7844dabc66f22e617a7b8cf84ee`；RTX 5090 / CUDA 12.8 / sm_120 / 原单精度；MPI 两个 rank、一个计算 GPU。原生修复为 `local_before_halo_v2`，当前每阶段一次连续 `u.run`。完整配置及旧 HemoCell 硬件/精度记录保留在对应来源文件，未重新测量。
+
+GitHub 的 HTML 链接用于查看/下载文件，不是已发布网站。下载本分支后，用本地浏览器打开离线页面；它自带 Plotly 与真实膜数据，无外部资源。原始 JSON/HTML 的 WSL 与云端绝对来源路径保留，仓库相对入口及 PATH_MAPPING 提供远程核查位置。运行/部署入口仍含原机器路径和既有单次授权，归档不授予再次运行权限。
+
+完整第三方源码树、`.venv`、编译对象/库、安装缓存、锁文件和 `.env` 未新增上传；[原生源码说明](sync_reports/20260911T073240Z/NATIVE_SOURCE_ARCHIVE.md)保留确切提交、许可证、补丁及未跟踪头文件。全部本次选定的科学观测已归档；无法补齐原实验未测的 rank 资源、连续不可渗透证明和失败瞬间有效 A/V。
+
+归档自身检查（不运行求解器）：
+
+```bash
+python3 -B sync_reports/20260911T073240Z/verify_archive.py
+```
+
+历史同步清单对应其各自提交中的文件版本，不能拿旧清单校验本分支后来更新的同名报告。下方旧入口作为归档历史原样保留，其阶段性结论不能覆盖上方最新交付。
+
+---
+
 # 最新归档：单红细胞剪切流 CPU 修复与证据
 
 本分支 `sync/hemocell-mirheo-single-rbc-repair-20260910T141046Z` 基于最近的单红细胞归档 `sync/hemocell-mirheo-single-rbc-benchmark-20260910T120318Z`，准确基础提交 `7a0be010fa4cfeee4073bba5bab929216cf4df7b`。本次原样归档 `rbc_repair_20260910T131105Z` 的修复代码、CPU 重分析、失败历史、冻结计划和离线核查页；旧基准的数据与说明继续继承。
