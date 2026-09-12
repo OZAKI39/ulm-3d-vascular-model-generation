@@ -1,0 +1,113 @@
+{
+  "SOURCE_GEOMETRY_UNIT": "Raw fMOST xyz is treated as voxel indices; raw radius physical calibration UNIT_UNVERIFIED. Saved normalized SWC/ROI/lumen uses code-contract um.",
+  "S3_INPUT_UNIT": "um for normalized SWC, ROI and reference lumen; source calibration is a separate unresolved issue",
+  "S3_OUTPUT_UNIT": "geometry metadata um; normals dimensionless; pressure Pa; volumetric flow m3/s; s3 does not create a new STL",
+  "S4_INPUT_UNIT": "um",
+  "S4_INTERNAL_UNIT": "um",
+  "S4_OUTPUT_UNIT": "um STL/VTP plus explicit m STL copy",
+  "FINAL_STL_UNIT": "m",
+  "FINAL_COORDINATE_SYSTEM": "axis_aligned_CFD",
+  "HEMOCELL_TARGET_UNIT": "Lattice units inside voxelizer; configured physical dx is m/LU. refDirN/reference-axis extent controls mesh scaling; no run-specific mapping selected.",
+  "coordinate_scale_to_meter": 1.0,
+  "source_calibration_status": "UNIT_UNVERIFIED for original acquisition/radius calibration",
+  "coordinate_system_status": "Saved relative xyz -> axis_aligned_CFD transform confirmed; anatomical axis/handedness/world registration UNVERIFIED",
+  "operations": [
+    {
+      "operation": "raw xyz multiplied by configured spacing",
+      "object": "SWCData.points_um",
+      "before": "raw voxel index",
+      "after": "program-contract um",
+      "factor": [
+        1,
+        1,
+        2
+      ],
+      "evidence": {
+        "file": "/home/lzy/projects/ulm_3D_vascular/utils/rodent_vasculature/swc_io.py",
+        "line": 185,
+        "context": "        points_um=points_voxel * np.asarray(spacing_xyz_um, dtype=float),",
+        "classification": "CONFIRMED_FROM_CODE"
+      }
+    },
+    {
+      "operation": "radius compensation and H5 diameter adapter",
+      "object": "feed_radii and points fourth column",
+      "before": "source_radius_um",
+      "after": "diameter_um",
+      "factor": "2 * 0.91; positions not rescaled here",
+      "evidence": {
+        "file": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_lumen/ultraliser_backend.py",
+        "line": 250,
+        "context": "    feed_radii = source_radii * float(radius_scale)",
+        "classification": "CONFIRMED_FROM_CODE"
+      }
+    },
+    {
+      "operation": "s2 creates meter mirror",
+      "object": "mesh_m.vertices",
+      "before": "um",
+      "after": "m",
+      "factor": 1e-06,
+      "evidence": {
+        "file": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_lumen/ultraliser_qc.py",
+        "line": 51,
+        "context": "        vertices=np.asarray(mesh.vertices, dtype=float) * 1.0e-6,",
+        "classification": "CONFIRMED_FROM_CODE"
+      }
+    },
+    {
+      "operation": "s3 one-dimensional resistance calculation only",
+      "object": "root_radius_m / edge length and radii",
+      "before": "um",
+      "after": "m",
+      "factor": 1e-06,
+      "evidence": {
+        "file": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_preprocess/one_d_flow.py",
+        "line": 114,
+        "context": "    root_radius_m = float(model.node_radius_um[root_index]) * 1.0e-6",
+        "classification": "CONFIRMED_FROM_CODE"
+      }
+    },
+    {
+      "operation": "s4 meter export after cap",
+      "object": "meter_mesh.vertices, copied from final_mesh",
+      "before": "um",
+      "after": "m",
+      "factor": 1e-06,
+      "evidence": {
+        "file": "/home/lzy/projects/ulm_3D_vascular/utils/cfd_surface_prepare/vmtk_qc.py",
+        "line": 748,
+        "context": "    meter_mesh.vertices = np.asarray(meter_mesh.vertices) * 1.0e-6",
+        "classification": "CONFIRMED_FROM_CODE"
+      }
+    },
+    {
+      "operation": "historical rotation about inlet area-centroid pivot",
+      "object": "whole final surface and all port patches",
+      "before": "s4 frame (m or um form)",
+      "after": "axis_aligned_CFD (same length unit)",
+      "factor": 1.0,
+      "evidence": {
+        "file": "/home/lzy/projects/ulm_3D_vascular/outputs/cfd_flow/axis_aligned_inlet_geometry_anchor003274_20260829_111451/transform/anatomical_to_cfd_transform.json",
+        "line": 109,
+        "context": "  \"homogeneous_transform_length_unit\": \"m\",",
+        "classification": "CONFIRMED_FROM_DATA"
+      },
+      "formula": "x_CFD = pivot + rotation_matrix_3x3 * (x_source - pivot); equivalently saved homogeneous transform",
+      "implementation_source_status": "UNVERIFIED: current emitter script not located; archived transform, producer record, invariance QC and output/consumer hashes exist"
+    },
+    {
+      "operation": "future HemoCell loader scaling; read only, not applied",
+      "object": "TriangularSurfaceMesh in memory",
+      "before": "STL coordinates",
+      "after": "LU",
+      "factor": "refDirN / deltaX_reference",
+      "evidence": {
+        "file": "/home/lzy/projects/hemocell_starter/palabos/src/offLattice/triangularSurfaceMesh.hh",
+        "line": 1568,
+        "context": "    T scalingFactor = (T)(resolution) / deltaX;",
+        "classification": "CONFIRMED_FROM_CODE"
+      }
+    }
+  ]
+}
