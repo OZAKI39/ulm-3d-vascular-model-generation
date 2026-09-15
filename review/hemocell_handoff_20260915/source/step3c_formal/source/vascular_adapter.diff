@@ -1,0 +1,317 @@
+--- frozen_reference/inletCalibrationMPI.cpp
++++ source/vascularPoC.cpp
+@@ -18,6 +18,7 @@
+ #include <set>
+ #include <stdexcept>
+ #include <vector>
++#include <chrono>
+ using namespace plb;
+ typedef double T;
+ #define DESCRIPTOR descriptors::D3Q19Descriptor
+@@ -60,20 +61,25 @@
+ struct FluidNode { uint64_t index; LCell* cell; bool inCV=false; FluidNode(uint64_t i,LCell* c):index(i),cell(c){} };
+ struct Sample { int port,owner; T area; Vec normal; std::array<uint64_t,8> indices; std::array<T,8> weights; };
+ struct Stats { T rmin=2,rmax=0,rsum=0,umax=0,cvsum=0,speedSum=0; uint64_t nan=0,inf=0; };
++#ifdef GPU_POC
++#include "gpu_adapter.hpp"
++#endif
+ #include "mpi_support.hpp"
+ 
+ int main(int argc,char** argv) {
+     plbInit(&argc,&argv);
+     std::string run; int completed=0;
+     try {
+-        require(argc==6 && global::mpi().getSize()==12,"Usage: inletCalibrationMPI RUN_DIR BUNDLE_ROOT MULTIPLIER TEST_A_B_C HORIZON; MPI12 only");
+-        std::string root=argv[2],test=argv[4];bool benchmark=false,initOnly=false;
+-        size_t consumed=0;T multiplier=std::stod(argv[3],&consumed);
+-        require(consumed==std::string(argv[3]).size()&&std::isfinite(multiplier)&&multiplier>=.8&&multiplier<=1.3,"Invalid fixed multiplier");
+-        require(test=="A"||test=="B"||test=="C","Invalid test identifier");
+-        int requested=std::stoi(argv[5],&consumed);
+-        require(consumed==std::string(argv[5]).size()&&(requested==5000||requested==10000),"Short horizon must be5000 or10000");
+-        require(test!="A"||(multiplier==1.&&requested==5000),"TestA must start at M1 and5000steps");
++        require(argc==4,"Usage: vascularPoC RUN_DIR BUNDLE_ROOT MULTIPLIER");
++#ifdef GPU_POC
++        require(global::mpi().getSize()==1,"GPU MPI1 only");
++        defaultMultiBlockPolicy3D().toggleBlockingCommunication(true);
++#else
++        require(global::mpi().getSize()==12,"CPU MPI12 only");
++#endif
++        std::string root=argv[2],test="GPU_POC_STAGE_1";
++        T multiplier=std::stod(argv[3]);require(multiplier==T(1.1197286861799598),"Frozen multiplier mismatch");
++        const int requested=1000;
+         run=argv[1]; global::directories().setOutputDir(run+"/");
+         pcout<<std::setprecision(17);
+         std::ifstream input(run+"/contracts/solver_parameters.txt"); std::string stl,s2;
+@@ -82,7 +88,7 @@
+         input>>nx>>ny>>nz>>expectedOrigin[0]>>expectedOrigin[1]>>expectedOrigin[2]>>expectedDx>>dt>>tau>>rhoPhys>>qTarget>>maLimit>>rhoLow>>rhoHigh>>rampSteps>>maxSteps;
+         require(maxSteps==700000&&rampSteps==10&&tau==1.,"Frozen execution contract mismatch");
+         maxSteps=requested; // Independent Step3C execution cap; frozen Step3B file stays byte-identical.
+-        require(maxSteps<=10000,"Long validation forbidden in calibration");
++        require(maxSteps==1000,"PoC hard cap 1000");
+         int scalarEvery,evaluateEvery,fieldDelta,firstEvaluation,cvExpected;
+         std::ifstream monitorInput(run+"/contracts/monitor_parameters.txt");
+         monitorInput>>scalarEvery>>evaluateEvery>>fieldDelta>>firstEvaluation>>cvExpected;
+@@ -189,10 +195,21 @@
+         auto lattice=generateMultiBlockLattice<T,DESCRIPTOR>(voxels,2,new BGKdynamics<T,DESCRIPTOR>(1/tau));
+         lattice->periodicity().toggleAll(false); lattice->toggleInternalStatistics(false);
+         defineDynamics(*lattice,voxels,lattice->getBoundingBox(),new NoDynamics<T,DESCRIPTOR>,voxelFlag::outside);
++        #ifdef GPU_POC
++        Capture capture{&state,{}};
++        auto* model=new CapturingGuo(new TriangleFlowShape3D<T,Vec>(domain.getBoundary(),profiles),&capture);
++#else
+         auto* model=new GuoOffLatticeModel3D<T,DESCRIPTOR>(new TriangleFlowShape3D<T,Vec>(domain.getBoundary(),profiles),voxelFlag::inside,true);
++#endif
+         model->setVelIsJ(false);model->selectSecondOrder(true);model->selectUseRegularizedModel(true);model->selectComputeStat(false);
+-        OffLatticeBoundaryCondition3D<T,DESCRIPTOR,Vec> bc(model,domain,*lattice); bc.insert();
++        OffLatticeBoundaryCondition3D<T,DESCRIPTOR,Vec> bc(model,domain,*lattice);
++#ifndef GPU_POC
++        bc.insert();
++#endif
+         initializeAtEquilibrium(*lattice,lattice->getBoundingBox(),1.,Vec(0.,0.,0.)); lattice->initialize();
++#ifdef GPU_POC
++        bc.apply(); // Native initial Guo completion; no CPU Guo processor copied into GPU lattice.
++#endif
+         std::vector<FluidNode> nodes,ghosts;
+         for(auto const& entry:bulks) {
+             if(!voxels.getMultiBlockManagement().getThreadAttribution().isLocal(entry.first)) continue;
+@@ -248,6 +265,9 @@
+         for(auto& node:nodes) {node.inCV=std::binary_search(cvIds.begin(),cvIds.end(),node.index);foundCV+=node.inCV;}
+         require(sumCount(foundCV)==cvIds.size(),"FAIL_MPI_RUNTIME_CORRECTNESS: CV global count mismatch");
+         {RankFile check(run+"/diagnostics/control_volume_ownership_check.json");check<<"{\"status\":\"PASS\",\"CV_CELL_GLOBAL_COUNT\":"<<cvExpected<<",\"physical_fluid_global_count\":"<<actualFluid<<"}\n";}
++#ifdef GPU_POC
++        GPUState gpu(*lattice,capture,nx,ny,nz,nodes,ghosts,samples,sampleIds,run);activeGPU=&gpu;gpu.sync();
++#endif
+         T initialMass=inspect(nodes).rsum*massUnit;
+         RankFile history(run+"/diagnostics/flow_history.csv");history<<std::setprecision(17);
+         history<<"iteration,time_s,rho_min,rho_max,rho_mean,u_max_m_s,Mach_max,mean_speed_m_s,total_mass,control_volume_mass,relative_mass_drift,BOUNDARY_PROFILE_Q_TARGET";
+@@ -257,22 +277,21 @@
+         for(int g=0;g<24;++g) history<<",mass_outward_g"<<g;
+         history<<",instantaneous_flow_closure,control_volume_mass_balance,ghost_rho_min,ghost_rho_max,ghost_Mach_max\n";
+         RankFile sparse(run+"/diagnostics/snapshot_events.csv");sparse<<"iteration,reason\n";
+-        std::set<int> milestones={0,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000};
++        std::set<int> milestones={0,100,1000};
+         uint64_t safetyChecks=0;T allRmin=2,allRmax=0,allMach=0,allGhostMin=2,allGhostMax=0;
+         T previousCV=0,previousMassFlux[4]={0,0,0,0};int previousSample=-1;
+         bool autoConverged=false;T window3sum=0,window4sum=0;int window3count=0,window4count=0;
+         double timedStart=0,timedElapsed=0;
+         for(int step=0;step<=maxSteps;++step) {
+-            if(step) {state.ramp=std::min(T(1),T(step)/rampSteps);lattice->collideAndStream();completed=step;}
+-            if(step==10){
+-                auto macros=sampledMacros(sampleIds,sampleNodes);T maxDifference=0;
+-                for(size_t slot=0;slot<sampleIds.size();++slot){uint64_t id=sampleIds[slot];int ix=id%nx,iy=(id/nx)%ny,iz=id/(uint64_t(nx)*ny);Vec distributed;
+-                    lattice->get(ix,iy,iz).computeVelocity(distributed); // consume collective proxy immediately; never store its address
+-                    Vec atomic(macros[4*slot+1],macros[4*slot+2],macros[4*slot+3]);maxDifference=std::max(maxDifference,norm(atomic-distributed));
+-                }
+-                maxDifference=maxValue(maxDifference);require(maxDifference<1e-15,"Live distributed sampler value cross-check failed");
+-                RankFile check(run+"/diagnostics/flux_sampler_runtime_check.json");check<<std::setprecision(17)<<"{\"status\":\"PASS\",\"OWNERSHIP_ALIAS_CHECK\":\"PASS\",\"step\":10,\"unique_coordinates\":"<<sampleIds.size()<<",\"unique_persistent_addresses\":"<<sampleIds.size()<<",\"max_velocity_difference_vs_immediate_distributed_get\":"<<maxDifference<<",\"pointer_scope\":\"owning rank bulk atomic cells only\"}\n";
+-            }
++            if(step) {state.ramp=std::min(T(1),T(step)/rampSteps);
++#ifdef GPU_POC
++                gpu.step(state.ramp);
++#else
++                lattice->collideAndStream();
++#endif
++                completed=step;
++            }
++            // Initialization verifies exact ownership on both backends; no CPU-only distributed proxy diagnostic in the fair PoC.
+             uint64_t localCounts[3]={uint64_t(nodes.size()),uint64_t(foundCV),uint64_t(sampleNodes.size())},globalCounts[3];MPI_Allreduce(localCounts,globalCounts,3,MPI_UINT64_T,MPI_SUM,MPI_COMM_WORLD);
+             require(globalCounts[0]==actualFluid&&globalCounts[1]==uint64_t(cvExpected)&&globalCounts[2]==sampleIds.size(),"FAIL_MPI_RUNTIME_CORRECTNESS: runtime owned cell count changed");
+             Stats s=inspect(nodes),g=inspect(ghosts);++safetyChecks;
+@@ -283,6 +302,9 @@
+             { // Exact discrete arithmetic means: measure every completed step, including all24groups.
+                 T flux[24]={0},mflux[24]={0};
+                 if(step%scalarEvery==0||!safe)checkQuadratureOwnership(samples,run,false);
++#ifdef GPU_POC
++                gpu.flux(flux,mflux,qUnit,rhoPhys);
++#else
+                 auto macros=sampledMacros(sampleIds,sampleNodes);
+                 for(auto const& sample:samples){
+                     if(sample.owner!=rankId())continue;
+@@ -290,6 +312,7 @@
+                     for(int j=0;j<8;++j){size_t k=4*sample.indices[j];Vec v(macros[k+1],macros[k+2],macros[k+3]);u+=sample.weights[j]*v;rho+=sample.weights[j]*macros[k];}
+                     T dq=sample.area*dot(u,sample.normal)*qUnit;flux[sample.port]+=dq;mflux[sample.port]+=rhoPhys*rho*dq;
+                 }
++#endif
+                 MPI_Allreduce(MPI_IN_PLACE,flux,24,MPI_DOUBLE,MPI_SUM,MPI_COMM_WORLD);MPI_Allreduce(MPI_IN_PLACE,mflux,24,MPI_DOUBLE,MPI_SUM,MPI_COMM_WORLD);
+                 for(int g=0;g<24;++g)require(std::isfinite(flux[g])&&std::isfinite(mflux[g]),"FAIL_MPI_RUNTIME_CORRECTNESS: flux reduction nonfinite");
+                 T qi=-flux[2],net=flux[2]+flux[8]+flux[14]+flux[20];
+@@ -313,31 +336,31 @@
+             if(!safe) throw std::runtime_error("Immediate runtime safety gate failure: NaN/Inf/density/Mach");
+             if(milestones.count(step)){
+                 snapshot(run,step,nodes);sampledSnapshot(run,step,sampleNodes);
+-                sparse<<step<<",short_calibration_snapshot\n";sparse.flush();
+-                if(step>=1000)mpiFieldResidual(run,step,step-1000,nodes,dx,dt,rhoPhys);
++                sparse<<step<<",poc_same_output_snapshot\n";sparse.flush();
++
+             }
+             if(step==0)for(int k=0;k<5;++k)require(sumCount(state.calls[k])>0,"A native surface profile was never used globally");
+-            if(test=="A"&&step==5000){
+-                require(window3count==1000&&window4count==1000,"Incomplete every-step horizon windows");
+-                T q3=window3sum/1000,q4=window4sum/1000;
+-                require(std::isfinite(q3)&&std::isfinite(q4)&&q3>0&&q4>0,"Invalid horizon window flux");
+-                T change=std::abs(q4-q3)/std::abs(q3);
+-                int selected=change<=.02?5000:10000;
+-                MPI_Bcast(&selected,1,MPI_INT,0,MPI_COMM_WORLD);maxSteps=selected;
+-                RankFile d(run+"/diagnostics/horizon_decision.json");d<<std::setprecision(17)
+-                  <<"{\"mean_3001_4000\":"<<q3<<",\"mean_4001_5000\":"<<q4
+-                  <<",\"relative_change\":"<<change<<",\"selected_horizon\":"<<selected
+-                  <<",\"same_process_extension\":"<<(selected==10000?"true":"false")<<"}\n";
+-                pcout<<"HORIZON_SELECTED "<<selected<<" relative_change="<<change<<std::endl;
++            if(step==100){
++#ifdef GPU_POC
++                gpu.sync();
++#endif
++                MPI_Barrier(MPI_COMM_WORLD);timedStart=MPI_Wtime();
++            }
++            if(step==1000){
++#ifdef GPU_POC
++                gpu.sync();
++#endif
++                MPI_Barrier(MPI_COMM_WORLD);timedElapsed=MPI_Wtime()-timedStart;
++                RankFile timing(run+"/diagnostics/solver_timing.json");timing<<std::setprecision(17)<<"{\"warmup_steps\":100,\"timed_steps\":900,\"timed_seconds\":"<<timedElapsed<<",\"steps_per_second\":"<<900/timedElapsed<<"}\n";
+             }
+             if(step==maxSteps){sparse<<step<<",final\n";sparse.flush();break;}
+         }
+         for(int k=0;k<5;++k)state.calls[k]=sumCount(state.calls[k]);
+         RankFile status(run+"/diagnostics/solver_status.json");status<<std::setprecision(17);
+-        status<<"{\"runtime_safety\":\"PASS\",\"status\":\""<<"SHORT_CALIBRATION_HORIZON_COMPLETE"<<"\",\"timesteps\":"<<completed<<",\"auto_converged\":"<<(autoConverged?"true":"false")<<",\"cell_count\":0,\"mpi_ranks\":"<<rankCount()<<",\"mpi_runtime_correctness\":\"PASS\",\"quadrature_ownership_checks\":"<<ownershipChecks<<",\"safety_checks\":"<<safetyChecks<<",\"all_step_fluid_rho_min\":"<<allRmin<<",\"all_step_fluid_rho_max\":"<<allRmax<<",\"all_step_max_mach_including_ghosts\":"<<allMach<<",\"all_step_ghost_rho_min\":"<<allGhostMin<<",\"all_step_ghost_rho_max\":"<<allGhostMax<<",\"native_profile_calls\":[";
++        status<<"{\"runtime_safety\":\"PASS\",\"status\":\""<<"POC_1000_COMPLETE"<<"\",\"timesteps\":"<<completed<<",\"auto_converged\":"<<(autoConverged?"true":"false")<<",\"cell_count\":0,\"mpi_ranks\":"<<rankCount()<<",\"mpi_runtime_correctness\":\"PASS\",\"quadrature_ownership_checks\":"<<ownershipChecks<<",\"safety_checks\":"<<safetyChecks<<",\"all_step_fluid_rho_min\":"<<allRmin<<",\"all_step_fluid_rho_max\":"<<allRmax<<",\"all_step_max_mach_including_ghosts\":"<<allMach<<",\"all_step_ghost_rho_min\":"<<allGhostMin<<",\"all_step_ghost_rho_max\":"<<allGhostMax<<",\"native_profile_calls\":[";
+         for(int k=0;k<5;++k) status<<(k?",":"")<<state.calls[k];status<<"]}\n";
+         require(bool(status),"Final status write failed");
+-        pcout<<"STEP3C_SHORT_COMPLETE timesteps="<<completed<<" auto_converged="<<autoConverged<<" CELL_COUNT=0"<<std::endl;return 0;
++        pcout<<"GPU_POC_SHORT_COMPLETE timesteps="<<completed<<" auto_converged="<<autoConverged<<" CELL_COUNT=0"<<std::endl;return 0;
+     } catch(std::exception const& e) {
+         pcout<<"STEP3C_ERROR completed_timesteps="<<completed<<" "<<e.what()<<std::endl;
+         if(!run.empty()) {RankFile f(run+"/diagnostics/solver_failure.txt");f<<"completed_timesteps="<<completed<<"\n"<<e.what()<<'\n';}
+--- frozen_reference/mpi_support.hpp
++++ source/mpi_support.hpp
+@@ -17,6 +17,9 @@
+ uint64_t sumCount(uint64_t value){uint64_t result=0;MPI_Allreduce(&value,&result,1,MPI_UINT64_T,MPI_SUM,MPI_COMM_WORLD);return result;}
+ T maxValue(T value){T result=0;MPI_Allreduce(&value,&result,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);return result;}
+ Stats inspect(std::vector<FluidNode> const& nodes) {
++#ifdef GPU_POC
++    if(activeGPU)return activeGPU->inspect(!nodes.empty()&& !activeGPU->ghost.empty() && nodes.front().index==activeGPU->ghost.front().id);
++#endif
+     Stats s;
+     for(auto const& n:nodes){T r=n.cell->computeDensity();Vec u;n.cell->computeVelocity(u);T speed=norm(u);
+         if(std::isnan(r)||std::isnan(speed))++s.nan;
+@@ -33,6 +36,9 @@
+ struct PackedNode {uint64_t index;T rho;T u[3];};
+ static_assert(sizeof(PackedNode)==40,"Frozen snapshot serialization requires 40 bytes per cell");
+ std::vector<PackedNode> gatherNodes(std::vector<FluidNode> const& nodes){
++#ifdef GPU_POC
++    if(activeGPU){std::vector<uint64_t> ids;for(auto const& n:nodes)ids.push_back(n.index);auto v=activeGPU->pack(ids);std::vector<PackedNode> out(v.size());std::memcpy(out.data(),v.data(),out.size()*sizeof(PackedNode));std::sort(out.begin(),out.end(),[](PackedNode const&a,PackedNode const&b){return a.index<b.index;});return out;}
++#endif
+     std::vector<PackedNode> local(nodes.size());
+     for(size_t i=0;i<nodes.size();++i){local[i].index=nodes[i].index;local[i].rho=nodes[i].cell->computeDensity();Vec u;nodes[i].cell->computeVelocity(u);for(int d=0;d<3;++d)local[i].u[d]=u[d];}
+     require(local.size()*sizeof(PackedNode)<size_t(std::numeric_limits<int>::max()),"MPI field count overflow");
+--- /dev/null
++++ source/gpu_adapter.hpp
+@@ -0,0 +1,107 @@
++// Scratch-only adapter for the frozen, unforced D3Q19 BGK / GuoPiNeq case.
++// Algorithm source: Palabos guoOffLatticeModel3D.hh lines 296-562 (AGPL-3.0-or-later).
++// Original geometry preparation and native CPU initialization are retained.
++#include <execution>
++#include <numeric>
++#include <cuda_runtime.h>
++using AL=AtomicAcceleratedLattice3D<T,DESCRIPTOR>;
++using ML=AcceleratedLattice3D<T,DESCRIPTOR>;
++using DD=DESCRIPTOR<T>;
++using MM=momentTemplatesImpl<T,typename DD::BaseDescriptor>;
++using DT=dynamicsTemplatesImpl<T,typename DD::BaseDescriptor>;
++using Pi=Array<T,6>;
++struct CapturedLink {plint one,two;int depth,type,triangle;T delta,weight;Vec normal,fullData;};
++struct CapturedDry {BlockLattice3D<T,DESCRIPTOR>* cpu;plint index;std::vector<CapturedLink> links;};
++struct Capture {State* state;std::vector<CapturedDry> dry;};
++class CapturingGuo: public GuoOffLatticeModel3D<T,DESCRIPTOR> {
++    Capture* capture;
++public:
++    CapturingGuo(BoundaryShape3D<T,Vec>* shape,Capture* c):GuoOffLatticeModel3D<T,DESCRIPTOR>(shape,voxelFlag::inside,true),capture(c){}
++    CapturingGuo* clone() const override{return new CapturingGuo(*this);}
++    void boundaryCompletion(AtomicBlock3D& a,AtomicContainerBlock3D& container,std::vector<AtomicBlock3D*> const& args) override {
++        require(args.empty()&&usesRegularizedModel()&&usesSecondOrder()&&!computesStat()&&!velIsJ()&&!getPartialReplace(),"Unsupported Guo mode; no semantic substitution");
++        GuoOffLatticeModel3D<T,DESCRIPTOR>::boundaryCompletion(a,container,args);
++        auto& block=dynamic_cast<BlockLattice3D<T,DESCRIPTOR>&>(a);
++        auto* info=dynamic_cast<GuoOffLatticeInfo3D*>(container.getData());require(info,"Missing original Guo links");
++        auto offset=container.getLocation();T oldRamp=capture->state->ramp;capture->state->ramp=1;
++        auto index=[&](Dot3D const& p){require(contained(p.x,p.y,p.z,block.getBoundingBox()),"Guo link exceeds original two-cell envelope");return p.z+block.getNz()*(p.y+block.getNy()*p.x);};
++        for(size_t n=0;n<info->getDryNodes().size();++n){
++            auto d=info->getDryNodes()[n];CapturedDry cd{&block,index(d),{}};
++            auto const& dirs=info->getDryNodeFluidDirections()[n];auto const& ids=info->getDryNodeIds()[n];
++            require(block.get(d.x,d.y,d.z).getDynamics().getId()==BGKdynamics<T,DESCRIPTOR>(1.).getId(),"Dry regularization requires original BGK dynamics");
++            for(size_t k=0;k<dirs.size();++k){
++                auto dir=dirs[k];auto c=NextNeighbor<T>::c[dir.first];Dot3D v(c[0],c[1],c[2]);
++                Vec wall,normal,data;T distance;OffBoundary::Type type;plint tri=ids[k];
++                require(pointOnSurface(d+offset,v,wall,distance,normal,data,type,tri),"Original Guo surface intersection failed");
++                require(type==OffBoundary::dirichlet||type==OffBoundary::densityNeumann,"Unexpected BC in frozen vascular case");
++                T inv=NextNeighbor<T>::invD[dir.first];require(distance<=NextNeighbor<T>::d[dir.first],"Invalid original Guo distance");
++                Vec nv(T(c[0]),T(c[1]),T(c[2]));nv*=inv;
++                require(block.get(d.x+c[0],d.y+c[1],d.z+c[2]).getDynamics().getId()==BGKdynamics<T,DESCRIPTOR>(1.).getId(),"First Guo neighbor is not original fluid BGK");
++                cd.links.push_back({index(d+v),index(Dot3D(d.x+2*v.x,d.y+2*v.y,d.z+2*v.z)),dir.second,int(type),int(tri),1-distance*inv,std::fabs(dot(nv,normal)),normal,data});
++            }
++            require(!cd.links.empty()&&cd.links.size()<=26,"Invalid original direction count");capture->dry.push_back(cd);
++        }
++        capture->state->ramp=oldRamp;
++    }
++};
++struct Handle {AL* block;plint index;uint64_t id;bool inCV;};
++struct DeviceDry {AL* block;plint index;size_t begin,end;};
++struct DevicePacked {uint64_t index;T rho;T u[3];};
++static_assert(sizeof(DevicePacked)==40,"Snapshot layout");
++struct FluxPair {T q=0,m=0;};
++struct DeviceSample {int group;T area;Vec normal;Handle cells[8];T weights[8];};
++inline void moments(Handle const& h,T& rb,Vec& j){
++    if(h.block->getCollisionMatrix()[h.index]==CollisionModel::NoDynamics){rb=0;j.resetToZero();return;}
++    Array<T,19> f;h.block->pullPop(h.index,f);MM::get_rhoBar_j(f,rb,j);
++}
++inline DevicePacked macro(Handle const& h){T rb;Vec j;moments(h,rb,j);T rho=DD::fullRho(rb),inv=DD::invRho(rb);return {h.id,rho,{j[0]*inv,j[1]*inv,j[2]*inv}};}
++struct ReduceStats {Stats operator()(Stats const& a,Stats const& b)const{Stats r;r.rmin=std::min(a.rmin,b.rmin);r.rmax=std::max(a.rmax,b.rmax);r.rsum=a.rsum+b.rsum;r.umax=std::max(a.umax,b.umax);r.cvsum=a.cvsum+b.cvsum;r.speedSum=a.speedSum+b.speedSum;r.nan=a.nan+b.nan;r.inf=a.inf+b.inf;return r;}};
++struct GPUState {
++    std::unique_ptr<ML> lattice;std::vector<DeviceDry> dry;std::vector<CapturedLink> links;std::vector<Handle> fluid,ghost;std::vector<DeviceSample> quadrature;std::array<size_t,25> groupOffset{};
++    int nx,ny,nz;uint64_t boundaryKernels=0,monitorCalls=0,snapshotCalls=0;std::string run;
++    Handle handle(uint64_t id,bool cv=false){
++        int x=id%nx,y=(id/nx)%ny,z=id/(uint64_t(nx)*ny);plint b=lattice->getMultiBlockManagement().getSparseBlockStructure().locate(x,y,z);require(b>=0,"Unallocated GPU sample");auto& a=lattice->getComponent(b);auto o=a.getLocation();return {&a,(z-o.z)+a.getNz()*((y-o.y)+a.getNy()*(x-o.x)),id,cv};
++    }
++    GPUState(MultiBlockLattice3D<T,DESCRIPTOR>& cpu,Capture const& capture,int x,int y,int z,std::vector<FluidNode> const& nodes,std::vector<FluidNode> const& ghosts,std::vector<Sample> const& samples,std::vector<uint64_t> const& sampleIds,std::string path):nx(x),ny(y),nz(z),run(path){
++        require(global::mpi().getSize()==1,"Single GPU/MPI1 only");lattice.reset(new ML(cpu));
++        std::map<BlockLattice3D<T,DESCRIPTOR>*,AL*> mapping;
++        for(auto const& b:cpu.getBlockLattices())mapping[b.second]=&lattice->getComponent(b.first);
++        for(auto const& d:capture.dry){size_t begin=links.size();links.insert(links.end(),d.links.begin(),d.links.end());dry.push_back({mapping.at(d.cpu),d.index,begin,links.size()});}
++        for(auto const& n:nodes)fluid.push_back(handle(n.index,n.inCV));
++        for(auto const& n:ghosts)ghost.push_back(handle(n.index));
++        for(int g=0;g<24;++g){groupOffset[g]=quadrature.size();for(auto const& s:samples)if(s.port==g){DeviceSample q;q.group=g;q.area=s.area;q.normal=s.normal;for(int k=0;k<8;++k){q.cells[k]=handle(sampleIds.at(s.indices[k]));q.weights[k]=s.weights[k];}quadrature.push_back(q);}}groupOffset[24]=quadrature.size();
++        require(fluid.size()==182694&&quadrature.size()==samples.size()&&!dry.empty(),"GPU static inventory mismatch");
++        std::ofstream f(run+"/diagnostics/gpu_static_inventory.json");f<<"{\"dry_nodes\":"<<dry.size()<<",\"boundary_links\":"<<links.size()<<",\"fluid_nodes\":"<<fluid.size()<<",\"ghost_nodes\":"<<ghost.size()<<",\"quadrature_points\":"<<quadrature.size()<<",\"blocks\":"<<mapping.size()<<",\"full_field_writeBack_calls\":0,\"core_source_changes\":0}\n";
++    }
++    void sync(){require(cudaDeviceSynchronize()==cudaSuccess,"CUDA synchronize failed");}
++    void step(T ramp){
++        lattice->collideAndStream(CollisionKernel<T,DESCRIPTOR,CollisionModel::BGK,CollisionModel::NoDynamics>());
++        auto* ls=links.data();
++        std::for_each(std::execution::par_unseq,dry.begin(),dry.end(),[ls,ramp](DeviceDry const& n){
++            T rb=0,weightSum=0;Vec j(0.,0.,0.);Pi pi;pi.resetToZero();
++            for(size_t k=n.begin;k<n.end;++k){
++                auto const& l=ls[k];Array<T,19> f;T rb1;Vec j1,j2;Pi p1;
++                n.block->pullPop(l.one,f);MM::compute_rhoBar_j_PiNeq(f,rb1,j1,p1);
++                T tmp;moments({n.block,l.two,0,false},tmp,j2);
++                Vec wd=l.fullData;if(l.type==OffBoundary::densityNeumann){wd[0]=1+ramp*(wd[0]-1);}else wd*=ramp;
++                T r=l.type==OffBoundary::densityNeumann?DD::rhoBar(wd[0]):rb1;Vec wj=DD::fullRho(r)*wd,jd;
++                if(l.depth<2){jd=wj;} // Both frozen depth<2 branches use wall_j (native complex-geometry fix).
++                else if(l.delta<T(.75)){jd=wj+(l.delta-T(1))*j1+(T(1)-l.delta)/(T(1)+l.delta)*(T(2)*wj+(l.delta-T(1))*j2);}
++                else{jd=T(1)/l.delta*(wj+(l.delta-T(1))*j1);}
++                if(l.type==OffBoundary::densityNeumann)jd=dot(j1,l.normal)*l.normal;
++                rb+=r*l.weight;j+=jd*l.weight;pi+=p1*l.weight;weightSum+=l.weight;
++            }
++            rb/=weightSum;j/=weightSum;pi/=weightSum;T js=normSqr(j),inv=DD::invRho(rb);Array<T,19> f;
++            f[0]=DT::bgk_ma2_equilibrium(0,rb,inv,j,js)+offEquilibriumTemplates<T,DESCRIPTOR>::fromPiToFneq(0,pi);
++            for(int i=1;i<=9;++i){f[i]=DT::bgk_ma2_equilibrium(i,rb,inv,j,js);f[i+9]=DT::bgk_ma2_equilibrium(i+9,rb,inv,j,js);T neq=offEquilibriumTemplates<T,DESCRIPTOR>::fromPiToFneq(i,pi);f[i]+=neq;f[i+9]+=neq;}
++            n.block->pushPop(n.index,f);
++        });
++        lattice->duplicateOverlaps(modif::staticVariables);++boundaryKernels;
++    }
++    Stats inspect(bool ghosts){auto const& list=ghosts?ghost:fluid;++monitorCalls;return std::transform_reduce(std::execution::par_unseq,list.begin(),list.end(),Stats{},ReduceStats{},[](Handle const& h){auto m=macro(h);T speed=std::sqrt(m.u[0]*m.u[0]+m.u[1]*m.u[1]+m.u[2]*m.u[2]);Stats s;s.rmin=m.rho;s.rmax=m.rho;s.rsum=m.rho;s.cvsum=h.inCV?m.rho:0;s.umax=speed;s.speedSum=speed;s.nan=std::isnan(m.rho)||std::isnan(speed);s.inf=std::isinf(m.rho)||std::isinf(speed);return s;});}
++    std::vector<DevicePacked> pack(std::vector<uint64_t> const& ids){std::vector<Handle> hs;for(auto id:ids)hs.push_back(handle(id));std::vector<DevicePacked> out(ids.size());std::transform(std::execution::par_unseq,hs.begin(),hs.end(),out.begin(),[](Handle const& h){return macro(h);});sync();++snapshotCalls;return out;}
++    void flux(T* flux,T* mflux,T qunit,T rhoPhys){
++        for(int g=0;g<24;++g){auto r=std::transform_reduce(std::execution::par_unseq,quadrature.begin()+groupOffset[g],quadrature.begin()+groupOffset[g+1],FluxPair{},[](FluxPair const& a,FluxPair const& b){return FluxPair{a.q+b.q,a.m+b.m};},[qunit,rhoPhys](DeviceSample const& s){Vec u(0.,0.,0.);T rho=0;for(int k=0;k<8;++k){auto m=macro(s.cells[k]);u+=s.weights[k]*Vec(m.u[0],m.u[1],m.u[2]);rho+=s.weights[k]*m.rho;}T q=s.area*dot(u,s.normal)*qunit;return FluxPair{q,rhoPhys*rho*q};});flux[g]=r.q;mflux[g]=r.m;}
++    }
++};
++GPUState* activeGPU=nullptr;

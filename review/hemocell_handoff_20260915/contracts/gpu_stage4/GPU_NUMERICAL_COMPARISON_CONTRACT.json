@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "frozen_utc": "2026-09-13T18:48:18.884826+00:00",
+  "frozen_before_any_gpu_result": true,
+  "reference": "Fresh CPU MPI12 on same Vast; benchmark 1 is correctness reference",
+  "gpu": "Pinned Palabos accelerated backend, RTX5090, MPI1",
+  "commits": {
+    "hemocell": "5a410848bd5c57d5ae1c171112e78eab4a82e650",
+    "old_palabos": "05712164d940a42e06afdd705249912fa0c49f14",
+    "gpu_palabos": "4127697e90169bbef982295f1d1c933cf6e90caa"
+  },
+  "precision": "double for populations, fields and reductions; no tolerance widening after results",
+  "physical_inputs": {
+    "source_bundle": "/home/lzy/projects/compre_output/step3b_remote_bundle/20260913_122842/remote_bundle",
+    "sha256_manifest": "provenance/frozen_input_hashes.json",
+    "sha256_manifest_digest": "64b0d45026866ab677e58b3fe9d653c22eaf5597df5b7cbc3bc134618a423485",
+    "multiplier": 1.1197286861799598,
+    "Qtarget_m3_s": 2.7369132390905703e-15,
+    "original_contracts_immutable": true
+  },
+  "comparison_steps": [
+    0,
+    100,
+    1000
+  ],
+  "fields": {
+    "coverage": "All frozen fluid nodes with canonical integer xyz keys; exact key sets required",
+    "rho_normalized_l2": "sqrt(sum((gpu-cpu)^2)/sum(cpu^2))",
+    "rho_normalized_l2_max": 1e-08,
+    "velocity_normalized_l2": "sqrt(sum_xyz((u_gpu-u_cpu)^2)) / max(sqrt(sum_xyz(u_cpu^2)), sqrt(N)*U_nominal*1e-12)",
+    "velocity_units": "m/s",
+    "velocity_normalized_l2_max": 1e-05,
+    "U_nominal_definition": "Qtarget / frozen inlet area; identical on both backends",
+    "rho_min_max_abs_difference_max": 1e-08,
+    "velocity_max_normalized_abs_difference_max": 1e-05,
+    "velocity_max_normalization": "max(maxnorm(u_cpu), U_nominal*1e-12)"
+  },
+  "flux": {
+    "cadence_steps": 1,
+    "groups": 24,
+    "planes_dx": [
+      2,
+      4,
+      6
+    ],
+    "quadrature_spacing_dx": [
+      1,
+      0.5
+    ],
+    "ports": [
+      "inlet",
+      "outlet01",
+      "outlet02",
+      "outlet03"
+    ],
+    "abs_Q_gpu_minus_cpu_over_Qtarget_max": 0.0001,
+    "orientation_and_weights": "exact frozen multiplane quadrature"
+  },
+  "mass": {
+    "cadence_steps": 1,
+    "domains": [
+      "all frozen fluid nodes",
+      "frozen control volume nodes"
+    ],
+    "relative_difference_max": 1e-08,
+    "normalization": "abs(cpu mass), positive by initial state and safety gate"
+  },
+  "safety": {
+    "cadence_steps": 1,
+    "nonfinite_count": 0,
+    "fluid_rho_range": [
+      0.99,
+      1.01
+    ],
+    "Mach_max": 0.05,
+    "ghost_rho": "positive and finite; same CPU gate"
+  },
+  "benchmark": {
+    "total_steps": 1000,
+    "warmup_steps": 100,
+    "timed_steps": 900,
+    "repeats_cpu": 3,
+    "repeats_gpu": 3,
+    "CPU_ranks": 12,
+    "CPU_binding": [
+      "--bind-to",
+      "core",
+      "--map-by",
+      "core",
+      "--report-bindings"
+    ],
+    "OMP_NUM_THREADS": 1,
+    "sequential_compute_only": true,
+    "solver_interval": "after step100 output complete to after step1000 and required outputs complete; synchronize GPU at both boundaries; includes identical monitors and final output",
+    "end_to_end": "monotonic wall clock before MPI/process launch with inputs present through successful exit and complete required outputs; includes geometry, voxelization, initialization, transfers, warmup, monitoring, output",
+    "output_policy": "identical CPU/GPU scalar diagnostics every step and rho/u snapshots at 0,100,1000; no production VTK/checkpoint",
+    "summary": "median with min/max; validity requires all numerical gates and 3 successful repeats per backend"
+  },
+  "decision": {
+    "main_metric": "median CPU end-to-end / median GPU end-to-end",
+    "less_than_3": "NO",
+    "from_3_to_below_5": "CONDITIONAL",
+    "from_5_to_below_10": "YES",
+    "at_least_10": "STRONG_YES",
+    "correctness_not_pass": "valid speedup NOT_APPLICABLE; decision UNDETERMINED",
+    "RBC": "UNVERIFIED"
+  },
+  "run_limits": {
+    "official_smoke_steps": 200,
+    "official_smoke_runs": 1,
+    "vascular_correctness_gpu_runs": 1,
+    "max_steps_per_vascular_run": 1000,
+    "max_cpu_benchmark_runs": 3,
+    "max_gpu_benchmark_runs": 3,
+    "no_automatic_solver_retries": true
+  }
+}

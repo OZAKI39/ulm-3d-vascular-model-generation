@@ -1,0 +1,72 @@
+{
+  "stage": "GPU_POC_STAGE_4",
+  "created_before_optimization": true,
+  "baseline_manifest_sha256": "10276d546932adaf06ddf9cdf1a1c079a5c475d911d9661ca42506a07017b0b3",
+  "inventory_sha256": "ad312d2e5013b01d4147b5476cdd10251ce21982fb70bb173bf63bc7a8e1e766",
+  "numerical_contract_sha256": "5e78c61974be7ca2a52b3add288858330804c8d74d47ae909fced717d1f02456",
+  "only_optimization": "LBM block batch dispatch",
+  "max_steps": 5000,
+  "initial_correctness": {
+    "steps": 200,
+    "checkpoints": [
+      0,
+      1,
+      10,
+      100,
+      200
+    ],
+    "failure": "REJECT_AND_STOP"
+  },
+  "performance": {
+    "short": {
+      "steps": 200,
+      "warmup": 100,
+      "repetitions_per_variant": 3,
+      "gate_improvement": 0.05
+    },
+    "medium": {
+      "steps": 1000,
+      "warmup": 100,
+      "repetitions_per_variant": 2,
+      "gate_improvement": 0.1
+    },
+    "sustained": {
+      "steps": 5000,
+      "warmup": 500,
+      "repetitions_per_variant": 2,
+      "minimum_improvement": 0.1,
+      "stability_max_pair_relative_spread": 0.05,
+      "stability_max_drop_vs_1000": 0.05
+    }
+  },
+  "profile": {
+    "steps": 200,
+    "window": [
+      101,
+      200
+    ],
+    "variant": "batch",
+    "extra_checkpoints_1_10": false,
+    "baseline": "Stage3 optimized_101_200 trace",
+    "max_migration_increase_without_explanation": 0.25,
+    "major_migration_regression": "Reject if >25% for BOTH raw matched snapshot-density region and ordinary no-snapshot region; snapshot-only growth must be explained"
+  },
+  "cpu_sanity": {
+    "steps": 200,
+    "ranks": 12,
+    "scope": "Sanity only; matched-horizon CPU5000 Stage3 median retained"
+  },
+  "automatic_retries": 0,
+  "concurrency": 1,
+  "formal_long_run": false,
+  "resource": {
+    "min_RAM_GiB": 16,
+    "build_min_free_MiB": 180,
+    "run_min_free_MiB": 140,
+    "runtime_stop_free_MiB": 64,
+    "reason": "Stage4-only lossless compression/dedup after successful run and recorded E2E; maximum raw snapshot budget <60MiB per run; protect all sealed older data"
+  },
+  "storage": "Compress/deduplicate only completed Stage4 output, record lossless raw hashes. No older archive changes.",
+  "further_pure_fluid_optimization": "STOP",
+  "physics_changed": false
+}

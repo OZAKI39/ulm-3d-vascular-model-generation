@@ -1,0 +1,159 @@
+--- a/src/atomicBlock/atomicAcceleratedLattice3D.h
++++ b/src/atomicBlock/atomicAcceleratedLattice3D.h
+@@ -177,6 +177,29 @@
+     int const *getCollisionMatrix() const;
+     template <class CollFun>
+     void collideAndStream(CollFun const &collFun);
++    // Stage4 scratch-only immutable batch view. No object layout/vtable changes.
++    struct Stage4BatchView {
++        static inline bool readBit(const uint32_t &mask, uint8_t position)
++        {
++            return (mask >> position) & 1ULL;
++        }
++        plint nx, ny, nz, N;
++        Box3D fullDomain;
++        T* buffers[2];
++        ExternalFieldArray<T, typename Descriptor<T>::ExternalField>* externalScalars;
++        int* collisionMatrix;
++        uint32_t* hw_bb_links;
++        plint* dynamicScalarIndex;
++        T* dynamicScalarsPtr;
++        bool hasDynamicScalars;
++        int backgroundCollisionModel;
++        Array<T, GPUconst<T, Descriptor>::maxStaticScalars> staticScalars;
++        template <class CollFun>
++        void collideCell(size_t i, CollFun const& collFun, int parity) const;
++    };
++    Stage4BatchView stage4BatchView();
++    void stage4SwapBuffers();
++
+     void collideAndStream();
+     void incrementTime();
+     void resetTime(plint timeCounter_);
+--- a/src/atomicBlock/atomicAcceleratedLattice3D.hh
++++ b/src/atomicBlock/atomicAcceleratedLattice3D.hh
+@@ -1569,6 +1569,82 @@
+     return std::sqrt(blockLattice.getInternalStatistics().getMax(LatticeStatistics::maxUSqr));
+ }
+ 
++
++template <typename T, template <typename U> class Descriptor>
++typename AtomicAcceleratedLattice3D<T, Descriptor>::Stage4BatchView
++AtomicAcceleratedLattice3D<T, Descriptor>::stage4BatchView()
++{
++    Stage4BatchView v;
++    v.nx=this->getNx();v.ny=this->getNy();v.nz=this->getNz();v.N=N;
++    v.fullDomain=this->getBoundingBox();
++    v.buffers[0]=populations;v.buffers[1]=tmpPopulations;
++    v.externalScalars=externalScalars;v.collisionMatrix=collisionMatrix;
++    v.hw_bb_links=hw_bb_links;v.dynamicScalarIndex=dynamicScalarIndex;
++    v.hasDynamicScalars=!dynamicScalars.empty();v.dynamicScalarsPtr=dynamicScalars.data();
++    v.backgroundCollisionModel=toCollisionModel(this->getBackgroundDynamics());
++    getStaticScalars(this->getBackgroundDynamics(),v.backgroundCollisionModel,v.staticScalars);
++    return v;
++}
++template <typename T, template <typename U> class Descriptor>
++void AtomicAcceleratedLattice3D<T, Descriptor>::stage4SwapBuffers()
++{
++    std::swap(populations,tmpPopulations);
++    std::swap(populationGrid,tmpPopulationGrid);
++}
++template <typename T, template <typename U> class Descriptor>
++template <class CollFun>
++void AtomicAcceleratedLattice3D<T, Descriptor>::Stage4BatchView::collideCell(
++    size_t i, CollFun const& collFun, int parity) const
++{
++    T* populations=buffers[parity];
++    T* tmpPopulations=buffers[1-parity];
++            plint iX = i / (ny * nz);
++            plint remainder = i % (ny * nz);
++            plint iY = remainder / nz;
++            plint iZ = remainder % nz;
++
++            Array<T, Descriptor<T>::numPop> f;
++            Array<T, Descriptor<T>::ExternalField::numScalars> ext;
++            int collisionModel = collisionMatrix[i];
++            // PULL
++            for (int iPop = 0; iPop < Descriptor<T>::numPop; ++iPop) {
++                f[iPop] = populations[iPop * N + i];
++            }
++            for (int iExt = 0; iExt < Descriptor<T>::ExternalField::numScalars; ++iExt) {
++                ext[iExt] = *externalScalars[i].get(iExt);
++            }
++
++            plint index = -1;
++            if (hasDynamicScalars) {
++                index = dynamicScalarIndex[i];
++            }
++
++            collFun(collisionModel, f, ext, staticScalars, dynamicScalarsPtr, index);
++
++            // PUSH
++            // MODIF
++            uint32_t links = hw_bb_links[i];
++            for (int iPop = 0; iPop < Descriptor<T>::numPop; ++iPop) {
++                // if ((collisionModel >= CollisionModel::HalfwayBounceBack__TRT) &&
++                //(index >= 0) && (!std::isnan(dynamicScalarsPtr[index + iPop]))) {
++                if (readBit(links, iPop)) {
++                    int iOpp = indexTemplates::opposite<Descriptor<T>>(iPop);
++                    tmpPopulations[iOpp * N + i] = f[iPop];
++                } else {
++                    plint nextX = iX + Descriptor<T>::c_gpu(iPop, 0);
++                    plint nextY = iY + Descriptor<T>::c_gpu(iPop, 1);
++                    plint nextZ = iZ + Descriptor<T>::c_gpu(iPop, 2);
++                    if (contained(nextX, nextY, nextZ, fullDomain)) {
++                        plint iNext = nextZ + nz * (nextY + ny * nextX);
++                        tmpPopulations[iPop * N + iNext] = f[iPop];
++                    }
++                }
++            }
++            for (int iExt = 0; iExt < Descriptor<T>::ExternalField::numScalars; ++iExt) {
++                *externalScalars[i].get(iExt) = ext[iExt];
++            }
++}
++
+ }  // namespace plb
+ 
+ #endif  // ATOMIC_ACCELERATED_LATTICE_3D_HH
+--- a/src/multiBlock/acceleratedLattice3D.h
++++ b/src/multiBlock/acceleratedLattice3D.h
+@@ -106,6 +106,8 @@
+     Dynamics<T, Descriptor> const &getBackgroundDynamics() const;
+     template <class CollFun>
+     void collideAndStream(CollFun const &collFun);
++    template <class CollFun, class BatchPlan>
++    void stage4CollideAndStream(CollFun const& collFun, BatchPlan& plan);
+     void collideAndStream();
+     template <class CollFun>
+     void externalCollideAndStream(CollFun const &collFun);
+--- a/src/multiBlock/acceleratedLattice3D.hh
++++ b/src/multiBlock/acceleratedLattice3D.hh
+@@ -242,6 +242,28 @@
+ }
+ 
+ template <typename T, template <typename U> class Descriptor>
++template <class CollFun, class BatchPlan>
++void AcceleratedLattice3D<T, Descriptor>::stage4CollideAndStream(CollFun const &collFun, BatchPlan& plan)
++{
++    global::profiler().start("cycle");
++    {
++        nvtx a {"COLLIDE-AND-STREAM"};
++        plan.apply(collFun);
++    }
++
++    {
++        nvtx b {"COMMUNICATE"};
++        this->executeInternalProcessors();
++    }
++    this->incrementTime();
++    global::profiler().stop("cycle");
++    if (global::profiler().cyclingIsAutomatic()) {
++        global::profiler().cycle();
++    }
++}
++
++
++template <typename T, template <typename U> class Descriptor>
+ void AcceleratedLattice3D<T, Descriptor>::collideAndStream()
+ {
+     global::profiler().start("cycle");

@@ -1,0 +1,137 @@
+{
+  "schema": "RBC_ONLY_VALIDATION_STAGE_1_CURRENT_PRODUCTION_V1",
+  "stage_status": "STOPPED_AT_GEOMETRY_HARD_GATE",
+  "frozen_before_any_coupled_solver": true,
+  "stage_order": [
+    "BUILD",
+    "GEOMETRY_FIT",
+    "MPI1_SANITY",
+    "CASE_A",
+    "CASE_B",
+    "CASE_C"
+  ],
+  "medium_contract": "contracts/NEW_MEDIUM_NUMERICS_CONTRACT.json",
+  "medium_status": "SUSPENDING_MEDIUM_NUMERICS_PASS_FROM_PRECEDING_SMOKE",
+  "prepare_numerics_single_source": true,
+  "medium_physical_parameters_tuned": false,
+  "model": {
+    "name": "MOUSE_RBC_DEV_V0",
+    "shape": "RBC_FROM_SPHERE",
+    "target_volume_um3": 50,
+    "nominal_scale": 0.8220706914434901,
+    "radius_m": 3.2142964035440464e-06,
+    "effective_diameter_um": 6.428592807088092,
+    "actual_discrete_volume_um3": 45.046330078320075,
+    "target_volume_reproduction": "FAIL_FIXED_NOMINAL_SCALE_DISCRETE_VOLUME_DIFFERS",
+    "mechanics": "RbcHighOrderModel",
+    "kLink": 15,
+    "kArea": 5,
+    "kBend": 80,
+    "kVolume": 20,
+    "minNumTriangles": 600,
+    "actual_triangles": 1280,
+    "actual_vertices": 642,
+    "interior_viscosity": false,
+    "geometry_changed_after_fit": false,
+    "mechanics_runtime_validation": "NOT_RUN"
+  },
+  "gates": {
+    "max_relative_volume_error": 0.05,
+    "max_relative_area_error": 0.05,
+    "relative_errors_reference": "Initial actual closed native mesh; separately disclose 50um3 nominal target mismatch",
+    "finite_RBC_checks": "positions, velocities, forces every timestep, no per-step file output",
+    "wall_penetration_metric": "negative of frozen closed-STL signed distance, independently verified using solid-angle winding plus nearest-triangle distance",
+    "wall_penetration_tolerance_lu": 0.0,
+    "wall_metric_validation_scope": "STATIC_GEOMETRY_ONLY; runtime not executed",
+    "triangle_inversion_definition": "UNVERIFIED_NOT_IMPLEMENTED_BECAUSE_PRECEDING_GEOMETRY_HARD_GATE_FAILED",
+    "force_velocity_runaway_gate": "PENDING_NO_FORMAL_CASE_AUTHORIZED_AFTER_FAILED_GEOMETRY_GATE",
+    "fluid_rho_limits": [
+      0.99,
+      1.01
+    ],
+    "fluid_Mach_hard_limit": 0.05,
+    "fluid_Mach_smoke_limit": 0.01,
+    "outlet_transient_backflow_is_failure": false,
+    "inlet_accuracy_gate": false
+  },
+  "monitor_schedule": {
+    "RBC_finite": 1,
+    "RBC_geometry": 10,
+    "fluid_safety": 50,
+    "compact_case_CSV_and_stdout": 100
+  },
+  "output_policy": {
+    "fluid": [
+      "initial",
+      "final",
+      "failure"
+    ],
+    "RBC_mesh": [
+      "initial",
+      "mid",
+      "final",
+      "failure"
+    ],
+    "checkpoint": false,
+    "limit_bytes": 1073741824
+  },
+  "cases": {
+    "MPI1_SANITY": {
+      "planned_max_steps": 200,
+      "MPI_ranks": 1,
+      "RBC_count": 1,
+      "positions": null,
+      "orientations": null,
+      "status": "NOT_RUN_GEOMETRY_GATE_FAILED",
+      "actual_steps": 0
+    },
+    "CASE_A": {
+      "planned_max_steps": 2000,
+      "MPI_ranks": 4,
+      "RBC_count": 1,
+      "positions": null,
+      "orientations": null,
+      "status": "NOT_RUN_GEOMETRY_GATE_FAILED",
+      "actual_steps": 0
+    },
+    "CASE_B": {
+      "planned_max_steps": 2000,
+      "MPI_ranks": 4,
+      "RBC_count": 1,
+      "positions": null,
+      "orientations": null,
+      "status": "BLOCKED_WALL_INTERACTION_IMPLEMENTATION",
+      "also_blocked_by": "GEOMETRY_GATE_FAILED",
+      "actual_steps": 0
+    },
+    "CASE_C": {
+      "planned_max_steps": 5000,
+      "MPI_ranks": 4,
+      "allowed_RBC_counts": [
+        2,
+        3,
+        4
+      ],
+      "RBC_count": null,
+      "positions": null,
+      "orientations": null,
+      "status": "NOT_RUN_GEOMETRY_GATE_FAILED",
+      "actual_steps": 0
+    }
+  },
+  "spawn_policy": "No safe pose accepted; null positions are intentional and prohibit solver launch. Best diagnostic pose is explicitly NOT an authorized spawn.",
+  "random_orientation": false,
+  "random_seed": null,
+  "search_policy_sha256": "2a4a3013474553089462bfd780713573600178bb41714af758f1abb2c0ea4291",
+  "native_mesh_sha256": {
+    "RBC_REFERENCE_VERTICES.csv": "bf500407f01d5cd057e1aeefe853c14f1c45115db1179ef53b5548970da868f8",
+    "RBC_REFERENCE_TRIANGLES.csv": "3c6394a607cfe3ad9084bc919ec71b861001656b576a395d8758d8704d8aebc0"
+  },
+  "HUMAN_RBC_REVIEW": "PENDING",
+  "SMALL_PACK_IS_NOT_HCT_VALIDATION": true,
+  "RBC_GPU_CORRECTNESS": "PENDING",
+  "MICROBUBBLE": "OFF",
+  "ADHESION": "OFF",
+  "ULTRASOUND": "OFF",
+  "next_step": "USER_REVIEW_BEFORE_RBC_STAGE2"
+}

@@ -1,0 +1,294 @@
+--- frozen_stage4/vascularPoC.cpp
++++ new_medium_host_driver/vascularPoC.cpp
+@@ -19,6 +19,7 @@
+ #include <stdexcept>
+ #include <vector>
+ #include <chrono>
++#include <cctype>
+ using namespace plb;
+ typedef double T;
+ #define DESCRIPTOR descriptors::D3Q19Descriptor
+@@ -67,6 +68,24 @@
+ #endif
+ #include "mpi_support.hpp"
+ 
++
++// Host input/identity adapter only: consume generated values; never regenerate dt or boundary density.
++std::string contractText(std::string const& path) {
++    std::ifstream f(path);require(bool(f),"Missing frozen contract: "+path);
++    std::ostringstream out;out<<f.rdbuf();require(!out.str().empty(),"Empty frozen contract");return out.str();
++}
++T contractNumber(std::string const& body,std::string const& key) {
++    std::string token="\""+key+"\"";size_t pos=0;
++    while((pos=body.find(token,pos))!=std::string::npos){
++        size_t end=pos+token.size();while(end<body.size()&&std::isspace(static_cast<unsigned char>(body[end])))++end;
++        if(end<body.size()&&body[end]==':'){
++            size_t used=0;T v=std::stod(body.substr(end+1),&used);require(used>0&&std::isfinite(v),"Nonfinite contract value: "+key);return v;
++        }
++        pos+=token.size();
++    }
++    throw std::runtime_error("Missing numerical contract key: "+key);
++}
++
+ int main(int argc,char** argv) {
+     const auto mainStart=std::chrono::steady_clock::now();
+     plbInit(&argc,&argv);
+@@ -80,24 +99,30 @@
+ #else
+         require(global::mpi().getSize()==12,"CPU MPI12 only");
+ #endif
+-        std::string root=argv[2],test="GPU_POC_STAGE_4";
++        std::string root=argv[2],test="PURE_FLUID_NEW_MEDIUM_SMOKE";
+         T multiplier=std::stod(argv[3]);require(multiplier==T(1.1197286861799598),"Frozen multiplier mismatch");
+         const int requested=std::stoi(argv[4]);
+-        require(requested==200||requested==1000||requested==5000,"Stage4 frozen horizon mismatch");
+-        const int warmup=requested==200?100:requested/10;
++        require(requested==500||requested==5000,"New-medium smoke horizon must be500 or5000");
++        const int warmup=requested/10;
+         run=argv[1]; global::directories().setOutputDir(run+"/");
+         pcout<<std::setprecision(17);
+         std::ifstream input(run+"/contracts/solver_parameters.txt"); std::string stl,s2;
+         input>>stl>>s2;
+         int nx,ny,nz,rampSteps,maxSteps; Vec expectedOrigin; T expectedDx,dt,tau,rhoPhys,qTarget,maLimit,rhoLow,rhoHigh;
+         input>>nx>>ny>>nz>>expectedOrigin[0]>>expectedOrigin[1]>>expectedOrigin[2]>>expectedDx>>dt>>tau>>rhoPhys>>qTarget>>maLimit>>rhoLow>>rhoHigh>>rampSteps>>maxSteps;
+-        require(maxSteps==700000&&rampSteps==10&&tau==1.,"Frozen execution contract mismatch");
+-        maxSteps=requested; // Independent Step3C execution cap; frozen Step3B file stays byte-identical.
++        require(maxSteps==5000&&rampSteps==10&&tau==1.,"Smoke execution contract mismatch");
++        maxSteps=requested; // New independent smoke cap; original Stage4/Step3C contracts remain unchanged.
+         require(maxSteps<=5000,"Stage4 hard cap 5000");
+-        int scalarEvery,evaluateEvery,fieldDelta,firstEvaluation,cvExpected;
+-        std::ifstream monitorInput(run+"/contracts/monitor_parameters.txt");
+-        monitorInput>>scalarEvery>>evaluateEvery>>fieldDelta>>firstEvaluation>>cvExpected;
+-        require(bool(monitorInput)&&scalarEvery==100&&evaluateEvery==5000&&fieldDelta==119872&&firstEvaluation==240000&&cvExpected==180543,"Monitor contract mismatch");
++        const int scalarEvery=100,cvExpected=180543;
++        std::string numericalText=contractText(run+"/contracts/NEW_MEDIUM_NUMERICS_CONTRACT.json");
++        std::string safetyText=contractText(run+"/contracts/SMOKE_SAFETY_CONTRACT.json");
++        require(dt==contractNumber(numericalText,"dt_s")&&expectedDx==contractNumber(numericalText,"dx_m")&&tau==contractNumber(numericalText,"tau")&&rhoPhys==contractNumber(numericalText,"rho_kg_m3"),"Actual input differs from generated numerics contract");
++        require(qTarget==contractNumber(numericalText,"physical_Qtarget_m3_s")&&multiplier==contractNumber(numericalText,"inlet_numerical_multiplier"),"Physical inlet mismatch");
++        require(rhoPhys==1000.&&contractNumber(numericalText,"nu_m2_s")==1e-6&&tau==1.&&dt>0,"Provisional medium input mismatch");
++        require(rhoLow==.99&&rhoHigh==1.01&&maLimit==.05,"Existing project safety bounds changed");
++        const T maxDrift=contractNumber(safetyText,"max_total_mass_drift_fraction");
++        const T maxJump=contractNumber(safetyText,"max_mass_jump_per50_fraction");
++        const T maxFlux=contractNumber(safetyText,"max_abs_flux_over_Qtarget");
+         std::vector<Port> ports(4); std::map<int,int> expectedTags;
+         for(auto& p:ports) {
+             int count; input>>p.label>>p.normal[0]>>p.normal[1]>>p.normal[2]>>p.density>>count;
+@@ -109,6 +134,15 @@
+             }
+         }
+         require(bool(input),"Incomplete parameter file");
++        for(int k=1;k<=3;++k)require(ports[k].density==contractNumber(numericalText,"outlet_0"+std::to_string(k)+"_rho_lu"),"Actual outlet density differs from generated contract");
++        const char* digest=std::getenv("NEW_MEDIUM_NUMERICS_SHA256");require(digest&&std::string(digest).size()==64,"Missing frozen numerics hash from verified launcher");
++        {RankFile audit(run+"/diagnostics/ACTUAL_NUMERICS_READBACK.json");audit<<std::setprecision(17)
++            <<"{\"status\":\"PASS\",\"dt_s\":"<<dt<<",\"dx_m\":"<<expectedDx<<",\"tau\":"<<tau<<",\"rho_kg_m3\":"<<rhoPhys
++            <<",\"nu_m2_s\":"<<contractNumber(numericalText,"nu_m2_s")<<",\"pressure_unit_pa_read\":"<<contractNumber(numericalText,"pressure_unit_pa")
++            <<",\"outlet_01_rho_lu\":"<<ports[1].density<<",\"outlet_02_rho_lu\":"<<ports[2].density<<",\"outlet_03_rho_lu\":"<<ports[3].density
++            <<",\"Qtarget\":"<<qTarget<<",\"multiplier\":"<<multiplier<<",\"numerics_contract_sha256\":\""<<digest
++            <<"\",\"dt_or_outlet_density_recomputed_in_solver\":false,\"new_medium_inlet_multiplier_validation\":\"NOT_PERFORMED\"}\n";}
++
+         // Step2 closed helper stages verbatim in numerical meaning; envelope 2
+         // accommodates native Guo's second neighbor and is not a mesh change.
+         TriangleSet<T> triangles(stl,DBL);
+@@ -274,29 +308,26 @@
+         GPUState gpu(*lattice,capture,nx,ny,nz,nodes,ghosts,samples,sampleIds,run,expectedTags);activeGPU=&gpu;gpu.sync();
+ #endif
+         T initialMass=inspect(nodes).rsum*massUnit;
+-        RankFile history(run+"/diagnostics/flow_history.csv");history<<std::setprecision(17);
+-        history<<"iteration,time_s,rho_min,rho_max,rho_mean,u_max_m_s,Mach_max,mean_speed_m_s,total_mass,control_volume_mass,relative_mass_drift,BOUNDARY_PROFILE_Q_TARGET";
+-        const char* portNames[4]={"Qin","Qout01","Qout02","Qout03"};
+-        for(int p=0;p<4;++p) for(int k=0;k<3;++k) for(int r=0;r<2;++r)
+-            history<<','<<portNames[p]<<'_'<<(2+2*k)<<"dx"<<(r?"_dx2":"");
+-        for(int g=0;g<24;++g) history<<",mass_outward_g"<<g;
+-        history<<",instantaneous_flow_closure,control_volume_mass_balance,ghost_rho_min,ghost_rho_max,ghost_Mach_max\n";
++        require(std::isfinite(initialMass)&&initialMass>0,"Invalid initial physical mass");
++        RankFile history(run+"/diagnostics/NEW_MEDIUM_RUNTIME_HISTORY.csv");history<<std::setprecision(17)
++            <<"iteration,time_s,rho_min,rho_max,rho_mean,Mach_max,ghost_rho_min,ghost_rho_max,ghost_Mach_max,total_mass_kg,total_mass_drift\n";
++        RankFile flows(run+"/diagnostics/NEW_MEDIUM_FLUX_HISTORY.csv");flows<<std::setprecision(17)<<"iteration,time_s";
++        for(int p=0;p<4;++p)for(int g=0;g<6;++g)flows<<','<<(p==0?"Qin":p==1?"Qout01":p==2?"Qout02":"Qout03")<<"_g"<<g;
++        for(int g=0;g<24;++g)flows<<",mass_outward_g"<<g;flows<<'\n';
++        RankFile mass(run+"/diagnostics/NEW_MEDIUM_MASS_HISTORY.csv");mass<<std::setprecision(17)
++            <<"iteration,time_s,total_mass_kg,total_mass_drift,CV_mass_kg,CV_mass_change_kg,integrated_net_outward_mass_kg,CV_balance_error_kg,CV_balance_error_over_initial_CV_mass\n";
+         RankFile safety(run+"/diagnostics/safety_counts.csv");safety<<"iteration,fluid_nan,fluid_inf,ghost_nan,ghost_inf\n";
+         RankFile sparse(run+"/diagnostics/snapshot_events.csv");sparse<<"iteration,reason\n";
+-        std::set<int> milestones={0,100,200,1000,5000};
+-        if(std::getenv("STAGE4_STRONG_CHECKPOINTS")){milestones.insert(1);milestones.insert(10);}
+-        uint64_t safetyChecks=0;T allRmin=2,allRmax=0,allMach=0,allGhostMin=2,allGhostMax=0;
+-        T previousCV=0,previousMassFlux[4]={0,0,0,0};int previousSample=-1;
+-        bool autoConverged=false;T window3sum=0,window4sum=0;int window3count=0,window4count=0;
++        const std::set<int> milestones={0,5000};
++        uint64_t safetyChecks=0;T allRmin=2,allRmax=0,allMach=0,allGhostMin=2,allGhostMax=0,maxAbsDrift=0;
++        T previousMass50=initialMass,initialCV=0,previousCV=0,previousNetMass=0,integratedNetMass=0;
++        int previousFluxStep=-1;bool backflow=false;
+         double timedStart=0,timedElapsed=0,fullStart=0,fullElapsed=0,segmentStart=0;
+-        long long firstIterationNs=0;
+-        RankFile windows(run+"/diagnostics/iteration_windows.csv");
+-        windows<<"first_step,last_step,steps,seconds,steps_per_second\n";
++        RankFile windows(run+"/diagnostics/iteration_windows.csv");windows<<"first_step,last_step,steps,seconds,steps_per_second\n";
+         stage2Profiler.initialize(run);
+-        for(int step=0;step<=maxSteps;++step) {
++        for(int step=0;step<=maxSteps;++step){
+             stage2Profiler.step=step;
+-            { Stage2Scope wholeStep("TIMESTEP");
+-            if(step) {state.ramp=std::min(T(1),T(step)/rampSteps);
++            if(step){state.ramp=std::min(T(1),T(step)/rampSteps);
+ #ifdef GPU_POC
+                 gpu.step(state.ramp);
+ #else
+@@ -304,101 +335,78 @@
+ #endif
+                 completed=step;
+             }
+-            // Initialization verifies exact ownership on both backends; no CPU-only distributed proxy diagnostic in the fair PoC.
+-            {Stage2Scope p("MPI_OWNERSHIP_SCALARS");
+-            uint64_t localCounts[3]={uint64_t(nodes.size()),uint64_t(foundCV),uint64_t(sampleNodes.size())},globalCounts[3];MPI_Allreduce(localCounts,globalCounts,3,MPI_UINT64_T,MPI_SUM,MPI_COMM_WORLD);
+-            require(globalCounts[0]==actualFluid&&globalCounts[1]==uint64_t(cvExpected)&&globalCounts[2]==sampleIds.size(),"FAIL_MPI_RUNTIME_CORRECTNESS: runtime owned cell count changed");}
++            // Original Stage4 GPU reductions and mathematics, retained every step for safety.
++            uint64_t localCounts[3]={uint64_t(nodes.size()),uint64_t(foundCV),uint64_t(sampleNodes.size())},globalCounts[3];
++            MPI_Allreduce(localCounts,globalCounts,3,MPI_UINT64_T,MPI_SUM,MPI_COMM_WORLD);
++            require(globalCounts[0]==actualFluid&&globalCounts[1]==uint64_t(cvExpected)&&globalCounts[2]==sampleIds.size(),"Runtime ownership changed");
+             Stats s=inspect(nodes),g=inspect(ghosts);++safetyChecks;
+-            {Stage2Scope p("OUTPUT_SAFETY");safety<<step<<','<<s.nan<<','<<s.inf<<','<<g.nan<<','<<g.inf<<'\n';safety.flush();require(bool(safety),"Safety evidence write failure");}
+-            bool safe=!s.nan&&!s.inf&&!g.nan&&!g.inf&&s.rmin>=rhoLow&&s.rmax<=rhoHigh&&g.rmin>0&&s.umax/std::sqrt(DESCRIPTOR<T>::cs2)<=maLimit&&g.umax/std::sqrt(DESCRIPTOR<T>::cs2)<=maLimit;
++            safety<<step<<','<<s.nan<<','<<s.inf<<','<<g.nan<<','<<g.inf<<'\n';safety.flush();require(bool(safety),"Safety output failed");
++            T m=s.rsum*massUnit,cv=s.cvsum*massUnit,drift=(m-initialMass)/initialMass;
++            bool safe=!s.nan&&!s.inf&&!g.nan&&!g.inf&&s.rmin>=rhoLow&&s.rmax<=rhoHigh&&g.rmin>0
++                &&s.umax/std::sqrt(DESCRIPTOR<T>::cs2)<=maLimit&&g.umax/std::sqrt(DESCRIPTOR<T>::cs2)<=maLimit
++                &&std::isfinite(m)&&std::isfinite(cv)&&m>0&&cv>0&&std::abs(drift)<=maxDrift;
+             allRmin=std::min(allRmin,s.rmin);allRmax=std::max(allRmax,s.rmax);
+             allMach=std::max(allMach,std::max(s.umax,g.umax)/std::sqrt(DESCRIPTOR<T>::cs2));
+-            allGhostMin=std::min(allGhostMin,g.rmin);allGhostMax=std::max(allGhostMax,g.rmax);
+-            { // Exact discrete arithmetic means: measure every completed step, including all24groups.
++            allGhostMin=std::min(allGhostMin,g.rmin);allGhostMax=std::max(allGhostMax,g.rmax);maxAbsDrift=std::max(maxAbsDrift,std::abs(drift));
++            if(step%50==0||step==maxSteps||!safe){
++                safe=safe&&std::abs(m-previousMass50)/initialMass<=maxJump;previousMass50=m;
++                history<<step<<','<<step*dt<<','<<s.rmin<<','<<s.rmax<<','<<s.rsum/actualFluid<<','<<s.umax/std::sqrt(DESCRIPTOR<T>::cs2)
++                    <<','<<g.rmin<<','<<g.rmax<<','<<g.umax/std::sqrt(DESCRIPTOR<T>::cs2)<<','<<m<<','<<drift<<'\n';history.flush();require(bool(history),"Runtime CSV write failed");
++            }
++            if(step%100==0||step==maxSteps||!safe){
++                checkQuadratureOwnership(samples,run,false);
+                 T flux[24]={0},mflux[24]={0};
+-                if(step%scalarEvery==0||!safe){Stage2Scope p("MPI_QUADRATURE_OWNERSHIP");checkQuadratureOwnership(samples,run,false);}
+ #ifdef GPU_POC
+                 gpu.flux(flux,mflux,qUnit,rhoPhys);
+ #else
+-                auto macros=sampledMacros(sampleIds,sampleNodes);
+-                for(auto const& sample:samples){
+-                    if(sample.owner!=rankId())continue;
+-                    Vec u(0.,0.,0.);T rho=0;
+-                    for(int j=0;j<8;++j){size_t k=4*sample.indices[j];Vec v(macros[k+1],macros[k+2],macros[k+3]);u+=sample.weights[j]*v;rho+=sample.weights[j]*macros[k];}
+-                    T dq=sample.area*dot(u,sample.normal)*qUnit;flux[sample.port]+=dq;mflux[sample.port]+=rhoPhys*rho*dq;
++                throw std::runtime_error("This independent smoke requires the validated GPU implementation");
++#endif
++                MPI_Allreduce(MPI_IN_PLACE,flux,24,MPI_DOUBLE,MPI_SUM,MPI_COMM_WORLD);MPI_Allreduce(MPI_IN_PLACE,mflux,24,MPI_DOUBLE,MPI_SUM,MPI_COMM_WORLD);
++                flows<<step<<','<<step*dt;
++                for(int j=0;j<24;++j){safe=safe&&std::isfinite(flux[j])&&std::isfinite(mflux[j])&&std::abs(flux[j])<=maxFlux*qTarget;flows<<','<<(j<6?-1:1)*flux[j];}
++                for(int j=0;j<24;++j)flows<<','<<mflux[j];flows<<'\n';flows.flush();require(bool(flows),"Flux CSV write failed");
++                T net=mflux[2]+mflux[8]+mflux[14]+mflux[20];
++                if(previousFluxStep>=0)integratedNetMass+=.5*(previousNetMass+net)*(step-previousFluxStep)*dt;
++                previousFluxStep=step;previousNetMass=net;
++                for(int p=1;p<4;++p)backflow=backflow||flux[6*p+2]<0;
++                if(step%500==0||step==maxSteps||!safe){
++                    if(step==0)initialCV=previousCV=cv;
++                    T change=cv-previousCV,error=change+integratedNetMass;
++                    mass<<step<<','<<step*dt<<','<<m<<','<<drift<<','<<cv<<','<<change<<','<<integratedNetMass<<','<<error<<','<<error/initialCV<<'\n';mass.flush();require(bool(mass),"Mass CSV write failed");
++                    previousCV=cv;integratedNetMass=0;
+                 }
+-#endif
+-                {Stage2Scope p("MPI_FLUX_SCALARS");MPI_Allreduce(MPI_IN_PLACE,flux,24,MPI_DOUBLE,MPI_SUM,MPI_COMM_WORLD);MPI_Allreduce(MPI_IN_PLACE,mflux,24,MPI_DOUBLE,MPI_SUM,MPI_COMM_WORLD);}
+-                for(int g=0;g<24;++g)require(std::isfinite(flux[g])&&std::isfinite(mflux[g]),"FAIL_MPI_RUNTIME_CORRECTNESS: flux reduction nonfinite");
+-                T qi=-flux[2],net=flux[2]+flux[8]+flux[14]+flux[20];
+-                if(step>=3001&&step<=4000){window3sum+=qi;++window3count;}
+-                if(step>=4001&&step<=5000){window4sum+=qi;++window4count;}
+-                T mass=s.rsum*massUnit,cvMass=s.cvsum*massUnit;
+-                {Stage2Scope p("OUTPUT_FLOW_HISTORY");history<<step<<','<<step*dt<<','<<s.rmin<<','<<s.rmax<<','<<s.rsum/actualFluid<<','<<s.umax*velUnit<<','<<s.umax/std::sqrt(DESCRIPTOR<T>::cs2)<<','<<s.speedSum/actualFluid*velUnit<<','<<mass<<','<<cvMass<<','<<(mass-initialMass)/initialMass<<','<<qTarget*state.ramp;
+-                for(int group=0;group<24;++group) history<<','<<(group<6?-1:1)*flux[group];
+-                for(int group=0;group<24;++group) history<<','<<mflux[group];
+-                history<<','<<std::abs(net)/std::max(std::abs(qi),qTarget*1e-12)<<',';
+-                if(previousSample>=0) {
+-                    T inward=0,outwardSum=0,netMass=0;
+-                    for(int p=0;p<4;++p) {T mean=.5*(previousMassFlux[p]+mflux[6*p+2]);netMass+=mean;if(p==0) inward=std::abs(mean);else outwardSum+=std::abs(mean);}
+-                    T residual=std::abs((cvMass-previousCV)/((step-previousSample)*dt)+netMass)/std::max(std::max(inward,outwardSum),rhoPhys*qTarget*1e-12);
+-                    history<<residual;
+-                }
+-                history<<','<<g.rmin<<','<<g.rmax<<','<<g.umax/std::sqrt(DESCRIPTOR<T>::cs2)<<'\n';history.flush();require(bool(history),"History write failure");}
+-                previousSample=step;previousCV=cvMass;for(int p=0;p<4;++p) previousMassFlux[p]=mflux[6*p+2];
+-                if(step%1000==0||!safe) pcout<<"STAGE "<<step<<" safe="<<safe<<" Qin="<<qi<<" CV_mass="<<cvMass<<std::endl;
+-            }
+-            if(!safe) throw std::runtime_error("Immediate runtime safety gate failure: NaN/Inf/density/Mach");
+-            if(milestones.count(step)){Stage2Scope p("OUTPUT_SNAPSHOTS");
+-                snapshot(run,step,nodes);sampledSnapshot(run,step,sampleNodes);
+-                sparse<<step<<",poc_same_output_snapshot\n";sparse.flush();
+-
+-            }
+-            if(step==0)for(int k=0;k<5;++k)require(sumCount(state.calls[k])>0,"A native surface profile was never used globally");
+-            } // End measured step; excludes profiler control and timing-file serialization.
++                if(step%500==0||!safe)pcout<<"SMOKE_STEP "<<step<<" safe="<<safe<<" Qin="<<-flux[2]<<" Qout="<<flux[8]<<","<<flux[14]<<","<<flux[20]<<" Mach="<<std::max(s.umax,g.umax)/std::sqrt(DESCRIPTOR<T>::cs2)<<std::endl;
++            }
++            if(milestones.count(step)||!safe){snapshot(run,step,nodes);sampledSnapshot(run,step,sampleNodes);sparse<<step<<','<<(safe?"permitted_smoke_snapshot":"failure_snapshot")<<'\n';sparse.flush();}
++            require(safe,"Immediate smoke safety failure: nonfinite/density/Mach/mass/flux");
+             if(step==0){
+-                // The existing initial GPU synchronization, scalar checks and snapshots have completed.
+-                firstIterationNs=std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+-                fullStart=segmentStart=MPI_Wtime();
++                for(int k=0;k<5;++k)require(sumCount(state.calls[k])>0,"A native profile was never used");
++                auto ready=std::chrono::steady_clock::now();fullStart=segmentStart=MPI_Wtime();
+                 RankFile init(run+"/diagnostics/initialization_timing.json");init<<std::setprecision(17)
+                     <<"{\"main_entry_monotonic_ns\":"<<std::chrono::duration_cast<std::chrono::nanoseconds>(mainStart.time_since_epoch()).count()
+-                    <<",\"first_iteration_monotonic_ns\":"<<firstIterationNs
+-                    <<",\"main_entry_to_ready_seconds\":"<<std::chrono::duration<double>(std::chrono::steady_clock::now()-mainStart).count()
+-                    <<",\"MPI_initialization_seconds\":"<<std::chrono::duration<double>(mpiReady-mainStart).count()
+-                    <<",\"includes_step0_required_output\":true}\n";
+-            }
+-            if(step==warmup){
+-#ifdef GPU_POC
+-                gpu.sync();
+-#endif
+-                MPI_Barrier(MPI_COMM_WORLD);timedStart=MPI_Wtime();
+-            }
++                    <<",\"first_iteration_monotonic_ns\":"<<std::chrono::duration_cast<std::chrono::nanoseconds>(ready.time_since_epoch()).count()
++                    <<",\"main_entry_to_ready_seconds\":"<<std::chrono::duration<double>(ready-mainStart).count()
++                    <<",\"MPI_initialization_seconds\":"<<std::chrono::duration<double>(mpiReady-mainStart).count()<<",\"includes_step0_required_output\":true}\n";
++            }
++            if(step==warmup){gpu.sync();MPI_Barrier(MPI_COMM_WORLD);timedStart=MPI_Wtime();}
+             stage2Profiler.afterStep(step);
+-            if(step>0&&step%100==0){
+-                double now=MPI_Wtime(),elapsed=now-segmentStart;
+-                windows<<std::setprecision(17)<<step-99<<','<<step<<",100,"<<elapsed<<','<<100/elapsed<<'\n';windows.flush();
+-                require(bool(windows),"Window timing evidence write failure");segmentStart=now;
+-            }
++            if(step>0&&step%100==0){double now=MPI_Wtime(),elapsed=now-segmentStart;windows<<std::setprecision(17)<<step-99<<','<<step<<",100,"<<elapsed<<','<<100/elapsed<<'\n';windows.flush();segmentStart=now;}
+             if(step==maxSteps){
+-#ifdef GPU_POC
+-                gpu.sync();
+-#endif
+-                MPI_Barrier(MPI_COMM_WORLD);const double end=MPI_Wtime();timedElapsed=end-timedStart;fullElapsed=end-fullStart;
++                gpu.sync();MPI_Barrier(MPI_COMM_WORLD);double end=MPI_Wtime();timedElapsed=end-timedStart;fullElapsed=end-fullStart;
+                 RankFile timing(run+"/diagnostics/solver_timing.json");timing<<std::setprecision(17)
+-                    <<"{\"warmup_steps\":"<<warmup<<",\"timed_steps\":"<<maxSteps-warmup
+-                    <<",\"timed_seconds\":"<<timedElapsed<<",\"steps_per_second\":"<<(maxSteps-warmup)/timedElapsed
+-                    <<",\"full_iteration_steps\":"<<maxSteps<<",\"full_iteration_seconds\":"<<fullElapsed
+-                    <<",\"full_iteration_steps_per_second\":"<<maxSteps/fullElapsed<<"}\n";
+-            }
+-            if(step==maxSteps){sparse<<step<<",final\n";sparse.flush();break;}
++                    <<"{\"warmup_steps\":"<<warmup<<",\"timed_steps\":"<<maxSteps-warmup<<",\"timed_seconds\":"<<timedElapsed
++                    <<",\"steps_per_second\":"<<(maxSteps-warmup)/timedElapsed<<",\"full_iteration_steps\":"<<maxSteps
++                    <<",\"full_iteration_seconds\":"<<fullElapsed<<",\"full_iteration_steps_per_second\":"<<maxSteps/fullElapsed<<"}\n";
++            }
+         }
+         stage2Profiler.write();
+-        for(int k=0;k<5;++k)state.calls[k]=sumCount(state.calls[k]);
+-        RankFile status(run+"/diagnostics/solver_status.json");status<<std::setprecision(17);
+-        status<<"{\"runtime_safety\":\"PASS\",\"status\":\""<<"STAGE3_HORIZON_COMPLETE"<<"\",\"timesteps\":"<<completed<<",\"auto_converged\":"<<(autoConverged?"true":"false")<<",\"cell_count\":0,\"mpi_ranks\":"<<rankCount()<<",\"mpi_runtime_correctness\":\"PASS\",\"quadrature_ownership_checks\":"<<ownershipChecks<<",\"safety_checks\":"<<safetyChecks<<",\"all_step_fluid_rho_min\":"<<allRmin<<",\"all_step_fluid_rho_max\":"<<allRmax<<",\"all_step_max_mach_including_ghosts\":"<<allMach<<",\"all_step_ghost_rho_min\":"<<allGhostMin<<",\"all_step_ghost_rho_max\":"<<allGhostMax<<",\"native_profile_calls\":[";
+-        for(int k=0;k<5;++k) status<<(k?",":"")<<state.calls[k];status<<"]}\n";
+-        require(bool(status),"Final status write failed");
+-        pcout<<"GPU_POC_STAGE3_COMPLETE timesteps="<<completed<<" auto_converged="<<autoConverged<<" CELL_COUNT=0"<<std::endl;return 0;
++        RankFile status(run+"/diagnostics/solver_status.json");status<<std::setprecision(17)
++            <<"{\"runtime_safety\":\"PASS\",\"status\":\"SMOKE_HORIZON_COMPLETE\",\"timesteps\":"<<completed
++            <<",\"auto_converged\":false,\"cell_count\":0,\"mpi_ranks\":1,\"mpi_runtime_correctness\":\"PASS\",\"quadrature_ownership_checks\":"<<ownershipChecks
++            <<",\"safety_checks\":"<<safetyChecks<<",\"all_step_fluid_rho_min\":"<<allRmin<<",\"all_step_fluid_rho_max\":"<<allRmax
++            <<",\"all_step_max_mach_including_ghosts\":"<<allMach<<",\"all_step_ghost_rho_min\":"<<allGhostMin<<",\"all_step_ghost_rho_max\":"<<allGhostMax
++            <<",\"max_abs_mass_drift\":"<<maxAbsDrift<<",\"transient_outlet_backflow\":"<<(backflow?"true":"false")<<"}\n";
++        require(bool(status),"Final status write failure");pcout<<"NEW_MEDIUM_SMOKE_COMPLETE steps="<<completed<<" RBC=0"<<std::endl;return 0;
+     } catch(std::exception const& e) {
+         pcout<<"STEP3C_ERROR completed_timesteps="<<completed<<" "<<e.what()<<std::endl;
+         if(!run.empty()) {RankFile f(run+"/diagnostics/solver_failure.txt");f<<"completed_timesteps="<<completed<<"\n"<<e.what()<<'\n';}

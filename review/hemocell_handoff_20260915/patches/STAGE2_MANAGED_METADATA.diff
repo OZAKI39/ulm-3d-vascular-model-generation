@@ -1,0 +1,26 @@
+--- baseline/gpu_adapter.hpp
++++ micro_1/gpu_adapter.hpp
+@@ -185,6 +185,23 @@
+             require(bool(out),"Address inventory write failure");
+         }
+         std::ofstream f(run+"/diagnostics/gpu_static_inventory.json");f<<"{\"dry_nodes\":"<<dry.size()<<",\"boundary_links\":"<<links.size()<<",\"fluid_nodes\":"<<fluid.size()<<",\"ghost_nodes\":"<<ghost.size()<<",\"quadrature_points\":"<<quadrature.size()<<",\"blocks\":"<<mapping.size()<<",\"full_field_writeBack_calls\":0,\"core_source_changes\":0}\n";
++        // Micro 1: residency hints for small shared AL objects only.
++        // Frozen arrays, collision/Guo mathematics, execution order and reductions are unchanged.
++        {
++            cudaMemLocation hostLocation{};hostLocation.type=cudaMemLocationTypeHost;
++            cudaMemLocation deviceLocation{};deviceLocation.type=cudaMemLocationTypeDevice;deviceLocation.id=0;
++            std::ofstream evidence(run+"/diagnostics/metadata_residency_advice.csv");
++            evidence<<"block_id,address,bytes,preferred_location,accessed_by,return_code\n";
++            for(auto const& entry:halo.blocks){
++                auto* object=entry.first;cudaPointerAttributes attr{};
++                require(cudaPointerGetAttributes(&attr,object)==cudaSuccess&&attr.type==cudaMemoryTypeManaged,"Metadata advice requires observed managed allocation");
++                auto r1=cudaMemAdvise(object,sizeof(AL),cudaMemAdviseSetPreferredLocation,hostLocation);
++                auto r2=cudaMemAdvise(object,sizeof(AL),cudaMemAdviseSetAccessedBy,deviceLocation);
++                require(r1==cudaSuccess&&r2==cudaSuccess,"Metadata residency advice failed");
++                evidence<<entry.second.id<<','<<reinterpret_cast<uintptr_t>(object)<<','<<sizeof(AL)<<",CPU,GPU0,0\n";
++            }
++            require(bool(evidence),"Residency advice evidence write failure");
++        }
+     }
+     void sync(){require(cudaDeviceSynchronize()==cudaSuccess,"CUDA synchronize failed");}
+     void step(T ramp){
