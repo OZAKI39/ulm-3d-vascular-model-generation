@@ -1,0 +1,21 @@
+units si
+atom_style sphere
+boundary p p p
+newton off
+processors 1 1 1
+read_data particles.data
+comm_modify vel yes
+pair_style zero 6e-6
+pair_coeff * *
+neighbor 1e-6 bin
+neigh_modify every 1 delay 0 check no
+fix passive all sonovue/passive/flow ../../fields/FROZEN_FLOW_FIELD_V0.h5 4 trajectory ../../provenance/closed_geometry_m.stl 5.9969754243196026e-07 1
+timestep 5.7917494205786708e-05
+thermo 301
+thermo_style custom step atoms time
+thermo_modify lost error norm no format float %.17g
+run 0
+write_dump all custom initial.dump id diameter xu yu zu vx vy vz modify sort id format float %.17g
+run 3010
+write_dump all custom final.dump id diameter xu yu zu vx vy vz modify sort id format float %.17g
+print "PASSIVE_CASE_COMPLETED"

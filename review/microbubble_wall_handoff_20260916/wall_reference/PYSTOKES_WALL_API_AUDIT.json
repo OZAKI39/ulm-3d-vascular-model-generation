@@ -1,0 +1,42 @@
+{
+  "constructor": "Rbm(radius=a,particles=1,viscosity=mu)",
+  "source": "pystokes/wallBounded.pyx",
+  "input_arrays": "float64 contiguous length 3*N; [x_1..x_N,y_1..y_N,z_1..z_N]",
+  "N1_order": "xyz",
+  "outputs": "in-place additive +=; pre-zero output for each impulse",
+  "units": "supplied consistently in SI; constructor includes 6*pi*mu*a,8*pi*mu*a^3 scales",
+  "signs": "right-handed xyz; source API documents externally applied body force/torque",
+  "basis_extraction": "Fx,Fy,Fz,Tx,Ty,Tz each unit separately, all other loads zero",
+  "TT": "v += mobilityTT(F)",
+  "TR": "v += mobilityTR(T)",
+  "RT": "omega += mobilityRT(F)",
+  "RR": "omega += mobilityRR(T)",
+  "all_matrices_from_API": true,
+  "no_formula_substitution": true,
+  "no_symmetrization": true,
+  "source_line_ranges": {
+    "constructor": [
+      31,
+      37
+    ],
+    "TT": [
+      40,
+      159
+    ],
+    "TR": [
+      162,
+      237
+    ],
+    "RT": [
+      451,
+      527
+    ],
+    "RR": [
+      530,
+      612
+    ]
+  },
+  "observed_reciprocity": "FAIL; relative=2.0",
+  "theory_expected_pattern": "diag(mt,mt,mn,mr,mr,mz), M04=M40=c, M13=M31=-c, others zero",
+  "tests_api_evidence": "upstream/tests/test_short.py and raw/PYSTOKES.jsonl"
+}

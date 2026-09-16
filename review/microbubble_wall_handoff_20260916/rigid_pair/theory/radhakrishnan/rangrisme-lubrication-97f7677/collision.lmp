@@ -1,0 +1,52 @@
+variable DIA1 equal 1.0
+variable MASS1 equal (PI*(${DIA1}^3.0)/6.0)
+variable DIA2 equal 1.4
+variable MASS2 equal (PI*(${DIA2}^3.0)/6.0)
+variable FLD_VISC equal 1.0
+variable T_STEP equal 0.00001
+
+atom_style	sphere
+boundary	p p p
+newton		off
+comm_modify	mode single vel yes
+region		reg prism -10 10 -10 10 -10 10 0 0 0 units box
+create_box	2 reg
+
+neigh_modify	delay 0
+
+print "Vol=$(vol)"
+create_atoms 1 single  -9.5 0.0 0.0    
+group right type 1
+velocity right set 0 0 0 
+set type 1 omega 0 1 0 
+
+create_atoms 2 single 9.5 0.0 0.0    
+group left type 2
+velocity left set 0 0 0 
+set type 2 omega 0 -1 0
+
+set type 1 diameter ${DIA1}
+set type 1 mass     ${MASS1}
+set type 2 diameter ${DIA2}
+set type 2 mass     ${MASS2}
+
+timestep ${T_STEP}
+fix		1 all nve/sphere
+pair_style      lubricate/Simple ${FLD_VISC} 1 0 1.001 1.05 1 0
+pair_coeff      1 1 1.001 1.05
+pair_coeff      2 2 1.4014 1.47
+pair_coeff      1 2 1.2012 1.26
+
+compute mytemp all temp
+compute mypres all pressure NULL pair
+
+
+#fix 2 all deform 1 xy erate 1 remap v
+
+thermo_style    custom step c_mytemp c_mypres[*]
+thermo		1
+thermo_modify	lost ignore norm no
+compute_modify	thermo_temp dynamic yes
+
+dump	id all custom 1 dump.lammpstrj id type radius mass x y z vx vy vz fx fy fz tqx tqy tqz omegax omegay omegaz
+run 50

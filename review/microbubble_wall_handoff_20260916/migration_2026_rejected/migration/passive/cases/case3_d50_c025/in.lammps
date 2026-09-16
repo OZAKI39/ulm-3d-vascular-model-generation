@@ -1,0 +1,21 @@
+units si
+atom_style sphere
+boundary p p p
+newton off
+processors 1 1 1
+read_data particles.data
+comm_modify vel yes
+pair_style zero 6e-6
+pair_coeff * *
+neighbor 1e-6 bin
+neigh_modify every 1 delay 0 check no
+fix passive all sonovue/passive/flow ../../fields/LINEAR_FIELD.h5 8 trajectory NONE 0 0
+timestep 1.6201457524941841e-08
+thermo 800
+thermo_style custom step atoms time
+thermo_modify lost error norm no format float %.17g
+run 0
+write_dump all custom initial.dump id diameter xu yu zu vx vy vz modify sort id format float %.17g
+run 8000
+write_dump all custom final.dump id diameter xu yu zu vx vy vz modify sort id format float %.17g
+print "PASSIVE_CASE_COMPLETED"

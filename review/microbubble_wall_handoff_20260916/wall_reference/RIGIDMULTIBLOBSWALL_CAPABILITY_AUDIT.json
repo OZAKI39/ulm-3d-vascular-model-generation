@@ -1,0 +1,131 @@
+{
+  "repo_commit": "8d41e464d7de9b6514a85a741dd227f1219e3a49",
+  "license": "GPL-3.0",
+  "role": "REFERENCE_ONLY",
+  "upstream_modified": false,
+  "sphere_semianalytical": {
+    "function": "sphere/sphere.py:sphere_best_mobility_known",
+    "default_sphere_mobility_dispatch": "sphere_mobility calls Swan-Brady low-order blob self mobility; best_mobility is a separately selected function",
+    "normal_TT": "Huang rational approximation to Brenner, implemented and useful",
+    "parallel_TT": "Goldman near epsilon<0.02979, Faucheux otherwise; direct-SI near branch fails units/positivity",
+    "RR_parallel": "162-blob precomputed table + natural cubic spline",
+    "RR_normal": "162-blob precomputed table + natural cubic spline",
+    "TR_RT": "same precomputed table; full matrix assigns all four couplings equal sign",
+    "data_center_height_over_radius": [
+      1.0,
+      10.0
+    ],
+    "data_surface_gap_over_radius": [
+      0.0,
+      9.0
+    ],
+    "extrapolation": "Unprotected cubic extrapolation at epsilon=10,20",
+    "issues": [
+      "selfMobilityGoldman.py factor_FR=6*pi*a*2 has radius power inconsistent with torque/velocity cross resistance; measured radius collapse fails",
+      "sphere.py M[0,4]=M[1,3]=M[3,1]=M[4,0] violates proper 90-degree in-plane rotation covariance",
+      "finite blob RR does not supply exact near-contact logarithmic singularity",
+      "cubic extrapolation beyond table raises RR_parallel above bulk at epsilon=20"
+    ],
+    "matrix_audit": {
+      "formal_rows": 126,
+      "finite_rows": 126,
+      "exception_rows": 0,
+      "negative_mobility_rows": 45,
+      "reciprocity_max_relative": 0.0,
+      "reciprocity_max_absolute_SI": 0.0,
+      "min_scaled_eigenvalue": -0.017614477446107356,
+      "max_scaled_condition_number": 832.3950893246006,
+      "max_planar_rotation_symmetry_error": 0.18321709392004637,
+      "all_physical_matrix_valid": false,
+      "max_normal_error_vs_Brenner": 0.006997085365894717,
+      "normal_error_at_smallest_gap": 0.0008528154404436883,
+      "normal_monotonic_with_gap": true,
+      "normal_R_epsilon_at_smallest_gap": 1.0014985044866385,
+      "far_field_diagonal_distance_to_bulk": [
+        {
+          "epsilon": 5.0,
+          "max_abs_diagonal_minus1": 0.18781725888324874
+        },
+        {
+          "epsilon": 10.0,
+          "max_abs_diagonal_minus1": 0.10404624277456642
+        },
+        {
+          "epsilon": 20.0,
+          "max_abs_diagonal_minus1": 0.2343936078206501
+        }
+      ],
+      "radius_status": "FAIL",
+      "viscosity_status": "PASS"
+    },
+    "selected_primary": false
+  },
+  "lubrication": {
+    "entry": "Lubrication/Lubrication_Class.cc:ResistCOO_wall(Sup_if_true=True)",
+    "private_mathematics": "WallResistMatrix",
+    "outputs": "EXCESS_RESISTANCE_OVER_ISOLATED_BULK",
+    "wrapper": "restore original bulk subtraction, solve six basis systems, work-conjugate scale, convert native units to SI",
+    "near_modes": {
+      "normal": "Cooley-ONeill asymptotic epsilon<=0.1",
+      "tangent": "GCB asymptotic epsilon<=0.01",
+      "TR_RT": "GCB + author-fitted linear correction epsilon<=0.1",
+      "RR_parallel": "GCB + author-fitted linear correction epsilon<=0.1",
+      "RR_normal": "Liu-Prosperetti/Jeffery asymptotic epsilon<=0.01"
+    },
+    "intermediate": "published precomputed 2562-blob coefficient table, linear interpolation; no new multiblob simulation",
+    "table_center_height_range": [
+      1.0001,
+      10.018296
+    ],
+    "fallback_above_surface_gap": 9.018296,
+    "far_fallback": "TT leading 1/z term; TR=RT=0, RR=bulk; high-order rotational/coupling reference unavailable there",
+    "regularization": "debye_cut=1e-5, inactive at every tested gap",
+    "rotational_excess_clipping": "max(excess rotational diagonal,0), unmodified upstream",
+    "COO_threshold": {
+      "native_absolute": 1e-12,
+      "reason_dimensionless_native_run": "Direct SI torque entries can fall below fixed cutoff; native inputs vary with radius and viscosity and are scaled independently back to SI"
+    },
+    "matrix_audit": {
+      "formal_rows": 126,
+      "finite_rows": 126,
+      "exception_rows": 0,
+      "negative_mobility_rows": 0,
+      "reciprocity_max_relative": 2.4550671474608675e-16,
+      "reciprocity_max_absolute_SI": 0.001953125,
+      "min_scaled_eigenvalue": 0.0009976526917638007,
+      "max_scaled_condition_number": 835.2090448911997,
+      "max_planar_rotation_symmetry_error": 0.0,
+      "all_physical_matrix_valid": true,
+      "max_normal_error_vs_Brenner": 0.008294807922940017,
+      "normal_error_at_smallest_gap": 4.946605774991397e-07,
+      "normal_monotonic_with_gap": true,
+      "normal_R_epsilon_at_smallest_gap": 1.002352831055907,
+      "far_field_diagonal_distance_to_bulk": [
+        {
+          "epsilon": 5.0,
+          "max_abs_diagonal_minus1": 0.185201453622849
+        },
+        {
+          "epsilon": 10.0,
+          "max_abs_diagonal_minus1": 0.10227272727272729
+        },
+        {
+          "epsilon": 20.0,
+          "max_abs_diagonal_minus1": 0.0535714285714286
+        }
+      ],
+      "radius_status": "PASS",
+      "viscosity_status": "PASS"
+    }
+  },
+  "multiblob_role": "No new large blob discretization run; legacy supplied tables consumed by original functions only",
+  "single_sphere_role": "drivers/examples, not selected as a new solver",
+  "all_supported_modes": [
+    "normal_TT",
+    "parallel_TT",
+    "RR_parallel",
+    "RR_normal",
+    "TR",
+    "RT"
+  ]
+}

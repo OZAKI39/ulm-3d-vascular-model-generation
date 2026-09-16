@@ -1,0 +1,112 @@
+LAMMPS (22 Jul 2025 - Update 6)
+units si
+atom_style sphere
+boundary p p p
+newton off
+processors 1 1 1
+read_data particles.data
+Reading data file ...
+  orthogonal box = (-6.4e-05 -6.4e-05 -6.4e-05) to (6.4e-05 6.4e-05 6.4e-05)
+  1 by 1 by 1 MPI processor grid
+  reading atoms ...
+  1 atoms
+  reading velocities ...
+  1 velocities
+  read_data CPU = 0.001 seconds
+comm_modify vel yes
+pair_style zero 6e-6
+pair_coeff * *
+neighbor 1e-6 bin
+neigh_modify every 1 delay 0 check no
+fix passive all sonovue/passive/flow ../../fields/LINEAR_FIELD.h5 8 trajectory NONE 0 0
+timestep 1.6201457524941841e-08
+thermo 800
+thermo_style custom step atoms time
+thermo_modify lost error norm no format float %.17g
+run 0
+Generated 0 of 0 mixed pair_coeff terms from geometric mixing rule
+Neighbor list info ...
+  update: every = 1 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 7e-06
+  ghost atom cutoff = 7e-06
+  binsize = 3.5e-06, bins = 37 37 37
+  1 neighbor lists, perpetual/occasional/extra = 1 0 0
+  (1) pair zero, perpetual
+      attributes: half, newton off
+      pair build: half/bin/atomonly/newtoff
+      stencil: full/bin/3d
+      bin: standard
+Per MPI rank memory allocation (min/avg/max) = 4.089 | 4.089 | 4.089 Mbytes
+   Step        Atoms         Time     
+         0           1  0
+Loop time of 8.72e-07 on 1 procs for 0 steps with 1 atoms
+
+0.0% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0          | 0          | 0          |   0.0 |  0.00
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0          | 0          | 0          |   0.0 |  0.00
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 8.72e-07   |            |       |100.00
+
+Nlocal:              1 ave           1 max           1 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:              0 ave           0 max           0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:              0 ave           0 max           0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 0
+Ave neighs/atom = 0
+Neighbor list builds = 0
+Dangerous builds not checked
+write_dump all custom initial.dump id diameter xu yu zu vx vy vz modify sort id format float %.17g
+run 8000
+Generated 0 of 0 mixed pair_coeff terms from geometric mixing rule
+Per MPI rank memory allocation (min/avg/max) = 4.089 | 4.089 | 4.089 Mbytes
+   Step        Atoms         Time     
+         0           1  0
+       800           1  1.2961166019953473e-05
+      1600           1  2.5922332039906946e-05
+      2400           1  3.8883498059860417e-05
+      3200           1  5.1844664079813892e-05
+      4000           1  6.4805830099767367e-05
+      4800           1  7.7766996119720835e-05
+      5600           1  9.0728162139674302e-05
+      6400           1  0.00010368932815962778
+      7200           1  0.00011665049417958125
+      8000           1  0.00012961166019953473
+Loop time of 0.176121 on 1 procs for 8000 steps with 1 atoms
+
+98.8% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0.00021509 | 0.00021509 | 0.00021509 |   0.0 |  0.12
+Neigh   | 0.16306    | 0.16306    | 0.16306    |   0.0 | 92.59
+Comm    | 0.0015114  | 0.0015114  | 0.0015114  |   0.0 |  0.86
+Output  | 3.9082e-05 | 3.9082e-05 | 3.9082e-05 |   0.0 |  0.02
+Modify  | 0.010518   | 0.010518   | 0.010518   |   0.0 |  5.97
+Other   |            | 0.0007755  |            |       |  0.44
+
+Nlocal:              1 ave           1 max           1 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:              0 ave           0 max           0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:              0 ave           0 max           0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 0
+Ave neighs/atom = 0
+Neighbor list builds = 8000
+Dangerous builds not checked
+write_dump all custom final.dump id diameter xu yu zu vx vy vz modify sort id format float %.17g
+print "PASSIVE_CASE_COMPLETED"
+PASSIVE_CASE_COMPLETED
+Total wall time: 0:00:00

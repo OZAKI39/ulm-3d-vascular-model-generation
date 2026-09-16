@@ -1,0 +1,114 @@
+{
+  "schema": "PURE_FLUID_NEW_MEDIUM_SMOKE_NUMERICS_V1",
+  "status": "STATIC_CONVERSION_PASS_RUNTIME_PENDING",
+  "generation_authority": "scripts/prepare_numerics.py",
+  "dt_read_from_existing_config": false,
+  "dt_generated_from": [
+    "dx_m",
+    "nu_m2_s",
+    "tau"
+  ],
+  "input_sha256": "83fc747fad5017d57fe33211b10111a75805106812f3d65c21afbe3ca6304119",
+  "script_sha256": "ca64f80c9be523a3466b20874a22842f0e1501b98a510d67f778f157984bfee3",
+  "development_assumption": true,
+  "experimentally_measured": false,
+  "final_experimental_contract": "PENDING",
+  "suspending_medium": "1x PBS + 1% BSA",
+  "temperature_c": 25,
+  "rho_kg_m3": 1000.0,
+  "dynamic_viscosity_pa_s": 0.001,
+  "nu_m2_s": 1e-06,
+  "dx_m": 1.9989918081065344e-07,
+  "tau": 1.0,
+  "cs2": 0.3333333333333333,
+  "nu_lu": 0.16666666666666666,
+  "dt_s": 6.65994708146172e-09,
+  "velocity_unit_m_s": 30.01513050562854,
+  "pressure_unit_pa": 900908.059269913,
+  "flow_unit_m3_s": 1.1993950848639207e-12,
+  "mass_unit_kg": 7.987907794959e-18,
+  "force_unit_n": 3.599999999999999e-08,
+  "physical_Qtarget_m3_s": 2.7369132390905703e-15,
+  "inlet_numerical_multiplier": 1.1197286861799598,
+  "outlets": {
+    "outlet_01": {
+      "gauge_pressure_pa": 14.544978101274268,
+      "gauge_pressure_lu": 1.6144797409251033e-05,
+      "rho_lu": 1.0000484343922278,
+      "density_offset": 4.843439222779189e-05
+    },
+    "outlet_02": {
+      "gauge_pressure_pa": 132.20454922317552,
+      "gauge_pressure_lu": 0.00014674588362580837,
+      "rho_lu": 1.0004402376508774,
+      "density_offset": 0.0004402376508774175
+    },
+    "outlet_03": {
+      "gauge_pressure_pa": -13.700626673311461,
+      "gauge_pressure_lu": -1.5207574771186213e-05,
+      "rho_lu": 0.9999543772756865,
+      "density_offset": -4.562272431352099e-05
+    }
+  },
+  "nominal_inlet_speed_m_s": 0.0003499276497052172,
+  "command_inlet_speed_m_s": 0.00039182402746246403,
+  "command_inlet_mach_estimate": 2.2610567129267897e-05,
+  "mach_estimate_scope": "Nominal prescribed inlet command only; not a bound on the full-field transient Mach. Runtime smoke remains required.",
+  "dimension_check": "PASS",
+  "static_checks": {
+    "tau_safe": true,
+    "density_offsets_small": true,
+    "all_values_finite": true,
+    "inlet_mach_estimate_safe": true,
+    "mu_equals_rho_nu": true
+  },
+  "rho_lu_limits": [
+    0.99,
+    1.01
+  ],
+  "mach_limit": 0.05,
+  "formulas": {
+    "nu_lu": "(tau-0.5)/3",
+    "dt_s": "nu_lu*dx_m**2/nu_m2_s",
+    "pressure_unit_pa": "rho_kg_m3*(dx_m/dt_s)**2",
+    "rho_lu": "1+gauge_pressure_pa/(pressure_unit_pa*(1/3))"
+  },
+  "solver_policy": "This GPU smoke solver must read and verify this frozen contract; it must not independently regenerate dt or outlet rho_LU.",
+  "runtime_smoke_status": "PENDING",
+  "ready_for_rbc_execution": false,
+  "formal_baseline_modified": false,
+  "NEW_MEDIUM_INLET_MULTIPLIER_VALIDATION": "NOT_PERFORMED",
+  "RBC_INCLUDED": false,
+  "initial_rho_lu": 1.0,
+  "initial_velocity_lu": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "startup_ramp_steps": 10,
+  "outlet_01_rho_lu": 1.0000484343922278,
+  "outlet_02_rho_lu": 1.0004402376508774,
+  "outlet_03_rho_lu": 0.9999543772756865,
+  "output_sha256": "e2196c0eb174ae27200a1f47c82542c49451a7829b9db184c70b4f2241b788e6",
+  "output_sha256_scope": "Canonical generated-output object in generated_output_digest_payload; full JSON SHA256 is in generation receipt, avoiding self-reference",
+  "generated_output_digest_payload": {
+    "dt_s": 6.65994708146172e-09,
+    "pressure_unit_pa": 900908.059269913,
+    "nu_lu": 0.16666666666666666,
+    "outlet_rho_lu": {
+      "outlet_01": 1.0000484343922278,
+      "outlet_02": 1.0004402376508774,
+      "outlet_03": 0.9999543772756865
+    }
+  },
+  "expected_reference_check": {
+    "status": "PASS",
+    "rule": "Absolute difference<=8 ULP of user expected reference; frozen before runtime",
+    "checks": {
+      "dt_s": true,
+      "outlet_01": true,
+      "outlet_02": true,
+      "outlet_03": true
+    }
+  }
+}

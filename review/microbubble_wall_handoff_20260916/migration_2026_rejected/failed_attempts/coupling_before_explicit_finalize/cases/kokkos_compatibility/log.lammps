@@ -1,0 +1,137 @@
+LAMMPS (2 Sep 2026)
+KOKKOS mode with Kokkos version 5.2.1 is enabled
+  using double precision
+  using view layout = legacy
+  will use up to 1 GPU(s) per node
+package kokkos
+package kokkos neigh half newton off gpu/aware off
+units si
+atom_style sphere
+boundary p p p
+newton off
+processors 1 1 1
+read_data particles.data
+Reading data file ...
+  orthogonal box = (-4e-05 -4e-05 -4e-05) to (4e-05 4e-05 4e-05)
+  1 by 1 by 1 MPI processor grid
+  reading atoms ...
+  1000 atoms
+  reading velocities ...
+  1000 velocities
+  read_data CPU = 0.012 seconds
+comm_modify vel yes
+pair_style zero 6e-6
+pair_coeff * *
+neighbor 1e-6 bin
+neigh_modify every 1 delay 0 check no
+fix integrator all nve/sphere
+fix coupling all frozen/flow/drag ../../fields/UNIFORM_FIELD.h5 0.001 25 trajectory -1 0 0 0 0
+timestep 6.2499999999999991e-11
+thermo 100
+thermo_style custom step atoms time ke
+thermo_modify lost error norm no format float %.17g
+run 0
+
+CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE
+
+Your simulation uses code contributions which should be cited:
+
+- KOKKOS package: https://doi.org/10.1145/3731599.3767498
+
+@inproceedings{Johansson25,
+ author = {A. Johansson and E. Weinberg and C. Trott and M. McCarthy and S. Moore},
+ title = {{LAMMPS-KOKKOS}: {P}erformance Portable Molecular Dynamics Across Exascale Architectures},
+ year = 2025,
+ booktitle = {Proceedings of the SC '25 Workshops of the International Conference for High Performance Computing,
+  Networking, Storage and Analysis},
+ pages = {1217–1232},
+}
+
+CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE
+
+Generated 0 of 0 mixed pair_coeff terms from geometric mixing rule
+Neighbor list info ...
+  update: every = 1 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 7e-06
+  ghost atom cutoff = 7e-06
+  binsize = 7e-06, bins = 12 12 12
+  1 neighbor lists, perpetual/occasional/extra = 1 0 0
+  (1) pair zero, perpetual
+      attributes: half, newton off
+      pair build: half/bin/atomonly/newtoff
+      stencil: full/bin/3d
+      bin: standard
+Per MPI rank memory allocation (min/avg/max) = 4.135 | 4.135 | 4.135 Mbytes
+   Step        Atoms         Time          KinEng    
+         0        1000  0 0
+Loop time of 0.000313315 on 1 procs for 0 steps with 1000 atoms
+
+25.9% CPU use with 1 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0          | 0          | 0          |   0.0 |  0.00
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0          | 0          | 0          |   0.0 |  0.00
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 0.0003133  |            |       |100.00
+
+Nlocal:           1000 ave        1000 max        1000 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:            728 ave         728 max         728 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:              0 ave           0 max           0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 0
+Ave neighs/atom = 0
+Neighbor list builds = 0
+Dangerous builds not checked
+write_dump all custom initial.dump id diameter mass xu yu zu vx vy vz fx fy fz modify sort id format float %.17g
+run 1000
+Generated 0 of 0 mixed pair_coeff terms from geometric mixing rule
+Per MPI rank memory allocation (min/avg/max) = 4.135 | 4.135 | 4.135 Mbytes
+   Step        Atoms         Time          KinEng    
+         0        1000  0 0
+       100        1000  6.2499999999999989e-09 1.9215579265142186e-21
+       200        1000  1.2499999999999998e-08 7.3847918323083029e-21
+       300        1000  1.8749999999999996e-08 1.5977891113332782e-20
+       400        1000  2.4999999999999996e-08 2.733708057326968e-20
+       500        1000  3.1249999999999999e-08 4.1140305848856084e-20
+       600        1000  3.7499999999999992e-08 5.7101855488047068e-20
+       700        1000  4.3749999999999991e-08 7.4967766215308821e-20
+       800        1000  4.9999999999999991e-08 9.4511885054042986e-20
+       900        1000  5.6249999999999991e-08 1.155324840323382e-19
+      1000        1000  6.2499999999999997e-08 1.3784934116729095e-19
+Loop time of 2.54212 on 1 procs for 1000 steps with 1000 atoms
+
+103.2% CPU use with 1 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0.057964   | 0.057964   | 0.057964   |   0.0 |  2.28
+Neigh   | 0.33335    | 0.33335    | 0.33335    |   0.0 | 13.11
+Comm    | 0.24767    | 0.24767    | 0.24767    |   0.0 |  9.74
+Output  | 0.0016804  | 0.0016804  | 0.0016804  |   0.0 |  0.07
+Modify  | 1.8586     | 1.8586     | 1.8586     |   0.0 | 73.11
+Other   |            | 0.04289    |            |       |  1.69
+
+Nlocal:           1000 ave        1000 max        1000 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:            728 ave         728 max         728 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:              0 ave           0 max           0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 0
+Ave neighs/atom = 0
+Neighbor list builds = 1000
+Dangerous builds not checked
+write_dump all custom final.dump id diameter mass xu yu zu vx vy vz fx fy fz modify sort id format float %.17g
+print "COUPLING_CASE_COMPLETED"
+COUPLING_CASE_COMPLETED
+Total wall time: 0:00:02

@@ -1,0 +1,1803 @@
+执行独立科研核查任务：
+
+# WALL_HYDRODYNAMICS_REFERENCE_AUDIT
+
+目标：
+
+在不修改任何现有 Palabos / LAMMPS / SonoVue baseline 的前提下，
+建立并核查两个开源 sphere-near-wall hydrodynamics reference：
+
+A. RigidMultiblobsWall
+B. PyStokes wallBounded
+
+本阶段只回答：
+
+1. 两个工具到底实现了哪些 sphere-plane-wall hydrodynamic mobility/resistance？
+2. 是否支持：
+   - normal translation
+   - tangential translation
+   - rotation
+   - translation-rotation coupling
+3. 哪一个适合作为后续
+   MICROBUBBLE_WALL_HYDRODYNAMICS_V0
+   的主要数值 reference？
+4. 各工具在哪些 gap/radius 范围可靠？
+5. 极近壁面时二者是否一致？
+6. 后续生产 wall module 应该对照哪个工具/理论？
+
+本阶段禁止：
+
+- 修改 Palabos
+- 修改 LAMMPS
+- 实现正式 wall force
+- 接入真实 STL
+- 加 adhesion
+- 改 bubble-bubble 模型
+- 改 SonoVue sampler
+- 改 passive transport
+- 改已有 rigid-sphere near-field 模型
+
+==================================================
+0. 当前已通过的项目状态
+==================================================
+
+SONOVUE_CONTINUOUS_SAMPLER_V0 = PASS
+
+MINIMAL_LAMMPS_PARTICLE_ENGINE = PASS
+
+PALABOS_LAMMPS_COUPLING_V0 = PASS
+
+PASSIVE_MICROBUBBLE_TRANSPORT_V0 = PASS
+
+STABLE_LAMMPS_RIGID_SPHERE_NEAR_FIELD_V0 =
+PASS_WITH_TWIST_PENDING
+
+当前 active LAMMPS：
+
+22Jul2025 Update 6
+
+commit =
+9c5ab448c78a14fd534619622162ba418d6a1fb1
+
+当前 bubble-bubble 已验证：
+
+NORMAL_SQUEEZE = PASS
+TANGENTIAL_SHEAR = PASS
+TRANSVERSE_ROTATION = PASS
+TRANSLATION_ROTATION_COUPLING = PASS
+HARD_NONOVERLAP = PASS
+
+TWIST_ROTATION =
+PENDING
+
+当前：
+
+MICROBUBBLE_WALL_HYDRODYNAMICS =
+PENDING
+
+==================================================
+1. 本阶段物理问题
+==================================================
+
+研究：
+
+一个不可变形刚性球
+
+位于：
+
+无限大 no-slip 平面壁面上方
+
+低 Reynolds / Stokes regime。
+
+壁面定义：
+
+z = 0
+
+fluid：
+
+z > 0
+
+sphere center：
+
+(0,0,a+h)
+
+其中：
+
+a =
+sphere radius
+
+h =
+sphere surface-to-wall gap
+
+==================================================
+2. 当前介质
+==================================================
+
+使用当前开发介质：
+
+PBS + 1% BSA
+
+dynamic viscosity：
+
+mu =
+1.0e-3 Pa*s
+
+本 Audit 只需要 viscosity。
+
+不需要：
+
+Palabos velocity field
+density
+LBM dt
+
+==================================================
+3. SonoVue radius cases
+==================================================
+
+使用真实 sampler 的代表尺寸：
+
+d10 ≈
+1.30685 um
+
+d50 ≈
+1.93663 um
+
+d90 ≈
+3.04274 um
+
+具体数值：
+
+优先从已经冻结的
+SonoVue sampler contract / result
+读取。
+
+不要建立第二套手填 source of truth。
+
+每个 diameter：
+
+a = d/2
+
+==================================================
+4. dimensionless wall gap
+==================================================
+
+主变量：
+
+epsilon =
+h/a
+
+测试：
+
+epsilon =
+
+0.001
+0.002
+0.005
+0.01
+0.02
+0.05
+0.1
+0.2
+0.5
+1
+2
+5
+10
+20
+
+不要假定所有 reference
+在全部 gap 上都有效。
+
+如果某工具：
+
+无法运行
+数值发散
+返回非有限值
+
+记录其适用范围。
+
+不得为了 PASS 删除失败 gap。
+
+==================================================
+5. Source A — RigidMultiblobsWall
+==================================================
+
+官方 repository：
+
+https://github.com/stochasticHydroTools/RigidMultiblobsWall
+
+任务开始时：
+
+clone official repository
+
+冻结：
+
+commit SHA
+clone timestamp
+submodule SHAs
+license
+dependency versions
+
+生成：
+
+RIGIDMULTIBLOBSWALL_PROVENANCE.json
+
+==================================================
+6. RigidMultiblobsWall source audit
+==================================================
+
+不要一上来跑复杂 multiblob simulation。
+
+先检查：
+
+README
+doc/
+sphere/
+single_sphere/
+Lubrication/
+
+确定：
+
+哪一个实现是真正针对：
+
+single rigid sphere
++
+single no-slip plane wall
+
+的：
+
+semi-analytical
+或
+lubrication-corrected
+
+mobility/resistance。
+
+优先使用：
+
+仓库自身说明中的
+sphere semi-analytical implementation。
+
+不要：
+
+用大量 blob 离散化球体
+来替代已有 sphere reference，
+除非专门作为 secondary diagnostic。
+
+==================================================
+7. RigidMultiblobsWall 环境
+==================================================
+
+README 当前可能要求较老 Python/Scipy。
+
+不要污染：
+
+system Python
+现有科研 Python
+Palabos/LAMMPS 环境。
+
+建立独立：
+
+venv / conda / micromamba env
+
+例如：
+
+wallref_rmbw
+
+记录：
+
+Python
+NumPy
+SciPy
+compiler
+
+如果仓库明确要求：
+
+Python 3.8
+SciPy 1.10
+
+优先建立兼容环境。
+
+不要为了安装
+修改 package source。
+
+==================================================
+8. RigidMultiblobsWall license
+==================================================
+
+记录：
+
+GPL-3.0
+
+本任务：
+
+REFERENCE USE ONLY
+
+禁止把其 GPL source
+直接复制到：
+
+未来 proprietary/project-owned production plugin
+
+本阶段只：
+
+运行
+比较结果
+审计公式出处。
+
+==================================================
+9. Source B — PyStokes
+==================================================
+
+官方 repository：
+
+https://github.com/rajeshrinet/pystokes
+
+任务开始时冻结：
+
+commit SHA
+package version
+license
+Python version
+
+生成：
+
+PYSTOKES_PROVENANCE.json
+
+==================================================
+10. PyStokes environment
+==================================================
+
+建立独立环境：
+
+wallref_pystokes
+
+不要污染其他环境。
+
+先：
+
+运行其官方 short tests。
+
+要求：
+
+PYSTOKES_INSTALL =
+PASS
+
+PYSTOKES_SHORT_TEST =
+PASS
+
+==================================================
+11. PyStokes API audit
+==================================================
+
+重点检查：
+
+pystokes.wallBounded.Rbm
+
+确认以下 API：
+
+mobilityTT
+mobilityTR
+mobilityRT
+mobilityRR
+
+实际语义、单位、坐标排列。
+
+不要根据函数名猜。
+
+根据：
+
+源码
+文档
+tests
+
+冻结：
+
+PYSTOKES_WALL_API_AUDIT.json
+
+==================================================
+12. Reference C — classical theory audit
+==================================================
+
+两个软件不能只互相验证。
+
+建立：
+
+CLASSICAL_SPHERE_WALL_THEORY_AUDIT.md
+
+至少检查并记录：
+
+normal translation：
+Brenner / sphere approaching plane wall
+
+parallel translation / rotation：
+O'Neill
+Goldman-Cox-Brenner
+及 package 自身引用的来源
+
+只使用：
+
+可以实际访问并核对的公式/渐近关系。
+
+如果全文/公式不可访问：
+
+写：
+
+UNVERIFIED_SOURCE_ACCESS
+
+禁止凭模型记忆
+编造完整公式。
+
+==================================================
+13. 统一 mobility 表示
+==================================================
+
+对于单球构造 generalized mobility：
+
+[V]
+[Ω]
+=
+M
+*
+[F]
+[T]
+
+其中：
+
+V =
+Vx,Vy,Vz
+
+Omega =
+Omega_x,Omega_y,Omega_z
+
+F =
+Fx,Fy,Fz
+
+T =
+Tx,Ty,Tz
+
+因此：
+
+M 为：
+
+6 × 6 mobility matrix。
+
+==================================================
+14. 为什么构造完整 6x6 matrix
+==================================================
+
+不能只检查：
+
+wall-normal drag。
+
+用户关心：
+
+normal movement
+tangential movement
+rotation
+translation-rotation coupling
+
+所以必须检查完整：
+
+TT
+TR
+RT
+RR
+
+blocks。
+
+==================================================
+15. 坐标约定
+==================================================
+
+冻结：
+
+wall normal =
++z
+
+wall =
+z=0
+
+sphere center =
+(0,0,a+h)
+
+x/y =
+wall tangent directions。
+
+记录：
+
+force sign
+torque sign
+angular velocity sign。
+
+不同 package
+如果坐标排列不同：
+
+必须显式转换。
+
+==================================================
+16. Impulse-basis matrix extraction
+==================================================
+
+对每个 package：
+
+分别施加：
+
+Fx=1
+Fy=1
+Fz=1
+
+Tx=1
+Ty=1
+Tz=1
+
+其余为 0。
+
+提取：
+
+V
+Omega
+
+六次结果构成：
+
+6×6 mobility matrix。
+
+不要通过肉眼读取。
+
+==================================================
+17. SI units
+==================================================
+
+正式比较统一：
+
+length = m
+force = N
+torque = N*m
+velocity = m/s
+angular velocity = rad/s
+viscosity = Pa*s
+
+如果 package 内部使用：
+
+dimensionless units
+
+允许运行时 dimensionless，
+
+但必须独立转换回 SI
+后再比较。
+
+==================================================
+18. free-space reference
+==================================================
+
+定义：
+
+translational free-space mobility：
+
+M_T0 =
+1 / (6*pi*mu*a)
+
+rotational free-space mobility：
+
+M_R0 =
+1 / (8*pi*mu*a^3)
+
+用于：
+
+dimensionless normalization。
+
+==================================================
+19. 核查 normal translation
+==================================================
+
+施加：
+
+Fz
+
+记录：
+
+Vz
+
+定义：
+
+M_perp =
+Vz / Fz
+
+检查：
+
+随着 wall gap 减小：
+
+M_perp 应下降。
+
+极近壁面：
+
+不得出现 mobility
+反而异常上升。
+
+==================================================
+20. 核查 tangential translation
+==================================================
+
+施加：
+
+Fx
+
+记录：
+
+Vx
+
+同时记录：
+
+Omega_y
+
+因为 wall
+会产生：
+
+translation-rotation coupling。
+
+对 y 方向
+做 symmetry equivalent test。
+
+==================================================
+21. translation-rotation coupling
+==================================================
+
+检查：
+
+Fx -> Omega_y
+
+Ty -> Vx
+
+以及：
+
+Fy -> Omega_x
+Tx -> Vy
+
+的 reciprocal relation。
+
+要求检查：
+
+Lorentz reciprocity：
+
+M_TR
+≈
+transpose(M_RT)
+
+使用合适 SI 单位
+直接比较。
+
+==================================================
+22. rotational resistance
+==================================================
+
+分别测试：
+
+Tx
+Ty
+Tz
+
+得到：
+
+Omega。
+
+区分：
+
+rotation axis parallel to wall
+
+vs
+
+rotation axis normal to wall。
+
+不要把它们混成一个
+“rotation coefficient”。
+
+==================================================
+23. wall-normal rotation
+==================================================
+
+特别记录：
+
+Tz -> Omega_z
+
+这对应：
+
+sphere 围绕 wall normal
+自转。
+
+这和之前 bubble-bubble
+center-line twist
+不是同一问题。
+
+报告中必须明确区分。
+
+==================================================
+24. expected symmetry zeros
+==================================================
+
+单球位于：
+
+x=y=0
+
+无限平面 wall 上方。
+
+根据几何对称性：
+
+很多 mobility elements
+理论上应为 0。
+
+对每个 package：
+
+列出数值非零 pattern。
+
+检查：
+
+unexpected coupling terms。
+
+==================================================
+25. reciprocity gate
+==================================================
+
+每个 package：
+
+对 6x6 mobility：
+
+计算：
+
+M_TR - M_RT^T
+
+报告：
+
+absolute
+relative reciprocity error。
+
+如果误差：
+
+明显大于 numerical roundoff
+
+标记：
+
+RECIPROCITY =
+FAIL / REVIEW
+
+不要自动调数据。
+
+==================================================
+26. positivity audit
+==================================================
+
+广义 mobility
+应满足耗散性质。
+
+对 suitably scaled mobility matrix：
+
+检查：
+
+symmetric part eigenvalues
+
+不得出现明显负 mobility mode。
+
+如果 dimensional scaling
+导致 condition issue：
+
+使用 work-conjugate nondimensional scaling。
+
+记录方法。
+
+==================================================
+27. resistance matrix
+==================================================
+
+后续生产模型主要使用：
+
+resistance
+
+所以对每个：
+
+valid M
+
+计算：
+
+R =
+inverse(M)
+
+使用：
+
+condition-number aware solve
+
+不要直接 naive inverse
+如果 matrix condition 差。
+
+保存：
+
+WALL_MOBILITY_MATRIX.csv
+
+WALL_RESISTANCE_MATRIX.csv
+
+==================================================
+28. normal resistance
+==================================================
+
+比较：
+
+wall-normal resistance
+
+vs
+
+bulk Stokes resistance：
+
+6*pi*mu*a
+
+记录：
+
+R_perp /
+R_bulk
+
+vs h/a。
+
+==================================================
+29. tangential resistance
+==================================================
+
+记录：
+
+parallel translational resistance
+
+以及：
+
+translation-rotation coupled
+resistance block。
+
+==================================================
+30. rotational resistance
+==================================================
+
+记录：
+
+rotation parallel to wall
+
+rotation normal to wall
+
+相对于：
+
+8*pi*mu*a^3
+
+的 correction。
+
+==================================================
+31. package cross-comparison
+==================================================
+
+只在：
+
+两个 package
+都返回 finite
+且 source audit 认为
+该模式被支持的 gap
+
+做比较。
+
+计算：
+
+relative difference：
+
+RigidMultiblobsWall
+vs
+PyStokes
+
+逐模式：
+
+normal TT
+tangential TT
+TR/RT
+RR_parallel
+RR_normal
+
+==================================================
+32. 不设武断统一 1% PASS 门
+==================================================
+
+本任务是：
+
+REFERENCE AUDIT
+
+不是：
+
+强迫两个不同方法
+在所有 gap 完全相等。
+
+因此：
+
+不要因为：
+
+3%
+5%
+10%
+
+差异就自动调整数据。
+
+而是生成：
+
+agreement map。
+
+建议分类：
+
+<2% =
+CLOSE_AGREEMENT
+
+2–10% =
+MODERATE_DIFFERENCE
+
+>10% =
+LARGE_DIFFERENCE
+
+但这只是描述标签，
+不是科学正确性的自动排名。
+
+==================================================
+33. near-wall focus
+==================================================
+
+特别关注：
+
+h/a <= 0.2
+
+因为这就是：
+
+未来 lubrication
+真正重要的范围。
+
+对每个模式生成：
+
+NEAR_WALL_COMPARISON.csv
+
+==================================================
+34. far-field focus
+==================================================
+
+对：
+
+h/a >= 5
+
+检查：
+
+是否逐渐趋近 free-space
+mobility/resistance。
+
+不要要求 h/a=5
+已经完全等于 bulk。
+
+检查趋势即可。
+
+==================================================
+35. asymptotic behavior
+==================================================
+
+对有可靠理论支持的模式：
+
+检查：
+
+near-wall asymptotic trend。
+
+至少：
+
+normal translation
+必须表现出正确的
+lubrication divergence / mobility suppression。
+
+如果能可靠获得
+tangential/rotation asymptotics：
+
+一并检查。
+
+如果不能：
+
+标记：
+
+ASYMPTOTIC_REFERENCE =
+UNVERIFIED
+
+不要猜。
+
+==================================================
+36. radius-scaling test
+==================================================
+
+对：
+
+d10
+d50
+d90
+
+三个 SonoVue radius
+
+使用相同：
+
+h/a
+
+比较 dimensionless mobility。
+
+Stokes regime 下：
+
+dimensionless curves
+应具有合理 radius collapse。
+
+如果两个 package
+单位转换正确：
+
+应基本 collapse。
+
+这是强力单位审计。
+
+==================================================
+37. viscosity-scaling test
+==================================================
+
+额外测试：
+
+mu
+0.5e-3
+1.0e-3
+2.0e-3 Pa*s
+
+mobility 应：
+
+∝ 1/mu
+
+resistance 应：
+
+∝ mu
+
+要求：
+
+SCALING_AUDIT =
+PASS
+
+==================================================
+38. Package source role audit
+==================================================
+
+对 RigidMultiblobsWall：
+
+明确区分：
+
+sphere semi-analytical
+vs
+multiblob numerical method
+vs
+Lubrication correction implementation。
+
+对 PyStokes：
+
+明确说明：
+
+wallBounded method
+实际使用哪种 approximation/expansion。
+
+不要把 package 名字
+当成精度结论。
+
+==================================================
+39. 极近壁面稳定性
+==================================================
+
+对于：
+
+h/a =
+0.001
+0.002
+0.005
+
+记录：
+
+finite?
+condition number?
+warning?
+NaN?
+exception?
+negative mobility?
+
+不要 retry 到看起来正常。
+
+保留第一次正式输出。
+
+==================================================
+40. reproducibility
+==================================================
+
+所有 source：
+
+固定 commit。
+
+所有环境：
+
+environment manifest
+
+pip freeze / conda env export
+
+代码：
+
+SHA256
+
+结果：
+
+SHA256。
+
+==================================================
+41. 不使用 GPU
+==================================================
+
+本 Audit：
+
+CPU only
+
+因为：
+
+single-sphere reference
+计算量很小。
+
+禁止为了本任务：
+
+配置 CUDA
+修改 GPU baseline
+进行性能优化。
+
+==================================================
+42. 不需要 Vast
+==================================================
+
+优先在：
+
+本地 WSL
+
+独立环境执行。
+
+如果某 package
+只能在 Vast 正常构建：
+
+允许使用 Vast，
+
+但必须说明原因。
+
+不要为了方便
+修改正式 server environment。
+
+==================================================
+43. 工作目录
+==================================================
+
+建议：
+
+/home/lzy/projects/wall_hydrodynamics_reference_audit_<timestamp>
+
+最终结果：
+
+/home/lzy/projects/compre_output/wall_hydrodynamics_reference_audit/<timestamp>
+
+==================================================
+44. Reference wrapper
+==================================================
+
+建立：
+
+rmbw_reference_adapter.py
+
+pystokes_reference_adapter.py
+
+统一 API：
+
+get_wall_mobility(
+    radius_m,
+    gap_m,
+    viscosity_pa_s
+)
+
+返回：
+
+6x6 mobility matrix
+
++
+metadata。
+
+如果 package 不支持完整 6x6：
+
+对应元素写：
+
+UNAVAILABLE
+
+不能自行补公式
+假装 package 输出。
+
+==================================================
+45. independent audit script
+==================================================
+
+建立：
+
+audit_wall_reference.py
+
+统一：
+
+单位
+matrix convention
+normalization
+symmetry
+reciprocity
+positivity
+cross-package compare。
+
+==================================================
+46. 文件输出
+==================================================
+
+至少生成：
+
+RIGIDMULTIBLOBSWALL_PROVENANCE.json
+
+PYSTOKES_PROVENANCE.json
+
+RIGIDMULTIBLOBSWALL_CAPABILITY_AUDIT.json
+
+PYSTOKES_CAPABILITY_AUDIT.json
+
+CLASSICAL_SPHERE_WALL_THEORY_AUDIT.md
+
+WALL_REFERENCE_CONVENTION.json
+
+WALL_REFERENCE_RAW_RESULTS.csv
+
+WALL_REFERENCE_MOBILITY_MATRICES.h5
+
+WALL_REFERENCE_RESISTANCE_MATRICES.h5
+
+WALL_REFERENCE_CROSS_COMPARISON.csv
+
+WALL_REFERENCE_SCALING_AUDIT.json
+
+WALL_HYDRODYNAMICS_REFERENCE_AUDIT_REPORT.md
+
+==================================================
+47. Visualization 1
+==================================================
+
+生成：
+
+VIS_WALL_TRANSLATIONAL_MOBILITY.png
+
+x-axis：
+
+h/a
+log scale
+
+显示：
+
+normal translational mobility
+
+parallel translational mobility
+
+normalized by free-space mobility。
+
+RigidMultiblobsWall
+和
+PyStokes
+
+同时显示。
+
+==================================================
+48. Visualization 2
+==================================================
+
+生成：
+
+VIS_WALL_TRANSLATIONAL_RESISTANCE.png
+
+显示：
+
+normal
+parallel
+
+wall resistance / free-space resistance
+
+vs h/a。
+
+==================================================
+49. Visualization 3
+==================================================
+
+生成：
+
+VIS_WALL_ROTATIONAL_MOBILITY.png
+
+显示：
+
+rotation axis parallel to wall
+
+rotation axis normal to wall
+
+vs h/a。
+
+==================================================
+50. Visualization 4
+==================================================
+
+生成：
+
+VIS_WALL_TRANSLATION_ROTATION_COUPLING.png
+
+显示：
+
+Fx -> Omega_y
+
+Ty -> Vx
+
+等 reciprocal coupling
+
+vs h/a。
+
+==================================================
+51. Visualization 5
+==================================================
+
+生成：
+
+VIS_REFERENCE_RELATIVE_DIFFERENCE.png
+
+显示：
+
+两个 package
+
+逐 mode 的：
+
+relative difference
+
+vs h/a。
+
+==================================================
+52. Visualization 6
+==================================================
+
+生成：
+
+VIS_MOBILITY_MATRIX_NEAR_WALL.png
+
+选择：
+
+h/a =
+0.01
+
+显示两个 package
+6x6 normalized mobility matrix
+heatmap。
+
+==================================================
+53. Visualization 7
+==================================================
+
+生成：
+
+VIS_MOBILITY_MATRIX_MODERATE_GAP.png
+
+h/a =
+0.2
+
+==================================================
+54. Visualization 8
+==================================================
+
+生成：
+
+VIS_VALIDITY_MAP.png
+
+横轴：
+
+h/a
+
+纵向 rows：
+
+normal TT
+tangential TT
+TR/RT
+RR parallel
+RR normal
+
+标记：
+
+SUPPORTED
+FINITE
+CLOSE AGREEMENT
+MODERATE DIFFERENCE
+LARGE DIFFERENCE
+UNAVAILABLE
+
+==================================================
+55. Visualization provenance
+==================================================
+
+所有图：
+
+独立 Python
+从冻结 CSV/HDF5
+生成。
+
+禁止手工改曲线。
+
+生成：
+
+VISUALIZATION_PROVENANCE.json
+
+==================================================
+56. 不自动决定“哪个软件绝对正确”
+==================================================
+
+最终报告必须区分：
+
+PACKAGE IMPLEMENTATION
+
+vs
+
+CLASSICAL THEORY SUPPORT
+
+vs
+
+CROSS-PACKAGE AGREEMENT。
+
+不得因为：
+
+两个 package 一致
+
+就自动声称：
+
+物理绝对正确。
+
+==================================================
+57. Primary reference selection rule
+==================================================
+
+最终必须给出：
+
+PRIMARY_WALL_REFERENCE =
+
+SECONDARY_WALL_REFERENCE =
+
+但选择必须基于：
+
+A. source/theory traceability
+B. near-wall coverage
+C. normal mode
+D. tangential mode
+E. rotation
+F. translation-rotation coupling
+G. reciprocity
+H. positivity
+I. numerical stability
+J. compatibility with rigid no-slip sphere assumptions
+
+不能基于：
+
+运行速度
+代码更短
+安装更容易。
+
+==================================================
+58. 允许的结论类型
+==================================================
+
+例如允许：
+
+PRIMARY_REFERENCE =
+RigidMultiblobsWall sphere semi-analytical
+
+SECONDARY_REFERENCE =
+PyStokes wallBounded
+
+但只有 audit evidence
+支持时才能写。
+
+也可能得到：
+
+PRIMARY_REFERENCE =
+MODE_DEPENDENT
+
+如果不同模式
+没有一个 package 全部覆盖。
+
+==================================================
+59. GPL license boundary
+==================================================
+
+如果最终：
+
+RigidMultiblobsWall
+成为主要 reference，
+
+仍明确：
+
+REFERENCE_ONLY
+
+后续 project-owned wall plugin：
+
+不得直接复制其 GPL source
+而又声称独立 license。
+
+后续实现应：
+
+基于公开理论公式
++
+独立实现
++
+reference numerical comparison。
+
+==================================================
+60. PyStokes license boundary
+==================================================
+
+记录：
+
+MIT
+
+但本 Audit 仍不把其 source
+直接集成进生产系统。
+
+保持：
+
+reference tool
+和
+production implementation
+
+解耦。
+
+==================================================
+61. PASS criteria
+==================================================
+
+WALL_HYDRODYNAMICS_REFERENCE_AUDIT = PASS
+
+至少要求：
+
+RMBW_SOURCE_PROVENANCE = PASS
+
+RMBW_INSTALL = PASS
+
+RMBW_REFERENCE_RUN = PASS
+
+PYSTOKES_SOURCE_PROVENANCE = PASS
+
+PYSTOKES_INSTALL = PASS
+
+PYSTOKES_SHORT_TEST = PASS
+
+PYSTOKES_REFERENCE_RUN = PASS
+
+UNIT_CONVENTION = PASS
+
+6DOF_MATRIX_EXTRACTION = PASS
+至少一个主要 reference
+完整覆盖需要的 wall modes
+
+RECIPROCITY_AUDIT = PASS
+针对最终 primary reference
+
+POSITIVITY_AUDIT = PASS
+针对最终 primary reference
+
+RADIUS_SCALING_AUDIT = PASS
+
+VISCOSITY_SCALING_AUDIT = PASS
+
+NEAR_WALL_BEHAVIOR_AUDIT = PASS
+
+PRIMARY_REFERENCE_SELECTED = YES
+
+VISUALIZATION_GENERATION = PASS
+
+==================================================
+62. PASS_WITH_LIMITATIONS
+==================================================
+
+如果：
+
+两工具都可运行
+
+但：
+
+某些 rotation/coupling mode
+没有独立理论或第二工具支持，
+
+允许：
+
+WALL_HYDRODYNAMICS_REFERENCE_AUDIT =
+PASS_WITH_LIMITATIONS
+
+必须明确：
+
+UNVERIFIED_MODES = [...]
+
+不得自动补公式。
+
+==================================================
+63. FAIL
+==================================================
+
+如果：
+
+无法建立可信的：
+
+normal
+tangential
+rotation
+translation-rotation
+
+wall reference，
+
+则：
+
+FAIL
+
+停止。
+
+不要进入：
+
+MICROBUBBLE_WALL_HYDRODYNAMICS_V0。
+
+==================================================
+64. 不进入 production implementation
+==================================================
+
+本阶段完成后：
+
+STOP。
+
+不要自动：
+
+修改 LAMMPS plugin
+接 STL wall
+实现 hard wall
+跑真实微泡靠壁
+加 adhesion。
+
+==================================================
+65. Stage 后仍保持
+==================================================
+
+MICROBUBBLE_WALL_HYDRODYNAMICS =
+PENDING
+
+MICROBUBBLE_WALL_EXCLUSION =
+PENDING
+
+MICROBUBBLE_ADHESION =
+PENDING
+
+WALL_LOCAL_PLANE_APPROXIMATION =
+PENDING
+
+CURVED_STL_WALL_MODEL =
+PENDING
+
+RBC =
+OFF
+
+GPU_PERFORMANCE_READY =
+NO
+
+==================================================
+66. 最终终端摘要
+==================================================
+
+输出：
+
+WALL_HYDRODYNAMICS_REFERENCE_AUDIT =
+
+RMBW_REPOSITORY =
+https://github.com/stochasticHydroTools/RigidMultiblobsWall
+
+RMBW_COMMIT =
+
+RMBW_LICENSE =
+GPL-3.0
+
+RMBW_INSTALL =
+
+RMBW_REFERENCE_IMPLEMENTATION =
+SPHERE_SEMIANALYTICAL / LUBRICATION / OTHER
+
+RMBW_NORMAL_TRANSLATION =
+RMBW_TANGENTIAL_TRANSLATION =
+RMBW_ROTATION_PARALLEL =
+RMBW_ROTATION_NORMAL =
+RMBW_TRANSLATION_ROTATION_COUPLING =
+
+PYSTOKES_REPOSITORY =
+https://github.com/rajeshrinet/pystokes
+
+PYSTOKES_COMMIT =
+PYSTOKES_VERSION =
+
+PYSTOKES_LICENSE =
+MIT
+
+PYSTOKES_INSTALL =
+PYSTOKES_SHORT_TEST =
+
+PYSTOKES_NORMAL_TRANSLATION =
+PYSTOKES_TANGENTIAL_TRANSLATION =
+PYSTOKES_ROTATION_PARALLEL =
+PYSTOKES_ROTATION_NORMAL =
+PYSTOKES_TRANSLATION_ROTATION_COUPLING =
+
+PRIMARY_WALL_REFERENCE =
+
+SECONDARY_WALL_REFERENCE =
+
+REFERENCE_ASSUMPTION =
+RIGID_NO_SLIP_SPHERE_NEAR_NO_SLIP_PLANE
+
+GAP_RANGE_TESTED_H_OVER_A =
+0.001 ... 20
+
+PRIMARY_REFERENCE_VALID_H_OVER_A_RANGE =
+
+MAX_PRIMARY_RECIPROCITY_ERROR =
+
+MIN_PRIMARY_SCALED_MOBILITY_EIGENVALUE =
+
+RADIUS_SCALING_AUDIT =
+
+VISCOSITY_SCALING_AUDIT =
+
+NORMAL_NEAR_WALL_ASYMPTOTIC =
+
+TANGENTIAL_NEAR_WALL_REFERENCE =
+
+ROTATIONAL_REFERENCE =
+
+TRANSLATION_ROTATION_REFERENCE =
+
+CROSS_PACKAGE_NORMAL_MAX_DIFFERENCE =
+
+CROSS_PACKAGE_TANGENTIAL_MAX_DIFFERENCE =
+
+CROSS_PACKAGE_ROTATION_MAX_DIFFERENCE =
+
+CROSS_PACKAGE_TR_MAX_DIFFERENCE =
+
+UNVERIFIED_MODES =
+
+VIS_WALL_TRANSLATIONAL_MOBILITY =
+VIS_WALL_TRANSLATIONAL_RESISTANCE =
+VIS_WALL_ROTATIONAL_MOBILITY =
+VIS_WALL_TRANSLATION_ROTATION_COUPLING =
+VIS_REFERENCE_RELATIVE_DIFFERENCE =
+VIS_MOBILITY_MATRIX_NEAR_WALL =
+VIS_MOBILITY_MATRIX_MODERATE_GAP =
+VIS_VALIDITY_MAP =
+
+VISUALIZATION_GENERATION =
+
+HUMAN_VISUAL_REVIEW =
+PENDING
+
+PALABOS_BASELINE_MODIFIED =
+NO
+
+LAMMPS_BASELINE_MODIFIED =
+NO
+
+BUBBLE_BUBBLE_BASELINE_MODIFIED =
+NO
+
+SONOVUE_SAMPLER_MODIFIED =
+NO
+
+PRODUCTION_WALL_MODEL_IMPLEMENTED =
+NO
+
+MICROBUBBLE_WALL_HYDRODYNAMICS =
+PENDING
+
+MICROBUBBLE_ADHESION =
+PENDING
+
+REPORT_DIR =
+
+REPORT =
+
+NEXT_STAGE =
+USER_REVIEW_BEFORE_MICROBUBBLE_WALL_HYDRODYNAMICS_V0

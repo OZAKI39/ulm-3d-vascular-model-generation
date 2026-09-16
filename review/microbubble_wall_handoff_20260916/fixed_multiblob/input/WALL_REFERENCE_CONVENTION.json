@@ -1,0 +1,83 @@
+{
+  "status": "FROZEN_BEFORE_FORMAL_SWEEP",
+  "geometry": "wall z=0, fluid z>0, sphere center (0,0,a+h)",
+  "assumption": "RIGID_NO_SLIP_SPHERE_NEAR_NO_SLIP_PLANE",
+  "velocity_order": [
+    "Vx",
+    "Vy",
+    "Vz",
+    "Omega_x",
+    "Omega_y",
+    "Omega_z"
+  ],
+  "load_order": [
+    "Fx",
+    "Fy",
+    "Fz",
+    "Tx",
+    "Ty",
+    "Tz"
+  ],
+  "signs": "external force/torque on sphere and velocities in common right-handed Cartesian axes; torque about sphere center",
+  "native_PyStokes_order": "structure of arrays [x_1...x_N,y_1...y_N,z_1...z_N]; for N=1 identical to xyz",
+  "SI_units": {
+    "length": "m",
+    "force": "N",
+    "torque": "N*m",
+    "velocity": "m/s",
+    "omega": "rad/s",
+    "viscosity": "Pa*s"
+  },
+  "radii_m": {
+    "d10": 6.533896940418679e-07,
+    "d50": 9.683592065545495e-07,
+    "d90": 1.5212443438914026e-06
+  },
+  "gaps_h_over_a": [
+    0.001,
+    0.002,
+    0.005,
+    0.01,
+    0.02,
+    0.05,
+    0.1,
+    0.2,
+    0.5,
+    1.0,
+    2.0,
+    5.0,
+    10.0,
+    20.0
+  ],
+  "viscosities_Pa_s": [
+    0.0005,
+    0.001,
+    0.002
+  ],
+  "main_viscosity_Pa_s": 0.001,
+  "free_mobility": "MT=1/(6*pi*mu*a), MR=1/(8*pi*mu*a^3)",
+  "scaling": "D=diag(sqrt(MT)*3,sqrt(MR)*3); Mhat=D^-1*M*D^-1; qhat=D^-1*q, ghat=D*g, q.g=qhat.ghat; R=D^-1*solve(Mhat,I)*D^-1",
+  "physical_validity": "finite, reciprocity, positive symmetric part, planar symmetry; algebraic inverse of failing M retained ONLY as explicitly invalid diagnostic",
+  "reciprocity_relative": "maxabs(TR-RT.T)/max(maxabs(TR),maxabs(RT)); also SI absolute error",
+  "roundoff_relative_gate": 1e-12,
+  "zero_coupling_scaled_absolute_gate": 1e-13,
+  "negative_eigenvalue_gate": -1e-12,
+  "condition_number_max_for_solve": 1000000000000.0,
+  "scaling_relative_gate": 1e-12,
+  "comparison_relative_difference": "abs(A-B)/max(abs(A),abs(B)); symmetric bounded definition, zero/zero=0",
+  "comparison_labels": {
+    "CLOSE_AGREEMENT": "<0.02",
+    "MODERATE_DIFFERENCE": "0.02 to 0.10",
+    "LARGE_DIFFERENCE": ">0.10",
+    "meaning": "descriptive only; failing reciprocity/symmetry never becomes valid through agreement"
+  },
+  "primary_reference": "SELECT_AFTER_AUDIT",
+  "sphere_semianalytical": "run unchanged in SI and keep any unit/symmetry failure",
+  "lubrication_adapter": "upstream excess R returned in native units; add analytical bulk diagonal to undo original subtraction; six basis solves, SI conversion",
+  "debye_cut": 1e-05,
+  "GPU_USED": false,
+  "STL_USED": false,
+  "no_data_symmetrization": true,
+  "no_sign_patches": true,
+  "no_formal_run_retry": true
+}

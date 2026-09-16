@@ -1,0 +1,2523 @@
+执行独立科研开发任务：
+
+# MICROBUBBLE_WALL_HYDRODYNAMICS_V0
+# RMBW OFFLINE LOOKUP + LOCAL-PLANE STL WALL + HARD NON-PENETRATION
+
+目标：
+
+在现有：
+
+Palabos frozen flow
++
+LAMMPS particle engine
++
+overdamped rigid-sphere transport
++
+bubble-bubble near-field hydrodynamics
+
+基础上，加入第一版生产级：
+
+MICROBUBBLE_WALL_HYDRODYNAMICS_V0
+
+核心架构：
+
+RigidMultiblobsWall
+        ↓
+离线生成 dimensionless
+sphere-plane-wall resistance lookup table
+        ↓
+冻结 HDF5 + SHA256
+        ↓
+正式仿真不再调用 RMBW
+        ↓
+真实 STL 最近壁面查询
+        ↓
+local-plane approximation
+        ↓
+在线 C++ table interpolation
+        ↓
+6×6 wall resistance
+        ↓
+与 bulk + bubble-bubble resistance
+一起进行 overdamped solve
+        ↓
+hard wall non-overlap
+        ↓
+RK2 time integration
+
+本阶段同时必须生成充分的：
+
+数值核查
+可视化
+ParaView 文件
+独立 Python finalizer
+
+==================================================
+0. 当前已通过状态
+==================================================
+
+SONOVUE_CONTINUOUS_SAMPLER_V0 =
+PASS
+
+MINIMAL_LAMMPS_PARTICLE_ENGINE =
+PASS
+
+PALABOS_LAMMPS_COUPLING_V0 =
+PASS
+
+PASSIVE_MICROBUBBLE_TRANSPORT_V0 =
+PASS
+
+STABLE_LAMMPS_RIGID_SPHERE_NEAR_FIELD_V0 =
+PASS_WITH_TWIST_PENDING
+
+WALL_HYDRODYNAMICS_REFERENCE_AUDIT =
+PASS_WITH_LIMITATIONS
+
+==================================================
+1. 当前 active LAMMPS
+==================================================
+
+ACTIVE_LAMMPS_RELEASE =
+22Jul2025 Update 6
+
+ACTIVE_LAMMPS_COMMIT =
+9c5ab448c78a14fd534619622162ba418d6a1fb1
+
+ACTIVE_LAMMPS_COUNT =
+1
+
+LAMMPS core：
+
+READ ONLY
+
+禁止修改 LAMMPS core。
+
+==================================================
+2. 当前 bubble model
+==================================================
+
+RIGID_SPHERE =
+YES
+
+DEFORMATION =
+OFF
+
+OVERDAMPED =
+YES
+
+PARTICLE_INERTIA =
+OFF
+
+NORMAL_BUBBLE_BUBBLE =
+PASS
+
+TANGENTIAL_BUBBLE_BUBBLE =
+PASS
+
+TRANSVERSE_ROTATION =
+PASS
+
+TRANSLATION_ROTATION_COUPLING =
+PASS
+
+BUBBLE_BUBBLE_TWIST =
+PENDING
+
+HARD_BUBBLE_NONOVERLAP =
+PASS
+
+==================================================
+3. 当前 wall reference 结论
+==================================================
+
+PRIMARY_WALL_REFERENCE =
+
+RigidMultiblobsWall
+Lubrication single-sphere
+total/excess resistance implementation
+
+frozen commit =
+
+8d41e464d7de9b6514a85a741dd227f1219e3a49
+
+license =
+GPL-3.0
+
+REFERENCE ASSUMPTION =
+
+RIGID_NO_SLIP_SPHERE
+NEAR
+NO_SLIP_PLANE
+
+PyStokes：
+
+SECONDARY_DIAGNOSTIC_ONLY
+
+不能用于生产完整 wall matrix。
+
+==================================================
+4. 已知 reference 限制
+==================================================
+
+必须永久保留：
+
+RMBW near-wall focus：
+
+h/a =
+0.001–0.2
+
+qualified tested range：
+
+approximately
+0.001–5
+
+更远 gap：
+
+部分 TT far-field 趋势合理，
+
+但：
+
+finite-gap RR absolute accuracy
+TR/RT continuous-gap accuracy
+high-order far-field RR/TR
+
+没有完整独立精度认证。
+
+因此：
+
+本 Stage 最终最多：
+
+PASS_WITH_REFERENCE_LIMITATIONS
+
+不得：
+
+FULL_EXACT_WALL_HYDRODYNAMICS = PASS
+
+==================================================
+5. 当前 suspending medium
+==================================================
+
+PBS + 1% BSA
+
+mu =
+1.0e-3 Pa*s
+
+rho =
+1000 kg/m3
+
+但 wall Stokes resistance
+主要使用：
+
+mu
+
+==================================================
+6. 当前 real frozen flow
+==================================================
+
+FROZEN_FLOW_FIELD_V0.h5
+
+SHA256 =
+7828ed32b0cdd1e0e85836a564b6737128e7dbe30181ddd43110233b37b64a7f
+
+dx =
+1.9989918081065344e-7 m
+
+dims =
+493 × 497 × 280
+
+velocity source =
+Velocity_m_s
+
+真实 flow status：
+
+ENGINEERING_TRANSIENT_FIELD_ONLY
+
+不得升级为正式长期稳态。
+
+==================================================
+7. 当前 geometry
+==================================================
+
+使用现有冻结 closed vascular STL。
+
+必须从已有 provenance
+读取：
+
+geometry path
+geometry SHA256
+origin
+dx
+
+不得重新生成 geometry。
+
+==================================================
+8. Reference audit input
+==================================================
+
+现有本地 audit：
+
+/home/lzy/projects/compre_output/wall_hydrodynamics_reference_audit/20260916_115322
+
+必须读取：
+
+WALL_REFERENCE_CONVENTION.json
+
+WALL_REFERENCE_MOBILITY_MATRICES.h5
+
+WALL_REFERENCE_RESISTANCE_MATRICES.h5
+
+WALL_REFERENCE_RAW_RESULTS.csv
+
+FINAL_SUMMARY.json
+
+RMBW provenance
+
+不要重新解释一套不同的
+matrix convention。
+
+==================================================
+9. 第一阶段：离线 RMBW lookup table
+==================================================
+
+建立：
+
+RMBW_WALL_RESISTANCE_TABLE_V0.h5
+
+正式生产代码以后：
+
+不得运行 Python RMBW。
+
+RMBW 仅：
+
+OFFLINE TABLE GENERATOR
+
+==================================================
+10. 不复制 GPL source 到 production plugin
+==================================================
+
+保留：
+
+RMBW source checkout
+provenance
+license
+
+仅作为 reference generator。
+
+project-owned production C++：
+
+不得直接复制 RMBW GPL source
+并声称独立实现。
+
+本阶段只读取：
+
+RMBW numerical outputs
+
+和冻结 reference convention。
+
+==================================================
+11. table 自变量
+==================================================
+
+定义：
+
+epsilon =
+h/a
+
+其中：
+
+h =
+sphere surface-to-wall gap
+
+a =
+sphere radius
+
+==================================================
+12. table range
+==================================================
+
+主表：
+
+epsilon_min =
+0.001
+
+epsilon_max =
+20
+
+原因：
+
+覆盖现有 audit
+完整测试区间。
+
+但 table metadata
+必须区分：
+
+NEAR_FIELD_HIGH_CONFIDENCE =
+0.001–0.2
+
+QUALIFIED_REFERENCE =
+0.001–5
+
+LIMITED_REFERENCE =
+5–20
+
+==================================================
+13. table sampling density
+==================================================
+
+不要只使用原来的
+14 个 audit points。
+
+生成高密度 grid。
+
+建议：
+
+log-spaced epsilon
+
+N >= 800
+
+范围：
+
+1e-3 → 20
+
+并额外插入：
+
+原 audit 的全部 14 points
+
+以及：
+
+0.2
+5
+9.018296
+10
+20
+
+要求 grid：
+
+sorted
+unique。
+
+==================================================
+14. table generator
+==================================================
+
+建立：
+
+generate_rmbw_wall_table.py
+
+使用：
+
+冻结 RMBW commit
+冻结 Python environment
+冻结 matrix convention
+
+不修改 RMBW source。
+
+==================================================
+15. table 保存内容
+==================================================
+
+每个 epsilon：
+
+保存：
+
+epsilon
+
+raw RMBW mobility matrix
+raw RMBW total resistance matrix
+
+dimensionless work-conjugate
+mobility matrix
+
+dimensionless work-conjugate
+total resistance matrix
+
+wall excess resistance matrix
+
+matrix eigenvalues
+
+reciprocity error
+
+condition number
+
+validity_class
+
+reference_mode_flags
+
+==================================================
+16. 必须存 total 和 excess
+==================================================
+
+非常重要：
+
+现有 global particle solver
+已经包含：
+
+isolated bulk Stokes resistance。
+
+因此生产 wall term
+只能加入：
+
+WALL_EXCESS_RESISTANCE
+
+否则会：
+
+DOUBLE COUNT BULK DRAG。
+
+要求：
+
+R_total_wall
+=
+R_bulk
++
+R_wall_excess
+
+production assembly：
+
+R_global =
+
+R_bulk
++
+R_bubble_bubble_excess
++
+R_wall_excess
+
+==================================================
+17. dimensionless scaling
+==================================================
+
+必须完全沿用：
+
+WALL_REFERENCE_CONVENTION.json
+
+中的 work-conjugate scaling。
+
+不要自行发明：
+
+translation scale
+rotation scale
+TR scale。
+
+不同 radius / viscosity：
+
+通过已验证的 dimensionless
+scaling 恢复 SI。
+
+==================================================
+18. table structural compression
+==================================================
+
+由于 sphere-plane
+具有对称结构，
+
+允许正式 table
+只保存独立 coefficients，
+
+例如：
+
+parallel translation
+normal translation
+parallel rotation
+normal rotation
+TR coupling
+
+但：
+
+必须由 audit 自动证明：
+
+reconstructed matrix
+vs
+raw RMBW matrix
+
+最大相对误差
+<= 1e-12
+
+否则：
+
+保存完整 6×6。
+
+==================================================
+19. interpolation
+==================================================
+
+生产 interpolation：
+
+在：
+
+log(epsilon)
+
+上进行：
+
+piecewise-linear interpolation
+
+不要使用：
+
+unconstrained cubic spline
+
+避免：
+
+overshoot
+negative resistance
+loss of SPD。
+
+==================================================
+20. interpolation validation
+==================================================
+
+生成：
+
+>=5000
+
+随机 holdout epsilon
+
+这些点：
+
+不能是 table nodes。
+
+直接调用 RMBW reference
+计算 exact table target。
+
+比较：
+
+online interpolated matrix
+vs
+fresh RMBW result。
+
+==================================================
+21. interpolation gates
+==================================================
+
+对：
+
+epsilon <= 5
+
+要求：
+
+matrix-action relative error
+
+对于 >=100 随机 generalized velocities/loads
+每个 epsilon：
+
+MAX_RELATIVE_ACTION_ERROR
+<= 1e-3
+
+同时报告：
+
+entrywise error
+
+eigenvalue error
+
+reciprocity error。
+
+不要为了过门
+修改 reference data。
+
+==================================================
+22. SPD / reciprocity
+==================================================
+
+所有 interpolated：
+
+qualified range
+
+必须：
+
+RECIPROCITY_ERROR <= 1e-10
+
+MIN_SCALED_EIGENVALUE > 0
+
+如果 interpolation
+破坏这些性质：
+
+FAIL。
+
+==================================================
+23. epsilon < 0.001
+==================================================
+
+reference 没有验证更小 gap。
+
+因此：
+
+epsilon_effective =
+max(epsilon, 0.001)
+
+即 wall resistance
+clamp 到最小 reference gap。
+
+同时：
+
+HARD_WALL_NONOVERLAP
+负责保证：
+
+h >= 0
+
+必须记录：
+
+WALL_TABLE_MIN_GAP_REGULARIZATION =
+0.001 a
+
+这不是 shell roughness
+也不是实验参数。
+
+==================================================
+24. epsilon > 20
+==================================================
+
+当前 V0：
+
+使用：
+
+bulk-only wall correction = 0
+
+但是：
+
+必须在 epsilon=20
+量化 handoff discontinuity。
+
+生成：
+
+FAR_FIELD_HANDOFF_AUDIT.json
+
+报告：
+
+normal TT jump
+parallel TT jump
+RR jump
+TR jump
+
+==================================================
+25. far-field handoff gate
+==================================================
+
+不要假装 epsilon=20
+wall correction 精确为 0。
+
+最终报告必须明确：
+
+epsilon >20
+=
+DEVELOPMENT BULK HANDOFF
+
+而不是 exact wall physics。
+
+如果 handoff
+造成明显轨迹不连续：
+
+必须：
+
+PASS_WITH_FAR_FIELD_LIMITATION
+
+不得隐藏。
+
+==================================================
+26. production runtime 不调用 RMBW
+==================================================
+
+正式 C++：
+
+只读取：
+
+RMBW_WALL_RESISTANCE_TABLE_V0.h5
+
+或启动时转换为：
+
+compact binary memory table。
+
+禁止 timestep 内：
+
+Python call
+subprocess
+file query
+RMBW evaluation。
+
+==================================================
+27. TABLE SHA identity
+==================================================
+
+生成：
+
+RMBW_WALL_TABLE_CONTRACT.json
+
+记录：
+
+RMBW commit
+source SHA
+generator SHA
+reference audit SHA
+grid
+matrix convention
+units
+range
+limitations
+
+以及：
+
+TABLE_SHA256
+
+==================================================
+28. WallQuery 模块
+==================================================
+
+建立：
+
+STLNearestWallQuery
+
+职责：
+
+给定：
+
+bubble center
+
+返回：
+
+nearest wall point
+center-wall distance
+surface gap
+local wall normal
+closest triangle ID
+query status
+
+==================================================
+29. 优先复用已有 geometry code
+==================================================
+
+优先查找并复用：
+
+之前经过验证的：
+
+C++ STL distance / nearest-triangle
+geometry module。
+
+如果已有：
+
+不要重新写第二套 brute-force
+distance code。
+
+如果没有合适 production path：
+
+使用 deterministic：
+
+BVH / AABB tree。
+
+禁止正式 runtime：
+
+O(Ntriangles × Nbubbles)
+暴力搜索。
+
+==================================================
+30. local normal
+==================================================
+
+定义：
+
+closest point = P
+
+bubble center = X
+
+优先 local fluid-facing normal：
+
+n =
+(X-P)/|X-P|
+
+这天然指向：
+
+wall → bubble center。
+
+同时记录：
+
+closest triangle normal
+
+并比较二者。
+
+如果明显不一致：
+
+LOCAL_GEOMETRY_AMBIGUOUS。
+
+==================================================
+31. local coordinate frame
+==================================================
+
+建立：
+
+n =
+wall normal
+
+t1,t2 =
+deterministic tangent basis
+
+要求：
+
+orthonormal
+
+right-handed。
+
+不能因为 timestep
+随机改变 tangent orientation
+产生 sign flipping。
+
+==================================================
+32. deterministic tangent basis
+==================================================
+
+根据 n
+选择与最不平行的 global axis
+做 Gram-Schmidt。
+
+并建立：
+
+sign continuity
+
+如果前一步已有 frame：
+
+选择与 previous t1
+dot product 最大的等价方向。
+
+避免：
+
+frame flipping。
+
+==================================================
+33. LocalPlaneApproximation
+==================================================
+
+对于真实弯曲 STL：
+
+在 bubble 附近
+把 wall 近似成：
+
+local no-slip plane。
+
+但是：
+
+必须生成局部平面有效性指标。
+
+==================================================
+34. local planarity metric
+==================================================
+
+在最近 wall point 周围：
+
+patch radius =
+2a
+
+收集邻近 triangles / vertices。
+
+做：
+
+weighted plane fit / PCA。
+
+记录：
+
+RMS out-of-plane deviation / a
+
+P95 triangle-normal angular spread
+
+estimated local curvature
+如果稳健可得。
+
+==================================================
+35. provisional local-plane gates
+==================================================
+
+冻结为 development gate：
+
+RMS_PLANE_DEVIATION_OVER_A
+<= 0.10
+
+P95_NORMAL_SPREAD_DEG
+<= 20
+
+这些是：
+
+V0 geometry-validity gates
+
+不是生理参数。
+
+如果超过：
+
+LOCAL_PLANE_VALIDITY =
+FAIL_AT_POSITION
+
+不能继续使用平壁 table
+假装有效。
+
+==================================================
+36. independent geometry audit
+==================================================
+
+随机：
+
+>=10000
+
+真实 lumen interior points
+
+比较：
+
+C++ nearest distance
+vs
+independent VTK closest triangle
+
+要求：
+
+MAX_DISTANCE_ERROR <= 1e-12 m
+
+closest-point error
+合理一致。
+
+==================================================
+37. sphere surface gap
+==================================================
+
+h =
+center_wall_distance - radius
+
+要求：
+
+所有单位 SI。
+
+diameter 来源：
+
+SonoVue sampler。
+
+不得：
+
+silent resize bubble。
+
+==================================================
+38. WallResistanceModel
+==================================================
+
+建立：
+
+WallResistanceLookup
+
+输入：
+
+a
+mu
+h
+local frame
+
+输出：
+
+6×6
+SI wall excess resistance matrix。
+
+==================================================
+39. local → global matrix rotation
+==================================================
+
+table 是标准 wall frame：
+
+(t1,t2,n)
+
+生产场是：
+
+global xyz。
+
+必须构造：
+
+6×6 generalized rotation transform
+
+正确变换：
+
+translation block
+rotation block
+TR/RT cross blocks。
+
+==================================================
+40. rotation transform audit
+==================================================
+
+生成：
+
+>=10000
+
+随机 3D wall normals。
+
+比较：
+
+rotate matrix
+then evaluate generalized force
+
+vs
+
+rotate velocity into local frame
+evaluate local matrix
+rotate force/torque back。
+
+要求：
+
+MAX_RELATIVE_ROTATION_IDENTITY_ERROR
+<= 1e-12。
+
+==================================================
+41. wall model assembly
+==================================================
+
+现有 global resistance solve：
+
+R_bulk
++
+R_bubble_bubble
+
+扩展为：
+
+R_bulk
++
+R_bubble_bubble_excess
++
+R_wall_excess
+
+对每颗
+处于 wall-table active region
+的 bubble：
+
+wall excess
+加到该 particle
+6×6 diagonal block。
+
+==================================================
+42. background generalized velocity
+==================================================
+
+继续使用已有：
+
+U_inf =
+FlowFieldSampler(X)
+
+Omega_inf =
+0.5 curl(U)
+
+FlowGradientSampler
+必须复用已经验证路径。
+
+==================================================
+43. V0 wall-background closure
+==================================================
+
+本 Stage 明确采用：
+
+RESISTANCE-ONLY LOCAL-PLANE CLOSURE
+
+wall excess resistance
+作用于 particle
+相对 local background：
+
+V - U_inf
+
+Omega - Omega_inf
+
+==================================================
+44. 重要科学限制
+==================================================
+
+明确：
+
+AMBIENT_STRAIN_INDUCED_WALL_FORCE =
+NOT_INCLUDED_IN_V0
+
+即：
+
+没有额外实现
+finite-size sphere
+在 arbitrary background strain
+下的 wall stresslet forcing。
+
+因此：
+
+本 Stage 是：
+
+WALL RESISTANCE V0
+
+不是：
+
+complete sphere-near-wall
+grand mobility in arbitrary flow。
+
+报告必须写清楚。
+
+==================================================
+45. 为什么仍然有价值
+==================================================
+
+V0 可以正确处理：
+
+其他 bubble
+adhesion
+future buoyancy/lift
+constraint
+
+使 bubble 相对于 fluid
+产生 slip 后，
+
+wall 对：
+
+normal slip
+tangential slip
+rotation
+
+产生的附加阻力。
+
+==================================================
+46. HardWallNonOverlap
+==================================================
+
+wall lubrication
+不是绝对防穿墙保证。
+
+增加：
+
+HARD_WALL_NONOVERLAP
+
+要求：
+
+accepted state：
+
+sphere-STL gap
+>= -1e-12 m。
+
+==================================================
+47. velocity-level wall constraint
+==================================================
+
+wall static。
+
+local n：
+
+从 wall 指向 sphere。
+
+要求：
+
+h + dt*(n dot V)
+>= 0
+
+如果 violated：
+
+加入 wall active constraint。
+
+==================================================
+48. 与 bubble-bubble constraint 统一
+==================================================
+
+不要建立完全独立
+互相冲突的约束器。
+
+扩展现有：
+
+active-set / constraint framework
+
+同时支持：
+
+sphere-sphere constraints
+
+sphere-wall constraints。
+
+==================================================
+49. deterministic constraint ordering
+==================================================
+
+排序：
+
+wall constraints
+按：
+
+particle ID
+triangle ID
+
+bubble-bubble
+按：
+
+minID,maxID。
+
+MPI1/MPI4
+必须 deterministic。
+
+==================================================
+50. swept sphere–triangle audit
+==================================================
+
+每个 accepted RK2 step：
+
+必须做 continuous
+swept sphere vs STL
+检查。
+
+不能只检查 endpoint。
+
+如果 FAIL：
+
+reject step
+substep
+重新求解。
+
+==================================================
+51. interaction-aware timestep
+==================================================
+
+保留：
+
+C_adv =
+0.25
+
+保留：
+
+bubble-bubble C_gap
+当前选择 =
+0.4
+
+新增：
+
+wall gap control：
+
+C_wall candidates =
+0.4
+0.2
+0.1
+
+reference =
+0.1
+
+==================================================
+52. wall timestep criterion
+==================================================
+
+对于 approaching wall：
+
+|V_normal| * dt
+
+<=
+
+C_wall *
+max(h, h_reg_wall)
+
+其中：
+
+h_reg_wall =
+0.001*a
+
+与 table 最小 gap
+一致。
+
+==================================================
+53. C_wall convergence
+==================================================
+
+synthetic wall approach：
+
+测试：
+
+0.4
+0.2
+0.1
+
+比较：
+
+gap trajectory
+translation
+rotation。
+
+选择：
+
+最大的通过门值。
+
+==================================================
+54. CASE A — table holdout
+==================================================
+
+RMBW direct
+vs
+lookup interpolation。
+
+覆盖：
+
+d10
+d50
+d90
+
+随机：
+
+>=5000 epsilon。
+
+要求：
+
+CASE_A_TABLE_LOOKUP =
+PASS
+
+==================================================
+55. CASE B — flat wall normal force
+==================================================
+
+一个 sphere
+位于平面 wall 上方。
+
+施加：
+
+TECHNICAL_TEST_FORCE
+沿 wall normal。
+
+不用 Palabos。
+
+比较：
+
+production solver
+得到的 Vnormal
+
+vs
+
+RMBW mobility reference。
+
+多个 epsilon：
+
+0.001
+0.005
+0.01
+0.05
+0.1
+0.2
+0.5
+1
+5
+
+==================================================
+56. Case B gate
+==================================================
+
+每个 qualified gap：
+
+relative velocity error
+<= 1e-3
+
+reference-limited modes：
+
+按 reference qualification
+报告。
+
+==================================================
+57. CASE C — tangential force
+==================================================
+
+施加：
+
+Fx
+
+检查：
+
+Vx
+以及诱导：
+
+Omega_y
+
+生产：
+
+lookup solver
+
+vs
+RMBW direct reference。
+
+==================================================
+58. CASE D — torque / translation-rotation
+==================================================
+
+施加：
+
+Ty
+
+比较：
+
+Omega_y
+Vx
+
+验证：
+
+TR / RT
+reciprocity structure。
+
+==================================================
+59. CASE E — rotational tests
+==================================================
+
+测试：
+
+torque parallel wall
+torque normal wall。
+
+比较：
+
+RMBW table。
+
+结果必须保留：
+
+REFERENCE_LIMITATION
+
+不能过度解释有限 gap
+绝对精度。
+
+==================================================
+60. CASE F — hard wall stress
+==================================================
+
+技术 force
+强制 sphere 撞向平壁。
+
+Passive / no wall：
+
+必然穿墙。
+
+Wall model：
+
+必须：
+
+approach slows
+constraint activates if needed
+accepted overlap = 0
+
+运行超过：
+
+passive collision time。
+
+==================================================
+61. CASE G — curved geometry query
+==================================================
+
+建立 synthetic curved STL：
+
+sphere / cylinder wall
+
+其 analytic distance
+已知。
+
+随机 query：
+
+>=10000
+
+验证：
+
+nearest point
+gap
+normal
+local frame
+planarity。
+
+==================================================
+62. CASE H — real vascular geometry static audit
+==================================================
+
+在真实 vascular STL：
+
+采样：
+
+>=10000
+
+安全 interior sphere centers。
+
+覆盖：
+
+center region
+near wall
+bifurcation
+curved segments。
+
+输出：
+
+gap
+normal
+planarity metric
+validity class。
+
+不推进粒子。
+
+==================================================
+63. real geometry validity map
+==================================================
+
+生成：
+
+WALL_LOCAL_PLANE_VALIDITY.csv
+
+字段：
+
+position
+triangle_id
+gap
+radius
+epsilon
+
+RMS plane deviation/a
+P95 normal spread
+
+LOCAL_PLANE_VALID =
+YES/NO
+
+==================================================
+64. CASE I — real single-bubble near-wall engineering test
+==================================================
+
+使用：
+
+真实 frozen field
+真实 STL
+d50-like SonoVue bubble
+
+选择：
+
+一个 local-plane-valid
+近壁起点。
+
+要求：
+
+initial h/a
+位于：
+
+0.05–0.2
+
+即真正激活 near-wall table。
+
+==================================================
+65. Case I 物理
+==================================================
+
+正式开启：
+
+bulk flow
+wall resistance
+hard wall constraint
+
+bubble-bubble
+无，因为 N=1。
+
+BUOYANCY =
+OFF
+
+LIFT =
+OFF
+
+ADHESION =
+OFF
+
+==================================================
+66. Case I 解释限制
+==================================================
+
+由于 V0
+没有 ambient strain-induced
+wall force，
+
+如果单泡恰好：
+
+V=U_inf
+Omega=Omega_inf
+
+wall resistance
+可能不会显著改变中心轨迹。
+
+这不是 bug。
+
+重点验证：
+
+runtime integration
+gap tracking
+rotation
+matrix lookup
+wall safety。
+
+==================================================
+67. CASE J — real multi-bubble + wall
+==================================================
+
+复用：
+
+已 PASS 的
+real 8-bubble setup
+
+相同：
+
+diameters
+initial positions
+frozen flow
+
+开启：
+
+bubble-bubble hydrodynamics
++
+wall hydrodynamics
++
+bubble-bubble nonoverlap
++
+wall nonoverlap。
+
+==================================================
+68. Case J minimum duration
+==================================================
+
+目标：
+
+0.02 s
+
+与上一 rigid-sphere
+real 8-bubble
+相同 duration。
+
+不得因为 wall model
+而缩短结果后宣称 PASS。
+
+==================================================
+69. Case J gates
+==================================================
+
+要求：
+
+NONFINITE = 0
+LOST_ATOMS = 0
+INVALID_QUERY = 0
+
+bubble-bubble overlap = 0
+bubble-wall overlap = 0
+
+wall table lookup valid
+
+local-plane gate
+不被违反。
+
+如果 trajectory
+进入 local-plane-invalid region：
+
+CASE_J =
+BLOCKED_LOCAL_PLANE_VALIDITY
+
+不是偷偷继续。
+
+==================================================
+70. Case J comparison
+==================================================
+
+比较：
+
+previous no-wall-hydrodynamics
+8-bubble result
+
+vs
+
+new wall-hydrodynamics result。
+
+记录：
+
+trajectory difference
+minimum wall gap
+angular velocity
+wall resistance activity
+constraint activations。
+
+==================================================
+71. wall interaction telemetry
+==================================================
+
+每个 particle
+适当间隔记录：
+
+time
+ID
+
+x,y,z
+vx,vy,vz
+omega_x,y,z
+
+diameter
+radius
+
+nearest wall point
+triangle ID
+
+center-wall distance
+surface-wall gap
+
+epsilon=h/a
+
+local normal
+
+RMS planarity
+normal spread
+
+wall table validity class
+
+wall resistance activity
+
+wall constraint active
+
+==================================================
+72. WALL_INTERACTION_EVENTS.csv
+==================================================
+
+只记录：
+
+wall model active
+或
+constraint active
+时。
+
+字段至少：
+
+time
+particle_id
+
+gap_um
+epsilon
+
+normal_velocity
+tangential_speed
+angular_speed
+
+normal wall resistance
+parallel wall resistance
+rotational resistance
+
+TR coupling
+
+constraint_active
+
+triangle_id
+planarity metrics。
+
+==================================================
+73. Independent Python reference
+==================================================
+
+建立：
+
+reference_wall_hydrodynamics_v0.py
+
+独立实现：
+
+table loading
+interpolation
+local/global transform
+RMBW matrix comparison
+wall constraint audit。
+
+不得调用 production C++。
+
+==================================================
+74. Independent finalizer
+==================================================
+
+建立：
+
+finalize_wall_hydrodynamics_v0.py
+
+重新计算：
+
+table SHA
+interpolation errors
+matrix reciprocity
+eigenvalues
+geometry distance
+local frame
+planarity
+wall gap
+swept overlap
+synthetic trajectories
+real trajectories
+MPI identity。
+
+==================================================
+75. MPI
+==================================================
+
+建立至少一个：
+
+100–500 particle
+synthetic flat-wall test
+
+其中粒子实际：
+
+cross MPI rank boundaries
+
+且部分 wall interaction active。
+
+MPI1
+vs
+MPI4。
+
+要求：
+
+position diff <= 1e-10 m
+velocity diff <= 1e-10 m/s
+
+angular velocity diff
+按 frozen contract。
+
+==================================================
+76. Kokkos
+==================================================
+
+GPU_PERFORMANCE_READY =
+NO
+
+本阶段：
+
+CPU MPI correctness first。
+
+仅做：
+
+KOKKOS_COMPATIBILITY_SMOKE。
+
+wall lookup
+允许 host-side。
+
+禁止：
+
+GPU optimization。
+
+==================================================
+77. VIS 1 — RMBW dense table
+==================================================
+
+生成：
+
+VIS_WALL_LOOKUP_TABLE.png
+
+x：
+
+h/a log scale
+
+显示：
+
+normal TT
+parallel TT
+RR parallel
+RR normal
+TR coupling
+
+同时标：
+
+0.001
+0.2
+5
+20
+
+以及：
+
+HIGH_CONFIDENCE
+QUALIFIED
+LIMITED
+
+reference zones。
+
+==================================================
+78. VIS 2 — lookup interpolation error
+==================================================
+
+VIS_WALL_LOOKUP_ERROR.png
+
+显示：
+
+5000+ holdout points
+interpolation relative error
+vs h/a
+
+分 mode。
+
+==================================================
+79. VIS 3 — mobility/resistance eigenvalues
+==================================================
+
+VIS_WALL_MATRIX_PROPERTIES.png
+
+显示：
+
+minimum scaled eigenvalue
+reciprocity error
+condition number
+
+vs h/a。
+
+==================================================
+80. VIS 4 — normal wall approach
+==================================================
+
+VIS_FLAT_WALL_NORMAL_APPROACH.png
+
+比较：
+
+no-wall
+wall-resistance
+wall+hard-constraint
+
+gap vs time
+
+normal velocity vs time。
+
+==================================================
+81. VIS 5 — tangential slide / rotation
+==================================================
+
+VIS_FLAT_WALL_TANGENTIAL_ROTATION.png
+
+显示：
+
+V_parallel
+Omega
+TR coupling
+
+vs h/a / time。
+
+==================================================
+82. VIS 6 — hard wall audit
+==================================================
+
+VIS_HARD_WALL_NONOVERLAP.png
+
+显示：
+
+minimum sphere-wall gap
+vs time
+
+画出：
+
+gap=0
+
+和：
+
+-1e-12 tolerance。
+
+==================================================
+83. VIS 7 — curved geometry wall query
+==================================================
+
+VIS_CURVED_WALL_QUERY_QA.png
+
+显示：
+
+synthetic curved STL
+
+bubble centers
+nearest wall points
+normal vectors。
+
+==================================================
+84. VIS 8 — real STL local-plane validity
+==================================================
+
+VIS_REAL_LOCAL_PLANE_VALIDITY.png
+
+将真实 vascular surface
+按：
+
+VALID
+REVIEW/INVALID
+
+显示。
+
+至少：
+
+一种 3D VTP
++
+2D summary。
+
+==================================================
+85. VIS 9 — real single-bubble wall trajectory
+==================================================
+
+VIS_REAL_SINGLE_BUBBLE_WALL.png
+
+显示：
+
+XY/XZ/YZ
+真实 lumen
+bubble trajectory
+
+并沿 trajectory
+画 wall normal samples。
+
+==================================================
+86. VIS 10 — Case I wall gap
+==================================================
+
+VIS_REAL_SINGLE_BUBBLE_GAP.png
+
+显示：
+
+gap
+h/a
+
+wall resistance activity
+constraint activity
+
+vs time。
+
+==================================================
+87. VIS 11 — real 8-bubble comparison
+==================================================
+
+VIS_REAL_8BUBBLE_WALL_COMPARISON.png
+
+overlay：
+
+previous no-wall result
+new wall result
+
+真实 lumen context。
+
+==================================================
+88. VIS 12 — wall activity
+==================================================
+
+VIS_REAL_WALL_ACTIVITY.png
+
+time vs：
+
+number of wall-active bubbles
+
+minimum wall gap
+
+max wall resistance correction
+
+wall constraint activation count。
+
+==================================================
+89. ParaView outputs
+==================================================
+
+生成：
+
+CASE_I_TRAJECTORY.vtp
+
+CASE_J_TRAJECTORIES.vtp
+
+WALL_QUERY_NORMALS.vtp
+
+LOCAL_PLANE_VALIDITY.vtp
+
+point data 至少：
+
+particle ID
+time
+diameter
+velocity
+angular velocity
+
+gap
+epsilon
+
+wall normal
+
+triangle ID
+
+planarity metrics
+
+wall activity
+constraint state。
+
+==================================================
+90. visualization provenance
+==================================================
+
+生成：
+
+VISUALIZATION_PROVENANCE.json
+
+记录：
+
+source SHA
+script SHA
+output SHA。
+
+HUMAN_VISUAL_REVIEW =
+PENDING
+
+Codex 不得自动 PASS。
+
+==================================================
+91. Stage contract
+==================================================
+
+正式 runtime 前生成：
+
+MICROBUBBLE_WALL_HYDRODYNAMICS_V0_CONTRACT.json
+
+冻结：
+
+RMBW table SHA
+epsilon range
+interpolation
+reference classes
+
+local plane metrics
+geometry gates
+
+C_wall candidates
+wall constraint tolerance
+
+case seeds
+initial conditions
+run durations
+error gates。
+
+==================================================
+92. existing baseline 不得修改
+==================================================
+
+要求：
+
+PALABOS_BASELINE_MODIFIED =
+NO
+
+LAMMPS_CORE_MODIFIED =
+NO
+
+PASSIVE_TRANSPORT_MODIFIED =
+NO
+
+BUBBLE_BUBBLE_BASELINE_MODIFIED =
+NO
+
+SONOVUE_SAMPLER_MODIFIED =
+NO
+
+RMBW_SOURCE_MODIFIED =
+NO
+
+==================================================
+93. Stage conclusion
+==================================================
+
+如果全部核心实现通过：
+
+MICROBUBBLE_WALL_HYDRODYNAMICS_V0 =
+
+PASS_WITH_REFERENCE_LIMITATIONS
+
+因为：
+
+RMBW 本身已经明确存在
+finite-gap RR/TR 精度限制。
+
+不得写：
+
+FULL_EXACT_WALL_HYDRODYNAMICS = PASS
+
+==================================================
+94. PASS gates
+==================================================
+
+至少要求：
+
+RMBW_TABLE_GENERATION = PASS
+
+TABLE_SHA_IDENTITY = PASS
+
+TABLE_INTERPOLATION = PASS
+
+TABLE_RECIPROCITY = PASS
+
+TABLE_POSITIVITY = PASS
+
+BULK_DOUBLE_COUNTING = NO
+
+WALL_QUERY = PASS
+
+LOCAL_FRAME = PASS
+
+LOCAL_PLANE_AUDIT = PASS
+
+CASE_B_NORMAL_WALL = PASS
+
+CASE_C_TANGENTIAL_WALL = PASS
+
+CASE_D_TR_COUPLING = PASS
+
+CASE_E_ROTATION = PASS_WITH_REFERENCE_LIMITATION
+
+CASE_F_HARD_WALL = PASS
+
+CASE_G_CURVED_QUERY = PASS
+
+CASE_H_REAL_STATIC_GEOMETRY = PASS
+
+CASE_I_REAL_SINGLE =
+PASS / PASS_WITH_MODEL_LIMITATION
+
+CASE_J_REAL_8BUBBLE =
+PASS / BLOCKED_LOCAL_PLANE_VALIDITY
+
+MPI_WALL_MODEL = PASS
+
+KOKKOS_COMPATIBILITY_SMOKE = PASS
+
+INDEPENDENT_FINALIZER = PASS
+
+VISUALIZATION_GENERATION = PASS
+
+REMOTE_TO_WSL_INTEGRITY = PASS
+
+==================================================
+95. 本 Stage 之后仍然 PENDING
+==================================================
+
+保持：
+
+AMBIENT_STRAIN_INDUCED_WALL_FORCE =
+PENDING
+
+FULL_EXACT_WALL_HYDRODYNAMICS =
+PENDING
+
+MICROBUBBLE_ADHESION =
+PENDING
+
+BUBBLE_BUBBLE_TWIST =
+PENDING
+
+BUOYANCY =
+OFF
+
+LIFT =
+OFF
+
+RBC =
+OFF
+
+GPU_PERFORMANCE_READY =
+NO
+
+==================================================
+96. 工作目录
+==================================================
+
+本地 table/reference project：
+
+/home/lzy/projects/microbubble_wall_hydrodynamics_v0_<timestamp>
+
+远端 runtime：
+
+/workspace/microbubble_lammps/work/wall_hydrodynamics_v0_<timestamp>
+
+远端结果：
+
+/workspace/microbubble_lammps/results/wall_hydrodynamics_v0_<timestamp>
+
+本地最终：
+
+/home/lzy/projects/compre_output/wall_hydrodynamics_v0/<timestamp>
+
+==================================================
+97. 完整性
+==================================================
+
+全部正式输出：
+
+SHA256SUMS
+
+远端→WSL：
+
+sha256sum -c
+
+要求：
+
+REMOTE_TO_WSL_INTEGRITY =
+PASS
+
+==================================================
+98. 中文报告
+==================================================
+
+生成：
+
+MICROBUBBLE_WALL_HYDRODYNAMICS_V0_REPORT.md
+
+报告开头必须用门外汉语言解释：
+
+“RMBW 先离线告诉我们：
+一个刚性球在不同离墙距离下
+有多难向墙靠近、沿墙滑动和旋转。
+
+正式时域仿真不会每一步运行 RMBW，
+而是根据当前 h/a
+快速查一张提前生成并验证好的阻力表。”
+
+==================================================
+99. 最终终端摘要
+==================================================
+
+输出：
+
+MICROBUBBLE_WALL_HYDRODYNAMICS_V0 =
+
+MODEL =
+RMBW_LOOKUP_LOCAL_PLANE_RESISTANCE_V0
+
+PRIMARY_REFERENCE =
+RMBW_LUBRICATION
+
+RMBW_COMMIT =
+8d41e464d7de9b6514a85a741dd227f1219e3a49
+
+RMBW_RUNTIME_DEPENDENCY =
+NO
+
+RMBW_TABLE_FILE =
+
+RMBW_TABLE_SHA256 =
+
+TABLE_GRID_POINTS =
+
+TABLE_EPSILON_MIN =
+0.001
+
+TABLE_EPSILON_MAX =
+20
+
+NEAR_FIELD_HIGH_CONFIDENCE =
+0.001–0.2
+
+QUALIFIED_REFERENCE_RANGE =
+0.001–5
+
+LIMITED_REFERENCE_RANGE =
+5–20
+
+TABLE_MAX_INTERPOLATION_ACTION_ERROR =
+
+TABLE_MAX_RECIPROCITY_ERROR =
+
+TABLE_MIN_SCALED_EIGENVALUE =
+
+BULK_DOUBLE_COUNTING =
+NO
+
+WALL_QUERY =
+
+MAX_WALL_DISTANCE_ERROR_M =
+
+LOCAL_PLANE_MODEL =
+ON
+
+LOCAL_PLANE_RMS_GATE =
+0.10 a
+
+LOCAL_PLANE_NORMAL_SPREAD_GATE_DEG =
+20
+
+LOCAL_PLANE_VALIDITY =
+
+WALL_RESISTANCE =
+ON
+
+NORMAL_WALL_RESISTANCE =
+ON
+
+TANGENTIAL_WALL_RESISTANCE =
+ON
+
+ROTATIONAL_WALL_RESISTANCE =
+ON_WITH_REFERENCE_LIMITATIONS
+
+TRANSLATION_ROTATION_WALL_COUPLING =
+ON_WITH_REFERENCE_LIMITATIONS
+
+AMBIENT_STRAIN_INDUCED_WALL_FORCE =
+PENDING
+
+HARD_WALL_NONOVERLAP =
+ON
+
+WALL_OVERLAP_TOL_M =
+1e-12
+
+C_WALL_TESTED =
+0.4,0.2,0.1
+
+SELECTED_C_WALL =
+
+CASE_B_NORMAL_WALL =
+CASE_C_TANGENTIAL_WALL =
+CASE_D_TR_COUPLING =
+CASE_E_ROTATION =
+CASE_F_HARD_WALL =
+CASE_G_CURVED_QUERY =
+CASE_H_REAL_STATIC_GEOMETRY =
+CASE_I_REAL_SINGLE =
+CASE_J_REAL_8BUBBLE =
+
+CASE_J_PHYSICAL_TIME_S =
+
+CASE_J_MIN_WALL_GAP_UM =
+
+CASE_J_MIN_BUBBLE_BUBBLE_GAP_UM =
+
+WALL_CONSTRAINT_ACTIVATIONS =
+
+NONFINITE_COUNT =
+LOST_ATOMS =
+INVALID_QUERY_COUNT =
+ACCEPTED_WALL_OVERLAP_COUNT =
+ACCEPTED_BUBBLE_OVERLAP_COUNT =
+
+MPI_WALL_MODEL =
+
+KOKKOS_COMPATIBILITY_SMOKE =
+
+GPU_PERFORMANCE_READY =
+NO
+
+INDEPENDENT_FINALIZER =
+
+VIS_WALL_LOOKUP_TABLE =
+VIS_WALL_LOOKUP_ERROR =
+VIS_WALL_MATRIX_PROPERTIES =
+VIS_FLAT_WALL_NORMAL_APPROACH =
+VIS_FLAT_WALL_TANGENTIAL_ROTATION =
+VIS_HARD_WALL_NONOVERLAP =
+VIS_CURVED_WALL_QUERY_QA =
+VIS_REAL_LOCAL_PLANE_VALIDITY =
+VIS_REAL_SINGLE_BUBBLE_WALL =
+VIS_REAL_SINGLE_BUBBLE_GAP =
+VIS_REAL_8BUBBLE_WALL_COMPARISON =
+VIS_REAL_WALL_ACTIVITY =
+
+VISUALIZATION_GENERATION =
+
+HUMAN_VISUAL_REVIEW =
+PENDING
+
+PALABOS_BASELINE_MODIFIED =
+NO
+
+LAMMPS_CORE_MODIFIED =
+NO
+
+PASSIVE_TRANSPORT_MODIFIED =
+NO
+
+BUBBLE_BUBBLE_BASELINE_MODIFIED =
+NO
+
+SONOVUE_SAMPLER_MODIFIED =
+NO
+
+RMBW_SOURCE_MODIFIED =
+NO
+
+FULL_EXACT_WALL_HYDRODYNAMICS =
+PENDING
+
+MICROBUBBLE_ADHESION =
+PENDING
+
+BUBBLE_BUBBLE_TWIST =
+PENDING
+
+RBC =
+OFF
+
+REMOTE_TO_WSL_INTEGRITY =
+
+REMOTE_RESULT_DIR =
+
+LOCAL_RESULT_DIR =
+
+REPORT =
+
+NEXT_STAGE =
+USER_REVIEW_BEFORE_MICROBUBBLE_ADHESION_V0

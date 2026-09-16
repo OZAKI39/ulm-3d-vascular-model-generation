@@ -1,0 +1,13 @@
+units si
+atom_style sphere
+boundary f f f
+newton off
+read_data particles.data
+comm_modify vel yes
+pair_style lubricate/poly .001 0 0 2.150001e-6 2.5e-6 1 0
+pair_coeff * *
+neighbor 1e-7 bin
+neigh_modify every 1 delay 0 check no
+thermo_style custom step atoms
+run 0
+write_dump all custom forces.dump id radius x y z vx vy vz fx fy fz modify sort id format float %.17g

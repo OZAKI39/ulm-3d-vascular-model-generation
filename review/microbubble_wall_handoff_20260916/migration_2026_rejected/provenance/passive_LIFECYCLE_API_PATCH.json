@@ -1,0 +1,9 @@
+{
+  "stage": "passive",
+  "scope": "EXPLICIT_LIFECYCLE_API_COMPATIBILITY_ONLY",
+  "math_changed": false,
+  "reference": "frozen target src/main.cpp finalize() sequence after deleting LAMMPS and before MPI_Finalize",
+  "before_sha256": "68540a679d0675fb47035b1a9e12e24cd2497e28a23dd05efd03e6b96b5e8288",
+  "after_sha256": "afe047890a2b3491f13a3740ffc5845f2011ff2d968f79c16b16ac53331e274b",
+  "diff": "--- before/src/passive_main.cpp\n+++ after/src/passive_main.cpp\n@@ -1,4 +1,5 @@\n #include \"lammps.h\"\n+#include \"library.h\"\n #include \"input.h\"\n #include \"modify.h\"\n #include \"fix_passive_flow.hpp\"\n@@ -7,4 +8,4 @@\n #include <iostream>\n using namespace LAMMPS_NS;\n static Fix*factory(LAMMPS*l,int n,char**a){return new FixPassiveFlow(l,n,a);}\n-int main(int argc,char**argv){MPI_Init(&argc,&argv);try{auto*l=new LAMMPS(argc,argv,MPI_COMM_WORLD);Modify::fix_styles().set_plugin(\"sonovue/passive/flow\", &factory);l->input->file();delete l;}catch(std::exception const&e){std::cerr<<e.what()<<std::endl;MPI_Abort(MPI_COMM_WORLD,1);}MPI_Finalize();}\n+int main(int argc,char**argv){MPI_Init(&argc,&argv);try{auto*l=new LAMMPS(argc,argv,MPI_COMM_WORLD);Modify::fix_styles().set_plugin(\"sonovue/passive/flow\", &factory);l->input->file();delete l;lammps_kokkos_finalize();lammps_python_finalize();lammps_plugin_finalize();}catch(std::exception const&e){std::cerr<<e.what()<<std::endl;MPI_Abort(MPI_COMM_WORLD,1);}MPI_Finalize();}\n"
+}

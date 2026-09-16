@@ -1,0 +1,21 @@
+units si
+dimension 3
+boundary p p p
+atom_style sphere
+newton off
+processors 1 1 1
+read_data particles.data
+comm_modify vel yes
+neighbor 1e-6 bin
+neigh_modify every 1 delay 0 check no
+pair_style gran/hooke/history 0.001 0 0 0 0 0
+pair_coeff * *
+fix integrate all nve/sphere
+timestep 1e-08
+thermo 1
+thermo_style custom step atoms time ke
+thermo_modify lost error norm no format float %.17g
+run 0
+write_dump all custom initial.dump id type diameter radius mass x y z xu yu zu vx vy vz omegax omegay omegaz fx fy fz proc ix iy iz modify sort id format float %.17g
+write_dump all custom final.dump id type diameter radius mass x y z xu yu zu vx vy vz omegax omegay omegaz fx fy fz proc ix iy iz modify sort id format float %.17g
+print "ENGINE_CASE_COMPLETED"

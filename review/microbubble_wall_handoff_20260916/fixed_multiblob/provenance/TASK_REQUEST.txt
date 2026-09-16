@@ -1,0 +1,2614 @@
+执行一个新的独立科研开发与核查阶段：
+
+# FIXED_MULTIBLOB_WALL_FEASIBILITY_AUDIT_V0
+
+目的：
+
+评估“固定 hydrodynamic blobs / fixed spheres 组成任意曲壁”
+是否可以成为当前 microbubble wall hydrodynamics 的下一条路线。
+
+这是：
+
+FEASIBILITY AUDIT
+
+不是 production migration。
+
+禁止因为本轮结果
+直接修改现有 production wall model。
+
+禁止自动进入 adhesion。
+
+==================================================
+0. 当前科学背景
+==================================================
+
+当前阶段：
+
+MICROBUBBLE_WALL_HYDRODYNAMICS_V0 =
+BLOCKED_LOCAL_PLANE_VALIDITY
+
+但是：
+
+CORE_IMPLEMENTATION =
+PASS_WITH_REFERENCE_LIMITATIONS
+
+已通过：
+
+RMBW lookup table
+C++ wall resistance assembly
+normal resistance
+tangential resistance
+rotation
+TR/RT structure
+hard wall non-overlap
+continuous swept check
+MPI
+Kokkos compatibility
+independent finalizer
+
+失败原因不是 RMBW table。
+
+失败原因是：
+
+REAL VASCULAR GEOMETRY
++
+LOCAL PLANE APPROXIMATION
+
+真实血管抽样：
+
+LOCAL_PLANE_VALID =
+4 / 10000
+
+且 4 个有效点均为
+flat end caps。
+
+Case I：
+
+BLOCKED_NO_VALID_NEAR_WALL_START
+
+Case J：
+
+BLOCKED_LOCAL_PLANE_VALIDITY
+
+Case J physical time：
+
+0 s
+
+==================================================
+1. 已冻结 RMBW reference
+==================================================
+
+PRIMARY_REFERENCE =
+RigidMultiblobsWall Lubrication
+
+RMBW_COMMIT =
+8d41e464d7de9b6514a85a741dd227f1219e3a49
+
+现有 table：
+
+RMBW_WALL_RESISTANCE_TABLE_V0.h5
+
+SHA256 =
+71e62ef6bc22edc66ae0c4d1dcc224378c2f6c5d3848578f3fbedd2cd9a43f98
+
+grid points =
+8211
+
+epsilon =
+h/a
+
+range =
+0.001–20
+
+NEAR_FIELD_HIGH_CONFIDENCE =
+0.001–0.2
+
+QUALIFIED_REFERENCE =
+0.001–5
+
+LIMITED =
+5–20
+
+生产总阻力约定：
+
+R_global =
+R_bulk
++
+R_pair_excess
++
+R_wall_excess
+
+禁止重复计算 bulk Stokes drag。
+
+==================================================
+2. 本轮真正要回答的问题
+==================================================
+
+必须回答以下问题：
+
+Q1.
+
+固定 blobs / fixed hydrodynamic spheres
+铺成平面时，
+
+是否能够收敛到：
+
+RMBW continuous no-slip plane wall？
+
+Q2.
+
+是否能够正确再现：
+
+normal translation
+tangential translation
+rotation parallel wall
+rotation normal wall
+translation-rotation coupling
+
+即完整：
+
+6×6 effective resistance / mobility？
+
+Q3.
+
+结果是否强烈依赖：
+
+wall blob radius
+blob spacing
+number of layers
+lateral phase
+wall patch extent
+lattice arrangement？
+
+Q4.
+
+有没有严重：
+
+artificial roughness
+hydrodynamic leakage
+anisotropy
+grid-phase dependence？
+
+Q5.
+
+如果平墙通过，
+
+把 blobs 放到：
+
+cylinder
+curved wall
+real vascular STL
+
+是否数值稳定、自洽、收敛？
+
+Q6.
+
+计算成本是否允许：
+
+A. online timestep use
+
+或只能：
+
+B. offline curved-wall reference generation
+
+或：
+
+C. completely unsuitable
+
+==================================================
+3. 不允许预设结论
+==================================================
+
+不得提前假设：
+
+FIXED_MULTIBLOB_WALL = GOOD
+
+也不得提前假设：
+
+FIXED_MULTIBLOB_WALL = BAD
+
+必须由：
+
+accuracy
+convergence
+phase sensitivity
+leakage
+performance
+
+决定。
+
+==================================================
+4. 开源实现候选审计
+==================================================
+
+首先做：
+
+OPEN_SOURCE_TOOL_CAPABILITY_AUDIT
+
+必须实际检查当前上游仓库、文档、
+license、commit 和 examples。
+
+优先候选包括但不限于：
+
+A.
+Pecnut/stokesian-dynamics
+
+重点检查：
+
+fixed / prescribed-velocity spheres
+mixed force/velocity problem
+translation
+rotation
+stresslet
+lubrication
+arbitrary sphere coordinates
+
+B.
+stochasticHydroTools /
+RigidMultiblobsWall
+
+重点检查：
+
+arbitrary rigid multiblob geometry
+blob-blob mobility
+prescribed/fixed bodies
+是否可以不依赖其 flat-wall specialization
+构造 fixed blob boundary
+
+C.
+stochasticHydroTools /
+RigidBodyIB
+
+重点检查：
+
+regularized blob mobility
+arbitrary marker sets
+rigid/fixed body constraints
+
+D.
+其他真正支持：
+
+arbitrary fixed blob coordinates
++
+Stokes mobility/resistance
+
+的开源实现。
+
+不要因为项目名字
+就假设具备功能。
+
+==================================================
+5. 工具选择原则
+==================================================
+
+选择至少一个 PRIMARY IMPLEMENTATION。
+
+优先：
+
+能够表达：
+
+arbitrary fixed wall blobs
+
+且：
+
+不需要建立三维 Eulerian CFD 网格。
+
+如果 Pecnut/stokesian-dynamics
+可以完整完成：
+
+fixed wall spheres
++
+mobile test sphere
++
+translation/rotation
++
+mixed resistance/mobility
+
+则作为：
+
+PRIMARY_FIXED_SPHERE_IMPLEMENTATION
+
+如果另一个真正 regularized multiblob
+实现可低成本完成同类测试，
+
+可增加：
+
+SECONDARY_TRUE_BLOB_IMPLEMENTATION
+
+但不是硬要求。
+
+==================================================
+6. 如果工具能力不足
+==================================================
+
+如果 PRIMARY candidate
+缺少以下关键能力之一：
+
+fixed/prescribed wall velocity
+rotation
+torque
+mixed resistance solve
+arbitrary fixed coordinates
+
+不得偷偷自己补出
+一个未经审计的新 solver
+然后继续宣称原工具通过。
+
+应输出：
+
+TOOL_CAPABILITY =
+BLOCKED
+
+并记录缺失能力。
+
+只有非常薄的：
+
+adapter
+matrix assembly
+post-processing
+
+允许 project-owned 实现。
+
+==================================================
+7. Freeze provenance
+==================================================
+
+对每个实际使用的开源项目记录：
+
+repo URL
+commit
+tag/version
+license
+dependency versions
+Python/compiler version
+CPU/GPU backend
+source SHA256
+
+生成：
+
+OPEN_SOURCE_TOOL_PROVENANCE.json
+
+==================================================
+8. 不修改现有项目
+==================================================
+
+要求：
+
+PALABOS_BASELINE_MODIFIED = NO
+
+LAMMPS_CORE_MODIFIED = NO
+
+PASSIVE_TRANSPORT_MODIFIED = NO
+
+BUBBLE_BUBBLE_BASELINE_MODIFIED = NO
+
+RMBW_SOURCE_MODIFIED = NO
+
+RMBW_TABLE_MODIFIED = NO
+
+CURRENT_WALL_V0_MODIFIED = NO
+
+==================================================
+9. 本轮先不接 LAMMPS production
+==================================================
+
+本轮禁止直接：
+
+把 fixed wall blobs
+装入 production LAMMPS time loop。
+
+原因：
+
+先证明物理近似是否成立。
+
+本轮主要：
+
+static mobility/resistance
++
+small technical dynamics
++
+performance benchmark
+
+==================================================
+10. 基本定义
+==================================================
+
+target bubble：
+
+rigid no-slip sphere
+
+bubble radius：
+
+a
+
+wall representation：
+
+fixed hydrodynamic objects
+
+记：
+
+a_w =
+wall blob/sphere hydrodynamic radius
+
+定义：
+
+beta =
+a_w / a
+
+==================================================
+11. planar nominal wall definition
+==================================================
+
+对于 fixed hard spheres：
+
+所有 wall sphere centers
+首先放在：
+
+z = -a_w
+
+因此 sphere top envelope：
+
+z = 0
+
+定义：
+
+NOMINAL_WALL_PLANE =
+z = 0
+
+target bubble：
+
+center z =
+a + h
+
+因此：
+
+epsilon =
+h/a
+
+与 RMBW 定义一致。
+
+==================================================
+12. 不允许事后移动 wall plane 拟合 RMBW
+==================================================
+
+禁止：
+
+每个 h/a
+单独调整 effective wall height
+以拟合 RMBW。
+
+如果需要：
+
+GLOBAL_EFFECTIVE_WALL_OFFSET
+
+必须：
+
+在 calibration subset
+冻结一个唯一 offset
+
+然后对所有：
+
+gap
+motion modes
+lateral phases
+
+使用相同 offset。
+
+同时必须报告：
+
+RAW_GEOMETRIC_PLANE_RESULT
+
+和：
+
+OPTIONAL_GLOBAL_OFFSET_RESULT
+
+不能只报告拟合后的结果。
+
+==================================================
+13. wall layouts
+==================================================
+
+至少测试：
+
+HEXAGONAL_MONOLAYER
+
+和：
+
+SQUARE_MONOLAYER
+
+如果 primary solver
+无法稳定处理 touching spheres，
+
+测试：
+
+controlled small inter-bead clearance
+
+并完整记录。
+
+==================================================
+14. multiple layers
+==================================================
+
+至少测试：
+
+1 layer
+2 layers
+3 layers
+
+对于 multilayer：
+
+使用确定性 close-packed / staggered arrangement。
+
+目的：
+
+判断：
+
+hydrodynamic leakage
+是否随层数下降。
+
+==================================================
+15. wall resolution sweep
+==================================================
+
+至少测试：
+
+beta =
+0.50
+0.25
+0.125
+0.0625
+
+如果资源允许：
+
+beta =
+0.03125
+
+不要一开始全部跑最细。
+
+使用：
+
+coarse-to-fine progression
+
+只在前一级有意义时
+继续下一层。
+
+==================================================
+16. wall spacing
+==================================================
+
+定义：
+
+s =
+wall object center spacing
+
+记录：
+
+s / (2 a_w)
+
+如果 hard spheres：
+
+不得物理 overlap。
+
+如果 regularized blobs：
+
+允许按照上游方法
+使用其合法 blob spacing，
+但必须说明：
+
+blob 不是 physical sphere。
+
+==================================================
+17. hard sphere 与 regularized blob 不可混淆
+==================================================
+
+报告必须严格区分：
+
+FIXED_HARD_SPHERE_WALL
+
+和：
+
+FIXED_REGULARIZED_BLOB_WALL
+
+不得把两个模型混成同一种物理对象。
+
+==================================================
+18. free-space baseline
+==================================================
+
+在任何 wall 测试前：
+
+测试一个孤立 target sphere。
+
+要求恢复：
+
+translational resistance：
+
+6*pi*mu*a
+
+rotational resistance：
+
+8*pi*mu*a^3
+
+translation-rotation coupling：
+
+0
+
+==================================================
+19. free-space gates
+==================================================
+
+dimensionless translation error：
+
+<= 1e-4
+
+dimensionless rotation error：
+
+<= 1e-4
+
+TR/RT：
+
+absolute normalized magnitude
+<= 1e-8
+
+如果工具本身做不到：
+
+停止物理比较。
+
+==================================================
+20. viscosity
+==================================================
+
+使用：
+
+mu =
+1.0e-3 Pa*s
+
+同时做：
+
+viscosity scaling check
+
+mu ×0.5
+mu ×2
+
+要求 resistance
+线性缩放。
+
+==================================================
+21. bubble sizes
+==================================================
+
+至少测试 SonoVue：
+
+d10
+d50
+d90
+
+使用已经冻结的 sampler quantiles。
+
+注意：
+
+这些量是 DIAMETER。
+
+radius = diameter / 2。
+
+==================================================
+22. dimensionless first
+==================================================
+
+平壁 feasibility
+主要用 dimensionless resistance。
+
+同时验证：
+
+同一 dimensionless geometry
+在 d10/d50/d90
+经过理论缩放后结果一致。
+
+==================================================
+23. mandatory h/a values
+==================================================
+
+平壁测试至少覆盖：
+
+0.001
+0.002
+0.005
+0.01
+0.02
+0.05
+0.1
+0.2
+0.5
+1
+2
+5
+
+==================================================
+24. 分级评价区间
+==================================================
+
+定义：
+
+ULTRA_NEAR =
+0.001–0.01
+
+CORE_NEAR =
+0.01–0.2
+
+INTERMEDIATE =
+0.2–1
+
+FAR_REFERENCE =
+1–5
+
+==================================================
+25. lateral phase 是核心测试
+==================================================
+
+对于周期性 bead lattice，
+target sphere 不只测试一种 XY 位置。
+
+至少测试：
+
+A.
+directly above wall bead center
+
+B.
+bridge midpoint
+
+C.
+pore / unit-cell center
+
+D.
+>=16 个均匀采样的
+unit-cell lateral positions
+
+==================================================
+26. 为什么 lateral phase 重要
+==================================================
+
+真正连续平墙具有：
+
+translation invariance
+
+即：
+
+只要 h 相同，
+
+将 bubble 沿 X/Y 平移
+wall resistance 不应改变。
+
+fixed bead wall
+如果结果明显依赖
+bubble 位于 bead 上方还是孔洞上方，
+
+说明 artificial roughness
+没有收敛。
+
+==================================================
+27. LATERAL_PHASE metric
+==================================================
+
+对每个：
+
+beta
+h/a
+mode
+
+计算：
+
+mean
+std
+min
+max
+coefficient of variation
+max relative spread
+
+==================================================
+28. phase feasibility gates
+==================================================
+
+CORE_NEAR 区：
+
+normal TT
+phase max spread <= 5%
+
+tangential TT
+<= 5%
+
+rotational RR
+<= 10%
+
+TR/RT
+<= 10%
+
+这些是：
+
+FEASIBILITY ENGINEERING GATES
+
+不是物理常数。
+
+运行前冻结，
+不得事后放宽。
+
+==================================================
+29. tangential anisotropy
+==================================================
+
+对 wall plane 内：
+
+x-direction
+y-direction
+45-degree direction
+
+比较：
+
+parallel translation
+parallel rotation
+TR coupling
+
+连续 isotropic wall
+不应明显依赖 lattice axis。
+
+==================================================
+30. anisotropy gates
+==================================================
+
+HEX layout
+CORE_NEAR：
+
+tangential resistance anisotropy
+<=5%
+
+rotation anisotropy
+<=10%
+
+否则：
+
+ARTIFICIAL_LATTICE_ANISOTROPY =
+FAIL
+
+==================================================
+31. wall patch extent
+==================================================
+
+如果 solver
+不能使用真正 periodic wall：
+
+必须做 finite patch convergence。
+
+测试至少：
+
+patch radius / a =
+4
+6
+8
+12
+
+或等效 square extent。
+
+==================================================
+32. edge-effect gate
+==================================================
+
+用最大 patch
+作为当前 reference。
+
+要求：
+
+次大 patch
+在 target bubble 位于 patch center 时：
+
+normal TT change <=2%
+
+tangential TT <=2%
+
+RR <=5%
+
+TR <=5%
+
+否则：
+
+PATCH_NOT_CONVERGED。
+
+==================================================
+33. periodic boundary
+==================================================
+
+如果 primary tool
+支持适当 periodic hydrodynamics：
+
+可以增加：
+
+PERIODIC_PLANAR_WALL_TEST
+
+但必须确认：
+
+periodic Green's function
+与当前设置物理一致。
+
+禁止只因为 periodic
+计算更方便
+就默认其等价于无限平壁。
+
+==================================================
+34. full 6×6 resistance
+==================================================
+
+必须构造：
+
+q =
+[Vx,Vy,Vz,Ox,Oy,Oz]
+
+g =
+[Fx,Fy,Fz,Tx,Ty,Tz]
+
+满足：
+
+g = R q
+
+==================================================
+35. resistance matrix construction
+==================================================
+
+优先：
+
+6 个 prescribed rigid motions
+
+Ux
+Uy
+Uz
+Ox
+Oy
+Oz
+
+wall object velocities
+全部固定为 0。
+
+读取 target sphere：
+
+F/T response。
+
+形成：
+
+6×6 R_total。
+
+==================================================
+36. 如果工具只提供 mobility
+==================================================
+
+若 API 只有：
+
+g -> q
+
+则：
+
+构造 6×6 target effective mobility
+
+并通过稳定线性代数
+得到 resistance。
+
+必须报告：
+
+condition number
+
+不能静默 pseudo-inverse
+掩盖病态。
+
+==================================================
+37. wall excess
+==================================================
+
+计算：
+
+R_wall_excess =
+R_total
+-
+R_bulk
+
+与当前生产定义一致。
+
+==================================================
+38. reference comparison
+==================================================
+
+使用冻结：
+
+RMBW_WALL_RESISTANCE_TABLE_V0.h5
+
+同样：
+
+mu
+a
+h/a
+work-conjugate convention
+
+比较：
+
+TOTAL
+和
+EXCESS
+
+两种矩阵。
+
+==================================================
+39. matrix-action comparison
+==================================================
+
+不能只比单个 matrix entry。
+
+每个 geometry：
+
+生成：
+
+>=256
+
+deterministic random
+generalized velocity vectors
+
+比较：
+
+R_blob q
+
+vs
+
+R_RMBW q
+
+计算：
+
+matrix action relative error。
+
+==================================================
+40. planar accuracy gates
+==================================================
+
+对于 CORE_NEAR：
+
+h/a =
+0.01–0.2
+
+要求最佳“已收敛 wall representation”
+达到：
+
+normal translation error <=5%
+
+tangential translation error <=5%
+
+full matrix action error <=5%
+
+RR modes <=10%
+
+TR/RT modes <=10%
+
+==================================================
+41. ultra-near classification
+==================================================
+
+对于：
+
+0.001–0.01
+
+单独判定：
+
+ULTRA_NEAR_WALL_ACCURACY =
+
+PASS
+FAIL
+UNRESOLVED
+
+不得用 CORE_NEAR PASS
+代替 ultra-near PASS。
+
+==================================================
+42. exact feasibility classification
+==================================================
+
+如果：
+
+CORE_NEAR PASS
+
+但：
+
+ULTRA_NEAR FAIL
+
+则：
+
+FIXED_MULTIBLOB_WALL_PHYSICS =
+PASS_CORE_NEAR_ONLY
+
+不能写完整 PASS。
+
+==================================================
+43. reciprocity
+==================================================
+
+对于 effective 6×6 target resistance：
+
+检查：
+
+R approximately R^T
+
+使用当前
+work-conjugate scaled matrix。
+
+要求：
+
+normalized reciprocity error
+<=1e-8
+
+如果 solver 本身
+给更高误差，
+
+完整报告。
+
+==================================================
+44. positivity
+==================================================
+
+scaled symmetric resistance：
+
+所有 eigenvalues >0
+
+如果出现：
+
+negative eigenvalue
+
+PHYSICAL_MATRIX_VALIDITY =
+FAIL
+
+==================================================
+45. dissipation
+==================================================
+
+>=10000
+random q
+
+要求：
+
+q^T R q > 0
+
+除数值零容差外。
+
+==================================================
+46. roughness collision audit
+==================================================
+
+fixed hard-sphere wall
+存在真实几何粗糙度。
+
+必须记录：
+
+对于不同 lateral phase：
+
+target sphere
+第一次接触 wall beads
+对应的 nominal h/a。
+
+比较：
+
+bead center
+bridge
+pore。
+
+==================================================
+47. roughness amplitude
+==================================================
+
+定义并报告：
+
+EFFECTIVE_GEOMETRIC_ROUGHNESS / a
+
+包括：
+
+peak-to-valley
+RMS
+
+不能把 bead wall
+描述成数学光滑墙。
+
+==================================================
+48. leakage / hydrodynamic screening
+==================================================
+
+这是关键 audit。
+
+fixed bead wall
+可能允许 hydrodynamic transmission
+穿过孔隙。
+
+如果 solver 支持：
+
+flow evaluation points
+
+则：
+
+在 wall 两侧
+建立 probe planes，
+
+通过标准 forcing
+测量 wall-normal hydrodynamic transmission。
+
+==================================================
+49. 如果不能 evaluate fluid velocity
+==================================================
+
+如果工具不能直接输出 field velocity，
+
+建立：
+
+UPPER_TEST_PARTICLE
+LOWER_PASSIVE_PROBE_PARTICLE
+
+分别置于 wall 两侧。
+
+对上方 test particle
+施加小力。
+
+记录下方 probe
+induced velocity / mobility。
+
+作为：
+
+CROSS_WALL_HYDRODYNAMIC_TRANSMISSION
+proxy。
+
+==================================================
+50. leakage convergence
+==================================================
+
+比较：
+
+1 layer
+2 layers
+3 layers
+
+beta refinement。
+
+理想趋势：
+
+wall refinement
++
+more layers
+
+应使 cross-wall transmission
+显著下降。
+
+如果不下降：
+
+LEAKAGE_CONTROL =
+FAIL。
+
+==================================================
+51. leakage 不得偷偷靠无限厚 wall 解决
+==================================================
+
+如果需要：
+
+几十层 wall spheres
+
+才能获得合理 screening，
+
+必须如实报告：
+
+COMPUTATIONALLY_IMPRACTICAL。
+
+==================================================
+52. wall-wall lubrication problem audit
+==================================================
+
+如果使用 hard sphere
+Stokesian Dynamics：
+
+特别检查：
+
+相邻固定 wall spheres
+之间的 lubrication branch。
+
+因为：
+
+touching / near-touching
+fixed spheres
+
+可能造成：
+
+singular resistance
+ill-conditioning
+unnecessary wall-wall lubrication cost。
+
+==================================================
+53. 不得隐藏 wall-wall singularity
+==================================================
+
+报告：
+
+minimum wall-wall gap
+pair lubrication regularization
+condition number
+iteration count
+
+如果必须：
+
+disable wall-wall lubrication
+
+才能运行，
+
+必须单独验证
+这是否改变 target sphere response。
+
+==================================================
+54. synthetic curved wall stage
+==================================================
+
+只有在：
+
+PLANAR_CORE_NEAR =
+PASS
+
+以后才进入 curved wall。
+
+否则：
+
+CURVED_STAGE =
+NOT_RUN_PLANAR_GATE_FAILED
+
+==================================================
+55. CYLINDER geometry
+==================================================
+
+第一种曲面：
+
+smooth circular cylinder
+
+target sphere 位于：
+
+inside cylinder lumen。
+
+测试：
+
+R_cyl / a =
+
+2
+3
+5
+10
+20
+
+==================================================
+56. cylinder wall discretization
+==================================================
+
+用同一个：
+
+wall generation rule
+
+把 beads/blobs
+放在 cylinder surface。
+
+禁止：
+
+每个 R/a
+单独人工调参。
+
+==================================================
+57. cylinder self-convergence
+==================================================
+
+对每个 R/a：
+
+至少两级 beta refinement。
+
+比较：
+
+6×6 effective resistance。
+
+没有独立 exact truth 时：
+
+只允许：
+
+SELF_CONVERGENCE = PASS
+
+不得：
+
+CURVED_PHYSICS_EXACT = PASS
+
+==================================================
+58. flat-wall limit
+==================================================
+
+随着：
+
+R_cyl/a -> large
+
+cylinder result
+应趋近：
+
+RMBW flat wall。
+
+重点验证：
+
+R/a =
+10
+20
+
+==================================================
+59. curvature sensitivity
+==================================================
+
+输出：
+
+R_cylinder
+/
+R_flat
+
+vs：
+
+a/R_cylinder
+
+分别：
+
+normal
+tangential
+RR
+TR。
+
+==================================================
+60. second synthetic curved geometry
+==================================================
+
+如果资源允许：
+
+SPHERICAL_CAVITY
+
+测试：
+
+concave curved wall。
+
+这样可以区分：
+
+convex/concave
+curvature response。
+
+==================================================
+61. 真实 vascular STL stage
+==================================================
+
+只有：
+
+PLANAR PASS
++
+CYLINDER SELF-CONVERGED
+
+才允许 real STL pilot。
+
+==================================================
+62. real STL
+==================================================
+
+使用冻结：
+
+vascular STL
+
+SHA256 =
+840da5e1c43ec31ac70ec781cbf75b32940bc73538b5dba83c58af1ddf5e36fb
+
+不得修改 STL。
+
+==================================================
+63. 不做整个 STL 全铺墙生产仿真
+==================================================
+
+本轮只做：
+
+STATIC PILOT
+
+优先从真实 STL
+选择：
+
+10–20 个 representative patches。
+
+包括：
+
+previous local-plane invalid regions
+
+low curvature
+moderate curvature
+high curvature
+bifurcation vicinity。
+
+==================================================
+64. patch extraction
+==================================================
+
+每个 real patch：
+
+保留真实三角几何。
+
+根据统一 wall discretization rule：
+
+生成 fixed blobs。
+
+不得手工调整某个 patch
+以让结果好看。
+
+==================================================
+65. real patch output
+==================================================
+
+每个 site
+输出：
+
+bubble center
+nearest wall point
+local normal
+previous RMS/a
+previous P95 normal spread
+
+blob count
+blob radius
+blob spacing
+layers
+
+6×6 effective resistance
+condition number
+solve time
+
+==================================================
+66. real local-plane comparison
+==================================================
+
+对于真实 patch：
+
+同时计算：
+
+R_blob_curved
+
+和：
+
+R_RMBW_local_plane
+
+但 RMBW 这里只是 comparison，
+
+不是 truth。
+
+输出：
+
+relative matrix difference
+
+vs：
+
+previous local-plane validity metrics。
+
+==================================================
+67. 这是非常重要的数据
+==================================================
+
+目标是回答：
+
+previous RMS/a
+P95 normal spread
+
+到底是否真的对应
+显著 hydrodynamic error。
+
+不能再仅凭几何 gate
+猜测。
+
+==================================================
+68. performance audit
+==================================================
+
+必须测：
+
+wall object count
+matrix assembly time
+factorization/precondition time
+per-query solve time
+memory
+iterations
+
+==================================================
+69. benchmark sizes
+==================================================
+
+至少：
+
+N_wall ≈
+100
+500
+1000
+2000
+
+如可承受：
+
+5000
+10000
+
+不要为了达到数字
+造成数小时无意义运行。
+
+==================================================
+70. fixed-wall reuse
+==================================================
+
+重点研究：
+
+wall geometry 不随时间变化
+
+因此：
+
+wall-wall operator
+是否能够：
+
+cache
+precompute
+factorize
+precondition once
+
+然后多次复用。
+
+==================================================
+71. repeated-query benchmark
+==================================================
+
+同一个 fixed wall：
+
+移动 target bubble
+到 >=100 个位置。
+
+比较：
+
+FIRST_QUERY_COST
+
+和：
+
+REUSED_QUERY_COST。
+
+==================================================
+72. online performance comparison
+==================================================
+
+与当前：
+
+bubble-bubble resistance solver
+
+做 wall-clock 对比。
+
+至少报告：
+
+cost per accepted particle step
+
+或：
+
+cost per static 6×6 query
+
+归一化为：
+
+FIXED_WALL_COST /
+CURRENT_PARTICLE_SOLVER_COST
+
+==================================================
+73. 不凭感觉判断“快”
+==================================================
+
+最终必须给：
+
+measured timings
+
+而不是：
+
+“应该可以很快”。
+
+==================================================
+74. online classification
+==================================================
+
+输出：
+
+ONLINE_TIMESTEP_FEASIBILITY =
+
+YES
+NO
+UNVERIFIED
+
+并写明：
+
+particle count
+wall count
+hardware
+solver settings。
+
+==================================================
+75. offline reference classification
+==================================================
+
+即使：
+
+ONLINE_TIMESTEP_FEASIBILITY = NO
+
+只要物理收敛好，
+
+仍可判：
+
+OFFLINE_CURVED_REFERENCE_FEASIBILITY =
+YES
+
+这也是有价值的结果。
+
+==================================================
+76. GPU
+==================================================
+
+本轮：
+
+CORRECTNESS FIRST
+
+如果 primary tool
+原生支持 GPU：
+
+允许做 smoke / benchmark。
+
+禁止：
+
+为了性能
+修改物理或降低精度。
+
+==================================================
+77. 真实 flow field 不参与主要 audit
+==================================================
+
+本轮无需 Palabos frozen flow
+即可完成主要 mobility tests。
+
+不要为了“看起来完整”
+加入不必要的真实流场长跑。
+
+==================================================
+78. technical dynamic smoke
+==================================================
+
+如果静态 planar tests PASS，
+
+做一个非常短：
+
+TECHNICAL_DYNAMIC_SMOKE
+
+内容：
+
+target sphere
+受 constant technical force
+
+在 fixed bead wall 上方
+平行滑动/靠近。
+
+目的仅：
+
+验证 repeated mobility solve。
+
+不是最终科学轨迹。
+
+==================================================
+79. 不做 adhesion
+==================================================
+
+ADHESION =
+OFF
+
+BUOYANCY =
+OFF
+
+LIFT =
+OFF
+
+RBC =
+OFF
+
+TWO_WAY_PALABOS_COUPLING =
+OFF
+
+==================================================
+80. independent Python finalizer
+==================================================
+
+建立：
+
+finalize_fixed_multiblob_wall_audit.py
+
+必须独立重算：
+
+free-space scaling
+RMBW comparison
+matrix action errors
+reciprocity
+eigenvalues
+dissipation
+phase spread
+anisotropy
+patch convergence
+roughness metrics
+leakage metrics
+cylinder convergence
+timing summaries
+
+不得只读取 solver
+已经写好的 PASS 标签。
+
+==================================================
+81. primary data file
+==================================================
+
+生成：
+
+FIXED_MULTIBLOB_WALL_AUDIT.h5
+
+保存：
+
+all geometries
+blob coordinates
+bubble states
+6×6 matrices
+forces
+velocities
+torques
+errors
+timings
+metadata
+
+==================================================
+82. CSV summaries
+==================================================
+
+至少：
+
+PLANAR_CONVERGENCE.csv
+
+LATERAL_PHASE_SENSITIVITY.csv
+
+ANISOTROPY.csv
+
+LEAKAGE_SCREENING.csv
+
+MATRIX_PROPERTIES.csv
+
+CYLINDER_CURVATURE.csv
+
+REAL_STL_PATCH_AUDIT.csv
+
+PERFORMANCE_SCALING.csv
+
+==================================================
+83. VIS 1
+==================================================
+
+VIS_WALL_DISCRETIZATION.png
+
+显示：
+
+side view
+top view
+
+square
+hex
+
+1/2/3 layers
+
+并标：
+
+a
+a_w
+spacing
+nominal plane。
+
+==================================================
+84. VIS 2
+==================================================
+
+VIS_PLANAR_NORMAL_CONVERGENCE.png
+
+x：
+
+h/a log
+
+y：
+
+normalized normal resistance
+
+显示：
+
+RMBW
+不同 beta
+不同 layer count。
+
+==================================================
+85. VIS 3
+==================================================
+
+VIS_PLANAR_TANGENTIAL_ROTATION.png
+
+显示：
+
+tangential TT
+RR parallel
+RR normal
+TR
+
+vs h/a。
+
+==================================================
+86. VIS 4
+==================================================
+
+VIS_MATRIX_ACTION_ERROR.png
+
+x：
+
+h/a
+
+y：
+
+matrix action relative error
+
+不同 beta。
+
+标出：
+
+5%
+10%
+
+engineering gates。
+
+==================================================
+87. VIS 5
+==================================================
+
+VIS_LATERAL_PHASE_SENSITIVITY.png
+
+以 unit cell
+显示 bubble XY position
+
+颜色：
+
+normal resistance error
+
+另输出：
+
+tangential
+TR
+
+至少作为 supplementary panels/files。
+
+==================================================
+88. VIS 6
+==================================================
+
+VIS_ARTIFICIAL_ANISOTROPY.png
+
+比较：
+
+0°
+45°
+90°
+
+tangential resistance
+rotation
+TR。
+
+==================================================
+89. VIS 7
+==================================================
+
+VIS_WALL_ROUGHNESS_AND_CONTACT.png
+
+显示：
+
+wall beads
+nominal wall
+bubble positions
+
+bead-center
+bridge
+pore
+
+以及：
+
+first-contact nominal h/a。
+
+==================================================
+90. VIS 8
+==================================================
+
+VIS_LEAKAGE_SCREENING.png
+
+显示：
+
+cross-wall transmission
+
+vs：
+
+beta
+layers
+spacing。
+
+==================================================
+91. VIS 9
+==================================================
+
+VIS_MATRIX_PROPERTIES.png
+
+显示：
+
+reciprocity error
+minimum eigenvalue
+condition number
+
+vs h/a。
+
+==================================================
+92. VIS 10
+==================================================
+
+VIS_CYLINDER_CURVATURE.png
+
+显示：
+
+curved bead wall
+target bubble
+
+以及：
+
+R_curved/R_flat
+vs a/R。
+
+==================================================
+93. VIS 11
+==================================================
+
+VIS_REAL_STL_BLOB_PATCHES.png
+
+真实 vascular STL
+代表性 patch
+
+显示：
+
+STL surface
+fixed blobs
+bubble
+nearest point。
+
+==================================================
+94. VIS 12
+==================================================
+
+VIS_PERFORMANCE_SCALING.png
+
+x：
+
+N_wall
+
+y：
+
+assembly time
+solve time
+memory
+
+必要时分多个独立图片，
+不要错误使用双 y-axis。
+
+==================================================
+95. ParaView
+==================================================
+
+生成：
+
+PLANAR_WALL_BLOBS.vtp
+
+CYLINDER_WALL_BLOBS.vtp
+
+REAL_STL_WALL_BLOBS.vtp
+
+REAL_STL_SAMPLE_BUBBLES.vtp
+
+point data：
+
+object_type
+blob_radius
+layer
+patch_id
+bubble_id
+gap
+matrix_error
+validity flags。
+
+==================================================
+96. visualization integrity
+==================================================
+
+生成：
+
+VISUALIZATION_PROVENANCE.json
+
+包含：
+
+source script SHA
+data SHA
+PNG SHA
+VTP SHA
+
+HUMAN_VISUAL_REVIEW =
+PENDING
+
+==================================================
+97. 结果分类
+==================================================
+
+最终不要只给一个 PASS/FAIL。
+
+必须分别输出：
+
+TOOL_CAPABILITY
+
+PLANAR_CONTINUOUS_WALL_APPROXIMATION
+
+CORE_NEAR_WALL_ACCURACY
+
+ULTRA_NEAR_WALL_ACCURACY
+
+LATERAL_PHASE_INVARIANCE
+
+LATTICE_ISOTROPY
+
+LEAKAGE_CONTROL
+
+CURVED_WALL_SELF_CONVERGENCE
+
+REAL_STL_STATIC_FEASIBILITY
+
+ONLINE_TIMESTEP_FEASIBILITY
+
+OFFLINE_REFERENCE_FEASIBILITY
+
+==================================================
+98. overall status rules
+==================================================
+
+情况 A：
+
+如果：
+
+planar core accuracy PASS
+phase PASS
+anisotropy PASS
+leakage PASS
+curved self-convergence PASS
+online cost reasonable
+
+则：
+
+FIXED_MULTIBLOB_WALL_FEASIBILITY_AUDIT =
+PASS_ONLINE_CANDIDATE
+
+==================================================
+99. 情况 B
+==================================================
+
+如果：
+
+physics PASS
+
+但：
+
+online computation too expensive
+
+则：
+
+FIXED_MULTIBLOB_WALL_FEASIBILITY_AUDIT =
+PASS_OFFLINE_REFERENCE_ONLY
+
+==================================================
+100. 情况 C
+==================================================
+
+如果：
+
+CORE_NEAR PASS
+
+但：
+
+ULTRA_NEAR fails
+
+则：
+
+FIXED_MULTIBLOB_WALL_FEASIBILITY_AUDIT =
+PASS_CORE_NEAR_ONLY
+
+并明确：
+
+NOT_VALIDATED_FOR_NEAR_CONTACT_ADHESION
+
+==================================================
+101. 情况 D
+==================================================
+
+如果：
+
+planar wall
+无法随 refinement
+稳定逼近 RMBW
+
+或：
+
+phase dependence
+无法降低
+
+或：
+
+leakage
+无法控制
+
+则：
+
+FIXED_MULTIBLOB_WALL_FEASIBILITY_AUDIT =
+FAIL_WALL_REPRESENTATION
+
+==================================================
+102. 情况 E
+==================================================
+
+如果：
+
+开源工具本身
+无法执行要求的 mixed rigid-body problem
+
+则：
+
+FIXED_MULTIBLOB_WALL_FEASIBILITY_AUDIT =
+BLOCKED_TOOL_CAPABILITY
+
+==================================================
+103. 禁止科学过度解释
+==================================================
+
+即使 cylinder / real STL
+self-convergence 很好，
+
+没有独立 curved-wall reference 时：
+
+不得：
+
+CURVED_WALL_PHYSICS_EXACT = PASS
+
+只能：
+
+CURVED_WALL_SELF_CONVERGENCE = PASS
+
+==================================================
+104. 可能的下一阶段
+==================================================
+
+根据结果：
+
+PASS_ONLINE_CANDIDATE
+→ NEXT_STAGE =
+FIXED_MULTIBLOB_WALL_PRODUCTION_PROTOTYPE_V0
+
+PASS_OFFLINE_REFERENCE_ONLY
+→ NEXT_STAGE =
+CURVED_WALL_REFERENCE_DATABASE_V0
+
+PASS_CORE_NEAR_ONLY
+→ NEXT_STAGE =
+ULTRA_NEAR_WALL_LUBRICATION_HYBRID_AUDIT
+
+FAIL_WALL_REPRESENTATION
+→ NEXT_STAGE =
+BEM_CURVED_WALL_FEASIBILITY_AUDIT
+
+BLOCKED_TOOL_CAPABILITY
+→ NEXT_STAGE =
+ALTERNATIVE_MULTIBLOB_TOOL_AUDIT
+
+==================================================
+105. 不自动进入 next stage
+==================================================
+
+所有情况：
+
+NEXT_STAGE =
+RECOMMENDED_ONLY
+
+不得自动执行。
+
+等待用户审阅。
+
+==================================================
+106. 工作目录
+==================================================
+
+本地：
+
+/home/lzy/projects/fixed_multiblob_wall_feasibility_audit_<timestamp>
+
+远端：
+
+/workspace/microbubble_lammps/work/fixed_multiblob_wall_audit_<timestamp>
+
+远端结果：
+
+/workspace/microbubble_lammps/results/fixed_multiblob_wall_audit_<timestamp>
+
+本地归档：
+
+/home/lzy/projects/compre_output/fixed_multiblob_wall_feasibility_audit/<timestamp>
+
+==================================================
+107. 资源原则
+==================================================
+
+优先：
+
+small deterministic tests
+
+再：
+
+resolution sweep
+
+最后才：
+
+real STL pilot。
+
+如果 coarse tests
+已经明确 FAIL，
+
+禁止浪费大量 GPU/CPU
+继续跑最细模型。
+
+==================================================
+108. 可复现性
+==================================================
+
+所有：
+
+random seeds
+wall lattices
+bubble positions
+parameter grids
+
+运行前冻结。
+
+生成：
+
+FIXED_MULTIBLOB_WALL_FEASIBILITY_CONTRACT.json
+
+==================================================
+109. SHA
+==================================================
+
+生成：
+
+SHA256SUMS
+
+远端下载后：
+
+sha256sum -c
+
+要求：
+
+REMOTE_TO_WSL_INTEGRITY =
+PASS
+
+==================================================
+110. 中文主报告
+==================================================
+
+生成：
+
+FIXED_MULTIBLOB_WALL_FEASIBILITY_AUDIT_REPORT.md
+
+开头必须用门外汉语言解释：
+
+“这个方法不是把弯曲血管壁
+强行当成平面。
+
+它用很多固定不动的
+数值小球/水动力 blob
+沿真实墙面排列。
+
+如果这些固定点足够密，
+它们可能共同表现得像
+连续的 no-slip wall。
+
+本轮首先用平面墙
+与已经验证的 RMBW 对照，
+检查这种离散墙是否真的
+趋近连续墙；
+只有平墙通过后，
+才测试曲壁和真实 vascular STL。”
+
+==================================================
+111. 报告必须回答的核心问题
+==================================================
+
+报告第一页必须直接回答：
+
+1.
+flat blob wall
+是否收敛到 RMBW？
+
+2.
+需要的 beta / spacing / layers 是什么？
+
+3.
+lateral phase sensitivity 多大？
+
+4.
+artificial anisotropy 多大？
+
+5.
+hydrodynamic leakage 能否控制？
+
+6.
+ultra-near h/a=0.001–0.01
+是否可靠？
+
+7.
+cylinder curvature test
+是否自收敛？
+
+8.
+真实 STL patch
+是否可以稳定构造？
+
+9.
+在线每 timestep
+是否实际可承受？
+
+10.
+推荐：
+online
+offline reference
+hybrid
+还是 abandon？
+
+==================================================
+112. 最终终端摘要
+==================================================
+
+输出：
+
+FIXED_MULTIBLOB_WALL_FEASIBILITY_AUDIT =
+
+PRIMARY_IMPLEMENTATION =
+
+PRIMARY_REPO =
+
+PRIMARY_COMMIT =
+
+PRIMARY_LICENSE =
+
+SECONDARY_IMPLEMENTATION =
+
+WALL_REPRESENTATION =
+FIXED_HARD_SPHERES /
+REGULARIZED_BLOBS /
+OTHER
+
+RMBW_REFERENCE_SHA256 =
+71e62ef6bc22edc66ae0c4d1dcc224378c2f6c5d3848578f3fbedd2cd9a43f98
+
+FREE_SPACE_TRANSLATION =
+FREE_SPACE_ROTATION =
+
+PLANAR_CONTINUOUS_WALL_APPROXIMATION =
+
+SELECTED_LAYOUT =
+
+SELECTED_BETA =
+
+SELECTED_SPACING_RATIO =
+
+SELECTED_LAYER_COUNT =
+
+PATCH_CONVERGENCE =
+
+CORE_NEAR_WALL_RANGE =
+0.01–0.2
+
+CORE_NEAR_MAX_NORMAL_ERROR =
+
+CORE_NEAR_MAX_TANGENTIAL_ERROR =
+
+CORE_NEAR_MAX_MATRIX_ACTION_ERROR =
+
+CORE_NEAR_MAX_RR_ERROR =
+
+CORE_NEAR_MAX_TR_ERROR =
+
+ULTRA_NEAR_RANGE =
+0.001–0.01
+
+ULTRA_NEAR_WALL_ACCURACY =
+
+MAX_LATERAL_PHASE_SPREAD =
+
+LATERAL_PHASE_INVARIANCE =
+
+MAX_TANGENTIAL_ANISOTROPY =
+
+LATTICE_ISOTROPY =
+
+GEOMETRIC_ROUGHNESS_OVER_A =
+
+LEAKAGE_METRIC =
+
+LEAKAGE_CONTROL =
+
+MAX_RECIPROCITY_ERROR =
+
+MIN_SCALED_EIGENVALUE =
+
+MAX_CONDITION_NUMBER =
+
+DISSIPATION =
+
+CYLINDER_TEST =
+
+CYLINDER_R_OVER_A_TESTED =
+
+CURVED_WALL_SELF_CONVERGENCE =
+
+REAL_STL_PATCHES_TESTED =
+
+REAL_STL_STATIC_FEASIBILITY =
+
+MAX_WALL_OBJECT_COUNT_TESTED =
+
+FIRST_QUERY_TIME_S =
+
+REUSED_QUERY_TIME_S =
+
+MEMORY_GB =
+
+ONLINE_TIMESTEP_FEASIBILITY =
+
+OFFLINE_REFERENCE_FEASIBILITY =
+
+GPU_BACKEND_TESTED =
+
+INDEPENDENT_FINALIZER =
+
+VISUALIZATION_GENERATION =
+
+HUMAN_VISUAL_REVIEW =
+PENDING
+
+PALABOS_BASELINE_MODIFIED =
+NO
+
+LAMMPS_CORE_MODIFIED =
+NO
+
+CURRENT_WALL_V0_MODIFIED =
+NO
+
+RMBW_SOURCE_MODIFIED =
+NO
+
+ADHESION =
+OFF
+
+RBC =
+OFF
+
+BUOYANCY =
+OFF
+
+LIFT =
+OFF
+
+REMOTE_TO_WSL_INTEGRITY =
+
+REPORT =
+
+LOCAL_RESULT_DIR =
+
+NEXT_STAGE =
+RECOMMENDED_ONLY

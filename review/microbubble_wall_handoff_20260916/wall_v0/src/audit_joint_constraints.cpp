@@ -1,0 +1,4 @@
+#include "wall_model.hpp"
+#include <iostream>
+#include <iomanip>
+int main(int argc,char**argv){using namespace rigid;double a=9.683592065545495e-7,h=.0001*a,sep=2*a+.0001*a/2,dt=.001;std::vector<Particle>p={{1,0,{-sep/2,0,a+h},a},{2,0,{sep/2,0,a+h},a}};std::vector<Background>b(2);b[0].du={.005,0,-.005};b[1].du={-.005,0,-.005};wallv0::WallResistanceLookup lookup(argv[1]);std::vector<WallBlock>w;auto Q=wallv0::frame({0,0,1});for(int i=0;i<2;i++)w.push_back({i,0,lookup.global_excess(a,.001,h,Q),{0,0,1},h,true});std::vector<std::pair<int,int>>pairs={{0,1}};auto s=solve(p,b,pairs,&p,dt,&w);std::cout<<std::setprecision(17)<<"{\"q\":[";for(size_t k=0;k<s.q.size();k++)std::cout<<(k?",":"")<<s.q[k];std::cout<<"],\"wall_constraints\":"<<s.wall_constraints.size()<<",\"total_constraints\":"<<s.constraints.size()<<",\"residual\":"<<s.residual<<"}\n";}
