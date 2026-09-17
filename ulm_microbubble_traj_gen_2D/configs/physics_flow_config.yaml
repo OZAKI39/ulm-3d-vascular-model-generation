@@ -1,0 +1,205 @@
+﻿# Default configuration for field-based microbubble transport.
+# The generator reads an exported DCCO vessel model, solves a DOLFINx field,
+# and advances bubbles with near-wall FEM / far-field Cartesian sampling.
+
+# Numerical reproducibility key for counter-based particle stochastic transport.
+random_seed: 42
+
+input:
+  # The trajectory entry point selects the newest validated planar_2d run
+  # below this generator output root.
+  model_dir: ulm_vascular_model_generator/vessel_swc_models
+
+output:
+  results_dir: results
+  timestamp_format: "%Y%m%d_%H%M%S"
+  save_run_config: true
+  save_npz: true
+
+domain:
+  grid_spacing_um: 0.8                  
+  padding_um: 80.0
+  min_lumen_radius_cells: 0.5
+  min_resolved_diameter_cells: 10.0
+  max_grid_cells: 50000000
+  # Keep the continuous polygon unchanged while avoiding unnecessary 1 um
+  # subdivision of its straight wall edges before Gmsh meshing.
+  continuous_boundary_maximum_element_length_um: 4.0
+
+field:
+  # Boundary-fitted Gmsh mesh + DOLFINx Taylor-Hood steady Stokes solve.
+  # For a planar_2d generator result, generate_microbubble_trajectories.py
+  # replaces this seed value with the inlet-area-equivalent depth
+  #   h_eq = sum(pi*R_in^2) / sum(2*R_in).
+  # This preserves total exported flow and makes the planar inlet mean velocity
+  # agree with the source circular-tube mean velocity.  The resolved value is
+  # saved in run_config.yaml.  volumetric_3d inputs never use this 2-D setting.
+  effective_thickness_um: 1.0
+  boundary_depth_cells: 1.5
+  flux_tolerance: 1.0e-3
+  kinematic_viscosity_um2_s: 3.0e6
+  blood_density_kg_m3: 1060.0
+
+  # A value of 0 selects an automatic size from domain.grid_spacing_um.
+  gmsh_bulk_mesh_size_um: 2.5
+  gmsh_wall_mesh_size_um: 2.0
+  gmsh_wall_refinement_distance_um: 1.0
+  gmsh_element_order: 1
+  dolfinx_velocity_degree: 2
+  dolfinx_pressure_degree: 1
+  dolfinx_ksp_rtol: 1.0e-7
+
+  # Hybrid particle velocity regions are measured from the continuous wall to
+  # the particle centre. DOLFINx is used below 2 um, the Cartesian cache above
+  # 4 um, and a smooth blend across the 2 um transition band.
+  hybrid_finite_element_distance_um: 2.25
+  hybrid_transition_width_um: 2.0
+
+
+particles:
+  # Physical microbubble number concentration. 
+  # Typical requested conditions were 5e5 or 1e6 MB/mL; keep this value aligned with the intended experiment.
+  inlet_number_concentration_mb_per_ml: 1000000000.0
+  n_steps: 2000
+  # Saved-frame interval. The mobility model divides this interval into internal substeps below.
+  dt_s: 0.001
+  # The deterministic low-discrepancy inlet sequence maps every permanent ID to
+  # one immutable diameter in this inclusive uniform-distribution range.
+  bubble_diameter_min_um: 1.5
+  bubble_diameter_max_um: 3.0
+  # The only exact-gap tolerance. V15 uses it solely for endpoint residual projection and never accepts a negative gap.
+  contact_geometry_tolerance_um: 0.0015
+  # A failed curved-wall solve halves real physical time; exhaustion raises an error instead of silently freezing a bubble.
+  contact_max_time_refinements: 12
+  # Marks near-wall/contact observations without excluding them from the lumen.
+  wall_contact_threshold_um: 0.15
+  # 0 derives the unique-ID capacity from the deterministic perfusion schedule.
+  max_unique_bubbles: 0
+  # Guard against accidentally allocating an excessively large full trajectory history.
+  max_particle_frame_records: 5000000
+  # auto prefers the installed Numba CPU backend and keeps a NumPy fallback.
+  acceleration_backend: auto
+
+particle_dynamics:
+  # The position-, radius-, viscosity-, and wall-gap-dependent mobility model is
+  # now the only public particle transport model.
+  # Euler is the validated baseline; strict Heun remains selectable and recomputes predicted-state collisions.
+  time_integrator: euler
+  # Recompute mobility, collisions, rotation, and geometry this many times between saved frames.
+  # 80 gives an internal particle step of 1.25e-5 s while preserving the 1 ms output cadence.
+  integration_substeps: 50
+  near_wall_enabled: true
+  collisions_enabled: true
+  # Engineering transition parameters for blending the Goldman near-wall asymptotics into free-space mobility.
+  xi_min: 1.0e-3
+  xi_near: 0.1
+  xi_far: 1.0
+  # The collision layer is an explicit engineering parameter, not a value reported by the reference paper.
+  collision_layer_um: 0.05
+  # Keep this fixed during substep-convergence studies; it is a physical-model relaxation scale.
+  collision_relaxation_time_s: 0.01
+  # auto keeps the all-pairs reference path for small populations and switches
+  # to the deterministic sparse cell list when enough bubbles are active.
+  neighbor_search: auto
+  # Long formal runs keep only core trajectory/RBC fields by default.
+  store_full_diagnostics: false
+  # Hydrodynamic warning only; v15 independently rejects verified simultaneous contact with distinct solid walls.
+  two_wall_warning_gap_ratio: 1.0
+
+cardiac_pulsatility:
+  # Disabled for the formal trajectory-generation workflow. The accepted steady
+  # CFD field, inlet flux, velocity gradients, and wall shear remain unmodulated.
+  enabled: false
+  # Retained only as dormant legacy documentation; the formal workflow does not build this waveform.
+  waveform: synthetic_ecg_envelope
+  bpm: 300.0
+  # Retarded phase uses root-path distance divided by this physical propagation speed.
+  pulse_propagation_velocity_um_s: 25000.0
+  # Fraction of one cardiac period already elapsed at formal simulation time zero.
+  initial_phase_fraction: 0.0
+  # A single compact cycle is interpolated continuously at every internal particle stage.
+  waveform_samples_per_cycle: 2048
+  # Keep the accepted steady field and inlet concentration equal to cycle-mean values.
+  preserve_cycle_mean_flow: true
+  # Zero is an additional defensive steady-flow setting.
+  modulation_strength: 0.0
+
+red_blood_cell_transport:
+  # Revised v19 uses this as its only configurable physiological input.
+  # The RBC major diameter used for the mechanism switch is fixed at 8 um.
+  root_discharge_hematocrit: 0.35
+
+molecular_target_selection:
+  # manual keeps the interactive vessel-bed picker. automatic creates a reproducible
+  # spatially heterogeneous synthetic target; it does not diagnose a tumour.
+  default_mode: manual
+  # Required only for automatic mode. This controls the coarse physical influence region;
+  # its accessible endothelial wall area is measured against the complete network area.
+  influence_region_endothelial_wall_area_fraction: 0.10
+  # Fraction of accessible wall inside the influence region that becomes target-positive.
+  target_positive_wall_fraction_within_influence: 0.35
+  # Physical correlation length of target-positive patches in micrometres.
+  target_correlation_length_um: 7.5
+  # The seed identifies one reproducible spatial realization; it is not a biological value.
+  random_seed: 42
+  # Numerical random-Fourier resolution. It does not set biological patch size.
+  random_field_modes: 512
+
+molecular_target:
+  # Disabled preserves the pre-v7 transport behaviour and creates no target-positive wall.
+  enabled: true
+  # The frozen v16 target is defined directly on the continuous closed vessel
+  # wall. Root and terminal openings are never molecular targets.
+  region_mode: mask_npz
+  mask_npz_path: 'E:/ULM/hatimb-particle_flow_simulator/ulm_microbubble_traj_gen/results/20260730_120430/selected_molecular_target_mask.npz'
+  mask_array_key: target_mask
+  x_coordinates_key: x_um
+  z_coordinates_key: z_um
+  # Baseline sLeX:E-selectin target density: 270 molecule/um^2.
+  target_density_molecules_per_m2: 540000000000000.0
+
+molecular_binding:
+  # Formal single-pair sLeX:E-selectin mean-field binding configuration.
+  enabled: true
+  model: deterministic_mean_field
+
+  # Every unit is part of the key name to prevent accidental use of paper values
+  # reported in incompatible units.
+  # Baseline bubble ligand density: 100 molecule/um^2.
+  ligand_density_molecules_per_m2: 400000000000000.0
+  # The 43.5 nm capture range is 1.5 times the 29 nm unstretched bond length.
+  capture_distance_um: 0.15
+  rest_length_um: 0.12
+
+  # Effective two-surface baseline for Da_on=1, rho_T=270 molecule/um^2,
+  # and the predeclared 1 s reference scale. It is not the paper's s^-1 rate.
+  association_rate_m2_per_molecule_s: 1.111111111111111e-14
+  zero_force_dissociation_rate_s: 0.012
+  bond_stiffness_pn_per_um: 200.0
+  reactive_compliance_nm: 0.039
+  temperature_k: 310.0
+
+  # This is only a warning level for mean-field validity, not a physical binding threshold.
+  mean_field_warning_count: 10.0
+
+  # Numerical overflow guard for the Bell exponential; it is not a fitted kinetic parameter.
+  bell_exponent_limit: 80.0
+
+binding_scenario_sweep:
+  # Optional no-experiment sensitivity study. The contact pilot reports exposure
+  # only; k_on is defined from a reference time fixed before the transport run.
+  enabled: false
+  # Required and positive when enabled. This is a declared scenario scale, not
+  # an observed contact duration from the same simulation.
+  da_on_reference_time_s: 0.0
+  da_on_levels: []
+  capture_distance_to_rest_length_ratios: []
+  target_density_molecules_per_um2_levels: []
+  ligand_density_molecules_per_um2_levels: []
+
+quick_test:
+  enabled: false
+  grid_spacing_um: 8.0
+  n_steps: 40
+  dt_s: 0.001
+  integration_substeps: 2

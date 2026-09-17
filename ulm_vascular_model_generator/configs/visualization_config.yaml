@@ -1,0 +1,125 @@
+# ULM vascular SWC visualization configuration.
+# Paths can be absolute, or relative to ulm_vascular_model_generator/.
+
+input:
+  # Folder containing generated SWC files.
+  swc_dir: vessel_swc_models
+
+  # SWC file to visualize.
+  # Use null to automatically select the newest .swc file in swc_dir.
+  # You may also use a file name, e.g. ulm_xz_planar_dcco_tree_seed_105.swc.
+  swc_file: null
+
+output:
+  # Folder for visualization outputs when visualize_vessel_swc.py does not
+  # provide its explicit RESULT_FOLDER override.
+  result_dir: vessel_swc_models/vis_results
+
+  # Save the planar publication PNG and a separate PNG matching the PyVista
+  # popup window. The latter automatically uses the _pyvista_view.png suffix.
+  save_screenshot: true
+
+  # Screenshot file name. Use null to auto-generate:
+  # <swc_stem>_planar_xz_publication.png
+  # A planar publication PNG is accompanied by vector PDF/SVG files and a
+  # ready-to-edit caption text file.
+  screenshot_name: null
+
+  # Export a reusable 3D mesh file.
+  # .vtp is recommended for ParaView/PyVista; .ply is also supported by PyVista.
+  export_mesh: true
+
+  # Mesh file name. Use null to auto-generate:
+  # <swc_stem>_<radius_style>_publication.vtp
+  mesh_name: null
+
+render:
+  # Radius rendering style:
+  # cylindrical: each SWC edge is rendered as a constant-radius cylinder using
+  #              the child node radius. This best matches the current generator
+  #              model, where each Vessel has one fixed radius.
+  # tapered:     interpolate from parent node radius to child node radius.
+  #              This resembles Vaa3D-style SWC display.
+  radius_style: cylindrical
+
+  # Number of sides used to approximate each circular vessel cross-section.
+  # Higher values are smoother but generate more mesh faces.
+  sides: 48
+
+  # Visual-only radius multiplier.
+  # Increase this if small vessels are hard to see.
+  radius_scale: 1.15
+
+  # Cylinder end caps:
+  # none:     open cylinders.
+  # terminal: cap only root inlet and terminal endpoints.
+  # all:      cap every segment end, useful for debugging but heavier visually.
+  cap_style: terminal
+
+  # Constant vessel color used when color_by_radius is false.
+  color: "#0b37b7"
+
+  # PyVista control: color mesh faces by radius_um instead of one constant
+  # color. The flat planar publication figure always uses the unambiguous
+  # fixed-line-width + radius-color scheme.
+  color_by_radius: true
+
+  # Colormap used when color_by_radius is true.
+  color_map: viridis
+
+  # Viewer background color. background_top enables a subtle vertical gradient.
+  background: "#ffffff"
+  background_top: null
+
+  # If true, show polygon edges. Useful for checking mesh quality.
+  show_edges: false
+
+  # For a constant-Y tree in the XZ view, the saved publication figure is a
+  # flat orthographic 2D map: all segments have the same line width and only
+  # color represents local radius. It also includes topology markers, flow
+  # arrows, a bifurcation inset, and radius statistics. The interactive PyVista
+  # view and exported VTP remain available for geometry inspection.
+  # This setting never changes SWC coordinates or radii.
+  publication_style: true
+
+  # Base font size for coordinate axes, color bar, scale bar, and title.
+  font_size: 32
+
+  # Restrained non-metallic material keeps the scalar colors quantitative.
+  pbr: false
+  metallic: 0.0
+  roughness: 0.48
+  ambient: 0.28
+  diffuse: 0.88
+  specular: 0.24
+  specular_power: 55.0
+  opacity: 1.0
+
+  # Scene lighting and VTK post-processing.
+  lighting: true
+  eye_dome_lighting: false
+  shadows: false
+  # Anti-aliasing mode: none, msaa, ssaa, or fxaa.
+  anti_aliasing: msaa
+
+  # Annotation controls.
+  scalar_bar: true
+  show_axes: true
+  show_title: false
+
+  # Initial camera view:
+  # xz:  top-down view for the planar ULM tree.
+  # xy, yz: orthogonal side views.
+  # iso: 3D isometric view.
+  view: xz
+
+  # Viewer or screenshot size in pixels: [width, height].
+  window_size: [3000, 2200]
+
+  # Open a resizable, zoomable PyVista window in addition to saving the
+  # publication figures. Use --no-window for unattended/headless runs.
+  show_window: true
+
+  # Render without requiring a visible window. This must be false for the
+  # interactive window; --no-window enables off-screen rendering automatically.
+  off_screen: false

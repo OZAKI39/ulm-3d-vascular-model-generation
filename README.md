@@ -58,3 +58,12 @@ The fixture inventory and SHA-256 hashes are documented in `test_data/README.md`
 SWC fixture is a derived single connected component (7,419 nodes / 7,418 edges); it is not the
 original full mouse-brain dataset. TIFF intensity and segmentation-mask data are not used as
 surface geometry and are not present here.
+
+## 2-D microbubble code and reports
+
+This branch also includes the
+[`ulm_microbubble_traj_gen_2D`](ulm_microbubble_traj_gen_2D/README.md) source,
+configuration, tests, research reports, and small static report figures, plus
+the companion vascular generator code required by its imports. Animations and
+simulation datasets are excluded. The module README documents the inventory,
+checksums, environment files, and separately required inputs.

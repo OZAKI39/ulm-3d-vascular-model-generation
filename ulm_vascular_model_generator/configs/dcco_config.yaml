@@ -1,0 +1,266 @@
+# DCCO ULM vascular tree generator configuration.
+# All distances are in micrometres unless a key name says otherwise.
+
+# ==========> ！！！Output SWC file name. The generator always writes this file under
+# a timestamp-and-seed subdirectory of ulm_vascular_model_generator/vessel_swc_models.
+# A null value produces a geometry-mode-aware file name and avoids misleading
+# "volumetric" names inside planar result folders.
+output: null
+
+config:
+  # Geometry mode: "planar_2d" keeps every centreline in one X-Z plane;
+  # "volumetric_3d" grows centrelines throughout the XYZ volume.
+  geometry_mode: planar_2d
+  # Square side length and fixed Y coordinate used by planar_2d.
+  cube_um: 1500.0
+  plane_y_um: 1500.0
+  # Three-dimensional rectangular generation domain.
+  domain_size_x_um: 3000.0
+  domain_size_y_um: 3000.0
+  domain_size_z_um: 3000.0
+  # Number of terminal vessels to generate when staged growth is disabled.
+  n_terminals: 80
+
+  # Planar and volumetric haemodynamics are configured independently.
+  # planar_2d uses flux per unit out-of-plane depth [um^2/s] and lumen
+  # half-width; volumetric_3d uses volume flow [um^3/s] and circular radius.
+  planar_murray_gamma: 2.0
+  volumetric_murray_gamma: 3.0
+  # Minimum daughter radius ratio for the bifurcation symmetry constraint.
+  delta: 0.0
+  # Minimum allowed vessel length-to-radius ratio.
+  aspect_ratio_min: 2.0
+
+  # Minimum-distance tuning factor for new terminal sampling.
+  nu: 2.0
+  # Shrink factor applied after repeated terminal sampling failures.
+  fr: 0.9
+  # Number of failed terminal samples before applying fr.
+  n_fail: 8
+  # Number of subdivisions used to discretise each bifurcation triangle side.
+  delta_v: 36
+  # Neighbourhood radius multiplier for candidate parent vessels.
+  fn_neighborhood: 20.0
+
+  # Strictly two-dimensional haemodynamics. A planar vessel is a strip with
+  # full width 2*half_width and unit out-of-plane depth.
+  planar_min_half_width_um: 0.1
+  planar_root_half_width_um: 15.0
+  planar_width_scale_mode: fixed_root_half_width
+  planar_inlet_total_flux_um2_s: 200000.0
+  planar_terminal_flux_allocation_mode: equal_terminal
+  planar_velocity_min_mm_s: 0.0
+  planar_velocity_max_mm_s: 500.0
+
+  # Strictly three-dimensional haemodynamics. A spatial vessel is a circular
+  # cylinder and carries volume flow.
+  volumetric_min_radius_um: 2.0
+  volumetric_root_radius_um: 20.0
+  volumetric_radius_scale_mode: fixed_root_radius
+  volumetric_inlet_total_flow_um3_s: 1500000.0
+  volumetric_terminal_flow_allocation_mode: equal_terminal
+  volumetric_velocity_min_mm_s: 0.0
+  volumetric_velocity_max_mm_s: 500.0
+
+  # Absolute minimum length for newly created segments.
+  min_segment_length_um: 25.0
+  # Minimum fraction of the split parent vessel that vp and vs must keep.
+  min_split_fraction: 0.30
+  # Maximum length of the new terminal segment; set 0 to disable.
+  max_terminal_segment_um: 1500.0
+  # Maximum sampling distance from the tree; set 0 to disable.
+  max_sample_distance_um: 1500.0
+
+  # ！！！Maximum daughter bend angle relative to the parent direction.
+  # Maximum daughter bend angle relative to the parent direction.
+  max_daughter_bend_deg: 30.0
+  # Minimum opening angle between two daughter vessels.
+  min_daughter_angle_deg: 30.0
+  # Minimum angle between the new terminal branch and parent direction.
+  min_new_branch_angle_deg: 25.0
+  # Minimum free gap between the surfaces of non-adjacent circular tubes.
+  min_vessel_clearance_um: 5.0   # 30.0
+  # Minimum gap between a tube surface and the rectangular domain boundary.
+  boundary_surface_clearance_um: 0.0
+  # ！！！Maximum opening angle between daughter vessels.
+  # Maximum opening angle between daughter vessels.
+  max_opening_angle_deg: 50.0
+
+  # Used only when main_trunk_enabled is false.
+  # Minimum initial root vessel length.
+  min_root_segment_um: 350.0
+  # Used only when main_trunk_enabled is false.
+  # Maximum initial root vessel length.
+  max_root_segment_um: 900.0
+  # Used in normal single-stage growth and inside each staged-growth stage.
+  # Stop generation after this many consecutive failed insertion rounds.
+  max_terminal_insert_failures: 80
+
+  # Used in all modes.
+  # Random number generator seed.
+  seed: 105
+
+  # Used in all growth modes during candidate parent/bifurcation selection.
+  # Cost function used for candidate selection: "volume" or "sprouting".
+  # The direct-flow generator has one current candidate-selection objective.
+  cost_function: sprouting
+  # Used only when cost_function is "sprouting".
+  # Weight of the volume term.
+  sprout_cv: 1.0
+  # Used only when cost_function is "sprouting".
+  # Weight of the parent-vessel degradation term.
+  sprout_cp: 1.5
+  # Used only when cost_function is "sprouting".
+  # Weight of the growth-signal diffusion term.
+  sprout_cd: 1.0
+  # Used in all growth modes to sample new terminal positions.
+  # Supported values: "uniform", "gaussian", or "gaussian_mixture".
+  terminal_distribution: gaussian
+  # Used when terminal_distribution is "gaussian" or "gaussian_mixture".
+  # Mean X coordinate for the first Gaussian terminal distribution.
+  gaussian_mean_x_um: 1500.0
+  gaussian_mean_y_um: 1500.0
+  # Used when terminal_distribution is "gaussian" or "gaussian_mixture".
+  # Mean Z coordinate for the first Gaussian terminal distribution.
+  gaussian_mean_z_um: 1500.0
+  # Used when terminal_distribution is "gaussian" or "gaussian_mixture".
+  # X standard deviation for the first Gaussian terminal distribution.
+  gaussian_sigma_x_um: 750.0
+  gaussian_sigma_y_um: 750.0
+  # Used when terminal_distribution is "gaussian" or "gaussian_mixture".
+  # Z standard deviation for the first Gaussian terminal distribution.
+  gaussian_sigma_z_um: 750.0
+  # Used only when terminal_distribution is "gaussian_mixture".
+  # Mean X coordinate for the second Gaussian.
+  gaussian2_mean_x_um: 1500.0
+  gaussian2_mean_y_um: 1500.0
+  # Used only when terminal_distribution is "gaussian_mixture".
+  # Mean Z coordinate for the second Gaussian.
+  gaussian2_mean_z_um: 2250.0
+  # Used only when terminal_distribution is "gaussian_mixture".
+  # X standard deviation for the second Gaussian.
+  gaussian2_sigma_x_um: 450.0
+  gaussian2_sigma_y_um: 450.0
+  # Used only when terminal_distribution is "gaussian_mixture".
+  # Z standard deviation for the second Gaussian.
+  gaussian2_sigma_z_um: 450.0
+  # Used only when terminal_distribution is "gaussian_mixture".
+  # Probability of sampling from the first Gaussian.
+  gaussian_mixture_weight: 0.5
+
+  # Used in all growth modes.
+  # Region masks where neither terminals nor vessels may grow.
+  avascular_regions: []
+  # Used in all growth modes.
+  # Region masks where transport/perforator vessels may pass but terminals are rejected.
+  carriage_regions: []
+
+  # Used for newly generated non-main-trunk vessels.
+  # Branching mode assigned to generated vessels:
+  # "versatile", "fixed", "distal", or "non_branching".
+  default_branching_mode: versatile
+  # Used for newly generated non-main-trunk vessels.
+  # Role assigned to generated vessels:
+  # "distribution", "transport", or "perforator".
+  default_vessel_role: distribution
+
+  # Used only when main_trunk_enabled is false.
+  # Root proximal X coordinate. Use null to sample it on the domain boundary.
+  root_x_um: null
+  # Root proximal Y coordinate. Use null to sample the inlet on a domain face.
+  root_y_um: null
+  # Used only when main_trunk_enabled is false.
+  # Root proximal Z coordinate. Use null to sample it on the domain boundary.
+  root_z_um: null
+
+  # ！！！Create one inlet-to-outlet main trunk before side branches are generated.
+  main_trunk_enabled: false
+  # Used only when main_trunk_enabled is true and main_trunk_endpoint_mode is "fixed_axis".
+  # Axis followed by the main trunk.
+  main_trunk_axis: x
+  # Used only when main_trunk_enabled is true.
+  # Endpoint mode: "fixed_axis" uses the axis settings below; "random_boundary"
+  # samples inlet/outlet points on the square domain boundary.
+  main_trunk_endpoint_mode: random_boundary
+  # Used only when main_trunk_enabled is true and main_trunk_endpoint_mode is "random_boundary".
+  # Random endpoint coordinates are sampled away from corners by this margin.
+  main_trunk_endpoint_margin_um: 180.0
+  # Used only when main_trunk_enabled is true and main_trunk_endpoint_mode is "random_boundary".
+  # Minimum inlet-to-outlet distance for random endpoints.
+  main_trunk_min_endpoint_distance_um: 2200.0
+  # Used only when main_trunk_enabled is true and main_trunk_endpoint_mode is "random_boundary".
+  # Maximum attempts to find endpoint pairs satisfying the distance constraint.
+  main_trunk_endpoint_sample_attempts: 2000
+  # Used only when main_trunk_enabled is true and main_trunk_endpoint_mode is "fixed_axis".
+  # Transverse coordinate of the main trunk.
+  main_trunk_position_um: null
+  # Used only when main_trunk_enabled is true and main_trunk_endpoint_mode is "fixed_axis".
+  # Inlet and outlet coordinates along main_trunk_axis.
+  main_trunk_inlet_um: 0.0
+  main_trunk_outlet_um: null
+  # Used only when main_trunk_enabled is true.
+  # Main trunk centreline shape: "straight" or "meander".
+  main_trunk_shape: meander
+  # Used only when main_trunk_enabled is true.
+  # Number of straight vessel segments used to approximate the trunk curve.
+  main_trunk_segments: 20
+  # Used only when main_trunk_enabled is true and main_trunk_shape is "meander".
+  # Transverse meander amplitude and smooth random perturbation.
+  main_trunk_amplitude_um: 180.0
+  main_trunk_wavelengths: 1.4
+  main_trunk_noise_um: 35.0
+  main_trunk_noise_smoothing_passes: 4
+  # Used only when main_trunk_enabled is true and main_trunk_shape is "meander".
+  # null chooses a seed-dependent random phase.
+  main_trunk_phase_rad: null
+  # Used only when main_trunk_enabled is true.
+  # Fixed-axis trunks are kept this far away from the square domain boundary.
+  # Random-boundary trunks keep endpoints on the boundary and only clip
+  # intermediate meander points to the domain bounds.
+  main_trunk_margin_um: 250.0
+  # Used only when main_trunk_enabled is true.
+  # Keep trunk bifurcation points on the trunk line.
+  main_trunk_branching_mode: fixed
+  # Used only when main_trunk_enabled is true.
+  # Main trunk role can pass through carriage regions while still respecting avascular regions.
+  main_trunk_role: transport
+  # Used only when main_trunk_enabled is true.
+  # When true, generated terminals can only attach directly to main-trunk
+  # segments. Keep false for Figure-5-like recursive distribution trees.
+  main_trunk_only_branching: false
+
+# Optional staged growth.
+# Leave this list empty for single-stage generation.
+# Each stage can override any key under config: above.
+# A stage cannot change geometry_mode; planar and volumetric trees must be
+# generated in separate runs.
+# In a stage, n_terminals means the number of terminals added during that stage,
+# not the final total number of terminals in the whole tree.
+# Every stage must provide tinit.
+# Use "empty", "global", "previous", "stage:<name>", an ID/name list, or an
+# explicit mapping with mode and canonical selector keys.
+stages: 
+  # []
+
+  - name: coarse_uniform
+    tinit: empty
+    n_terminals: 12
+    terminal_distribution: uniform
+    delta_v: 16
+    max_terminal_segment_um: 650.0
+    max_sample_distance_um: 750.0
+    fn_neighborhood: 20.0
+
+  - name: central_dense
+    tinit: "stage:coarse_uniform"
+    n_terminals: 1
+    terminal_distribution: gaussian
+    gaussian_mean_x_um: 1500.0
+    gaussian_mean_y_um: 1500.0
+    gaussian_mean_z_um: 1500.0
+    gaussian_sigma_x_um: 550.0
+    gaussian_sigma_y_um: 550.0
+    gaussian_sigma_z_um: 550.0
+    delta_v: 12
+    max_terminal_segment_um: 500.0
+    max_sample_distance_um: 500.0
