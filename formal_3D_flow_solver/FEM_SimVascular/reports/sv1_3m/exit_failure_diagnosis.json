@@ -1,0 +1,32 @@
+{
+  "status": "DIAGNOSED",
+  "official_exit_code": 1,
+  "original_ghost_error_absent": true,
+  "MPI_ERR_TYPE_absent": true,
+  "new_error": "MPI_Comm_rank() function was called after MPI_FINALIZE was invoked",
+  "official_linear_solves": 4,
+  "official_nonlinear_steps": 1,
+  "native_VTU_count": 1,
+  "native_fields_finite": true,
+  "fresh_reload": true,
+  "source_findings": [
+    "PetscLinearAlgebra::finalize() is empty (line 93)",
+    "main.cpp calls that no-op then MPI_Finalize (lines 676-683)",
+    "petsc_destroy_all contains PetscFinalize but is not called on this normal exit path"
+  ],
+  "gdb_findings": "Separate diagnostic replay catches SIGSEGV in PETSc CUDA event_pool global destructor / PoolAllocator during __cxa_finalize; not a KSP or ghost update frame.",
+  "scope_limit": "3/3 repairs used; solver source must remain unchanged. No fourth repair or error suppression.",
+  "evidence": [
+    "logs/sv1_3m/remote/official_fluid_gpu_smoke.log",
+    "logs/sv1_3m/official_exit_diagnostic.log",
+    "reports/sv1_3m/exit_failure_evidence/"
+  ],
+  "root_cause_confidence": "Observed exit lifecycle and GPU resource teardown failure; exact allocator corruption causality not proven by a memory sanitizer.",
+  "official_contract": "https://petsc.org/release/manualpages/Sys/PetscFinalize/",
+  "minimal_KSP_reproducer": {
+    "without_cleanup_exit": 1,
+    "with_cleanup_exit": 0,
+    "same_converged_KSP": true
+  },
+  "simple_vec_probe_note": "A vector-only probe did not reproduce the exit fault; the KSP/resource lifecycle probe did. Both results are retained."
+}

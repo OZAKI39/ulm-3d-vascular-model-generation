@@ -1,0 +1,42 @@
+--- a/scripts/sv13n/petsc_build_remote.py
++++ b/scripts/sv13n/petsc_build_remote.py
+@@ -47,7 +47,7 @@
+  assert gpu_probe['exit_code']==0
+  arch_observed=gpu_probe['stdout'].strip().split(',')[-1].strip().replace('.','')
+  assert arch_observed=='89' and '4090' in gpu_probe['stdout']
+- cmd+=['--with-cuda-dir='+cuda_path,'--with-cudac='+cuda_path+'/bin/nvcc','--with-cuda-arch='+arch_observed,'--with-cuda-dialect=C++17','CUDAC_FLAGS=-ccbin '+cxx]
++ cmd+=['--with-cuda-dir='+cuda_path,'--with-cudac='+cuda_path+'/bin/nvcc','--with-cuda-arch='+arch_observed,'--with-cuda-dialect=C++17','CUDAFLAGS=-ccbin '+cxx]
+ d=dict(status='BUILDING',candidate=candidate,version='3.25.5',commit=manifest['commit'],source=str(source),prefix=str(prefix),PETSC_ARCH=arch,MPI_prefix=str(mpiprefix),launcher=launcher,candidate_wrapper=str(wrapper),CUDA_prefix=cuda_path,CUDA_version='13.2' if candidate=='gpu13' else '12.3.2' if candidate=='gpu123' else 'disabled',source_archive_sha256=digest(archive),configure_command=cmd,steps=[])
+ def execute(args,name,timeout=3600):
+  r=run(args,run_id+'_'+name,cwd=source,timeout=timeout,cuda=wrapper,extra_env=extra);d['steps'].append(r);write('petsc_'+candidate+'_build',d);write('petsc_'+run_id+'_'+attempt+'_build',d)
+@@ -60,7 +60,7 @@
+ install=execute(['make','PETSC_DIR='+str(source),'PETSC_ARCH='+arch,'install'],'install')
+ check=execute(['make','PETSC_DIR='+str(prefix),'PETSC_ARCH=','check'],'check',600)
+ observed={k:s in text(check) for k,s in [('CPU','run successfully with 1 MPI process'),('MPI2','run successfully with 2 MPI processes')]}
+-if cuda_path:observed['CUDA']='run successfully with cuda' in text(check)
++if cuda_path:observed['CUDA']='run successfully with cuda' in text(check).lower()
+ assert all(observed.values()) and not re.search(r'Possible (?:error|problem)',text(check)),text(check)
+ changed=[n for n,h in original.items() if not (source/n).is_file() or digest(source/n)!=h]
+ assert not changed
+--- /dev/null
++++ b/scripts/sv13n/complete_gpu_build_remote.py
+@@ -0,0 +1,19 @@
++"""Finish provenance after a case-sensitive log parser error; no rebuild or rerun."""
++import re,shutil
++from runner_remote import *
++d=load('petsc_gpu13_build');assert d['status']=='BUILDING'
++assert all(okay(r) and digest(BASE/r['log'])==r['sha256'] for r in d['steps'])
++check=d['steps'][-1];assert check['name']=='gpu13_configfix_check'
++raw=text(check);observed={k:s in raw.lower() for k,s in [('CPU','run successfully with 1 mpi process'),('MPI2','run successfully with 2 mpi processes'),('CUDA','run successfully with cuda')]}
++assert all(observed.values()) and not re.search(r'Possible (?:error|problem)',raw)
++source=Path(d['source']);prefix=Path(d['prefix']);integrity=load('petsc_gpu13_configfix_source_integrity')
++assert integrity['source']==str(source)
++changes=[n for n,h in integrity['files'].items() if digest(source/n)!=h];assert not changes
++evidence=R/'gpu13_configfix_build_evidence';evidence.mkdir();conf=source/d['PETSC_ARCH']/'lib/petsc/conf'
++for p in (conf/'configure.log',conf/'make.log',conf/'petscvariables',source/d['PETSC_ARCH']/'include/petscconf.h'):shutil.copyfile(p,evidence/p.name)
++ldd=run(['ldd',prefix/'lib/libpetsc.so'],'gpu13_adoption_ldd',cuda=d['candidate_wrapper'],extra_env={'LD_LIBRARY_PATH':str(prefix/'lib')})
++assert okay(ldd) and 'not found' not in text(ldd)
++resolved=re.search(r'libmpi[^\s]*\s+=>\s+(\S+)',text(ldd));assert resolved and Path(resolved[1]).resolve()==(Path(d['MPI_prefix'])/'lib/libmpi.so').resolve()
++d['steps'].append(ldd);d.update(status='PASS',selftest=check,selftest_observed=observed,source_unmodified=True,source_files_verified=len(integrity['files']),source_modifications=[],library_sha256=digest(prefix/'lib/libpetsc.so'),MPI_link=resolved[1],parser_correction='Self-test prints CUDA uppercase; case-insensitive observation. Original self-test exit0 and all3 lines retained; not rerun.')
++write('petsc_gpu13_build',d);integrity.update(status='PASS',phase='after_build',modifications=[]);write('petsc_gpu13_configfix_source_integrity',integrity)
++print('GPU13 original configure/make/install/CPU-MPI2-CUDA checks all PASS; provenance completed without rerunning.',flush=True)

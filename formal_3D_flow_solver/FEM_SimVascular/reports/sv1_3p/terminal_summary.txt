@@ -1,0 +1,69 @@
+Stage SV1.3P completed.
+
+baseline:
+    config = ASM2 + ILU2
+    window = step60→70
+    wall = 260.169648 s
+    iterations = 6603
+
+P1 reuse:
+    lifecycle audit = PASS
+    reuse scope = REUSE_WITHIN_TIMESTEP
+    setup count = 10 actual numeric factorizations / 20 KSP solves
+    wall = 213.3558020569617 s (window)
+    iterations = 6720
+    result = P1_PROMISING / USEFUL_GAIN
+
+P2 hypre GPU ILU0:
+    hypre version = 3.1.0
+    GPU setup confirmed = supported CUDA device path, not kernel residency profiling
+    GPU solve confirmed = CUDA sparse standalone PASS; CFD health reported separately
+    wall = 6.78094071301166 s (smoke)
+    iterations = 200
+    result = REJECT_UNHEALTHY
+
+P3 hypre BoomerAMG:
+    profile = PMIS / extended+i / l1-Jacobi, one V cycle
+    wall = 8.22260371199809 s (smoke)
+    iterations = 400
+    result = REJECT_UNHEALTHY
+
+P4 PETSc GAMG:
+    matrix suitability = existing block size 4 mixed velocity/pressure; no supplied physical near nullspace
+    wall = 7.572650036076084 s (smoke)
+    iterations = 200
+    result = GAMG_NOT_SUITABLE_CURRENT_MONOLITHIC_LAYOUT
+
+P5 NVIDIA AmgX:
+    build = BUILD_FAILED_CUDA13_NVTX_COMPATIBILITY
+    wall = N/A s (not run)
+    iterations = N/A
+    result = BUILD_FAILED_CUDA13_NVTX_COMPATIBILITY
+
+comparison:
+    fastest healthy = P1
+    improvement vs baseline = 17.994%
+    setup time = 67.093 s (inclusive)
+    apply time = 84.923 s (inclusive)
+    peak VRAM = 3832.0 MiB (observed device-wide samples; not exact process peak)
+
+winner:
+    name = P1
+    >=10% faster = YES
+
+full steady:
+    status = PASS
+    steady step = 70
+    stop step = 72
+    wall = 1993.867926 s
+
+deferred:
+    CPU/GPU science equivalence = YES
+    multi-rank CUDA = YES
+    FieldSplit = YES
+
+fallback:
+    Stage O GPU config preserved = YES
+
+STAGE SV1.3P STATUS:
+    GPU_PC_WINNER_FOUND

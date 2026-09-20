@@ -1,0 +1,18 @@
+{
+  "status": "DOCUMENTED_LIMITATION",
+  "scope": "Additional two-rank CUDA unit test, outside adopted one-rank GPU solver configuration",
+  "observed": "Forward values correct; reverse ADD_VALUES followed by CPU local-form read exposes stale owned entries. Rank0 expected111/113 observed1/2; rank1 expected105/107 observed5/6. Raw exit77 kept.",
+  "inference": "The pinned source returns CPU localrep for MPI and synchronizes object state counters only; CUDA reverse update modifies global device storage. The unchanged CPU local form does not force that global device data to host. This explains the observed stale host values.",
+  "evidence": [
+    "logs/sv1_3n/remote/gpu13_CUDA_MPI_1.log",
+    "reports/sv1_3n/ghost_probe_new.json",
+    "external/petsc325/petsc-3.25.5/src/vec/vec/impls/mpi/commonmpvec.c:66-85",
+    "external/petsc325/petsc-3.25.5/src/vec/vec/impls/mpi/commonmpvec.c:138-142"
+  ],
+  "source_sha256": "cfef033aaca0ac3bb373b666133977c6041f6f72d4878a638b62764f657fb10c",
+  "official_contract": "https://petsc.org/release/manualpages/Vec/VecGhostGetLocalForm/",
+  "adopted_path": "The same source returns g itself for sequential vectors, so the actual one-rank seqcuda path has no separate MPI CPU localrep; its numerical probe and full official solver pass.",
+  "PETSc_source_modified": false,
+  "MPI_CUDA_supported": false,
+  "scientific_model_changed": false
+}

@@ -1,0 +1,55 @@
+============================= test session starts ==============================
+platform linux -- Python 3.13.11, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/lzy/projects/formal_3D_flow_solver/FEM_SimVascular
+configfile: pyproject.toml
+collected 51 items
+
+tests/test_sv13m_benchmark.py s...                                       [  7%]
+tests/test_sv13m_cpu_mpi_ghost.py ..                                     [ 11%]
+tests/test_sv13m_cpu_proof.py s                                          [ 13%]
+tests/test_sv13m_cpu_seq_ghost.py ..                                     [ 17%]
+tests/test_sv13m_cuda_mpi_ghost.py .                                     [ 19%]
+tests/test_sv13m_cuda_seq_ghost.py .                                     [ 21%]
+tests/test_sv13m_ghost_failure_reproduction.py ..                        [ 25%]
+tests/test_sv13m_ghost_forward.py ...                                    [ 31%]
+tests/test_sv13m_ghost_local_form.py ..                                  [ 35%]
+tests/test_sv13m_ghost_reverse.py ...                                    [ 41%]
+tests/test_sv13m_ghost_transfer.py s                                     [ 43%]
+tests/test_sv13m_gpu_proof.py s.                                         [ 47%]
+tests/test_sv13m_gpu_residency.py s                                      [ 49%]
+tests/test_sv13m_history_preservation.py ..                              [ 52%]
+tests/test_sv13m_official_gpu_smoke.py F.                                [ 56%]
+tests/test_sv13m_patch_provenance.py .                                   [ 58%]
+tests/test_sv13m_patch_scope.py ...                                      [ 64%]
+tests/test_sv13m_petcs_error_precedence.py ...                           [ 70%]
+tests/test_sv13m_petsc_clean_build.py .                                  [ 72%]
+tests/test_sv13m_petsc_gpu_regression.py .                               [ 74%]
+tests/test_sv13m_reference_freeze.py .                                   [ 76%]
+tests/test_sv13m_science_equivalence.py s.......                         [ 92%]
+tests/test_sv13m_svmp_link.py .                                          [ 94%]
+tests/test_sv13m_upstream_diff.py ..                                     [ 98%]
+tests/test_sv13m_visuals.py .                                            [100%]
+
+=================================== FAILURES ===================================
+_________________________ test_official_complete_flow __________________________
+
+>   def test_official_complete_flow():flow_gate(accepted('svmp_gpu_smoke'))
+                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_sv13m_official_gpu_smoke.py:3: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'svmp_gpu_smoke'
+
+    def accepted(name):
+     d=read(name)
+     if d.get('status')=='NOT_RUN':pytest.skip(d.get('reason','Upstream execution gate did not pass'))
+>    assert d['status']=='PASS',d.get('reason',d.get('acceptance_errors',d['status']))
+            ^^^^^^^^^^^^^^^^^^^
+E    AssertionError: ['PETSC_HARD_ERROR_OVERRIDES_CONVERGENCE']
+
+tests/sv13m_support.py:9: AssertionError
+- generated xml file: /home/lzy/projects/formal_3D_flow_solver/FEM_SimVascular/reports/sv1_3m/pytest_stage.xml -
+=========================== short test summary info ============================
+FAILED tests/test_sv13m_official_gpu_smoke.py::test_official_complete_flow - ...
+=================== 1 failed, 44 passed, 6 skipped in 0.61s ====================

@@ -1,0 +1,81 @@
+Stage SV1.3G completed.
+
+MPI:
+    implementation = Open MPI
+    version = 4.1.6
+    root = True
+    compiler/runtime same stack = PASS (project-local prefix)
+    root restriction = explicit --allow-run-as-root; root override alone did not repair system hang
+    working launcher = /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3g/scripts/run_gpu_mpi.sh
+    rank1 repeat = 5/5
+    rank2 = PASS
+
+CUDA:
+    GPU = NVIDIA GeForce RTX 4090
+    driver = 595.84
+    toolkit = 13.2.86
+    compute capability = 8.9
+
+PETSc CUDA:
+    configure = PASS
+    build = FAIL (CUDA_TOOLKIT_COMPATIBILITY; clockRate/memoryClockRate/unary_function)
+    GPU smoke = NOT RUN
+    Mat type = NOT MEASURED
+    Vec type = NOT MEASURED
+
+svMultiPhysics GPU:
+    build = NOT RUN
+    linked CUDA PETSc = NOT RUN
+    official smoke = NOT RUN
+
+vascular GPU proof:
+    steps = NOT RUN
+    linear failures = NOT MEASURED
+    nonlinear failures = NOT MEASURED
+    velocity finite = NOT MEASURED
+    pressure finite = NOT MEASURED
+    mass error = NOT MEASURED
+    reload = NOT RUN
+
+CPU/GPU equivalence:
+    velocity relative L2 = NOT MEASURED
+    pressure relative L2 = NOT MEASURED
+    flow difference = NOT MEASURED
+
+GPU residency:
+    matrix resident = NOT MEASURED
+    vectors resident = NOT MEASURED
+    H2D pattern = NOT MEASURED
+    D2H pattern = NOT MEASURED
+    transfer bound = UNKNOWN
+
+benchmark:
+    CPU 1R = NOT RUN
+    CPU 4R = NOT RUN
+    GPU 1R = NOT RUN
+    GPU speedup vs best CPU = NOT MEASURED
+
+classification:
+    BLOCKED: CUDA_TOOLKIT_COMPATIBILITY
+
+tests:
+    passed = 30
+    failed = 0
+    skipped = 12
+    full regression = 163 passed, 4 preserved historical failures, 26 skipped
+
+report:
+    reports/sv1_3g/REPORT.md
+
+human review:
+    mpi_unblock.png
+    gpu_build_pipeline.png
+    cuda_types.png
+    gpu_residency.png
+    gpu_transfer_cost.png
+    gpu_cpu_solution_difference.png
+    cpu_gpu_runtime.png
+    gpu_memory.png
+
+STAGE SV1.3G STATUS:
+    BLOCKED

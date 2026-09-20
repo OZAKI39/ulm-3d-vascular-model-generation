@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="3" skipped="0" tests="21" time="1.193" timestamp="2026-09-18T21:08:24.323067+02:00" hostname="localhost"><testcase classname="tests.test_sv1_face_mapping" name="test_original_semantic_roles_preserved" time="0.001" /><testcase classname="tests.test_sv1_field_finite" name="test_actual_velocity_and_pressure_finite" time="0.363" /><testcase classname="tests.test_sv1_geometry_import" name="test_import_and_four_ports" time="0.001" /><testcase classname="tests.test_sv1_inlet_flux" name="test_written_prescription_integral" time="0.003" /><testcase classname="tests.test_sv1_inlet_flux" name="test_oriented_flux_in_si_units" time="0.001" /><testcase classname="tests.test_sv1_inputs" name="test_formal_copies_match_readonly_sources" time="0.009" /><testcase classname="tests.test_sv1_inputs" name="test_active_cleanup_complete" time="0.001" /><testcase classname="tests.test_sv1_mass_balance" name="test_actual_field_mass_conservation" time="0.000"><failure message="sv_validation.validation.ValidationError: Actual solution fails inlet or mass conservation gate">measured = (&lt;sv_validation.postprocess.SolutionMeasurements object at 0x788ca003b0e0&gt;, array([[ 0.00000000e+00, -0.00000000e+00, ...TLET_02': 2.3297109687714674e-15, 'OUTLET_03': 2.881330502570386e-16}, 'Q_out_total_m3_s': 2.734240472255525e-15, ...})
+
+    def test_actual_field_mass_conservation(measured):
+        q=measured[3]
+&gt;       mass_balance(q["Q_target_m3_s"],-q["Q_in_m3_s"],q["outlet_flows_m3_s"])
+
+tests/test_sv1_mass_balance.py:5: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/sv_validation/validation.py:52: in mass_balance
+    require(error&lt;=1e-6 and closure&lt;=1e-6,'Actual solution fails inlet or mass conservation gate')
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+condition = False
+message = 'Actual solution fails inlet or mass conservation gate'
+
+    def require(condition,message):
+&gt;       if not condition:raise ValidationError(message)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       sv_validation.validation.ValidationError: Actual solution fails inlet or mass conservation gate
+
+src/sv_validation/validation.py:11: ValidationError</failure></testcase><testcase classname="tests.test_sv1_mesh_quality" name="test_quality_metric_and_actual_distribution" time="0.287" /><testcase classname="tests.test_sv1_mesh_validity" name="test_actual_mesh_validity" time="0.008" /><testcase classname="tests.test_sv1_native_solver" name="test_native_executable_and_official_fluid_smoke" time="0.011" /><testcase classname="tests.test_sv1_old_fem_readonly" name="test_complete_old_project_audit" time="0.010" /><testcase classname="tests.test_sv1_outlet_bc" name="test_actual_three_zero_natural_outlets" time="0.000" /><testcase classname="tests.test_sv1_reference_physics" name="test_frozen_si_numerical_reference" time="0.004" /><testcase classname="tests.test_sv1_simvascular_api" name="test_official_api_actual_probe" time="0.000" /><testcase classname="tests.test_sv1_solution_reload" name="test_new_process_reload_agrees" time="0.000" /><testcase classname="tests.test_sv1_solver_result" name="test_native_output_provenance" time="0.006" /><testcase classname="tests.test_sv1_solver_result" name="test_real_solver_converged" time="0.000"><failure message="AssertionError: FLOW_SOLVE_FAIL: 28 linear warnings&#10;assert False">report = &lt;function report.&lt;locals&gt;.load at 0x788ca00de520&gt;
+
+    def test_real_solver_converged(report):
+        q=report("flow_qc")
+&gt;       assert q["solver_success"], f"FLOW_SOLVE_FAIL: {q['linear_nonconvergence_warnings']} linear warnings"
+E       AssertionError: FLOW_SOLVE_FAIL: 28 linear warnings
+E       assert False
+
+tests/test_sv1_solver_result.py:11: AssertionError</failure></testcase><testcase classname="tests.test_sv1_solver_result" name="test_required_steady_intervals_reached" time="0.000"><failure message="AssertionError: NOT_REACHED: 1 saved state(s), five consecutive intervals required&#10;assert 'NOT_REACHED' == 'PASS'&#10;  &#10;  - PASS&#10;  + NOT_REACHED">report = &lt;function report.&lt;locals&gt;.load at 0x788ca00de520&gt;
+
+    def test_required_steady_intervals_reached(report):
+        s=report("steady_state")
+&gt;       assert s["status"] == "PASS", f"NOT_REACHED: {s['saved_states']} saved state(s), five consecutive intervals required"
+E       AssertionError: NOT_REACHED: 1 saved state(s), five consecutive intervals required
+E       assert 'NOT_REACHED' == 'PASS'
+E         
+E         - PASS
+E         + NOT_REACHED
+
+tests/test_sv1_solver_result.py:15: AssertionError</failure></testcase><testcase classname="tests.test_sv1_visuals" name="test_actual_figure_artifacts" time="0.003" /><testcase classname="tests.test_sv1_wall_noslip" name="test_actual_wall_velocity" time="0.000" /></testsuite></testsuites>

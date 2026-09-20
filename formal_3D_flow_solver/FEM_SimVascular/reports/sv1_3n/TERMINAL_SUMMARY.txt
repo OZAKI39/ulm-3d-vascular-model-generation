@@ -1,0 +1,96 @@
+Stage SV1.3N GPU development completed.
+
+Modern PETSc:
+    version = 3.25.5
+    tag = v3.25.5
+    commit = a0b507cc1cc9eac739c34d6e71521f4854e84e36
+    source SHA = 6d61c472db39006d261542d1a42f1fa6c52d6e89f9e77041386189aa8c24b490
+
+GPU stack:
+    CUDA = 13.2
+    MPI = Open MPI 4.1.6, full Fortran datatype support
+    compiler = GCC/G++ 13.3; accepted by actual CUDA/PETSc configure
+    GPU = RTX4090
+
+compatibility repairs:
+    repair_01 = PETSc object cleanup and exactly-once finalize before MPI; PASS
+    repair_02 = CUDAFLAGS configure option / case-insensitive success-log parser; PASS
+    repair_03 = NOT NEEDED
+
+PETSc GPU:
+    build = PASS
+    Mat = seqaijcusparse
+    Vec = seqcuda
+    ghost forward = PASS (adopted 1 rank)
+    ghost reverse = PASS (adopted 1 rank; no remote ghosts)
+    optional CUDA MPI2 = FAIL, reverse/local-form stale owned data; NOT SUPPORTED
+    standalone smoke = PASS
+
+svMultiPhysics GPU:
+    build = PASS
+    linkage = PASS
+    official smoke = PASS
+    runtime Mat = seqaijcusparse
+    runtime Vec = seqcuda
+    KSP = GMRES, right, restart100, unchanged tolerance
+    PC = ASM overlap2 / ILU(2)
+
+real vascular GPU:
+    started = YES, t=0
+    linear failures = 0
+    nonlinear failures = 0
+    velocity finite = True
+    pressure finite = True
+
+steady:
+    first joint steady step = 70
+    required consecutive intervals = 5
+    safe stop step = 71
+    physical time = 1.0678826651e-05
+    E_u = 1.84627812752e-15
+    E_Q = 1.44115073498e-16
+    mass = 0
+    reload = PASS
+
+GPU candidate:
+    VTU = outputs/sv1_3n/REAL_VASCULAR_GPU/1-procs/result_071.vtu
+    VTU SHA = 1e553decfb987a19f1df7b926a7ff06e2d0679ee43e20d1a6e242afe4d9f4eae
+    checkpoint = /home/lzy/projects/formal_3D_flow_solver/FEM_SimVascular/outputs/sv1_3n/REAL_VASCULAR_GPU/1-procs/stFile_071.bin
+    config SHA = 1bf56d535218bf4b592b6b40ffd96d6dfe0ed70205f7bdf724c975d1474a76dc
+    solver binary SHA = ca15695a84961984fd5664ebccfebc8cdf1fb1ce8a779a8721ff6fb208dc9414
+
+observed runtime:
+    wall time = 2576.288518 s
+    steps = 71
+    KSP solves = 161
+    total KSP iterations = 83090
+    sampled device memory max = 3836 MiB (device-wide, 15 s samples; not exact process peak)
+    note = OBSERVATIONAL ONLY
+
+deferred by user decision:
+    OLD vs NEW PETSc science = DEFERRED
+    CPU vs GPU science equivalence = DEFERRED
+    formal CPU/GPU benchmark = DEFERRED
+    transfer profiling = DEFERRED
+    GPU-native PC tuning = DEFERRED
+
+production:
+    current accepted production =
+    CPU_EARLY_STOP_PRODUCTION
+
+new result classification:
+    GPU_STEADY_CANDIDATE
+    NOT YET SCIENTIFICALLY VALIDATED
+
+tests:
+    Stage N = {'passed': 74, 'failed': 0, 'errors': 0, 'skipped': 7}
+    Full suite = {'passed': 434, 'failed': 8, 'errors': 0, 'skipped': 65}
+    Historical = {'passed': 360, 'failed': 8, 'errors': 0, 'skipped': 58}
+
+report:
+    reports/sv1_3n/REPORT.md
+
+STAGE SV1.3N STATUS:
+    GPU_DEVELOPMENT_PASS
+
+All expensive computation stopped. No further CFD, comparison or benchmark.

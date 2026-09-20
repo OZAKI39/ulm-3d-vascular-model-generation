@@ -1,0 +1,2099 @@
+你现在执行：
+
+Stage SV1.3G — GPU Runtime Unblock and CUDA PETSc Validation
+
+唯一开发目录：
+
+/home/lzy/projects/formal_3D_flow_solver/FEM_SimVascular
+
+Stage SV1.2:
+PASS，正式科学 reference。
+
+Stage SV1.3:
+CPU optimization PASS。
+正式 production recommendation:
+CPU_EARLY_STOP_PRODUCTION。
+
+Stage SV1.3 GPU subtrack:
+BLOCKED
+reason:
+CUDA_PETSC_BUILD / remote MPI launch failure。
+
+本阶段只处理 GPU 路线。
+
+不要修改已经通过的 CPU production configuration。
+不要开始 Mesh convergence。
+
+
+============================================================
+0. 当前已经确认的事实
+============================================================
+
+必须从 Stage SV1.3 artifact 读取，
+不要根据本提示词硬编码。
+
+已经确认：
+
+RTX 4090 可见
+
+CUDA driver 可见
+
+nvcc 可见
+
+compute capability = 8.9
+
+PETSc source = 3.19.6
+
+svMultiPhysics commit 与 CPU production 相同
+
+但 CUDA PETSc 尚未 build 完成。
+
+当前最早失败：
+
+PETSc configure 需要运行 MPI 测试时超时。
+
+而且：
+
+mpiexec -n 1 /bin/true
+
+也发生超时。
+
+因此当前没有证据表明：
+
+CUDA KSP 失败
+
+CUDA Mat/Vec 失败
+
+GPU 性能差
+
+CPU/GPU transfer 过多。
+
+
+============================================================
+1. 本阶段目标
+============================================================
+
+严格按以下顺序解除阻塞：
+
+A.
+修复 / 明确诊断单节点单 rank MPI launcher。
+
+B.
+完成 PETSc 3.19.6 CUDA build。
+
+C.
+完成 PETSc CUDA Mat/Vec/KSP smoke。
+
+D.
+构建 CUDA-PETSc-enabled svMultiPhysics。
+
+E.
+完成 svMultiPhysics GPU fluid smoke。
+
+F.
+验证真实运行：
+
+Mat = AIJCUSPARSE
+Vec = CUDA
+
+G.
+执行一个固定、短的真实 vascular GPU proof run。
+
+H.
+审计 GPU residency 和 CPU/GPU communication。
+
+I.
+只有前面全部通过后，
+才做同机 CPU/GPU performance comparison。
+
+
+============================================================
+2. 本阶段禁止事项
+============================================================
+
+禁止：
+
+重新 mesh
+
+修改 geometry
+
+修改 physics
+
+修改 BC
+
+修改 dt
+
+修改 nonlinear algorithm
+
+修改 accepted CPU PETSc config
+
+升级 svMultiPhysics commit
+
+直接升级 PETSc
+
+Docker
+
+Podman
+
+Apptainer
+
+Singularity
+
+GPU FEM assembly
+
+field-split
+
+Schur solver
+
+hypre GPU tuning
+
+AMG parameter sweep
+
+多 GPU
+
+multi-node MPI。
+
+第一阶段只证明：
+
+1 MPI rank
++
+1 RTX 4090
++
+CUDA PETSc
+
+可以正确工作。
+
+
+============================================================
+3. 新目录
+============================================================
+
+建立：
+
+reports/sv1_3g/
+outputs/sv1_3g/
+logs/sv1_3g/
+configs/sv1_3g/
+benchmarks/sv1_3g/
+
+所有：
+
+SV1.2
+SV1.3
+
+历史 evidence 只读。
+
+
+============================================================
+4. 首先冻结历史参考
+============================================================
+
+保存：
+
+Stage SV1.2 accepted VTU SHA
+
+Stage SV1.3 CPU early-stop VTU SHA
+
+mesh SHA
+
+geometry SHA
+
+physics/config SHA
+
+svMultiPhysics commit
+
+PETSc CPU version。
+
+生成：
+
+reports/sv1_3g/reference_manifest.json
+
+任何历史输入变化：
+
+FAIL:
+REFERENCE_CHANGED
+
+
+============================================================
+5. Phase A — MPI 环境指纹
+============================================================
+
+在 RTX 4090 服务器上记录：
+
+hostname
+
+uname -a
+
+/etc/os-release
+
+id
+
+id -u
+
+whoami
+
+PATH
+
+LD_LIBRARY_PATH
+
+CUDA_VISIBLE_DEVICES
+
+which mpiexec
+which mpirun
+which mpicc
+which mpicxx
+
+mpiexec --version
+mpirun --version
+
+mpicc --show
+mpicxx --show
+
+如果当前 MPI 提供：
+
+ompi_info
+prte_info
+pmix_info
+
+也记录版本。
+
+保存：
+
+reports/sv1_3g/mpi_environment.json
+
+
+============================================================
+6. 检查 MPI stack 是否混装
+============================================================
+
+必须检查：
+
+mpiexec realpath
+
+mpicc realpath
+
+mpicxx realpath
+
+它们是否来自同一 prefix。
+
+检查：
+
+ldd $(which mpiexec)
+
+ldd 一个由 mpicc 编译出的程序。
+
+记录实际：
+
+libmpi
+libpmix
+libprrte / runtime libraries。
+
+如果：
+
+compiler wrapper
+和
+runtime launcher
+
+来自不同 MPI implementation/prefix，
+
+标记：
+
+MPI_STACK_MISMATCH
+
+先修复 PATH / library path。
+
+不得继续 PETSc。
+
+
+============================================================
+7. 编译最小 MPI hello
+============================================================
+
+新建最小测试：
+
+benchmarks/sv1_3g/mpi_hello.c
+
+只做：
+
+MPI_Init
+
+MPI_Comm_rank
+
+MPI_Comm_size
+
+print rank/size
+
+MPI_Finalize。
+
+使用当前：
+
+mpicc
+
+编译。
+
+保存：
+
+compile command
+
+stdout/stderr
+
+binary SHA。
+
+
+============================================================
+8. MPI test 0：普通进程
+============================================================
+
+先测试：
+
+/bin/true
+
+hostname
+
+以及：
+
+mpi_hello
+
+直接执行 binary：
+
+./mpi_hello
+
+记录它能否作为 singleton
+正常退出。
+
+每个测试设置：
+
+10 秒 timeout。
+
+不得无限 hang。
+
+
+============================================================
+9. MPI test 1：mpiexec 单 rank
+============================================================
+
+测试：
+
+timeout 10 mpiexec -n 1 /bin/true
+
+timeout 10 mpiexec -n 1 hostname
+
+timeout 10 mpiexec -n 1 ./mpi_hello
+
+记录：
+
+exit code
+stdout
+stderr
+wall time。
+
+
+============================================================
+10. root 检查
+============================================================
+
+只有：
+
+当前 MPI 被确认是 Open MPI
+
+并且：
+
+id -u == 0
+
+时，
+
+才测试官方 root override。
+
+优先：
+
+mpiexec --allow-run-as-root -n 1 /bin/true
+
+然后：
+
+mpiexec --allow-run-as-root -n 1 ./mpi_hello
+
+或者当前版本正式支持的：
+
+OMPI/PRTE allow-run-as-root environment。
+
+不要在非 Open MPI 上乱加这些 flags。
+
+
+============================================================
+11. root override 结果
+============================================================
+
+如果：
+
+普通 mpiexec hang/fail
+
+但：
+
+allow-run-as-root PASS
+
+则分类：
+
+MPI_ROOT_LAUNCH_RESTRICTION_RESOLVED
+
+以后 GPU build/run
+统一使用明确的安全 wrapper。
+
+不要修改系统 MPI。
+
+
+============================================================
+12. 如果仍然 hang：检查 binding
+============================================================
+
+只有前面失败时，
+
+测试一次：
+
+--bind-to none
+
+或当前 MPI 版本正式等价参数。
+
+例如语义：
+
+mpiexec --bind-to none -n 1 ./mpi_hello
+
+实际 flag 必须来自：
+
+mpiexec --help / 当前版本。
+
+如果 PASS：
+
+分类：
+
+MPI_BINDING_CONFIGURATION_RESOLVED。
+
+
+============================================================
+13. 如果仍然 hang：最小通信 transport
+============================================================
+
+只有当前 MPI 确认为 Open MPI
+且实际 `ompi_info` 显示对应组件存在时，
+
+允许测试一个最小本机 transport：
+
+PML ob1
++
+BTL self,tcp
+
+语义类似：
+
+mpiexec
+--mca pml ob1
+--mca btl self,tcp
+--bind-to none
+-n 1
+./mpi_hello
+
+不要假设选项存在。
+
+先用：
+
+ompi_info
+
+确认。
+
+
+============================================================
+14. transport test 的目的
+============================================================
+
+如果：
+
+default MPI hang
+
+但：
+
+self,tcp PASS
+
+则说明：
+
+本机 shared-memory / UCX / transport
+存在运行环境问题。
+
+保存：
+
+working MPI launch recipe。
+
+不要继续扩大参数扫描。
+
+
+============================================================
+15. tmp/session directory 检查
+============================================================
+
+如果仍失败：
+
+检查：
+
+/tmp
+
+TMPDIR
+
+磁盘空间
+
+权限
+
+mount options
+
+MPI session directory。
+
+允许测试一个明确可写：
+
+TMPDIR=$PROJECT/tmp_mpi
+
+如果当前 MPI 支持：
+
+--tmpdir
+
+则可使用。
+
+保存实际证据。
+
+
+============================================================
+16. 受限环境诊断
+============================================================
+
+记录但不要使用容器开发：
+
+/proc/1/cgroup
+
+mount
+
+ulimit -a
+
+/sys/fs/cgroup
+
+shared memory:
+
+df -h /dev/shm
+
+ls -ld /dev/shm
+
+namespace / permission evidence。
+
+这些只用于判断：
+
+为什么 MPI launcher hang。
+
+不得因此启动 Docker。
+
+
+============================================================
+17. 如果 mpiexec 仍然 hang
+============================================================
+
+使用有限诊断：
+
+timeout
+
+以及当前 Open MPI
+若正式支持：
+
+--timeout
+--get-stack-traces
+--leave-session-attached
+
+任选必要的最少参数。
+
+允许：
+
+strace -f -tt
+
+对：
+
+mpiexec -n 1 /bin/true
+
+做一次 <=10 秒诊断，
+
+如果 strace 可用。
+
+保存：
+
+logs/sv1_3g/mpi_launcher_strace.log
+
+
+============================================================
+18. 不允许无限 MPI 参数试验
+============================================================
+
+MPI troubleshooting
+最多允许以下正式分支：
+
+1.
+default
+
+2.
+root override if applicable
+
+3.
+no binding
+
+4.
+minimal local transport
+
+5.
+TMPDIR
+
+完成后必须分类。
+
+不得进行几十组 MCA 参数 sweep。
+
+
+============================================================
+19. MPI PASS hard gate
+============================================================
+
+至少连续执行：
+
+5 次
+
+同一最终 working command：
+
+mpiexec -n 1 ./mpi_hello
+
+要求：
+
+5/5 exit 0
+
+无 timeout
+
+rank=0
+size=1。
+
+然后再执行：
+
+mpiexec -n 2 ./mpi_hello
+
+只作为基本 MPI sanity check。
+
+要求：
+
+正常结束。
+
+GPU production仍只计划 1 rank。
+
+
+============================================================
+20. 如果 system MPI 无法修复
+============================================================
+
+允许一个、且仅一个 fallback：
+
+在项目目录中构建
+独立 user-local MPI。
+
+不得：
+
+apt remove system MPI
+
+覆盖 /usr
+
+修改系统 linker configuration。
+
+
+============================================================
+21. local MPI fallback 选择
+============================================================
+
+优先保持和当前 svMultiPhysics /
+PETSc CPU development lineage
+相同的 MPI family。
+
+如果当前为 Open MPI：
+
+优先构建兼容版本 Open MPI。
+
+安装到：
+
+external/gpu_mpi/
+
+记录：
+
+source version
+source SHA
+configure
+compiler
+prefix。
+
+
+============================================================
+22. local MPI fallback 验收
+============================================================
+
+重新执行：
+
+mpi_hello
+
+5 × rank1
+
+1 × rank2。
+
+只有全部 PASS
+才允许使用这套 MPI
+继续 PETSc CUDA。
+
+如果仍失败：
+
+STAGE SV1.3G FAIL
+
+REASON:
+MPI_RUNTIME_UNUSABLE
+
+然后停止。
+
+
+============================================================
+23. MPI 修复后必须创建唯一 wrapper
+============================================================
+
+生成：
+
+scripts/run_gpu_mpi.sh
+
+只负责：
+
+正确 PATH
+正确 LD_LIBRARY_PATH
+root flag if truly required
+必要且已经证明的 MPI runtime option。
+
+不要隐藏科学参数。
+
+并生成：
+
+reports/sv1_3g/mpi_resolution.json
+
+
+============================================================
+24. Phase B — PETSc CUDA configure
+============================================================
+
+只有 MPI hard gate PASS 后：
+
+重新开始 PETSc 3.19.6 CUDA build。
+
+必须使用：
+
+验证过的 mpicc/mpicxx
+及对应 mpiexec。
+
+不要继续使用旧失败 build directory。
+
+建立干净目录：
+
+external/petsc-3.19.6-cuda-clean/
+
+
+============================================================
+25. PETSc configure 前 smoke
+============================================================
+
+先用 verified MPI wrapper 编译：
+
+最小普通 C executable
+
+最小 MPI executable
+
+两者均直接和 mpiexec
+执行成功。
+
+然后才 PETSc configure。
+
+
+============================================================
+26. PETSc CUDA 配置原则
+============================================================
+
+保持：
+
+PETSc 3.19.6
+
+CUDA enabled
+
+MPI enabled
+
+optimized build
+
+no debugging
+
+复用系统 BLAS/LAPACK
+如果已有且兼容。
+
+不要加入：
+
+Trilinos
+
+hypre
+
+MUMPS
+
+SuperLU_DIST
+
+Kokkos
+
+额外 solver packages。
+
+目标是最小 CUDA PETSc。
+
+
+============================================================
+27. CUDA architecture
+============================================================
+
+RTX 4090：
+
+compute capability 8.9。
+
+根据 PETSc 3.19.6
+和 CUDA toolkit 的实际 build interface
+
+设置正确 Ada architecture。
+
+不要根据最新版 PETSc
+盲抄 configure 参数。
+
+
+============================================================
+28. nvToolsExt 问题
+============================================================
+
+Stage SV1.3 首轮曾遇到：
+
+nvToolsExt missing。
+
+重新检查：
+
+PETSc 3.19.6 当前 configure
+实际要求的 CUDA libraries。
+
+如果显式 CUDA library list
+已经在旧 attempt 中证明可通过：
+
+复用已证明配置。
+
+不要重复走已知失败路线。
+
+
+============================================================
+29. PETSc configure failure 分类
+============================================================
+
+如果 MPI tests 已 PASS，
+
+PETSc configure 仍失败：
+
+必须区分：
+
+CUDA_HEADER_FAIL
+
+CUDA_LIBRARY_FAIL
+
+CUDA_COMPILER_FAIL
+
+CUDA_ARCH_FAIL
+
+CUDA_API_VERSION_FAIL
+
+BLAS_LAPACK_FAIL
+
+OTHER_CONFIG_FAIL。
+
+不得再写：
+
+generic CUDA build failed。
+
+
+============================================================
+30. CUDA 13.2 compatibility
+============================================================
+
+不要预先假定：
+
+PETSc 3.19.6
+一定支持或一定不支持 CUDA 13.2。
+
+只有实际 compiler/configure error
+明确指向 CUDA API/version
+才分类：
+
+CUDA_TOOLKIT_COMPATIBILITY_BLOCKED。
+
+
+============================================================
+31. 如果明确是 CUDA toolkit compatibility
+============================================================
+
+本阶段不要：
+
+升级 PETSc
+
+修改 svMultiPhysics commit。
+
+记录建议：
+
+side-by-side CUDA 12.x toolkit
+
+作为后续 fallback。
+
+但当前阶段先停止：
+
+GPU_BLOCKED:
+CUDA_TOOLKIT_COMPATIBILITY
+
+除非服务器已经存在可用 CUDA 12.x。
+
+
+============================================================
+32. 如果服务器已有 CUDA 12.x
+============================================================
+
+允许一次 fallback：
+
+保持 NVIDIA driver 不变
+
+保持 PETSc 3.19.6 不变
+
+显式指定 CUDA 12.x toolkit prefix
+
+重新 configure 一次。
+
+最多一次。
+
+
+============================================================
+33. PETSc build
+============================================================
+
+configure PASS 后：
+
+make
+
+make install / requested build target
+
+PETSc self-test。
+
+保存：
+
+configure.log
+make.log
+build manifest
+library SHA
+PETSC_ARCH
+PETSC_DIR。
+
+
+============================================================
+34. Phase C — PETSc GPU standalone smoke
+============================================================
+
+在 svMultiPhysics 之前：
+
+必须运行 PETSc 自己的 GPU smoke。
+
+建立一个小型稀疏线性系统。
+
+要求：
+
+Mat type 实际为：
+
+aijcusparse
+
+Vec type 实际为：
+
+cuda
+
+KSP：
+
+GMRES
+
+解正确。
+
+
+============================================================
+35. GPU smoke runtime evidence
+============================================================
+
+必须保存：
+
+KSPView
+
+Mat type
+
+Vec type
+
+PetscOptionsView
+
+converged reason
+
+iterations
+
+solution residual
+
+nvidia-smi snapshot
+
+PETSc log_view。
+
+
+============================================================
+36. 不能用 GPU utilization 作为证明
+============================================================
+
+如果：
+
+nvidia-smi 有占用
+
+但 Mat/Vec 不是 CUDA 类型：
+
+FAIL:
+PETSC_GPU_TYPES_NOT_ACTIVE
+
+
+============================================================
+37. PETSc GPU smoke 重复性
+============================================================
+
+连续运行：
+
+3 次。
+
+要求：
+
+3/3 PASS。
+
+不要求 performance benchmark。
+
+
+============================================================
+38. Phase D — CUDA PETSc svMultiPhysics build
+============================================================
+
+只有 PETSc GPU smoke PASS 后：
+
+构建：
+
+同一个固定 commit：
+
+c3f0bb892b765b718f61069ecd9726dbc6d177fd
+
+的 svMultiPhysics。
+
+不要改 source。
+
+
+============================================================
+39. svMultiPhysics build evidence
+============================================================
+
+保存：
+
+CMake command
+
+PETSc prefix
+
+MPI prefix
+
+compiler
+
+linked libraries
+
+binary SHA。
+
+`ldd`
+
+必须确认：
+
+链接的是新的 CUDA PETSc。
+
+不得误链接 CPU PETSc。
+
+
+============================================================
+40. svMultiPhysics official fluid GPU smoke
+============================================================
+
+使用：
+
+与 CPU 阶段相同的
+official fluid/newtonian smoke。
+
+GPU configuration：
+
+1 MPI rank
+
+1 GPU
+
+OMP=1。
+
+要求：
+
+exit 0
+
+linear convergence
+
+finite velocity
+
+finite pressure
+
+真实 VTU。
+
+
+============================================================
+41. runtime CUDA type verification
+============================================================
+
+svMultiPhysics smoke 必须实际输出或额外查询：
+
+Mat type
+Vec type
+KSP type
+PC type。
+
+必须证明：
+
+Mat = AIJCUSPARSE
+Vec = CUDA
+
+或 PETSc 3.19.6
+对应正式 CUDA 类型。
+
+
+============================================================
+42. 如果 svMultiPhysics 忽略 PETSc Mat/Vec options
+============================================================
+
+分类：
+
+GPU_BACKEND_NOT_REACHABLE_FROM_SVMULTIPHYSICS
+
+保存源码和 runtime evidence。
+
+不要修改 scientific solver source
+强行注入 CUDA。
+
+本阶段停止。
+
+
+============================================================
+43. Phase E — 最小真实 vascular GPU proof
+============================================================
+
+GPU smoke PASS 后，
+
+才允许真实 vascular。
+
+不要直接 full steady solve。
+
+只执行：
+
+GPU_PROOF_20
+
+从 t=0
+或合法 1-rank native initial state
+
+运行：
+
+20 steps。
+
+保持：
+
+mesh
+physics
+BC
+dt
+nonlinear method
+KSP tolerance
+
+与 production 相同。
+
+
+============================================================
+44. 为什么不用原 4-rank checkpoint
+============================================================
+
+不要把：
+
+4-rank native checkpoint
+
+用于：
+
+1-rank GPU restart。
+
+如果 native restart stamp
+包含 partition/rank 信息：
+
+严格禁止。
+
+使用：
+
+t=0
+
+最安全。
+
+
+============================================================
+45. GPU_PROOF_20 hard gates
+============================================================
+
+要求：
+
+linear failures = 0
+
+nonlinear failures = 0
+
+velocity finite
+
+pressure finite
+
+wall no-slip PASS
+
+Qin finite
+
+Qout finite
+
+result reload PASS。
+
+
+============================================================
+46. CPU scientific comparison
+============================================================
+
+为了验证 GPU 数值正确：
+
+用同一服务器、
+
+同一 1-rank partition、
+
+同样 t=0→20 steps，
+
+运行：
+
+CPU_PROOF_20
+
+使用 CPU PETSc Mat/Vec。
+
+比较：
+
+velocity relative L2
+
+pressure relative L2
+
+Qin
+
+each Qout
+
+mass error。
+
+
+============================================================
+47. GPU proof 等价门槛
+============================================================
+
+运行前冻结：
+
+velocity relative L2 <=1e-5
+
+pressure relative L2 <=1e-5
+
+Qin relative difference <=1e-6
+
+each Qout relative difference <=1e-5
+
+mass error difference <=1e-6。
+
+GPU 不通过：
+
+GPU_REJECTED_NUMERICAL_DIFFERENCE。
+
+
+============================================================
+48. Phase F — GPU residency profiling
+============================================================
+
+只有 GPU_PROOF_20 science PASS 后：
+
+再单独运行一个短 profiling case。
+
+启用：
+
+PETSc log_view
+
+以及当前 3.19.6 支持的
+GPU profiling options。
+
+正式 wall-time benchmark
+不得使用重 profiling。
+
+
+============================================================
+49. residency 审核问题
+============================================================
+
+必须明确回答：
+
+A.
+KSP 开始后 matrix 是否在 GPU？
+
+B.
+vectors 是否在 GPU？
+
+C.
+每个 MatMult 是否触发大规模 H2D？
+
+D.
+每个 PC apply 是否回 CPU？
+
+E.
+H2D/D2H 次数
+更接近 nonlinear solve 数量
+还是 KSP iteration 数量？
+
+F.
+GPU memory peak 是多少？
+
+
+============================================================
+50. residency pass 标准
+============================================================
+
+理想：
+
+CPU assembly
+→ 少量 H2D
+→ 多次 GPU KSP
+→ 少量 D2H。
+
+如果：
+
+大量传输次数
+近似随数百次 KSP iterations 线性增长，
+
+分类：
+
+GPU_WORKS_BUT_EXCESSIVE_TRANSFER。
+
+
+============================================================
+51. 当前 PC 特别检查
+============================================================
+
+当前 production PC：
+
+ASM + ILU(2)。
+
+必须检查：
+
+PC apply 真正在：
+
+GPU
+还是 CPU。
+
+不得因为 MatMult 在 GPU
+就称整个 KSP GPU-resident。
+
+
+============================================================
+52. 本阶段暂不测试 GPU_B
+============================================================
+
+即使 ASM/ILU(2) 不 GPU-friendly，
+
+本阶段也不立刻：
+
+hypre
+AMG
+fieldsplit
+
+调优。
+
+Stage SV1.3G 的目标是：
+
+解除运行环境阻塞
++
+证明 GPU_A 可以或不可以正确运行。
+
+性能优化另行决定。
+
+
+============================================================
+53. Phase G — 同机固定窗口 benchmark
+============================================================
+
+只有 GPU residency science PASS 后：
+
+运行：
+
+CPU_1R
+
+CPU_4R
+
+GPU_1R。
+
+固定：
+
+相同服务器
+
+相同 mesh
+
+相同 t=0 或
+兼容 checkpoint
+
+相同 20-step window
+
+相同物理设置。
+
+
+============================================================
+54. benchmark 重复性
+============================================================
+
+每个 candidate：
+
+至少 2 次。
+
+第一遍 warm-up。
+
+第二遍正式。
+
+如果差异 >10%：
+
+第三遍。
+
+取 median。
+
+不得取最快一次。
+
+
+============================================================
+55. GPU speedup
+============================================================
+
+定义：
+
+T_best_CPU =
+min(CPU_1R, CPU_4R)
+
+S_gpu =
+T_best_CPU / T_GPU_1R。
+
+
+============================================================
+56. GPU 性能分类
+============================================================
+
+如果：
+
+S_gpu >=1.25
+
+且 science PASS
+且 residency PASS：
+
+GPU_A_PROMISING。
+
+如果：
+
+1 < S_gpu <1.25：
+
+GPU_WORKS_BUT_NOT_WORTH_COMPLEXITY。
+
+如果：
+
+S_gpu <=1：
+
+GPU_SLOWER_THAN_CPU。
+
+如果 residency fail：
+
+GPU_TRANSFER_BOUND。
+
+
+============================================================
+57. 本阶段不自动改 production
+============================================================
+
+即使：
+
+GPU_A_PROMISING
+
+也不要自动替换：
+
+CPU_EARLY_STOP_PRODUCTION。
+
+只生成：
+
+GPU recommendation。
+
+正式 production GPU full run
+留到下一授权阶段。
+
+
+============================================================
+58. 永久测试文件
+============================================================
+
+至少新增：
+
+tests/test_sv13g_reference_freeze.py
+
+tests/test_sv13g_mpi_environment.py
+
+tests/test_sv13g_mpi_stack_consistency.py
+
+tests/test_sv13g_mpi_singleton.py
+
+tests/test_sv13g_mpi_rank1.py
+
+tests/test_sv13g_mpi_rank2.py
+
+tests/test_sv13g_mpi_resolution.py
+
+tests/test_sv13g_cuda_configure.py
+
+tests/test_sv13g_cuda_build.py
+
+tests/test_sv13g_petsc_gpu_smoke.py
+
+tests/test_sv13g_cuda_mat_type.py
+
+tests/test_sv13g_cuda_vec_type.py
+
+tests/test_sv13g_svmp_gpu_link.py
+
+tests/test_sv13g_svmp_gpu_smoke.py
+
+tests/test_sv13g_gpu_proof.py
+
+tests/test_sv13g_gpu_cpu_equivalence.py
+
+tests/test_sv13g_gpu_residency.py
+
+tests/test_sv13g_transfer_scaling.py
+
+tests/test_sv13g_gpu_memory.py
+
+tests/test_sv13g_benchmark.py
+
+tests/test_sv13g_visuals.py
+
+tests/test_sv13g_history_preservation.py
+
+成功后不得删除。
+
+
+============================================================
+59. regression tests
+============================================================
+
+至少验证：
+
+mpiexec hang
+→ timeout + FAIL
+
+mpicc/mpiexec 不同 MPI
+→ reject
+
+root OpenMPI 未显式允许
+→ 不偷偷绕过
+
+PETSc configure success
+但 Mat=CPU AIJ
+→ GPU reject
+
+Vec=CPU
+→ reject
+
+nvidia-smi 有 GPU load
+但 PETSc GPU types inactive
+→ reject
+
+svMultiPhysics 链接 CPU PETSc
+→ reject
+
+4-rank checkpoint 用于 1-rank
+→ reject
+
+GPU field 非 finite
+→ reject
+
+GPU 与 CPU solution 不一致
+→ reject
+
+transfer 每 KSP iteration 大量发生
+→ residency fail
+
+benchmark 只有一次
+→ 不允许形成性能结论。
+
+
+============================================================
+60. 可视化
+============================================================
+
+只生成有实际数据的图。
+
+A.
+mpi_unblock.png
+
+标题：
+
+“GPU 路线最开始卡在哪里，现在修好了吗？”
+
+显示：
+
+MPI tests
+PASS / FAIL。
+
+
+B.
+gpu_build_pipeline.png
+
+标题：
+
+“GPU 求解链路已经走到哪一步？”
+
+MPI
+→ PETSc CUDA
+→ PETSc GPU smoke
+→ svMultiPhysics GPU
+→ vascular proof。
+
+
+C.
+cuda_types.png
+
+标题：
+
+“PETSc 的矩阵和向量真的在显卡上吗？”
+
+只使用 runtime evidence。
+
+
+D.
+gpu_residency.png
+
+标题：
+
+“求解过程中数据是否一直留在显卡里？”
+
+
+E.
+gpu_transfer_cost.png
+
+标题：
+
+“CPU 和 GPU 之间搬数据是否成为瓶颈？”
+
+
+F.
+gpu_cpu_solution_difference.png
+
+标题：
+
+“GPU 加速后，答案有没有改变？”
+
+
+G.
+cpu_gpu_runtime.png
+
+标题：
+
+“同一台服务器上，CPU 和 RTX 4090 谁更快？”
+
+
+H.
+gpu_memory.png
+
+标题：
+
+“24 GB 显存够不够？”
+
+
+============================================================
+61. 可视化规则
+============================================================
+
+如果某阶段没有真实运行：
+
+图中必须：
+
+NOT RUN
+
+不要生成伪造柱状数据。
+
+不要用：
+
+estimated
+assumed
+theoretical speedup
+
+填补实际数据。
+
+
+============================================================
+62. REPORT.md
+============================================================
+
+生成：
+
+reports/sv1_3g/REPORT.md
+
+标题：
+
+# Stage SV1.3G — RTX 4090 GPU 求解环境排查与 CUDA PETSc 验证
+
+
+## GPU 上一次为什么没跑起来？
+
+普通语言说明：
+
+不是 vascular solve 失败，
+
+而是在 PETSc build 前
+最基本 MPI process launch 就卡住。
+
+
+## MPI 到底出了什么问题？
+
+报告：
+
+MPI implementation
+
+是否 root
+
+是否 stack mismatch
+
+哪个最小测试失败
+
+最终如何解决。
+
+
+## mpiexec 现在可靠吗？
+
+报告：
+
+5 次 rank1
+1 次 rank2。
+
+
+## PETSc CUDA 能编译了吗？
+
+版本
+CUDA toolkit
+build outcome。
+
+
+## 如果仍失败，失败在哪一层？
+
+必须明确分类：
+
+MPI
+
+CUDA toolkit
+
+compiler
+
+PETSc
+
+而不是 generic fail。
+
+
+## PETSc 真的在 GPU 上吗？
+
+报告：
+
+actual Mat
+actual Vec
+KSP
+
+runtime evidence。
+
+
+## svMultiPhysics 真的用了 CUDA PETSc 吗？
+
+报告 binary linkage
+和 runtime。
+
+
+## 真实 vascular 20-step GPU proof 成功了吗？
+
+报告：
+
+convergence
+finite fields
+mass
+reload。
+
+
+## GPU 和 CPU 的答案一样吗？
+
+展示数值差异。
+
+
+## 数据有没有频繁在 CPU/GPU 搬？
+
+报告 residency。
+
+
+## GPU 实际快吗？
+
+只有实际 benchmark 后回答。
+
+
+## 下一步
+
+如果 GPU_A_PROMISING：
+
+建议下一阶段：
+GPU production early-stop validation。
+
+如果 GPU transfer-bound：
+
+建议：
+研究 GPU-native PC。
+
+如果 GPU slower：
+
+保留 CPU production。
+
+如果仍 environment blocked：
+
+给唯一明确 blocker。
+
+
+============================================================
+63. 状态定义
+============================================================
+
+如果 MPI 仍无法运行：
+
+STAGE SV1.3G:
+BLOCKED
+REASON:
+MPI_RUNTIME_UNUSABLE
+
+如果 MPI PASS
+但 CUDA toolkit incompatibility：
+
+BLOCKED:
+CUDA_TOOLKIT_COMPATIBILITY
+
+如果 PETSc CUDA build fail：
+
+FAIL:
+CUDA_PETSC_BUILD_FAIL
+
+如果 PETSc GPU smoke fail：
+
+FAIL:
+PETSC_GPU_SMOKE_FAIL
+
+如果 svMultiPhysics 无法使用 CUDA types：
+
+FAIL:
+GPU_BACKEND_NOT_REACHABLE
+
+如果真实 GPU proof 数值不一致：
+
+FAIL:
+GPU_NUMERICAL_DIFFERENCE
+
+如果 GPU proof + residency + benchmark PASS：
+
+STAGE SV1.3G:
+CONDITIONAL PASS
+
+等待人工审核。
+
+
+============================================================
+64. 严格开发顺序
+============================================================
+
+Step 1
+冻结 SV1.2 / SV1.3 reference。
+
+Step 2
+完整 MPI environment fingerprint。
+
+Step 3
+检查 MPI stack consistency。
+
+Step 4
+编译 mpi_hello。
+
+Step 5
+direct singleton tests。
+
+Step 6
+default mpiexec rank1。
+
+Step 7
+root override if applicable。
+
+Step 8
+no-binding if required。
+
+Step 9
+minimal local transport if required。
+
+Step 10
+TMPDIR / launcher diagnosis if required。
+
+Step 11
+如果系统 MPI 无法修：
+唯一 local MPI fallback。
+
+Step 12
+MPI 5× rank1 + 1× rank2 hard gate。
+
+Step 13
+clean PETSc CUDA configure。
+
+Step 14
+PETSc CUDA build。
+
+Step 15
+PETSc standalone GPU smoke ×3。
+
+Step 16
+build CUDA-PETSc svMultiPhysics。
+
+Step 17
+official svMultiPhysics GPU fluid smoke。
+
+Step 18
+verify runtime Mat/Vec types。
+
+Step 19
+GPU vascular proof 20 steps。
+
+Step 20
+CPU 1-rank proof 20 steps。
+
+Step 21
+science equivalence。
+
+Step 22
+GPU residency profiling。
+
+Step 23
+transfer audit。
+
+Step 24
+fixed-window CPU/GPU benchmark。
+
+Step 25
+generate visuals。
+
+Step 26
+full tests。
+
+Step 27
+history audit。
+
+Step 28
+REPORT.md。
+
+Step 29
+停止。
+
+不得自动启动 GPU full production solve。
+
+
+============================================================
+65. 最终终端输出
+============================================================
+
+Stage SV1.3G completed.
+
+MPI:
+    implementation = ...
+    version = ...
+    root = ...
+    compiler/runtime same stack = ...
+    root restriction = ...
+    working launcher = ...
+    rank1 repeat = .../5
+    rank2 = PASS / FAIL
+
+CUDA:
+    GPU = RTX 4090
+    driver = ...
+    toolkit = ...
+    compute capability = ...
+
+PETSc CUDA:
+    configure = ...
+    build = ...
+    GPU smoke = ...
+    Mat type = ...
+    Vec type = ...
+
+svMultiPhysics GPU:
+    build = ...
+    linked CUDA PETSc = ...
+    official smoke = ...
+
+vascular GPU proof:
+    steps = ...
+    linear failures = ...
+    nonlinear failures = ...
+    velocity finite = ...
+    pressure finite = ...
+    mass error = ...
+    reload = ...
+
+CPU/GPU equivalence:
+    velocity relative L2 = ...
+    pressure relative L2 = ...
+    flow difference = ...
+
+GPU residency:
+    matrix resident = ...
+    vectors resident = ...
+    H2D pattern = ...
+    D2H pattern = ...
+    transfer bound = ...
+
+benchmark:
+    CPU 1R = ...
+    CPU 4R = ...
+    GPU 1R = ...
+    GPU speedup vs best CPU = ...
+
+classification:
+    GPU_A_PROMISING /
+    GPU_WORKS_BUT_NOT_WORTH_COMPLEXITY /
+    GPU_SLOWER_THAN_CPU /
+    GPU_TRANSFER_BOUND /
+    BLOCKED /
+    FAIL
+
+tests:
+    passed = ...
+    failed = ...
+    skipped = ...
+
+report:
+    reports/sv1_3g/REPORT.md
+
+human review:
+    mpi_unblock.png
+    gpu_build_pipeline.png
+    cuda_types.png
+    gpu_residency.png
+    gpu_transfer_cost.png
+    gpu_cpu_solution_difference.png
+    cpu_gpu_runtime.png
+    gpu_memory.png
+
+STAGE SV1.3G STATUS:
+    CONDITIONAL PASS / BLOCKED / FAIL
+
+然后停止。

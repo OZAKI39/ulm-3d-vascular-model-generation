@@ -1,0 +1,41 @@
+{
+  "status": "PASS",
+  "figures": [
+    {
+      "path": "reports/sv1_3m/ghost_failure_before_after.png",
+      "sha256": "d44e04c37a8aabbd6b7f1887e4963df1cd4b7c2d9e712a2c8536add2096cab30",
+      "title": "CUDA ghost vector 的报错修好了吗？",
+      "data_source": "ghost_probe_before/repair_01/repair_02/repair_03.json",
+      "caption": "最终 ghost 回归全部通过；repair_02 虽已消除接口错误，反向数据仍错误，因此保留 FAIL。"
+    },
+    {
+      "path": "reports/sv1_3m/ghost_data_correctness.png",
+      "sha256": "2a907cd6f8ccedddb7b26ec383f8b2d2392f6ac45bda33d3a48136b20c556ab9",
+      "title": "Ghost 数据同步以后真的正确吗？",
+      "data_source": "ghost_probe_after.json; ghost_coherence.json",
+      "caption": "单进程没有远端 ghost；双进程每 rank 有 2 个 ghost 标量。另有 GPU 运算、写回和复制检查全部通过。"
+    },
+    {
+      "path": "reports/sv1_3m/patch_scope.png",
+      "sha256": "111d111a0fb0124d235262246c007bdca15987159b81cd3ad7eb1e0067916519",
+      "title": "这次到底改了 PETSc 的哪些地方？",
+      "data_source": "repair_03.json; patch_integrity.json",
+      "caption": "累计 4 个文件、6 个函数、+54 / −5 行。两个上游来源 + 明确标注的本地同步适配；solver source diff = 0。"
+    },
+    {
+      "path": "reports/sv1_3m/gpu_stack_pipeline.png",
+      "sha256": "7e428f230104cb0df6fb90002886b624b46222c1b615e9df25337aaabdaa47c5",
+      "title": "RTX 4090 求解链路现在走到哪一步？",
+      "data_source": "stage_result.json; svmp_gpu_smoke.json",
+      "caption": "Stage M: FAIL — SVMULTIPHYSICS_GPU_SMOKE_FAIL。CPU production 保持不变。"
+    },
+    {
+      "path": "reports/sv1_3m/svmultiphysics_gpu_smoke.png",
+      "sha256": "5a063f4aa5236e4d74a55622668ab1b0ea209f0e47ee12b2c603efa563bb80a2",
+      "title": "SimVascular 现在能完整跑完 GPU 流体测试吗？",
+      "data_source": "svmp_gpu_smoke.json; finalize_ksp_probe.json",
+      "caption": "生成正确格式的场不能抵消退出错误。独立小型 KSP 也复现：缺失清理失败，正确清理后 exit=0。"
+    }
+  ],
+  "downstream_figures": "NOT_RUN: official smoke did not pass"
+}

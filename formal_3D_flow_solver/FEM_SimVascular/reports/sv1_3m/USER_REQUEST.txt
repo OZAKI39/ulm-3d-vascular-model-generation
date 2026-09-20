@@ -1,0 +1,2055 @@
+你现在执行：
+
+Stage SV1.3M — CUDA Ghost Vector Compatibility Repair
+
+唯一开发目录：
+
+/home/lzy/projects/formal_3D_flow_solver/FEM_SimVascular
+
+历史状态：
+
+Stage SV1.2:
+PASS
+正式科学 validation reference。
+
+Stage SV1.3:
+CPU optimization PASS
+正式 production:
+CPU_EARLY_STOP_PRODUCTION。
+
+Stage SV1.3J:
+CUDA12.3.2 + PETSc3.19.6 GPU runtime PASS。
+
+Stage SV1.3L:
+MPI Fortran datatype repair PASS
+PETSc GPU revalidation PASS
+svMultiPhysics CUDA backend activation PASS
+
+但 official fluid GPU smoke FAIL：
+
+CUDA_VECTOR_GHOST_LAYOUT_INCOMPATIBILITY
+
+原始 PETSc 错误：
+
+Vector is not ghosted
+
+调用栈包含：
+
+VecGhostUpdateBegin()
+commonmpvec.c
+
+以及 svMultiPhysics：
+
+petsc_set_vec()
+petsc_impl.cpp
+
+本阶段目标：
+
+在保持科学问题完全不变的情况下，
+对 PETSc 3.19.6 做最小、可审计、
+有 upstream 依据的 CUDA ghost-vector compatibility repair，
+
+然后继续：
+
+PETSc ghost regression
+→
+svMultiPhysics official GPU smoke
+→
+真实 vascular GPU 20-step proof
+→
+CPU/GPU science equivalence
+→
+GPU residency / transfer audit
+→
+同机 CPU/GPU benchmark。
+
+不得开始 Mesh convergence。
+
+
+============================================================
+0. 新开发原则：明显可修复问题不得立即停止
+============================================================
+
+从本阶段开始：
+
+如果遇到的问题满足全部条件：
+
+1.
+根因已经明确定位；
+
+2.
+属于：
+API compatibility
+build/link/runtime integration
+backend type handling
+路径/配置
+版本接口差异
+这类工程兼容问题；
+
+3.
+存在官方源码、
+upstream commit/MR/tag diff、
+当前新版本实现
+或本地最小复现支持；
+
+4.
+修复可以局限在很小的 compatibility layer；
+
+5.
+不改变：
+mesh
+geometry
+rho/mu/Q
+BC
+dt
+time integration
+Navier-Stokes formulation
+finite-element formulation
+nonlinear algorithm
+scientific acceptance criteria；
+
+则：
+
+不要立刻 FAIL 停止。
+
+允许进入：
+
+CONTROLLED_COMPATIBILITY_REPAIR
+
+完成：
+
+诊断
+→ 最小 patch
+→ regression test
+→ clean rebuild
+→ before/after validation
+→ 继续原流程。
+
+
+============================================================
+1. 自动兼容修复次数限制
+============================================================
+
+本阶段最多允许：
+
+3 次 compatibility repair iterations。
+
+每一次必须：
+
+单独编号：
+
+repair_01
+repair_02
+repair_03
+
+记录：
+
+trigger error
+root cause
+upstream evidence
+patch
+files modified
+lines modified
+tests added
+before result
+after result。
+
+禁止：
+
+无依据盲改
+大范围重构
+参数扫表
+碰运气修改。
+
+
+============================================================
+2. 哪些情况仍然必须停止
+============================================================
+
+如果解决问题要求修改：
+
+vascular geometry
+
+mesh
+
+boundary roles
+
+Q
+
+rho
+
+mu
+
+inlet/outlet BC
+
+dt
+
+generalized-alpha
+
+Navier-Stokes equations
+
+FE discretization
+
+scientific solver tolerance policy
+
+particle model
+
+则：
+
+立即停止并报告：
+
+SCIENTIFIC_MODEL_CHANGE_REQUIRED
+
+等待用户决定。
+
+
+============================================================
+3. 历史文件保护
+============================================================
+
+不得修改：
+
+reports/sv1/
+reports/sv1_1/
+reports/sv1_2/
+reports/sv1_3/
+reports/sv1_3g/
+reports/sv1_3h/
+reports/sv1_3j/
+reports/sv1_3l/
+
+对应 outputs/logs 也只读。
+
+新目录：
+
+reports/sv1_3m/
+outputs/sv1_3m/
+logs/sv1_3m/
+configs/sv1_3m/
+benchmarks/sv1_3m/
+patches/sv1_3m/
+
+
+============================================================
+4. 冻结当前成功 GPU stack
+============================================================
+
+从 Stage L artifact 读取：
+
+Open MPI 4.1.6 + Fortran prefix
+
+CUDA 12.3.2 prefix
+
+GCC/G++/GFortran 12
+
+PETSc 3.19.6 source archive SHA
+
+PETSc CUDA configuration
+
+svMultiPhysics commit
+
+mesh SHA
+
+physics SHA
+
+BC/config SHA。
+
+生成：
+
+reports/sv1_3m/reference_manifest.json
+
+不得根据提示词硬编码路径。
+
+
+============================================================
+5. 当前问题必须重新复现
+============================================================
+
+先重新运行：
+
+Stage L official fluid/newtonian GPU smoke
+
+只运行一次。
+
+要求重新得到：
+
+Mat CUDA type observed
+
+Vec CUDA type observed
+
+Vector is not ghosted
+
+VecGhostUpdateBegin stack
+
+然后停止这个 run。
+
+保存：
+
+baseline_ghost_failure.json
+
+确认问题仍可复现。
+
+
+============================================================
+6. 不直接在 svMultiPhysics 中打 workaround
+============================================================
+
+优先修复层级：
+
+PETSc compatibility layer。
+
+当前禁止首先：
+
+跳过 VecGhostUpdate
+
+把 seqcuda 强制改 seq
+
+在 svMultiPhysics 中复制 ghost 数据
+
+把 CUDA Vec 临时转 CPU Vec
+
+关闭 ghost communication。
+
+这些都会掩盖真实问题。
+
+
+============================================================
+7. Phase A — 建立最小 PETSc ghost reproducer
+============================================================
+
+在完全不运行 svMultiPhysics 的情况下，
+
+编写：
+
+benchmarks/sv1_3m/petsc_cuda_ghost_probe.c
+
+或 C++，
+选择最接近 solver 实际调用方式的语言。
+
+必须尽量复现：
+
+VecCreateGhost
+或
+VecCreateGhostBlock
+
+→
+VecSetFromOptions
+
+→
+CUDA Vec type
+
+→
+VecGhostGetLocalForm
+
+→
+VecGhostUpdateBegin
+
+→
+VecGhostUpdateEnd。
+
+
+============================================================
+8. Probe 必须覆盖 CPU 与 GPU
+============================================================
+
+至少测试：
+
+A.
+CPU sequential ghost Vec
+
+B.
+CUDA sequential ghost Vec
+
+C.
+CPU MPI ghost Vec，2 ranks
+
+D.
+CUDA MPI ghost Vec，2 ranks
+如果当前 PETSc/CUDA/MPI path 正式支持。
+
+不得只测试 seqcuda。
+
+
+============================================================
+9. Ghost probe 数据设计
+============================================================
+
+使用非常小的确定性向量。
+
+每个 owned entry：
+
+设置唯一可验证值。
+
+ghost indices：
+
+明确列出。
+
+执行 forward update：
+
+INSERT_VALUES
+SCATTER_FORWARD。
+
+验证：
+
+ghost values
+等于 owner values。
+
+
+============================================================
+10. Reverse update
+============================================================
+
+在 local ghost entry
+加入可验证 contribution。
+
+执行：
+
+ADD_VALUES
+SCATTER_REVERSE。
+
+验证：
+
+owner value
+得到正确累加。
+
+必须覆盖：
+
+Forward
+
+和：
+
+Reverse。
+
+
+============================================================
+11. Local form
+============================================================
+
+调用：
+
+VecGhostGetLocalForm
+
+检查：
+
+local size
+
+owned + ghost layout
+
+actual local values。
+
+然后：
+
+VecGhostRestoreLocalForm。
+
+不能只证明 API 不报错。
+
+
+============================================================
+12. Patch 前基线
+============================================================
+
+当前原版 PETSc3.19.6：
+
+CPU ghost probe
+预期 PASS。
+
+CUDA ghost probe
+应复现当前 incompatibility。
+
+记录实际：
+
+Vec type
+base type
+error
+stack。
+
+生成：
+
+ghost_probe_before.json。
+
+
+============================================================
+13. Phase B — upstream differential audit
+============================================================
+
+获取官方 PETSc repository。
+
+不得把任意论坛代码当 patch 来源。
+
+比较：
+
+PETSc 3.19.6
+
+与：
+
+第一个已知能正确处理 CUDA ghost vector
+的官方 PETSc version / commit。
+
+重点函数：
+
+VecGhostGetLocalForm
+
+VecGhostRestoreLocalForm
+
+VecGhostUpdateBegin
+
+VecGhostUpdateEnd
+
+以及它们直接依赖的：
+
+type dispatch helpers。
+
+
+============================================================
+14. 查找修复演化
+============================================================
+
+使用：
+
+git log
+
+git blame
+
+git diff
+
+tag-to-tag diff
+
+官方 merge request / commit
+
+定位：
+
+ghost vector type matching
+何时从 concrete type matching
+
+变为：
+
+base-type-aware matching
+
+或其它等效实现。
+
+
+============================================================
+15. 不预设具体 patch
+============================================================
+
+可以把：
+
+PetscObjectTypeCompare
+
+vs
+
+PetscObjectBaseTypeCompare
+
+作为重点调查方向，
+
+但不得因为提示词提到它
+就直接替换。
+
+必须由：
+
+实际 3.19.6 source
+
++
+upstream fixed source
+
+diff
+
+证明所需变化。
+
+
+============================================================
+16. 生成 upstream audit
+============================================================
+
+生成：
+
+reports/sv1_3m/upstream_ghost_fix_audit.md
+
+包含：
+
+old source snippet
+
+new source snippet
+
+first fixed tag/commit
+
+commit hash
+
+upstream rationale if available
+
+受影响函数
+
+为什么 CUDA derived Vec
+需要该变化。
+
+
+============================================================
+17. patch policy
+============================================================
+
+只允许：
+
+最小 compatibility backport。
+
+原则：
+
+修改最少文件
+
+修改最少函数
+
+修改最少行。
+
+禁止：
+
+把整份新版 commonmpvec.c
+覆盖到 3.19.6。
+
+禁止：
+
+大规模 backport。
+
+
+============================================================
+18. Patch 单独保存
+============================================================
+
+不要修改历史原始 source tree。
+
+从相同官方 PETSc 3.19.6 archive
+解压：
+
+external/compat_cuda/
+petsc-3.19.6-cuda123-ghostfix/
+
+应用 patch。
+
+保存：
+
+patches/sv1_3m/
+petsc319_cuda_ghost_backport.patch
+
+
+============================================================
+19. Patch provenance
+============================================================
+
+生成：
+
+patches/sv1_3m/PATCH_PROVENANCE.md
+
+至少写：
+
+base PETSc version
+
+base source SHA
+
+upstream commit/tag
+
+为什么需要
+
+modified files
+
+modified lines
+
+scientific impact:
+NONE — compatibility only
+
+revert method。
+
+
+============================================================
+20. Patch source integrity
+============================================================
+
+保留：
+
+原始 PETSc archive
+完全不动。
+
+记录：
+
+before tree hash
+after tree hash
+
+expected changed files only。
+
+任何非预期文件变化：
+
+FAIL。
+
+
+============================================================
+21. clean rebuild
+============================================================
+
+使用完全相同：
+
+CUDA12.3.2
+
+GCC12
+
+project OpenMPI Fortran
+
+BLAS/LAPACK
+
+PETSc configure options。
+
+唯一变化：
+
+compatibility patch。
+
+不得复用旧 object files。
+
+
+============================================================
+22. Build regression
+============================================================
+
+要求：
+
+configure PASS
+
+make PASS
+
+install PASS
+
+CPU self-test PASS
+
+MPI self-test PASS
+
+CUDA self-test PASS。
+
+
+============================================================
+23. 原 PETSc GPU smoke 重新执行
+============================================================
+
+重新运行已有：
+
+petsc_cuda_smoke
+
+3 次。
+
+要求继续：
+
+Mat = seqaijcusparse
+
+Vec = seqcuda
+
+GMRES PASS
+
+数值结果与 Stage L 一致。
+
+
+============================================================
+24. Ghost probe after patch
+============================================================
+
+重新运行全部：
+
+CPU seq
+
+CUDA seq
+
+CPU MPI
+
+CUDA MPI
+
+ghost tests。
+
+要求：
+
+Forward PASS
+
+Reverse PASS
+
+Local form PASS
+
+3 次重复 PASS。
+
+
+============================================================
+25. CPU regression 不能被破坏
+============================================================
+
+CPU ghost behaviour
+必须和原版 3.19.6 一致。
+
+如果 patch 修 CUDA
+但破坏 CPU：
+
+PATCH REJECT。
+
+
+============================================================
+26. CUDA ghost data correctness
+============================================================
+
+不能只接受：
+
+no exception。
+
+必须逐元素比较：
+
+owned values
+
+ghost values
+
+reverse accumulated values。
+
+全部正确。
+
+
+============================================================
+27. 如果 repair_01 仍失败
+============================================================
+
+自动重新分析新错误。
+
+如果新错误：
+
+仍属于同一个 PETSc ghost CUDA
+局部 compatibility chain，
+
+并存在明确 upstream 修复，
+
+允许：
+
+repair_02。
+
+遵守相同：
+
+provenance
+patch
+test
+clean build
+before/after。
+
+
+============================================================
+28. repair_03
+============================================================
+
+只有 repair_02 后仍出现：
+
+明确、局部、同类 compatibility issue
+
+才允许 repair_03。
+
+之后：
+
+若仍无法通过最小 probe，
+
+停止：
+
+GHOST_COMPATIBILITY_REPAIR_EXHAUSTED。
+
+
+============================================================
+29. Phase C — rebuild svMultiPhysics
+============================================================
+
+只有：
+
+所有 PETSc ghost probes PASS
+
+后才允许。
+
+使用：
+
+固定 svMultiPhysics commit
+
+source diff = 0。
+
+不要修改 solver source。
+
+
+============================================================
+30. 新 build directory
+============================================================
+
+建立：
+
+external/build/
+svmp_gpu_ghostfix/
+
+明确链接：
+
+patched PETSc
+
+OpenMPI Fortran
+
+CUDA12.3.2。
+
+
+============================================================
+31. linkage audit
+============================================================
+
+ldd
+
+readelf
+
+CMake cache
+
+确认：
+
+libpetsc =
+patched ghostfix build
+
+libmpi =
+Fortran-enabled project MPI。
+
+禁止误链接：
+
+Stage L PETSc
+CPU PETSc
+old MPI。
+
+
+============================================================
+32. Phase D — official fluid GPU smoke
+============================================================
+
+运行与 Stage L 完全相同：
+
+official fluid/newtonian
+
+1 MPI rank
+
+1 RTX4090
+
+OMP=1
+
+scientific input 不变。
+
+
+============================================================
+33. official smoke 必须验证原错误消失
+============================================================
+
+检查日志：
+
+不得再出现：
+
+Vector is not ghosted
+
+VecGhostUpdateBegin invalid argument
+
+MPI_ERR_TYPE。
+
+
+============================================================
+34. 不能只看 exit code
+============================================================
+
+必须确认：
+
+CUDA Mat active
+
+CUDA Vec active
+
+KSP active
+
+PC active
+
+linear solves execute
+
+nonlinear step completes
+
+VTU generated
+
+velocity finite
+
+pressure finite
+
+reload PASS。
+
+
+============================================================
+35. 如果出现新的明显 compatibility error
+============================================================
+
+应用第 0 节开发原则。
+
+如果：
+
+明确定位
+局部
+有 upstream 修复
+不改变科学模型
+
+则：
+
+继续 repair loop。
+
+不要立即结束 Stage。
+
+最多总计：
+
+3 次 compatibility repair。
+
+
+============================================================
+36. 错误后的安全处理也要检查
+============================================================
+
+Stage L 在 PETSc error 后：
+
+仍出现 KSP convergence record
+然后 SEGV / MPI_ABORT。
+
+本阶段必须检查：
+
+官方 smoke 中
+如果任何 PETSc hard error 出现，
+
+runner/monitor
+不得把后续 KSP reason
+解释成成功。
+
+新增 regression test。
+
+
+============================================================
+37. Phase E — real vascular GPU proof
+============================================================
+
+official smoke 完整 PASS 后：
+
+立即继续，
+
+不要停止等待用户。
+
+运行：
+
+GPU_PROOF_20。
+
+============================================================
+38. GPU proof config
+============================================================
+
+t=0
+
+20 steps
+
+1 MPI rank
+
+1 RTX4090
+
+OMP=1。
+
+使用正式 production：
+
+mesh
+
+rho
+
+mu
+
+Q
+
+BC
+
+dt
+
+generalized-alpha
+
+nonlinear method
+
+GMRES tolerance
+
+ASM overlap 2
+
+ILU(2)。
+
+
+============================================================
+39. GPU proof 验收
+============================================================
+
+要求：
+
+20 steps completed
+
+linear failures = 0
+
+nonlinear failures = 0
+
+all fields finite
+
+wall no-slip PASS
+
+Qin finite
+
+three Qout finite
+
+mass finite
+
+VTU generated
+
+fresh-process reload PASS。
+
+
+============================================================
+40. Phase F — matching CPU proof
+============================================================
+
+使用：
+
+同一个 patched PETSc build
+
+同一个 MPI
+
+同一个 svMultiPhysics binary
+
+但 runtime 使用：
+
+CPU Mat/Vec。
+
+运行：
+
+CPU_PROOF_20_1R
+
+t=0
+20 steps。
+
+
+============================================================
+41. CPU/GPU 唯一区别
+============================================================
+
+尽量保证：
+
+只有：
+
+PETSc device backend
+
+不同。
+
+不要让：
+
+binary
+MPI
+PETSc version
+mesh
+physics
+
+不同。
+
+
+============================================================
+42. Science equivalence
+============================================================
+
+沿用冻结门槛：
+
+velocity relative volume L2 <=1e-5
+
+pressure relative volume L2 <=1e-5
+
+Qin relative difference <=1e-6
+
+each Qout relative difference <=1e-5
+
+mass-error difference <=1e-6
+
+max velocity relative difference <=1e-5。
+
+
+============================================================
+43. 不允许 pressure shift
+============================================================
+
+CPU/GPU pressure 比较：
+
+使用原生 pressure。
+
+不要：
+
+人为减均值
+出口归零
+重新 gauge align
+
+除非 production reference
+本身定义了该操作。
+
+当前不允许。
+
+
+============================================================
+44. Phase G — GPU residency profiling
+============================================================
+
+science equivalence PASS 后
+自动继续。
+
+运行：
+
+独立 profiling case。
+
+不要把 profiling runtime
+作为正式 benchmark。
+
+
+============================================================
+45. profiling evidence
+============================================================
+
+至少保存：
+
+PETSc log_view
+
+MatView
+
+Vec type
+
+KSPView
+
+PCView
+
+GPU log if supported
+
+nvidia-smi sampled memory/utilization。
+
+
+============================================================
+46. 特别关注 ghost communication
+============================================================
+
+新增检查：
+
+ghost Forward/Reverse
+是否导致：
+
+device→host
+
+host→device
+
+大规模复制。
+
+必须区分：
+
+ghost-related transfer
+
+MatMult-related transfer
+
+PC-related transfer。
+
+
+============================================================
+47. residency 必须回答
+============================================================
+
+matrix resident on GPU?
+
+vectors resident on GPU?
+
+ghost local/global storage location?
+
+MatMult GPU?
+
+ASM device?
+
+ILU factorization device?
+
+ILU triangular solve device?
+
+H2D count
+
+D2H count
+
+transfer bytes
+
+peak VRAM。
+
+
+============================================================
+48. 传输增长关系
+============================================================
+
+判断：
+
+transfer count
+
+更接近：
+
+nonlinear/assembly count
+
+还是：
+
+KSP iteration count。
+
+如果随数百 KSP iteration
+线性增长：
+
+GPU_TRANSFER_BOUND。
+
+
+============================================================
+49. Phase H — same-server benchmark
+============================================================
+
+science equivalence PASS 后：
+
+CPU_1R
+CPU_4R
+GPU_1R
+
+都从：
+
+t=0
+20 steps
+
+运行。
+
+
+============================================================
+50. benchmark repeatability
+============================================================
+
+每个：
+
+至少 2 次。
+
+第 1 次 warm-up。
+
+第 2 次正式。
+
+差异 >10%：
+
+第 3 次。
+
+最终使用 median。
+
+
+============================================================
+51. benchmark 禁止 profiling
+============================================================
+
+正式 wall time 时关闭：
+
+heavy log_view
+GPU timer
+strace
+Nsight
+debug tracing。
+
+只保留必要 convergence log。
+
+
+============================================================
+52. speedup
+============================================================
+
+best_CPU =
+min(
+CPU1 median,
+CPU4 median
+)
+
+S_gpu =
+best_CPU / GPU1 median。
+
+
+============================================================
+53. classification
+============================================================
+
+如果：
+
+science PASS
+
+residency acceptable
+
+S_gpu >=1.25：
+
+GPU_A_PROMISING。
+
+如果：
+
+1 < S_gpu <1.25：
+
+GPU_WORKS_BUT_NOT_WORTH_COMPLEXITY。
+
+如果：
+
+S_gpu <=1：
+
+GPU_SLOWER_THAN_CPU。
+
+如果：
+
+transfer dominates：
+
+GPU_TRANSFER_BOUND。
+
+
+============================================================
+54. GPU full steady 不在本阶段
+============================================================
+
+即使：
+
+GPU_A_PROMISING
+
+也不要自动跑完整 steady GPU。
+
+下一阶段：
+
+Stage SV1.3N
+
+再做：
+
+GPU full early-stop validation。
+
+
+============================================================
+55. Production 不改变
+============================================================
+
+当前 production：
+
+CPU_EARLY_STOP_PRODUCTION
+
+保持。
+
+patched PETSc GPU：
+
+只属于：
+
+experimental GPU compatibility stack
+
+直到完整 steady GPU PASS。
+
+
+============================================================
+56. Patch 命名
+============================================================
+
+如果 Stage M patch 最终被采用：
+
+不得称：
+
+“official PETSc 3.19.6”。
+
+必须称：
+
+PETSc 3.19.6
++ upstream CUDA ghost compatibility backport。
+
+所有 manifest/report
+明确记录。
+
+
+============================================================
+57. 永久测试
+============================================================
+
+至少新增：
+
+tests/test_sv13m_reference_freeze.py
+
+tests/test_sv13m_ghost_failure_reproduction.py
+
+tests/test_sv13m_upstream_diff.py
+
+tests/test_sv13m_patch_scope.py
+
+tests/test_sv13m_patch_provenance.py
+
+tests/test_sv13m_petsc_clean_build.py
+
+tests/test_sv13m_cpu_seq_ghost.py
+
+tests/test_sv13m_cuda_seq_ghost.py
+
+tests/test_sv13m_cpu_mpi_ghost.py
+
+tests/test_sv13m_cuda_mpi_ghost.py
+
+tests/test_sv13m_ghost_forward.py
+
+tests/test_sv13m_ghost_reverse.py
+
+tests/test_sv13m_ghost_local_form.py
+
+tests/test_sv13m_petsc_gpu_regression.py
+
+tests/test_sv13m_svmp_link.py
+
+tests/test_sv13m_official_gpu_smoke.py
+
+tests/test_sv13m_petcs_error_precedence.py
+
+tests/test_sv13m_gpu_proof.py
+
+tests/test_sv13m_cpu_proof.py
+
+tests/test_sv13m_science_equivalence.py
+
+tests/test_sv13m_gpu_residency.py
+
+tests/test_sv13m_ghost_transfer.py
+
+tests/test_sv13m_benchmark.py
+
+tests/test_sv13m_visuals.py
+
+tests/test_sv13m_history_preservation.py
+
+成功后不得删除。
+
+
+============================================================
+58. regression tests
+============================================================
+
+至少验证：
+
+patch 未应用
++ CUDA ghost
+→ reproduces failure
+
+patch 后
++ CUDA ghost
+→ PASS
+
+CPU ghost 被 patch 破坏
+→ reject
+
+只消除 error
+但 ghost values 不正确
+→ reject
+
+Forward PASS
+Reverse FAIL
+→ reject
+
+LocalForm size 错
+→ reject
+
+patch 修改非预期 PETSc 文件
+→ reject
+
+patch 修改 svMultiPhysics
+→ reject
+
+PETSc hard error 后
+仍有 KSP CONVERGED
+→ overall reject
+
+GPU field NaN
+→ reject
+
+CPU/GPU result mismatch
+→ reject
+
+profiling runtime
+被当正式 benchmark
+→ reject
+
+单次 benchmark
+→ 无性能结论。
+
+
+============================================================
+59. 可视化
+============================================================
+
+必须生成：
+
+
+A.
+ghost_failure_before_after.png
+
+标题：
+
+“CUDA ghost vector 的报错修好了吗？”
+
+
+B.
+ghost_data_correctness.png
+
+标题：
+
+“Ghost 数据同步以后真的正确吗？”
+
+
+C.
+patch_scope.png
+
+标题：
+
+“这次到底改了 PETSc 的哪些地方？”
+
+
+D.
+gpu_stack_pipeline.png
+
+标题：
+
+“RTX 4090 求解链路现在走到哪一步？”
+
+
+E.
+svmultiphysics_gpu_smoke.png
+
+标题：
+
+“SimVascular 现在能完整跑完 GPU 流体测试吗？”
+
+
+如果 smoke PASS：
+
+F.
+gpu_cpu_solution_difference.png
+
+“GPU 和 CPU 算出的真实血流一样吗？”
+
+
+G.
+gpu_residency.png
+
+“求解过程中数据有没有一直留在显卡里？”
+
+
+H.
+ghost_transfer_cost.png
+
+“Ghost 同步会不会导致频繁 CPU/GPU 搬数据？”
+
+
+I.
+gpu_memory.png
+
+“RTX 4090 实际使用了多少显存？”
+
+
+J.
+cpu_gpu_runtime.png
+
+“同一个血管计算，GPU 到底快多少？”
+
+
+============================================================
+60. 图像风格
+============================================================
+
+标题使用普通语言。
+
+禁止：
+
+PETSc Object Base Type Compatibility
+
+改成：
+
+“CUDA ghost vector 的报错修好了吗？”
+
+
+禁止：
+
+VecScatter H2D Synchronization
+
+改成：
+
+“Ghost 同步会不会反复搬数据？”
+
+
+NOT RUN 数据：
+
+明确 NOT RUN。
+
+不得填 0 或估计。
+
+
+============================================================
+61. REPORT.md
+============================================================
+
+生成：
+
+reports/sv1_3m/REPORT.md
+
+标题：
+
+# Stage SV1.3M — 修复 CUDA Ghost Vector 并完成 SimVascular GPU 真实验证
+
+
+## 上一阶段到底为什么失败？
+
+用普通语言解释：
+
+SimVascular 已经真正启用 CUDA Vec，
+
+但旧 PETSc ghost 接口
+不认识 CUDA 派生 vector 类型。
+
+
+## 是怎么确认根因的？
+
+展示：
+
+最小 reproducer
+
+原版 source
+
+upstream source
+
+diff。
+
+
+## 为什么允许修改 PETSc？
+
+解释：
+
+这是 compatibility backport，
+
+不是修改 FEM / CFD 方程。
+
+SimVascular scientific source
+仍然完全不动。
+
+
+## 实际 patch 多大？
+
+给：
+
+files
+functions
+lines
+
+和 upstream 来源。
+
+
+## Ghost 数据真的正确吗？
+
+报告：
+
+CPU seq
+
+CUDA seq
+
+CPU MPI
+
+CUDA MPI
+
+Forward
+
+Reverse
+
+LocalForm。
+
+
+## PETSc GPU 基础功能有没有被破坏？
+
+报告：
+
+原 standalone GPU smoke。
+
+
+## SimVascular official GPU smoke 现在通过了吗？
+
+报告：
+
+Mat
+Vec
+KSP
+PC
+linear
+nonlinear
+VTU。
+
+
+## 如果中间又出现兼容问题
+
+列出：
+
+repair iterations
+
+以及为什么属于
+自动可修复范围。
+
+
+## 真实血管 GPU 20 步成功了吗？
+
+实际结果。
+
+
+## CPU 和 GPU 算出来一样吗？
+
+给实际 field / flow 比较。
+
+
+## Ghost 同步会不会拖慢 GPU？
+
+报告：
+
+residency
+transfer。
+
+
+## RTX4090 实际快多少？
+
+只报告同机实测 benchmark。
+
+
+## 最终结论
+
+给分类：
+
+GPU_A_PROMISING
+
+GPU_WORKS_BUT_NOT_WORTH_COMPLEXITY
+
+GPU_SLOWER_THAN_CPU
+
+GPU_TRANSFER_BOUND
+
+或 FAIL。
+
+
+============================================================
+62. 状态定义
+============================================================
+
+如果 3 次局部 repair
+仍不能让最小 ghost probe 正确：
+
+FAIL:
+GHOST_COMPATIBILITY_REPAIR_EXHAUSTED
+
+如果 PETSc probe PASS
+但 svMultiPhysics official smoke
+出现无法局部修复的问题：
+
+FAIL:
+SVMULTIPHYSICS_GPU_SMOKE_FAIL
+
+如果 official smoke PASS
+但 vascular proof FAIL：
+
+FAIL:
+GPU_VASCULAR_PROOF_FAIL
+
+如果 science mismatch：
+
+FAIL:
+GPU_NUMERICAL_DIFFERENCE
+
+如果 GPU 正确但不快：
+
+CONDITIONAL PASS
+classification:
+GPU_NOT_ADOPTED
+
+如果 proof/residency/benchmark PASS：
+
+STAGE SV1.3M:
+CONDITIONAL PASS
+
+等待人工审核。
+
+
+============================================================
+63. 严格开发顺序
+============================================================
+
+Step 1
+冻结 Stage L evidence。
+
+Step 2
+重新复现 official ghost failure。
+
+Step 3
+建立最小 PETSc ghost probe。
+
+Step 4
+原版 CPU/GPU ghost baseline。
+
+Step 5
+查询官方 PETSc upstream history。
+
+Step 6
+生成 upstream audit。
+
+Step 7
+生成最小 repair_01 patch。
+
+Step 8
+clean PETSc rebuild。
+
+Step 9
+CPU/GPU ghost regression。
+
+Step 10
+Forward/Reverse/LocalForm correctness。
+
+Step 11
+原 PETSc GPU smoke regression。
+
+Step 12
+若仍出现明确局部兼容问题：
+进入 repair_02 / repair_03。
+
+Step 13
+clean rebuild svMultiPhysics。
+
+Step 14
+link audit。
+
+Step 15
+official GPU fluid smoke。
+
+Step 16
+如果出现明显、局部、有依据的兼容错误：
+允许继续 controlled repair，
+不要直接终止。
+
+Step 17
+official smoke PASS 后：
+GPU_PROOF_20。
+
+Step 18
+CPU_PROOF_20_1R。
+
+Step 19
+science equivalence。
+
+Step 20
+GPU residency profiling。
+
+Step 21
+ghost transfer audit。
+
+Step 22
+CPU1 / CPU4 / GPU1 benchmark。
+
+Step 23
+重复性。
+
+Step 24
+classification。
+
+Step 25
+生成图片。
+
+Step 26
+完整 tests。
+
+Step 27
+history preservation audit。
+
+Step 28
+REPORT.md。
+
+Step 29
+停止。
+
+不得自动运行：
+
+GPU full steady solve
+
+Mesh convergence。
+
+
+============================================================
+64. 最终终端输出
+============================================================
+
+Stage SV1.3M completed.
+
+baseline ghost failure:
+    reproduced = ...
+    Vec type = ...
+    error = ...
+
+upstream compatibility fix:
+    upstream tag/commit = ...
+    modified files = ...
+    modified functions = ...
+    patch lines = ...
+
+repair iterations:
+    repair_01 = ...
+    repair_02 = NOT_REQUIRED / ...
+    repair_03 = NOT_REQUIRED / ...
+
+ghost regression:
+    CPU seq = ...
+    CUDA seq = ...
+    CPU MPI = ...
+    CUDA MPI = ...
+    Forward = ...
+    Reverse = ...
+    LocalForm = ...
+
+PETSc GPU regression:
+    Mat = ...
+    Vec = ...
+    smoke = ...
+
+svMultiPhysics GPU:
+    linked patched PETSc = ...
+    official smoke = ...
+    runtime Mat = ...
+    runtime Vec = ...
+    linear failures = ...
+    nonlinear failures = ...
+    VTU = ...
+
+vascular GPU proof:
+    steps = ...
+    linear failures = ...
+    nonlinear failures = ...
+    velocity finite = ...
+    pressure finite = ...
+    reload = ...
+
+science equivalence:
+    velocity L2 = ...
+    pressure L2 = ...
+    Qin difference = ...
+    max Qout difference = ...
+    mass difference = ...
+
+GPU residency:
+    matrix resident = ...
+    vectors resident = ...
+    ghost transfer pattern = ...
+    PC location = ...
+    peak VRAM = ...
+
+benchmark:
+    CPU1 median = ...
+    CPU4 median = ...
+    GPU1 median = ...
+    speedup = ...
+
+classification:
+    ...
+
+tests:
+    passed = ...
+    failed = ...
+    skipped = ...
+
+report:
+    reports/sv1_3m/REPORT.md
+
+human review:
+    ghost_failure_before_after.png
+    ghost_data_correctness.png
+    patch_scope.png
+    gpu_stack_pipeline.png
+    svmultiphysics_gpu_smoke.png
+    gpu_cpu_solution_difference.png
+    gpu_residency.png
+    ghost_transfer_cost.png
+    gpu_memory.png
+    cpu_gpu_runtime.png
+
+STAGE SV1.3M STATUS:
+    CONDITIONAL PASS / FAIL
+
+然后停止。

@@ -1,0 +1,2603 @@
+你现在执行：
+
+Stage SV1.3N — Modern PETSc Upgrade, Scientific Regression and CPU/GPU Comparison
+
+唯一源码主目录：
+
+/home/lzy/projects/formal_3D_flow_solver/FEM_SimVascular
+
+重要：
+
+WSL 始终是 SOURCE OF TRUTH。
+
+远端 RTX 4090 服务器只负责：
+
+build
+runtime
+GPU proof
+profiling
+benchmark。
+
+所有真正采用的：
+
+source patch
+compatibility adapter
+test
+config
+report
+manifest
+
+最终必须同步回 WSL。
+
+
+============================================================
+0. 阶段背景
+============================================================
+
+历史正式科学 reference：
+
+Stage SV1.2:
+PASS。
+
+Stage SV1.3:
+CPU_EARLY_STOP_PRODUCTION PASS。
+
+当前正式 production：
+
+CPU_EARLY_STOP_PRODUCTION。
+
+历史 production PETSc：
+
+PETSc 3.19.6。
+
+
+Stage SV1.3J:
+
+CUDA 12.3.2
++
+PETSc 3.19.6
+
+GPU standalone runtime PASS。
+
+实际：
+
+Mat = seqaijcusparse
+Vec = seqcuda
+GMRES PASS。
+
+
+Stage SV1.3L:
+
+Open MPI Fortran datatype repair PASS。
+
+PETSc GPU revalidation PASS。
+
+svMultiPhysics 已经实际创建：
+
+CUDA Mat
+CUDA Vec
+GMRES
+ASM
+ILU(2)。
+
+但 official fluid GPU smoke
+在：
+
+VecGhostUpdateBegin()
+
+出现：
+
+Vector is not ghosted。
+
+当前分类：
+
+CUDA_VECTOR_GHOST_LAYOUT_INCOMPATIBILITY。
+
+
+本阶段不继续给 PETSc 3.19.6
+添加 ghost compatibility backport。
+
+旧 PETSc 3.19.6：
+
+保持只读 reference。
+
+
+============================================================
+1. 本阶段目标
+============================================================
+
+建立并验证：
+
+PETSc v3.25.5
+
+与当前固定：
+
+svMultiPhysics commit
+
+的兼容性。
+
+依次回答：
+
+A.
+新版 PETSc 能否编译当前 svMultiPhysics？
+
+B.
+新版 PETSc CPU
+是否保持旧 PETSc 3.19.6 的科学结果？
+
+C.
+新版 PETSc
+是否天然解决 CUDA ghost vector 问题？
+
+D.
+新版 PETSc + RTX4090
+能否完成真实 vascular GPU 20-step solve？
+
+E.
+新版 CPU / GPU
+科学结果是否一致？
+
+F.
+PETSc 升级本身
+是否带来 CPU 时间收益？
+
+G.
+GPU 相比最佳 CPU
+到底快多少？
+
+H.
+CPU/GPU transfer、
+ghost synchronization、
+preconditioner
+是否成为瓶颈？
+
+
+============================================================
+2. PETSc 目标版本
+============================================================
+
+默认唯一正式 Candidate：
+
+PETSc v3.25.5。
+
+必须从：
+
+PETSc 官方 GitLab / 官方下载源
+
+取得。
+
+运行时重新核验：
+
+tag
+
+完整 commit SHA
+
+source archive SHA256。
+
+不要仅根据本提示词硬编码 SHA。
+
+
+============================================================
+3. 为什么选择 v3.25.5
+============================================================
+
+报告中记录：
+
+它是本阶段开始时
+最新正式 PETSc 3.25 patch release。
+
+禁止默认使用：
+
+PETSc main
+
+PETSc 3.26 prerelease
+
+nightly snapshot。
+
+
+============================================================
+4. release branch fallback policy
+============================================================
+
+如果 v3.25.5 遇到：
+
+明确 upstream 已在
+PETSc release branch 修复的 bug，
+
+并且该 bug：
+
+根因明确
+与本项目直接相关
+修复局部
+不改变 solver mathematics，
+
+允许额外建立：
+
+Candidate R
+
+=
+PETSc release branch
+固定到一个明确 commit SHA。
+
+必须记录：
+
+为什么 v3.25.5 FAIL
+
+哪个 upstream commit 修复
+
+commit SHA
+
+diff。
+
+不得：
+
+git pull 后直接使用 floating release HEAD
+而不固定 commit。
+
+
+============================================================
+5. 不使用 PETSc main
+============================================================
+
+本阶段默认禁止：
+
+PETSc main。
+
+只有：
+
+v3.25.5
+
+和：
+
+明确修复该具体问题的
+release-branch pinned commit
+
+都无法工作，
+
+才在报告中建议下一步。
+
+不要自动进入 main。
+
+
+============================================================
+6. 当前 scientific source 冻结
+============================================================
+
+冻结：
+
+mesh
+
+geometry
+
+rho
+
+mu
+
+Q
+
+inlet BC
+
+outlet BC
+
+wall BC
+
+dt
+
+generalized-alpha
+
+time integration
+
+nonlinear formulation
+
+steady criteria
+
+production scientific tolerances。
+
+不得因为新 PETSc
+修改这些内容。
+
+
+============================================================
+7. 固定 svMultiPhysics baseline
+============================================================
+
+基准 commit：
+
+c3f0bb892b765b718f61069ecd9726dbc6d177fd
+
+先记录：
+
+full commit SHA
+
+git status
+
+tracked source hashes。
+
+
+============================================================
+8. 允许什么 svMultiPhysics 修改
+============================================================
+
+升级 PETSc 可能出现 API changes。
+
+如果新 PETSc 导致：
+
+compile API mismatch
+
+renamed PETSc routine
+
+changed enum/type
+
+deprecated/removed API
+
+required initialization change
+
+type-query API change
+
+等纯 compatibility 问题，
+
+Codex 可以自动制作：
+
+MINIMAL PETSC-3.25 COMPATIBILITY ADAPTER。
+
+前提：
+
+不改变 FEM/CFD mathematics。
+
+
+============================================================
+9. 自动修复原则
+============================================================
+
+如果问题：
+
+根因明确
+
+有 PETSc official release notes、
+header/source、
+upstream commit
+作为依据
+
+并且：
+
+修改局部
+
+不改变科学问题，
+
+则：
+
+不要立即 FAIL / STOP。
+
+执行：
+
+diagnose
+→
+minimal repair
+→
+regression test
+→
+clean rebuild
+→
+continue。
+
+
+============================================================
+10. 自动 repair 上限
+============================================================
+
+最多：
+
+3 个 compatibility repair iterations。
+
+分别记录：
+
+repair_01
+repair_02
+repair_03。
+
+每次必须保存：
+
+trigger
+
+root cause
+
+official evidence
+
+patch
+
+affected files
+
+affected lines
+
+before
+
+after
+
+new regression test。
+
+
+============================================================
+11. 必须停止的情况
+============================================================
+
+如果解决问题要求：
+
+改变 mesh
+
+改变 geometry
+
+改变 BC
+
+改变 Q/rho/mu
+
+改变 dt
+
+改变 Navier-Stokes formulation
+
+改变 FE discretization
+
+改变 steady criterion
+
+为了过测试而放宽科学 threshold
+
+则：
+
+停止：
+
+SCIENTIFIC_CHANGE_REQUIRED。
+
+
+============================================================
+12. 新阶段目录
+============================================================
+
+建立：
+
+reports/sv1_3n/
+outputs/sv1_3n/
+logs/sv1_3n/
+configs/sv1_3n/
+benchmarks/sv1_3n/
+patches/sv1_3n/
+external/petsc325/
+
+
+不得覆盖任何历史 Stage。
+
+
+============================================================
+13. 冻结 reference
+============================================================
+
+生成：
+
+reports/sv1_3n/reference_manifest.json
+
+至少记录：
+
+SV1.2 reference result SHA
+
+SV1.3 CPU early-stop result SHA
+
+mesh SHA
+
+geometry SHA
+
+old PETSc 3.19.6 source/build identity
+
+current MPI identity
+
+CUDA12.3 identity
+
+system CUDA13.2 identity
+
+svMultiPhysics commit
+
+physics/config hashes。
+
+
+============================================================
+14. Phase A — PETSc API upgrade audit
+============================================================
+
+在 build 之前：
+
+读取 PETSc 官方：
+
+3.20
+3.21
+3.22
+3.23
+3.24
+3.25
+
+release change notes。
+
+只提取与当前 svMultiPhysics
+实际使用 API 有关的变化。
+
+
+============================================================
+15. source-level API inventory
+============================================================
+
+扫描固定 svMultiPhysics source：
+
+所有 PETSc API references。
+
+建立：
+
+reports/sv1_3n/petsc_api_inventory.json
+
+至少包括：
+
+function
+
+type
+
+enum
+
+macro
+
+header
+
+source location。
+
+
+============================================================
+16. 交叉检查版本变化
+============================================================
+
+将 API inventory
+与 3.20→3.25 changes
+交叉比较。
+
+输出：
+
+unchanged
+
+deprecated
+
+changed
+
+removed
+
+needs runtime validation。
+
+
+============================================================
+17. 特别检查 PetscBool
+============================================================
+
+PETSc 新版本中
+PetscBool representation
+曾发生变化。
+
+必须检查当前 svMultiPhysics：
+
+是否：
+
+sizeof 假设
+
+MPI communication
+
+binary layout
+
+reinterpret cast
+
+serialization
+
+依赖旧 PetscBool size。
+
+如果没有：
+
+明确记录 NO_DEPENDENCY_FOUND。
+
+如果存在：
+
+只做 compatibility repair，
+不得改变科学逻辑。
+
+
+============================================================
+18. Phase B — 新 PETSc CPU baseline
+============================================================
+
+第一步不要启用 CUDA。
+
+先建立：
+
+PETSc v3.25.5 CPU build。
+
+目的：
+
+先把：
+
+PETSc version compatibility
+
+和：
+
+CUDA compatibility
+
+分开。
+
+
+============================================================
+19. CPU compatibility toolchain
+============================================================
+
+为了和旧 PETSc 尽量公平，
+
+优先使用：
+
+Stage L 已验证：
+
+Open MPI 4.1.6 + Fortran
+
+GCC/G++ 12。
+
+如果 PETSc3.25
+对该 compiler/MPI 有明确问题，
+
+允许修复，
+但必须记录原因。
+
+
+============================================================
+20. PETSc CPU configure
+============================================================
+
+使用：
+
+real double
+
+32-bit indices
+
+optimized shared build
+
+same system BLAS/LAPACK
+
+same project MPI。
+
+不要加入：
+
+CUDA
+
+hypre
+
+MUMPS
+
+Trilinos
+
+额外 solver package。
+
+
+============================================================
+21. PETSc CPU self-tests
+============================================================
+
+要求：
+
+configure PASS
+
+make PASS
+
+install PASS
+
+basic test PASS
+
+2-rank MPI test PASS。
+
+
+============================================================
+22. Build svMultiPhysics against PETSc3.25 CPU
+============================================================
+
+新 build：
+
+external/build/svmp_petsc325_cpu/
+
+不得覆盖旧 binary。
+
+
+============================================================
+23. 如果出现 API compile errors
+============================================================
+
+不要直接停止。
+
+逐个分类：
+
+PETSC_API_REMOVED
+
+PETSC_API_SIGNATURE_CHANGED
+
+PETSC_TYPE_CHANGED
+
+PETSC_DEPRECATED_INTERFACE
+
+BUILD_SYSTEM_COMPATIBILITY
+
+OTHER。
+
+
+============================================================
+24. API compatibility repair
+============================================================
+
+如果存在明确官方升级路径：
+
+在 isolated compatibility worktree
+做最小修改。
+
+保存：
+
+patches/sv1_3n/
+svmp_petsc325_compat.patch
+
+以及：
+
+PATCH_PROVENANCE.md。
+
+
+============================================================
+25. Compatibility patch 规则
+============================================================
+
+允许：
+
+#if PETSC_VERSION_GE(...)
+
+兼容 wrapper
+
+API name substitution
+
+type-safe adaptation
+
+官方推荐 replacement。
+
+不允许：
+
+改变 matrix equations
+
+改变 residual
+
+改变 BC
+
+改变 physics
+
+跳过 solver operation
+
+吞掉 PETSc error。
+
+
+============================================================
+26. old PETSc compatibility
+============================================================
+
+如果可合理做到：
+
+compatibility patch
+应同时保持 PETSc3.19 build ability。
+
+优先：
+
+version-conditional adapter。
+
+如果无法兼容两个版本：
+
+不要修改 historical production tree。
+
+使用：
+
+isolated PETSc3.25 worktree。
+
+
+============================================================
+27. official CPU fluid smoke
+============================================================
+
+PETSc3.25 CPU svMultiPhysics build
+完成后运行：
+
+official fluid/newtonian。
+
+要求：
+
+startup PASS
+
+linear PASS
+
+nonlinear PASS
+
+finite fields
+
+VTU generated
+
+reload PASS。
+
+
+============================================================
+28. 如果 CPU official smoke FAIL
+============================================================
+
+如果属于明确 compatibility bug：
+
+继续 repair loop。
+
+只有：
+
+3 次局部 repair exhausted
+
+或需要 scientific change
+
+才停止。
+
+
+============================================================
+29. Phase C — real vascular CPU version comparison
+============================================================
+
+CPU official smoke PASS 后：
+
+运行：
+
+OLD_PETSC_CPU_PROOF_20
+
+和：
+
+NEW_PETSC_CPU_PROOF_20。
+
+
+============================================================
+30. OLD CPU proof
+============================================================
+
+使用：
+
+PETSc3.19.6
+
+与新测试尽量匹配：
+
+same server
+
+same t=0
+
+same 20 steps
+
+same MPI ranks
+
+same OMP
+
+same physics
+
+same KSP tolerance
+
+same ASM/ILU semantics。
+
+
+============================================================
+31. NEW CPU proof
+============================================================
+
+PETSc3.25.5
+
+同样：
+
+t=0
+20 steps
+
+相同 scientific configuration。
+
+
+============================================================
+32. CPU version science equivalence
+============================================================
+
+预冻结：
+
+velocity relative volume L2 <= 1e-5
+
+pressure relative volume L2 <= 1e-5
+
+Qin relative difference <= 1e-6
+
+each Qout relative difference <= 1e-5
+
+mass-error absolute difference <= 1e-6
+
+max velocity relative difference <= 1e-5。
+
+
+============================================================
+33. CPU version comparison meaning
+============================================================
+
+这一步回答：
+
+PETSc3.19
+→
+PETSc3.25
+
+本身有没有改变答案。
+
+如果 FAIL：
+
+停止 GPU science adoption：
+
+PETSC_VERSION_SCIENCE_REGRESSION。
+
+
+============================================================
+34. CPU timing comparison
+============================================================
+
+同时记录：
+
+OLD PETSc CPU 1R
+
+OLD PETSc CPU 4R
+
+NEW PETSc CPU 1R
+
+NEW PETSc CPU 4R。
+
+先使用固定：
+
+t=0 → 20 steps。
+
+
+============================================================
+35. 版本升级 CPU speedup
+============================================================
+
+定义：
+
+S_version_1R =
+T_old_1R / T_new_1R
+
+S_version_4R =
+T_old_4R / T_new_4R。
+
+这回答：
+
+“只升级 PETSc，
+不使用 GPU，
+到底快了多少？”
+
+
+============================================================
+36. benchmark repeatability
+============================================================
+
+每个正式 candidate：
+
+至少 2 次。
+
+第一次 warm-up。
+
+第二次 measurement。
+
+如果差异 >10%：
+
+第三次。
+
+最终 median。
+
+
+============================================================
+37. Phase D — PETSc3.25 GPU toolchain
+============================================================
+
+只有：
+
+new PETSc CPU science PASS
+
+后进入。
+
+
+============================================================
+38. GPU Candidate G1
+============================================================
+
+第一选择：
+
+PETSc v3.25.5
+
++
+服务器系统 CUDA 13.2。
+
+目的：
+
+尽量恢复现代、简单的软件栈。
+
+
+============================================================
+39. G1 host compiler
+============================================================
+
+不要猜。
+
+先执行：
+
+PETSc configure compiler checks
+
+CUDA compiler checks。
+
+选择 CUDA13.2
+正式接受的本机 compiler。
+
+记录：
+
+CC
+CXX
+NVCC
+versions。
+
+
+============================================================
+40. G1 configure
+============================================================
+
+保持：
+
+real double
+
+32-bit indices
+
+optimized
+
+shared
+
+same MPI
+
+same BLAS/LAPACK
+
+CUDA enabled
+
+RTX4090 architecture
+由实际 PETSc/CUDA configure
+正确指定。
+
+
+============================================================
+41. 不硬编码旧 architecture flag syntax
+============================================================
+
+使用 PETSc3.25
+实际支持的 configure interface。
+
+不要照抄 PETSc3.19
+旧参数。
+
+
+============================================================
+42. CUDA13 build repair policy
+============================================================
+
+如果失败属于：
+
+明确 PETSc3.25/CUDA13
+build compatibility issue，
+
+先检查：
+
+v3.25.5 official fixes
+release branch fixes
+
+官方 issue/MR。
+
+存在明确 fix：
+
+允许 Candidate R
+固定 release commit。
+
+不要立即降 CUDA。
+
+
+============================================================
+43. GPU Candidate G2 fallback
+============================================================
+
+只有：
+
+G1 / justified release fix
+
+仍无法工作，
+
+才允许使用：
+
+PETSc3.25.5
++
+历史已验证 CUDA12.3.2。
+
+目的：
+
+区分：
+
+PETSc version compatibility
+
+和：
+
+CUDA13 compatibility。
+
+
+============================================================
+44. G2 不是默认 production
+============================================================
+
+如果：
+
+G2 PASS
+G1 FAIL，
+
+记录：
+
+MODERN_PETSC_WORKS_WITH_CUDA12_ONLY。
+
+不得声称 CUDA13 PASS。
+
+
+============================================================
+45. PETSc3.25 GPU standalone smoke
+============================================================
+
+构建成功后：
+
+运行 standalone sparse GMRES test。
+
+至少 3 次。
+
+要求 runtime：
+
+Mat = CUDA sparse type
+
+Vec = CUDA type
+
+KSP converged
+
+true residual correct
+
+solution error correct。
+
+
+============================================================
+46. Phase E — 关键 Ghost Vector Test
+============================================================
+
+这是本阶段核心验收之一。
+
+新版 PETSc 不打 ghost backport。
+
+直接测试 upstream v3.25.5。
+
+
+============================================================
+47. Ghost probe
+============================================================
+
+建立：
+
+CPU seq ghost
+
+CUDA seq ghost
+
+CPU MPI ghost 2R
+
+CUDA MPI ghost 2R
+如果该 backend 支持。
+
+测试：
+
+VecGhostGetLocalForm
+
+Forward update
+
+Reverse update
+
+RestoreLocalForm。
+
+
+============================================================
+48. Ghost correctness
+============================================================
+
+必须逐元素检查：
+
+owner values
+
+ghost values
+
+reverse accumulated values。
+
+不能只接受：
+
+no error。
+
+
+============================================================
+49. 当前 Stage L 错误回归
+============================================================
+
+明确检查新版 PETSc：
+
+不得出现：
+
+Vector is not ghosted
+
+在合法 CUDA ghost vector
+调用中。
+
+
+============================================================
+50. 如果新版 ghost probe PASS
+============================================================
+
+记录：
+
+OLD 3.19 = FAIL
+
+NEW 3.25 = PASS
+
+但必须注明：
+
+比较的是实际测试结果，
+
+不是仅凭源代码推断。
+
+
+============================================================
+51. Phase F — build svMultiPhysics GPU
+============================================================
+
+用：
+
+同一个 PETSc3.25 compatibility worktree
+
+构建：
+
+external/build/svmp_petsc325_gpu/
+
+
+============================================================
+52. linkage audit
+============================================================
+
+确认：
+
+correct PETSc3.25
+
+correct MPI
+
+correct CUDA
+
+没有：
+
+PETSc3.19
+
+CPU PETSc
+
+错误 CUDA library。
+
+
+============================================================
+53. official fluid GPU smoke
+============================================================
+
+运行：
+
+1 MPI rank
+
+1 RTX4090
+
+OMP=1。
+
+
+============================================================
+54. official smoke 必须验证
+============================================================
+
+startup PASS
+
+no MPI_ERR_TYPE
+
+no Vector is not ghosted
+
+actual CUDA Mat
+
+actual CUDA Vec
+
+KSP active
+
+PC active
+
+linear solve PASS
+
+nonlinear step PASS
+
+finite fields
+
+VTU
+
+reload。
+
+
+============================================================
+55. PC 第一轮保持旧语义
+============================================================
+
+先保持：
+
+GMRES
+
+ASM overlap 2
+
+ILU(2)
+
+不要因为新版 PETSc
+顺便换 PC。
+
+否则无法区分：
+
+version effect
+
+和：
+
+preconditioner effect。
+
+
+============================================================
+56. 如果 ASM/ILU API 有变化
+============================================================
+
+允许做：
+
+API-compatible configuration adjustment，
+
+但数学语义保持：
+
+ASM overlap 2
+ILU fill level 2。
+
+记录实际 runtime PCView。
+
+
+============================================================
+57. Phase G — real vascular NEW GPU proof
+============================================================
+
+official GPU smoke PASS 后：
+
+直接继续。
+
+不要停止等待用户。
+
+运行：
+
+NEW_GPU_PROOF_20
+
+t=0
+
+20 steps
+
+1 rank
+
+1 RTX4090
+
+OMP=1。
+
+
+============================================================
+58. matching NEW CPU proof
+============================================================
+
+使用：
+
+同一个 GPU-capable
+PETSc3.25 installation
+
+同一个 svMultiPhysics executable
+如 runtime 可选择 backend，
+
+运行：
+
+NEW_MATCHED_CPU_PROOF_20。
+
+如果必须独立 binary：
+
+必须确保 source/config
+除 device backend 外一致。
+
+
+============================================================
+59. 新 PETSc CPU/GPU science equivalence
+============================================================
+
+冻结：
+
+velocity L2 <=1e-5
+
+pressure L2 <=1e-5
+
+Qin <=1e-6
+
+each Qout <=1e-5
+
+mass error difference <=1e-6
+
+max velocity difference <=1e-5。
+
+
+============================================================
+60. 两层 scientific comparison
+============================================================
+
+最终必须同时有：
+
+Comparison A:
+
+PETSc3.19 CPU
+vs
+PETSc3.25 CPU
+
+回答：
+
+升级版本是否改变结果。
+
+
+Comparison B:
+
+PETSc3.25 CPU
+vs
+PETSc3.25 GPU
+
+回答：
+
+GPU backend 是否改变结果。
+
+
+============================================================
+61. 不允许 pressure post-hoc alignment
+============================================================
+
+不要为了过 threshold：
+
+subtract mean
+
+manual gauge shift
+
+outlet re-zero。
+
+使用原生字段，
+
+除非旧 production
+本身定义这种处理。
+
+
+============================================================
+62. Phase H — performance profiling
+============================================================
+
+科学等价 PASS 后：
+
+先 profiling，
+
+后 benchmark。
+
+
+============================================================
+63. profiling run 与 benchmark 分开
+============================================================
+
+profiling run：
+
+可开启：
+
+PETSc -log_view
+
+GPU event logging
+
+nvidia-smi sampling
+
+必要的 lightweight GPU profiler。
+
+
+正式 benchmark：
+
+关闭 heavy profiling。
+
+
+============================================================
+64. timing breakdown
+============================================================
+
+尽量实测：
+
+assembly
+
+KSP
+
+PC setup
+
+PC apply
+
+MatMult
+
+ghost update
+
+H2D
+
+D2H
+
+I/O
+
+total wall。
+
+
+============================================================
+65. 如果某项不能测
+============================================================
+
+写：
+
+NOT_MEASURED。
+
+不要估计成实测。
+
+
+============================================================
+66. Ghost transfer 必须单独关注
+============================================================
+
+因为旧版本
+就在 ghost API 卡住。
+
+新版成功后必须检查：
+
+ghost update 是否导致：
+
+large H2D/D2H
+
+CPU synchronization
+
+device stalls。
+
+
+============================================================
+67. PC residency
+============================================================
+
+明确回答：
+
+Mat on GPU?
+
+Vec on GPU?
+
+ASM execution location?
+
+ILU(2) factorization location?
+
+triangular solves location?
+
+ghost storage/update location?
+
+large transfer per KSP iteration?
+
+
+============================================================
+68. Phase I — final performance matrix
+============================================================
+
+至少比较：
+
+A.
+PETSc3.19 CPU 1R
+
+B.
+PETSc3.19 CPU 4R
+
+C.
+PETSc3.25 CPU 1R
+
+D.
+PETSc3.25 CPU 4R
+
+E.
+PETSc3.25 GPU 1R。
+
+
+============================================================
+69. 同机同窗口
+============================================================
+
+全部：
+
+same server
+
+same t=0
+
+same 20 steps
+
+same input
+
+same physics
+
+same I/O policy。
+
+禁止拿历史 400-step
+和新 20-step walltime
+直接除。
+
+
+============================================================
+70. CPU version gain
+============================================================
+
+报告：
+
+old→new CPU speedup：
+
+1R
+
+4R。
+
+
+============================================================
+71. GPU gain
+============================================================
+
+定义：
+
+best_new_CPU =
+min(
+PETSc3.25 CPU1 median,
+PETSc3.25 CPU4 median
+)
+
+GPU speedup over modern CPU =
+
+best_new_CPU /
+PETSc3.25 GPU1 median。
+
+
+============================================================
+72. overall gain over production-era backend
+============================================================
+
+同时报告：
+
+best_old_CPU =
+min(
+PETSc3.19 CPU1,
+PETSc3.19 CPU4
+)
+
+overall speedup =
+
+best_old_CPU /
+PETSc3.25 GPU1。
+
+
+============================================================
+73. 不允许只报告最快的数字
+============================================================
+
+同时给：
+
+raw runtimes
+
+median
+
+repeat spread
+
+iteration counts
+
+linear solve counts。
+
+避免“更快”
+其实来自：
+
+少迭代
+
+提前失败
+
+少输出
+
+不同 scientific config。
+
+
+============================================================
+74. iteration-normalized metrics
+============================================================
+
+额外报告：
+
+wall time / timestep
+
+KSP time / linear solve
+
+time / KSP iteration
+
+iterations / solve。
+
+帮助判断：
+
+新 PETSc 是：
+
+kernel 更快
+
+还是：
+
+迭代次数发生变化。
+
+
+============================================================
+75. 如果新版 CPU 迭代数明显变化
+============================================================
+
+必须检查：
+
+KSP/PC runtime options
+
+tolerance
+
+restart
+
+ASM overlap
+
+ILU level
+
+完全一致。
+
+不要直接把变化归因于：
+
+“PETSc 新版更聪明”。
+
+
+============================================================
+76. GPU classification
+============================================================
+
+如果：
+
+science PASS
+
+GPU ghost PASS
+
+residency acceptable
+
+GPU speedup >=1.25：
+
+GPU_MODERN_PETSC_PROMISING。
+
+
+如果：
+
+science PASS
+
+1 < speedup <1.25：
+
+GPU_WORKS_LIMITED_GAIN。
+
+
+如果：
+
+speedup <=1：
+
+GPU_SLOWER_THAN_CPU。
+
+
+如果：
+
+transfer dominates：
+
+GPU_TRANSFER_BOUND。
+
+
+============================================================
+77. PETSc upgrade CPU classification
+============================================================
+
+单独分类：
+
+NEW_PETSC_CPU_FASTER
+
+NEW_PETSC_CPU_SIMILAR
+
+NEW_PETSC_CPU_SLOWER。
+
+建议：
+
+|speed difference| <=5%
+
+定义为：
+
+SIMILAR。
+
+这是性能描述门槛，
+不是科学 pass/fail 门槛。
+
+
+============================================================
+78. 不在本阶段优化新 PC
+============================================================
+
+禁止：
+
+GAMG tuning
+
+hypre
+
+BoomerAMG
+
+field split
+
+Schur
+
+new ILU variant
+
+custom CUDA PC。
+
+先完成：
+
+same-semantics comparison。
+
+
+============================================================
+79. 为什么暂不优化 PC
+============================================================
+
+因为本阶段首先要回答：
+
+“升级 PETSc 本身和 GPU backend
+带来了什么变化？”
+
+不能混入新预条件器。
+
+
+============================================================
+80. 下一阶段才允许 GPU-native PC
+============================================================
+
+如果：
+
+GPU works
+
+但：
+
+ASM/ILU2
+造成 transfer bottleneck，
+
+在报告中建议：
+
+下一 Stage
+测试 GPU-native PC。
+
+本阶段不做。
+
+
+============================================================
+81. Full steady solve
+============================================================
+
+本阶段默认：
+
+不运行完整 GPU steady solve。
+
+只完成：
+
+20-step proof
+science comparison
+profiling
+benchmark。
+
+如果结果优秀：
+
+建议下一阶段：
+
+Modern PETSc full early-stop
+steady validation。
+
+
+============================================================
+82. 当前 CPU production 不替换
+============================================================
+
+即使 PETSc3.25
+20-step 全部 PASS：
+
+正式 production
+仍然是：
+
+CPU_EARLY_STOP_PRODUCTION
+
+直到：
+
+完整 steady validation PASS。
+
+
+============================================================
+83. 永久测试
+============================================================
+
+至少新增：
+
+tests/test_sv13n_reference_freeze.py
+
+tests/test_sv13n_petsc325_source.py
+
+tests/test_sv13n_api_inventory.py
+
+tests/test_sv13n_release_change_audit.py
+
+tests/test_sv13n_compat_patch_scope.py
+
+tests/test_sv13n_petsc325_cpu_build.py
+
+tests/test_sv13n_svmp325_cpu_build.py
+
+tests/test_sv13n_official_cpu_smoke.py
+
+tests/test_sv13n_old_new_cpu_proof.py
+
+tests/test_sv13n_old_new_science.py
+
+tests/test_sv13n_cuda13_build.py
+
+tests/test_sv13n_cuda_fallback_policy.py
+
+tests/test_sv13n_petsc_gpu_smoke.py
+
+tests/test_sv13n_cuda_ghost_seq.py
+
+tests/test_sv13n_cuda_ghost_mpi.py
+
+tests/test_sv13n_ghost_forward.py
+
+tests/test_sv13n_ghost_reverse.py
+
+tests/test_sv13n_svmp325_gpu_link.py
+
+tests/test_sv13n_official_gpu_smoke.py
+
+tests/test_sv13n_new_cpu_gpu_science.py
+
+tests/test_sv13n_gpu_residency.py
+
+tests/test_sv13n_ghost_transfer.py
+
+tests/test_sv13n_cpu_version_benchmark.py
+
+tests/test_sv13n_gpu_benchmark.py
+
+tests/test_sv13n_benchmark_repeatability.py
+
+tests/test_sv13n_visuals.py
+
+tests/test_sv13n_history_preservation.py
+
+
+============================================================
+84. regression negatives
+============================================================
+
+至少验证：
+
+floating PETSc release HEAD
+without pinned SHA
+→ reject
+
+wrong PETSc version linked
+→ reject
+
+compat patch changes science code
+→ reject
+
+compat patch swallows PETSc error
+→ reject
+
+new CPU fields differ beyond threshold
+→ reject
+
+CUDA Mat actually CPU
+→ reject
+
+CUDA Vec actually CPU
+→ reject
+
+ghost API no-error but wrong values
+→ reject
+
+reverse ghost wrong
+→ reject
+
+official smoke exit0 with PETSc error
+→ reject
+
+GPU benchmark with different timesteps
+→ reject
+
+profiling run used as benchmark
+→ reject
+
+single timing sample
+→ no speedup conclusion。
+
+
+============================================================
+85. 可视化
+============================================================
+
+必须生成：
+
+
+A.
+petsc_upgrade_map.png
+
+标题：
+
+“我们把 PETSc 从哪个版本升级到了哪个版本？”
+
+
+B.
+petsc_api_compatibility.png
+
+标题：
+
+“新版 PETSc 需要改哪些接口才能让 SimVascular 工作？”
+
+
+C.
+old_new_cpu_solution_difference.png
+
+标题：
+
+“只升级 PETSc，血流答案有没有改变？”
+
+
+D.
+old_new_cpu_runtime.png
+
+标题：
+
+“只升级 PETSc，CPU 计算有没有变快？”
+
+
+E.
+cuda_ghost_old_vs_new.png
+
+标题：
+
+“新版 PETSc 是否直接解决了 CUDA ghost vector 问题？”
+
+
+F.
+modern_petsc_gpu_smoke.png
+
+标题：
+
+“新版 PETSc 下 SimVascular 能完整运行 GPU 流体测试吗？”
+
+
+G.
+new_cpu_gpu_solution_difference.png
+
+标题：
+
+“新版 PETSc 的 CPU 和 GPU 算出的血流一样吗？”
+
+
+H.
+gpu_residency.png
+
+标题：
+
+“求解数据有没有一直留在显卡里？”
+
+
+I.
+ghost_transfer_cost.png
+
+标题：
+
+“Ghost 同步会不会反复搬 CPU/GPU 数据？”
+
+
+J.
+runtime_comparison.png
+
+标题：
+
+“旧 PETSc CPU、新 PETSc CPU、RTX 4090 到底谁更快？”
+
+
+K.
+runtime_breakdown.png
+
+标题：
+
+“计算时间主要花在组装、线性求解还是数据搬运？”
+
+
+============================================================
+86. 图片规则
+============================================================
+
+只画真实结果。
+
+NOT RUN：
+
+明确写 NOT RUN。
+
+不得：
+
+估算 GPU runtime
+虚构 transfer
+用理论 FLOPS 推 speedup。
+
+图题使用普通中文。
+
+
+============================================================
+87. REPORT.md
+============================================================
+
+生成：
+
+reports/sv1_3n/REPORT.md
+
+标题：
+
+# Stage SV1.3N — 升级 PETSc 并比较 CPU / RTX 4090 求解性能
+
+
+必须按普通语言回答：
+
+
+## 为什么这次不继续修 PETSc 3.19？
+
+说明：
+
+旧版本已经暴露多个
+现代 CUDA compatibility 问题。
+
+本阶段改为验证
+现代正式 PETSc。
+
+
+## 升级到了哪个 PETSc？
+
+给：
+
+version
+tag
+commit
+SHA。
+
+
+## SimVascular 为了新版 PETSc 改了什么？
+
+如果没有改：
+
+明确 0 source changes。
+
+如果有 compatibility adapter：
+
+列：
+
+files
+functions
+lines
+
+为什么不改变科学模型。
+
+
+## 只升级 PETSc，CPU 的答案有没有改变？
+
+给：
+
+velocity
+pressure
+Q
+mass。
+
+
+## 只升级 PETSc，CPU 有没有更快？
+
+给：
+
+old/new
+
+1R/4R
+
+median
+
+speedup。
+
+
+## 新版 PETSc 能直接处理 CUDA ghost vector 吗？
+
+给：
+
+seqcuda/mpicuda
+forward
+reverse
+local form
+
+真实结果。
+
+
+## 新版 PETSc 能使用 CUDA13.2 吗？
+
+YES / NO。
+
+如果 fallback CUDA12.3：
+
+明确说明原因。
+
+
+## SimVascular 现在能完整使用 GPU 吗？
+
+给：
+
+Mat
+Vec
+KSP
+PC
+official smoke。
+
+
+## 真实血管 GPU 20 步正确吗？
+
+给实际结果。
+
+
+## 新 PETSc CPU 和 GPU 答案一样吗？
+
+给实际误差。
+
+
+## GPU 数据有没有反复搬运？
+
+给：
+
+residency
+ghost transfer
+PC execution。
+
+
+## 最终到底快多少？
+
+必须同时报告：
+
+旧 PETSc CPU
+
+新 PETSc CPU
+
+新 PETSc GPU。
+
+
+## 时间收益来自哪里？
+
+区分：
+
+PETSc version
+
+GPU
+
+iteration count
+
+transfer
+
+assembly。
+
+
+## 当前是否值得替换 production？
+
+不要自动替换。
+
+只给下一阶段建议。
+
+
+============================================================
+88. 状态定义
+============================================================
+
+如果新版 PETSc
+需要 scientific changes 才能工作：
+
+FAIL:
+PETSC325_SCIENTIFIC_INCOMPATIBILITY
+
+
+如果 3 次局部 API repair
+仍无法 build/run：
+
+FAIL:
+PETSC325_SVMP_COMPATIBILITY_EXHAUSTED
+
+
+如果新版 CPU
+科学结果不等价：
+
+FAIL:
+PETSC325_CPU_SCIENCE_REGRESSION
+
+
+如果 CPU PASS
+但 GPU backend 无法工作：
+
+CONDITIONAL PASS:
+MODERN_PETSC_CPU_ONLY
+
+
+如果 GPU 正确但慢：
+
+CONDITIONAL PASS:
+GPU_NOT_PERFORMANCE_WIN
+
+
+如果：
+
+old/new CPU science PASS
+
+new CPU/GPU science PASS
+
+ghost PASS
+
+benchmark complete：
+
+STAGE SV1.3N:
+CONDITIONAL PASS
+
+并给 performance classification。
+
+
+============================================================
+89. 严格执行顺序
+============================================================
+
+Step 1
+冻结全部历史 evidence。
+
+Step 2
+核验 PETSc v3.25.5 官方 tag/source/SHA。
+
+Step 3
+审计 PETSc 3.20→3.25 API changes。
+
+Step 4
+扫描 svMultiPhysics PETSc API usage。
+
+Step 5
+build PETSc3.25 CPU。
+
+Step 6
+build svMultiPhysics CPU。
+
+Step 7
+如有明显 API compatibility issue：
+自动最小 repair。
+
+Step 8
+official CPU fluid smoke。
+
+Step 9
+OLD PETSc CPU proof 20。
+
+Step 10
+NEW PETSc CPU proof 20。
+
+Step 11
+old/new CPU science equivalence。
+
+Step 12
+old/new CPU fixed benchmark。
+
+Step 13
+build PETSc3.25 + CUDA13.2。
+
+Step 14
+如有明确 compatibility issue：
+自动 repair / justified release commit。
+
+Step 15
+若 CUDA13 路线仍不可用：
+测试 CUDA12.3 fallback。
+
+Step 16
+PETSc GPU standalone smoke。
+
+Step 17
+CPU/CUDA ghost probe。
+
+Step 18
+Forward/Reverse/LocalForm validation。
+
+Step 19
+build svMultiPhysics GPU。
+
+Step 20
+linkage audit。
+
+Step 21
+official GPU fluid smoke。
+
+Step 22
+NEW GPU vascular proof 20。
+
+Step 23
+matched NEW CPU proof 20。
+
+Step 24
+new CPU/GPU science equivalence。
+
+Step 25
+GPU profiling。
+
+Step 26
+ghost transfer audit。
+
+Step 27
+final performance matrix：
+
+old CPU1
+old CPU4
+new CPU1
+new CPU4
+new GPU1。
+
+Step 28
+repeatability。
+
+Step 29
+performance classification。
+
+Step 30
+生成图。
+
+Step 31
+完整 tests。
+
+Step 32
+history preservation audit。
+
+Step 33
+REPORT.md。
+
+Step 34
+停止。
+
+不得自动开始：
+
+full GPU steady solve
+
+GPU-native preconditioner tuning
+
+Mesh convergence。
+
+
+============================================================
+90. 最终终端输出
+============================================================
+
+Stage SV1.3N completed.
+
+PETSc upgrade:
+    old = 3.19.6
+    new = ...
+    tag = ...
+    commit = ...
+    source SHA = ...
+
+svMultiPhysics compatibility:
+    source changes = ...
+    repair iterations = ...
+    patch files = ...
+    patch lines = ...
+
+NEW PETSc CPU:
+    build = ...
+    official smoke = ...
+    real proof steps = ...
+
+OLD vs NEW CPU science:
+    velocity L2 = ...
+    pressure L2 = ...
+    Qin diff = ...
+    max Qout diff = ...
+    mass diff = ...
+
+CPU performance:
+    old 1R median = ...
+    old 4R median = ...
+    new 1R median = ...
+    new 4R median = ...
+    PETSc upgrade speedup 1R = ...
+    PETSc upgrade speedup 4R = ...
+
+GPU toolchain:
+    CUDA preferred = ...
+    CUDA actual = ...
+    PETSc GPU build = ...
+    Mat = ...
+    Vec = ...
+
+Ghost vector:
+    CPU seq = ...
+    CUDA seq = ...
+    CPU MPI = ...
+    CUDA MPI = ...
+    forward = ...
+    reverse = ...
+    local form = ...
+    old 3.19 error reproduced = ...
+    new error present = ...
+
+svMultiPhysics GPU:
+    official smoke = ...
+    runtime Mat = ...
+    runtime Vec = ...
+    KSP = ...
+    PC = ...
+
+vascular GPU:
+    steps = ...
+    linear failures = ...
+    nonlinear failures = ...
+    velocity finite = ...
+    pressure finite = ...
+    reload = ...
+
+NEW CPU vs GPU science:
+    velocity L2 = ...
+    pressure L2 = ...
+    Qin diff = ...
+    max Qout diff = ...
+    mass diff = ...
+
+GPU profiling:
+    matrix resident = ...
+    vectors resident = ...
+    ghost transfer = ...
+    ASM location = ...
+    ILU location = ...
+    peak VRAM = ...
+
+Final performance:
+    old PETSc best CPU = ...
+    new PETSc best CPU = ...
+    new PETSc GPU = ...
+    version-only speedup = ...
+    GPU speedup over new CPU = ...
+    overall speedup over old CPU = ...
+
+classification:
+    PETSc CPU = ...
+    GPU = ...
+
+tests:
+    passed = ...
+    failed = ...
+    skipped = ...
+
+report:
+    reports/sv1_3n/REPORT.md
+
+human review:
+    petsc_upgrade_map.png
+    petsc_api_compatibility.png
+    old_new_cpu_solution_difference.png
+    old_new_cpu_runtime.png
+    cuda_ghost_old_vs_new.png
+    modern_petsc_gpu_smoke.png
+    new_cpu_gpu_solution_difference.png
+    gpu_residency.png
+    ghost_transfer_cost.png
+    runtime_comparison.png
+    runtime_breakdown.png
+
+STAGE SV1.3N STATUS:
+    CONDITIONAL PASS / FAIL
+
+然后停止。

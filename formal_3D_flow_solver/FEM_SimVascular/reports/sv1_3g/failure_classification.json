@@ -1,0 +1,56 @@
+{
+  "status": "BLOCKED",
+  "reason": "CUDA_TOOLKIT_COMPATIBILITY",
+  "layer": "CUDA toolkit API / PETSc source compatibility",
+  "configure": "PASS",
+  "make": "FAIL",
+  "actual_compiler_errors": [
+    {
+      "line": 257,
+      "text": "/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3g/external/petsc-3.19.6-cuda-clean/src/sys/objects/device/impls/cupm/cupmdevice.cxx:135:95: error: 'const Petsc::device::cupm::Device<Petsc::device::cupm::DeviceType::CUDA>::cupmDeviceProp_t' {aka 'const struct cudaDeviceProp'} has no member named 'clockRate'"
+    },
+    {
+      "line": 263,
+      "text": "/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3g/external/petsc-3.19.6-cuda-clean/src/sys/objects/device/impls/cupm/cupmdevice.cxx:136:87: error: 'const Petsc::device::cupm::Device<Petsc::device::cupm::DeviceType::CUDA>::cupmDeviceProp_t' {aka 'const struct cudaDeviceProp'} has no member named 'memoryClockRate'"
+    },
+    {
+      "line": 269,
+      "text": "/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3g/external/petsc-3.19.6-cuda-clean/src/sys/objects/device/impls/cupm/cupmdevice.cxx:138:98: error: 'const Petsc::device::cupm::Device<Petsc::device::cupm::DeviceType::CUDA>::cupmDeviceProp_t' {aka 'const struct cudaDeviceProp'} has no member named 'memoryClockRate'"
+    },
+    {
+      "line": 1058,
+      "text": "/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3g/external/petsc-3.19.6-cuda-clean/src/sys/classes/random/impls/curand/curand2.cu(23): error: namespace \"thrust\" has no member class \"unary_function\""
+    },
+    {
+      "line": 1062,
+      "text": "/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3g/external/petsc-3.19.6-cuda-clean/src/sys/classes/random/impls/curand/curand2.cu(23): error: class or struct definition is missing"
+    },
+    {
+      "line": 1072,
+      "text": "/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3g/external/petsc-3.19.6-cuda-clean/src/sys/classes/random/impls/curand/curand2.cu(47): error: too many initializer values"
+    }
+  ],
+  "MPI_repaired": true,
+  "CUDA_arch_rejected": false,
+  "CUDA_library_rejected": false,
+  "GPU_performance_inference": null,
+  "next_authorized_action": "Stop this stage. Recommend a future side-by-side CUDA 12.x toolkit trial, with driver/PETSc/svMultiPhysics unchanged; installation is not performed in this stage.",
+  "official_sources": [
+    {
+      "url": "https://docs.nvidia.com/cuda/archive/13.0.3/pdf/CUDA_Toolkit_Release_Notes.pdf",
+      "supports": "CUDA 13 removed clockRate and memoryClockRate fields"
+    },
+    {
+      "url": "https://nvidia.github.io/cccl/unstable/cccl/3.0_migration_guide.html",
+      "supports": "CCCL 3 removed thrust::unary_function"
+    },
+    {
+      "url": "https://www.open-mpi.org/software/ompi/v4.1/",
+      "supports": "Open MPI 4.1.6 official archive SHA256"
+    },
+    {
+      "url": "https://www.open-mpi.org/projects/hwloc/doc/v2.14.0/plugins.html",
+      "supports": "GL discovery may hang connecting to X server; agrees with observed trace, not proof of exact stack frame"
+    }
+  ]
+}

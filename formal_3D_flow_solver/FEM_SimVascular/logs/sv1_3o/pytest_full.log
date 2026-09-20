@@ -1,0 +1,158 @@
+...s.........s......F.....s.s........................................... [ 13%]
+.........s........sss..ss..s...ss.s.......................s..s....s.s.s. [ 26%]
+ss..s..............s.s.ss...s....s..........s.s......s......F....s..s... [ 40%]
+..s.......s....s.s.s...s........s................s.s...s........s....... [ 53%]
+...F..s...s...s......s.s...s............F...........s.........s..s.....s [ 67%]
+..............ss.s..F............s..................s...............s... [ 80%]
+s...s..s............ss.................................................. [ 94%]
+.................F.........FF..                                          [100%]
+=================================== FAILURES ===================================
+_________________ test_actual_step_ten_mass_strictly_improves __________________
+
+    def test_actual_step_ten_mass_strictly_improves():
+        if not (REPORT/'petsc_short_qc.json').exists():pytest.skip('Short run unavailable')
+        states=load('petsc_short_qc')['states']
+        if not states or states[-1]['step']!=10:pytest.skip('Stopped before step 10; no comparable saved VTU')
+        assert states[-1]['source']=='actual_vtu_surface_integration'
+>       assert states[-1]['epsilon_mass']<load('flow_qc','sv1')['epsilon_mass']
+E       assert 0.0009765625000001561 < 0.0009765624999998679
+
+tests/test_sv11_short_run_mass.py:9: AssertionError
+__________________ test_actual_petsc_cuda12_build_acceptance ___________________
+
+    def test_actual_petsc_cuda12_build_acceptance():
+        # An observed failed hard gate remains a real failure, never skipped or xfailed.
+>       petsc_cuda_build_gate(load('petsc_cuda12_build'))
+
+tests/test_sv13h_petsc_build.py:4: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/sv_validation/sv13h.py:21: in petsc_cuda_build_gate
+    require(record['configure_exit']==record['make_exit']==0,'PETSC_CUDA12_BUILD_FAIL')
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+condition = False, reason = 'PETSC_CUDA12_BUILD_FAIL'
+
+    def require(condition,reason):
+>       if not condition:raise GateError(reason)
+                         ^^^^^^^^^^^^^^^^^^^^^^^
+E       sv_validation.sv13g.GateError: PETSC_CUDA12_BUILD_FAIL
+
+src/sv_validation/sv13g.py:12: GateError
+_______________ test_actual_official_fluid_gpu_smoke_acceptance ________________
+
+    def test_actual_official_fluid_gpu_smoke_acceptance():
+        # Actual observed failure remains a failing acceptance test, never xfailed.
+>       d=actual('svmp_gpu_smoke')
+          ^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_sv13j_svmp_gpu_smoke.py:4: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'svmp_gpu_smoke'
+
+    def actual(name):
+        d=load(name)
+        if d['status']=='NOT_RUN':
+            assert d['executed'] is False and d['measurements'] is None
+            pytest.skip(d['reason'])
+>       assert d['status']=='PASS',d.get('reason',d)
+               ^^^^^^^^^^^^^^^^^^^
+E       AssertionError: SVMULTIPHYSICS_GPU_FAIL
+
+tests/sv13j_support.py:15: AssertionError
+__________________ test_actual_official_gpu_smoke_acceptance ___________________
+
+>   def test_actual_official_gpu_smoke_acceptance():official_flow_gate(actual('svmp_gpu_smoke'))
+                                                                       ^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_sv13l_official_gpu_smoke.py:2: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'svmp_gpu_smoke'
+
+    def actual(name):
+        d=load(name)
+        if d['status']=='NOT_RUN':
+            assert d['executed'] is False and d['measurements'] is None
+            pytest.skip(d['reason'])
+>       assert d['status']=='PASS',d.get('reason',d)
+               ^^^^^^^^^^^^^^^^^^^
+E       AssertionError: SVMULTIPHYSICS_GPU_SMOKE_FAIL
+
+tests/sv13l_support.py:15: AssertionError
+_________________________ test_official_complete_flow __________________________
+
+>   def test_official_complete_flow():flow_gate(accepted('svmp_gpu_smoke'))
+                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_sv13m_official_gpu_smoke.py:3: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'svmp_gpu_smoke'
+
+    def accepted(name):
+     d=read(name)
+     if d.get('status')=='NOT_RUN':pytest.skip(d.get('reason','Upstream execution gate did not pass'))
+>    assert d['status']=='PASS',d.get('reason',d.get('acceptance_errors',d['status']))
+            ^^^^^^^^^^^^^^^^^^^
+E    AssertionError: ['PETSC_HARD_ERROR_OVERRIDES_CONVERGENCE']
+
+tests/sv13m_support.py:9: AssertionError
+_____________________ test_actual_field_mass_conservation ______________________
+
+measured = (<sv_validation.postprocess.SolutionMeasurements object at 0x6ffb8f988b90>, array([[ 0.00000000e+00, -0.00000000e+00, ...TLET_02': 2.3297109687714674e-15, 'OUTLET_03': 2.881330502570386e-16}, 'Q_out_total_m3_s': 2.734240472255525e-15, ...})
+
+    def test_actual_field_mass_conservation(measured):
+        q=measured[3]
+>       mass_balance(q["Q_target_m3_s"],-q["Q_in_m3_s"],q["outlet_flows_m3_s"])
+
+tests/test_sv1_mass_balance.py:5: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/sv_validation/validation.py:52: in mass_balance
+    require(error<=1e-6 and closure<=1e-6,'Actual solution fails inlet or mass conservation gate')
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+condition = False
+message = 'Actual solution fails inlet or mass conservation gate'
+
+    def require(condition,message):
+>       if not condition:raise ValidationError(message)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       sv_validation.validation.ValidationError: Actual solution fails inlet or mass conservation gate
+
+src/sv_validation/validation.py:11: ValidationError
+__________________________ test_real_solver_converged __________________________
+
+report = <function report.<locals>.load at 0x6ffb85d654e0>
+
+    def test_real_solver_converged(report):
+        q=report("flow_qc")
+>       assert q["solver_success"], f"FLOW_SOLVE_FAIL: {q['linear_nonconvergence_warnings']} linear warnings"
+E       AssertionError: FLOW_SOLVE_FAIL: 28 linear warnings
+E       assert False
+
+tests/test_sv1_solver_result.py:11: AssertionError
+____________________ test_required_steady_intervals_reached ____________________
+
+report = <function report.<locals>.load at 0x6ffb85d654e0>
+
+    def test_required_steady_intervals_reached(report):
+        s=report("steady_state")
+>       assert s["status"] == "PASS", f"NOT_REACHED: {s['saved_states']} saved state(s), five consecutive intervals required"
+E       AssertionError: NOT_REACHED: 1 saved state(s), five consecutive intervals required
+E       assert 'NOT_REACHED' == 'PASS'
+E         
+E         - PASS
+E         + NOT_REACHED
+
+tests/test_sv1_solver_result.py:15: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_sv11_short_run_mass.py::test_actual_step_ten_mass_strictly_improves
+FAILED tests/test_sv13h_petsc_build.py::test_actual_petsc_cuda12_build_acceptance
+FAILED tests/test_sv13j_svmp_gpu_smoke.py::test_actual_official_fluid_gpu_smoke_acceptance
+FAILED tests/test_sv13l_official_gpu_smoke.py::test_actual_official_gpu_smoke_acceptance
+FAILED tests/test_sv13m_official_gpu_smoke.py::test_official_complete_flow - ...
+FAILED tests/test_sv1_mass_balance.py::test_actual_field_mass_conservation - ...
+FAILED tests/test_sv1_solver_result.py::test_real_solver_converged - Assertio...
+FAILED tests/test_sv1_solver_result.py::test_required_steady_intervals_reached
+8 failed, 462 passed, 65 skipped in 6.65s

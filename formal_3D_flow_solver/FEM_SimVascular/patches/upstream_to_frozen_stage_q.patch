@@ -1,0 +1,371 @@
+diff --git a/Code/Source/solver/PetscLinearAlgebra.cpp b/Code/Source/solver/PetscLinearAlgebra.cpp
+index bcb5076..627c805 100644
+--- a/Code/Source/solver/PetscLinearAlgebra.cpp
++++ b/Code/Source/solver/PetscLinearAlgebra.cpp
+@@ -92,7 +92,9 @@ void PetscLinearAlgebra::initialize(ComMod& com_mod, eqType& lEq)
+ 
+ void PetscLinearAlgebra::finalize()
+ {
+-  // No need to finalize PETSc.
++#ifdef USE_PETSC
++  impl->finalize();
++#endif
+ }
+ 
+ /// @brief Initialize an FsilsLinearAlgebra object used for assembly.
+@@ -142,4 +144,3 @@ void PetscLinearAlgebra::solve(ComMod& com_mod, eqType& lEq, const Vector<int>&
+   //std::cout << "[PetscLinearAlgebra] solve" << std::endl;
+   impl->solve(com_mod, lEq, incL, res);
+ }
+-
+diff --git a/Code/Source/solver/main.cpp b/Code/Source/solver/main.cpp
+index c997530..079e30d 100644
+--- a/Code/Source/solver/main.cpp
++++ b/Code/Source/solver/main.cpp
+@@ -35,6 +35,7 @@
+ #include <iostream>
+ #include <cmath>
+ #include <fstream>
++#include <chrono>
+ 
+ //------------------------
+ // add_eq_linear_algebra
+@@ -454,6 +455,15 @@ void iterate_solution(Simulation* simulation)
+     cm.bcast(cm_mod, &stopTS);
+ 
+     const bool reached_stop_time_step = cTS >= stopTS;
++    // Stage Q: timestamp the existing native acknowledgement; stop logic is unchanged.
++    if (reached_stop_time_step && stopTS < nTS && cm.mas(cm_mod)) {
++      const double epoch = std::chrono::duration<double>(
++          std::chrono::system_clock::now().time_since_epoch()).count();
++      std::ofstream stamp("sv13q_stop_ack.json");
++      stamp << std::setprecision(17) << "{\"solver_ack_timestamp\":" << epoch
++            << ",\"actual_stop_step\":" << cTS << "}\n";
++    }
++
+     const bool is_restart_output_step = cTS % com_mod.stFileIncr == 0;
+ 
+     #ifdef debug_iterate_solution
+@@ -476,7 +486,9 @@ void iterate_solution(Simulation* simulation)
+     dmsg << "save_vtu: " << save_vtu;
+     #endif
+ 
+-    if (save_vtu) {
++    // Preserve the normal VTU cadence, but save the completed final state
++    // whenever the native stop condition is reached. Restart is written above.
++    if (save_vtu || (com_mod.saveVTK && reached_stop_time_step)) {
+       vtk_xml::write_vtus(simulation, solutions, /* lAvg = */ false);
+     }
+ 
+diff --git a/Code/Source/solver/petsc_impl.cpp b/Code/Source/solver/petsc_impl.cpp
+index 916a55c..a94fbfb 100644
+--- a/Code/Source/solver/petsc_impl.cpp
++++ b/Code/Source/solver/petsc_impl.cpp
+@@ -32,6 +32,8 @@ PetscLogStage stages[6];  /* performance tuning. */
+ 
+ // Initialize PETSc and create lhs for PETSc.
+ //
++#include "sv13q_reuse.h"
++
+ void petsc_initialize(const PetscInt nNo, const PetscInt mynNo, const PetscInt nnz, 
+     const PetscInt nEq, const PetscInt *svFSI_ltg, const PetscInt *svFSI_map, 
+     const PetscInt *svFSI_rowPtr, const PetscInt *svFSI_colPtr, char *inp)
+@@ -61,7 +63,8 @@ void petsc_initialize(const PetscInt nNo, const PetscInt mynNo, const PetscInt n
+     plhs.created = PETSC_FALSE;
+     petsc_create_lhs(nNo, mynNo, nnz, svFSI_ltg, svFSI_map, svFSI_rowPtr, svFSI_colPtr);
+ 
+-    PetscMalloc1(nEq, &psol);
++    // Unused equation slots must contain null handles for collective cleanup.
++    PetscCallAbort(MPI_COMM_WORLD, PetscCalloc1(nEq, &psol));
+ 
+     for (PetscInt i = 0; i < nEq; i++) {
+       psol[i].created = PETSC_FALSE;
+@@ -262,7 +265,7 @@ void petsc_set_values(const PetscInt dof, const PetscInt iEq, const PetscReal *R
+ void petsc_solve(PetscReal *resNorm,  PetscReal *initNorm,  PetscReal *dB, 
+     PetscReal *execTime, bool *converged, PetscInt *numIter, 
+     PetscReal *R, const PetscInt maxIter, const PetscInt dof, 
+-    const PetscInt iEq)
++    const PetscInt iEq, SV13QReuse* reuse_policy, const PetscInt timestep)
+ {   
+     PetscReal *a, *array;
+     PetscInt   i, j, na;
+@@ -289,8 +292,13 @@ void petsc_solve(PetscReal *resNorm,  PetscReal *initNorm,  PetscReal *dB,
+       KSPSetResidualHistory(psol[cEq].ksp, a, na, PETSC_TRUE);
+     } 
+ 
+-    KSPSetUp(psol[cEq].ksp);
+-    KSPSolve(psol[cEq].ksp, psol[cEq].b, psol[cEq].b);
++    if (reuse_policy && reuse_policy->enabled()) {
++      PetscCallAbort(MPI_COMM_WORLD, sv13q_solve(psol[cEq].ksp, psol[cEq].A,
++          psol[cEq].b, *reuse_policy, timestep, cEq));
++    } else {
++      KSPSetUp(psol[cEq].ksp);
++      KSPSolve(psol[cEq].ksp, psol[cEq].b, psol[cEq].b);
++    }
+ 
+     /* Rescale solution for RCS preconditioner */
+     if (psol[cEq].rcs){
+@@ -339,7 +347,7 @@ void petsc_solve(PetscReal *resNorm,  PetscReal *initNorm,  PetscReal *dB,
+ */
+ void petsc_destroy_all(const PetscInt nEq)
+ {   
+-    if (!psol==NULL){
++    if (psol != nullptr) {
+         PetscInt cEq; 
+         PetscErrorCode ierr;
+ 
+@@ -354,40 +362,35 @@ void petsc_destroy_all(const PetscInt nEq)
+         plhs.mynNo   = 0;
+         plhs.created = PETSC_FALSE;
+ 
+-        PetscFree (plhs.map);
+-        PetscFree2(plhs.rowPtr, plhs.colPtr);
+-        PetscFree2(plhs.ltg, plhs.ghostltg);
++        PetscCallAbort(MPI_COMM_WORLD, PetscFree(plhs.map));
++        PetscCallAbort(MPI_COMM_WORLD, PetscFree2(plhs.rowPtr, plhs.colPtr));
++        PetscCallAbort(MPI_COMM_WORLD, PetscFree2(plhs.ltg, plhs.ghostltg));
+ 
+         for (cEq = 0; cEq < nEq; cEq++)
+         {   
+-            if (!psol[cEq].created) {
+-                PetscPrintf(MPI_COMM_WORLD, "ERROR <PETSC_DESTROY_ALL>: "
+-                    "solver %d is not created.\n", cEq);
+-                ierr = PETSC_ERR_ARG_WRONGSTATE;
+-                PETSCABORT(MPI_COMM_WORLD, ierr);
+-            }
+-
++            // PETSc destroy/free routines accept null handles, including
++            // equations with a KSP initialized before their first solve.
+             psol[cEq].created = PETSC_FALSE;
+ 
+             psol[cEq].lpPts = 0;
+-            PetscFree2(psol[cEq].lpBC_l, psol[cEq].lpBC_g);
++            PetscCallAbort(MPI_COMM_WORLD, PetscFree2(psol[cEq].lpBC_l, psol[cEq].lpBC_g));
+ 
+             psol[cEq].DirPts = 0;
+-            PetscFree (psol[cEq].DirBC);
++            PetscCallAbort(MPI_COMM_WORLD, PetscFree(psol[cEq].DirBC));
+ 
+-            VecDestroy(&psol[cEq].b);
+-            MatDestroy(&psol[cEq].A);
+-            KSPDestroy(&psol[cEq].ksp);
++            PetscCallAbort(MPI_COMM_WORLD, VecDestroy(&psol[cEq].b));
++            PetscCallAbort(MPI_COMM_WORLD, MatDestroy(&psol[cEq].A));
++            PetscCallAbort(MPI_COMM_WORLD, KSPDestroy(&psol[cEq].ksp));
+ 
+             if (psol[cEq].rcs) {
+                 psol[cEq].rcs = PETSC_FALSE;
+-                VecDestroy(&psol[cEq].Dr);
+-                VecDestroy(&psol[cEq].Dc);
++                PetscCallAbort(MPI_COMM_WORLD, VecDestroy(&psol[cEq].Dr));
++                PetscCallAbort(MPI_COMM_WORLD, VecDestroy(&psol[cEq].Dc));
+             }
+         }
+-        PetscFree(psol); 
++        PetscCallAbort(MPI_COMM_WORLD, PetscFree(psol));
+         
+-        PetscFinalize();
++        PetscCallAbort(MPI_COMM_WORLD, PetscFinalize());
+     }
+ }
+ 
+@@ -910,8 +913,10 @@ class PetscLinearAlgebra::PetscImpl {
+   public:
+     // True if PESc has been initialized.
+     static bool pesc_initialized;
++    static PetscInt petsc_equations;
+ 
+     PetscImpl();
++    void finalize();
+     void initialize(ComMod& com_mod, eqType& lEq);
+     void set_preconditioner(consts::PreconditionerType prec_type);
+     void solve(ComMod& com_mod, eqType& lEq, const Vector<int>& incL, const Vector<double>& res);
+@@ -919,6 +924,14 @@ class PetscLinearAlgebra::PetscImpl {
+ 
+     consts::PreconditionerType preconditioner_;
+ 
++    // Stage P: only the PC strategy changes; KSP and matrix ownership stay intact.
++    SV13QReuse reuse_policy_;
++    PetscBool reuse_within_timestep_ = PETSC_FALSE;
++    int last_pc_timestep_ = -1;
++    int pc_rebuild_requests_ = 0;
++    int pc_solve_requests_ = 0;
++
++
+     // Local to global mapping
+     Vector<int> ltg_;
+ 
+@@ -934,11 +947,35 @@ class PetscLinearAlgebra::PetscImpl {
+ };
+ 
+ bool PetscLinearAlgebra::PetscImpl::pesc_initialized = false;
++PetscInt PetscLinearAlgebra::PetscImpl::petsc_equations = 0;
+ 
+ PetscLinearAlgebra::PetscImpl::PetscImpl()
+ {
+ }
+ 
++void PetscLinearAlgebra::PetscImpl::finalize()
++{
++  // main finalizes each equation before MPI_Finalize; PETSc is process-wide.
++  if (!pesc_initialized) {
++    return;
++  }
++  int mpi_initialized = 0, mpi_finalized = 0;
++  MPI_Initialized(&mpi_initialized);
++  MPI_Finalized(&mpi_finalized);
++  if (!mpi_initialized || mpi_finalized) {
++    throw std::runtime_error("PETSc cleanup requires active application-owned MPI");
++  }
++  PetscBool initialized = PETSC_FALSE, finalized = PETSC_FALSE;
++  PetscCallAbort(MPI_COMM_WORLD, PetscInitialized(&initialized));
++  PetscCallAbort(MPI_COMM_WORLD, PetscFinalized(&finalized));
++  if (!initialized || finalized) {
++    throw std::runtime_error("PETSc lifecycle changed outside its solver owner");
++  }
++  petsc_destroy_all(petsc_equations);
++  petsc_equations = 0;
++  pesc_initialized = false;
++}
++
+ //-------------------------
+ // init_dir_and_coupneu_bc
+ //-------------------------
+@@ -1032,6 +1069,7 @@ void PetscLinearAlgebra::PetscImpl::initialize(ComMod& com_mod, eqType& equation
+         com_mod.ltg.data(), com_mod.lhs.map.data(), com_mod.lhs.rowPtr.data(), 
+         com_mod.lhs.colPtr.data(), com_mod.eq[0].ls.config.data());
+ 
++    petsc_equations = com_mod.nEq;
+     pesc_initialized = true;
+   }
+ 
+@@ -1052,6 +1090,21 @@ void PetscLinearAlgebra::PetscImpl::initialize(ComMod& com_mod, eqType& equation
+ 
+   petsc_create_linearsolver(ls_type, prec_type, ls.sD, ls.mItr, ls.relTol, ls.absTol, 
+       phys, equation.dof, eq_num, com_mod.nEq);
++  PetscCallAbort(MPI_COMM_WORLD, PetscOptionsGetBool(nullptr, nullptr,
++      "-sv_pc_reuse_within_timestep", &reuse_within_timestep_, nullptr));
++  PetscCallAbort(MPI_COMM_WORLD, PetscOptionsGetInt(nullptr, nullptr,
++      "-sv_pc_rebuild_interval", &reuse_policy_.interval, nullptr));
++  PetscCallAbort(MPI_COMM_WORLD, PetscOptionsGetBool(nullptr, nullptr,
++      "-sv_pc_adaptive_rebuild", &reuse_policy_.adaptive, nullptr));
++  if (reuse_policy_.enabled()) {
++    if (reuse_within_timestep_ || (reuse_policy_.adaptive && reuse_policy_.interval) ||
++        (!reuse_policy_.adaptive && reuse_policy_.interval != 1 && reuse_policy_.interval != 2 &&
++         reuse_policy_.interval != 3 && reuse_policy_.interval != 5)) {
++      PetscCallAbort(MPI_COMM_WORLD, PETSC_ERR_ARG_WRONG);
++    }
++  }
++
++
+ }
+ 
+ void PetscLinearAlgebra::PetscImpl::set_preconditioner(consts::PreconditionerType prec_type)
+@@ -1076,8 +1129,22 @@ void PetscLinearAlgebra::PetscImpl::solve(ComMod& com_mod, eqType& lEq, const Ve
+ 
+   petsc_set_values(com_mod.dof, com_mod.cEq, com_mod.R.data(), com_mod.Val.data(), W_.data(), V_.data());
+ 
++  if (reuse_within_timestep_) {
++    const PetscBool reuse = last_pc_timestep_ == com_mod.cTS ? PETSC_TRUE : PETSC_FALSE;
++    PetscCallAbort(MPI_COMM_WORLD, KSPSetReusePreconditioner(psol[com_mod.cEq].ksp, reuse));
++    last_pc_timestep_ = com_mod.cTS;
++    ++pc_solve_requests_;
++    if (!reuse) ++pc_rebuild_requests_;
++    PC pc = nullptr;
++    PetscCallAbort(MPI_COMM_WORLD, KSPGetPC(psol[com_mod.cEq].ksp, &pc));
++    PetscCallAbort(MPI_COMM_WORLD, PetscPrintf(MPI_COMM_WORLD,
++        "SV13P_REUSE step=%d equation=%d reuse=%d rebuild_requests=%d solve_requests=%d ksp=%p pc=%p\n",
++        com_mod.cTS, com_mod.cEq, static_cast<int>(reuse), pc_rebuild_requests_, pc_solve_requests_,
++        static_cast<void*>(psol[com_mod.cEq].ksp), static_cast<void*>(pc)));
++  }
++
+   petsc_solve(&lEq.FSILS.RI.fNorm, &lEq.FSILS.RI.iNorm, &lEq.FSILS.RI.dB,
+               &lEq.FSILS.RI.callD, &lEq.FSILS.RI.success, &lEq.FSILS.RI.itr,
+-              com_mod.R.data(), lEq.FSILS.RI.mItr, com_mod.dof, com_mod.cEq);
++              com_mod.R.data(), lEq.FSILS.RI.mItr, com_mod.dof, com_mod.cEq,
++              &reuse_policy_, com_mod.cTS);
+ }
+-
+diff --git a/Code/Source/solver/sv13q_reuse.h b/Code/Source/solver/sv13q_reuse.h
+new file mode 100644
+index 0000000..35ee75b
+--- /dev/null
++++ b/Code/Source/solver/sv13q_reuse.h
+@@ -0,0 +1,77 @@
++#ifndef SV13Q_REUSE_H
++#define SV13Q_REUSE_H
++#include <petscksp.h>
++
++// Stage Q changes only the decision to rebuild the existing preconditioner.
++struct SV13QReuse {
++  PetscInt interval = 0; // 0: disabled, 1/2/3/5: fixed policy
++  PetscBool adaptive = PETSC_FALSE;
++  PetscInt last_build = -1, reference = 0, logical = 0, builds = 0, attempts = 0;
++  PetscBool pending = PETSC_FALSE;
++  bool enabled() const { return adaptive || interval > 0; }
++  const char* policy() const { return adaptive ? "RA" : interval == 1 ? "R1" : interval == 2 ? "R2" : interval == 3 ? "R3" : "R5"; }
++  const char* rebuild_reason(PetscInt step) const {
++    if (last_build < 0) return "FIRST_SOLVE";
++    if (adaptive && pending) return "ITERATION_GROWTH";
++    if (step-last_build >= (adaptive ? 5 : interval)) return adaptive ? "MAX_AGE" : "FIXED_INTERVAL";
++    return nullptr;
++  }
++};
++
++// Keeps original RHS until the stale attempt is accepted. No failed correction is exported.
++inline PetscErrorCode sv13q_solve(KSP ksp, Mat matrix, Vec rhs, SV13QReuse& state,
++                                PetscInt step, PetscInt equation) {
++  PetscFunctionBeginUser;
++  const char* why = state.rebuild_reason(step);
++  PetscBool reuse = why ? PETSC_FALSE : PETSC_TRUE;
++  Vec saved_rhs = nullptr;
++  if (state.adaptive && reuse) {
++    PetscCall(VecDuplicate(rhs, &saved_rhs));
++    PetscCall(VecCopy(rhs, saved_rhs));
++  }
++  ++state.logical;
++  for (PetscInt attempt=0; attempt<2; ++attempt) {
++    const PetscInt age = state.last_build < 0 ? 0 : step-state.last_build;
++    const PetscInt old_reference = state.reference;
++    if (!reuse) { state.last_build=step; ++state.builds; state.pending=PETSC_FALSE; }
++    ++state.attempts;
++    PC pc=nullptr;
++    PetscCall(KSPGetPC(ksp,&pc));
++    PetscCall(KSPSetReusePreconditioner(ksp,reuse));
++    PetscCall(PetscPrintf(PETSC_COMM_WORLD,
++      "SV13Q_BEGIN logical=%d attempt=%d step=%d equation=%d policy=%s reuse=%d age=%d ref=%d rebuild_reason=%s builds=%d attempts=%d ksp=%p pc=%p\n",
++      (int)state.logical,(int)attempt,(int)step,(int)equation,state.policy(),(int)reuse,(int)age,
++      (int)old_reference,why ? why : "REUSE",(int)state.builds,(int)state.attempts,(void*)ksp,(void*)pc));
++    PetscCall(KSPSetOperators(ksp,matrix,matrix));
++    PetscCall(KSPSetUp(ksp));
++    PetscCall(KSPSolve(ksp,rhs,rhs));
++    PetscInt iterations=0, maximum=0;
++    KSPConvergedReason reason;
++    PetscCall(KSPGetIterationNumber(ksp,&iterations));
++    PetscCall(KSPGetConvergedReason(ksp,&reason));
++    PetscCall(KSPGetTolerances(ksp,nullptr,nullptr,nullptr,&maximum));
++    const bool healthy = reason > 0 && iterations < maximum;
++    if (healthy && !reuse) state.reference=iterations;
++    const double ratio = state.reference > 0 ? double(iterations)/state.reference : 0.;
++    if (healthy && state.adaptive && reuse && iterations > 1.5*state.reference) state.pending=PETSC_TRUE;
++    PetscCall(PetscPrintf(PETSC_COMM_WORLD,
++      "SV13Q_END logical=%d attempt=%d step=%d reason=%d iterations=%d healthy=%d ref=%d ratio=%.17g pending=%d recovery=%s\n",
++      (int)state.logical,(int)attempt,(int)step,(int)reason,(int)iterations,(int)healthy,
++      (int)state.reference,ratio,(int)state.pending,
++      attempt ? (healthy ? "STALE_ILU_RECOVERED" : "FRESH_RETRY_FAILED") : "NONE"));
++    if (healthy || !state.adaptive || !reuse || attempt==1) break;
++    PetscCall(VecCopy(saved_rhs,rhs));
++    PetscBool equal=PETSC_FALSE;
++    PetscCall(VecEqual(saved_rhs,rhs,&equal));
++    PetscCheck(equal,PETSC_COMM_WORLD,PETSC_ERR_PLIB,"Stage Q original RHS restore failed");
++    PetscBool nonzero=PETSC_FALSE;
++    PetscCall(KSPGetInitialGuessNonzero(ksp,&nonzero));
++    PetscCheck(!nonzero,PETSC_COMM_WORLD,PETSC_ERR_ARG_WRONGSTATE,"Stage Q retry requires frozen zero initial guess");
++    PetscCall(PetscPrintf(PETSC_COMM_WORLD,"SV13Q_RECOVERY logical=%d step=%d old_reason=%d old_iterations=%d original_rhs_restored=1 initial_guess_zero=1\n",
++      (int)state.logical,(int)step,(int)reason,(int)iterations));
++    why="STALE_FAILURE";reuse=PETSC_FALSE;
++  }
++  PetscCall(VecDestroy(&saved_rhs));
++  PetscFunctionReturn(PETSC_SUCCESS);
++}
++#endif

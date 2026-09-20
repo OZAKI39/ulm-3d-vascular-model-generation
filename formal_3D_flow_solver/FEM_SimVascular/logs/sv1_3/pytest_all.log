@@ -1,0 +1,69 @@
+...s.........s......F.....s.s........................................... [ 47%]
+.........s........sss..ss..s...ss.s..............................F...... [ 95%]
+...FF..                                                                  [100%]
+=================================== FAILURES ===================================
+_________________ test_actual_step_ten_mass_strictly_improves __________________
+
+    def test_actual_step_ten_mass_strictly_improves():
+        if not (REPORT/'petsc_short_qc.json').exists():pytest.skip('Short run unavailable')
+        states=load('petsc_short_qc')['states']
+        if not states or states[-1]['step']!=10:pytest.skip('Stopped before step 10; no comparable saved VTU')
+        assert states[-1]['source']=='actual_vtu_surface_integration'
+>       assert states[-1]['epsilon_mass']<load('flow_qc','sv1')['epsilon_mass']
+E       assert 0.0009765625000001561 < 0.0009765624999998679
+
+tests/test_sv11_short_run_mass.py:9: AssertionError
+_____________________ test_actual_field_mass_conservation ______________________
+
+measured = (<sv_validation.postprocess.SolutionMeasurements object at 0x72278d9960d0>, array([[ 0.00000000e+00, -0.00000000e+00, ...TLET_02': 2.3297109687714674e-15, 'OUTLET_03': 2.881330502570386e-16}, 'Q_out_total_m3_s': 2.734240472255525e-15, ...})
+
+    def test_actual_field_mass_conservation(measured):
+        q=measured[3]
+>       mass_balance(q["Q_target_m3_s"],-q["Q_in_m3_s"],q["outlet_flows_m3_s"])
+
+tests/test_sv1_mass_balance.py:5: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/sv_validation/validation.py:52: in mass_balance
+    require(error<=1e-6 and closure<=1e-6,'Actual solution fails inlet or mass conservation gate')
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+condition = False
+message = 'Actual solution fails inlet or mass conservation gate'
+
+    def require(condition,message):
+>       if not condition:raise ValidationError(message)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       sv_validation.validation.ValidationError: Actual solution fails inlet or mass conservation gate
+
+src/sv_validation/validation.py:11: ValidationError
+__________________________ test_real_solver_converged __________________________
+
+report = <function report.<locals>.load at 0x72278d1422a0>
+
+    def test_real_solver_converged(report):
+        q=report("flow_qc")
+>       assert q["solver_success"], f"FLOW_SOLVE_FAIL: {q['linear_nonconvergence_warnings']} linear warnings"
+E       AssertionError: FLOW_SOLVE_FAIL: 28 linear warnings
+E       assert False
+
+tests/test_sv1_solver_result.py:11: AssertionError
+____________________ test_required_steady_intervals_reached ____________________
+
+report = <function report.<locals>.load at 0x72278d1422a0>
+
+    def test_required_steady_intervals_reached(report):
+        s=report("steady_state")
+>       assert s["status"] == "PASS", f"NOT_REACHED: {s['saved_states']} saved state(s), five consecutive intervals required"
+E       AssertionError: NOT_REACHED: 1 saved state(s), five consecutive intervals required
+E       assert 'NOT_REACHED' == 'PASS'
+E         
+E         - PASS
+E         + NOT_REACHED
+
+tests/test_sv1_solver_result.py:15: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_sv11_short_run_mass.py::test_actual_step_ten_mass_strictly_improves
+FAILED tests/test_sv1_mass_balance.py::test_actual_field_mass_conservation - ...
+FAILED tests/test_sv1_solver_result.py::test_real_solver_converged - Assertio...
+FAILED tests/test_sv1_solver_result.py::test_required_steady_intervals_reached
+4 failed, 133 passed, 14 skipped in 5.01s

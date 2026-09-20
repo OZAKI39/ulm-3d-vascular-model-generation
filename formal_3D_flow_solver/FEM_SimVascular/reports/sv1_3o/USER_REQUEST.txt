@@ -1,0 +1,1238 @@
+Stage SV1.3O — Single-GPU PETSc Performance Optimization
+
+项目：
+
+/home/lzy/projects/formal_3D_flow_solver/FEM_SimVascular
+
+当前正式科学 production：
+
+CPU_EARLY_STOP_PRODUCTION
+
+当前 GPU development baseline：
+
+GPU_STEADY_CANDIDATE
+
+Stage SV1.3N 已证明：
+
+PETSc 3.25.5
+CUDA 13.2
+RTX 4090
+1 MPI rank
+OMP=1
+
+Mat = seqaijcusparse
+Vec = seqcuda
+
+真实 vascular GPU：
+71 steps
+161 KSP solves
+83090 KSP iterations
+mean = 516.087 iterations / solve
+wall = 2576.288518 s
+
+production steady criteria：
+first full pass = step70
+safe stop = step71
+
+本阶段：
+
+============================================================
+用户明确决定暂缓 CPU/GPU 科学等价验证。
+============================================================
+
+不要重新做：
+
+CPU/GPU field equivalence
+OLD/NEW PETSc science comparison
+CPU benchmark
+2-rank CUDA development。
+
+目标只有：
+
+在已经成功的：
+
+1 MPI rank
++
+1 RTX4090
+
+路径上降低真实求解时间。
+
+
+============================================================
+1. Baseline 冻结
+============================================================
+
+冻结 Stage N：
+
+PETSc version/tag/commit
+
+CUDA
+
+MPI
+
+svMultiPhysics source/compatibility adapter
+
+mesh
+
+geometry
+
+rho
+
+mu
+
+Q
+
+BC
+
+dt
+
+time integration
+
+nonlinear tolerances
+
+steady criteria。
+
+不得改变科学模型。
+
+
+============================================================
+2. 2-rank 路线暂时禁止
+============================================================
+
+当前：
+
+CUDA_MPI reverse ghost FAIL。
+
+因此本阶段严格：
+
+1 MPI rank
+1 RTX4090
+OMP=1。
+
+不要测试：
+
+2 ranks + 1 GPU
+
+2 GPUs
+
+mpicuda production。
+
+
+============================================================
+3. 性能 baseline
+============================================================
+
+当前 Stage N full-run：
+
+wall = 2576.288518 s
+steps = 71
+KSP solves = 161
+KSP iterations = 83090
+mean iterations/solve = 516.087
+
+将其记录为：
+
+DEVELOPMENT_BASELINE_OBSERVED。
+
+不要把它当重复 benchmark median。
+
+
+============================================================
+4. 第一项优化：I/O
+============================================================
+
+Stage N 为安全停止：
+
+每 timestep 写 VTU。
+
+这不是未来 performance 配置。
+
+设计新的：
+
+PERFORMANCE_OUTPUT_POLICY。
+
+正常运行：
+
+只在 production steady-monitor cadence
+需要的保存点输出正式 VTU。
+
+优先恢复：
+
+每 10 steps。
+
+当 steady monitor
+第一次满足完整连续条件：
+
+请求 STOP_SIM
+
+并确保退出前额外强制写：
+
+final VTU
++
+native checkpoint。
+
+
+============================================================
+5. I/O 优化验收
+============================================================
+
+必须证明：
+
+正常运行不再每步写重型 VTU。
+
+steady stop 后：
+
+final VTU 存在
+
+checkpoint 存在
+
+时间点一致
+
+fresh reload PASS。
+
+不得为了减少 I/O
+破坏 steady monitor。
+
+
+============================================================
+6. 不为 I/O 单独跑完整 steady
+============================================================
+
+先通过：
+
+small official case
+
+或极短 vascular run
+
+验证 final-output mechanism。
+
+PASS 后继续性能候选。
+
+
+============================================================
+7. 建立固定 GPU performance window
+============================================================
+
+不要每个候选重新跑：
+
+t=0 → steady。
+
+检查 Stage N
+是否存在合法 native checkpoint：
+
+优先：
+
+step60
+
+或距离 steady 较近的
+完整 checkpoint。
+
+要求：
+
+same PETSc
+same svMultiPhysics binary family
+same rank count = 1
+same GPU backend
+full Y_n/A_n/history
+reload PASS。
+
+
+============================================================
+8. Benchmark window
+============================================================
+
+优先固定：
+
+step60 → step70
+
+共 10 timesteps。
+
+如果没有合法 step60 checkpoint：
+
+选择最早可验证的
+完整 native GPU checkpoint，
+
+运行固定 10-step window。
+
+如果完全没有可用 checkpoint：
+
+才使用：
+
+t=0 → step10。
+
+
+============================================================
+9. 所有性能候选必须用同一窗口
+============================================================
+
+固定：
+
+start checkpoint
+end step
+mesh
+physics
+BC
+dt
+output policy
+KSP tolerance
+nonlinear tolerance。
+
+不能候选之间换窗口。
+
+
+============================================================
+10. Benchmark 只做最低必要重复
+============================================================
+
+用户不希望多余统计。
+
+每个 candidate：
+
+先运行 1 次。
+
+如果比当前 winner：
+
+明显快 >=10%
+
+且求解健康：
+
+接受为新 winner。
+
+如果差异：
+
+<5%
+
+视为没有明显收益，
+不额外重复。
+
+只有：
+
+5%–10%
+
+这种模糊区间，
+
+允许额外再跑一次确认。
+
+不要默认 3-run median。
+
+
+============================================================
+11. 求解健康门槛
+============================================================
+
+性能 candidate 必须：
+
+linear failures = 0
+
+nonlinear failures = 0
+
+KSP reason > 0
+
+finite velocity
+
+finite pressure
+
+mass/inlet diagnostics finite
+
+no PETSc hard error
+
+no MPI hard error。
+
+本阶段不做 CPU/GPU science equivalence。
+
+
+============================================================
+12. Candidate PERF_A
+============================================================
+
+Baseline scientific linear semantics：
+
+GMRES
+
+right preconditioning
+
+restart100
+
+rtol1e-10
+
+atol1e-24
+
+max_it2000
+
+ASM overlap2
+
+subdomain ILU(2)。
+
+先在新的低-I/O policy 下
+测一次 fixed window。
+
+记录为：
+
+PERF_A_BASELINE_LOW_IO。
+
+
+============================================================
+13. Candidate PERF_B
+============================================================
+
+因为当前只有：
+
+1 MPI rank，
+
+检查实际 PCASM runtime topology。
+
+确认：
+
+number of ASM subdomains
+
+local/global sizes。
+
+如果当前实际上只有一个 ASM block，
+
+测试：
+
+GMRES
++
+direct PCILU
++
+ILU level 2。
+
+目标：
+
+去掉单 rank 下
+可能不必要的 ASM wrapper。
+
+
+============================================================
+14. PERF_B 必须保持
+============================================================
+
+same:
+
+GMRES
+right side
+restart100
+rtol
+atol
+max_it
+ILU level2。
+
+唯一核心变化：
+
+ASM+ILU2
+→
+direct ILU2。
+
+
+============================================================
+15. PERF_B 记录
+============================================================
+
+记录：
+
+wall
+
+KSP solves
+
+total iterations
+
+mean iterations
+
+PC setup time
+如果低成本可得
+
+KSP time
+如果低成本可得
+
+GPU memory snapshot。
+
+如果：
+
+>=10% faster
+
+且健康：
+
+成为 winner。
+
+
+============================================================
+16. Candidate PERF_C
+============================================================
+
+只有：
+
+PERF_B 不足够快
+
+或明显 PC solve 成本高
+
+才测试：
+
+direct ILU(1)。
+
+保持其它设置完全一样。
+
+
+============================================================
+17. PERF_C 判断
+============================================================
+
+ILU(1) 可能：
+
+单次 iteration 更便宜
+
+但 iteration 更多。
+
+只看最终：
+
+fixed-window wall time。
+
+不要只按 iteration 数判断。
+
+
+============================================================
+18. Candidate PERF_D
+============================================================
+
+使用当前最快 PC。
+
+测试：
+
+GMRES restart：
+
+100
+→
+200。
+
+其它条件不变。
+
+
+============================================================
+19. 为什么测试 restart200
+============================================================
+
+当前平均：
+
+516 iterations / solve。
+
+restart100
+意味着多次 restart。
+
+RTX4090 显存目前
+观察使用远低于 24GB。
+
+因此允许测试：
+
+restart200
+
+是否减少重启和总时间。
+
+
+============================================================
+20. restart200 验收
+============================================================
+
+记录：
+
+total iterations
+
+number of GMRES restart cycles
+
+wall
+
+VRAM snapshot。
+
+如果更慢：
+
+立即回退 winner。
+
+不要继续扫：
+
+150
+250
+300
+400。
+
+
+============================================================
+21. 不做大参数扫描
+============================================================
+
+本阶段最多正式比较：
+
+A:
+ASM2 + ILU2, restart100
+
+B:
+direct ILU2, restart100
+
+C:
+direct ILU1, restart100
+
+D:
+winner PC, restart200。
+
+不要自动扩展几十套参数。
+
+
+============================================================
+22. 第一轮禁止
+============================================================
+
+当前禁止：
+
+fieldsplit
+
+Schur
+
+GAMG
+
+hypre
+
+BoomerAMG
+
+custom CUDA solver
+
+mixed precision
+
+single precision
+
+改变 KSP tolerance。
+
+
+============================================================
+23. 为什么暂不做这些
+============================================================
+
+先确定：
+
+现有 GMRES/ILU 路径
+还能否通过简单配置
+获得明显收益。
+
+复杂 GPU-native PC：
+
+留给 Stage SV1.3P
+如果确实需要。
+
+
+============================================================
+24. 轻量 profiling
+============================================================
+
+允许在 fixed window
+的 baseline 和 winner：
+
+各做一次轻量：
+
+PETSc log_view。
+
+只需要回答：
+
+Assembly
+
+KSP
+
+PC setup
+
+PC apply
+
+MatMult
+
+I/O
+
+大致谁占主要时间。
+
+
+============================================================
+25. 禁止重型 profiling
+============================================================
+
+本阶段不使用：
+
+长时间 Nsight Systems
+
+Nsight Compute 全 kernel 扫描
+
+长期 H2D/D2H tracing
+
+除非出现无法解释的性能瓶颈。
+
+
+============================================================
+26. GPU residency
+============================================================
+
+顺手确认：
+
+Mat type = CUDA
+
+Vec type = CUDA
+
+PC factorization package
+
+是否出现明显 CPU fallback warning。
+
+如果不能可靠判断：
+
+写 NOT_MEASURED。
+
+不要为了 residency
+再启动完整 CFD。
+
+
+============================================================
+27. winner 选择
+============================================================
+
+winner 主要依据：
+
+fixed 10-step
+wall time。
+
+同时必须：
+
+0 linear failures
+
+0 nonlinear failures
+
+finite fields
+
+same KSP tolerance
+
+same scientific input。
+
+
+============================================================
+28. 不以迭代数单独选 winner
+============================================================
+
+例如：
+
+Candidate X：
+300 iterations
+但 wall 400 s
+
+Candidate Y：
+450 iterations
+但 wall 300 s
+
+应选：
+
+Candidate Y。
+
+
+============================================================
+29. winner 后只做一次完整 GPU steady run
+============================================================
+
+选出 winner 后：
+
+运行唯一一次：
+
+REAL_VASCULAR_GPU_PERF。
+
+使用：
+
+performance I/O policy
+
+winner KSP/PC config
+
+1 rank
+1 RTX4090。
+
+
+============================================================
+30. Dynamic steady stop
+============================================================
+
+继续使用完全相同：
+
+production SteadyStopMonitor。
+
+不得修改：
+
+E_u threshold
+
+E_Q threshold
+
+mass gate
+
+连续区间数
+
+检查 cadence。
+
+
+============================================================
+31. 收敛后立即停止
+============================================================
+
+第一次满足完整 steady criteria：
+
+安全停止。
+
+不要：
+
+额外 10 steps
+
+额外统计区间
+
+重复 steady run。
+
+
+============================================================
+32. Final performance result
+============================================================
+
+记录：
+
+wall
+
+stop step
+
+KSP solves
+
+total iterations
+
+mean iterations
+
+max iterations
+
+output file count
+
+peak observed VRAM。
+
+
+============================================================
+33. 与 Stage N 做开发性能比较
+============================================================
+
+允许报告：
+
+Stage N observed wall
+
+vs
+
+Stage O optimized observed wall。
+
+但明确：
+
+SINGLE-RUN DEVELOPMENT COMPARISON。
+
+不是：
+
+formal benchmark
+
+不是：
+
+scientific production comparison。
+
+
+============================================================
+34. 简单开发加速比
+============================================================
+
+允许计算：
+
+S_dev =
+2576.288518 /
+optimized_wall
+
+前提：
+
+两者都达到相同 production
+steady criteria。
+
+报告必须标：
+
+OBSERVATIONAL DEVELOPMENT SPEEDUP。
+
+
+============================================================
+35. 不做 CPU comparison
+============================================================
+
+明确：
+
+CPU comparison = DEFERRED。
+
+不要运行 CPU。
+
+
+============================================================
+36. 不做 scientific equivalence
+============================================================
+
+明确：
+
+CPU/GPU science equivalence = DEFERRED。
+
+不得把 Stage O
+称为 scientifically validated。
+
+
+============================================================
+37. 如果 simple tuning 收益很小
+============================================================
+
+如果：
+
+最佳 candidate
+相对 low-I/O baseline
+提升 <10%
+
+则：
+
+停止第一轮 tuning。
+
+不要继续盲扫。
+
+报告建议下一阶段：
+
+GPU-native preconditioner study。
+
+
+============================================================
+38. 如果 simple tuning 收益明显
+============================================================
+
+如果：
+
+>=10%
+
+则保留 winner。
+
+跑一次 full steady 后停止。
+
+
+============================================================
+39. 2-rank 问题不碰
+============================================================
+
+不要解决：
+
+mpicuda reverse。
+
+这是：
+
+multi-GPU/distributed GPU
+未来阶段。
+
+
+============================================================
+40. 永久测试
+============================================================
+
+至少新增：
+
+test_sv13o_reference_freeze.py
+
+test_sv13o_output_policy.py
+
+test_sv13o_final_output_on_stop.py
+
+test_sv13o_checkpoint_window.py
+
+test_sv13o_baseline_runtime.py
+
+test_sv13o_direct_ilu2.py
+
+test_sv13o_direct_ilu1.py
+
+test_sv13o_restart200.py
+
+test_sv13o_solver_health.py
+
+test_sv13o_winner_selection.py
+
+test_sv13o_steady_stop.py
+
+test_sv13o_final_reload.py
+
+test_sv13o_history_preservation.py
+
+
+============================================================
+41. tests 不得重复 CFD
+============================================================
+
+pytest：
+
+读取已有 artifacts。
+
+不要启动：
+
+新的 full vascular run。
+
+
+============================================================
+42. 必要可视化
+============================================================
+
+只生成：
+
+A.
+gpu_tuning_candidates.png
+
+标题：
+
+“哪些 GPU 求解设置真正节省了时间？”
+
+
+B.
+ksp_cost_comparison.png
+
+标题：
+
+“时间减少来自更少迭代还是每次迭代更快？”
+
+
+C.
+gpu_time_breakdown.png
+
+标题：
+
+“GPU 血流计算主要把时间花在哪里？”
+
+
+D.
+optimized_steady_convergence.png
+
+标题：
+
+“优化以后流场是否仍然正常达到稳态？”
+
+
+E.
+gpu_runtime_before_after.png
+
+标题：
+
+“GPU 优化前后实际 wall-clock time 相差多少？”
+
+
+============================================================
+43. REPORT.md
+============================================================
+
+生成：
+
+reports/sv1_3o/REPORT.md
+
+标题：
+
+# Stage SV1.3O — RTX 4090 单 GPU 血流求解性能优化
+
+
+必须回答：
+
+## 优化前是什么状态？
+
+Stage N：
+
+71 steps
+2576.288518 s
+83090 KSP iterations。
+
+
+## 首先减少了什么无效开销？
+
+解释：
+
+每步 VTU
+→
+低频正常输出
++
+steady 后 final 强制保存。
+
+
+## ASM 在单 rank 下有没有必要？
+
+报告实际 PC topology。
+
+不要猜。
+
+
+## 哪个线性配置最快？
+
+比较：
+
+A
+B
+C
+D。
+
+
+## 时间改善来自哪里？
+
+区分：
+
+iteration count
+
+time/iteration
+
+PC
+
+I/O。
+
+
+## 最终优化配置是什么？
+
+给完整 PETSc options。
+
+
+## 优化后真实 vascular 到第几步稳态？
+
+给：
+
+steady step
+
+safe stop step
+
+wall time。
+
+
+## 实际开发加速多少？
+
+允许报告：
+
+Stage N observed
+vs
+Stage O observed。
+
+明确：
+
+不是正式 benchmark。
+
+
+## 哪些工作仍然推迟？
+
+CPU/GPU science equivalence
+
+formal benchmark
+
+multi-GPU
+
+mpicuda reverse
+
+advanced GPU PC。
+
+
+============================================================
+44. Stage 状态
+============================================================
+
+如果：
+
+GPU tuning candidate
+全部无法正常求解：
+
+FAIL:
+GPU_PERFORMANCE_TUNING_FAIL。
+
+
+如果：
+
+功能正常
+但提升 <10%：
+
+PASS:
+SIMPLE_GPU_TUNING_EXHAUSTED。
+
+
+如果：
+
+>=10% improvement
+且 full steady run PASS：
+
+PASS:
+GPU_PERFORMANCE_OPTIMIZED。
+
+
+无论哪种 PASS：
+
+scientific equivalence
+仍为：
+
+DEFERRED。
+
+
+============================================================
+45. 最终终端输出
+============================================================
+
+Stage SV1.3O completed.
+
+baseline:
+    Stage N wall = 2576.288518 s
+    steps = 71
+    KSP solves = 161
+    KSP iterations = 83090
+
+I/O optimization:
+    previous VTU cadence = every step
+    optimized cadence = ...
+    final forced VTU = ...
+    checkpoint = ...
+
+fixed window:
+    start step = ...
+    end step = ...
+
+PERF_A:
+    config = ...
+    wall = ...
+    iterations = ...
+
+PERF_B:
+    config = ...
+    wall = ...
+    iterations = ...
+
+PERF_C:
+    status = ...
+    wall = ...
+    iterations = ...
+
+PERF_D:
+    status = ...
+    wall = ...
+    iterations = ...
+
+winner:
+    config = ...
+    fixed-window improvement = ...
+
+full optimized GPU:
+    wall = ...
+    steady step = ...
+    stop step = ...
+    KSP solves = ...
+    iterations = ...
+    failures = ...
+    reload = ...
+
+development speedup:
+    Stage N observed wall = 2576.288518
+    Stage O observed wall = ...
+    ratio = ...
+    label = OBSERVATIONAL DEVELOPMENT SPEEDUP
+
+deferred:
+    CPU/GPU science equivalence = YES
+    formal CPU/GPU benchmark = YES
+    multi-rank CUDA = YES
+    GPU-native advanced PC = YES
+
+STAGE SV1.3O STATUS:
+    GPU_PERFORMANCE_OPTIMIZED /
+    SIMPLE_GPU_TUNING_EXHAUSTED /
+    FAIL
+
+然后停止。
+
+不要自动进入：
+
+Stage SV1.3P
+multi-GPU
+Mesh convergence
+particle coupling。

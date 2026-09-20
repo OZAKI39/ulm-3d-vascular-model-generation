@@ -1,0 +1,26 @@
+..........F.......                                                       [100%]
+=================================== FAILURES ===================================
+_________ test_fresh_process_reads_every_frozen_artifact_from_checkout _________
+
+tmp_path = PosixPath('/tmp/pytest-of-lzy/pytest-42/test_fresh_process_reads_every0')
+
+    def test_fresh_process_reads_every_frozen_artifact_from_checkout(tmp_path):
+        result=subprocess.run([sys.executable,'-I','-B',str(ROOT/'scripts/fem_freeze_sync/validate_frozen.py')],
+            cwd=tmp_path,capture_output=True,text=True,timeout=90)
+>       assert result.returncode==0,result.stdout+result.stderr
+E       AssertionError: Traceback (most recent call last):
+E           File "/home/lzy/projects/ulm-3d-vascular-model-generation/formal_3D_flow_solver/FEM_SimVascular/scripts/fem_freeze_sync/validate_frozen.py", line 237, in <module>
+E             main()
+E             ~~~~^^
+E           File "/home/lzy/projects/ulm-3d-vascular-model-generation/formal_3D_flow_solver/FEM_SimVascular/scripts/fem_freeze_sync/validate_frozen.py", line 232, in main
+E             assert json.loads(path.read_text()) == value, name
+E                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E         AssertionError: frozen_reference/run/runtime_manifest.json
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/home/lzy/projects/formal_3D_flow_solver/FEM_SimVascular/.venv/bin/python', '-I', '-B', '/home... name\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: frozen_reference/run/runtime_manifest.json\n').returncode
+
+tests/test_frozen_flow_reload.py:9: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_frozen_flow_reload.py::test_fresh_process_reads_every_frozen_artifact_from_checkout
+1 failed, 17 passed in 4.50s

@@ -58,3 +58,8 @@ The fixture inventory and SHA-256 hashes are documented in `test_data/README.md`
 SWC fixture is a derived single connected component (7,419 nodes / 7,418 edges); it is not the
 original full mouse-brain dataset. TIFF intensity and segmentation-mask data are not used as
 surface geometry and are not present here.
+
+## Frozen 3D FEM / Particle Handoff
+
+The frozen Stage SV1.3Q SimVascular baseline and Particle-0 → Particle-8 handoff are
+documented in [PARTICLE_HANDOFF.md](formal_3D_flow_solver/FEM_SimVascular/PARTICLE_HANDOFF.md).

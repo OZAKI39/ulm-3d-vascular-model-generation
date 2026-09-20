@@ -1,0 +1,97 @@
+{
+  "figures": [
+    {
+      "path": "reports/sv1_3h/cuda_version_strategy.png",
+      "sha256": "166a979a94bb4461a005bbc78a31510ce49b990d824a1d958e758fec8561e6f2",
+      "title": "为什么改用 CUDA 12.6，而不是修改 PETSc？",
+      "has_measurements": true,
+      "label": "OBSERVED STATUS",
+      "numeric_bars": 0,
+      "caption": "更换 toolkit 是本次受控验证变量；CUDA runtime 通过，尚未打通 PETSc GPU 求解。"
+    },
+    {
+      "path": "reports/sv1_3h/gpu_build_pipeline.png",
+      "sha256": "5ff0596f16d22767742e24ee6ce495147d4ca3394ded57990c1f48e6a06e1160",
+      "title": "GPU 求解链路现在走通到哪一步？",
+      "has_measurements": true,
+      "label": "OBSERVED STATUS",
+      "numeric_bars": 0,
+      "caption": "停止点：PETSc make。所有后续阶段保持 NOT RUN；未补丁修复、未升级 PETSc。"
+    },
+    {
+      "path": "reports/sv1_3h/cuda_runtime_smoke.png",
+      "sha256": "601ee5cef54be6d2730cc31ea217725255eb56c7bd38ea018f495835842497d0",
+      "title": "CUDA 12.6 能正常驱动 RTX 4090 吗？",
+      "has_measurements": true,
+      "label": "MEASURED",
+      "numeric_bars": 3,
+      "caption": "实测包含进程启动、CUDA 初始化、H2D、kernel、D2H 与校验；不是血流 benchmark。"
+    },
+    {
+      "path": "reports/sv1_3h/petsc_gpu_backend.png",
+      "sha256": "a0038c3070f9f4021ac156a106e6f0b23f12037c5d85cba45c44a3e62fdeefac",
+      "title": "PETSc 的矩阵和向量真的在显卡里吗？",
+      "has_measurements": false,
+      "label": "NOT RUN",
+      "numeric_bars": 0,
+      "caption": "PETSc library 未构建成功；CUDA kernel 通过不能替代 PETSc Mat/Vec 证据。"
+    },
+    {
+      "path": "reports/sv1_3h/svmultiphysics_gpu_smoke.png",
+      "sha256": "6d0442435df81e67e0f96b8c85da12db39762d491690e10b2704b637c5cf1ae0",
+      "title": "SimVascular 是否真的调用了 GPU PETSc？",
+      "has_measurements": false,
+      "label": "NOT RUN",
+      "numeric_bars": 0,
+      "caption": "没有 GPU PETSc 库；未启动新的 svMultiPhysics build，原 CPU solver 保持原样。"
+    },
+    {
+      "path": "reports/sv1_3h/gpu_cpu_solution_difference.png",
+      "sha256": "b59c8768a01203d33ae21846cd32b4dee22113cfbad97876ff77116312e1efa4",
+      "title": "GPU 和 CPU 算出的血流是否相同？",
+      "has_measurements": false,
+      "label": "NOT RUN",
+      "numeric_bars": 0,
+      "caption": "速度、压力、入口 / 出口流量及质量守恒差异均未测量。"
+    },
+    {
+      "path": "reports/sv1_3h/gpu_residency.png",
+      "sha256": "257be9477b2c3d3ed669a5940ae3ea47a0c2e0960d8c92a62cc419259d6a7c39",
+      "title": "求解过程中数据是否一直留在显卡里？",
+      "has_measurements": false,
+      "label": "NOT RUN",
+      "numeric_bars": 0,
+      "caption": "没有 PETSc GPU runtime；不能判断矩阵、向量或预条件器的执行位置。"
+    },
+    {
+      "path": "reports/sv1_3h/gpu_transfer_cost.png",
+      "sha256": "e0760b7b5aaeb914acbc920042965bd9b0752c2ad71bd6fae2490c887ee7686c",
+      "title": "CPU/GPU 搬数据有没有拖慢计算？",
+      "has_measurements": false,
+      "label": "NOT RUN",
+      "numeric_bars": 0,
+      "caption": "没有实际求解传输轨迹；不能判断 transfer-bound。"
+    },
+    {
+      "path": "reports/sv1_3h/gpu_memory.png",
+      "sha256": "73c2a16654e4438360870e2cba3372547e1353ea9f42e48b1f704574f45aa830",
+      "title": "RTX 4090 的 24 GB 显存够不够？",
+      "has_measurements": false,
+      "label": "NOT RUN",
+      "numeric_bars": 0,
+      "caption": "设备报告容量 24,564 MiB；此容量不代表求解峰值，也不能证明显存足够。"
+    },
+    {
+      "path": "reports/sv1_3h/cpu_gpu_runtime.png",
+      "sha256": "22c25c2573aed1bae14e02085a0fa31defd1ca96a77e0b32f735bd4f1a3de722",
+      "title": "同一台服务器上，CPU 和 RTX 4090 谁更快？",
+      "has_measurements": false,
+      "label": "NOT RUN",
+      "numeric_bars": 0,
+      "caption": "未测量中位时间和 speedup；不以 kernel 启动时间预测血流求解性能。"
+    }
+  ],
+  "unknown_measurements_are_null": true,
+  "human_review_status": "PENDING",
+  "stage_status": "FAIL"
+}

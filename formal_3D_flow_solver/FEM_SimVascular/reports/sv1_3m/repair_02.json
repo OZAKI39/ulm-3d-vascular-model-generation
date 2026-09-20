@@ -1,0 +1,31 @@
+{
+  "iteration": "repair_02",
+  "trigger": "repair_01 CUDA MPI NULL local form / Vector is not ghosted (3/3)",
+  "root_cause": "3.19.6 VecSetType destroys Vec_MPI data; localrep/localupdate are lost.",
+  "upstream_commit": "ca0374c5dd2e044b693bca7c31c716bd3be32b2a",
+  "first_fixed_tag": "v3.20.0",
+  "adaptation": "CUDA MPI conversion only using existing 3.19 Initialize_CUPMBase; retain host allocation in place. No HIP/Kokkos, generic conversion rewrite, pinned reallocations or new solver code.",
+  "modified_files": [
+    "src/vec/vec/impls/mpi/commonmpvec.c",
+    "include/petsc/private/vecimpl.h",
+    "src/vec/vec/interface/vecreg.c",
+    "src/vec/vec/impls/mpi/cupm/cuda/vecmpicupm.cu"
+  ],
+  "modified_functions": [
+    "VecGhostGetLocalForm",
+    "VecGhostUpdateBegin",
+    "VecGhostUpdateEnd",
+    "VecSetType",
+    "VecConvert_MPI_MPICUDA_inplace"
+  ],
+  "added_lines": 32,
+  "deleted_lines": 5,
+  "scientific_impact": "NONE \u2014 compatibility only",
+  "before_result": "CPU seq, CUDA seq, CPU MPI PASS; CUDA MPI FAIL",
+  "after_result": "CPU and CUDA seq PASS; CUDA MPI forward PASS / reverse data FAIL",
+  "tests_added": [
+    "same deterministic CPU/CUDA sequential and MPI ghost probes, three repeats"
+  ],
+  "patch_path": "patches/sv1_3m/repair_02/petsc319_cuda_ghost_backport.patch",
+  "patch_sha256": "943e3857a9cff476d2a221120216a15f14f7a9c8db752e4c32ad986abed9b3e6"
+}

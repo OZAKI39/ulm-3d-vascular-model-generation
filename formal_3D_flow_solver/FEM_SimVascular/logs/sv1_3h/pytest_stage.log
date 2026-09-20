@@ -1,0 +1,53 @@
+============================= test session starts ==============================
+platform linux -- Python 3.13.11, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/lzy/projects/formal_3D_flow_solver/FEM_SimVascular
+configfile: pyproject.toml
+collected 67 items
+
+tests/test_sv13h_benchmark_repeatability.py s....                        [  7%]
+tests/test_sv13h_cpu_proof.py s.                                         [ 10%]
+tests/test_sv13h_cuda12_install.py ...                                   [ 14%]
+tests/test_sv13h_cuda12_inventory.py ....                                [ 20%]
+tests/test_sv13h_cuda12_smoke.py ..                                      [ 23%]
+tests/test_sv13h_gpu_memory.py s.                                        [ 26%]
+tests/test_sv13h_gpu_proof.py s......                                    [ 37%]
+tests/test_sv13h_gpu_residency.py s.                                     [ 40%]
+tests/test_sv13h_history_preservation.py .                               [ 41%]
+tests/test_sv13h_mpi_with_cuda12.py ....                                 [ 47%]
+tests/test_sv13h_petsc_build.py F..                                      [ 52%]
+tests/test_sv13h_petsc_configure.py ..                                   [ 55%]
+tests/test_sv13h_petsc_cuda_types.py s..                                 [ 59%]
+tests/test_sv13h_petsc_gpu_smoke.py s...                                 [ 65%]
+tests/test_sv13h_reference_freeze.py ..                                  [ 68%]
+tests/test_sv13h_science_equivalence.py s.......                         [ 80%]
+tests/test_sv13h_speedup.py s....                                        [ 88%]
+tests/test_sv13h_svmp_cuda_link.py s.                                    [ 91%]
+tests/test_sv13h_svmp_gpu_smoke.py s.                                    [ 94%]
+tests/test_sv13h_transfer_audit.py s.                                    [ 97%]
+tests/test_sv13h_visuals.py ..                                           [100%]
+
+=================================== FAILURES ===================================
+__________________ test_actual_petsc_cuda12_build_acceptance ___________________
+
+    def test_actual_petsc_cuda12_build_acceptance():
+        # An observed failed hard gate remains a real failure, never skipped or xfailed.
+>       petsc_cuda_build_gate(load('petsc_cuda12_build'))
+
+tests/test_sv13h_petsc_build.py:4: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/sv_validation/sv13h.py:21: in petsc_cuda_build_gate
+    require(record['configure_exit']==record['make_exit']==0,'PETSC_CUDA12_BUILD_FAIL')
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+condition = False, reason = 'PETSC_CUDA12_BUILD_FAIL'
+
+    def require(condition,reason):
+>       if not condition:raise GateError(reason)
+                         ^^^^^^^^^^^^^^^^^^^^^^^
+E       sv_validation.sv13g.GateError: PETSC_CUDA12_BUILD_FAIL
+
+src/sv_validation/sv13g.py:12: GateError
+- generated xml file: /home/lzy/projects/formal_3D_flow_solver/FEM_SimVascular/reports/sv1_3h/pytest_stage.xml -
+=========================== short test summary info ============================
+FAILED tests/test_sv13h_petsc_build.py::test_actual_petsc_cuda12_build_acceptance
+=================== 1 failed, 54 passed, 12 skipped in 0.43s ===================

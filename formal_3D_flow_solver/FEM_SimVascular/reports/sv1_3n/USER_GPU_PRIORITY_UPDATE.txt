@@ -1,0 +1,1746 @@
+IMPORTANT STRATEGY UPDATE
+
+继续当前：
+
+Stage SV1.3N — Modern PETSc GPU Bring-up
+
+用户现在明确改变优先级：
+
+============================================================
+先直接完成 GPU 开发。
+CPU / GPU 科学等价、旧新 PETSc 对照、
+重复性能 benchmark、详细 profiling 全部推迟到以后。
+============================================================
+
+当前阶段只完成：
+
+Modern PETSc
++
+CUDA
++
+svMultiPhysics
++
+真实 vascular GPU solve
++
+steady early stop。
+
+
+============================================================
+0. 当前开发目标
+============================================================
+
+唯一目标：
+
+让固定 SimVascular / svMultiPhysics
+真实 vascular case
+
+在：
+
+RTX 4090
+
+上使用：
+
+modern PETSc CUDA backend
+
+稳定运行，
+
+并达到项目已有的
+正式 steady convergence criteria。
+
+一旦稳态达到：
+
+安全停止。
+
+不要继续额外 timestep。
+
+
+============================================================
+1. 当前 CPU production 不动
+============================================================
+
+正式 reference：
+
+CPU_EARLY_STOP_PRODUCTION
+
+继续只读保存。
+
+本阶段：
+
+不要替换它。
+
+不要重新验证它。
+
+不要再次运行完整 CPU steady solve。
+
+
+============================================================
+2. 立即取消耗时 CPU 对照
+============================================================
+
+取消：
+
+OLD PETSc CPU 20-step proof
+
+NEW PETSc CPU 20-step proof
+
+OLD vs NEW CPU field comparison
+
+CPU1 benchmark
+
+CPU4 benchmark
+
+CPU repeat timing
+
+median statistics。
+
+
+============================================================
+3. 当前正在运行的旧 CPU 作业
+============================================================
+
+如果当前旧 PETSc CPU
+仍在运行：
+
+在下一个安全保存点停止。
+
+不要继续为了：
+
+step20
+
+benchmark
+
+comparison
+
+消耗时间。
+
+保留已经产生的：
+
+logs
+VTU
+checkpoint
+
+作为开发记录。
+
+不要重新启动。
+
+
+============================================================
+4. 已通过工作直接继承
+============================================================
+
+当前已经完成：
+
+PETSc v3.25.5 source/tag audit
+
+API audit
+
+PetscBool audit
+
+PETSc3.25 CPU build
+
+svMultiPhysics CPU build
+
+official CPU smoke
+
+这些全部直接继承。
+
+不要重做。
+
+
+============================================================
+5. 当前优先级改为 GPU
+============================================================
+
+下一步立即：
+
+build modern PETSc with CUDA。
+
+首选：
+
+PETSc v3.25.5
++
+system CUDA 13.2
++
+RTX4090。
+
+
+============================================================
+6. CUDA13 优先
+============================================================
+
+优先使用：
+
+服务器现有 CUDA13.2。
+
+不要因为历史 PETSc3.19
+曾与 CUDA13 不兼容，
+
+就默认回退 CUDA12。
+
+PETSc3.25
+应重新独立验证。
+
+
+============================================================
+7. 编译器选择
+============================================================
+
+根据：
+
+CUDA13.2
++
+PETSc3.25
+
+实际 configure 检查
+选择 host compiler。
+
+不要盲目沿用：
+
+CUDA12.3 + GCC12
+
+旧组合。
+
+
+============================================================
+8. PETSc GPU build
+============================================================
+
+构建：
+
+optimized
+
+real double
+
+32-bit indices
+
+shared
+
+MPI enabled
+
+CUDA enabled
+
+RTX4090 architecture。
+
+保持现有：
+
+BLAS/LAPACK。
+
+
+============================================================
+9. 明显 compatibility 问题不要立即停
+============================================================
+
+如果遇到：
+
+PETSc API change
+
+CMake change
+
+compiler compatibility
+
+lifecycle issue
+
+Vec/Mat backend type issue
+
+linking issue
+
+runtime initialization issue
+
+ghost-vector integration issue
+
+并且：
+
+根因明确
+
+修复局部
+
+有 upstream / official evidence
+
+不改变 CFD mathematics，
+
+则：
+
+自动修复并继续。
+
+
+============================================================
+10. 最多 3 次 controlled repair
+============================================================
+
+允许：
+
+repair_01
+repair_02
+repair_03
+
+每次保存：
+
+trigger
+
+root cause
+
+evidence
+
+patch
+
+changed files
+
+changed lines
+
+test
+
+before/after。
+
+
+============================================================
+11. 只有科学模型改变才停止
+============================================================
+
+如果必须修改：
+
+mesh
+
+geometry
+
+rho
+
+mu
+
+Q
+
+BC
+
+dt
+
+Navier-Stokes formulation
+
+FE discretization
+
+steady convergence criteria
+
+才能继续，
+
+才停止：
+
+SCIENTIFIC_CHANGE_REQUIRED。
+
+
+============================================================
+12. finalize lifecycle 问题
+============================================================
+
+当前已发现：
+
+固定 svMultiPhysics
+finalize() 生命周期
+可能与新版 PETSc
+不完全兼容。
+
+优先解决。
+
+检查：
+
+PetscInitialize
+
+PetscFinalize
+
+MPI_Init
+
+MPI_Finalize
+
+PETSc objects destruction order。
+
+
+============================================================
+13. finalize repair
+============================================================
+
+允许最小修改：
+
+lifecycle glue
+
+object destruction order
+
+version compatibility wrapper。
+
+禁止修改：
+
+solver mathematics。
+
+
+============================================================
+14. finalize 验收
+============================================================
+
+快速测试：
+
+initialize
+→
+create PETSc object
+→
+destroy
+→
+finalize
+→
+clean process exit。
+
+不得出现：
+
+PETSc ERROR
+
+MPI ERROR
+
+double finalize
+
+SEGV
+
+MPI_ABORT。
+
+
+============================================================
+15. PETSc GPU standalone smoke
+============================================================
+
+build PASS 后：
+
+只运行一次必要 GPU smoke。
+
+检查：
+
+actual Mat = CUDA type
+
+actual Vec = CUDA type
+
+GMRES converges
+
+true residual valid
+
+solution valid。
+
+不需要重复三次。
+
+
+============================================================
+16. Ghost vector 是当前重点
+============================================================
+
+运行一个小型：
+
+CUDA ghost vector test。
+
+检查：
+
+VecGhostGetLocalForm
+
+Forward update
+
+Reverse update
+
+RestoreLocalForm。
+
+
+============================================================
+17. Ghost test 必须检查值
+============================================================
+
+不是只检查：
+
+“不报错”。
+
+必须检查：
+
+owner value
+
+ghost value
+
+reverse accumulated value
+
+逐元素正确。
+
+
+============================================================
+18. PETSc3.19 历史 ghost bug 不再修
+============================================================
+
+不要继续 patch：
+
+PETSc3.19.6。
+
+当前只验证：
+
+modern PETSc upstream behavior。
+
+
+============================================================
+19. 如果 PETSc3.25 ghost 正常
+============================================================
+
+直接记录：
+
+MODERN_PETSC_GHOST_PASS。
+
+然后继续 svMultiPhysics。
+
+不要做：
+
+old/new ghost benchmark。
+
+
+============================================================
+20. build GPU svMultiPhysics
+============================================================
+
+使用：
+
+fixed svMultiPhysics scientific source
+
++
+PETSc3.25 CUDA build。
+
+建立新 isolated build directory。
+
+不要覆盖 CPU binary。
+
+
+============================================================
+21. linkage audit
+============================================================
+
+确认：
+
+svMultiPhysics
+实际链接：
+
+PETSc3.25 GPU build
+
+正确 MPI
+
+正确 CUDA。
+
+禁止误链接：
+
+PETSc3.19
+
+CPU-only PETSc
+
+旧 CUDA library。
+
+
+============================================================
+22. official GPU fluid smoke
+============================================================
+
+运行：
+
+official fluid/newtonian
+
+1 MPI rank
+
+1 RTX4090
+
+OMP_NUM_THREADS=1。
+
+
+============================================================
+23. official smoke 最低要求
+============================================================
+
+必须实际观察：
+
+CUDA Mat
+
+CUDA Vec
+
+KSP
+
+PC
+
+linear solve
+
+nonlinear solve。
+
+
+============================================================
+24. 历史错误必须消失
+============================================================
+
+不得再出现：
+
+MPI_ERR_TYPE
+
+Vector is not ghosted
+
+PETSc finalize after MPI
+
+SEGV caused by known lifecycle issue。
+
+
+============================================================
+25. official smoke PASS 定义
+============================================================
+
+要求：
+
+startup PASS
+
+at least one full nonlinear timestep
+
+linear solver success
+
+finite velocity
+
+finite pressure
+
+VTU generated
+
+fresh-process reload PASS。
+
+
+============================================================
+26. official smoke 新错误
+============================================================
+
+如果新错误属于：
+
+明确 API/runtime compatibility issue，
+
+不要立即结束 Stage。
+
+执行：
+
+diagnose
+→
+minimal repair
+→
+quick regression
+→
+rerun smoke。
+
+
+============================================================
+27. official smoke PASS 后直接上真实 vascular
+============================================================
+
+不要：
+
+CPU comparison
+
+20-step CPU proof
+
+GPU/CPU equivalence
+
+benchmark。
+
+直接运行：
+
+REAL_VASCULAR_GPU。
+
+
+============================================================
+28. 真实 vascular GPU 配置
+============================================================
+
+必须使用正式 scientific input：
+
+same mesh
+
+same geometry
+
+rho = frozen value
+
+mu = frozen value
+
+Q = frozen value
+
+same inlet BC
+
+same outlet BC
+
+same wall BC
+
+same dt
+
+same generalized-alpha
+
+same nonlinear formulation。
+
+
+============================================================
+29. Linear solver 第一轮保持原语义
+============================================================
+
+先保持：
+
+GMRES
+
+right preconditioning
+
+restart 100
+
+same tolerance
+
+ASM overlap 2
+
+ILU(2)
+
+如果新版 PETSc
+配置语法改变：
+
+允许 API/config adapter，
+
+但数学语义不变。
+
+
+============================================================
+30. GPU parallel configuration
+============================================================
+
+第一轮正式 GPU run：
+
+1 MPI rank
+
+1 RTX4090
+
+OMP_NUM_THREADS=1。
+
+不要让多个 MPI rank
+共享一张 4090。
+
+
+============================================================
+31. 不再设置固定 20-step 目标
+============================================================
+
+真实 vascular GPU
+没有固定：
+
+20
+70
+80
+400
+
+终点。
+
+它只运行到：
+
+steady criteria satisfied。
+
+
+============================================================
+32. Steady criteria 从 production 读取
+============================================================
+
+直接从：
+
+CPU_EARLY_STOP_PRODUCTION
+
+现有 artifact / config / code
+
+读取实际：
+
+E_u threshold
+
+E_Q threshold
+
+mass gate
+
+required consecutive intervals
+
+check cadence。
+
+禁止重新定义。
+
+
+============================================================
+33. 线性收敛不是稳态
+============================================================
+
+KSP CONVERGED
+
+只代表：
+
+当前线性系统正常。
+
+不得把它作为：
+
+flow steady。
+
+
+============================================================
+34. dynamic steady monitoring
+============================================================
+
+每个正式保存点：
+
+计算：
+
+velocity change E_u
+
+boundary flow change E_Q
+
+mass balance
+
+field finite status
+
+wall condition
+
+solver failure count。
+
+
+============================================================
+35. 正式 joint steady rule
+============================================================
+
+必须达到：
+
+项目原 production
+要求的连续多个区间
+
+同时满足：
+
+E_u
+
+E_Q
+
+mass
+
+finite fields
+
+no solver failure。
+
+
+============================================================
+36. 一达到稳态立即停止
+============================================================
+
+第一次完整满足：
+
+required consecutive steady intervals
+
+后：
+
+立即请求安全停止。
+
+
+============================================================
+37. 安全停止
+============================================================
+
+允许 solver：
+
+完成当前 timestep
+
+完成 checkpoint
+
+完成 VTU
+
+完成必要 restart file write。
+
+不要：
+
+kill -9
+
+截断输出
+
+留下半写文件。
+
+
+============================================================
+38. 不跑额外安全余量步
+============================================================
+
+一旦：
+
+正式 steady monitor
+已经满足，
+
+不要为了：
+
+多看几个 timestep
+
+统计
+
+profiling
+
+性能比较
+
+继续运行。
+
+安全保存完成后：
+
+结束。
+
+
+============================================================
+39. restart 优先减少重复计算
+============================================================
+
+如果 GPU official run
+或前置 GPU test
+产生合法 native checkpoint，
+
+并且：
+
+same binary
+
+same backend
+
+same rank count
+
+full time-history state
+
+reload PASS，
+
+允许从该 checkpoint
+继续真实 GPU steady run。
+
+
+============================================================
+40. 禁止不安全 restart
+============================================================
+
+不得使用：
+
+old PETSc checkpoint
+→ new PETSc
+
+CPU 4-rank
+→ GPU 1-rank
+
+VTU field
+→ generalized-alpha restart
+
+除非已经有明确兼容证据。
+
+
+============================================================
+41. GPU run 最低健康检查
+============================================================
+
+真实 GPU run 过程中：
+
+linear failures = 0
+
+nonlinear failures = 0
+
+no PETSc hard error
+
+no MPI hard error
+
+velocity finite
+
+pressure finite。
+
+
+============================================================
+42. 如果真实 GPU run 遇到明确软件 bug
+============================================================
+
+如果属于：
+
+backend API
+
+GPU Vec/Mat
+
+ghost
+
+lifecycle
+
+PETSc options
+
+memory type
+
+linkage
+
+等明确工程问题：
+
+允许：
+
+修复
++
+继续。
+
+不要一出现错误
+就结束整个阶段。
+
+
+============================================================
+43. 如果出现 NaN / solver divergence
+============================================================
+
+先诊断：
+
+是 GPU implementation issue
+
+还是科学求解问题。
+
+允许检查：
+
+Mat/Vec type
+
+runtime options
+
+PCView
+
+KSP reason
+
+residual
+
+NaN origin。
+
+不要自动改变：
+
+dt
+
+BC
+
+physics
+
+tolerance。
+
+
+============================================================
+44. 如果需要改变科学参数才能跑
+============================================================
+
+停止：
+
+SCIENTIFIC_CHANGE_REQUIRED。
+
+
+============================================================
+45. 本阶段不做 CPU/GPU 科学等价
+============================================================
+
+明确：
+
+NOT RUN BY USER DECISION。
+
+不运行：
+
+NEW CPU matched proof
+
+OLD/NEW CPU comparison
+
+CPU/GPU field L2 comparison
+
+flow fraction comparison
+
+pressure comparison。
+
+
+============================================================
+46. 本阶段不做重复 benchmark
+============================================================
+
+明确：
+
+NOT RUN BY USER DECISION。
+
+不运行：
+
+CPU1
+
+CPU4
+
+GPU repeated timing
+
+warm-up + measurement
+
+median
+
+third run。
+
+
+============================================================
+47. 本阶段不做重型 profiling
+============================================================
+
+明确：
+
+NOT RUN BY USER DECISION。
+
+不运行：
+
+Nsight campaign
+
+long PETSc profiling
+
+H2D/D2H accounting campaign
+
+residency benchmark。
+
+
+============================================================
+48. 但保留低成本运行证据
+============================================================
+
+从真实必须执行的 GPU run
+顺手记录：
+
+wall time
+
+number of steps
+
+KSP solves
+
+total KSP iterations
+
+mean iterations
+
+peak GPU memory
+如果容易取得
+
+Mat type
+
+Vec type
+
+KSPView
+
+PCView。
+
+
+============================================================
+49. 不因为性能不好而终止
+============================================================
+
+本阶段不判断：
+
+GPU 快不快。
+
+即使 GPU 很慢：
+
+只要可以正确稳定运行到 steady，
+
+GPU DEVELOPMENT 目标即完成。
+
+
+============================================================
+50. 当前 PC 暂不优化
+============================================================
+
+不要切换：
+
+GAMG
+
+hypre
+
+BoomerAMG
+
+fieldsplit
+
+Schur
+
+其它 GPU-native PC。
+
+这些留给未来性能阶段。
+
+
+============================================================
+51. 当前目标不是优化
+============================================================
+
+本阶段目标：
+
+FUNCTIONAL GPU SOLVER。
+
+不是：
+
+FASTEST GPU SOLVER。
+
+
+============================================================
+52. 达到 steady 后需要做的检查
+============================================================
+
+停止后只做基本完整性检查：
+
+final VTU exists
+
+checkpoint exists
+
+fresh-process reload PASS
+
+velocity finite
+
+pressure finite
+
+Qin/Qout finite
+
+wall no-slip
+
+mass metric finite。
+
+
+============================================================
+53. 暂不和 CPU reference 比较
+============================================================
+
+即使 final GPU steady field
+已经得到：
+
+不要启动昂贵 CPU comparison。
+
+只冻结：
+
+GPU result SHA
+
+mesh SHA
+
+config SHA
+
+solver binary SHA
+
+PETSc SHA
+
+CUDA/MPI provenance。
+
+以后单独 Stage 做科学 validation。
+
+
+============================================================
+54. GPU result 的命名
+============================================================
+
+本阶段结果只能称：
+
+GPU_DEVELOPMENT_CANDIDATE
+
+或：
+
+GPU_STEADY_CANDIDATE。
+
+不得称：
+
+validated production solution
+
+accepted scientific reference
+
+production replacement。
+
+
+============================================================
+55. CPU production 保持
+============================================================
+
+正式 production 仍然：
+
+CPU_EARLY_STOP_PRODUCTION。
+
+不要替换。
+
+
+============================================================
+56. 测试原则
+============================================================
+
+新增 tests
+只检查当前开发功能：
+
+PETSc GPU build
+
+CUDA Mat
+
+CUDA Vec
+
+ghost correctness
+
+lifecycle
+
+svMultiPhysics linkage
+
+official GPU smoke
+
+real GPU solver stability
+
+steady monitor
+
+safe stop
+
+reload。
+
+
+============================================================
+57. 测试不得重新运行昂贵 solver
+============================================================
+
+pytest：
+
+读取已有 artifacts。
+
+不要每次 pytest
+重新启动真实 vascular run。
+
+
+============================================================
+58. 至少保留测试
+============================================================
+
+tests/test_sv13n_gpu_petsc_build.py
+
+tests/test_sv13n_gpu_backend_types.py
+
+tests/test_sv13n_gpu_ghost.py
+
+tests/test_sv13n_finalize_lifecycle.py
+
+tests/test_sv13n_svmp_gpu_link.py
+
+tests/test_sv13n_official_gpu_smoke.py
+
+tests/test_sv13n_vascular_gpu_run.py
+
+tests/test_sv13n_steady_monitor.py
+
+tests/test_sv13n_safe_stop.py
+
+tests/test_sv13n_gpu_reload.py
+
+tests/test_sv13n_history_preservation.py
+
+
+============================================================
+59. 图像精简
+============================================================
+
+只生成真正必要的开发图：
+
+A.
+gpu_stack_pipeline.png
+
+标题：
+
+“SimVascular 的 RTX 4090 求解链路已经走到哪一步？”
+
+
+B.
+cuda_ghost_status.png
+
+标题：
+
+“新版 PETSc 能正常处理 CUDA ghost vector 吗？”
+
+
+C.
+gpu_solver_progress.png
+
+标题：
+
+“真实血管 GPU 求解是否持续稳定运行？”
+
+
+D.
+gpu_steady_convergence.png
+
+标题：
+
+“GPU 流场什么时候达到稳态？”
+
+
+E.
+gpu_final_field.png
+
+标题：
+
+“GPU 收敛后的速度和压力场是否完整？”
+
+
+============================================================
+60. 不生成性能统计图
+============================================================
+
+本阶段不要生成：
+
+CPU vs GPU runtime comparison
+
+speedup
+
+runtime breakdown
+
+transfer cost
+
+formal residency benchmark。
+
+这些全部留给以后。
+
+
+============================================================
+61. REPORT.md
+============================================================
+
+生成：
+
+reports/sv1_3n/REPORT.md
+
+标题：
+
+# Stage SV1.3N — 直接完成 SimVascular RTX 4090 GPU 血流求解开发
+
+
+报告只回答：
+
+
+## 为什么这次直接做 GPU？
+
+用户决定：
+
+科学对照和性能统计
+以后单独进行。
+
+当前先把 GPU solver
+真正跑通。
+
+
+## 使用了哪一版 PETSc？
+
+记录：
+
+version
+tag
+commit
+source SHA。
+
+
+## CUDA / MPI 是什么？
+
+记录实际 stack。
+
+
+## 为新版 PETSc 修改了什么？
+
+只报告 compatibility changes。
+
+
+## CUDA ghost vector 解决了吗？
+
+给实际 test。
+
+
+## SimVascular 是否真的用了 GPU？
+
+给：
+
+Mat
+Vec
+KSP
+PC。
+
+
+## 官方 GPU fluid smoke 是否通过？
+
+实际结果。
+
+
+## 真实 vascular GPU 是否跑起来？
+
+给：
+
+steps
+linear failures
+nonlinear failures
+finite fields。
+
+
+## GPU 流场什么时候达到稳态？
+
+给：
+
+steady monitor history
+
+first full steady point
+
+safe stop point。
+
+
+## 为什么在那里停止？
+
+因为：
+
+正式 production steady criteria
+已经达到。
+
+用户要求：
+
+收敛后不再做无意义计算。
+
+
+## 最终 GPU candidate 是否完整？
+
+检查：
+
+VTU
+checkpoint
+reload
+finite fields
+flows
+wall
+mass。
+
+
+## 哪些验证被明确推迟？
+
+写：
+
+OLD vs NEW PETSc science comparison — DEFERRED
+
+CPU vs GPU field equivalence — DEFERRED
+
+formal speed benchmark — DEFERRED
+
+GPU transfer profiling — DEFERRED
+
+GPU-native PC tuning — DEFERRED。
+
+
+## 当前结论
+
+如果 GPU 成功跑到 steady：
+
+GPU_DEVELOPMENT_PASS
+
+result classification:
+
+GPU_STEADY_CANDIDATE
+
+NOT YET SCIENTIFICALLY VALIDATED。
+
+
+============================================================
+62. Stage 状态
+============================================================
+
+如果 modern PETSc GPU
+经过最多 3 次明确 compatibility repair
+仍无法进入 official solver：
+
+FAIL:
+GPU_BACKEND_DEVELOPMENT_FAIL。
+
+
+如果 official smoke PASS
+但真实 vascular GPU
+持续出现无法解决的软件错误：
+
+FAIL:
+VASCULAR_GPU_RUNTIME_FAIL。
+
+
+如果 solver 能运行
+但无法达到 steady
+且原因不是显然软件 bug：
+
+FAIL:
+GPU_STEADY_NOT_REACHED。
+
+
+如果：
+
+modern PETSc GPU build PASS
+
+ghost PASS
+
+official smoke PASS
+
+real vascular GPU stable
+
+production steady criteria reached
+
+safe stop PASS
+
+reload PASS：
+
+STAGE SV1.3N:
+GPU_DEVELOPMENT_PASS
+
+classification:
+
+GPU_STEADY_CANDIDATE
+
+并明确：
+
+scientific CPU/GPU equivalence
+=
+DEFERRED。
+
+
+============================================================
+63. 严格执行顺序
+============================================================
+
+Step 1
+停止当前无必要的旧 CPU 长跑。
+
+Step 2
+继承已有 PETSc3.25 CPU/API工作。
+
+Step 3
+完成 lifecycle compatibility repair。
+
+Step 4
+build PETSc3.25 CUDA13.2。
+
+Step 5
+必要时自动 compatibility repair。
+
+Step 6
+PETSc GPU smoke。
+
+Step 7
+CUDA ghost correctness test。
+
+Step 8
+build svMultiPhysics GPU。
+
+Step 9
+linkage audit。
+
+Step 10
+official GPU fluid smoke。
+
+Step 11
+如有明显兼容问题：
+自动修复并继续。
+
+Step 12
+启动真实 vascular GPU。
+
+Step 13
+动态监测 steady。
+
+Step 14
+第一次达到正式连续 steady criteria
+后安全停止。
+
+Step 15
+fresh-process reload。
+
+Step 16
+基本 field/flow integrity checks。
+
+Step 17
+冻结 GPU candidate artifact。
+
+Step 18
+运行快速 regression tests。
+
+Step 19
+history preservation audit。
+
+Step 20
+生成必要图片。
+
+Step 21
+REPORT.md。
+
+Step 22
+停止。
+
+禁止继续：
+
+CPU comparison
+
+science equivalence
+
+benchmark
+
+profiling campaign
+
+GPU PC tuning
+
+Mesh convergence。
+
+
+============================================================
+64. 最终终端输出
+============================================================
+
+Stage SV1.3N GPU development completed.
+
+Modern PETSc:
+    version = ...
+    tag = ...
+    commit = ...
+    source SHA = ...
+
+GPU stack:
+    CUDA = ...
+    MPI = ...
+    compiler = ...
+    GPU = RTX4090
+
+compatibility repairs:
+    repair_01 = ...
+    repair_02 = ...
+    repair_03 = ...
+
+PETSc GPU:
+    build = ...
+    Mat = ...
+    Vec = ...
+    ghost forward = ...
+    ghost reverse = ...
+    standalone smoke = ...
+
+svMultiPhysics GPU:
+    build = ...
+    linkage = ...
+    official smoke = ...
+    runtime Mat = ...
+    runtime Vec = ...
+    KSP = ...
+    PC = ...
+
+real vascular GPU:
+    started = ...
+    linear failures = ...
+    nonlinear failures = ...
+    velocity finite = ...
+    pressure finite = ...
+
+steady:
+    first joint steady step = ...
+    required consecutive intervals = ...
+    safe stop step = ...
+    physical time = ...
+    E_u = ...
+    E_Q = ...
+    mass = ...
+    reload = ...
+
+GPU candidate:
+    VTU = ...
+    VTU SHA = ...
+    checkpoint = ...
+    config SHA = ...
+    solver binary SHA = ...
+
+observed runtime:
+    wall time = ...
+    steps = ...
+    KSP solves = ...
+    total KSP iterations = ...
+    note = OBSERVATIONAL ONLY
+
+deferred by user decision:
+    OLD vs NEW PETSc science = DEFERRED
+    CPU vs GPU science equivalence = DEFERRED
+    formal CPU/GPU benchmark = DEFERRED
+    transfer profiling = DEFERRED
+    GPU-native PC tuning = DEFERRED
+
+production:
+    current accepted production =
+    CPU_EARLY_STOP_PRODUCTION
+
+new result classification:
+    GPU_STEADY_CANDIDATE
+
+STAGE SV1.3N STATUS:
+    GPU_DEVELOPMENT_PASS / FAIL
+
+达到 GPU_DEVELOPMENT_PASS 后：
+
+============================================================
+立即停止。
+不要继续任何 CPU 对照、性能统计或额外 CFD。
+============================================================

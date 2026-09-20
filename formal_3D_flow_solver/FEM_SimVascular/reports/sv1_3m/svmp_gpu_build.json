@@ -1,0 +1,95 @@
+{
+  "status": "PASS",
+  "source": "/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/solver-inputs/svMultiPhysics",
+  "commit": "c3f0bb892b765b718f61069ecd9726dbc6d177fd",
+  "build": "/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/build/svmp_gpu_ghostfix",
+  "PETSc_prefix": "/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/compat_cuda/petsc-cuda123-ghostfix-repair_03",
+  "MPI_prefix": "/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3l/external/gpu_mpi_fortran",
+  "VTK_prefix": "/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/solver-inputs/vtk",
+  "steps": [
+    {
+      "name": "svmp_configure",
+      "command": [
+        "/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3l/scripts/use_cuda123_mpif_env.sh",
+        "cmake",
+        "-S",
+        "/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/solver-inputs/svMultiPhysics",
+        "-B",
+        "/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/build/svmp_gpu_ghostfix",
+        "-DCMAKE_C_COMPILER=/usr/bin/gcc-12",
+        "-DCMAKE_CXX_COMPILER=/usr/bin/g++-12",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_CXX_STANDARD=17",
+        "-DSV_LOCAL_VTK_PATH=/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/solver-inputs/vtk",
+        "-DSV_PETSC_DIR=/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/compat_cuda/petsc-cuda123-ghostfix-repair_03",
+        "-DSV_ADDITIONAL_CMAKE_ARGS=-DSV_USE_TETGEN:BOOL=OFF;-DTETGEN_LIBRARY_NAME:FILEPATH=/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/solver-inputs/tetgen/lib/lib_simvascular_thirdparty_tetgen.a;-DCMAKE_CXX_FLAGS:STRING=-I/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/solver-inputs/tetgen/include;-DBLAS_LIBRARIES:FILEPATH=/usr/lib/x86_64-linux-gnu/libblas.so.3;-DLAPACK_LIBRARIES:FILEPATH=/usr/lib/x86_64-linux-gnu/liblapack.so.3;-DMPI_C_COMPILER:FILEPATH=/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3l/external/gpu_mpi_fortran/bin/mpicc;-DMPI_CXX_COMPILER:FILEPATH=/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3l/external/gpu_mpi_fortran/bin/mpicxx"
+      ],
+      "cwd": "/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m",
+      "exit_code": 0,
+      "timeout": false,
+      "timeout_s": 3600,
+      "wall_time_s": 0.36452570208348334,
+      "log": "logs/svmp_configure.log",
+      "sha256": "0d9d3b55abfb4797b88d768d7beb30621fd7d8388f17debd091dcdfe5034a3cd"
+    },
+    {
+      "name": "svmp_make",
+      "command": [
+        "/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3l/scripts/use_cuda123_mpif_env.sh",
+        "cmake",
+        "--build",
+        "/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/build/svmp_gpu_ghostfix",
+        "--parallel",
+        "4"
+      ],
+      "cwd": "/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m",
+      "exit_code": 0,
+      "timeout": false,
+      "timeout_s": 3600,
+      "wall_time_s": 69.87157050392125,
+      "log": "logs/svmp_make.log",
+      "sha256": "4b1c440a205c7b4bcb626e1839f90c95d7d22fe340dd95208793facfbe4c3c0b"
+    },
+    {
+      "name": "svmp_ldd",
+      "command": [
+        "/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3l/scripts/use_cuda123_mpif_env.sh",
+        "ldd",
+        "/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/build/svmp_gpu_ghostfix/svMultiPhysics-build/bin/svmultiphysics"
+      ],
+      "cwd": "/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m",
+      "exit_code": 0,
+      "timeout": false,
+      "timeout_s": 3600,
+      "wall_time_s": 0.015491158934310079,
+      "log": "logs/svmp_ldd.log",
+      "sha256": "798fe068dbf870c2ab8d96a04800e2666c67ffbbdcb793420b2ab360f780ce18"
+    },
+    {
+      "name": "svmp_readelf",
+      "command": [
+        "/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3l/scripts/use_cuda123_mpif_env.sh",
+        "readelf",
+        "-d",
+        "/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/build/svmp_gpu_ghostfix/svMultiPhysics-build/bin/svmultiphysics"
+      ],
+      "cwd": "/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m",
+      "exit_code": 0,
+      "timeout": false,
+      "timeout_s": 3600,
+      "wall_time_s": 0.003324683988466859,
+      "log": "logs/svmp_readelf.log",
+      "sha256": "7869453dd5a5f6c68b328d81d3ff45c2f917bdece0e52f331a1a16f4fb7cc7d0"
+    }
+  ],
+  "runtime_library_path": "/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/compat_cuda/petsc-cuda123-ghostfix-repair_03/lib:/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/solver-inputs/vtk/lib",
+  "executable": "/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/build/svmp_gpu_ghostfix/svMultiPhysics-build/bin/svmultiphysics",
+  "executable_sha256": "7365b1d817774cd5daf3c9fc8f883d5f8b46c12d34b4f1c3e99c08b7196238aa",
+  "source_unmodified": true,
+  "source_files_verified": 1564,
+  "source_modifications": [],
+  "source_git_status": "",
+  "linked_libraries": "\tlinux-vdso.so.1 (0x00007ffd7efe0000)\n\tliblapack.so.3 => /usr/lib/x86_64-linux-gnu/liblapack.so.3 (0x00007fb5664da000)\n\tlibvtkIOXML-9.3.so.1 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/solver-inputs/vtk/lib/libvtkIOXML-9.3.so.1 (0x00007fb5663b3000)\n\tlibpetsc.so.3.19 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/compat_cuda/petsc-cuda123-ghostfix-repair_03/lib/libpetsc.so.3.19 (0x00007fb564645000)\n\tlibmpi.so.40 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3l/external/gpu_mpi_fortran/lib/libmpi.so.40 (0x00007fb564503000)\n\tlibvtkCommonDataModel-9.3.so.1 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/solver-inputs/vtk/lib/libvtkCommonDataModel-9.3.so.1 (0x00007fb563f56000)\n\tlibvtkCommonMisc-9.3.so.1 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/solver-inputs/vtk/lib/libvtkCommonMisc-9.3.so.1 (0x00007fb563b37000)\n\tlibvtkCommonCore-9.3.so.1 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/solver-inputs/vtk/lib/libvtkCommonCore-9.3.so.1 (0x00007fb56254f000)\n\tlibvtksys-9.3.so.1 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/solver-inputs/vtk/lib/libvtksys-9.3.so.1 (0x00007fb5624f7000)\n\tlibstdc++.so.6 => /usr/lib/x86_64-linux-gnu/libstdc++.so.6 (0x00007fb562279000)\n\tlibm.so.6 => /usr/lib/x86_64-linux-gnu/libm.so.6 (0x00007fb56218e000)\n\tlibgcc_s.so.1 => /usr/lib/x86_64-linux-gnu/libgcc_s.so.1 (0x00007fb562160000)\n\tlibc.so.6 => /usr/lib/x86_64-linux-gnu/libc.so.6 (0x00007fb561f4d000)\n\tlibblas.so.3 => /usr/lib/x86_64-linux-gnu/libblas.so.3 (0x00007fb561ea6000)\n\tlibgfortran.so.5 => /usr/lib/x86_64-linux-gnu/libgfortran.so.5 (0x00007fb561b88000)\n\tlibvtkIOXMLParser-9.3.so.1 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/solver-inputs/vtk/lib/libvtkIOXMLParser-9.3.so.1 (0x00007fb561b6c000)\n\tlibvtkIOCore-9.3.so.1 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/solver-inputs/vtk/lib/libvtkIOCore-9.3.so.1 (0x00007fb561ae0000)\n\tlibvtkCommonExecutionModel-9.3.so.1 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/solver-inputs/vtk/lib/libvtkCommonExecutionModel-9.3.so.1 (0x00007fb5619dd000)\n\tlibvtkCommonSystem-9.3.so.1 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/solver-inputs/vtk/lib/libvtkCommonSystem-9.3.so.1 (0x00007fb5619bf000)\n\tlibcudart.so.12 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3j/external/compat_cuda/cuda-12.3.2/lib64/libcudart.so.12 (0x00007fb561600000)\n\tlibcublas.so.12 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3j/external/compat_cuda/cuda-12.3.2/lib64/libcublas.so.12 (0x00007fb55ae00000)\n\tlibcusparse.so.12 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3j/external/compat_cuda/cuda-12.3.2/lib64/libcusparse.so.12 (0x00007fb54ac00000)\n\tlibcusolver.so.11 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3j/external/compat_cuda/cuda-12.3.2/lib64/libcusolver.so.11 (0x00007fb543a00000)\n\tlibcurand.so.10 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3j/external/compat_cuda/cuda-12.3.2/lib64/libcurand.so.10 (0x00007fb53d400000)\n\tlibnvToolsExt.so.1 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3j/external/compat_cuda/cuda-12.3.2/lib64/libnvToolsExt.so.1 (0x00007fb53d000000)\n\t/lib64/ld-linux-x86-64.so.2 (0x00007fb567101000)\n\tlibopen-rte.so.40 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3l/external/gpu_mpi_fortran/lib/libopen-rte.so.40 (0x00007fb5618fd000)\n\tlibopen-pal.so.40 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3l/external/gpu_mpi_fortran/lib/libopen-pal.so.40 (0x00007fb55acea000)\n\tlibvtkCommonTransforms-9.3.so.1 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/solver-inputs/vtk/lib/libvtkCommonTransforms-9.3.so.1 (0x00007fb5618be000)\n\tlibvtkpugixml-9.3.so.1 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/solver-inputs/vtk/lib/libvtkpugixml-9.3.so.1 (0x00007fb54abc3000)\n\tlibvtkCommonMath-9.3.so.1 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/solver-inputs/vtk/lib/libvtkCommonMath-9.3.so.1 (0x00007fb5615d6000)\n\tlibvtkloguru-9.3.so.1 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/solver-inputs/vtk/lib/libvtkloguru-9.3.so.1 (0x00007fb55acd6000)\n\tlibvtkexpat-9.3.so.1 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/solver-inputs/vtk/lib/libvtkexpat-9.3.so.1 (0x00007fb54ab95000)\n\tlibvtkdoubleconversion-9.3.so.1 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/solver-inputs/vtk/lib/libvtkdoubleconversion-9.3.so.1 (0x00007fb54ab83000)\n\tlibvtklz4-9.3.so.1 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/solver-inputs/vtk/lib/libvtklz4-9.3.so.1 (0x00007fb54ab4c000)\n\tlibvtklzma-9.3.so.1 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/solver-inputs/vtk/lib/libvtklzma-9.3.so.1 (0x00007fb54ab1f000)\n\tlibvtkzlib-9.3.so.1 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/solver-inputs/vtk/lib/libvtkzlib-9.3.so.1 (0x00007fb54ab01000)\n\tlibdl.so.2 => /usr/lib/x86_64-linux-gnu/libdl.so.2 (0x00007fb5618b5000)\n\tlibpthread.so.0 => /usr/lib/x86_64-linux-gnu/libpthread.so.0 (0x00007fb5618b0000)\n\tlibrt.so.1 => /usr/lib/x86_64-linux-gnu/librt.so.1 (0x00007fb5615d1000)\n\tlibcublasLt.so.12 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3j/external/compat_cuda/cuda-12.3.2/lib64/libcublasLt.so.12 (0x00007fb51a600000)\n\tlibnvJitLink.so.12 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3j/external/compat_cuda/cuda-12.3.2/lib64/libnvJitLink.so.12 (0x00007fb517000000)\n\tlibz.so.1 => /usr/lib/x86_64-linux-gnu/libz.so.1 (0x00007fb54aae5000)\n\tlibvtkkissfft-9.3.so.1 => /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/solver-inputs/vtk/lib/libvtkkissfft-9.3.so.1 (0x00007fb5615ca000)\n",
+  "linked_PETSc": "/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3m/external/compat_cuda/petsc-cuda123-ghostfix-repair_03/lib/libpetsc.so.3.19",
+  "PETSc_library_sha256": "64f9ab943f4832f5467e45ad4330fe5b98e31a7a74c1cd699861c9ec43020e8b"
+}
