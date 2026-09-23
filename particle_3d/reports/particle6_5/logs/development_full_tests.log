@@ -1,0 +1,20 @@
+..................................................F.......               [100%]
+=================================== FAILURES ===================================
+_______________________ test_fresh_fem_steps_match_saved _______________________
+
+real_saved = {'summary': {'case': 'real', 'model': 'NEAR_FIELD_REGULARIZATION_V1', 'dt_s': 4.006461213400855e-05, 'dt_role': 'VALID...1365356877], 'velocity_m_s': [-0.00023771676923487457, 4.222911975585365e-05, -0.0005879539844197508], ...}, ...], ...}
+
+    def test_fresh_fem_steps_match_saved(real_saved):
+     shapes,provider,wall,classifier,provenance=real_fixture();query=ValidationNeighborPolicy(20e-6,.5e-6,'PERMANENT_REAL_REPLAY_TEST')
+     stepper=Particle65Stepper(records_for(shapes,provider),query,provider,MU,wall=wall,boundary_classifier=classifier)
+     dt=real_saved['summary']['dt_s']
+     for k in range(1,4):stepper.step_to(k*dt)
+     for actual,saved in zip(stepper.accepted_worlds,real_saved['states']):
+>     assert actual['time_s']==saved['time_s'];assert actual['particles']==saved['particles']
+                                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E     ValueError: The truth value of an array with more than one element is ambiguous. Use a.any() or a.all()
+
+particle_3d/tests/particle6_5/test_real_subnanometer_replay.py:19: ValueError
+=========================== short test summary info ============================
+FAILED particle_3d/tests/particle6_5/test_real_subnanometer_replay.py::test_fresh_fem_steps_match_saved
+1 failed, 57 passed in 11.79s

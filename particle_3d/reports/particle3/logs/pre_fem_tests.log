@@ -1,0 +1,77 @@
+.......................................FFF..........F..............      [100%]
+=================================== FAILURES ===================================
+_________ test_trigger_minimal_deformation_and_explicit_infeasible[1] __________
+
+p3_geometries = [RBCGeometry(a_m=np.float64(4.3706271367709265e-06), b_m=np.float64(4.3706271367709265e-06), c_m=np.float64(6.55355406...bc_id=19400, candidate_id=19626, D_um=5.392783244863802, V_fL=50.68300356264698, role='RBC_GEOMETRY_VALIDATION_ONLY'))]
+index = 1
+
+    @pytest.mark.parametrize('index',range(5))
+    def test_trigger_minimal_deformation_and_explicit_infeasible(p3_geometries,index):
+        g=p3_geometries[index];rmin,req,budget=area_feasible_interval(g)
+        for radius in [g.a_m*1.2,(rmin+min(req,g.a_m))*.5,.8*rmin]:
+            wall=cylinder_wall(radius);decision=select_rbc_shape([0,0,0],g,[1,0,0,0],[0,0,1e-4],wall)
+            apothem=wall.provenance['tube_apothem_m']
+            if apothem>=g.a_m:
+>               assert decision.status=='FREE_OBLATE' and isinstance(decision.shape,Ellipsoid)
+E               AssertionError: assert ('CAPILLARY_DEFORMED' == 'FREE_OBLATE'
+E                 
+E                 - FREE_OBLATE
+E                 + CAPILLARY_DEFORMED)
+
+particle_3d/tests/particle3/test_deformation_selection.py:16: AssertionError
+_________ test_trigger_minimal_deformation_and_explicit_infeasible[2] __________
+
+p3_geometries = [RBCGeometry(a_m=np.float64(4.3706271367709265e-06), b_m=np.float64(4.3706271367709265e-06), c_m=np.float64(6.55355406...bc_id=19400, candidate_id=19626, D_um=5.392783244863802, V_fL=50.68300356264698, role='RBC_GEOMETRY_VALIDATION_ONLY'))]
+index = 2
+
+    @pytest.mark.parametrize('index',range(5))
+    def test_trigger_minimal_deformation_and_explicit_infeasible(p3_geometries,index):
+        g=p3_geometries[index];rmin,req,budget=area_feasible_interval(g)
+        for radius in [g.a_m*1.2,(rmin+min(req,g.a_m))*.5,.8*rmin]:
+            wall=cylinder_wall(radius);decision=select_rbc_shape([0,0,0],g,[1,0,0,0],[0,0,1e-4],wall)
+            apothem=wall.provenance['tube_apothem_m']
+            if apothem>=g.a_m:
+>               assert decision.status=='FREE_OBLATE' and isinstance(decision.shape,Ellipsoid)
+E               AssertionError: assert ('CAPILLARY_DEFORMED' == 'FREE_OBLATE'
+E                 
+E                 - FREE_OBLATE
+E                 + CAPILLARY_DEFORMED)
+
+particle_3d/tests/particle3/test_deformation_selection.py:16: AssertionError
+_________ test_trigger_minimal_deformation_and_explicit_infeasible[3] __________
+
+p3_geometries = [RBCGeometry(a_m=np.float64(4.3706271367709265e-06), b_m=np.float64(4.3706271367709265e-06), c_m=np.float64(6.55355406...bc_id=19400, candidate_id=19626, D_um=5.392783244863802, V_fL=50.68300356264698, role='RBC_GEOMETRY_VALIDATION_ONLY'))]
+index = 3
+
+    @pytest.mark.parametrize('index',range(5))
+    def test_trigger_minimal_deformation_and_explicit_infeasible(p3_geometries,index):
+        g=p3_geometries[index];rmin,req,budget=area_feasible_interval(g)
+        for radius in [g.a_m*1.2,(rmin+min(req,g.a_m))*.5,.8*rmin]:
+            wall=cylinder_wall(radius);decision=select_rbc_shape([0,0,0],g,[1,0,0,0],[0,0,1e-4],wall)
+            apothem=wall.provenance['tube_apothem_m']
+            if apothem>=g.a_m:
+>               assert decision.status=='FREE_OBLATE' and isinstance(decision.shape,Ellipsoid)
+E               AssertionError: assert ('CAPILLARY_DEFORMED' == 'FREE_OBLATE'
+E                 
+E                 - FREE_OBLATE
+E                 + CAPILLARY_DEFORMED)
+
+particle_3d/tests/particle3/test_deformation_selection.py:16: AssertionError
+_______________ test_wall_input_integrity_and_only_wall_is_solid _______________
+
+p3_repo = PosixPath('/home/lzy/projects/ulm_particle_3d_particle0')
+real_wall = <particle_3d.wall_geometry.WallGeometry object at 0x7e9e06f02250>
+
+    def test_wall_input_integrity_and_only_wall_is_solid(p3_repo,real_wall):
+        assert len(real_wall.triangles)==45221
+>       assert real_wall.provenance['wall_sha256']=='06c5d1d1975cf9470096d9b7e560e2173c9733c847d5bc364aab7355ef12a11b'
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'wall_sha256'
+
+particle_3d/tests/particle3/test_input_scope_and_normals.py:21: KeyError
+=========================== short test summary info ============================
+FAILED particle_3d/tests/particle3/test_deformation_selection.py::test_trigger_minimal_deformation_and_explicit_infeasible[1]
+FAILED particle_3d/tests/particle3/test_deformation_selection.py::test_trigger_minimal_deformation_and_explicit_infeasible[2]
+FAILED particle_3d/tests/particle3/test_deformation_selection.py::test_trigger_minimal_deformation_and_explicit_infeasible[3]
+FAILED particle_3d/tests/particle3/test_input_scope_and_normals.py::test_wall_input_integrity_and_only_wall_is_solid
+4 failed, 63 passed in 14.20s

@@ -1,0 +1,90 @@
+F.....................................FF........F.                       [100%]
+=================================== FAILURES ===================================
+________ test_oblate_area_independent_surface_integral_and_sphere_limit ________
+
+p3_geometries = [RBCGeometry(a_m=np.float64(4.3706271367709265e-06), b_m=np.float64(4.3706271367709265e-06), c_m=np.float64(6.55355406...bc_id=19400, candidate_id=19626, D_um=5.392783244863802, V_fL=50.68300356264698, role='RBC_GEOMETRY_VALIDATION_ONLY'))]
+
+    def test_oblate_area_independent_surface_integral_and_sphere_limit(p3_geometries):
+>       assert oblate_area(2e-6,2e-6)==4*np.pi*(2e-6)**2
+E       assert 5.026548245743668e-11 == ((4 * 3.141592653589793) * (2e-06 ** 2))
+E        +  where 5.026548245743668e-11 = oblate_area(2e-06, 2e-06)
+E        +  and   3.141592653589793 = np.pi
+
+particle_3d/tests/particle3/test_capsule_area_budget.py:8: AssertionError
+___ test_sphere_incoming_parallel_separating_preserves_tangent[v0-expected0] ___
+
+plane_wall = <particle_3d.wall_geometry.WallGeometry object at 0x71b7ae49fe00>
+v = array([ 0.0002,  0.0003, -0.0004]), expected = [2, 3, 0]
+
+    @pytest.mark.parametrize('v,expected',[([2,3,-4],[2,3,0]),([2,3,0],[2,3,0]),([2,3,4],[2,3,4])])
+    def test_sphere_incoming_parallel_separating_preserves_tangent(plane_wall,v,expected):
+        sphere=Sphere([0,0,1e-6],1e-6);gap=wall_gap(sphere,plane_wall);v=np.asarray(v)*1e-4
+        omega=np.array([3.,-4.,5.])
+        result,w=contact_velocity(v,omega,sphere.center_m,gap)
+>       np.testing.assert_allclose(result,np.array(expected)*1e-4,atol=1e-18,rtol=0)
+E       AssertionError: 
+E       Not equal to tolerance rtol=0, atol=1e-18
+E       
+E       Mismatched elements: 2 / 3 (66.7%)
+E       Mismatch at indices:
+E        [1]: 0.00029999999999999867 (ACTUAL), 0.00030000000000000003 (DESIRED)
+E        [2]: 1.0299920638612292e-18 (ACTUAL), 0.0 (DESIRED)
+E       Max absolute difference among violations: 1.35525272e-18
+E       Max relative difference among violations: 4.51750905e-15
+E        ACTUAL: array([2.000000e-04, 3.000000e-04, 1.029992e-18])
+E        DESIRED: array([0.0002, 0.0003, 0.    ])
+
+particle_3d/tests/particle3/test_hard_contact.py:14: AssertionError
+___ test_sphere_incoming_parallel_separating_preserves_tangent[v1-expected1] ___
+
+plane_wall = <particle_3d.wall_geometry.WallGeometry object at 0x71b7ae49fe00>
+v = array([0.0002, 0.0003, 0.    ]), expected = [2, 3, 0]
+
+    @pytest.mark.parametrize('v,expected',[([2,3,-4],[2,3,0]),([2,3,0],[2,3,0]),([2,3,4],[2,3,4])])
+    def test_sphere_incoming_parallel_separating_preserves_tangent(plane_wall,v,expected):
+        sphere=Sphere([0,0,1e-6],1e-6);gap=wall_gap(sphere,plane_wall);v=np.asarray(v)*1e-4
+        omega=np.array([3.,-4.,5.])
+        result,w=contact_velocity(v,omega,sphere.center_m,gap)
+>       np.testing.assert_allclose(result,np.array(expected)*1e-4,atol=1e-18,rtol=0)
+E       AssertionError: 
+E       Not equal to tolerance rtol=0, atol=1e-18
+E       
+E       Mismatched elements: 1 / 3 (33.3%)
+E       Mismatch at index:
+E        [2]: 1.0164395367051606e-18 (ACTUAL), 0.0 (DESIRED)
+E       Max absolute difference among violations: 1.01643954e-18
+E       Max relative difference among violations: inf
+E        ACTUAL: array([2.00000e-04, 3.00000e-04, 1.01644e-18])
+E        DESIRED: array([0.0002, 0.0003, 0.    ])
+
+particle_3d/tests/particle3/test_hard_contact.py:14: AssertionError
+_ test_nonspherical_edge_vertex_distance_against_independent_dual_optimization _
+
+    def test_nonspherical_edge_vertex_distance_against_independent_dual_optimization():
+        # Independent constrained support-dual optimization is used ONLY as a test
+        # cross-check; production enumerates algebraic finite-feature stationary roots.
+        tri=np.array([[0.,0.,0.],[0.,10.,0.],[10.,0.,0.]])
+        for center in [[4.,-.7,.2],[-.4,-.5,.3],[4.,-2.5,.2],[-2.,-2.,.5]]:
+            shape=Ellipsoid(center,[2.,2.,.6],np.eye(3))
+            actual=triangle_gap(shape,tri)
+            def objective(n):
+                return float(np.linalg.norm(shape.axes_m*n)+np.max(tri@n)-shape.center_m@n)
+            answers=[]
+            for n in np.vstack((np.eye(3),-np.eye(3),np.array([[1,1,1],[-1,-1,1],[-1,-1,-1]],dtype=float))):
+                n=n/np.linalg.norm(n)
+                result=minimize(objective,n,method='SLSQP',constraints=[{'type':'eq','fun':lambda x:np.dot(x,x)-1}],
+                                options={'ftol':1e-13,'maxiter':300})
+                if result.success:answers.append(-result.fun)
+>           assert answers and abs(actual.gap_m-max(answers))<2e-7
+E           AssertionError: assert ([-0.7565447180136672] and 0.3969050915917495 < 2e-07)
+E            +  where 0.3969050915917495 = abs((-0.35963962642191766 - -0.7565447180136672))
+E            +    where -0.35963962642191766 = TriangleGap(gap_m=-0.35963962642191766, wall_point_m=array([ 4.00000000e+00,  1.11022302e-16, -1.11022302e-16]), parti...ard=array([ 0.        , -0.11915857,  0.99287524]), wall_feature='EDGE', roundoff_m=np.float64(1.1368683772161603e-12)).gap_m
+E            +    and   -0.7565447180136672 = max([-0.7565447180136672])
+
+particle_3d/tests/particle3/test_support_feature_consistency.py:23: AssertionError
+=========================== short test summary info ============================
+FAILED particle_3d/tests/particle3/test_capsule_area_budget.py::test_oblate_area_independent_surface_integral_and_sphere_limit
+FAILED particle_3d/tests/particle3/test_hard_contact.py::test_sphere_incoming_parallel_separating_preserves_tangent[v0-expected0]
+FAILED particle_3d/tests/particle3/test_hard_contact.py::test_sphere_incoming_parallel_separating_preserves_tangent[v1-expected1]
+FAILED particle_3d/tests/particle3/test_support_feature_consistency.py::test_nonspherical_edge_vertex_distance_against_independent_dual_optimization
+4 failed, 46 passed in 2.87s

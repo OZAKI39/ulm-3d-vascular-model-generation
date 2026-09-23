@@ -1,0 +1,1160 @@
+你现在只执行 Stage 1。
+
+不要开始 Stage 2。
+不要实现 Stokes 方程。
+不要实现 velocity / pressure function space。
+不要实现 P2/P1。
+不要实现 Real element。
+不要实现 Q constraint。
+不要实现任何流场求解。
+不要为了“提前验证”偷偷 assemble Stokes 系统。
+
+本阶段唯一目标：
+
+将 Stage 0 已经人工和自动审核通过的正式 3D tagged vascular surface
+稳定地转换为适合后续 DOLFINx FEM 的 3D tetrahedral volume mesh，
+完整保留 wall / inlet / outlet 的物理语义，并提供自动 QC 和清晰的人工审核结果。
+
+
+============================================================
+0. 工程边界
+============================================================
+
+唯一开发目录：
+
+/home/lzy/projects/formal_3D_flow_solver/FEM
+
+只读参考工程：
+
+/home/lzy/projects/ulm_3D_vascular
+/home/lzy/projects/ulm_microbubble_traj_gen_2D
+
+严禁修改两个参考工程中的任何文件。
+
+Stage 0 已正式通过：
+
+STAGE 0 TECHNICAL AUDIT: PASS
+STAGE 0 HUMAN GEOMETRY REVIEW: PASS
+
+Stage 0 的 source contract 是本阶段唯一权威输入契约：
+
+/home/lzy/projects/formal_3D_flow_solver/FEM/reports/stage00/source_contract.json
+
+不得重新通过“最新目录”、文件名排序、坐标方向或 nearest plane
+选择 source run、入口或出口。
+
+如果 source_contract.json 与磁盘文件的 SHA256 不一致：
+立即 FAIL。
+
+不要猜测或自动修复。
+
+
+============================================================
+1. Stage 0 已经冻结的事实
+============================================================
+
+正式 tagged source surface：
+
+/home/lzy/projects/ulm_3D_vascular/outputs/cfd_surface_prepare/
+vmtk_tps_boundarynormal_crossseam_finalized_recovery_anchor003274_20260826_221611/
+geometry/cfd_surface_vmtk_tps_boundarynormal_crossseam_um.vtp
+
+SHA256：
+
+8820376703e1c51a5b27bca56f754d7125a524b95c8ad58205e2a185fcc1dc83
+
+单位：
+
+micrometre (um)
+
+标签数组：
+
+CellEntityIds
+
+正式配套 SI STL：
+
+/home/lzy/projects/ulm_3D_vascular/outputs/cfd_surface_prepare/
+vmtk_tps_boundarynormal_crossseam_finalized_recovery_anchor003274_20260826_221611/
+geometry/cfd_surface_vmtk_tps_boundarynormal_crossseam_m.stl
+
+SHA256：
+
+76c0dba67bd153829135945f7c625f4f16075c4a0727d77ba1211d66b621281d
+
+注意：
+
+这个 STL 没有 CellEntityIds。
+
+因此：
+
+禁止直接把 meter STL 当作唯一 meshing source，
+再通过空间位置重新猜 inlet/outlet。
+
+可以用它做几何 cross-check，
+不能用它替代 tagged VTP 的语义来源。
+
+
+============================================================
+2. 固定的边界标签
+============================================================
+
+必须完整保留下列语义：
+
+CellEntityIds = 1
+    WALL
+
+CellEntityIds = 2
+    outlet_03
+
+CellEntityIds = 3
+    outlet_01
+
+CellEntityIds = 4
+    inlet
+
+CellEntityIds = 5
+    outlet_02
+
+Stage 0 contract 中正式面积约为：
+
+inlet:
+    entity = 4
+    area = 7.819752111687344e-12 m^2
+
+outlet_01:
+    entity = 3
+    area = 4.416141896353047e-12 m^2
+
+outlet_02:
+    entity = 5
+    area = 4.315070429664078e-12 m^2
+
+outlet_03:
+    entity = 2
+    area = 5.110621775544018e-12 m^2
+
+wall:
+    entity = 1
+
+总 source triangles：
+
+67262
+
+wall triangles：
+
+67071
+
+4 个 caps triangles：
+
+191
+
+wall + caps 必须恰好覆盖全部 surface triangles。
+
+不要创建新的物理角色。
+
+不要交换 outlet 名称。
+
+不要根据 xyz 方向重新决定 inlet/outlet。
+
+
+============================================================
+3. SI 单位契约
+============================================================
+
+所有 FEM mesh 输出必须使用 SI：
+
+metre
+
+源 VTP 是 um。
+
+只允许在明确的输入适配层进行：
+
+x_m = x_um * 1e-6
+
+面积检查：
+
+A_m2 = A_um2 * 1e-12
+
+不得：
+
+- 在 Gmsh 中继续使用 um 然后只在 metadata 写 m；
+- 二次转换；
+- 在不同模块中各自乘 1e-6；
+- 将 mesh size 一会儿写 um 一会儿写 m。
+
+配置文件中如果为了用户阅读允许使用 `*_um`，
+必须在 config loader 中一次性转换为 SI，
+之后内部全部使用 m。
+
+metadata 中同时保存：
+
+input_units
+solver_units
+conversion_factor
+
+
+============================================================
+4. 特别注意：source VTP 有重复 point records
+============================================================
+
+Stage 0 已确认：
+
+source triangles = 67262
+points in file = 73416
+
+只有在内存中进行严格的重复顶点合并以后，
+才能得到正确的封闭拓扑。
+
+因此 Stage 1 必须实现一个：
+
+deterministic vertex welding
+
+但是这个 welding 只能解决“同一几何点被重复存储”的问题，
+不能变成 geometry smoothing / repair。
+
+必须输出：
+
+points_before_welding
+unique_points_after_welding
+merged_record_count
+maximum_merge_distance_m
+welding_tolerance_m
+triangle_count_before
+triangle_count_after
+
+要求：
+
+triangle_count_after == 67262
+
+禁止 welding：
+
+- 移动保留顶点；
+- 平均两个坐标；
+- smoothing；
+- decimation；
+- hole filling；
+- remeshing；
+- 自动修补 source geometry。
+
+首选策略：
+
+如果两个点在源 VTP 中是严格相同坐标，
+直接按精确坐标合并。
+
+只有当实际数据证明 float representation 需要 tolerance 时，
+才允许引入极小、可解释、由 float32/coordinate scale 推导出的 tolerance。
+
+不允许使用任意经验值，例如：
+
+1e-6 m
+1e-5 m
+
+这种尺度对于微血管是灾难性的。
+
+如果 tolerance welding 会把两个原本几何上不同的点合并：
+FAIL。
+
+需要添加专门测试证明这一点。
+
+
+============================================================
+5. Source surface 不允许被偷偷改变
+============================================================
+
+目标优先级：
+
+优先尝试在保持现有 boundary triangles 的条件下 tetrahedralize interior。
+
+如果 Gmsh 工作流必须重新创建离散 surface entity，
+最终生成的 boundary surface 必须与冻结 source surface 做严格对照。
+
+不允许：
+
+- surface smoothing
+- surface optimization that moves source boundary
+- geometry repair that changes cap
+- decimation
+- curvature smoothing
+- extension trimming
+-重新定义 cap plane
+
+如果 Gmsh 的某一步会修改 boundary nodes，
+必须：
+
+1. 明确记录；
+2. 量化最大 displacement；
+3. 默认把“非 roundoff 级修改”当作 FAIL；
+4. 不要自动接受。
+
+source surface 是上游冻结几何，不是 Stage 1 的优化对象。
+
+
+============================================================
+6. Gmsh volume meshing
+============================================================
+
+使用 Gmsh 创建 3D tetrahedral fluid volume。
+
+不要为了方便重新生成血管几何。
+
+必须由 frozen tagged closed surface 构建 volume。
+
+最终至少需要：
+
+1 个 3D FLUID volume physical group；
+
+5 类 boundary physical groups：
+
+WALL
+INLET
+OUTLET_01
+OUTLET_02
+OUTLET_03
+
+建议保持 source CellEntityIds 作为 facet tag：
+
+1, 2, 3, 4, 5
+
+体 volume tag 可以单独固定，例如：
+
+FLUID = 100
+
+不要使用 1 作为 volume tag 后导致 facet/volume metadata 混淆。
+
+在代码和 metadata 中明确：
+
+facet_tag meanings
+cell_tag meanings
+
+
+============================================================
+7. 不要在 Stage 1 追求“最终最优网格”
+============================================================
+
+本阶段只建立可靠 meshing pipeline。
+
+创建两个开发级 mesh profile：
+
+development_coarse
+development_medium
+
+不要创建 production_fine。
+
+source surface 本身已经很细，
+所以不要盲目通过极小 bulk size 产生数千万 tetra。
+
+mesh config 应明确支持例如：
+
+bulk_target_size
+optional_interior_size_control
+
+但 boundary geometry 默认冻结。
+
+如果 source boundary triangle size 已经决定局部分辨率，
+报告这一事实，不要假装 coarse profile 能让 source surface 变粗。
+
+如果 Gmsh 实际 tetra 数远超预期，
+先报告原因，
+不要自动扩大内存直到成功。
+
+
+============================================================
+8. 远端 Vast.ai 的角色
+============================================================
+
+WSL 仍是唯一 source of truth。
+
+远端只用于：
+
+Gmsh 3D meshing
+DOLFINx mesh conversion / load validation
+较重的 geometry QC
+
+使用 Stage 0 已建立：
+
+scripts/remote_probe.sh
+scripts/remote_sync.sh
+scripts/remote_run.sh
+scripts/remote_fetch.sh
+
+以及：
+
+remote/connection.local.json
+
+不要硬编码新的远端目录。
+
+Stage 0 当前远端环境：
+
+DOLFINx 0.11.0
+Gmsh 4.15.2
+PETSc 3.25.5
+MUMPS available
+MPICH 5.0.1
+PETSc CUDA capability = False
+
+Stage 1 不需要 GPU。
+
+不要编译 CUDA PETSc。
+
+不要为了使用 RTX 4090 而改变工作流。
+
+远端主要利用：
+
+Ryzen 7 7800X3D
+~61 GiB RAM
+
+3D meshing 本身通常不因 MPI ranks 增加而自动变快。
+
+不要把 Gmsh 用 mpiexec 多 rank 启动并期待并行 meshing，
+除非实际文档与测试证明当前路径支持且有意义。
+
+DOLFINx mesh load 可以做轻量 1/2 rank smoke，
+但本阶段不做 MPI scalability benchmark。
+
+
+============================================================
+9. DOLFINx mesh 输出
+============================================================
+
+volume mesh 成功后，
+必须生成 DOLFINx 可以稳定重新加载的正式 mesh artifact。
+
+优先采用当前 DOLFINx 推荐且可靠的格式。
+
+可以使用：
+
+XDMF/HDF5
+或当前版本明确支持的等价格式
+
+但必须证明：
+
+新 Python 进程重新打开后：
+
+- mesh topology 正常；
+- gdim = 3；
+- tdim = 3；
+- tetra cell count 正确；
+- facet tags 存在；
+- cell tags 存在；
+- wall/inlet/outlet tags 全部可查询；
+- 1/2 MPI rank load 不丢标签。
+
+不要只证明“生成脚本内存里有 tags”。
+
+必须测试“保存 → 关闭进程 → 重新加载”。
+
+
+============================================================
+10. 自动 geometry / topology QC
+============================================================
+
+对每个 mesh profile 都必须计算并保存：
+
+A. Cell topology
+----------------
+
+tetrahedron_count
+vertex_count
+connected_fluid_components
+
+要求：
+
+connected_fluid_components == 1
+
+B. Tetra validity
+-----------------
+
+所有 tetra coordinate finite。
+
+所有 tetra volume > 0。
+
+不得存在：
+
+zero-volume
+negative-volume
+NaN volume
+Inf volume
+
+C. Boundary completeness
+------------------------
+
+提取 volume mesh 的全部 exterior facets。
+
+要求：
+
+每个 exterior facet 恰好属于以下一个：
+
+wall
+inlet
+outlet_01
+outlet_02
+outlet_03
+
+要求：
+
+unlabelled_exterior_facets == 0
+multiply_labelled_exterior_facets == 0
+
+D. Port areas
+-------------
+
+重新从最终 FEM facet mesh 积分：
+
+area(inlet)
+area(outlet_01)
+area(outlet_02)
+area(outlet_03)
+
+与 Stage 0 contract 对比。
+
+不能只相信 source metadata。
+
+保存：
+
+absolute_error_m2
+relative_error
+
+如果 boundary triangles 被严格冻结，
+应接近 roundoff。
+
+如果不接近：
+FAIL 并调查。
+
+E. Port centroids
+-----------------
+
+重新由最终 FEM facets 计算面积加权 centroid。
+
+与 source_contract plane_origin_m 比较。
+
+注意：
+
+plane_origin_m 是 Stage 0 的面积加权 cap 中心，
+因此应该高度一致。
+
+报告 displacement_m。
+
+F. Port normals
+---------------
+
+重新从最终 oriented boundary facets 计算面积加权 outward normal。
+
+必须首先可靠确定 outward orientation，
+不能按 xyz sign 猜。
+
+与 source_contract outward_normal 计算 dot product。
+
+要求：
+
+dot(normal_fem, normal_contract) > 0.999
+
+若不满足：
+FAIL。
+
+G. Cap planarity
+----------------
+
+对每个 port 计算：
+
+dot(x - plane_origin, normal)
+
+的最大绝对值。
+
+不得显著差于 Stage 0 的 cap planarity。
+
+H. Source boundary fidelity
+---------------------------
+
+验证最终 FEM exterior boundary 与 frozen source surface 的关系。
+
+至少报告：
+
+surface area total
+port areas
+bounds
+maximum boundary displacement if nodes changed
+
+如果存在 surface remeshing，
+额外计算一种可靠的双向几何距离指标，
+例如 sampled symmetric Hausdorff-like distance。
+
+不要仅比较 bounding box。
+
+
+============================================================
+11. Mesh quality QC
+============================================================
+
+不要只给一个“quality PASS”。
+
+至少报告 tetra：
+
+volume
+edge-length ratio or aspect indicator
+scaled Jacobian or Gmsh equivalent tetra quality metric
+
+至少输出：
+
+minimum
+P1
+P5
+median
+P95
+maximum where meaningful
+
+硬性 FAIL：
+
+non-finite quality
+zero/negative volume
+inverted tetra
+
+对于非退化但质量很差的 sliver：
+
+不要随便发明一个论文级阈值然后宣称 PASS。
+
+设置：
+
+ADVISORY / MANUAL_REVIEW
+
+并在报告中解释：
+
+- 最差 tetra 在哪里；
+- 数量有多少；
+- 是否集中在 junction / cap / narrow vessel；
+- 是否可能影响后续 P2 FEM。
+
+Stage 1 的目标是发现问题，不是为了 PASS 隐藏问题。
+
+
+============================================================
+12. 必须生成的可视化
+============================================================
+
+所有图必须为人工审核服务。
+
+禁止为了“看起来高级”堆叠大量信息。
+
+本机 WSL 有 PyVista/VTK，
+远端 Stage 0 没有安装 PyVista。
+
+因此：
+
+远端负责产生 mesh / QC data；
+拉回 WSL 后渲染。
+
+至少生成：
+
+reports/stage01/boundary_tags.png
+
+要求：
+- 血管主体灰色；
+- inlet 一个稳定颜色；
+- 三个 outlet 统一另一种稳定颜色或清晰区分；
+- 名称直接标注；
+- outward normal arrow；
+- 至少两个视角；
+- 与 Stage 0 source overview 容易对照。
+
+reports/stage01/tetrahedral_cutaway.png
+
+要求：
+- 不能只显示表面；
+- 必须通过 clipping/cutaway 显示内部 tetra；
+- 人可以一眼确认 volume interior 确实被填充；
+- 不要画几十万根 tetra edge 导致完全发黑；
+- 适当抽样或使用切面。
+
+reports/stage01/mesh_quality_distribution.png
+
+要求：
+- 选择一个最容易解释的 tetra quality metric；
+- 显示分布；
+- 标注 median/P5/min；
+- 图标题说明“越高越好”或“越低越好”；
+- 不要求审核者了解 Gmsh 内部术语。
+
+reports/stage01/port_closeups.png
+
+要求：
+- 4 个 port 清楚展示 cap；
+- 显示 port label；
+- 显示 outward normal；
+- 可以直接看 cap 是否破裂、翘曲或被错误 remesh。
+
+reports/stage01/worst_elements.png
+
+如果存在明显低质量 tetra：
+- 显示最差若干单元在整体血管中的位置；
+- 不需要显示全部网格。
+
+所有图必须在 REPORT.md 中嵌入。
+
+
+============================================================
+13. 必须保留的测试
+============================================================
+
+新增测试不能在 Stage 1 成功后删除。
+
+至少建立：
+
+tests/test_stage01_source_contract.py
+tests/test_stage01_vertex_welding.py
+tests/test_stage01_boundary_partition.py
+tests/test_stage01_volume_mesh.py
+tests/test_stage01_mesh_roundtrip.py
+tests/test_stage01_geometry_fidelity.py
+tests/test_stage01_visual_artifacts.py
+
+测试内容至少覆盖：
+
+source contract SHA256 重算；
+
+tagged VTP 必须包含 CellEntityIds；
+
+必须正好有：
+1 wall
+1 inlet
+3 outlets；
+
+entity/name 映射完全匹配 Stage 0；
+
+vertex welding deterministic；
+
+同一输入多次 welding 结果一致；
+
+welding 不改变 triangle count；
+
+welding 不产生 degenerate triangles；
+
+恶意/人工构造的两个近但不相同点不会被错误合并；
+
+tetra mesh 是一个 connected fluid component；
+
+所有 tetra volume > 0；
+
+所有 exterior facet 被且只被一个物理标签覆盖；
+
+port area 与 contract 匹配；
+
+port normal 与 contract 同向；
+
+mesh 保存再加载仍保持 tags；
+
+至少 1-rank 和 2-rank DOLFINx reload smoke；
+
+可视化文件存在且尺寸非零。
+
+
+============================================================
+14. Source geometry 回归保护
+============================================================
+
+继续保留 Stage 0 reference-integrity 机制。
+
+Stage 1 开发结束后重新验证：
+
+/home/lzy/projects/ulm_3D_vascular
+/home/lzy/projects/ulm_microbubble_traj_gen_2D
+
+均未被修改。
+
+报告：
+
+reference files modified
+reference files deleted
+reference files added
+
+必须全部为 0。
+
+如果参考工程被修改：
+
+STAGE 1 FAIL。
+
+
+============================================================
+15. 运行产物目录
+============================================================
+
+建议：
+
+outputs/stage01/
+    coarse/
+        mesh/
+        qc/
+        metadata/
+    medium/
+        mesh/
+        qc/
+        metadata/
+    remote_return/
+
+reports/stage01/
+    REPORT.md
+    boundary_tags.png
+    tetrahedral_cutaway.png
+    mesh_quality_distribution.png
+    port_closeups.png
+    worst_elements.png
+    pytest_results.xml
+    mesh_comparison.json
+
+logs/stage01/
+    ...
+
+不要覆盖 Stage 0 文件。
+
+
+============================================================
+16. 每次 meshing run 的 metadata
+============================================================
+
+每个 mesh profile 保存：
+
+run_id
+timestamp
+hostname
+source surface SHA256
+source contract SHA256
+configuration SHA256
+Gmsh version
+Python version
+units
+mesh profile
+requested mesh controls
+actual tetra count
+actual vertex count
+boundary facet count
+wall facet count
+inlet facet count
+each outlet facet count
+wall time
+peak RSS if obtainable
+exit status
+stdout path
+stderr path
+
+远端 run 还保存：
+
+remote hostname
+CPU
+RAM
+GPU presence
+GPU used = false
+
+不要暗示 RTX 4090 参与了 Gmsh/FEM mesh calculation。
+
+
+============================================================
+17. REPORT.md 写作要求
+============================================================
+
+生成：
+
+reports/stage01/REPORT.md
+
+用普通研究人员可以直接理解的中文。
+
+不要写成软件包 API 文档。
+
+按下面顺序：
+
+# Stage 1 — 3D FEM 体网格与边界标签
+
+## 这一步想解决什么？
+
+用 3~5 句话说明：
+
+Stage 0 已确认表面正确；
+现在只确认是否能得到可信四面体体网格；
+本阶段还没有求血流。
+
+## 输入是什么？
+
+明确：
+
+哪个 VTP；
+SHA256；
+单位；
+为什么不能只用 STL；
+1 inlet / 3 outlets / wall 是什么标签。
+
+## 怎么生成体网格？
+
+用通俗语言解释：
+
+先把重复存储的相同顶点安全合并；
+保持原始血管表面不变；
+Gmsh 只填充内部体积；
+然后保存给 DOLFINx。
+
+如果实际方法与这句话不同，
+必须准确说明实际发生了什么。
+
+## 网格是否真的填满血管内部？
+
+展示 tetrahedral_cutaway.png。
+
+告诉读者怎么看。
+
+## 边界标签是否保留下来了？
+
+展示 boundary_tags.png 和 port_closeups.png。
+
+给出表格：
+
+boundary
+entity id
+source area
+FEM area
+relative difference
+normal dot product
+
+## 四面体有没有坏单元？
+
+不要只写 PASS。
+
+解释：
+
+有没有 inverted；
+有没有 degenerate；
+质量分布是什么；
+最差元素在哪里。
+
+展示 mesh_quality_distribution.png。
+
+## coarse 和 medium 有什么区别？
+
+简单表格：
+
+profile
+vertices
+tetra
+minimum quality
+P5 quality
+median quality
+runtime
+peak memory
+
+不要在这里做 mesh convergence 结论。
+
+Stage 1 只能说：
+“我们有两个可用于后续开发的网格”。
+
+不能说：
+“网格已收敛”。
+
+## 做了哪些自动测试？
+
+报告 pytest：
+
+passed
+failed
+skipped
+
+解释重要测试检查了什么。
+
+## 人工还应该看什么？
+
+明确列出：
+
+boundary tags
+port caps
+cutaway
+worst elements
+
+## 还存在什么问题？
+
+诚实记录。
+
+## 是否可以进入 Stage 2？
+
+只有所有硬性 gate 通过时：
+
+STAGE 1 STATUS: PASS
+
+否则：
+
+STAGE 1 STATUS: FAIL
+
+如果有非阻塞但需要人工检查的问题：
+
+STAGE 1 STATUS: CONDITIONAL PASS
+
+并明确条件。
+
+不要因为 Codex 自己看过图片就替代用户人工审核。
+
+
+============================================================
+18. Stage 1 硬性验收 gate
+============================================================
+
+以下任一不满足，Stage 1 不得 PASS：
+
+[ ] source SHA256 正确
+[ ] source contract SHA256 固定
+[ ] reference projects 0 modifications
+[ ] SI conversion 只发生一次
+[ ] triangle count 保持 67262
+[ ] deterministic welding 通过
+[ ] closed boundary topology
+[ ] one connected fluid volume
+[ ] zero inverted tetra
+[ ] zero degenerate tetra
+[ ] zero non-finite tetra
+[ ] zero unlabelled exterior facets
+[ ] zero multiply-labelled exterior facets
+[ ] exactly 1 inlet
+[ ] exactly 3 outlets
+[ ] wall tag preserved
+[ ] port name/entity mapping preserved
+[ ] port areas agree with Stage 0
+[ ] port normals dot > 0.999
+[ ] DOLFINx save/reload preserves tags
+[ ] 1-rank reload smoke PASS
+[ ] 2-rank reload smoke PASS
+[ ] required visualizations generated
+[ ] pytest no failures
+
+注意：
+
+coarse/medium mesh quality 存在少量非退化 sliver
+可以导致 CONDITIONAL PASS / manual review，
+不允许偷偷优化 source surface。
+
+
+============================================================
+19. 明确禁止事项
+============================================================
+
+本阶段禁止：
+
+- Stokes solve
+- Navier-Stokes solve
+- P2 velocity space
+- P1 pressure space
+- Real element
+- Lagrange multiplier
+- inlet Q constraint implementation
+- pressure BC implementation
+- no-slip BC assembly
+- velocity field
+- pressure field
+- WSS
+- streamlines
+- RBC
+- microbubble
+- LAMMPS
+- FEM/LBM comparison
+
+如果你发现自己正在写：
+
+u, p, lambda
+
+相关 weak form，
+立即停止。
+
+那是 Stage 2。
+
+
+============================================================
+20. 开发顺序
+============================================================
+
+严格按以下顺序：
+
+Step 1
+读取并验证 Stage 0 source contract。
+
+Step 2
+实现 source VTP → SI tagged surface adapter。
+
+Step 3
+实现 deterministic vertex welding，并单独测试。
+
+Step 4
+建立 Gmsh closed discrete surface / volume topology。
+
+Step 5
+先尝试一个最小 development coarse volume mesh。
+
+Step 6
+验证 tetra topology + boundary tags。
+
+Step 7
+保存并从新进程重新加载 DOLFINx mesh。
+
+Step 8
+运行自动 QC。
+
+Step 9
+生成 coarse 可视化。
+
+Step 10
+只有 coarse 全部通过后，才生成 medium。
+
+Step 11
+对 coarse/medium 做 mesh metadata 对照。
+
+Step 12
+远端结果拉回 WSL。
+
+Step 13
+本地渲染正式审核图。
+
+Step 14
+完整 pytest。
+
+Step 15
+reference integrity re-check。
+
+Step 16
+生成 REPORT.md。
+
+Step 17
+停止。
+
+不要进入 Stage 2。
+
+
+============================================================
+21. 本阶段最终输出
+============================================================
+
+完成后在终端简洁打印：
+
+Stage 1 completed.
+
+coarse:
+    tetrahedra = ...
+    vertices = ...
+    boundary facets = ...
+    status = ...
+
+medium:
+    tetrahedra = ...
+    vertices = ...
+    boundary facets = ...
+    status = ...
+
+tests:
+    passed = ...
+    failed = ...
+    skipped = ...
+
+report:
+    reports/stage01/REPORT.md
+
+human review required:
+    boundary_tags.png
+    tetrahedral_cutaway.png
+    port_closeups.png
+    mesh_quality_distribution.png
+    worst_elements.png
+
+STAGE 1 STATUS: PASS / CONDITIONAL PASS / FAIL
+
+然后停止。
+
+不要自动开始下一阶段。

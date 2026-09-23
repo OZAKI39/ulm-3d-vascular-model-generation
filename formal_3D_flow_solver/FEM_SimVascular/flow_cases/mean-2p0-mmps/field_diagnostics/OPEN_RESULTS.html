@@ -1,0 +1,25 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>完整血管流场：残差、压力与壁面剪切应力</title><style>
+body{margin:0;background:#10151e;color:#e5ebf4;font:17px/1.7 system-ui,sans-serif}main{max-width:1280px;margin:auto;padding:30px 24px}
+h1{font-size:30px}h2{font-size:24px}a{color:#81c2ff}section{margin:30px 0;padding:24px;background:#19212d;border-radius:12px}
+img,video{width:100%;height:auto;background:black;border-radius:4px}p{max-width:1000px}.notice{color:#bfcbdc}
+</style><main><h1>完整血管流场：残差、压力与壁面剪切应力</h1>
+<p>入口平均速度 2.0 mm/s 的已完成 FEM 流场。黑底三维可视化，整条血管放大显示；残差图采用白底学术样式。</p>
+<p><a href="Flow_Diagnostics_Presentation.pptx">下载 PPT（9 页，内嵌三段视频）</a> · <a href="REVIEW_ZH.md">中文说明</a> · <a href="VALIDATION.json">验证记录</a></p>
+<p class="notice">三段视频均绕穿过血管中心的固定长轴匀速旋转，相机、焦点和缩放保持不变。18 秒，24 fps；展示冻结稳态结果，不表示 18 秒瞬态求解。</p>
+<section><h2>全程残差演化与单步内部下降</h2><img src="figures/residual_nonlinear.png" alt="非线性双面板图：全程初始残差演化及每步内部下降数量级">
+<p>A：每步初始残差相对固定全程参考的变化。B：同一步首末残差下降的数量级。虚线是实际非线性容差；低残差平台不是已确认的浮点下限或物理精度。</p>
+<p><a href="figures/residual_nonlinear.pdf">主图 PDF</a> · <a href="figures/residual_nonlinear.svg">主图 SVG</a> · <a href="RESIDUAL_REVIEW_ZH.md">源码与第 4、23 步核验说明</a></p></section>
+<section><h2>逐步首末记录配对</h2><img src="figures/residual_nonlinear_pairs.png" alt="每个时间步的首末残差竖线配对图">
+<p>每条竖线仅代表同一个时间步。第 4、23 步比前一步少一次迭代即满足停止条件，没有预条件器重建。</p>
+<p><a href="figures/residual_nonlinear_pairs.pdf">配对图 PDF</a> · <a href="NONLINEAR_RESIDUAL_AUDIT.json">机器核验</a> · <a href="data/nonlinear_step_audit.csv">逐步下降量 CSV</a></p></section>
+<section><h2>求解残差</h2><img src="figures/residual_convergence.png" alt="非线性残差、线性求解终止残差和 GMRES 历史">
+<p><a href="figures/residual_convergence.pdf">矢量 PDF</a> · <a href="figures/residual_convergence.svg">SVG</a> · <a href="figures/residual_nonlinear.png">单独非线性残差图</a> · <a href="data/residual_true_monitor.csv">全部真实残差 CSV</a></p>
+<p>71 个时间步，167 次线性求解。后期部分线性求解达到绝对容差而终止，图中的相对残差上升不表示求解失败。</p></section>
+<section><h2>压力场</h2><p>实际 FEM 压力，单位 Pa；完整血管表面显示。</p>
+<video controls loop playsinline preload="metadata" poster="figures/pressure_overview_4k.png" src="animations/pressure_full_vessel_enlarged.mp4"></video>
+<p><a href="figures/pressure_overview_4k.png">4K 静态图</a> · <a href="animations/pressure_full_vessel_enlarged.mp4">下载 MP4</a> · <a href="figures/pressure_rotation_views.png">四个旋转视角</a></p></section><section><h2>壁面剪切应力</h2><p>由当前速度梯度后处理获得，单位 Pa；原始面值和节点显示值均保留。</p>
+<video controls loop playsinline preload="metadata" poster="figures/wss_overview_4k.png" src="animations/wss_full_vessel_enlarged.mp4"></video>
+<p><a href="figures/wss_overview_4k.png">4K 静态图</a> · <a href="animations/wss_full_vessel_enlarged.mp4">下载 MP4</a> · <a href="figures/wss_rotation_views.png">四个旋转视角</a></p></section><section><h2>同步放大的流线</h2><p>沿用原 96 条真实流线，三个出口均覆盖；未重新积分。</p>
+<video controls loop playsinline preload="metadata" poster="figures/streamlines_overview_4k.png" src="animations/streamlines_full_vessel_enlarged.mp4"></video>
+<p><a href="figures/streamlines_overview_4k.png">4K 静态图</a> · <a href="animations/streamlines_full_vessel_enlarged.mp4">下载 MP4</a> · <a href="figures/streamlines_rotation_views.png">四个旋转视角</a></p></section><section><h2>原始计算数据</h2><p><a href="data/wall_wss_facets.csv">壁面 WSS CSV</a> · <a href="data/wall_wss_si.vtp">壁面 WSS VTP</a> · <a href="data/pressure_surface_si.vtp">压力表面 VTP</a> · <a href="COMPUTE_VALIDATION.json">计算验证</a> · <a href="MEDIA_VALIDATION.json">媒体验证</a></p></section></main></html>

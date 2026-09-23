@@ -1,0 +1,31 @@
+.............F............................F...                           [100%]
+=================================== FAILURES ===================================
+_____________________________ test_roles_and_facts _____________________________
+
+report = PosixPath('/home/lzy/projects/ulm_particle_3d_particle0/particle_3d/reports/particle6_5')
+
+    def test_roles_and_facts(report):
+     s=json.loads((report/'literature/SOURCES.json').read_text())['sources'];d={x['id']:x for x in s}
+     assert {k:d[k]['role'] for k in 'ABCDE'}==contract()['literature_roles']
+     assert d['A']['facts']['outer_cutoff_over_radius']==.05 and d['A']['facts']['lower_gap_order_over_radius']==1e-3
+     assert all(x['doi'] and x['url'] and x['locator'] and x['scope_limit'] for x in s)
+     text=(report/'literature/NEAR_FIELD_REGULARIZATION_LITERATURE.md').read_text()
+>    assert 'PROJECT MODEL CHOICE' in text and '2 nm' in text and '4 nm' in text
+E    AssertionError: assert ('PROJECT MODEL CHOICE' in '# Particle-6.5 近场正则化文献审计\n\n核对日期：2026-09-21。以下按原论文/出版记录核对，使用转述。文献先例、跨领域证据与用户批准的项目参数分别记录，不把它们混成一次实验测量。\n\n| 来源 | 可核对的文...层背景，**不增加到 sampled MB radius**。本项目采样半径对应既有外径合同。糖萼模型和 RBC 润滑仍未冻结；2 nm 不代表糖萼厚度或几何偏置。1.5 nm 与 3 nm 只做敏感性比较，科学可接受性由用户审核。\n')
+
+particle_3d/tests/particle6_5/test_nearfield_v1_literature_roles.py:10: AssertionError
+__________________________________ test_outer __________________________________
+
+scans = ([{'particle_i_id': 17, 'particle_j_id': None, 'kind': 'WALL', 'model': 'NEAR_FIELD_REGULARIZATION_V1', ...}, {'partic... ...}, {'particle_i_id': 17, 'particle_j_id': 203, 'kind': 'PAIR', 'model': 'NEAR_FIELD_REGULARIZATION_V1', ...}, ...])
+
+    def test_outer(scans):
+     rows=[r for r in scans[0] if r['chi']>=.05]
+>    assert rows and all(r['coefficient_kg_s']==0 and r['v1_unconstrained_vn_ratio']==1 for r in rows)
+E    AssertionError: assert ([{'particle_i_id': 17, 'particle_j_id': None, 'kind': 'WALL', 'model': 'NEAR_FIELD_REGULARIZATION_V1', ...}, {'particl... ...}, {'particle_i_id': 17, 'particle_j_id': None, 'kind': 'WALL', 'model': 'NEAR_FIELD_REGULARIZATION_V1', ...}, ...] and False)
+E     +  where False = all(<generator object test_outer.<locals>.<genexpr> at 0x7f1f6e437d30>)
+
+particle_3d/tests/particle6_5/test_wall_outer_region_zero_nearfield.py:3: AssertionError
+=========================== short test summary info ============================
+FAILED particle_3d/tests/particle6_5/test_nearfield_v1_literature_roles.py::test_roles_and_facts
+FAILED particle_3d/tests/particle6_5/test_wall_outer_region_zero_nearfield.py::test_outer
+2 failed, 44 passed in 4.17s

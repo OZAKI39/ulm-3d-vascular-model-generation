@@ -1,0 +1,70 @@
+...........FF............                                                [100%]
+=================================== FAILURES ===================================
+__________________ test_wall_and_pair_enter_same_solve[False] __________________
+
+rbc = False
+
+    @pytest.mark.parametrize('rbc',[False,True])
+    def test_wall_and_pair_enter_same_solve(rbc):
+        wall=WallGeometry(plane_triangle()[None,:,:]);a=Sphere([0,0,1e-6],1e-6)
+        b=shapes_for_geometry()[1] if rbc else Sphere([0,0,0],1e-6)
+        a,b=place_pair(a,b,[0,0,1]);shapes={1:a,2:b};v={1:np.array([0,0,-1e-6]),2:np.array([0,0,-2e-6])}
+>       p=solve(shapes,v,wall=wall)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+particle_3d/tests/particle4/test_contact_projection.py:89: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+particle_3d/tests/particle4/test_contact_projection.py:20: in solve
+    for i,s in shapes.items():contacts.extend(ContactConstraint.wall(i,g) for g in touching_contacts(s,wall))
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+particle_3d/tests/particle4/test_contact_projection.py:20: in <genexpr>
+    for i,s in shapes.items():contacts.extend(ContactConstraint.wall(i,g) for g in touching_contacts(s,wall))
+                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+cls = <class 'particle_3d.kinematic_contact.ContactConstraint'>, particle_id = 1
+gap = (0, TriangleGap(gap_m=0.0, wall_point_m=array([0.00000000e+00, 3.38813179e-21, 0.00000000e+00]), particle_point_m=arra...., 0., 0.]), normal_inward=array([-0., -0.,  1.]), wall_feature='FACE', roundoff_m=np.float64(2.2737367544323204e-18)))
+
+    @classmethod
+    def wall(cls, particle_id, gap):
+>       if gap.state != 'TOUCHING':
+           ^^^^^^^^^
+E       AttributeError: 'tuple' object has no attribute 'state'
+
+particle_3d/src/particle_3d/kinematic_contact.py:35: AttributeError
+__________________ test_wall_and_pair_enter_same_solve[True] ___________________
+
+rbc = True
+
+    @pytest.mark.parametrize('rbc',[False,True])
+    def test_wall_and_pair_enter_same_solve(rbc):
+        wall=WallGeometry(plane_triangle()[None,:,:]);a=Sphere([0,0,1e-6],1e-6)
+        b=shapes_for_geometry()[1] if rbc else Sphere([0,0,0],1e-6)
+        a,b=place_pair(a,b,[0,0,1]);shapes={1:a,2:b};v={1:np.array([0,0,-1e-6]),2:np.array([0,0,-2e-6])}
+>       p=solve(shapes,v,wall=wall)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+particle_3d/tests/particle4/test_contact_projection.py:89: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+particle_3d/tests/particle4/test_contact_projection.py:20: in solve
+    for i,s in shapes.items():contacts.extend(ContactConstraint.wall(i,g) for g in touching_contacts(s,wall))
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+particle_3d/tests/particle4/test_contact_projection.py:20: in <genexpr>
+    for i,s in shapes.items():contacts.extend(ContactConstraint.wall(i,g) for g in touching_contacts(s,wall))
+                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+cls = <class 'particle_3d.kinematic_contact.ContactConstraint'>, particle_id = 1
+gap = (0, TriangleGap(gap_m=0.0, wall_point_m=array([0.00000000e+00, 3.38813179e-21, 0.00000000e+00]), particle_point_m=arra...., 0., 0.]), normal_inward=array([-0., -0.,  1.]), wall_feature='FACE', roundoff_m=np.float64(2.2737367544323204e-18)))
+
+    @classmethod
+    def wall(cls, particle_id, gap):
+>       if gap.state != 'TOUCHING':
+           ^^^^^^^^^
+E       AttributeError: 'tuple' object has no attribute 'state'
+
+particle_3d/src/particle_3d/kinematic_contact.py:35: AttributeError
+=========================== short test summary info ============================
+FAILED particle_3d/tests/particle4/test_contact_projection.py::test_wall_and_pair_enter_same_solve[False]
+FAILED particle_3d/tests/particle4/test_contact_projection.py::test_wall_and_pair_enter_same_solve[True]
+2 failed, 23 passed in 65.05s (0:01:05)

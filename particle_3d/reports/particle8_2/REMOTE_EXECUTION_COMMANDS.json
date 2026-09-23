@@ -1,0 +1,141 @@
+{
+  "cwd": "/root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/repo",
+  "source_commit": "cbb45d8222b3569bce4bb4e2034f1c444b18584e",
+  "ordered_steps": [
+    {
+      "stage": "environment",
+      "command": [
+        "/root/particle8_2_runs/env/bin/python",
+        "-Bu",
+        "particle_3d/scripts/record_particle82_environment.py",
+        "--host-provenance",
+        "/root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/host_provenance.json",
+        "--output",
+        "/root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/SERVER_SOFTWARE_ENVIRONMENT.json"
+      ]
+    },
+    {
+      "stage": "point_refinement",
+      "command": [
+        "/root/particle8_2_runs/env/bin/python",
+        "-Bu",
+        "particle_3d/scripts/run_particle82_points.py",
+        "--positions",
+        "/root/particle8_2_runs/a4820609c9ed71f09bcea968b5819701632a2a1e/diagnostic_pipeline/point_basin_100000/birth_positions.npz",
+        "--workers",
+        "8",
+        "--shard-size",
+        "256",
+        "--step-m",
+        "1e-7",
+        "--error",
+        "1e-13",
+        "--host-provenance",
+        "/root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/host_provenance.json",
+        "--output-dir",
+        "/root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/point_refinement_100000"
+      ]
+    },
+    {
+      "stage": "admission",
+      "command": [
+        "/root/particle8_2_runs/env/bin/python",
+        "-Bu",
+        "particle_3d/scripts/run_particle82_admission.py",
+        "--previous",
+        "/root/particle8_2_runs/readonly_inputs/p81/particle_3d/outputs/particle8_1",
+        "--host-provenance",
+        "/root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/host_provenance.json",
+        "--point-basin-summary",
+        "/root/particle8_2_runs/a4820609c9ed71f09bcea968b5819701632a2a1e/diagnostic_pipeline/point_basin_100000/POINT_TRACER_SUMMARY.json",
+        "--workers",
+        "8",
+        "--output-dir",
+        "/root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/admission"
+      ]
+    },
+    {
+      "stage": "scaling",
+      "command": [
+        "/root/particle8_2_runs/env/bin/python",
+        "-Bu",
+        "particle_3d/scripts/benchmark_particle82_server.py",
+        "--input-ledger",
+        "/root/particle8_2_runs/readonly_inputs/p81/particle_3d/outputs/particle8_1/data/birth_ledger.json",
+        "--output-dir",
+        "/root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/scaling",
+        "--host-provenance",
+        "/root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/host_provenance.json",
+        "--resume"
+      ]
+    },
+    {
+      "stage": "continuation",
+      "command": [
+        "/root/particle8_2_runs/env/bin/python",
+        "-Bu",
+        "particle_3d/scripts/run_particle82_continuation.py",
+        "--previous",
+        "/root/particle8_2_runs/readonly_inputs/p81/particle_3d/outputs/particle8_1",
+        "--output-dir",
+        "/root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/continuation",
+        "--host-provenance",
+        "/root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/host_provenance.json",
+        "--admission-audit",
+        "/root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/admission/ADMISSION_BASIN_AUDIT.json",
+        "--scaling-benchmark",
+        "/root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/scaling/SERVER_SCALING_BENCHMARK.json"
+      ]
+    },
+    {
+      "stage": "timestep",
+      "command": [
+        "/root/particle8_2_runs/env/bin/python",
+        "-Bu",
+        "particle_3d/scripts/run_particle82_timestep.py",
+        "--previous",
+        "/root/particle8_2_runs/readonly_inputs/p81/particle_3d/outputs/particle8_1",
+        "--output-dir",
+        "/root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/timestep",
+        "--host-provenance",
+        "/root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/host_provenance.json",
+        "--admission-audit",
+        "/root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/admission/ADMISSION_BASIN_AUDIT.json",
+        "--scaling-benchmark",
+        "/root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/scaling/SERVER_SCALING_BENCHMARK.json",
+        "--extended-audit",
+        "/root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/continuation/EXTENDED_GUARD_AUDIT.json"
+      ]
+    },
+    {
+      "stage": "natural",
+      "command": [
+        "timeout",
+        "--signal=INT",
+        "10800",
+        "/root/particle8_2_runs/env/bin/python",
+        "-Bu",
+        "particle_3d/scripts/run_particle82_natural.py",
+        "--output-dir",
+        "/root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/natural",
+        "--host-provenance",
+        "/root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/host_provenance.json",
+        "--point-basin-summary",
+        "/root/particle8_2_runs/a4820609c9ed71f09bcea968b5819701632a2a1e/diagnostic_pipeline/point_basin_100000/POINT_TRACER_SUMMARY.json",
+        "--admission-audit",
+        "/root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/admission/ADMISSION_BASIN_AUDIT.json",
+        "--stop-audit",
+        "/root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/admission/stop_audit/SAFETY_STOP_AUDIT.json",
+        "--extended-audit",
+        "/root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/continuation/EXTENDED_GUARD_AUDIT.json",
+        "--timestep-audit",
+        "/root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/timestep/TIMESTEP_AUDIT.json",
+        "--scaling-benchmark",
+        "/root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/scaling/SERVER_SCALING_BENCHMARK.json",
+        "--budget",
+        "/root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/PREDECLARED_COMPUTE_BUDGET.json"
+      ]
+    }
+  ],
+  "shell_script": "#!/bin/bash\nset -euo pipefail\nexport OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 VTK_SMP_MAX_THREADS=1 LP_NUM_THREADS=1\ncd /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/repo\necho 'START environment'\n/root/particle8_2_runs/env/bin/python -Bu particle_3d/scripts/record_particle82_environment.py --host-provenance /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/host_provenance.json --output /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/SERVER_SOFTWARE_ENVIRONMENT.json > /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/environment.log 2>&1\necho 'DONE environment'\necho 'START point_refinement'\n/root/particle8_2_runs/env/bin/python -Bu particle_3d/scripts/run_particle82_points.py --positions /root/particle8_2_runs/a4820609c9ed71f09bcea968b5819701632a2a1e/diagnostic_pipeline/point_basin_100000/birth_positions.npz --workers 8 --shard-size 256 --step-m 1e-7 --error 1e-13 --host-provenance /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/host_provenance.json --output-dir /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/point_refinement_100000 > /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/point_refinement.log 2>&1\necho 'DONE point_refinement'\necho 'START admission'\n/root/particle8_2_runs/env/bin/python -Bu particle_3d/scripts/run_particle82_admission.py --previous /root/particle8_2_runs/readonly_inputs/p81/particle_3d/outputs/particle8_1 --host-provenance /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/host_provenance.json --point-basin-summary /root/particle8_2_runs/a4820609c9ed71f09bcea968b5819701632a2a1e/diagnostic_pipeline/point_basin_100000/POINT_TRACER_SUMMARY.json --workers 8 --output-dir /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/admission > /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/admission.log 2>&1\necho 'DONE admission'\necho 'START scaling'\n/root/particle8_2_runs/env/bin/python -Bu particle_3d/scripts/benchmark_particle82_server.py --input-ledger /root/particle8_2_runs/readonly_inputs/p81/particle_3d/outputs/particle8_1/data/birth_ledger.json --output-dir /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/scaling --host-provenance /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/host_provenance.json --resume > /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/scaling.log 2>&1\necho 'DONE scaling'\necho 'START continuation'\n/root/particle8_2_runs/env/bin/python -Bu particle_3d/scripts/run_particle82_continuation.py --previous /root/particle8_2_runs/readonly_inputs/p81/particle_3d/outputs/particle8_1 --output-dir /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/continuation --host-provenance /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/host_provenance.json --admission-audit /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/admission/ADMISSION_BASIN_AUDIT.json --scaling-benchmark /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/scaling/SERVER_SCALING_BENCHMARK.json > /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/continuation.log 2>&1\necho 'DONE continuation'\necho 'START timestep'\n/root/particle8_2_runs/env/bin/python -Bu particle_3d/scripts/run_particle82_timestep.py --previous /root/particle8_2_runs/readonly_inputs/p81/particle_3d/outputs/particle8_1 --output-dir /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/timestep --host-provenance /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/host_provenance.json --admission-audit /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/admission/ADMISSION_BASIN_AUDIT.json --scaling-benchmark /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/scaling/SERVER_SCALING_BENCHMARK.json --extended-audit /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/continuation/EXTENDED_GUARD_AUDIT.json > /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/timestep.log 2>&1\necho 'DONE timestep'\necho 'START natural'\ntimeout --signal=INT 10800 /root/particle8_2_runs/env/bin/python -Bu particle_3d/scripts/run_particle82_natural.py --output-dir /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/natural --host-provenance /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/host_provenance.json --point-basin-summary /root/particle8_2_runs/a4820609c9ed71f09bcea968b5819701632a2a1e/diagnostic_pipeline/point_basin_100000/POINT_TRACER_SUMMARY.json --admission-audit /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/admission/ADMISSION_BASIN_AUDIT.json --stop-audit /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/admission/stop_audit/SAFETY_STOP_AUDIT.json --extended-audit /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/continuation/EXTENDED_GUARD_AUDIT.json --timestep-audit /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/timestep/TIMESTEP_AUDIT.json --scaling-benchmark /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/scaling/SERVER_SCALING_BENCHMARK.json --budget /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/PREDECLARED_COMPUTE_BUDGET.json > /root/particle8_2_runs/cbb45d8222b3569bce4bb4e2034f1c444b18584e/full_audit/natural.log 2>&1\necho 'DONE natural'\necho READY_FOR_EXPORT_AND_RENDER\n"
+}

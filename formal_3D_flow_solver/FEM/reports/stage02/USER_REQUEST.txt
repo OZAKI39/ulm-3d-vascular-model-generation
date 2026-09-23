@@ -1,0 +1,1753 @@
+你现在只执行 Stage 2。
+
+Stage 0 已通过。
+Stage 1 已完成体网格构造，并获得 CONDITIONAL PASS。
+用户已经人工审核：
+- boundary_tags.png
+- port_closeups.png
+- tetrahedral_cutaway.png
+- mesh_quality_distribution.png
+
+Stage 1 的真实 vascular mesh 保留用于未来 Stage 3。
+
+本 Stage 不允许在真实 vascular mesh 上进行正式血流求解。
+
+本阶段唯一目标：
+
+实现并严格验证一个通用的 3D steady incompressible Stokes FEM solver，
+其入口只规定“总体积流量 Q”，完全不规定入口速度剖面，
+通过一个全局 Real Lagrange multiplier 自动求得实现该流量所需的入口 normal traction。
+
+必须先在简单、具有解析答案的 3D 几何上证明数学 formulation、符号、单位、压力基准、
+流量约束和 DOLFINx/PETSc 实现全部正确。
+
+完成 Stage 2 后停止。
+不得自动进入 Stage 3。
+
+
+============================================================
+0. 工程与已有阶段不可破坏
+============================================================
+
+唯一开发目录：
+
+/home/lzy/projects/formal_3D_flow_solver/FEM
+
+只读参考工程：
+
+/home/lzy/projects/ulm_3D_vascular
+/home/lzy/projects/ulm_microbubble_traj_gen_2D
+
+Stage 0、Stage 1 产物也视为冻结历史证据。
+
+不得覆盖：
+
+reports/stage00/
+reports/stage01/
+outputs/stage00/
+outputs/stage01/
+logs/stage00/
+logs/stage01/
+
+Stage 2 使用：
+
+reports/stage02/
+outputs/stage02/
+logs/stage02/
+
+Stage 1 正式 development mesh：
+
+coarse:
+    vertices = 37224
+    tetrahedra = 105979
+
+medium:
+    vertices = 42968
+    tetrahedra = 147569
+
+这些真实 vascular mesh 本阶段不用于验证 solver 数学正确性。
+
+尤其不得因为“已经有 mesh 了”而直接跑真实血管。
+
+
+============================================================
+1. 为什么 Stage 2 不使用真实 vascular mesh
+============================================================
+
+Stage 1 已发现真实 mesh 中存在极少量非退化但低质量 tetra：
+
+coarse:
+    minSICN < 0.1: 142 cells
+    fraction ≈ 0.1340%
+
+medium:
+    minSICN < 0.1: 153 cells
+    fraction ≈ 0.1037%
+
+多数靠近冻结 inlet/outlet cap。
+
+因此现在如果真实血管 Stokes 求解异常，
+无法区分：
+
+- formulation 错；
+- Real multiplier 错；
+- pressure gauge 错；
+- boundary sign 错；
+- PETSc block assembly 错；
+- 真实 tetra sliver 导致数值问题。
+
+Stage 2 必须隔离这些因素。
+
+只在 canonical/simple geometry 上验证核心 solver。
+
+
+============================================================
+2. 正式数学模型
+============================================================
+
+求解：
+
+steady incompressible Newtonian Stokes
+
+强形式：
+
+-div(sigma) = 0
+
+div(u) = 0
+
+sigma = -p I + 2 mu epsilon(u)
+
+epsilon(u) = 0.5 * (grad(u) + grad(u)^T)
+
+其中：
+
+u:
+    3D velocity vector
+    unit = m/s
+
+p:
+    gauge pressure
+    unit = Pa
+
+mu:
+    dynamic viscosity
+    unit = Pa*s
+
+rho:
+    density
+    unit = kg/m^3
+
+注意：
+
+rho 不进入 steady Stokes momentum equation。
+
+rho 仅用于输出 Reynolds number 等诊断。
+
+不得错误地把 kinematic viscosity nu 直接放进上述 stress equation，
+除非明确乘回 density。
+
+Stage 2 solver 内部统一使用 dynamic viscosity mu。
+
+
+============================================================
+3. 正式边界条件
+============================================================
+
+边界：
+
+Gamma_wall
+Gamma_in
+Gamma_out
+
+壁面：
+
+u = 0 on Gamma_wall
+
+即 no-slip Dirichlet。
+
+出口：
+
+sigma n = 0 on Gamma_out
+
+这代表 atmospheric gauge zero-traction outlet。
+
+不要对 pressure field 施加：
+
+p = 0 Dirichlet
+
+不要 pin 任意 pressure DOF。
+
+不要创建：
+
+pressure_reference
+pressure_pin
+first_pressure_dof = 0
+
+或任何等价行为。
+
+入口：
+
+不要指定 velocity。
+
+不要指定：
+
+parabolic profile
+plug flow
+uniform velocity
+Poiseuille profile
+
+只规定：
+
+integral_Gamma_in u dot n dS = -Q_target
+
+这里 n 是 fluid domain 的 outward normal。
+
+Q_target > 0 表示“流入计算域的体积流量大小”。
+
+因此：
+
+inflow flux = -Q_target
+
+
+============================================================
+4. 全局 Lagrange multiplier lambda
+============================================================
+
+增加一个全局 scalar unknown：
+
+lambda in R
+
+物理定义：
+
+sigma n = -lambda n
+on Gamma_in
+
+lambda unit:
+
+Pa
+
+lambda 是入口 uniform normal traction magnitude。
+
+它不是人为输入 pressure。
+
+它是 solver 为满足 Q_target 自动求出的未知量。
+
+在 straight fully-developed circular pipe benchmark 中：
+
+lambda 应接近解析 inlet gauge pressure，
+
+并满足：
+
+lambda ≈ Delta p
+       = 8 mu L Q / (pi R^4)
+
+因为 outlet traction gauge = 0。
+
+一般复杂几何中不要简单宣称 lambda 就是局部 static pressure，
+因为：
+
+sigma n = -p n + 2 mu epsilon(u)n
+
+lambda 的正式语义始终保存为：
+
+inlet normal traction multiplier。
+
+
+============================================================
+5. 符号约定必须锁死
+============================================================
+
+正式约定：
+
+n = outward unit normal
+
+Q_target > 0:
+    positive prescribed inflow magnitude
+
+constraint:
+
+integral_Gamma_in u dot n dS + Q_target = 0
+
+因此：
+
+integral_Gamma_in u dot n dS = -Q_target
+
+入口 traction：
+
+sigma n = -lambda n
+
+正常正向圆管流动应满足：
+
+Q_target > 0
+lambda > 0
+
+如果 benchmark 中出现：
+
+Q > 0
+lambda < 0
+
+不要通过 abs(lambda) 隐藏问题。
+
+必须 FAIL 并检查 weak-form sign。
+
+
+============================================================
+6. 弱形式
+============================================================
+
+测试函数：
+
+v:
+    velocity test
+
+q:
+    pressure test
+
+eta:
+    Real multiplier test
+
+采用：
+
+2 mu integral_Omega epsilon(u):epsilon(v) dV
+- integral_Omega p div(v) dV
++ integral_Omega q div(u) dV
++ lambda integral_Gamma_in v dot n dS
++ eta integral_Gamma_in u dot n dS
+
+右端对应：
+
+- eta * Q_target
+
+等价写法必须在代码注释和数学文档中保持一致。
+
+最终 algebraic block structure概念上应为：
+
+[ A   B^T   C  ] [ U      ]   [  0 ]
+[ B    0    0  ] [ P      ] = [  0 ]
+[ C^T  0    0  ] [ lambda ]   [ -Q ]
+
+符号如果因 DOLFINx block convention 有转置/负号变化，
+必须通过解析 benchmark 验证，
+不能只说“矩阵可以解”。
+
+
+============================================================
+7. 不允许 pressure pin
+============================================================
+
+旧 2D solver 因为 inlet/outlet velocity 全部 Dirichlet，
+需要 pin 一个 pressure DOF 去掉常数 nullspace。
+
+Stage 2 已不同：
+
+outlet traction 已定义 gauge reference。
+
+所以：
+
+禁止沿用旧 2D pressure pin。
+
+新增明确测试：
+
+tests/test_stage02_no_pressure_pin.py
+
+至少证明：
+
+- solver 配置没有 pressure Dirichlet BC；
+- pressure space 没有人为固定 DOF；
+- 不注册 constant-pressure nullspace 来替代真实 outlet traction；
+- 系统可以唯一求解；
+- benchmark pressure 与解析 gauge pressure 对应。
+
+若必须使用 PETSc nullspace 才能求解，
+视为 formulation 或 BC 实现存在问题，
+Stage 2 FAIL。
+
+
+============================================================
+8. FEM 空间
+============================================================
+
+正式离散：
+
+velocity:
+    continuous Lagrange P2
+    vector dimension 3
+
+pressure:
+    continuous Lagrange P1
+
+constraint:
+    one global Real scalar DOF
+
+目标：
+
+[P2]^3 / P1 + R
+
+使用：
+
+DOLFINx 0.11.0
+Basix 0.11.0
+PETSc 3.25.5
+
+Stage 0 已确认远端环境支持。
+
+DOLFINx 0.11 的 Real element 不允许直接照搬旧 2D 的：
+
+mixed_element([velocity, pressure, real])
+
+并假设一定正确。
+
+先建立一个最小 API probe。
+
+使用当前安装版本实际支持的：
+
+block / MixedFunctionSpace / explicit block assembly
+
+方案。
+
+要求：
+
+1. API probe 单独测试；
+2. 记录采用的具体 API；
+3. 说明为什么适合一个 global Real DOF；
+4. 不使用 deprecated 或未验证 workaround；
+5. 不自己手工复制一个“伪 Real DOF”到每个 MPI rank。
+
+global lambda 必须真的是一个全局未知量。
+
+
+============================================================
+9. Stage 2 首先实现 API smoke，不写完整 solver
+============================================================
+
+先建立：
+
+tests/test_stage02_real_space_api.py
+
+目标只验证：
+
+- 可以创建 3D P2 velocity space；
+- 可以创建 P1 pressure space；
+- 可以创建 one-global-DOF Real space；
+- 可以构造三块 block form；
+- block sizes 正确；
+- MPI 下 Real DOF 不被错误重复计数。
+
+先在：
+
+1 MPI rank
+
+通过。
+
+然后：
+
+2 MPI ranks
+
+通过。
+
+这一测试通过之后，
+才开始正式 Stokes formulation。
+
+
+============================================================
+10. Canonical benchmark geometry
+============================================================
+
+Stage 2 主 benchmark：
+
+straight 3D circular pipe
+
+不要使用 Stage 1 vascular surface。
+
+用 Gmsh 在 SI 中直接创建解析圆柱。
+
+建议冻结一个 benchmark：
+
+radius:
+    R = 5.0e-6 m
+
+length:
+    L = 50.0e-6 m
+
+dynamic viscosity:
+    mu = 3.0e-3 Pa*s
+
+density for Re diagnostic only:
+    rho = 1050 kg/m^3
+
+reference Q:
+    Q0 = 1.0e-14 m^3/s
+
+明确标注：
+
+SYNTHETIC NUMERICAL BENCHMARK
+NOT EXPERIMENTAL CONDITION
+
+不要把这些数字写进实验配置。
+
+创建：
+
+configs/stage02_pipe_benchmark.yaml
+
+边界 tags 推荐与真实项目语义保持接近：
+
+WALL = 1
+OUTLET = 2
+INLET = 4
+FLUID = 100
+
+但 benchmark metadata 必须明确：
+这不是 Stage 1 vascular tag contract。
+
+
+============================================================
+11. Pipe 解析结果
+============================================================
+
+理论平均速度：
+
+U_mean = Q / (pi R^2)
+
+理论速度：
+
+u_z(r)
+=
+2 U_mean * (1 - r^2 / R^2)
+
+其他两个分量：
+
+u_x = 0
+u_y = 0
+
+理论 pressure drop：
+
+Delta p
+=
+8 mu L Q / (pi R^4)
+
+如果轴方向不是 z，
+公式使用 pipe local axis，
+不要通过全局坐标硬编码。
+
+理论 lambda：
+
+lambda_exact = Delta p
+
+对于该 benchmark：
+
+outlet gauge traction = 0
+
+因此理论 pressure：
+
+p(s)
+=
+Delta p * (1 - s/L)
+
+其中 s 是沿 pipe inlet → outlet 的轴向坐标。
+
+需要计算 Reynolds number：
+
+Re = rho U_mean (2R) / mu
+
+报告它，
+确认 benchmark 位于 Stokes regime。
+
+rho 不进入 solve。
+
+
+============================================================
+12. Canonical mesh resolution
+============================================================
+
+为解析 pipe 建立三个独立网格：
+
+pipe_coarse
+pipe_medium
+pipe_fine
+
+这三个 mesh 与 Stage 1 的 coarse/medium 完全无关。
+
+不要复用相同命名目录导致混淆。
+
+建议从合理且很小的网格开始。
+
+例如目标尺寸可从：
+
+1.0 um
+0.7 um
+0.5 um
+
+开始，
+
+但实际实现应先检查 tetra 数和运行成本。
+
+所有几何与 mesh 内部使用 m。
+
+保持：
+
+R
+L
+boundary conditions
+Q
+mu
+
+完全相同。
+
+目的：
+
+验证 numerical convergence。
+
+不是性能测试。
+
+
+============================================================
+13. Solver backend
+============================================================
+
+Stage 2 优先正确性。
+
+远端当前：
+
+PETSc 3.25.5
+MUMPS available
+CUDA capability=False
+
+第一正式 solver：
+
+PETSc direct LU / MUMPS
+
+不要先开发复杂 field-split preconditioner。
+
+不要为了“可扩展”提前把问题复杂化。
+
+记录：
+
+KSP/PC
+factor solver
+converged reason
+residual norm
+wall time
+MPI ranks
+
+Stage 2 canonical solve 首先用：
+
+1 MPI rank
+
+通过全部数学验证。
+
+然后做：
+
+2-rank reproducibility smoke。
+
+不要做 scalability claim。
+
+RTX 4090：
+
+GPU used = false
+
+不要编译 CUDA PETSc。
+
+
+============================================================
+14. 流量积分必须直接从 FEM solution 得到
+============================================================
+
+计算：
+
+Q_in_signed
+=
+integral_Gamma_in u dot n dS
+
+Q_out_signed
+=
+integral_Gamma_out u dot n dS
+
+正式定义：
+
+Q_in_magnitude = -Q_in_signed
+
+Q_out_magnitude = Q_out_signed
+
+必须保存：
+
+target_Q
+actual_Q_in
+actual_Q_out
+constraint_residual
+mass_closure_residual
+
+不要通过 config 直接复制 target Q 到结果里冒充实际 flux。
+
+必须真正积分 FEM solution。
+
+
+============================================================
+15. 硬性 flux gate
+============================================================
+
+direct MUMPS benchmark 目标：
+
+relative inlet constraint error
+
+abs(Q_in_magnitude - Q_target) / Q_target
+
+目标 <= 1e-10
+
+global mass closure:
+
+abs(Q_out_magnitude - Q_in_magnitude) / Q_target
+
+目标 <= 1e-10
+
+如果没有达到：
+
+不要自动放宽阈值。
+
+先检查：
+
+Real block
+boundary measure
+MPI reduction
+normal sign
+quadrature
+solver residual
+
+如果最终证明由于具体数值表示必须调整，
+报告实际误差和原因，
+由人工决定。
+
+Codex 不得自己偷偷把 gate 改成 1e-3。
+
+
+============================================================
+16. pressure / lambda 验证
+============================================================
+
+Pipe benchmark 必须检查：
+
+lambda > 0
+
+并计算：
+
+lambda_relative_error
+=
+abs(lambda - Delta_p_exact) / Delta_p_exact
+
+同时从 FEM pressure 场取多个远离边缘的轴向截面，
+计算截面平均 pressure。
+
+不要只取单个节点。
+
+比较：
+
+p_mean(s)
+
+与：
+
+p_exact(s)
+
+重点避免 inlet/outlet 几何离散局部效应误导判断。
+
+保存：
+
+lambda_pa
+analytic_delta_p_pa
+lambda_relative_error
+pressure_profile_error
+
+
+============================================================
+17. velocity profile 验证
+============================================================
+
+至少在：
+
+s/L = 0.25
+s/L = 0.50
+s/L = 0.75
+
+三个内部截面采样。
+
+比较：
+
+velocity axial profile
+cross-flow components
+
+保存：
+
+relative L2 error
+relative max error
+maximum transverse velocity / U_mean
+
+生成易读图。
+
+不要只比较 centerline velocity。
+
+
+============================================================
+18. 网格收敛
+============================================================
+
+pipe_coarse / medium / fine 全部求解。
+
+至少比较：
+
+lambda
+pressure drop
+velocity profile L2 error
+centerline velocity
+flux error
+mass closure
+
+目标：
+
+随着解析 pipe mesh refinement，
+
+velocity / lambda 的解析误差应总体下降。
+
+不要强迫每一个局部 max error 完全单调；
+但如果整体误差没有明显收敛趋势：
+
+Stage 2 FAIL 或 CONDITIONAL FAIL，
+必须调查。
+
+不得只看三张图说“看起来差不多”。
+
+
+============================================================
+19. Q 线性测试
+============================================================
+
+在固定 geometry / mesh / mu 下，
+
+至少计算：
+
+0.5 Q0
+1.0 Q0
+2.0 Q0
+
+Stokes 线性理论要求：
+
+u ∝ Q
+p ∝ Q
+lambda ∝ Q
+
+建立定量比例测试。
+
+例如：
+
+lambda(2Q0) / lambda(Q0) ≈ 2
+
+velocity(2Q0) / velocity(Q0) ≈ 2
+
+允许误差应与 linear solver / interpolation 误差一致。
+
+不要仅比较图。
+
+
+============================================================
+20. 流向反转测试
+============================================================
+
+另外做一个数学 regression：
+
+Q = -Q0
+
+这不是实验场景，
+只是验证符号。
+
+由于正式 API 中 Q_target 定义为正的 inflow magnitude，
+不要污染 production API。
+
+可以在内部数学测试接口直接翻转 RHS constraint。
+
+理论上：
+
+u(-Q) = -u(Q)
+p(-Q) = -p(Q)
+lambda(-Q) = -lambda(Q)
+
+这个测试用于抓：
+
+normal sign
+lambda sign
+RHS sign
+
+错误。
+
+正式用户-facing experimental Q API 仍要求：
+
+Q_target > 0。
+
+
+============================================================
+21. viscosity scaling 测试
+============================================================
+
+固定 geometry 和 Q：
+
+mu0
+2 mu0
+
+Stokes + prescribed Q 应满足：
+
+velocity approximately unchanged
+
+pressure scales by 2
+
+lambda scales by 2
+
+建立自动 regression。
+
+如果 velocity 随 viscosity 改变明显：
+
+formulation 有问题。
+
+
+============================================================
+22. 不要使用 density 驱动 Stokes solution
+============================================================
+
+做一个 density-only test：
+
+rho1
+rho2
+
+在 mu 和 Q 相同情况下：
+
+u
+p
+lambda
+
+必须完全不因 rho 改变。
+
+只有：
+
+Re
+
+改变。
+
+这可以防止旧代码误把：
+
+kinematic viscosity
+
+和：
+
+dynamic viscosity
+
+混用。
+
+
+============================================================
+23. Block algebra 独立测试
+============================================================
+
+除 PDE benchmark 外，
+增加一个很小的 synthetic block-system test。
+
+目的：
+
+单独验证：
+
+[ A B^T C
+  B 0   0
+  C^T 0 0 ]
+
+的 Real constraint algebra。
+
+不要让所有失败都只能通过圆管调试。
+
+至少验证：
+
+- C block 非零；
+- Real block 只有一个 global unknown；
+- RHS constraint sign；
+- 解满足指定 scalar constraint；
+- block dimensions 一致。
+
+保留测试文件。
+
+
+============================================================
+24. Derived fields
+============================================================
+
+只有核心 solve 全部通过后，
+实现 postprocessing：
+
+velocity
+
+pressure_gauge_pa
+
+velocity_gradient_s_inv
+
+strain_rate_tensor_s_inv
+
+vorticity_s_inv
+
+定义：
+
+velocity_gradient[i,j]
+=
+d u_i / d x_j
+
+strain_rate
+=
+0.5 * (grad(u) + grad(u)^T)
+
+vorticity
+=
+curl(u)
+
+不要 Stage 2 做 WSS。
+
+不要做 RBC / MB mobility。
+
+这些属于后续阶段。
+
+必须明确 tensor component ordering。
+
+
+============================================================
+25. 输出格式
+============================================================
+
+每次 benchmark solve 保存：
+
+solution/
+    velocity
+    pressure
+    derived fields
+
+qc/
+    flux.json
+    analytic_comparison.json
+    solver.json
+
+metadata/
+    run.json
+    config snapshot
+    mesh metadata
+
+推荐使用：
+
+XDMF/HDF5
+或当前 DOLFINx 0.11 已验证的等价格式。
+
+必须验证新进程可以重新加载结果。
+
+不要只保存截图。
+
+
+============================================================
+26. 必须生成的人工审核图
+============================================================
+
+所有图优先“让人理解”，而不是展示术语。
+
+至少生成：
+
+reports/stage02/pipe_geometry_and_bc.png
+
+显示：
+- 圆管；
+- inlet；
+- outlet；
+- wall；
+- outward normals；
+- Q 流入方向；
+- lambda traction 方向。
+
+图上必须明确：
+
+Q > 0 is inflow magnitude
+n is outward
+inlet flux = -Q
+
+--------------------------------------------------
+
+reports/stage02/velocity_profile.png
+
+显示：
+
+解析 Poiseuille profile
+FEM coarse
+FEM medium
+FEM fine
+
+至少显示中间截面。
+
+不要使用密集 marker 把图遮住。
+
+--------------------------------------------------
+
+reports/stage02/pressure_axial.png
+
+显示：
+
+analytic pressure
+FEM cross-section mean pressure
+
+x 轴使用沿管轴距离。
+
+标出：
+
+inlet
+outlet
+
+--------------------------------------------------
+
+reports/stage02/lambda_vs_Q.png
+
+显示：
+
+Q
+lambda
+
+以及理论直线。
+
+让人工一眼看出线性关系。
+
+--------------------------------------------------
+
+reports/stage02/mesh_convergence.png
+
+显示一个最容易理解的指标，例如：
+
+velocity L2 relative error
+lambda relative error
+
+随 mesh refinement 的变化。
+
+不要把 8 个不同单位指标塞在一张图。
+
+--------------------------------------------------
+
+reports/stage02/flux_balance.png
+
+清楚显示：
+
+target inlet Q
+actual inlet Q
+actual outlet Q
+
+可以使用相对误差图。
+
+--------------------------------------------------
+
+reports/stage02/velocity_slice_3d.png
+
+一张简单的 3D / axial slice：
+
+颜色 = speed
+
+不要堆 streamlines。
+
+--------------------------------------------------
+
+如果存在异常：
+
+生成：
+
+reports/stage02/debug_*.png
+
+但正常报告不要塞大量 debugging 图。
+
+
+============================================================
+27. 图像生成位置
+============================================================
+
+远端主要用于：
+
+DOLFINx
+PETSc
+Gmsh
+canonical solve
+
+WSL 用于：
+
+读取远端结果
+PyVista/matplotlib rendering
+报告
+
+Stage 0 已确认远端没有 PyVista，
+不要为了 Stage 2 求解安装大型可视化栈。
+
+如果 matplotlib 已在远端且只生成简单曲线可以使用，
+但最终正式图统一拉回 WSL 生成更好。
+
+
+============================================================
+28. 必须永久保留的测试文件
+============================================================
+
+至少新增：
+
+tests/test_stage02_real_space_api.py
+
+tests/test_stage02_block_constraint.py
+
+tests/test_stage02_pipe_geometry.py
+
+tests/test_stage02_flux_constraint.py
+
+tests/test_stage02_mass_conservation.py
+
+tests/test_stage02_no_pressure_pin.py
+
+tests/test_stage02_poiseuille_velocity.py
+
+tests/test_stage02_poiseuille_pressure.py
+
+tests/test_stage02_lambda_sign.py
+
+tests/test_stage02_q_linearity.py
+
+tests/test_stage02_flow_reversal.py
+
+tests/test_stage02_viscosity_scaling.py
+
+tests/test_stage02_density_independence.py
+
+tests/test_stage02_mesh_refinement.py
+
+tests/test_stage02_mpi_reproducibility.py
+
+tests/test_stage02_result_roundtrip.py
+
+tests/test_stage02_visual_artifacts.py
+
+不要成功后合并成一个巨大测试文件。
+
+不同物理/数值性质保留独立测试。
+
+
+============================================================
+29. MPI reproducibility
+============================================================
+
+只有 1-rank 全部通过之后，
+
+选择一个 medium pipe case：
+
+1 rank
+2 ranks
+
+比较：
+
+lambda
+integrated flux
+pressure integral
+velocity norm
+analytic errors
+
+应该只存在浮点 reduction 级差异。
+
+不要要求文件二进制 SHA 完全一致。
+
+不要做 4/8/16 rank scalability。
+
+Stage 2 不是性能阶段。
+
+
+============================================================
+30. 远端计算工作流
+============================================================
+
+继续使用现有：
+
+scripts/remote_probe.sh
+scripts/remote_sync.sh
+scripts/remote_run.sh
+scripts/remote_fetch.sh
+
+使用：
+
+--stage 2
+
+或现有脚本对应 Stage 2 参数。
+
+不要创建另一套 SSH 管理系统。
+
+远端连接、目录、environment 均继续使用 Stage 0 已冻结配置。
+
+不要硬编码：
+
+/workspace/formal_3D_flow_solver_FEM_lzy
+
+而应读取既有 connection metadata。
+
+每个远程运行：
+
+记录 command
+hostname
+timestamp
+code SHA
+config SHA
+mesh SHA
+MPI rank
+PETSc version
+DOLFINx version
+wall time
+peak RSS
+stdout
+stderr
+
+GPU used = false
+
+
+============================================================
+31. Stage 0/1 preservation
+============================================================
+
+Stage 2 完成后重新检查：
+
+两个参考项目：
+
+/home/lzy/projects/ulm_3D_vascular
+/home/lzy/projects/ulm_microbubble_traj_gen_2D
+
+0 modified
+0 deleted
+0 added
+
+同时检查 Stage 0/1 历史产物没有被 Stage 2 覆盖。
+
+如果历史 evidence 被修改：
+
+STAGE 2 FAIL。
+
+
+============================================================
+32. 禁止事项
+============================================================
+
+本阶段禁止：
+
+- 正式求解 Stage 1 vascular coarse mesh
+- 正式求解 Stage 1 vascular medium mesh
+- 修改 Stage 1 source surface
+- 修复 vascular cap sliver
+- vascular WSS
+- vascular streamlines
+- FEM/LBM comparison
+- RBC
+- microbubble
+- LAMMPS
+- Navier-Stokes inertia
+- pulsatility
+- non-Newtonian viscosity
+- inlet prescribed velocity profile
+- outlet prescribed velocity profile
+- outlet prescribed flow split
+- pressure pin
+- pressure Dirichlet DOF
+- 把 lambda 取 abs 后报告
+- 使用旧 2D effective thickness
+- 使用旧 2D Q3D / h_eq 转换
+
+Stage 2 是纯 3D SI formulation。
+
+
+============================================================
+33. 推荐代码边界
+============================================================
+
+不要把所有代码塞进一个 solver.py。
+
+建议按职责组织，例如：
+
+src/fem3d/
+    spaces.py
+    formulation.py
+    boundary.py
+    solver.py
+    diagnostics.py
+    analytic.py
+    derived_fields.py
+    result_io.py
+    benchmark_geometry.py
+
+实际名字可以调整。
+
+核心要求：
+
+数学 formulation
+与
+geometry generation
+与
+diagnostics
+与
+visualization
+
+分离。
+
+不要让绘图函数参与求解器逻辑。
+
+
+============================================================
+34. 开发顺序
+============================================================
+
+严格按下面顺序。
+
+Step 1
+冻结 Stage 2 数学与符号约定。
+
+建立：
+
+reports/stage02/FORMULATION.md
+
+必须用通俗语言和公式写清：
+
+Q 的正负；
+n 的方向；
+lambda 的意义；
+outlet zero traction；
+为什么没有 pressure pin。
+
+先写文档和测试，
+再写完整 solver。
+
+Step 2
+实现 Real space API smoke。
+
+1 rank PASS。
+
+Step 3
+2-rank Real global DOF smoke。
+
+Step 4
+实现 synthetic block constraint test。
+
+Step 5
+建立 straight circular pipe geometry 和 boundary tags。
+
+只 mesh，不 solve。
+
+验证 radius、length、area、volume、tags。
+
+Step 6
+实现 P2/P1 + Real Stokes weak form。
+
+Step 7
+先在 pipe_coarse 进行最小 solve。
+
+只检查：
+
+finite solution
+lambda sign
+Q constraint
+mass closure
+
+Step 8
+对照 analytic Poiseuille。
+
+Step 9
+生成 pipe_medium。
+
+重复完整验证。
+
+Step 10
+生成 pipe_fine。
+
+重复完整验证。
+
+Step 11
+做 mesh convergence。
+
+Step 12
+做 Q = 0.5Q0, Q0, 2Q0 线性测试。
+
+Step 13
+做 flow reversal 数学测试。
+
+Step 14
+做 viscosity scaling test。
+
+Step 15
+做 density independence test。
+
+Step 16
+实现 derived field export。
+
+Step 17
+结果 save → new process reload。
+
+Step 18
+1-rank / 2-rank reproducibility。
+
+Step 19
+fetch 到 WSL。
+
+Step 20
+生成正式审核图。
+
+Step 21
+完整 pytest。
+
+Step 22
+reference + Stage 0/1 preservation check。
+
+Step 23
+生成 REPORT.md。
+
+Step 24
+停止。
+
+不要 Stage 3。
+
+
+============================================================
+35. Stage 2 硬性 Gate
+============================================================
+
+以下任一失败：
+
+Stage 2 不得 PASS。
+
+[ ] Real multiplier 是一个真实 global DOF
+[ ] 1-rank Real API PASS
+[ ] 2-rank Real API PASS
+[ ] P2/P1 spaces 正确
+[ ] no pressure pin
+[ ] no inlet velocity profile
+[ ] outlet zero traction
+[ ] Q sign convention documented
+[ ] Q constraint relative error <= 1e-10
+[ ] global mass closure <= 1e-10
+[ ] lambda finite
+[ ] Q>0 benchmark lambda>0
+[ ] velocity finite
+[ ] pressure finite
+[ ] analytic pipe profile合理吻合
+[ ] analytic pressure drop合理吻合
+[ ] mesh refinement shows convergence trend
+[ ] lambda approximately proportional to Q
+[ ] velocity approximately proportional to Q
+[ ] pressure approximately proportional to Q
+[ ] reversing mathematical Q reverses u,p,lambda
+[ ] doubling mu leaves fixed-Q velocity essentially unchanged
+[ ] doubling mu doubles pressure/lambda
+[ ] changing rho does not change Stokes solution
+[ ] result save/reload PASS
+[ ] 1-rank/2-rank reproducibility PASS
+[ ] required visualizations exist
+[ ] pytest has 0 failures
+[ ] reference projects unchanged
+[ ] Stage 0/1 evidence unchanged
+
+解析 velocity / pressure / lambda 误差阈值：
+
+不要在开发开始前随便写一个很松的数值只为了 PASS。
+
+首先记录实际 coarse/medium/fine convergence。
+
+根据 P2/P1 理论与几何离散分析结果提出正式 gate。
+
+Codex 不允许自己用：
+
+10%
+20%
+
+这种宽松阈值把 solver 宣称 VALIDATED。
+
+如果 fine mesh 仍不能合理接近解析结果：
+
+FAIL 或 CONDITIONAL PASS，
+并解释原因。
+
+
+============================================================
+36. REPORT.md
+============================================================
+
+生成：
+
+reports/stage02/REPORT.md
+
+标题：
+
+# Stage 2 — 入口总流量约束的 3D Stokes FEM 核心验证
+
+用普通研究人员容易阅读的中文。
+
+不要写成 PETSc 手册。
+
+按下面逻辑：
+
+## 这一步要解决什么？
+
+说明：
+
+Stage 1 只解决了真实血管的体网格问题。
+
+Stage 2 先不用真实血管，
+而是在有解析答案的圆管中验证新的边界条件和 FEM 数学模型。
+
+## “只给 Q，不给速度剖面”是什么意思？
+
+用简单语言解释：
+
+注射泵只告诉 solver 每秒进入多少液体，
+而不告诉入口每个位置流多快。
+
+lambda 是 solver 自动求出的入口推动强度。
+
+## 关键变量
+
+表格解释：
+
+u
+p
+Q
+lambda
+mu
+rho
+n
+
+## 数学模型
+
+只展示必要公式。
+
+解释 outward normal 和负入口 flux。
+
+## 圆管理论答案是什么？
+
+给出：
+
+Poiseuille profile
+Delta p
+lambda
+
+不要堆推导。
+
+## 流量约束有没有真的满足？
+
+给 target / inlet / outlet / residual。
+
+## lambda 的方向和大小对吗？
+
+给解析值与 FEM 值。
+
+## 速度场对吗？
+
+展示 velocity_profile.png。
+
+解释读者怎么看。
+
+## 压力对吗？
+
+展示 pressure_axial.png。
+
+## 网格加密后是否更接近解析答案？
+
+展示 mesh_convergence.png。
+
+不要称 Stage 1 vascular mesh converged。
+
+## Stokes 线性是否得到验证？
+
+报告：
+
+Q scaling
+mu scaling
+rho independence
+flow reversal
+
+## MPI 是否改变答案？
+
+报告 1/2 ranks。
+
+不要说 scalability。
+
+## 做了哪些自动测试？
+
+passed
+failed
+skipped
+
+解释主要检查内容。
+
+## 产生了哪些图？
+
+逐张用一句话说明怎么看。
+
+## 还存在什么问题？
+
+诚实写。
+
+## 是否可以进入 Stage 3？
+
+如果所有 hard gates 通过：
+
+STAGE 2 STATUS: PASS
+
+但明确：
+
+这只说明 solver core 已验证。
+
+不意味着真实 vascular solution 已验证。
+
+如果任何数学/解析 hard gate 不通过：
+
+STAGE 2 STATUS: FAIL
+
+不要用 CONDITIONAL PASS 掩盖符号、flux 或解析错误。
+
+
+============================================================
+37. 最终终端输出
+============================================================
+
+完成后简洁输出：
+
+Stage 2 completed.
+
+formulation:
+    P2/P1 + Real global flux multiplier
+    inlet velocity profile = NONE
+    pressure pin = NONE
+    outlet = zero traction
+
+pipe benchmark:
+    Q_target = ...
+    Q_in = ...
+    Q_out = ...
+    lambda_FEM = ...
+    lambda_exact = ...
+    velocity_L2_error = ...
+    pressure_error = ...
+
+mesh convergence:
+    coarse = ...
+    medium = ...
+    fine = ...
+
+tests:
+    passed = ...
+    failed = ...
+    skipped = ...
+
+MPI:
+    1 rank = ...
+    2 ranks = ...
+
+report:
+    reports/stage02/REPORT.md
+
+human review:
+    pipe_geometry_and_bc.png
+    velocity_profile.png
+    pressure_axial.png
+    lambda_vs_Q.png
+    mesh_convergence.png
+    flux_balance.png
+    velocity_slice_3d.png
+
+STAGE 2 STATUS: PASS / FAIL
+
+然后停止。
+
+不得自动开始 Stage 3。

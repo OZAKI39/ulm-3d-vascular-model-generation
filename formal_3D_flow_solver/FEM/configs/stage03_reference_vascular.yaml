@@ -1,0 +1,60 @@
+schema_version: 1
+name: stage03_reference_vascular
+condition_type: REFERENCE_NUMERICAL_CONDITION
+experimental: false
+warning: NOT_EXPERIMENTAL_PUMP_FLOW
+physics:
+  density_kg_m3: 1056.0
+  kinematic_viscosity_m2_s: 3.27e-06
+  dynamic_viscosity_pa_s: 0.00345312
+  inlet_volume_flow_m3_s: 2.7369132390905703e-15
+  dynamic_viscosity_definition: rho * nu
+source:
+  configuration_path: /home/lzy/projects/ulm_3D_vascular/configs/cfd_flow.yaml
+  configuration_sha256: 1eecec545a5c021ab762a39dbe58dc2531a91083c223bdf4d23f76ea1b80a805
+  density_key: physics.density_kg_m3
+  kinematic_viscosity_key: physics.kinematic_viscosity_m2_s
+  volume_flow_key: boundary_conditions.target_volume_flow_m3_s
+  stage00_lineage_path: reports/stage00/source_contract.json
+  stage00_lineage_sha256: 0635c4929d83269a3af6b3758d2a7dbac9ebd6f7d2068c5e21f401c317675721
+  geometry_source_run: /home/lzy/projects/ulm_3D_vascular/outputs/cfd_surface_prepare/vmtk_tps_boundarynormal_crossseam_finalized_recovery_anchor003274_20260826_221611
+  outlet_pressures_imported: false
+mesh:
+  source: outputs/stage01_7/selected
+  volume_mesh_sha256: fc036eb0eaa0b365b06a5033f5f9eb31addfe464af4beb53c4cd96a25ed594a3
+  xdmf_sha256: 415da14772e1d210c945f093d6dfaac983df7f3165d3c12be3dd5a44a3910b17
+  hdf5_sha256: b3250b7a8ea4d82e0034a4aef01070ce09762d190cf4b6ae012bf8621ec3c247
+  port_contract_sha256: cf2dae365fde86ee02d92dbb1b1c97602f40c7adcce7a706551acf385cb96dc9
+inlet_geometry:
+  projected_area_m2: 7.8197521061104e-12
+  projected_perimeter_m: 9.918353536162206e-06
+  hydraulic_diameter_m: 3.1536492735814154e-06
+  algebraic_length_scale_m: 1.5776895774776035e-06
+  length_scale_definition: Equivalent inlet radius from projected area; algebraic
+    scaling only
+boundary_model:
+  wall: u=0
+  inlet: integral(u dot outward n)=-Q; sigma n=-lambda n
+  outlets:
+    outlet_01: sigma n=0
+    outlet_02: sigma n=0
+    outlet_03: sigma n=0
+  inlet_velocity_profile: null
+  outlet_flow_split: null
+  pressure_pin: false
+  pressure_dirichlet: false
+solver:
+  mpi_ranks: 4
+  omp_num_threads: 1
+  ksp_type: preonly
+  pc_type: lu
+  factor_solver: mumps
+  gpu_used: false
+  unvalidated_iterative_fallback: false
+gates:
+  relative_inlet_error_max: 1.0e-10
+  relative_mass_closure_max: 1.0e-10
+  local_finiteness_only: true
+  divergence_hard_threshold: null
+  outlet_positive_flux_hard_gate: false
+created_utc: '2026-09-18T13:41:47.585054+00:00'

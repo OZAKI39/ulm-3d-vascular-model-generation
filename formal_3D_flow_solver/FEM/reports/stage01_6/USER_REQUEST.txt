@@ -1,0 +1,1675 @@
+你现在只执行 Stage 1.6。
+
+Stage 0 已通过。
+Stage 1 已完成真实 vascular tetrahedral mesh。
+Stage 1.5 已按冻结规则 FAIL，并永久保留。
+Stage 2 solver core 已验证 PASS。
+
+Stage 1.6 是：
+
+“人工平面端口几何契约修正
+ + 稀疏 cap-only remeshing
+ + 3D tetra quality / computational-cost validation”。
+
+不要覆盖 Stage 1.5。
+不要修改 Stage 2 solver core。
+不要开始 Stage 3。
+不要进行真实血流求解。
+
+
+============================================================
+0. 当前已知事实
+============================================================
+
+唯一开发目录：
+
+/home/lzy/projects/formal_3D_flow_solver/FEM
+
+只读参考项目：
+
+/home/lzy/projects/ulm_3D_vascular
+/home/lzy/projects/ulm_microbubble_traj_gen_2D
+
+所有历史结果冻结：
+
+reports/stage00/
+reports/stage01/
+reports/stage01_5/
+reports/stage02/
+
+outputs/stage00/
+outputs/stage01/
+outputs/stage01_5/
+outputs/stage02/
+
+logs/stage00/
+logs/stage01/
+logs/stage01_5/
+logs/stage02/
+
+Stage 1.6 新目录：
+
+reports/stage01_6/
+outputs/stage01_6/
+logs/stage01_6/
+
+严禁覆盖 Stage 1.5 FAIL evidence。
+
+
+============================================================
+1. Stage 1.5 的正式结论
+============================================================
+
+Stage 1.5 不得被重写成成功。
+
+历史状态：
+
+STAGE 1.5 STATUS: FAIL
+
+原因：
+
+A/B/C 三种 cap remeshing 均保持：
+
+maximum wall displacement = 0 m
+maximum rim displacement = 0 m
+rim edge set identical
+entity mapping identical
+surface closed
+normal correct
+
+而且 cap triangle quality 得到极大改善。
+
+但是旧 hard gate 定义：
+
+3D scalar triangle area relative difference <= 1e-12
+
+没有通过。
+
+实际误差：
+
+约 6.3e-10 ～ 3.0e-9。
+
+独立 longdouble 检查已经确认：
+
+这不是 double 求和误差。
+
+原因已经明确：
+
+原 VTP 为 float32，
+历史 cap/rim 有约 6e-12 ～ 1.5e-11 m
+的轻微非共面性。
+
+固定相同 3D rim 后：
+
+projected polygon area
+和
+vector area
+
+几乎完全不变（约 1e-18），
+
+但不同内部 triangulation 的：
+
+sum(3D triangle scalar areas)
+
+可以不同。
+
+因此 Stage 1.6 不得简单把：
+
+1e-12 → 1e-8
+
+然后宣布通过。
+
+必须正式修订 artificial CFD port geometry contract。
+
+
+============================================================
+2. Stage 1.6 的人工端口正式定义
+============================================================
+
+创建新的 derived contract：
+
+reports/stage01_6/planar_port_contract_v2.json
+
+以及：
+
+reports/stage01_6/PORT_CONTRACT_RATIONALE.md
+
+不得修改：
+
+reports/stage00/source_contract.json
+
+新 contract 必须引用其 SHA256。
+
+人工 CFD port 正式定义为：
+
+1. frozen 3D rim vertices
+2. frozen rim edge connectivity
+3. frozen reference plane origin x0
+4. frozen outward normal n
+5. planar polygon enclosed by the rim projected onto that fixed plane
+
+正式物理端口面积定义：
+
+A_port = A_projected_polygon
+
+正式方向/面积辅助 invariant：
+
+vector area A_vec
+
+历史：
+
+sum of 3D triangle scalar areas
+
+定义为：
+
+legacy_scalar_surface_area_m2
+
+只保留 provenance 和 diagnostic。
+
+不再作为 port identity hard gate。
+
+
+============================================================
+3. 为什么允许修订 contract
+============================================================
+
+必须在文档中明确：
+
+WALL 是真实 vascular geometry，
+必须完全冻结。
+
+CAP 是人工添加的 CFD boundary，
+不是 anatomical surface。
+
+Stage 1.5 已证明：
+
+rim 没动；
+wall 没动；
+plane 没动；
+vector area 没动；
+projected area 没动。
+
+变化来自历史 fan triangulation
+对一个轻微非共面 rim 的 scalar-area 表示。
+
+因此修订的是：
+
+“如何定义人工 port 面积”
+
+不是修改 vascular anatomy。
+
+
+============================================================
+4. 新 geometry hard gates
+============================================================
+
+每一个 candidate 必须满足：
+
+maximum_wall_displacement_m == 0
+
+maximum_rim_displacement_m == 0
+
+rim vertex ID set identical
+
+rim edge set identical
+
+plane_origin identical
+
+reference_normal identical
+
+entity mapping identical：
+
+1 = WALL
+2 = OUTLET_03
+3 = OUTLET_01
+4 = INLET
+5 = OUTLET_02
+
+exactly:
+1 inlet
+3 outlets
+
+surface:
+1 connected component
+0 boundary edges
+0 nonmanifold edges
+
+
+============================================================
+5. 正式 planar area invariant
+============================================================
+
+使用固定：
+
+x0
+n
+t1
+t2
+
+把 frozen 3D rim 投影到 plane：
+
+xi  = dot(x-x0,t1)
+eta = dot(x-x0,t2)
+
+根据 frozen polygon rim
+独立计算：
+
+A_projected
+
+建议至少用两个独立实现交叉验证：
+
+A.
+2D polygon shoelace / Green theorem
+
+B.
+triangle sum / polygon library
+或等价独立计算
+
+要求两者一致。
+
+Candidate 必须满足：
+
+relative difference of A_projected
+<= 1e-12
+
+因为 rim 完全相同，
+实际应接近 floating-point roundoff。
+
+
+============================================================
+6. Vector-area invariant
+============================================================
+
+直接由 frozen ordered 3D rim
+计算 polygon vector area。
+
+不要依赖 cap triangulation。
+
+例如使用闭合轮廓的稳定离散公式。
+
+保存：
+
+A_vector_source
+A_vector_candidate
+
+由于 rim 不变：
+
+relative vector-area difference <= 1e-12
+
+并要求方向：
+
+dot(
+ normalized(A_vector),
+ source_outward_normal
+) >= 1 - 1e-12
+
+如果方向反转：
+
+FAIL。
+
+
+============================================================
+7. Planar centroid invariant
+============================================================
+
+正式 port centroid 使用：
+
+frozen projected rim polygon
+
+的面积中心。
+
+不要再使用任意 triangulation scalar-area weighting
+定义 port 身份。
+
+要求：
+
+projected centroid displacement <= 1e-12 m
+
+同时保留：
+
+legacy 3D scalar-area centroid
+
+作为 provenance diagnostic，
+但不是 hard gate。
+
+
+============================================================
+8. Legacy scalar area 必须继续保存
+============================================================
+
+绝对不允许隐藏 Stage 1.5 发现。
+
+每个 port 保存：
+
+legacy_scalar_area_m2
+formal_projected_area_m2
+vector_area_m2
+
+relative_difference:
+legacy_scalar_vs_projected
+
+每个新 candidate 也保存：
+
+candidate_scalar_triangle_area_m2
+
+并报告：
+
+candidate scalar area vs legacy scalar area
+
+但是：
+
+legacy scalar-area difference
+不是 PASS / FAIL gate。
+
+REPORT 必须解释原因。
+
+
+============================================================
+9. 新 interior vertices 的约束
+============================================================
+
+所有新增 cap interior Steiner vertices
+必须位于 reference plane。
+
+要求：
+
+max interior-point plane deviation
+<= 1e-15 m
+
+如果实际计算能做到更小，
+如实记录。
+
+注意：
+
+原 frozen rim 可以有历史 float32 non-planarity。
+
+不得为了让整个 cap 严格共面而移动 rim。
+
+
+============================================================
+10. 不再使用 Stage 1.5 的超密 candidate
+============================================================
+
+Stage 1.5：
+
+A:
+2539 total cap triangles
+
+B:
+1787
+
+C:
+1397
+
+全部只保留为历史诊断。
+
+Stage 1.6 不得重新使用这些密度。
+
+用户明确要求：
+
+端盖网格不需要如此密集，
+避免增加后续 P2/P1 FEM 计算成本。
+
+
+============================================================
+11. Stage 1.6 的稀疏 candidate
+============================================================
+
+预先冻结三个新候选：
+
+sparse_A:
+    central target size = 0.35 um
+
+sparse_B:
+    central target size = 0.45 um
+
+sparse_C:
+    central target size = 0.55 um
+
+转换到 SI：
+
+3.5e-7 m
+4.5e-7 m
+5.5e-7 m
+
+这些是：
+
+cap interior / center sizing targets
+
+不是 rim edge length。
+
+原 rim edges 完全冻结，
+不得 split。
+
+
+============================================================
+12. 使用 rim-aware graded sizing
+============================================================
+
+由于 frozen rim edge median 大约：
+
+0.12 ～ 0.17 um
+
+而 cap interior 不需要保持这么细，
+
+不要使用整个 disk 上统一：
+
+h = h_rim
+
+这种会造成 Stage 1.5 过密结果的方案。
+
+应采用：
+
+rim-aware graded sizing
+
+概念：
+
+靠近 frozen rim：
+    尊重已有小 rim edges
+
+向 cap interior：
+    mesh size 平滑增长
+
+到 cap 中部：
+    接近 candidate 的 central target size
+
+可以使用：
+
+Gmsh Distance + Threshold field
+或同等确定性方案。
+
+保持：
+
+Mesh.Algorithm = 6
+Frontal-Delaunay
+
+curve boundary 继续固定为原 edge，
+不允许自动新增 boundary nodes。
+
+
+============================================================
+13. Size transition
+============================================================
+
+每个 port 计算：
+
+formal planar area A
+
+仅用于 sizing 计算：
+
+R_eq = sqrt(A/pi)
+
+注意：
+
+R_eq 只是 mesh-size helper，
+不是几何定义。
+
+建议：
+
+near-rim nominal size:
+    h_rim = median original rim edge
+
+central size:
+    candidate value
+
+size growth transition distance:
+    about 0.5～0.7 R_eq
+
+不要根据结果自动调节。
+
+在运行前把实际公式和参数写入：
+
+reports/stage01_6/acceptance_policy.json
+
+并冻结 SHA256。
+
+
+============================================================
+14. Cap density hard budget
+============================================================
+
+Stage 1 baseline：
+
+INLET:
+56 triangles
+
+OUTLET_01:
+44
+
+OUTLET_02:
+42
+
+OUTLET_03:
+49
+
+total:
+191
+
+Stage 1.6 的目标不是追求最规则的二维网格，
+而是在足够好的前提下保持稀疏。
+
+每个 candidate 必须满足：
+
+INLET triangles <= 224
+
+OUTLET_01 <= 176
+
+OUTLET_02 <= 168
+
+OUTLET_03 <= 196
+
+也就是：
+
+每个 cap <= 4 × Stage 1 baseline triangle count
+
+并且：
+
+total cap triangles <= 800
+
+如果超过：
+
+candidate density gate FAIL。
+
+不得因为 triangle quality 很漂亮而接受超密网格。
+
+
+============================================================
+15. Cap triangle quality gate
+============================================================
+
+继续使用：
+
+q_tri =
+4*sqrt(3)*Area /
+(l1^2+l2^2+l3^2)
+
+使用实际 3D triangle geometry。
+
+目标不是 median≈1。
+
+Stage 1.6 的“够好”定义：
+
+q_tri < 0.1 count == 0
+
+combined-cap P5 >= 0.45
+
+combined-cap median >= 0.70
+
+所有 triangle:
+positive area
+finite
+
+这些门槛已经比 Stage 1：
+
+P5 ≈ 0.082
+median ≈ 0.091
+
+高很多，
+
+但允许使用明显更稀疏的 triangulation。
+
+
+============================================================
+16. Candidate surface validation
+============================================================
+
+对于 sparse_A/B/C：
+
+先只生成 surface。
+
+必须依次通过：
+
+wall invariant
+rim invariant
+projected area
+vector area
+projected centroid
+normal
+interior point planarity
+polygon coverage
+cap triangle quality
+cap density budget
+
+只有全部通过的 candidate
+才允许进入 volume meshing。
+
+不得因为新 contract 修改了 area 定义
+而跳过其他 geometry gates。
+
+
+============================================================
+17. Polygon coverage 仍然严格
+============================================================
+
+必须检查：
+
+zero holes
+zero overlaps
+zero triangles outside rim polygon
+
+rim edge set exact
+
+orientation consistent
+
+每个 cap：
+one polygon loop
+
+不要因为 area projected 正确
+就省掉 topology checks。
+
+
+============================================================
+18. Volume meshing 必须保持 Stage 1 medium 条件
+============================================================
+
+对 surface-pass candidate：
+
+使用与 Stage 1 medium 相同：
+
+3D Algorithm3D = 1
+
+bulk target:
+5.0e-7 m
+
+same volume optimizer settings
+
+same wall surface
+
+只允许 cap interior triangulation 不同。
+
+禁止：
+
+HXT
+Netgen
+修改 wall
+修改 rim
+改变 bulk target
+新增局部 volume refinement
+
+这样才能隔离 cap remeshing 本身效果。
+
+
+============================================================
+19. 3D tetra quality baseline
+============================================================
+
+Stage 1 medium：
+
+tetrahedra:
+147569
+
+minSICN:
+minimum = 0.012171307762867093
+
+P1 = 0.3359723496666575
+
+P5 = 0.47439613749869236
+
+median = 0.7206460021439326
+
+minSICN < 0.1:
+153
+
+cap-adjacent q<0.1:
+129
+
+
+============================================================
+20. 3D quality hard gates
+============================================================
+
+Candidate volume 必须：
+
+zero inverted tetra
+zero degenerate tetra
+zero non-finite tetra
+
+cap-adjacent minSICN<0.1:
+<= 38
+
+total minSICN<0.1:
+<= 76
+
+P1:
+>= 0.3359723496666575
+
+P5:
+>= 0.47439613749869236
+
+median:
+>= 0.7206460021439326
+
+minimum minSICN：
+
+必须报告，
+但不是单独 hard gate。
+
+
+============================================================
+21. Volume mesh computational budget
+============================================================
+
+用户明确要求不要通过大量加密
+拖慢后续 FEM。
+
+因此冻结：
+
+total tetrahedra <= 200000
+
+如果 candidate：
+
+quality 全部通过
+但 tetra > 200000
+
+仍然 reject。
+
+不要自动放宽这个预算。
+
+
+============================================================
+22. Future P2 FEM cost proxy
+============================================================
+
+对 Stage 1 medium baseline
+和每个 volume candidate 计算：
+
+N_vertex
+N_edge
+N_tetra
+
+对于 tetra P2 scalar space：
+
+N_P2_scalar_proxy =
+N_vertex + N_edge
+
+3D velocity：
+
+N_P2_velocity_proxy =
+3 * (N_vertex + N_edge)
+
+P1 pressure proxy：
+
+N_P1_pressure_proxy =
+N_vertex
+
+不要真正创建 Stage 2 solver space，
+只做 topology-based DOF 统计。
+
+在 acceptance_policy 生成时：
+
+先计算并冻结 Stage 1 medium baseline proxy。
+
+Candidate 要求：
+
+N_P2_velocity_proxy
+<= 1.35 × Stage 1 medium baseline
+
+超过即 reject。
+
+
+============================================================
+23. Winner selection 改为“质量合格后优先省计算”
+============================================================
+
+首先筛掉所有没有通过：
+
+geometry
+cap quality
+cap density
+tetra quality
+tetra budget
+P2 DOF budget
+
+的 candidate。
+
+只在 survivors 中选择。
+
+排序规则：
+
+第一：
+minimum N_P2_velocity_proxy
+
+第二：
+minimum tetrahedron count
+
+第三：
+minimum cap-adjacent q<0.1
+
+第四：
+minimum total q<0.1
+
+第五：
+maximum P1 minSICN
+
+也就是说：
+
+只要质量已经足够好，
+优先选以后 FEM 更便宜的网格。
+
+不要选择“最漂亮的 cap”。
+
+
+============================================================
+24. 如果没有 candidate 通过
+============================================================
+
+不要扩展：
+
+sparse_D
+sparse_E
+
+不要自动改变：
+
+0.35/0.45/0.55 um
+
+不要：
+
+HXT
+Netgen
+改 bulk size
+
+如果全部失败：
+
+STAGE 1.6 STATUS: FAIL
+
+停止并报告失败原因。
+
+
+============================================================
+25. Selected derived port contract
+============================================================
+
+如果 winner 存在：
+
+生成：
+
+outputs/stage01_6/selected/
+    planar_port_contract_v2.json
+    derived_surface/
+    mesh/
+    qc/
+    metadata/
+
+selected contract 中每个 port 同时记录：
+
+legacy_scalar_area_m2
+formal_projected_area_m2
+vector_area_m2
+
+plane_origin
+normal
+
+rim vertex IDs
+rim edge IDs
+
+legacy max nonplanarity
+
+selected cap triangle count
+
+明确：
+
+anatomical_wall_changed = false
+
+rim_changed = false
+
+port_plane_changed = false
+
+port_physical_region_changed = false
+
+only_cap_interior_triangulation_changed = true
+
+
+============================================================
+26. DOLFINx round-trip
+============================================================
+
+只有 selected winner：
+
+1-rank reload
+2-rank reload
+
+验证：
+
+mesh
+cell tags
+facet tags
+port identity
+projected port contract
+all tetra geometry
+
+不要运行 Stokes。
+
+
+============================================================
+27. 禁止 FEM solve
+============================================================
+
+Stage 2 已验证 solver core。
+
+Stage 1.6 仍然只做 mesh。
+
+禁止：
+
+velocity
+pressure
+lambda
+Q solve
+Stokes
+Navier-Stokes
+WSS
+streamlines
+
+真实 vascular solve 属于 Stage 3。
+
+
+============================================================
+28. 必须永久保留的测试
+============================================================
+
+至少增加：
+
+tests/test_stage016_contract_revision.py
+tests/test_stage016_projected_area.py
+tests/test_stage016_vector_area.py
+tests/test_stage016_projected_centroid.py
+tests/test_stage016_legacy_area_provenance.py
+
+tests/test_stage016_sparse_candidates.py
+tests/test_stage016_cap_density_budget.py
+tests/test_stage016_cap_quality.py
+
+tests/test_stage016_wall_invariance.py
+tests/test_stage016_rim_invariance.py
+tests/test_stage016_polygon_coverage.py
+tests/test_stage016_surface_topology.py
+
+tests/test_stage016_volume_mesh.py
+tests/test_stage016_tetra_quality.py
+tests/test_stage016_cost_budget.py
+tests/test_stage016_p2_dof_proxy.py
+
+tests/test_stage016_selection.py
+tests/test_stage016_roundtrip.py
+tests/test_stage016_visual_artifacts.py
+tests/test_stage016_history_preservation.py
+
+成功后不得删除。
+
+
+============================================================
+29. 必须加入 malicious regression tests
+============================================================
+
+至少测试：
+
+1.
+修改一个 rim coordinate
+→ FAIL
+
+2.
+split rim edge
+→ FAIL
+
+3.
+改变 plane normal
+→ FAIL
+
+4.
+projected area 改变
+→ FAIL
+
+5.
+vector area direction reverse
+→ FAIL
+
+6.
+产生 polygon hole
+→ FAIL
+
+7.
+triangle overlap
+→ FAIL
+
+8.
+candidate triangles > density budget
+→ FAIL
+
+9.
+tetra quality PASS 但 >200000 tetra
+→ reject
+
+10.
+质量非常好但 P2 DOF >1.35× baseline
+→ reject
+
+11.
+较密 candidate 与较稀 candidate 均质量通过
+→ 必须选择较低 DOF candidate
+
+
+============================================================
+30. 必须生成的图
+============================================================
+
+所有图都围绕：
+
+“几何有没有改变？”
+“质量有没有改善？”
+“有没有为了改善质量生成过多网格？”
+
+不要堆 Gmsh 术语。
+
+
+------------------------------------------------------------
+A. port_contract_explanation.png
+------------------------------------------------------------
+
+用一个实际 port 举例。
+
+显示：
+
+历史轻微非共面 fan surface
+固定 rim
+固定 reference plane
+formal projected region
+
+说明：
+
+legacy scalar area
+vs
+formal planar area
+
+不要夸张真实非共面程度而让读者误以为几何畸变很大。
+
+若为了说明放大高度：
+
+明确标注 vertical exaggeration。
+
+
+------------------------------------------------------------
+B. cap_triangulation_before_after.png
+------------------------------------------------------------
+
+每个 port：
+
+Stage 1 original
+Stage 1.6 selected sparse
+
+同尺度。
+
+显示 triangle edges。
+
+标题同时标：
+
+triangle count before → after。
+
+
+------------------------------------------------------------
+C. cap_density_quality_tradeoff.png
+------------------------------------------------------------
+
+对：
+
+Stage 1
+Stage 1.5 dense A/B/C
+Stage 1.6 sparse A/B/C
+
+显示：
+
+x = total cap triangles
+y = cap P5 q_tri
+
+或同等简单二维图。
+
+目的是让人工看到：
+
+Stage 1.6 是否在少很多 triangles 的情况下
+仍然有足够质量。
+
+
+------------------------------------------------------------
+D. tetra_quality_before_after.png
+------------------------------------------------------------
+
+Stage 1 medium
+vs
+Stage 1.6 selected
+
+共同 bins。
+
+标：
+
+minimum
+P1
+P5
+median
+q<0.1
+
+
+------------------------------------------------------------
+E. low_quality_count_by_boundary.png
+------------------------------------------------------------
+
+Stage 1 vs selected：
+
+WALL
+INLET
+OUTLET_01
+OUTLET_02
+OUTLET_03
+
+低质量 tetra count。
+
+
+------------------------------------------------------------
+F. worst_elements_before_after.png
+------------------------------------------------------------
+
+同一风格比较：
+
+Stage 1 worst 20
+Stage 1.6 worst 20
+
+并显示实际 worst cell shape。
+
+
+------------------------------------------------------------
+G. rim_overlay.png
+------------------------------------------------------------
+
+四个 ports：
+
+before
+selected
+
+若完全一致：
+
+明确：
+
+maximum rim displacement = 0 m
+
+
+------------------------------------------------------------
+H. boundary_tags_selected.png
+------------------------------------------------------------
+
+展示：
+
+1 inlet
+3 outlets
+wall
+normals
+
+和 Stage 1 类似视角。
+
+
+------------------------------------------------------------
+I. tetrahedral_cutaway_selected.png
+------------------------------------------------------------
+
+显示真实内部 volume。
+
+
+------------------------------------------------------------
+J. mesh_cost_comparison.png
+------------------------------------------------------------
+
+比较：
+
+Stage 1 medium
+sparse_A
+sparse_B
+sparse_C
+selected
+
+至少显示：
+
+cap triangles
+total tetra
+P2 velocity DOF proxy
+
+图要直接回答：
+
+“改善端盖后，未来 FEM 会不会明显更贵？”
+
+
+============================================================
+31. 可视化要求
+============================================================
+
+WSL 生成正式图。
+
+远端负责 meshing/QC。
+
+不需要安装远端 PyVista。
+
+每图只回答一个问题。
+
+不要：
+
+几十种颜色
+密集小字
+大段 Gmsh 参数
+
+
+============================================================
+32. 输出目录
+============================================================
+
+outputs/stage01_6/
+    baseline/
+    sparse_A/
+        surface/
+        mesh/
+        qc/
+        metadata/
+    sparse_B/
+    sparse_C/
+    selected/
+    remote_return/
+
+reports/stage01_6/
+    REPORT.md
+    PORT_CONTRACT_RATIONALE.md
+    planar_port_contract_v2.json
+    acceptance_policy.json
+    candidate_selection.json
+    quality_comparison.json
+    cost_comparison.json
+    pytest_results.xml
+    *.png
+
+logs/stage01_6/
+
+
+============================================================
+33. 远端工作流
+============================================================
+
+继续使用：
+
+scripts/remote_probe.sh
+scripts/remote_sync.sh
+scripts/remote_run.sh
+scripts/remote_fetch.sh
+
+增加：
+
+--stage 1.6
+
+或现有脚本对应规范映射到：
+
+stage01_6
+
+不要建立新 SSH 管理逻辑。
+
+Vast：
+
+Ryzen CPU / RAM
+
+GPU used = false
+
+不用 CUDA PETSc。
+
+
+============================================================
+34. 历史保护
+============================================================
+
+结束后必须确认：
+
+reference projects：
+
+0 modified
+0 deleted
+0 added
+
+Stage 0/1/1.5/2：
+
+所有历史 evidence
+集合/大小/SHA256
+
+完全不变。
+
+尤其不能把 Stage 1.6 contract
+反写到 Stage 0 source_contract。
+
+
+============================================================
+35. 自动状态
+============================================================
+
+如果没有 winner：
+
+STAGE 1.6 STATUS: FAIL
+
+如果 winner 通过所有 hard gate：
+
+STAGE 1.6 STATUS: CONDITIONAL PASS
+
+Codex 自己不能写：
+
+PASS
+
+因为必须由用户人工看：
+
+before/after geometry
+quality
+cost
+
+以后才可升级 PASS。
+
+
+============================================================
+36. REPORT.md 写作结构
+============================================================
+
+标题：
+
+# Stage 1.6 — 平面端口契约与稀疏端盖重网格
+
+用普通研究人员能直接理解的中文。
+
+
+## Stage 1.5 为什么失败？
+
+简单解释：
+
+网格方法本身有效，
+但旧 scalar-area gate 与历史轻微非共面 cap 冲突。
+
+
+## Stage 1.6 改变了什么定义？
+
+解释：
+
+人工端口以后由：
+
+rim
+reference plane
+normal
+projected polygon area
+
+定义。
+
+历史 scalar area 没有删除，
+只是改成 provenance。
+
+
+## 有没有改变血管几何？
+
+给：
+
+wall displacement
+rim displacement
+plane
+normal
+projected area
+
+明确回答。
+
+
+## 为什么这次端盖更稀疏？
+
+展示：
+
+Stage 1.5：
+1397～2539 triangles
+
+Stage 1.6：
+实际 sparse candidate 数量。
+
+解释：
+
+目标不是完美等边，
+而是足够好的 cap triangles。
+
+
+## 三个 sparse candidate
+
+表格：
+
+central size
+cap triangles
+Steiner points
+cap P5
+cap median
+
+
+## 新端盖是否仍然质量足够？
+
+展示：
+
+cap_density_quality_tradeoff.png
+
+
+## 生成体网格后改善了吗？
+
+展示：
+
+tetra_quality_before_after.png
+low_quality_count_by_boundary.png
+
+
+## 新最差单元在哪里？
+
+展示：
+
+worst_elements_before_after.png
+
+
+## 后续 FEM 会不会明显更贵？
+
+展示：
+
+mesh_cost_comparison.png
+
+重点报告：
+
+tetra count
+P2 velocity DOF proxy
+
+不要只报告文件大小。
+
+
+## 为什么选择 winner？
+
+按预先冻结的：
+
+质量通过后优先最少 DOF
+
+规则解释。
+
+
+## 自动测试
+
+passed
+failed
+skipped
+
+
+## 人工应该审核什么？
+
+列出正式图。
+
+
+## 还没有证明什么？
+
+明确：
+
+没有求真实 vascular flow；
+没有做 mesh convergence；
+没有证明 Stage 3 solution 已收敛。
+
+
+## 最终状态
+
+自动 gates 全部通过：
+
+STAGE 1.6 STATUS: CONDITIONAL PASS
+
+否则：
+
+FAIL。
+
+
+============================================================
+37. 开发顺序
+============================================================
+
+严格执行：
+
+Step 1
+读取 Stage 1.5 area analysis。
+
+Step 2
+创建 PORT_CONTRACT_RATIONALE.md。
+
+Step 3
+创建 planar_port_contract_v2.json。
+
+Step 4
+创建 acceptance_policy.json，
+冻结：
+candidate sizes
+geometry gates
+quality gates
+density budget
+tetra budget
+DOF budget。
+
+在任何 sparse candidate 运行前保存 SHA。
+
+Step 5
+重新验证 Stage 1 frozen wall/rim。
+
+Step 6
+计算正式 projected area/vector area/centroid baseline。
+
+Step 7
+计算 Stage 1 medium P2 DOF proxy baseline。
+
+Step 8
+实现 sparse_A surface。
+
+Step 9
+完整 surface gate。
+
+Step 10
+sparse_B。
+
+Step 11
+sparse_C。
+
+Step 12
+只有 surface-pass candidates 生成 volume mesh。
+
+Step 13
+计算 tetra QC。
+
+Step 14
+计算 computational-cost proxy。
+
+Step 15
+按：
+quality-pass → lowest P2 DOF
+自动选择 winner。
+
+Step 16
+selected mesh roundtrip 1 rank。
+
+Step 17
+selected mesh roundtrip 2 ranks。
+
+Step 18
+fetch WSL。
+
+Step 19
+生成全部正式图。
+
+Step 20
+完整 pytest。
+
+Step 21
+history integrity audit。
+
+Step 22
+生成 REPORT.md。
+
+Step 23
+打印状态。
+
+Step 24
+停止。
+
+不得进入 Stage 3。
+
+
+============================================================
+38. 最终终端输出
+============================================================
+
+Stage 1.6 completed.
+
+planar port contract:
+    status = ...
+    max rim displacement = ...
+    max projected area error = ...
+    max vector area error = ...
+
+Stage 1 medium:
+    cap triangles = 191
+    tetra = 147569
+    q<0.1 = 153
+    cap-adjacent q<0.1 = 129
+    P2 velocity DOF proxy = ...
+
+sparse_A:
+    cap triangles = ...
+    tetra = ...
+    P2 velocity DOF proxy = ...
+    q<0.1 = ...
+
+sparse_B:
+    ...
+
+sparse_C:
+    ...
+
+selected:
+    candidate = ...
+    cap triangles = ...
+    tetra = ...
+    P2 velocity DOF proxy = ...
+    cap-adjacent q<0.1 = ...
+    total q<0.1 = ...
+    P1 = ...
+    P5 = ...
+    median = ...
+
+tests:
+    passed = ...
+    failed = ...
+    skipped = ...
+
+report:
+    reports/stage01_6/REPORT.md
+
+human review required:
+    port_contract_explanation.png
+    cap_triangulation_before_after.png
+    cap_density_quality_tradeoff.png
+    tetra_quality_before_after.png
+    low_quality_count_by_boundary.png
+    worst_elements_before_after.png
+    rim_overlay.png
+    boundary_tags_selected.png
+    tetrahedral_cutaway_selected.png
+    mesh_cost_comparison.png
+
+STAGE 1.6 STATUS:
+    CONDITIONAL PASS / FAIL
+
+然后停止。
+
+不得自动开始 Stage 3。

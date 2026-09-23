@@ -1,0 +1,31 @@
+{
+  "stage": 0,
+  "reference_3d": "/home/lzy/projects/ulm_3D_vascular",
+  "reference_2d": "/home/lzy/projects/ulm_microbubble_traj_gen_2D",
+  "flow_config": "configs/cfd_flow.yaml",
+  "surface_config": "configs/cfd_surface_prepare.yaml",
+  "preprocess_config": "configs/cfd_preprocess.yaml",
+  "allowed_historical_prefix": "E:/ULM/hatimb-particle_flow_simulator/ulm_3D_vascular/",
+  "geometry_schema": {
+    "loader_source": "utils/cfd_flow/io.py",
+    "tagged_surface": "geometry/cfd_surface_vmtk_tps_boundarynormal_crossseam_um.vtp",
+    "meter_surface": "geometry/cfd_surface_vmtk_tps_boundarynormal_crossseam_m.stl",
+    "boundary_conditions": "bc/boundary_conditions_vmtk_boundarynormal_crossseam.json",
+    "boundary_manifest": "boundaries/boundary_manifest.csv"
+  },
+  "mpi_smoke_ranks": [1, 2, 4],
+  "target_model_future_only": {
+    "equations": "3D steady incompressible Newtonian Stokes",
+    "velocity": "P2 vector, 3 components",
+    "pressure": "P1 scalar, Pa",
+    "flow_constraint": "one global Real DOF, block/MixedFunctionSpace or explicit block assembly",
+    "wall": "PDMS no slip",
+    "inlet": "integral(u dot n, inlet) = -Q; no velocity profile",
+    "outlet": "atmospheric gauge p_ext=0 Pa via natural traction sigma n = -p_ext n",
+    "save_inlet_multiplier": true,
+    "si_only": true,
+    "rbc": false,
+    "microbubbles": false,
+    "pulsatility": false
+  }
+}

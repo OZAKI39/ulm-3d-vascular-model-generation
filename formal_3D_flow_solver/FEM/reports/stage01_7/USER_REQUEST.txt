@@ -1,0 +1,1864 @@
+你现在只执行 Stage 1.7。
+
+阶段名称：
+
+Stage 1.7 — Adaptive Port Meshing Optimizer
+
+这是一个“通用自适应端盖网格优化器”的开发阶段。
+
+不要再实现固定 A/B/C candidate sweep。
+不要再硬编码 0.35 / 0.45 / 0.55 µm。
+不要再使用 cap triangles <= 800 作为正式 hard gate。
+
+Stage 0 已通过。
+Stage 1 已完成真实 vascular baseline mesh。
+Stage 1.5 FAIL 永久保留。
+Stage 1.6 FAIL 永久保留。
+Stage 2 FEM solver core 已验证 PASS。
+
+本阶段不得覆盖任何历史 evidence。
+不得开始 Stage 3。
+不得求解真实 vascular Stokes flow。
+
+
+============================================================
+0. 唯一工程目录和历史保护
+============================================================
+
+唯一开发目录：
+
+/home/lzy/projects/formal_3D_flow_solver/FEM
+
+两个只读参考项目：
+
+/home/lzy/projects/ulm_3D_vascular
+/home/lzy/projects/ulm_microbubble_traj_gen_2D
+
+Stage 1.7 新目录：
+
+reports/stage01_7/
+outputs/stage01_7/
+logs/stage01_7/
+
+以下全部视为冻结历史：
+
+reports/stage00/
+reports/stage01/
+reports/stage01_5/
+reports/stage01_6/
+reports/stage02/
+
+outputs/stage00/
+outputs/stage01/
+outputs/stage01_5/
+outputs/stage01_6/
+outputs/stage02/
+
+logs/stage00/
+logs/stage01/
+logs/stage01_5/
+logs/stage01_6/
+logs/stage02/
+
+不得修改 Stage 2 solver core。
+
+
+============================================================
+1. Stage 1.6 已确认的事实
+============================================================
+
+Stage 1.6 planar-port geometry contract 已经有效。
+
+Stage 1.7 不允许重新修改端口定义。
+
+必须直接引用并验证：
+
+reports/stage01_6/planar_port_contract_v2.json
+
+及其 SHA256。
+
+正式 artificial port identity：
+
+- frozen 3D rim vertices
+- frozen rim edge set
+- frozen plane origin
+- frozen outward normal
+- projected rim polygon
+- projected polygon area
+- vector area
+
+legacy 3D scalar triangle area：
+
+只作为 provenance diagnostic。
+
+不再讨论或修改此原则。
+
+
+============================================================
+2. Stage 1 baseline 必须由程序重新读取
+============================================================
+
+基线是：
+
+Stage 1 development_medium vascular mesh。
+
+当前已知：
+
+vertices = 42968
+tetrahedra = 147569
+minSICN < 0.1 total = 153
+cap-adjacent low-quality = 129
+
+但 Stage 1.7 不得把这些作为算法硬编码常数。
+
+必须从 Stage 1 artifacts
+重新读取并计算 baseline：
+
+N_vertex_baseline
+N_edge_baseline
+N_tetra_baseline
+
+P1
+P5
+median
+minimum minSICN
+
+N_low_total_baseline
+N_low_cap_baseline
+
+每个 port 的 low-quality count。
+
+并验证结果与历史 Stage 1 evidence 一致。
+
+若不一致：
+
+FAIL。
+
+
+============================================================
+3. 删除绝对 cap triangle 数量门槛
+============================================================
+
+Stage 1.7 不再使用：
+
+total cap triangles <= 800
+
+也不再使用：
+
+each port <= 4 × baseline triangles
+
+作为 hard gate。
+
+原因：
+
+surface triangle count 不是最终 FEM 计算成本本身。
+
+它继续作为：
+
+diagnostic
+
+必须保存和画图，
+
+但不能单独阻止 volume meshing。
+
+
+============================================================
+4. 真正的成本指标
+============================================================
+
+对每一个 volume mesh 计算：
+
+N_vertex
+
+N_edge
+
+N_tetra
+
+P2 scalar proxy：
+
+N_P2_scalar =
+N_vertex + N_edge
+
+P2 3D velocity proxy：
+
+N_P2_velocity =
+3 * (N_vertex + N_edge)
+
+P1 pressure proxy：
+
+N_P1_pressure =
+N_vertex
+
+定义：
+
+C_P2 =
+N_P2_velocity_new /
+N_P2_velocity_baseline
+
+C_tetra =
+N_tetra_new /
+N_tetra_baseline
+
+正式计算成本 hard gate：
+
+C_P2 <= 1.35
+
+C_tetra <= 1.35
+
+这些是相对 baseline 的资源政策，
+不是血管几何参数。
+
+
+============================================================
+5. Stage 1.7 的优化目标
+============================================================
+
+这是一个 constrained optimization problem。
+
+Hard constraints：
+
+geometry invariants
+surface quality
+volume quality
+FEM cost budget
+
+Objective：
+
+minimize N_P2_velocity
+
+如果多个历史 iteration 都满足所有 hard constraints：
+
+选 N_P2_velocity 最小的那个。
+
+secondary：
+
+minimum N_tetra
+
+tertiary：
+
+minimum cap-adjacent low-quality tetra。
+
+
+============================================================
+6. 不再使用 candidate_A / candidate_B / candidate_C
+============================================================
+
+所有自动过程使用：
+
+iteration_00
+iteration_01
+iteration_02
+...
+
+每个 iteration 保存：
+
+为什么生成这一轮；
+哪些 port 被调整；
+调整前参数；
+调整后参数；
+surface quality；
+volume quality；
+cost；
+下一步决策。
+
+禁止把 iteration 改名成：
+
+A
+B
+C。
+
+
+============================================================
+7. 自适应算法必须有明确停止上限
+============================================================
+
+禁止：
+
+while not pass:
+    keep_trying()
+
+冻结：
+
+maximum_surface_trials_per_port = 8
+
+maximum_volume_iterations = 5
+
+maximum_total_volume_meshes = 5
+
+如果达到上限仍未通过：
+
+STAGE 1.7 FAIL
+
+不得自动放宽任何 gate。
+
+
+============================================================
+8. Port-local 自适应
+============================================================
+
+四个 port 必须可以独立拥有自己的内部网格尺度。
+
+不要假设：
+
+所有 port 使用一个 H。
+
+每个 port i 保存：
+
+h_rim_i
+
+R_eq_i
+
+H_i
+
+surface metrics
+
+volume feedback metrics。
+
+
+============================================================
+9. 所有长度必须由当前几何自动得到
+============================================================
+
+禁止在 production optimizer 中出现：
+
+0.35e-6
+0.45e-6
+0.55e-6
+0.65e-6
+
+这种针对当前模型的 cap 尺寸。
+
+只允许读取：
+
+当前 port rim geometry
+
+当前 projected area
+
+Stage 1 volume target size
+
+自动得到：
+
+h_rim_i =
+median original rim edge length
+
+R_eq_i =
+sqrt(A_projected_i / pi)
+
+h_volume =
+Stage 1 medium bulk target
+
+
+============================================================
+10. 新的通用尺寸函数
+============================================================
+
+Stage 1.6 的问题之一是：
+
+transition zone 太宽，
+造成大量 near-rim interior points。
+
+Stage 1.7 使用一个简单、自尺度、没有固定半径比例的尺寸函数：
+
+h_i(d)
+=
+min(
+    H_i,
+    h_rim_i + g * d
+)
+
+其中：
+
+d =
+平面内到 frozen rim line segments
+的精确最小距离。
+
+h_rim_i =
+当前 port 的 rim median edge length。
+
+H_i =
+optimizer 当前尝试的 interior maximum size。
+
+g =
+dimensionless grading slope。
+
+Stage 1.7 第一正式算法固定：
+
+g = 1.0
+
+这是通用无量纲 grading rule：
+
+离 rim 每远离 1 个长度单位，
+允许目标 edge size 增加 1 个长度单位。
+
+不要根据当前模型结果调 g。
+
+如果该规则最终证明不可行，
+本阶段 FAIL，
+而不是偷偷修改 g。
+
+
+============================================================
+11. Rim 仍然禁止 split
+============================================================
+
+原 rim：
+
+vertex IDs
+3D coordinates
+edges
+
+全部冻结。
+
+Gmsh curve 必须保持：
+
+两个原 endpoint
+
+不得产生：
+
+new boundary vertex
+split edge
+smoothed rim
+fitted circle
+projected replacement rim
+
+
+============================================================
+12. Surface optimizer 的基本思想
+============================================================
+
+每个 port 独立寻找：
+
+“最粗但仍满足 surface quality 的 H_i”。
+
+不要预先给 H_i 列表。
+
+初始：
+
+H_i = h_volume
+
+然后实际生成 cap surface。
+
+
+============================================================
+13. Surface quality hard gate
+============================================================
+
+每个 port 都必须：
+
+zero non-positive triangle area
+
+zero non-finite triangle
+
+q_tri < 0.1 count = 0
+
+P5(q_tri) >= 0.45
+
+median(q_tri) >= 0.70
+
+其中：
+
+q_tri =
+4*sqrt(3)*Area /
+(l1^2+l2^2+l3^2)
+
+不要要求：
+
+median ≈ 1。
+
+目标是：
+
+够好且尽量稀疏。
+
+
+============================================================
+14. 自动寻找 coarsest passing H_i
+============================================================
+
+使用 deterministic bracket search。
+
+增长因子固定：
+
+search_factor = 1.25
+
+如果当前 H_i surface quality PASS：
+
+尝试：
+
+H_new = 1.25 * H_i
+
+即进一步变粗。
+
+继续直到：
+
+第一次 quality FAIL
+
+或：
+
+H_i >= 2 * R_eq_i
+
+或：
+
+达到 maximum_surface_trials_per_port。
+
+如果初始：
+
+H_i = h_volume
+
+已经 FAIL：
+
+依次尝试：
+
+H_new = H_i / 1.25
+
+直到 PASS
+
+或：
+
+H_i <= h_rim_i
+
+如果到 h_rim_i 仍不能 PASS：
+
+该 port optimizer FAIL。
+
+
+============================================================
+15. bracket refinement
+============================================================
+
+当已经找到：
+
+H_pass
+和
+H_fail
+
+后，
+
+在 log(H) 空间做 deterministic bisection。
+
+最多：
+
+4 次 refinement evaluation。
+
+目标：
+
+找到当前已测试结果中：
+
+triangle count 最少
+
+且：
+
+surface quality PASS
+
+的 port surface。
+
+注意：
+
+不要假设 H 越大 triangle count 一定严格单调。
+
+最终从所有已实际测试的 passing surfaces 中：
+
+选择 triangle count 最少的那个。
+
+若 triangle count 相同：
+
+选择 H 较大的。
+
+
+============================================================
+16. 所有 surface trial 都必须保留
+============================================================
+
+例如：
+
+outputs/stage01_7/surface_trials/
+    inlet/
+        trial_00/
+        trial_01/
+    outlet_01/
+    outlet_02/
+    outlet_03/
+
+每个 trial 保存：
+
+H
+h_rim
+R_eq
+triangle count
+Steiner point count
+P5
+median
+minimum
+q<0.1 count
+
+geometry invariants
+
+runtime
+
+不要成功以后删除失败 trial。
+
+
+============================================================
+17. Geometry gate 永远优先
+============================================================
+
+所有 trial 都必须先通过：
+
+wall unchanged
+
+rim coordinate unchanged
+
+rim edge set unchanged
+
+projected area relative error <= 1e-12
+
+vector area relative error <= 1e-12
+
+projected centroid displacement <= 1e-12 m
+
+normal consistent
+
+zero holes
+
+zero overlaps
+
+zero outside-polygon triangles
+
+closed combined surface
+
+如果 geometry FAIL：
+
+该 trial 不进入 quality 判断。
+
+
+============================================================
+18. 生成 iteration_00
+============================================================
+
+四个 port 各自完成：
+
+coarsest surface-quality-passing optimization
+
+后，
+
+组合得到：
+
+iteration_00 surface。
+
+记录：
+
+total cap triangles
+
+每个 port triangles
+
+但：
+
+不对 cap triangle 数量设置 hard gate。
+
+
+============================================================
+19. iteration_00 必须生成真实 volume mesh
+============================================================
+
+这次不能因为 cap triangles 比 Stage 1 多就停。
+
+只要：
+
+geometry PASS
+surface quality PASS
+
+就必须生成 volume mesh。
+
+使用与 Stage 1 medium 完全相同：
+
+Algorithm3D
+bulk target
+optimizer settings
+
+禁止：
+
+HXT
+Netgen
+修改 wall
+修改 bulk size
+额外 volume refinement。
+
+
+============================================================
+20. 3D volume hard validity
+============================================================
+
+每一轮 volume：
+
+zero inverted tetra
+
+zero zero-volume tetra
+
+zero non-finite tetra
+
+one connected fluid volume
+
+boundary tags complete
+
+DOLFINx conversion/loadable
+
+任何一个失败：
+
+该 iteration FAIL。
+
+
+============================================================
+21. 3D tetra quality acceptance
+============================================================
+
+从 baseline 自动计算：
+
+B_cap =
+baseline cap-adjacent minSICN<0.1 count
+
+B_total =
+baseline total minSICN<0.1 count
+
+如果：
+
+B_cap > 0
+
+要求：
+
+selected cap-adjacent low count
+<= floor(0.30 * B_cap)
+
+如果：
+
+B_cap == 0
+
+要求继续为 0。
+
+如果：
+
+B_total > 0
+
+要求：
+
+selected total low count
+<= floor(0.50 * B_total)
+
+如果 baseline 为 0：
+
+继续为 0。
+
+同时：
+
+P1_selected >= P1_baseline
+
+P5_selected >= P5_baseline
+
+median_selected >= median_baseline
+
+允许 floating comparison tolerance
+仅用于最后 1e-12 量级舍入，
+不能放宽科学 gate。
+
+
+============================================================
+22. 低质量 tetra 位置分类
+============================================================
+
+沿用 Stage 1 完全相同的方法：
+
+nearest exterior triangle center
+
+用于诊断分类：
+
+WALL
+INLET
+OUTLET_01
+OUTLET_02
+OUTLET_03
+
+不要在 Stage 1.7 换另一套分类算法，
+否则 before/after 不可比。
+
+
+============================================================
+23. Volume feedback loop
+============================================================
+
+如果 iteration_00：
+
+volume quality PASS
+并且 cost PASS
+
+立即成为可行解。
+
+如果 quality FAIL：
+
+判断低质量 tetra 是否仍主要与 cap 有关。
+
+
+============================================================
+24. 如何判断“cap 仍是问题”
+============================================================
+
+计算当前：
+
+low-quality tetra by boundary。
+
+找到贡献最大的 port。
+
+只有：
+
+该 port 的 low-quality count > 0
+
+且：
+
+当前 total cap-adjacent quality gate 未满足
+
+才允许对该 port 做 refinement。
+
+
+============================================================
+25. Port refinement rule
+============================================================
+
+一次只 refine 一个 port。
+
+选择：
+
+当前 low-quality tetra 数最多的 port。
+
+该 port：
+
+H_i_new =
+H_i_current / 1.20
+
+重新生成该 port cap。
+
+其他三个 port：
+
+完全复用上一 iteration surface。
+
+新 cap 必须重新通过：
+
+geometry
+surface quality。
+
+然后生成下一轮：
+
+iteration_k+1 volume。
+
+
+============================================================
+26. 不允许同时 refine 四个 ports
+============================================================
+
+禁止：
+
+一发现 tetra 质量不好
+就把所有 caps 一起变细。
+
+原因：
+
+这会失去 adaptive optimizer 的成本优势。
+
+每次只修改：
+
+造成问题最大的一个 port。
+
+
+============================================================
+27. 如果坏单元已经不在 cap
+============================================================
+
+如果：
+
+cap-adjacent quality gate 已通过
+
+但：
+
+global tetra quality gate 仍失败
+
+且新增 worst cells 主要属于 WALL / junction region，
+
+那么：
+
+termination_reason =
+NOT_CAP_CORRECTABLE
+
+停止。
+
+STAGE 1.7 FAIL。
+
+不要继续细化 cap。
+
+
+============================================================
+28. FEM cost gate
+============================================================
+
+每个 volume iteration 都必须立即计算：
+
+C_P2
+C_tetra
+
+如果：
+
+C_P2 > 1.35
+
+或：
+
+C_tetra > 1.35
+
+则该 iteration：
+
+COST FAIL。
+
+因为后续 refinement 只会增加或维持成本，
+
+若 cost 超限：
+
+停止 optimizer。
+
+termination_reason =
+FEM_COST_BUDGET_EXCEEDED
+
+不得继续尝试。
+
+
+============================================================
+29. First feasible solution
+============================================================
+
+Stage 1.7 从：
+
+每个 port 的 coarsest surface-quality passing mesh
+
+开始，
+
+后续只按需要 refine。
+
+因此第一轮同时满足：
+
+geometry
+surface quality
+volume quality
+cost
+
+的 iteration
+
+定义为：
+
+selected_iteration。
+
+保存并停止 volume adaptive loop。
+
+不继续为了“质量更漂亮”生成更细 mesh。
+
+
+============================================================
+30. Stage 1.7 不追求最漂亮网格
+============================================================
+
+如果：
+
+iteration_02 已 PASS，
+
+即使理论上：
+
+iteration_03
+可能有更高 P5
+更低 low-quality count，
+
+也不要继续。
+
+目标是：
+
+cheapest acceptable mesh
+
+不是：
+
+highest-quality mesh。
+
+
+============================================================
+31. Max iteration termination
+============================================================
+
+如果运行到：
+
+maximum_volume_iterations = 5
+
+仍没有可行 iteration：
+
+FAIL。
+
+保存：
+
+termination_reason =
+MAX_ADAPTIVE_ITERATIONS_REACHED
+
+
+============================================================
+32. 需要增加 scale-invariance tests
+============================================================
+
+为了证明算法不是为当前微米尺度血管写死，
+
+建立 synthetic planar port tests：
+
+同一个形状按：
+
+0.5×
+1×
+4×
+
+缩放。
+
+volume target size 也同比例缩放。
+
+要求：
+
+optimizer 的 normalized quality 行为相近；
+
+不允许源码中出现：
+
+if radius_um ...
+
+或特定 µm 数值。
+
+
+============================================================
+33. 非圆形 port test
+============================================================
+
+增加 synthetic：
+
+ellipse
+
+mild irregular convex polygon
+
+测试。
+
+目的：
+
+证明算法使用：
+
+actual frozen rim
+
+而不是假设：
+
+circle。
+
+不要使用 R_eq 重建几何。
+
+R_eq 只能用于 diagnostics。
+
+
+============================================================
+34. Determinism
+============================================================
+
+相同：
+
+geometry
+config
+Gmsh version
+
+运行两次：
+
+surface selected trial
+H values
+triangle connectivity
+volume QC
+selected iteration
+
+必须一致。
+
+若 Gmsh 内部 ID 不稳定，
+比较 canonicalized geometry/connectivity，
+并说明方法。
+
+
+============================================================
+35. 自适应 decision log
+============================================================
+
+生成：
+
+reports/stage01_7/adaptive_decision_log.json
+
+每轮至少记录：
+
+iteration
+
+per-port:
+    H
+    triangle count
+    q_min
+    P5
+    median
+
+volume:
+    vertices
+    edges
+    tetra
+    P2 proxy
+    cost ratio
+
+quality:
+    minSICN minimum
+    P1
+    P5
+    median
+    q<0.1 total
+    q<0.1 by boundary
+
+decision:
+    ACCEPT
+    REFINE_INLET
+    REFINE_OUTLET_01
+    ...
+    STOP_COST
+    STOP_NOT_CAP_CORRECTABLE
+    STOP_MAX_ITER
+
+reason
+
+不得只记录最终结果。
+
+
+============================================================
+36. 必须保留的测试文件
+============================================================
+
+至少新增：
+
+tests/test_stage017_policy.py
+tests/test_stage017_baseline_recompute.py
+
+tests/test_stage017_size_function.py
+tests/test_stage017_surface_search.py
+tests/test_stage017_surface_quality.py
+tests/test_stage017_surface_geometry.py
+
+tests/test_stage017_scale_invariance.py
+tests/test_stage017_non_circular_ports.py
+tests/test_stage017_determinism.py
+
+tests/test_stage017_volume_iteration.py
+tests/test_stage017_tetra_feedback.py
+tests/test_stage017_single_port_refinement.py
+tests/test_stage017_not_cap_correctable.py
+
+tests/test_stage017_cost_proxy.py
+tests/test_stage017_cost_stop.py
+tests/test_stage017_first_feasible_stop.py
+tests/test_stage017_max_iteration_stop.py
+
+tests/test_stage017_selection.py
+tests/test_stage017_roundtrip.py
+tests/test_stage017_visual_artifacts.py
+tests/test_stage017_history_preservation.py
+
+成功后不得删除。
+
+
+============================================================
+37. malicious tests
+============================================================
+
+至少验证：
+
+rim moved
+→ FAIL
+
+rim split
+→ FAIL
+
+port normal changed
+→ FAIL
+
+projected region changed
+→ FAIL
+
+surface hole
+→ FAIL
+
+overlap
+→ FAIL
+
+surface quality poor
+→ optimizer refine/coarsen correctly
+
+cost >1.35 baseline
+→ STOP
+
+bad tetra dominated by WALL
+→ NOT_CAP_CORRECTABLE
+
+iteration > max
+→ STOP
+
+quality already PASS
+→ 不允许继续 refinement
+
+两个 port 有坏 tetra
+→ 一次只 refine count 最大的一个。
+
+
+============================================================
+38. Selected mesh round-trip
+============================================================
+
+只有 selected_iteration 存在时：
+
+1-rank DOLFINx reload
+
+2-rank DOLFINx reload
+
+验证：
+
+mesh topology
+cell tags
+facet tags
+port identity
+all tetra
+quality summary
+
+不要运行 Stokes。
+
+
+============================================================
+39. 禁止 FEM solve
+============================================================
+
+Stage 2 core 已经验证。
+
+Stage 1.7 仍然只优化 mesh。
+
+禁止：
+
+velocity solve
+pressure solve
+lambda
+Q solve
+Stokes
+Navier-Stokes
+WSS
+streamlines
+
+真实 vascular flow 属于 Stage 3。
+
+
+============================================================
+40. 必须生成的可视化
+============================================================
+
+所有图在 WSL 生成。
+
+每张图只回答一个问题。
+
+
+A. adaptive_surface_search.png
+
+每个 port 一小图。
+
+x:
+trial number
+
+y:
+triangle count
+
+同时标记：
+
+PASS / FAIL surface quality
+
+以及最终 port-selected surface trial。
+
+
+B. port_mesh_before_after.png
+
+每个 port：
+
+Stage 1 fan
+vs
+Stage 1.7 selected cap
+
+相同视角、比例。
+
+标：
+
+triangle count before → after。
+
+
+C. surface_quality_before_after.png
+
+Stage 1
+vs
+selected
+
+显示：
+
+q_tri distribution
+P5
+median
+q<0.1
+
+
+D. adaptive_volume_trace.png
+
+x:
+volume iteration
+
+显示两张简单曲线：
+
+cap-adjacent q<0.1
+P2 cost ratio
+
+标出 selected iteration。
+
+
+E. tetra_quality_before_after.png
+
+Stage 1 medium
+vs
+selected
+
+相同 bins。
+
+minimum
+P1
+P5
+median
+q<0.1。
+
+
+F. low_quality_count_by_boundary.png
+
+Stage 1
+vs
+selected：
+
+WALL
+INLET
+OUTLET_01
+OUTLET_02
+OUTLET_03。
+
+
+G. quality_cost_pareto.png
+
+每个真实生成过的 volume iteration：
+
+x:
+P2 cost ratio
+
+y:
+cap-adjacent low-quality tetra count
+
+标：
+
+quality gate
+cost gate
+
+让人一眼看到算法怎样走向可行区。
+
+
+H. mesh_cost_comparison.png
+
+Stage 1
+vs
+所有 volume iterations
+vs
+selected
+
+显示：
+
+tetra count
+P2 velocity proxy。
+
+
+I. worst_elements_before_after.png
+
+Stage 1 worst 20
+vs
+selected worst 20
+
+actual shape close-up。
+
+
+J. rim_overlay.png
+
+必须继续证明：
+
+maximum rim displacement = 0。
+
+
+K. boundary_tags_selected.png
+
+1 inlet
+3 outlets
+wall
+outward normals。
+
+
+L. tetrahedral_cutaway_selected.png
+
+selected 真实 tetra interior cutaway。
+
+
+============================================================
+41. 图像和文字要求
+============================================================
+
+不要堆术语。
+
+例如：
+
+不要标题：
+
+Adaptive nonlinear constrained Delaunay topology optimization state
+
+而写：
+
+“算法为什么又细化了这个入口？”
+
+“低质量四面体减少了吗？”
+
+“为了改善质量，FEM 会贵多少？”
+
+所有图必须能直接回答人类审核问题。
+
+
+============================================================
+42. REPORT.md
+============================================================
+
+生成：
+
+reports/stage01_7/REPORT.md
+
+标题：
+
+# Stage 1.7 — 自适应端盖网格优化
+
+
+## 为什么不再用固定 800 个三角形？
+
+解释：
+
+不同 vascular model
+端口大小不同，
+绝对 triangle 数不是通用成本指标。
+
+以后真正控制：
+
+3D volume mesh
+和 P2 FEM DOF。
+
+
+## 算法自动调整什么？
+
+解释：
+
+每个 port 有自己的内部最大尺寸 H。
+
+程序自动寻找：
+
+最粗但 surface quality 合格的 H。
+
+
+## 哪些东西永远不能动？
+
+wall
+rim
+plane
+normal
+projected port region
+labels。
+
+
+## 算法怎么知道哪个 port 需要进一步处理？
+
+解释：
+
+先生成 3D volume。
+
+看低质量 tetra 最靠近哪个 port。
+
+一次只调整贡献最大的 port。
+
+
+## 怎么防止算法无限尝试？
+
+说明：
+
+surface trials
+volume iterations
+
+都有固定上限。
+
+gate 永远不自动放宽。
+
+
+## 有没有硬编码微米尺寸？
+
+明确回答。
+
+列出：
+
+所有实际尺寸来自
+h_rim
+h_volume
+当前 geometry。
+
+## 端盖表面结果
+
+展示：
+
+adaptive_surface_search.png
+port_mesh_before_after.png
+surface_quality_before_after.png
+
+
+## 3D tetra 真正改善了吗？
+
+展示：
+
+adaptive_volume_trace.png
+tetra_quality_before_after.png
+low_quality_count_by_boundary.png
+
+
+## 优化过程发生了什么？
+
+用简单表：
+
+iteration
+修改哪个 port
+为什么
+P2 cost
+low-quality tetra
+结果
+
+
+## 最终为什么停止？
+
+必须明确：
+
+FIRST_FEASIBLE_ACCEPTED
+
+或具体 FAIL termination reason。
+
+
+## 未来 FEM 成本是多少？
+
+比较 baseline 与 selected：
+
+vertices
+edges
+tetra
+P2 proxy
+relative growth。
+
+
+## 是否改变了血管几何？
+
+报告：
+
+wall displacement
+rim displacement
+projected area
+normal。
+
+
+## 自动测试
+
+passed
+failed
+skipped。
+
+
+## 人工需要审核什么？
+
+列出正式图。
+
+
+## 还没有证明什么？
+
+明确：
+
+没有真实 blood-flow solve；
+没有 FEM mesh convergence；
+没有 Stage 3 solution validation。
+
+
+## 最终状态
+
+如果 selected iteration 存在，
+且全部 hard gates + roundtrip 通过：
+
+STAGE 1.7 STATUS: CONDITIONAL PASS
+
+等待用户人工审核。
+
+否则：
+
+STAGE 1.7 STATUS: FAIL
+
+
+============================================================
+43. 自动 hard gates
+============================================================
+
+Selected 必须同时满足：
+
+geometry:
+
+wall displacement = 0
+rim displacement = 0
+projected area error <= 1e-12
+vector area error <= 1e-12
+labels unchanged
+closed surface
+
+surface:
+
+all positive finite triangles
+q_tri<0.1 = 0
+P5 >= 0.45
+median >= 0.70
+
+volume:
+
+zero inverted
+zero degenerate
+zero non-finite
+one connected fluid domain
+
+tetra quality:
+
+cap-adjacent low
+<= 30% baseline
+
+total low
+<= 50% baseline
+
+P1 >= baseline
+P5 >= baseline
+median >= baseline
+
+cost:
+
+P2 velocity proxy ratio <= 1.35
+tetra ratio <= 1.35
+
+roundtrip:
+
+1 rank PASS
+2 ranks PASS
+
+pytest:
+
+0 failures
+
+
+============================================================
+44. 不允许 post-hoc 修改 policy
+============================================================
+
+开始任何 adaptive search 之前生成：
+
+reports/stage01_7/acceptance_policy.json
+
+包含：
+
+search_factor = 1.25
+grading_slope = 1.0
+surface thresholds
+relative tetra quality thresholds
+cost ratio thresholds
+max trial counts
+
+保存：
+
+SHA256
+
+一旦 adaptive search 开始：
+
+禁止改 policy。
+
+如果失败：
+
+如实 FAIL。
+
+
+============================================================
+45. 开发顺序
+============================================================
+
+严格执行：
+
+Step 1
+验证 Stage 1.6 planar port contract SHA。
+
+Step 2
+重新计算 Stage 1 medium baseline。
+
+Step 3
+生成 acceptance_policy.json 并冻结 SHA。
+
+Step 4
+实现通用 size function。
+
+Step 5
+完成 synthetic scale-invariance / non-circle tests。
+
+Step 6
+INLET surface adaptive search。
+
+Step 7
+OUTLET_01。
+
+Step 8
+OUTLET_02。
+
+Step 9
+OUTLET_03。
+
+Step 10
+组合 coarsest passing surfaces。
+
+Step 11
+完整 geometry QC。
+
+Step 12
+生成 iteration_00 volume。
+
+Step 13
+计算 tetra QC + P2 cost。
+
+Step 14
+根据 feedback：
+ACCEPT /
+refine one port /
+STOP。
+
+Step 15
+如需下一轮，
+只修改一个 port。
+
+Step 16
+直到 first feasible
+或 termination。
+
+Step 17
+selected 1-rank reload。
+
+Step 18
+selected 2-rank reload。
+
+Step 19
+fetch 回 WSL。
+
+Step 20
+生成全部图。
+
+Step 21
+完整 pytest。
+
+Step 22
+history integrity audit。
+
+Step 23
+生成 REPORT.md。
+
+Step 24
+打印状态。
+
+Step 25
+停止。
+
+不得进入 Stage 3。
+
+
+============================================================
+46. 最终终端输出
+============================================================
+
+Stage 1.7 completed.
+
+baseline:
+    vertices = ...
+    edges = ...
+    tetra = ...
+    P2 velocity proxy = ...
+    low total = ...
+    low cap-adjacent = ...
+
+surface optimizer:
+    inlet:
+        trials = ...
+        selected H = ...
+        triangles = ...
+    outlet_01:
+        ...
+    outlet_02:
+        ...
+    outlet_03:
+        ...
+
+volume iterations:
+    iteration_00:
+        changed port = NONE
+        tetra = ...
+        P2 ratio = ...
+        low total = ...
+        low cap = ...
+        decision = ...
+    iteration_01:
+        ...
+
+selected iteration:
+    ...
+
+geometry:
+    max wall displacement = ...
+    max rim displacement = ...
+    max projected area error = ...
+
+quality:
+    P1 = ...
+    P5 = ...
+    median = ...
+    low total = ...
+    low cap = ...
+
+cost:
+    tetra ratio = ...
+    P2 ratio = ...
+
+tests:
+    passed = ...
+    failed = ...
+    skipped = ...
+
+human review:
+    adaptive_surface_search.png
+    port_mesh_before_after.png
+    surface_quality_before_after.png
+    adaptive_volume_trace.png
+    tetra_quality_before_after.png
+    low_quality_count_by_boundary.png
+    quality_cost_pareto.png
+    mesh_cost_comparison.png
+    worst_elements_before_after.png
+    rim_overlay.png
+    boundary_tags_selected.png
+    tetrahedral_cutaway_selected.png
+
+STAGE 1.7 STATUS:
+    CONDITIONAL PASS / FAIL
+
+然后停止。
+
+不得自动开始 Stage 3。

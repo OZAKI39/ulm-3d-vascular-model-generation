@@ -1,0 +1,463 @@
+max affine pressure error (Pa) 3.552713678800501e-15
+.max affine gradient error (1/s) 1.7763568394002505e-15
+.max affine velocity error (m/s) 1.3322676295501878e-15 atol 5.684341886080802e-14 rtol 5.684341886080802e-14
+.......measured gradient jumps (1/s) [102.16043074687911, 0.8564191330630895, 107.73586879648494, 27.73161724265882, 47.26028223983191, 102.8516389221143, 34.08048996077157, 1.8945213975791344]
+........max node velocity / pressure error 1.4348469307092325e-19 1.1368683772161603e-13
+.....................max weight error 3.3306690738754696e-16
+.........................................F...FFFFFF..rotation max error (1/s) 0.0
+.................uniform max position error (m) 1.1350241493207625e-19
+....
+=================================== FAILURES ===================================
+_____________ test_synthetic_plot_functions_rerun_without_real_fem _____________
+
+tmp_path = PosixPath('/tmp/pytest-of-lzy/pytest-56/test_synthetic_plot_functions_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7283533b5e00>
+
+    def test_synthetic_plot_functions_rerun_without_real_fem(tmp_path,monkeypatch):
+        script=Path(__file__).resolve().parents[2]/'scripts/generate_particle1_report.py'
+        spec=importlib.util.spec_from_file_location('p1_plot_regression',script)
+        module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        for name in ['REPORT','DATA','FIGURES']: monkeypatch.setattr(module,name,tmp_path)
+>       module.stage2(); module.stage3(); module.stage4()
+                         ^^^^^^^^^^^^^^^
+
+particle_3d/tests/particle1/test_particle1_plot_generation.py:10: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+particle_3d/scripts/generate_particle1_report.py:138: in stage3
+    write_json('03_rotation_metrics.json',dict(passed=maximum<=SYNTHETIC_ATOL,max_angular_velocity_error_s_inv=maximum,atol=SYNTHETIC_ATOL,rtol=SYNTHETIC_RTOL,count=len(rows)))
+particle_3d/scripts/generate_particle1_report.py:37: in write_json
+    (DATA/name).write_text(json.dumps(value,ensure_ascii=False,indent=2,allow_nan=False)+'\n')
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../miniconda3/lib/python3.13/json/__init__.py:242: in dumps
+    **kw).encode(obj)
+          ^^^^^^^^^^^
+../../miniconda3/lib/python3.13/json/encoder.py:202: in encode
+    chunks = self.iterencode(o, _one_shot=True)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../miniconda3/lib/python3.13/json/encoder.py:263: in iterencode
+    return _iterencode(o, 0)
+           ^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <json.encoder.JSONEncoder object at 0x7283533b7100>, o = np.True_
+
+    def default(self, o):
+        """Implement this method in a subclass such that it returns
+        a serializable object for ``o``, or calls the base implementation
+        (to raise a ``TypeError``).
+    
+        For example, to support arbitrary iterators, you could
+        implement default like this::
+    
+            def default(self, o):
+                try:
+                    iterable = iter(o)
+                except TypeError:
+                    pass
+                else:
+                    return list(iterable)
+                # Let the base class default method raise the TypeError
+                return super().default(o)
+    
+        """
+>       raise TypeError(f'Object of type {o.__class__.__name__} '
+                        f'is not JSON serializable')
+E       TypeError: Object of type bool is not JSON serializable
+
+../../miniconda3/lib/python3.13/json/encoder.py:182: TypeError
+------------------------------ Captured log call -------------------------------
+WARNING  matplotlib.font_manager:font_manager.py:1666 findfont: Failed to find font weight bold for Microsoft YaHei, now using 400.
+_ test_permanent_high_resolution_png_and_plot_source[03_pure_rotation_validation.png-03_pure_rotation_validation.csv] _
+
+figure = '03_pure_rotation_validation.png'
+data = '03_pure_rotation_validation.csv'
+
+    @pytest.mark.parametrize('figure,data',PAIRS)
+    def test_permanent_high_resolution_png_and_plot_source(figure,data):
+>       with Image.open(ROOT/'figures'/figure) as im:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+particle_3d/tests/particle1/test_particle1_review_artifacts.py:21: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+fp = PosixPath('/home/lzy/projects/ulm_particle_3d_particle0/particle_3d/reports/particle1/figures/03_pure_rotation_validation.png')
+mode = 'r', formats = ['PNG', 'BMP', 'DIB', 'GIF', 'JPEG', 'PPM']
+
+    def open(
+        fp: StrOrBytesPath | IO[bytes],
+        mode: Literal["r"] = "r",
+        formats: list[str] | tuple[str, ...] | None = None,
+    ) -> ImageFile.ImageFile:
+        """
+        Opens and identifies the given image file.
+    
+        This is a lazy operation; this function identifies the file, but
+        the file remains open and the actual image data is not read from
+        the file until you try to process the data (or call the
+        :py:meth:`~PIL.Image.Image.load` method).  See
+        :py:func:`~PIL.Image.new`. See :ref:`file-handling`.
+    
+        :param fp: A filename (string), os.PathLike object or a file object.
+           The file object must implement ``file.read``,
+           ``file.seek``, and ``file.tell`` methods,
+           and be opened in binary mode. The file object will also seek to zero
+           before reading.
+        :param mode: The mode.  If given, this argument must be "r".
+        :param formats: A list or tuple of formats to attempt to load the file in.
+           This can be used to restrict the set of formats checked.
+           Pass ``None`` to try all supported formats. You can print the set of
+           available formats by running ``python3 -m PIL`` or using
+           the :py:func:`PIL.features.pilinfo` function.
+        :returns: An :py:class:`~PIL.Image.Image` object.
+        :exception FileNotFoundError: If the file cannot be found.
+        :exception PIL.UnidentifiedImageError: If the image cannot be opened and
+           identified.
+        :exception ValueError: If the ``mode`` is not "r", or if a ``StringIO``
+           instance is used for ``fp``.
+        :exception TypeError: If ``formats`` is not ``None``, a list or a tuple.
+        """
+    
+        if mode != "r":
+            msg = f"bad mode {repr(mode)}"  # type: ignore[unreachable]
+            raise ValueError(msg)
+        elif isinstance(fp, io.StringIO):
+            msg = (  # type: ignore[unreachable]
+                "StringIO cannot be used to open an image. "
+                "Binary data must be used instead."
+            )
+            raise ValueError(msg)
+    
+        if formats is None:
+            formats = ID
+        elif not isinstance(formats, (list, tuple)):
+            msg = "formats must be a list or tuple"  # type: ignore[unreachable]
+            raise TypeError(msg)
+    
+        exclusive_fp = False
+        filename: str | bytes = ""
+        if is_path(fp):
+            filename = os.fspath(fp)
+>           fp = builtins.open(filename, "rb")
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/lzy/projects/ulm_particle_3d_particle0/particle_3d/reports/particle1/figures/03_pure_rotation_validation.png'
+
+../formal_3D_flow_solver/FEM_SimVascular/.venv/lib/python3.13/site-packages/PIL/Image.py:3639: FileNotFoundError
+_ test_permanent_high_resolution_png_and_plot_source[04_single_step_dataflow.png-04_single_step_example.json] _
+
+figure = '04_single_step_dataflow.png', data = '04_single_step_example.json'
+
+    @pytest.mark.parametrize('figure,data',PAIRS)
+    def test_permanent_high_resolution_png_and_plot_source(figure,data):
+>       with Image.open(ROOT/'figures'/figure) as im:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+particle_3d/tests/particle1/test_particle1_review_artifacts.py:21: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+fp = PosixPath('/home/lzy/projects/ulm_particle_3d_particle0/particle_3d/reports/particle1/figures/04_single_step_dataflow.png')
+mode = 'r', formats = ['PNG', 'BMP', 'DIB', 'GIF', 'JPEG', 'PPM']
+
+    def open(
+        fp: StrOrBytesPath | IO[bytes],
+        mode: Literal["r"] = "r",
+        formats: list[str] | tuple[str, ...] | None = None,
+    ) -> ImageFile.ImageFile:
+        """
+        Opens and identifies the given image file.
+    
+        This is a lazy operation; this function identifies the file, but
+        the file remains open and the actual image data is not read from
+        the file until you try to process the data (or call the
+        :py:meth:`~PIL.Image.Image.load` method).  See
+        :py:func:`~PIL.Image.new`. See :ref:`file-handling`.
+    
+        :param fp: A filename (string), os.PathLike object or a file object.
+           The file object must implement ``file.read``,
+           ``file.seek``, and ``file.tell`` methods,
+           and be opened in binary mode. The file object will also seek to zero
+           before reading.
+        :param mode: The mode.  If given, this argument must be "r".
+        :param formats: A list or tuple of formats to attempt to load the file in.
+           This can be used to restrict the set of formats checked.
+           Pass ``None`` to try all supported formats. You can print the set of
+           available formats by running ``python3 -m PIL`` or using
+           the :py:func:`PIL.features.pilinfo` function.
+        :returns: An :py:class:`~PIL.Image.Image` object.
+        :exception FileNotFoundError: If the file cannot be found.
+        :exception PIL.UnidentifiedImageError: If the image cannot be opened and
+           identified.
+        :exception ValueError: If the ``mode`` is not "r", or if a ``StringIO``
+           instance is used for ``fp``.
+        :exception TypeError: If ``formats`` is not ``None``, a list or a tuple.
+        """
+    
+        if mode != "r":
+            msg = f"bad mode {repr(mode)}"  # type: ignore[unreachable]
+            raise ValueError(msg)
+        elif isinstance(fp, io.StringIO):
+            msg = (  # type: ignore[unreachable]
+                "StringIO cannot be used to open an image. "
+                "Binary data must be used instead."
+            )
+            raise ValueError(msg)
+    
+        if formats is None:
+            formats = ID
+        elif not isinstance(formats, (list, tuple)):
+            msg = "formats must be a list or tuple"  # type: ignore[unreachable]
+            raise TypeError(msg)
+    
+        exclusive_fp = False
+        filename: str | bytes = ""
+        if is_path(fp):
+            filename = os.fspath(fp)
+>           fp = builtins.open(filename, "rb")
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/lzy/projects/ulm_particle_3d_particle0/particle_3d/reports/particle1/figures/04_single_step_dataflow.png'
+
+../formal_3D_flow_solver/FEM_SimVascular/.venv/lib/python3.13/site-packages/PIL/Image.py:3639: FileNotFoundError
+_ test_permanent_high_resolution_png_and_plot_source[05_real_vessel_single_mb_trajectory.png-05_real_trajectory_dt2.csv] _
+
+figure = '05_real_vessel_single_mb_trajectory.png'
+data = '05_real_trajectory_dt2.csv'
+
+    @pytest.mark.parametrize('figure,data',PAIRS)
+    def test_permanent_high_resolution_png_and_plot_source(figure,data):
+>       with Image.open(ROOT/'figures'/figure) as im:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+particle_3d/tests/particle1/test_particle1_review_artifacts.py:21: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+fp = PosixPath('/home/lzy/projects/ulm_particle_3d_particle0/particle_3d/reports/particle1/figures/05_real_vessel_single_mb_trajectory.png')
+mode = 'r', formats = ['PNG', 'BMP', 'DIB', 'GIF', 'JPEG', 'PPM']
+
+    def open(
+        fp: StrOrBytesPath | IO[bytes],
+        mode: Literal["r"] = "r",
+        formats: list[str] | tuple[str, ...] | None = None,
+    ) -> ImageFile.ImageFile:
+        """
+        Opens and identifies the given image file.
+    
+        This is a lazy operation; this function identifies the file, but
+        the file remains open and the actual image data is not read from
+        the file until you try to process the data (or call the
+        :py:meth:`~PIL.Image.Image.load` method).  See
+        :py:func:`~PIL.Image.new`. See :ref:`file-handling`.
+    
+        :param fp: A filename (string), os.PathLike object or a file object.
+           The file object must implement ``file.read``,
+           ``file.seek``, and ``file.tell`` methods,
+           and be opened in binary mode. The file object will also seek to zero
+           before reading.
+        :param mode: The mode.  If given, this argument must be "r".
+        :param formats: A list or tuple of formats to attempt to load the file in.
+           This can be used to restrict the set of formats checked.
+           Pass ``None`` to try all supported formats. You can print the set of
+           available formats by running ``python3 -m PIL`` or using
+           the :py:func:`PIL.features.pilinfo` function.
+        :returns: An :py:class:`~PIL.Image.Image` object.
+        :exception FileNotFoundError: If the file cannot be found.
+        :exception PIL.UnidentifiedImageError: If the image cannot be opened and
+           identified.
+        :exception ValueError: If the ``mode`` is not "r", or if a ``StringIO``
+           instance is used for ``fp``.
+        :exception TypeError: If ``formats`` is not ``None``, a list or a tuple.
+        """
+    
+        if mode != "r":
+            msg = f"bad mode {repr(mode)}"  # type: ignore[unreachable]
+            raise ValueError(msg)
+        elif isinstance(fp, io.StringIO):
+            msg = (  # type: ignore[unreachable]
+                "StringIO cannot be used to open an image. "
+                "Binary data must be used instead."
+            )
+            raise ValueError(msg)
+    
+        if formats is None:
+            formats = ID
+        elif not isinstance(formats, (list, tuple)):
+            msg = "formats must be a list or tuple"  # type: ignore[unreachable]
+            raise TypeError(msg)
+    
+        exclusive_fp = False
+        filename: str | bytes = ""
+        if is_path(fp):
+            filename = os.fspath(fp)
+>           fp = builtins.open(filename, "rb")
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/lzy/projects/ulm_particle_3d_particle0/particle_3d/reports/particle1/figures/05_real_vessel_single_mb_trajectory.png'
+
+../formal_3D_flow_solver/FEM_SimVascular/.venv/lib/python3.13/site-packages/PIL/Image.py:3639: FileNotFoundError
+_ test_permanent_high_resolution_png_and_plot_source[06_real_vessel_single_mb_diagnostics.png-06_real_vessel_single_mb_diagnostics.csv] _
+
+figure = '06_real_vessel_single_mb_diagnostics.png'
+data = '06_real_vessel_single_mb_diagnostics.csv'
+
+    @pytest.mark.parametrize('figure,data',PAIRS)
+    def test_permanent_high_resolution_png_and_plot_source(figure,data):
+>       with Image.open(ROOT/'figures'/figure) as im:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+particle_3d/tests/particle1/test_particle1_review_artifacts.py:21: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+fp = PosixPath('/home/lzy/projects/ulm_particle_3d_particle0/particle_3d/reports/particle1/figures/06_real_vessel_single_mb_diagnostics.png')
+mode = 'r', formats = ['PNG', 'BMP', 'DIB', 'GIF', 'JPEG', 'PPM']
+
+    def open(
+        fp: StrOrBytesPath | IO[bytes],
+        mode: Literal["r"] = "r",
+        formats: list[str] | tuple[str, ...] | None = None,
+    ) -> ImageFile.ImageFile:
+        """
+        Opens and identifies the given image file.
+    
+        This is a lazy operation; this function identifies the file, but
+        the file remains open and the actual image data is not read from
+        the file until you try to process the data (or call the
+        :py:meth:`~PIL.Image.Image.load` method).  See
+        :py:func:`~PIL.Image.new`. See :ref:`file-handling`.
+    
+        :param fp: A filename (string), os.PathLike object or a file object.
+           The file object must implement ``file.read``,
+           ``file.seek``, and ``file.tell`` methods,
+           and be opened in binary mode. The file object will also seek to zero
+           before reading.
+        :param mode: The mode.  If given, this argument must be "r".
+        :param formats: A list or tuple of formats to attempt to load the file in.
+           This can be used to restrict the set of formats checked.
+           Pass ``None`` to try all supported formats. You can print the set of
+           available formats by running ``python3 -m PIL`` or using
+           the :py:func:`PIL.features.pilinfo` function.
+        :returns: An :py:class:`~PIL.Image.Image` object.
+        :exception FileNotFoundError: If the file cannot be found.
+        :exception PIL.UnidentifiedImageError: If the image cannot be opened and
+           identified.
+        :exception ValueError: If the ``mode`` is not "r", or if a ``StringIO``
+           instance is used for ``fp``.
+        :exception TypeError: If ``formats`` is not ``None``, a list or a tuple.
+        """
+    
+        if mode != "r":
+            msg = f"bad mode {repr(mode)}"  # type: ignore[unreachable]
+            raise ValueError(msg)
+        elif isinstance(fp, io.StringIO):
+            msg = (  # type: ignore[unreachable]
+                "StringIO cannot be used to open an image. "
+                "Binary data must be used instead."
+            )
+            raise ValueError(msg)
+    
+        if formats is None:
+            formats = ID
+        elif not isinstance(formats, (list, tuple)):
+            msg = "formats must be a list or tuple"  # type: ignore[unreachable]
+            raise TypeError(msg)
+    
+        exclusive_fp = False
+        filename: str | bytes = ""
+        if is_path(fp):
+            filename = os.fspath(fp)
+>           fp = builtins.open(filename, "rb")
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/lzy/projects/ulm_particle_3d_particle0/particle_3d/reports/particle1/figures/06_real_vessel_single_mb_diagnostics.png'
+
+../formal_3D_flow_solver/FEM_SimVascular/.venv/lib/python3.13/site-packages/PIL/Image.py:3639: FileNotFoundError
+_ test_permanent_high_resolution_png_and_plot_source[07_validation_timestep_comparison.png-07_validation_timestep_comparison.csv] _
+
+figure = '07_validation_timestep_comparison.png'
+data = '07_validation_timestep_comparison.csv'
+
+    @pytest.mark.parametrize('figure,data',PAIRS)
+    def test_permanent_high_resolution_png_and_plot_source(figure,data):
+>       with Image.open(ROOT/'figures'/figure) as im:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+particle_3d/tests/particle1/test_particle1_review_artifacts.py:21: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+fp = PosixPath('/home/lzy/projects/ulm_particle_3d_particle0/particle_3d/reports/particle1/figures/07_validation_timestep_comparison.png')
+mode = 'r', formats = ['PNG', 'BMP', 'DIB', 'GIF', 'JPEG', 'PPM']
+
+    def open(
+        fp: StrOrBytesPath | IO[bytes],
+        mode: Literal["r"] = "r",
+        formats: list[str] | tuple[str, ...] | None = None,
+    ) -> ImageFile.ImageFile:
+        """
+        Opens and identifies the given image file.
+    
+        This is a lazy operation; this function identifies the file, but
+        the file remains open and the actual image data is not read from
+        the file until you try to process the data (or call the
+        :py:meth:`~PIL.Image.Image.load` method).  See
+        :py:func:`~PIL.Image.new`. See :ref:`file-handling`.
+    
+        :param fp: A filename (string), os.PathLike object or a file object.
+           The file object must implement ``file.read``,
+           ``file.seek``, and ``file.tell`` methods,
+           and be opened in binary mode. The file object will also seek to zero
+           before reading.
+        :param mode: The mode.  If given, this argument must be "r".
+        :param formats: A list or tuple of formats to attempt to load the file in.
+           This can be used to restrict the set of formats checked.
+           Pass ``None`` to try all supported formats. You can print the set of
+           available formats by running ``python3 -m PIL`` or using
+           the :py:func:`PIL.features.pilinfo` function.
+        :returns: An :py:class:`~PIL.Image.Image` object.
+        :exception FileNotFoundError: If the file cannot be found.
+        :exception PIL.UnidentifiedImageError: If the image cannot be opened and
+           identified.
+        :exception ValueError: If the ``mode`` is not "r", or if a ``StringIO``
+           instance is used for ``fp``.
+        :exception TypeError: If ``formats`` is not ``None``, a list or a tuple.
+        """
+    
+        if mode != "r":
+            msg = f"bad mode {repr(mode)}"  # type: ignore[unreachable]
+            raise ValueError(msg)
+        elif isinstance(fp, io.StringIO):
+            msg = (  # type: ignore[unreachable]
+                "StringIO cannot be used to open an image. "
+                "Binary data must be used instead."
+            )
+            raise ValueError(msg)
+    
+        if formats is None:
+            formats = ID
+        elif not isinstance(formats, (list, tuple)):
+            msg = "formats must be a list or tuple"  # type: ignore[unreachable]
+            raise TypeError(msg)
+    
+        exclusive_fp = False
+        filename: str | bytes = ""
+        if is_path(fp):
+            filename = os.fspath(fp)
+>           fp = builtins.open(filename, "rb")
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/lzy/projects/ulm_particle_3d_particle0/particle_3d/reports/particle1/figures/07_validation_timestep_comparison.png'
+
+../formal_3D_flow_solver/FEM_SimVascular/.venv/lib/python3.13/site-packages/PIL/Image.py:3639: FileNotFoundError
+_____ test_all_steps_have_chinese_explanation_and_sample_metadata_binding ______
+
+    def test_all_steps_have_chinese_explanation_and_sample_metadata_binding():
+        from particle_3d.audit import sha256
+        for index in range(8):
+            paths=list(ROOT.glob(f'{index:02d}_*.md'))
+>           assert len(paths)==1 and '检查说明' in paths[0].read_text()
+E           assert (0 == 1)
+E            +  where 0 = len([])
+
+particle_3d/tests/particle1/test_particle1_review_artifacts.py:35: AssertionError
+=========================== short test summary info ============================
+FAILED particle_3d/tests/particle1/test_particle1_plot_generation.py::test_synthetic_plot_functions_rerun_without_real_fem
+FAILED particle_3d/tests/particle1/test_particle1_review_artifacts.py::test_permanent_high_resolution_png_and_plot_source[03_pure_rotation_validation.png-03_pure_rotation_validation.csv]
+FAILED particle_3d/tests/particle1/test_particle1_review_artifacts.py::test_permanent_high_resolution_png_and_plot_source[04_single_step_dataflow.png-04_single_step_example.json]
+FAILED particle_3d/tests/particle1/test_particle1_review_artifacts.py::test_permanent_high_resolution_png_and_plot_source[05_real_vessel_single_mb_trajectory.png-05_real_trajectory_dt2.csv]
+FAILED particle_3d/tests/particle1/test_particle1_review_artifacts.py::test_permanent_high_resolution_png_and_plot_source[06_real_vessel_single_mb_diagnostics.png-06_real_vessel_single_mb_diagnostics.csv]
+FAILED particle_3d/tests/particle1/test_particle1_review_artifacts.py::test_permanent_high_resolution_png_and_plot_source[07_validation_timestep_comparison.png-07_validation_timestep_comparison.csv]
+FAILED particle_3d/tests/particle1/test_particle1_review_artifacts.py::test_all_steps_have_chinese_explanation_and_sample_metadata_binding
+7 failed, 105 passed in 27.72s

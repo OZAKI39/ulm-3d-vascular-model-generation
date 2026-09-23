@@ -1,0 +1,30 @@
+.............................................................F.....      [100%]
+=================================== FAILURES ===================================
+_____________ test_real_wall_static_finite_shape_gap[FREE_OBLATE] ______________
+
+p3_repo = PosixPath('/home/lzy/projects/ulm_particle_3d_particle0')
+real_wall = <particle_3d.wall_geometry.WallGeometry object at 0x7f5dd3d78410>
+mode = 'FREE_OBLATE'
+
+    @pytest.mark.parametrize('mode',['SPHERE_MB','FREE_OBLATE','CAPILLARY_DEFORMED'])
+    def test_real_wall_static_finite_shape_gap(p3_repo,real_wall,mode):
+        rows=json.loads((p3_repo/'particle_3d/reports/particle3/data/08_real_wall_static.json').read_text())
+        chosen=[r for r in rows if r['shape_mode']==mode];assert len(chosen)==5
+        for row in chosen:
+            tri=real_wall.triangles[row['triangle_id']];np.testing.assert_array_equal(tri,row['triangle_m'])
+            patch=WallGeometry(tri[None]);g=row['geometry'];center=row['center_m']
+            shape=Sphere(center,g['radius_m']) if mode=='SPHERE_MB' else Ellipsoid(center,g['axes_m'],rotation_matrix(g['q'])) if mode=='FREE_OBLATE' else Capsule(center,g['axis'],g['R_cap_m'],g['L_cap_m'])
+            gap=wall_gap(shape,patch)
+            assert abs(gap.gap_m-row['analytic_patch_gap_m'])<=gap.roundoff_m
+            assert gap.gap_m>0
+>           assert abs(wall_gap(shape,real_wall).gap_m-row['full_wall_gap_m'])<=gap.roundoff_m
+E           AssertionError: assert 8.189667846813714e-08 <= np.float64(1.7979189167230008e-17)
+E            +  where 8.189667846813714e-08 = abs((-8.012288361505278e-07 - -8.831255146186649e-07))
+E            +    where -8.012288361505278e-07 = WallGapResult(gap_m=-8.012288361505278e-07, state='PENETRATING', inside_lumen=None, wall_triangle_id=43523, wall_featu..._m=8.012288361505278e-07, shape_mode='FREE_OBLATE', candidate_count=1840, roundoff_m=np.float64(2.009411463123824e-17)).gap_m
+E            +      where WallGapResult(gap_m=-8.012288361505278e-07, state='PENETRATING', inside_lumen=None, wall_triangle_id=43523, wall_featu..._m=8.012288361505278e-07, shape_mode='FREE_OBLATE', candidate_count=1840, roundoff_m=np.float64(2.009411463123824e-17)) = wall_gap(Ellipsoid(center_m=array([1.02971082e-04, 5.73110463e-05, 1.58088617e-04]), axes_m=array([4.37062714e-06, 4.37062714e-...,\n       [ 0.2654668 ,  0.88363586, -0.3856359 ],\n       [-0.8797687 ,  0.3856359 ,  0.27801438]]), mode='FREE_OBLATE'), <particle_3d.wall_geometry.WallGeometry object at 0x7f5dd3d78410>)
+E            +  and   np.float64(1.7979189167230008e-17) = WallGapResult(gap_m=1.6383885150644302e-07, state='SEPARATED', inside_lumen=None, wall_triangle_id=0, wall_feature='FA...e_m=1.6383885150644302e-07, shape_mode='FREE_OBLATE', candidate_count=1, roundoff_m=np.float64(1.7979189167230008e-17)).roundoff_m
+
+particle_3d/tests/particle3/test_real_wall_controlled.py:21: AssertionError
+=========================== short test summary info ============================
+FAILED particle_3d/tests/particle3/test_real_wall_controlled.py::test_real_wall_static_finite_shape_gap[FREE_OBLATE]
+1 failed, 66 passed in 10.25s
