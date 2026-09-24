@@ -1,0 +1,55 @@
+{
+  "status": "PASS",
+  "musubi_source_revision": "81f8c4f13772f6d4af31f335e1e3f99b02726e25",
+  "binary_sha256": "e80162fb7e0e657d2e41aafc40a1b13b32204ff34692e24b7ab02c51aa97c588",
+  "pressure_formula": "p_phy=rho_lattice*cs2*rho0*dx^2/dt^2",
+  "velocity_formula": "u_phy=u_lattice*dx/dt",
+  "adaptive_target_formula": "targetMassFlow/rho0*dt/dx^3",
+  "adaptive_target_semantics": "population mass flux normalized by rho0; it equals the requested physical volume flux when reference rho_lattice is one",
+  "old_unit_density_pressure_pa": 23622.320127999996,
+  "old_reference_pressure_pa": 23622.320128,
+  "new_unit_density_pressure_pa": 3387510.7199999993,
+  "new_to_old_pressure_ratio": 143.40296387672424,
+  "old_to_new_dt_ratio_squared": 143.40296387672424,
+  "rho_lattice_if_old_reference_used_with_tau1_dt": 0.006973356567857593,
+  "source_evidence": {
+    "conversion_factors": {
+      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\mus\\source\\mus_physics_module.f90",
+      "sha256": "f87c621550f488f5dce7e93dcb506d88737e60a56ad41ce2b21d62ce44c1f408",
+      "token_lines": {
+        "me%fac( iLevel )%vel = me%dxLvl( iLevel )/me%dtLvl( iLevel )": 526,
+        "me%fac( iLevel )%press = me%rho0 * me%dxLvl( iLevel )**2": 540,
+        "/ me%dtLvl( iLevel )**2": 535
+      }
+    },
+    "pressure_boundary_and_controller": {
+      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\mus\\source\\bc\\mus_bc_fluid_module.fpp",
+      "sha256": "4385b30cc804791fb0e50e73ab4e15d92a014f20eaaa7a71c8746a6aa08f6e29",
+      "token_lines": {
+        "rho = rho / physics%fac( iLevel )%press * cs2inv": 850,
+        "targetFlux = targetMassFlow / physics%rho0 * physics%dtLvl(iLevel)": 1013,
+        "/ physics%dxLvl(iLevel)**3": 1014,
+        "pressure = rhoBoundary * physics%fac(iLevel)%press * cs2": 1057
+      }
+    },
+    "physical_pressure_output": {
+      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\mus\\source\\derived\\mus_derQuanPhysics_module.fpp",
+      "sha256": "3dfb60edef50f23c2979dbc1f772ee85620c230265ec9042fb19179222ccab75",
+      "token_lines": {
+        "subroutine derivePressurePhy_fromIndex": 1767,
+        "res = res * fPtr%solverData%physics%fac( ilevel )%press": 1831
+      }
+    }
+  },
+  "checks": {
+    "old_reference_equals_old_unit_density_pressure": true,
+    "new_pressure_scales_as_dt_inverse_squared": true,
+    "new_reference_density_is_one": true,
+    "old_reference_predicts_low_tau1_density": true,
+    "adaptive_target_is_mass_normalized_volume_flux": true,
+    "velocity_conversion_is_dx_over_dt": true
+  },
+  "production_pipeline_modified": false,
+  "seeder_calls": 0,
+  "musubi_calls": 0
+}

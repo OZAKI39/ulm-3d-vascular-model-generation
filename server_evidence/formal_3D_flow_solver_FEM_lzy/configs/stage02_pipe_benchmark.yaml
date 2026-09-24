@@ -1,0 +1,41 @@
+schema_version: 1
+purpose: SYNTHETIC NUMERICAL BENCHMARK
+experimental_condition: false
+units: SI
+geometry:
+  kind: analytic_circular_pipe
+  origin_m: [0.0, 0.0, 0.0]
+  axis: [0.0, 0.0, 1.0]
+  radius_m: 5.0e-6
+  length_m: 50.0e-6
+  coordinate_degree: 2
+physics:
+  dynamic_viscosity_pa_s: 3.0e-3
+  density_kg_m3: 1050.0
+  target_inflow_m3_s: 1.0e-14
+profiles:
+  pipe_coarse: {target_size_m: 1.5e-6}
+  pipe_medium: {target_size_m: 1.0e-6}
+  pipe_fine: {target_size_m: 0.7e-6}
+boundary_tags: {WALL: 1, OUTLET: 2, INLET: 4}
+cell_tags: {FLUID: 100}
+tag_contract: synthetic pipe only; NOT Stage 1 vascular tag contract
+formal_boundary: natural_traction
+analytic_reference: poiseuille_traction_reference
+solver:
+  ksp_type: preonly
+  pc_type: lu
+  factor_solver: mumps
+  gpu_used: false
+  mpi_ranks_initial: 1
+  mpi_ranks_smoke: 2
+  quadrature_degree: 6
+gates:
+  inlet_flux_relative: 1.0e-10
+  mass_closure_relative: 1.0e-10
+  analytic_error_policy: establish after observed three-mesh errors and geometry order analysis; no loose 10/20 percent acceptance
+limits:
+  maximum_tetrahedra: 200000
+  maximum_total_dofs: 1500000
+  maximum_solve_wall_time_s: 900
+  maximum_process_rss_gib: 32

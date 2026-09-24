@@ -1,0 +1,130 @@
+schema_version: 1
+
+paths:
+  cfd_preprocess_run: outputs/cfd_preprocess/global_to_roi_anchor003274_20260825_183628
+  output_root: outputs/cfd_surface_prepare
+
+backend:
+  method: vmtk_flowextensions
+
+vmtk:
+  environment_python: D:/anaconda3/envs/vmtk-env/python.exe
+  official_repository: ../external/vmtk
+  interpolation_mode: thinplatespline
+  preserve_cross_section_shape: false
+  extension_mode: centerlinedirection
+  sigma: 1.0
+  transition_ratio: 0.5
+  adaptive_extension_length: true
+  extension_ratio: 10.0
+  adaptive_extension_radius: true
+  adaptive_boundary_points: true
+  remesh_after_extension: true
+
+geometry:
+  input_unit: um
+  preserve_original_surface: true
+  create_meter_copy: true
+  triangulate: true
+  modify_only_local_boundary_neighborhoods: true
+  allow_global_reconstruction: false
+
+local_cut:
+  enabled: true
+  plane_source: cfd_preprocess_boundary_geometry
+  local_radial_radius_factor: 3.0
+  local_axial_back_radius_factor: 2.5
+  local_axial_forward_radius_factor: 3.0
+  require_single_cut_loop: true
+  fail_if_other_vessel_intersects_local_surgery_region: true
+
+extension:
+# LEGACY_CUSTOM_REFERENCE only. The formal backend never reads these settings.
+  enabled: true
+  use_existing_extension_plan: true
+  cross_section_mode: extrude_actual_cut_loop
+  cap_distal_end: true
+
+extension_mesh:
+# LEGACY_CUSTOM_REFERENCE only. The formal backend never calls these algorithms.
+  refinement:
+    enabled: true
+    target_edge_length_source: local_original_mesh
+    local_mesh_sampling_radius_factor: 2.0
+    target_axial_spacing_factor: 1.0
+    minimum_ring_count: 6
+    maximum_ring_count: 128
+    require_intermediate_rings: true
+  transition:
+    enabled: true
+    transition_length_diameters: 1.0
+    loop_regularization:
+      enabled: true
+      iterations: 8
+      relaxation: 0.20
+      preserve_area: true
+      preserve_centroid: true
+      preserve_plane: true
+  smoothing:
+    enabled: true
+    method: taubin_constrained
+    iterations: 6
+    lambda: 0.30
+    mu: -0.31
+    lock_proximal_ring: true
+    lock_distal_ring: true
+    lock_distal_cap: true
+    lock_original_core: true
+    transition_only: false
+  optimization:
+    enabled: true
+    improve_triangle_diagonals: true
+    allow_edge_collapse: false
+    allow_edge_split: true
+    allow_edge_flip: true
+
+mesh_quality:
+  enabled: true
+  minimum_triangle_angle_deg: 20.0
+  maximum_aspect_ratio: 5.0
+  maximum_edge_length_to_local_target_ratio: 1.8
+  maximum_neighbor_area_ratio: 4.0
+  maximum_interface_edge_length_ratio: 2.0
+  maximum_bad_triangle_fraction: 0.01
+
+manual_review:
+  previous_surface_run: outputs/cfd_surface_prepare/cfd_surface_refined_anchor003274_20260826_125703
+  generate_before_after_figures: true
+
+pressure_correction:
+  enabled: true
+  outlet_method: geometry_cross_sections_20_station_poiseuille
+  inlet:
+    preserve_flow_rate: true
+  outlet:
+    preserve_original_plane_pressure_target: true
+  allow_negative_gauge_pressure: true
+
+qc:
+  require_single_component: true
+  require_watertight: true
+  require_zero_boundary_edges: true
+  require_zero_nonmanifold_edges: true
+  require_zero_self_intersections: true
+  require_zero_degenerate_triangles: true
+  expected_boundary_count: 4
+  maximum_cap_planarity_error_um: 1.0e-5
+  minimum_normal_dot: 0.999
+  maximum_extension_length_error_um: 1.0e-4
+  maximum_core_surface_distance_um: 0.15
+  maximum_core_surface_p95_distance_um: 0.05
+  maximum_equivalent_radius_relative_error: 0.08
+
+runtime:
+  verbose: true
+
+outputs:
+  save_stl: true
+  save_vtp: true
+  save_boundary_stl: true
+  save_figures: true

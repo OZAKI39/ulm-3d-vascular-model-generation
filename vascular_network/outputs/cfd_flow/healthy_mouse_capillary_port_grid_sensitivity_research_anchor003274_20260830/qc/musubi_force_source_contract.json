@@ -1,0 +1,52 @@
+{
+  "status": "SOURCE_CONTRACT_PROVEN",
+  "musubi_outer_sha": "4e8b277b66226277171ef93bf054d21270812793",
+  "musubi_source_sha": "81f8c4f13772f6d4af31f335e1e3f99b02726e25",
+  "binary_sha256": "e80162fb7e0e657d2e41aafc40a1b13b32204ff34692e24b7ab02c51aa97c588",
+  "glob_source_force_physical_quantity": "body force per unit volume / force density",
+  "si_unit": "N/m^3",
+  "current_benchmark_value_is_contract_correct": true,
+  "current_benchmark_value_interpretation": "Poiseuille pressure gradient 8*rho*nu*U/R^2 as force density",
+  "conversion": {
+    "physical_force_density_n_m3": [
+      0.0,
+      0.0,
+      3884423.643263649
+    ],
+    "body_force_conversion_factor_n_m3_per_lattice": 1775989657302.6729,
+    "lattice_force_density": [
+      0.0,
+      0.0,
+      2.187188212099845e-06
+    ],
+    "formula": "F_lat = F_phy * dt^2 / (rho0 * dx)"
+  },
+  "source_evidence": [
+    {
+      "file": "source/mus_physics_module.f90",
+      "lines": "525-538",
+      "fact": "fac.body_force=rho0*dx/dt^2"
+    },
+    {
+      "file": "source/derived/mus_derQuan_module.fpp",
+      "lines": "3112-3121",
+      "fact": "force is body force per unit volume and velocity uses F/2"
+    },
+    {
+      "file": "source/derived/mus_derQuan_module.fpp",
+      "lines": "3182-3193",
+      "fact": "configured physical force divided by fac.body_force"
+    },
+    {
+      "file": "source/derived/mus_derQuan_module.fpp",
+      "lines": "3216-3237",
+      "fact": "Guo second-order insertion uses 1-omega/2"
+    },
+    {
+      "file": "source/derived/mus_auxFieldVar_module.fpp",
+      "lines": "1159-1211",
+      "fact": "incompressible velocity gets half lattice force after same conversion"
+    }
+  ],
+  "history_evidence_directory": "musubi_wall_force_diagnostics/source_trace"
+}

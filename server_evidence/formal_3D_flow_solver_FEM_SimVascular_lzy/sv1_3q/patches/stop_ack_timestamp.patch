@@ -1,0 +1,26 @@
+--- a/Code/Source/solver/main.cpp
++++ b/Code/Source/solver/main.cpp
+@@ -35,6 +35,7 @@
+ #include <iostream>
+ #include <cmath>
+ #include <fstream>
++#include <chrono>
+ 
+ //------------------------
+ // add_eq_linear_algebra
+@@ -454,6 +455,15 @@
+     cm.bcast(cm_mod, &stopTS);
+ 
+     const bool reached_stop_time_step = cTS >= stopTS;
++    // Stage Q: timestamp the existing native acknowledgement; stop logic is unchanged.
++    if (reached_stop_time_step && stopTS < nTS && cm.mas(cm_mod)) {
++      const double epoch = std::chrono::duration<double>(
++          std::chrono::system_clock::now().time_since_epoch()).count();
++      std::ofstream stamp("sv13q_stop_ack.json");
++      stamp << std::setprecision(17) << "{\"solver_ack_timestamp\":" << epoch
++            << ",\"actual_stop_step\":" << cTS << "}\n";
++    }
++
+     const bool is_restart_output_step = cTS % com_mod.stFileIncr == 0;
+ 
+     #ifdef debug_iterate_solution

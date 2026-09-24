@@ -1,0 +1,94 @@
+schema_version: 1
+
+# Relative paths are resolved from the ulm_3D_vascular project directory.
+paths:
+  sampling_run: outputs/sampling/20260825_133201_radius_plus_structure_k5
+  rodent_run: null
+  model_run: null
+  model_output_root: outputs/model_generate
+  output_root: outputs/cfd_preprocess
+
+# Exactly one selector must be non-null.
+selection:
+  roi_anchor: 3274
+  roi_id: null
+
+units:
+  coordinate_unit: um
+  swc_radius_unit: um
+  pressure_unit: Pa
+  flow_rate_unit: m3/s
+
+simulation_direction:
+  mode: swc_parent_to_current
+  measured_flow_direction: false
+
+fluid:
+  model: newtonian
+  density_kg_m3: 1056.0
+  kinematic_viscosity_m2_s: 3.27e-6
+
+global_1d:
+  enabled: true
+  network:
+    use_source_swc_edges: true
+  inlet:
+    root_mode: single_structural_root
+    boundary_type: mean_velocity
+    mean_velocity_mm_s: 0.7
+    flow_rate_m3_s: null
+  outlets:
+    leaf_pressure_pa: 0.0
+  resistance:
+    radius_interpolation: linear
+    integration: exact_linear_radius
+  solver:
+    backend: scipy_sparse
+    relative_mass_tolerance: 1.0e-8
+    relative_node_residual_tolerance: 1.0e-8
+    reverse_flow_tolerance_m3_s: 1.0e-20
+
+roi_readiness:
+  minimum_cut_ports: 2
+  require_zero_true_terminals: true
+  required_assumed_inlet_count: 1
+  minimum_assumed_outlet_count: 1
+  require_connected_roi: true
+  require_cycle_rank_zero: true
+
+boundary_transfer:
+  inlet:
+    type: flow_rate_1d
+    velocity_profile: parabolic
+  outlet:
+    type: direct_1d_pressure
+  pressure_reference:
+    type: global_structural_leaves_zero_gauge
+  maximum_cut_position_error_um: 1.0e-5
+  maximum_cut_radius_relative_error: 1.0e-6
+  relative_port_mass_tolerance: 1.0e-8
+
+port_geometry:
+  modify_surface: false
+  plane:
+    normal_source: local_centerline_tangent
+  extension_plan:
+    enabled: true
+    inlet_length_diameters: 5.0
+    outlet_length_diameters: 5.0
+
+physics_baseline:
+  steady: true
+  incompressible: true
+  rigid_wall: true
+  no_slip_wall: true
+  turbulence_model: none
+  pulsatility: false
+
+runtime:
+  verbose: true
+
+outputs:
+  save_global_vtp: true
+  save_port_vtp: true
+  save_figures: true

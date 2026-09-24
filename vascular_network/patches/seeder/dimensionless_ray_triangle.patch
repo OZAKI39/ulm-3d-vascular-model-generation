@@ -1,0 +1,126 @@
+diff --git a/source/shapes/tem_line_module.fpp b/source/shapes/tem_line_module.fpp
+index 641032e..b77fe3a 100644
+--- a/source/shapes/tem_line_module.fpp
++++ b/source/shapes/tem_line_module.fpp
+@@ -196,77 +196,56 @@ contains
+     type( tem_point_type), optional, intent(out) :: intersect_p
+     logical :: isIntersect
+     ! ---------------------------------------------------------------------------!
+-    real(kind=rk) :: u(3), v(3), n(3)  ! triangle vectors and normal vector
+-    real(kind=rk) :: dir(3), w0(3), w(3)    ! ray vectors
+-    real(kind=rk) :: r, a, b       ! params to calc ray-plane intersect
+-    real(kind=rk) :: uu, uv, vv, wu, wv, D
+-    real(kind=rk) :: s, t
+-    real(kind=rk) :: temp_p(3)
++    real(kind=rk) :: vertex0(3), edge1(3), edge2(3)
++    real(kind=rk) :: direction(3), pvec(3), tvec(3), qvec(3)
++    real(kind=rk) :: determinant, inverse_determinant
++    real(kind=rk) :: barycentric_u, barycentric_v, ray_fraction
++    real(kind=rk) :: local_scale, edge_norm_product, direction_norm
++    real(kind=rk) :: dimensionless_tolerance
+     ! ---------------------------------------------------------------------------!
+     isIntersect = .false. ! set not intersect as default
+ 
+-    ! get triangle edge vectors u & v, and plane normal n
+-    u(:) = triangle%nodes(:,2) - triangle%nodes(:,1)
+-    v(:) = triangle%nodes(:,3) - triangle%nodes(:,1)
+-    n = cross_product3D( u, v )
+-
+-    ! triangle is degenerate
+-    ! do not deal with this case
+-    if (all(n .feq. 0._rk)) return
+-
+-    dir = line%vec   ! ray direction vector
+-    w0 = line%origin - triangle%nodes(:,1)
+-    a = -dot_product( n, w0);
+-    b =  dot_product( n, dir);
+-
+-    ! if ray parallel to triangle plane, treat it as no intersecting
+-    if (abs(b) < eps .and. abs(a) > tiny(a)) return
+-!    {   if (a == 0.0_rk)         ! ray lies in triangle plane
+-!          return 2;
+-!        else return 0;             ! ray disjoint from plane
+-!    }
+-
+-    if (abs(b) < eps) then
+-      ! origin is very close to triangle plane, but parallel.
+-      ! Just use the origin itself as point to check.
+-      r = 0.0_rk
+-    else
+-      ! get intersect point of ray with triangle plane
+-      r = a / b
+-      if (r < 0._rk ) then     ! ray goes away from triangle
+-        return
+-      endif
+-    end if
+-    ! for a segment, also test if (r > 1.0) => no intersect
+-
+-    ! intersect point of ray and plane
+-    temp_p = line%origin + r * dir
+-
+-    ! is I inside T?
+-    uu = dot_product(u,u)
+-    uv = dot_product(u,v)
+-    vv = dot_product(v,v)
+-    w = temp_p - triangle%nodes(:,1)
+-    wu = dot_product(w,u)
+-    wv = dot_product(w,v)
+-    D = uv * uv - uu * vv
+-
+-    ! get and test parametric coords
+-    s = (uv * wv - vv * wu) / D
+-    ! point is outside triangle
+-    if (s < 0._rk-eps .or. s > 1._rk+eps) then
+-      return
+-    endif
+-
+-    t = (uv * wu - uu * wv) / D
+-    ! point is outside triangle
+-    if (t < 0._rk-eps .or. (s + t) > 1._rk+eps) then
+-      return
+-    endif
++    ! Express both ray and triangle in link-local, dimensionless coordinates.
++    ! The ray parameter therefore remains the fraction along the lattice link.
++    local_scale = maxval(abs(line%vec))
++    if (local_scale <= 0._rk) return
++
++    vertex0 = (triangle%nodes(:,1) - line%origin) / local_scale
++    edge1 = (triangle%nodes(:,2) - triangle%nodes(:,1)) / local_scale
++    edge2 = (triangle%nodes(:,3) - triangle%nodes(:,1)) / local_scale
++    direction = line%vec / local_scale
++
++    edge_norm_product = sqrt(dot_product(edge1, edge1)) &
++      &               * sqrt(dot_product(edge2, edge2))
++    direction_norm = sqrt(dot_product(direction, direction))
++    if (edge_norm_product <= tiny(1._rk)) return
++    if (direction_norm <= tiny(1._rk)) return
++
++    dimensionless_tolerance = 64._rk * epsilon(1._rk)
++    pvec = cross_product3D(direction, edge2)
++    determinant = dot_product(edge1, pvec)
++    if (abs(determinant) <= dimensionless_tolerance &
++      & * edge_norm_product * direction_norm) return
++
++    inverse_determinant = 1._rk / determinant
++    tvec = -vertex0
++    barycentric_u = dot_product(tvec, pvec) * inverse_determinant
++    if (barycentric_u < -dimensionless_tolerance .or. &
++      & barycentric_u > 1._rk + dimensionless_tolerance) return
++
++    qvec = cross_product3D(tvec, edge1)
++    barycentric_v = dot_product(direction, qvec) * inverse_determinant
++    if (barycentric_v < -dimensionless_tolerance .or. &
++      & barycentric_u + barycentric_v &
++      & > 1._rk + dimensionless_tolerance) return
++
++    ray_fraction = dot_product(edge2, qvec) * inverse_determinant
++    if (ray_fraction < -dimensionless_tolerance) return
++    ray_fraction = max(ray_fraction, 0._rk)
+ 
+     isIntersect = .true. ! point is inside triangle
+     if( present( intersect_p ) ) then
+-      intersect_p%coord = temp_p
++      intersect_p%coord = line%origin + ray_fraction * line%vec
+     endif
+ 
+   end function intersect_RayTriangle

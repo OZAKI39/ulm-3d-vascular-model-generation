@@ -1,0 +1,56 @@
+{
+  "status": "PASS",
+  "scientific_status": "CFD_FLOW_FINE_ADAPTIVE_TARGET_ROOT_CAUSE_CONFIRMED",
+  "upstream_parent_head": "4e8b277b66226277171ef93bf054d21270812793",
+  "mus_submodule_head": "81f8c4f13772f6d4af31f335e1e3f99b02726e25",
+  "tem_submodule_head": "9899d1376992c4fafc8a343d2b4ccef81de670d1",
+  "source_contract": {
+    "globBC_nElems_total_semantics": {
+      "source": "mus/source/mus_construction_module.fpp::countnBnds",
+      "meaning": "MPI_SUM of the initial per-rank boundary-element population over all levels for one boundary label",
+      "ownership": "local partition boundary-property elements; MPI reduction supplies the global population",
+      "ghosts": "not a local-plus-ghost controller list",
+      "filter_timing": "computed before remove_solid_in_bc and not recomputed afterward",
+      "fine_value": 376,
+      "guaranteed_equal_to_post_filter_sum_local_nElems": false
+    },
+    "local_nElems_semantics": {
+      "sources": [
+        "mus/source/mus_construction_module.fpp::countnBnds",
+        "mus/source/mus_field_module.f90::remove_solid_in_bc"
+      ],
+      "meaning": "rank-local boundary element list length for the current level",
+      "post_filter_update": "remove_solid_in_bc rewrites nElems with nValid after removing prp_solid entries",
+      "fine_initial_per_rank": [0, 0, 376, 0],
+      "fine_active_per_rank": [0, 0, 375, 0]
+    },
+    "pntIndex_semantics": {
+      "registration_timing": "boundary spacetime indices are registered after the boundary list is filtered",
+      "constant_scalar_shape": "global constant supplies one evaluation entry per requested active element",
+      "zero": "unregistered/invalid sentinel and not valid for an active sample",
+      "negative": "invalid sentinel and not valid for an active sample",
+      "duplicates": "positive duplicate registrations are permitted; each active boundary element still owns one sample slot",
+      "fine_observation": "375 positive, 375 unique, zero non-positive, zero duplicates"
+    },
+    "get_valOfIndex_invalid_index_semantics": {
+      "portable_contract": "provider-dependent and not a defined zero-fill operation",
+      "constant_provider_detail": "the constant provider fills requested results with its constant, but callers must still provide the registered active population",
+      "fix_policy": "fail before evaluation on a non-positive point index; never silently filter samples"
+    },
+    "mpi_ownership_semantics": {
+      "numerator": "MPI_SUM of samples for the current post-filter rank-local active lists",
+      "correct_denominator": "MPI_SUM of those same post-filter rank-local active counts",
+      "observed_cross_rank_duplicate_elements": false,
+      "fine_active_distribution": [0, 0, 375, 0]
+    },
+    "pressure_boundary_active_set_semantics": {
+      "source": "mus/source/bc/mus_bc_fluid_module.fpp::pressure_eq_velocity and pressure_eq_reconstruct",
+      "elements": "exactly globBC%nElems(iLevel), i.e. the post-filter active local list",
+      "links": "only true D3Q19 bitmask entries are reconstructed and enter adaptive alpha/beta",
+      "fine_active_elements": 375,
+      "fine_zero_bitmask_elements": 0,
+      "fine_active_links": 1564
+    }
+  },
+  "conclusion": "The old numerator and pressure reconstruction used the 375-element post-filter population while the denominator used the stale 376-element pre-filter population."
+}

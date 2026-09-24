@@ -1,0 +1,36 @@
+-- Fresh/resumable repaired Tau1 coarse grid member.
+simulation_name = 'tau1_reference_scaled_coarse'
+printRuntimeInfo = true
+timing_file = 'tracking/timing.res'
+mesh = '/mnt/e/ULM/hatimb-particle_flow_simulator/ulm_3D_vascular/outputs/cfd_flow/healthy_mouse_capillary_tau1_reference_scaled_grid_convergence_anchor003274_20260901/coarse/seeder/mesh/'
+scaling = 'diffusive'
+logging = {level=5}
+maximum_iterations = 354296
+dx = 2.6e-07
+dt = 3.4454638124362897e-09
+rho0_phy = 1056
+nu_phy = 3.27e-06
+bulk_viscosity_phy = 2.1799999999999999e-06
+pressure_reference_phy = 2004444.213017751
+function outlet_01_pressure(x,y,z,t) return 2004458.7579958523 end
+function outlet_02_pressure(x,y,z,t) return 2004576.4175669742 end
+function outlet_03_pressure(x,y,z,t) return 2004430.5123910776 end
+physics = {dt=dt, rho0=rho0_phy}
+identify = {label='ROI003274_tau1', kind='fluid', layout='d3q19', relaxation='bgk'}
+fluid = {kinematic_viscosity=nu_phy, bulk_viscosity=bulk_viscosity_phy}
+initial_condition = {pressure=pressure_reference_phy, velocityX=0.0, velocityY=0.0, velocityZ=0.0}
+boundary_condition = {
+  {label='wall', kind='wall_libb'},
+  {label='inlet', kind='adaptive_flux_pressure', mass_flowrate=2.8901803804796421e-12},
+  {label='outlet_01', kind='pressure_eq', pressure=outlet_01_pressure},
+  {label='outlet_02', kind='pressure_eq', pressure=outlet_02_pressure},
+  {label='outlet_03', kind='pressure_eq', pressure=outlet_03_pressure}
+}
+sim_control = {
+  time_control={max={iter=maximum_iterations}, interval={iter=708}},
+  abort_criteria={stop_file='/home/lzy/u3da/tau1_reference_scaled_cbf_20260901/coarse/stop'}
+}
+restart = {read='/home/lzy/u3da/tau1_reference_scaled_cbf_20260901/coarse/restart/tau1_reference_scaled_coarse_header_354295.lua', write='/home/lzy/u3da/tau1_reference_scaled_cbf_20260901/coarse/full_referee_from_0354295/restart/', timeformat={use_iter=true},
+  time_control={min={iter=354296}, max={iter=maximum_iterations},
+    interval={iter=1}}
+}

@@ -1,0 +1,374 @@
+{
+  "status": "PASS",
+  "revisions": {
+    "seeder": {
+      "expected": "667109df6fafdcb39f4409e3f5d90f04d75cd33c",
+      "actual": "667109df6fafdcb39f4409e3f5d90f04d75cd33c",
+      "match": true
+    },
+    "musubi_worktree": {
+      "expected": "4e8b277b66226277171ef93bf054d21270812793",
+      "actual": "4e8b277b66226277171ef93bf054d21270812793",
+      "match": true
+    },
+    "musubi_scheme": {
+      "expected": "81f8c4f13772f6d4af31f335e1e3f99b02726e25",
+      "actual": "81f8c4f13772f6d4af31f335e1e3f99b02726e25",
+      "match": true
+    },
+    "treelm": {
+      "expected": "9899d1376992c4fafc8a343d2b4ccef81de670d1",
+      "actual": "9899d1376992c4fafc8a343d2b4ccef81de670d1",
+      "match": true
+    }
+  },
+  "contract": {
+    "qval_lua": "hasQVal is a logical vector indexed by bnd.lua boundary-ID order; the has-qVal property bit and nElems are declared in header.lua",
+    "qval_lsb_dtype": "IEEE-754 binary64 / Fortran real(kind=rk)",
+    "qval_lsb_numpy_dtype": "<f8",
+    "endian": "little-endian because filename suffix is .lsb",
+    "n_elems": "header.lua property label='has qVal' nElems",
+    "n_sides": "bnd.lua nSides; current TreElm qQQQ=26",
+    "record_layout": "element-major records; each row is qVal(1:nSides) in qOffset order",
+    "row_element_class": "ascending elemlist order restricted to property bit prp_hasQVal=8",
+    "direction_names": [
+      "W",
+      "S",
+      "B",
+      "E",
+      "N",
+      "T",
+      "BS",
+      "TS",
+      "BN",
+      "TN",
+      "BW",
+      "BE",
+      "TW",
+      "TE",
+      "SW",
+      "NW",
+      "SE",
+      "NE",
+      "BSW",
+      "BSE",
+      "BNW",
+      "BNE",
+      "TSW",
+      "TSE",
+      "TNW",
+      "TNE"
+    ],
+    "direction_offsets": [
+      [
+        -1,
+        0,
+        0
+      ],
+      [
+        0,
+        -1,
+        0
+      ],
+      [
+        0,
+        0,
+        -1
+      ],
+      [
+        1,
+        0,
+        0
+      ],
+      [
+        0,
+        1,
+        0
+      ],
+      [
+        0,
+        0,
+        1
+      ],
+      [
+        0,
+        -1,
+        -1
+      ],
+      [
+        0,
+        -1,
+        1
+      ],
+      [
+        0,
+        1,
+        -1
+      ],
+      [
+        0,
+        1,
+        1
+      ],
+      [
+        -1,
+        0,
+        -1
+      ],
+      [
+        1,
+        0,
+        -1
+      ],
+      [
+        -1,
+        0,
+        1
+      ],
+      [
+        1,
+        0,
+        1
+      ],
+      [
+        -1,
+        -1,
+        0
+      ],
+      [
+        -1,
+        1,
+        0
+      ],
+      [
+        1,
+        -1,
+        0
+      ],
+      [
+        1,
+        1,
+        0
+      ],
+      [
+        -1,
+        -1,
+        -1
+      ],
+      [
+        1,
+        -1,
+        -1
+      ],
+      [
+        -1,
+        1,
+        -1
+      ],
+      [
+        1,
+        1,
+        -1
+      ],
+      [
+        -1,
+        -1,
+        1
+      ],
+      [
+        1,
+        -1,
+        1
+      ],
+      [
+        -1,
+        1,
+        1
+      ],
+      [
+        1,
+        1,
+        1
+      ]
+    ],
+    "d3q19_mapping": "Musubi stencil%map selects TreElm sides; pinned D3Q19 directions equal the first 18 TreElm qOffset rows",
+    "boundary_association": "Musubi iterates ascending has-boundary elements and increments the qVal row only when the same element carries prp_hasQVal",
+    "sentinels": {
+      "-1.0": "no ray/geometry intersection",
+      "0.5": "unknown-boundary halfway fallback",
+      "1.0": "non-flooded-neighbor high-order-wall truncation fallback"
+    },
+    "flooded_semantics": "failed or beyond-link q on a flooded neighbor clears BCID and returns to fluid; on a non-flooded neighbor it keeps a wall with q=1"
+  },
+  "d3q19_direction_mapping_pass": true,
+  "sources": {
+    "writer": {
+      "source_file": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-pinned\\seeder_official\\sdr\\source\\sdr_proto2treelm_module.f90",
+      "routine": "sdr_dump_treelmesh",
+      "commit": "667109df6fafdcb39f4409e3f5d90f04d75cd33c",
+      "sha256": "4b109abddf10fc8e11ebd57778e3ffb91d7595a04701e833adc27a9607aefad1",
+      "evidence": [
+        {
+          "token": "property(tem_global%nProperties)%bitpos = prp_hasQVal",
+          "line": 1118
+        },
+        {
+          "token": "property(tem_global%nProperties)%nElems = temData%qVal(1)%nVals",
+          "line": 1120
+        },
+        {
+          "token": "do iElem=1,temData%qVal(1)%nVals",
+          "line": 1145
+        },
+        {
+          "token": "do iDir=1,qQQQ",
+          "line": 193
+        },
+        {
+          "token": "write(distunit, rec=iElem) qVal",
+          "line": 1149
+        }
+      ]
+    },
+    "reader": {
+      "source_file": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\tem\\source\\tem_bc_prop_module.f90",
+      "routine": "load_tem_BC_realArray / load_tem_BC_qVal",
+      "commit": "9899d1376992c4fafc8a343d2b4ccef81de670d1",
+      "sha256": "8eae04f4af72e842988ae98c1cef692783b202065e2509b767f2a2598156b657",
+      "evidence": [
+        {
+          "token": "allocate(me%qVal(me%nSides, nElems))",
+          "line": 1238
+        },
+        {
+          "token": "arraylen = me%nSides",
+          "line": 1199
+        },
+        {
+          "token": "call MPI_TYPE_CONTIGUOUS( arraylen, rk_mpi, etype, iError )",
+          "line": 1104
+        },
+        {
+          "token": "propdat(:,i) = buffer( ((i-1)*arraylen+1) : (i*arraylen) )",
+          "line": 1140
+        }
+      ]
+    },
+    "dtype_and_endian": {
+      "source_file": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\tem\\source\\env_module.f90",
+      "routine": "init_env / tem_create_EndianSuffix",
+      "commit": "9899d1376992c4fafc8a343d2b4ccef81de670d1",
+      "sha256": "db7a64e7bb9d9ff76abb3c9d9dca0b7289b412431e6ad6e9e4c6a93f7f79f575",
+      "evidence": [
+        {
+          "token": "integer, parameter, public :: rk_prec = double_prec",
+          "line": 76
+        },
+        {
+          "token": "rk_mpi = mpi_double_precision",
+          "line": 189
+        },
+        {
+          "token": "function tem_create_EndianSuffix()  result(suffix)",
+          "line": 406
+        },
+        {
+          "token": "suffix = '.lsb'",
+          "line": 412
+        }
+      ]
+    },
+    "property_element_order": {
+      "source_file": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\tem\\source\\tem_property_module.f90",
+      "routine": "gather_property",
+      "commit": "9899d1376992c4fafc8a343d2b4ccef81de670d1",
+      "sha256": "b037805d5a4424db155b1c3b36a6a6b3b2f098533f4d06286aa8a87dc7a84ee3",
+      "evidence": [
+        {
+          "token": "Property%nElems = count(btest(BitField, Header%BitPos))",
+          "line": 217
+        },
+        {
+          "token": "do iElem=1,nElems",
+          "line": 232
+        },
+        {
+          "token": "Property%ElemID(PropElem) = iElem",
+          "line": 238
+        }
+      ]
+    },
+    "directions": {
+      "source_file": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\tem\\source\\tem_param_module.f90",
+      "routine": "tem_param_module constants",
+      "commit": "9899d1376992c4fafc8a343d2b4ccef81de670d1",
+      "sha256": "020992066162b88659d960fc89060d72aa68e73adf238e0060ab8f901b488123",
+      "evidence": [
+        {
+          "token": "qOffset =",
+          "line": 134
+        },
+        {
+          "token": "qDirName(qQQQ)",
+          "line": 140
+        },
+        {
+          "token": "'  W', '  S', '  B', '  E', '  N', '  T'",
+          "line": 141
+        }
+      ]
+    },
+    "boundary_and_q_row_association": {
+      "source_file": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\mus\\source\\mus_construction_module.fpp",
+      "routine": "assignBCList",
+      "commit": "81f8c4f13772f6d4af31f335e1e3f99b02726e25",
+      "sha256": "c2eea0f440dc2880fb74c64d44fd9d8ac9c7a78de575598d73357f9981a27960",
+      "evidence": [
+        {
+          "token": "do iElem = 1, tree%property(1)%nElems",
+          "line": 2071
+        },
+        {
+          "token": "iElem_qVal = iElem_qVal + 1",
+          "line": 2271
+        },
+        {
+          "token": "iMeshDir = stencil%map( iDir )",
+          "line": 2075
+        },
+        {
+          "token": "bID      = bc_prop%boundary_ID( iMeshDir, iElem )",
+          "line": 2282
+        },
+        {
+          "token": "= bc_prop%qVal(iMeshDir, iElem_qVal)",
+          "line": 2330
+        }
+      ]
+    },
+    "sentinel_and_fallback": {
+      "source_file": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-pinned\\seeder_official\\sdr\\source\\sdr_boundary_module.f90",
+      "routine": "sdr_qValByNode / sdr_truncate_qVal / sdr_identify_boundary",
+      "commit": "667109df6fafdcb39f4409e3f5d90f04d75cd33c",
+      "sha256": "eabdc414ec3fa0fedd739ce0e6805fc47a682ae94a21b81f4d0b1809b0e7aa33",
+      "evidence": [
+        {
+          "token": "If there is no intersection, qVal returns -1.0",
+          "line": 805
+        },
+        {
+          "token": "qVal(iDir) = 0.5_rk",
+          "line": 302
+        },
+        {
+          "token": "for flooded neighbor, treat it as normal fluid: clean BCID",
+          "line": 1035
+        },
+        {
+          "token": "for non-flooded neighbor, treat it as high order wall: set qVal to 1",
+          "line": 1037
+        }
+      ]
+    }
+  }
+}

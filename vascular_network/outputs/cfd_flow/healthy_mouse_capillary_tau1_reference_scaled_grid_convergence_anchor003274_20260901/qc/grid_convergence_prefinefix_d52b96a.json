@@ -1,0 +1,84 @@
+{
+  "status": "FAIL",
+  "final_status": "CFD_FLOW_TAU1_GRID_MEMBER_STEADY_FAILED",
+  "failed_grid": "fine",
+  "first_failed_gate": "controller_target",
+  "failure_iteration": 5000,
+  "failure_forensic": {
+    "status": "CONFIRMED_FINE_SAFETY_TARGET_MISMATCH",
+    "classification": "FINE_ADAPTIVE_TARGET_SAMPLE_DEFICIT_AT_SAFETY_GATE",
+    "iteration": 5000,
+    "expected_target_lattice_formula": "target_mass_flow * dt / (rho0 * dx^3)",
+    "expected_target_lattice": 0.0009067245695254185,
+    "observed_target_lattice": 0.0009043130680107285,
+    "relative_error": 0.002659574468079341,
+    "observed_over_expected": 0.9973404255319207,
+    "globBC_count": 376,
+    "implied_nonzero_mass_flow_samples": 375.00000000000216,
+    "exact_count_ratio_hypothesis": 0.9973404255319149,
+    "ratio_matches_375_over_376": true,
+    "source_accounting": {
+      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\mus\\source\\bc\\mus_bc_fluid_module.fpp",
+      "sha256": "4385b30cc804791fb0e50e73ab4e15d92a014f20eaaa7a71c8746a6aa08f6e29",
+      "sequence": [
+        "massLocal = sum(massFlowRate)",
+        "MPI allreduce massLocal -> massGlobal",
+        "targetMassFlow = massGlobal / globBC%nElems_total",
+        "targetFlux = targetMassFlow / rho0 * dtLvl / dxLvl**3"
+      ],
+      "inference": "The printed target and count imply 375 constant-valued samples plus one zero/missing point-index evaluation before division by 376."
+    },
+    "other_safety_gates": {
+      "rho_sanity": true,
+      "controller_controlled_flux": true,
+      "minimum_pdf_positive": true,
+      "maximum_lattice_speed": true,
+      "all_finite": true
+    },
+    "controlled_flux_relative_error": 3.8529803947003554e-12,
+    "mesh_contract_status": "PASS",
+    "actions": {
+      "long_fine_cfd_started": false,
+      "physical_parameters_changed": false,
+      "controller_changed": false,
+      "mesh_changed": false,
+      "fine_5000_restart_preserved": true
+    }
+  },
+  "production_pipeline_modified": false,
+  "coarse_status": "PASS",
+  "base_status": "PASS",
+  "fine_status": "CFD_FLOW_TAU1_GRID_MEMBER_STEADY_FAILED",
+  "three_grid_analysis": "UNAVAILABLE_FINE_NOT_ACCEPTED",
+  "WSS_status": "DEFERRED_TO_POST_GRID_PRODUCTION_VALIDATION",
+  "scientific_wall_clock_s": 3691.8563555,
+  "seeder_calls": {
+    "coarse": 1,
+    "base": 0,
+    "fine": 1
+  },
+  "logical_cfd": {
+    "coarse": 1,
+    "base": 0,
+    "fine": 1
+  },
+  "process_launches": 6,
+  "restart_resumes": 4,
+  "operational_recoveries": 0,
+  "next": "STOP AND REVIEW THE SPECIFIC FAILED GRID-CONVERGENCE METRIC",
+  "verification": {
+    "targeted_pytest": {
+      "status": "PASS",
+      "tests": 46,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 4.759,
+      "sha256": "330afa9c0f9323c72f51c881756789f9fb19037839b7eadd9d9b70137d26f4c0"
+    },
+    "targeted_ruff": {
+      "status": "PASS",
+      "findings": 0,
+      "sha256": "50056c08ce479cc2f54c4d6595a4264bdf32bf84f2995d59ff3bd513897ab414"
+    }
+  }
+}

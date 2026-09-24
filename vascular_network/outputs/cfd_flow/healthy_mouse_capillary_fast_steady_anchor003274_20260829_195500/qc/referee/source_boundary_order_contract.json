@@ -1,0 +1,97 @@
+{
+  "status": "PASS",
+  "runtime_boundary_order": [
+    "wall",
+    "outlet_02",
+    "outlet_03",
+    "inlet",
+    "outlet_01"
+  ],
+  "order_source": "Seeder bnd.lua labels indexed by set_boundary iBnd=1..nBCs",
+  "neighbor_buffers": "filled once from original buffers before all boundary writes",
+  "non_boundary_mass_sources": "NONE (configured fluid has no source table/body force)",
+  "source_files": {
+    "boundary_loop": {
+      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\mus\\source\\bc\\mus_bc_general_module.fpp",
+      "sha256": "fbf94f93f88eabbe6c6cabf6ce181e5837d71a452c80f4da36f52449a8df176a",
+      "token_lines": {
+        "call fill_neighBuffer(": 235,
+        "do iBnd = 1, nBCs": 251,
+        "state       = state( :, pdf%nNext )": 257
+      }
+    },
+    "pressure_write": {
+      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\mus\\source\\bc\\mus_bc_fluid_module.fpp",
+      "sha256": "4385b30cc804791fb0e50e73ab4e15d92a014f20eaaa7a71c8746a6aa08f6e29",
+      "token_lines": {
+        "subroutine pressure_eq_reconstruct": 918,
+        "state(?FETCH?(iDir": 944,
+        "neighBufferPre_nNext(1,:)": 894
+      }
+    },
+    "boundary_connectivity": {
+      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\mus\\source\\mus_construction_module.fpp",
+      "sha256": "c2eea0f440dc2880fb74c64d44fd9d8ac9c7a78de575598d73357f9981a27960",
+      "token_lines": {
+        "Set the bitmask for the incoming directions which have to be": 2321,
+        "stencil%cxDirInv(iDir), nBnds( bID )": 2324,
+        "q-values stored in outgoing direction": 2328
+      }
+    },
+    "solid_pull_connectivity": {
+      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\mus\\source\\mus_connectivity_module.fpp",
+      "sha256": "d082c43bd71d3e08ade3a7f96b1850393d1b56ebfee63e500a66afa6719237de",
+      "token_lines": {
+        "solidified = ( btest(neighProp, prp_solid)": 154,
+        "sourceDir = stencil%cxDirInv( iDir )": 162,
+        "GetFromPos = iElem": 170
+      }
+    },
+    "runtime_solid_marking": {
+      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\tem\\source\\tem_construction_module.f90",
+      "sha256": "8520039a7e3f03b86c014f204cb4f96487f558864fdc3da954380593b0d98cfc",
+      "token_lines": {
+        "subroutine tem_build_treeHorizontalDep": 3190,
+        "if( levelPos <= 0 .and. computeStencil%requireNeighNeigh )": 3235,
+        "ibset( levelDesc%property( totalPos ), prp_solid )": 3249
+      }
+    },
+    "wall_write": {
+      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\mus\\source\\bc\\mus_bc_fluid_wall_module.fpp",
+      "sha256": "663b53b56d6bdd11b89eced65927e9d66f73303302fbe4d8c3df98d5d3af73e8",
+      "token_lines": {
+        "subroutine wall_libb": 331,
+        "state( me%links(iLevel)%val(iLink) )": 392,
+        "cIn*fIn + cOut*fOut + cNgh*fNgh": 392
+      }
+    },
+    "pull_macro": {
+      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\mus\\source\\header\\lbm_macros.inc",
+      "sha256": "6ec8847e27ee89f55899e15ef86ad119c352b6ce0ed0e02d22c64b46fccd1569",
+      "token_lines": {
+        "else !PULL": 69,
+        "macro :: FETCH": 60,
+        "?neigh?(?NGPOS?(?iDir?": 71
+      }
+    },
+    "restart_serializer": {
+      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\mus\\source\\mus_buffer_module.fpp",
+      "sha256": "765146e97c558bea487a0d23407278bf875fc1816f6068a85adeb6636aca95a4",
+      "token_lines": {
+        "subroutine mus_pdf_serialize": 80,
+        "scheme%pdf( iLevel )%nNext": 129,
+        "subroutine mus_pdf_unserialize": 143
+      }
+    },
+    "timestep": {
+      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\mus\\source\\mus_control_module.f90",
+      "sha256": "ba01842e5eba943a8d6f2aaec9545e0f4b264d545ceae2568859f095bc83a18f",
+      "token_lines": {
+        "call tem_time_advance": 287,
+        "call set_boundary": 294,
+        "call mus_swap_now_next": 313,
+        "call me%scheme%compute": 376
+      }
+    }
+  }
+}

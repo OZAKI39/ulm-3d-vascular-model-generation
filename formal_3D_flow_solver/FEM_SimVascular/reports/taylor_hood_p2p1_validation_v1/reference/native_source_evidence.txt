@@ -1,0 +1,624 @@
+
+Parameters.cpp:2618
+2616: 
+2617:   set_parameter("Tolerance", 0.5, !required, tolerance);
+2618:   set_parameter("Use_taylor_hood_type_basis", false, !required,
+2619:                 use_taylor_hood_type_basis);
+2620:   set_parameter("Explicit_geometric_coupling", false, !required,
+2621:                 explicit_geometric_coupling);
+2622: }
+2623: 
+2624: void EquationParameters::print_parameters() {
+2625:   std::cout << std::endl;
+2626:   std::cout << "-------------------" << std::endl;
+2627:   std::cout << "Equation Parameters" << std::endl;
+2628:   std::cout << "-------------------" << std::endl;
+2629:   std::cout << type.name() << ": " << type.value() << std::endl;
+
+read_files.cpp:1742
+1740:   bool THflag = false; 
+1741:   if (eq_params->use_taylor_hood_type_basis.defined()) { 
+1742:     THflag = eq_params->use_taylor_hood_type_basis.value(); 
+1743:   }
+1744:   EquationProps propL{consts::PhysicalPropertyType::NA};
+1745:   EquationOutputs outPuts;
+1746:   EquationNdop nDOP;
+1747: 
+1748:   set_equation_properties(simulation, eq_params, lEq, propL, outPuts, nDOP);
+1749: 
+1750:   // Check if explicit geometric coupling is allowed for the equation
+1751:   if (lEq.expl_geom_cpl) {
+1752:     if (lEq.phys != EquationType::phys_FSI) {
+1753:       throw std::runtime_error("Explicit geometric coupling is only allowed for FSI equation.");
+
+read_files.cpp:1764
+1762:     auto& msh = com_mod.msh[iM];
+1763:     if (!THflag) {
+1764:       msh.nFs = 1;
+1765:     } else { 
+1766:       if (com_mod.ibFlag) {
+1767:         throw std::runtime_error("Taylor-Hood basis is not implemented for immersed boundaries.");
+1768:       }
+1769:       if (msh.lShl || msh.lFib || (msh.eType == ElementType::NRB)) {
+1770:         msh.nFs = 1;
+1771:         throw std::runtime_error("Taylor-Hood basis is not allowed for NURBS mesh or shells and fibers.");
+1772:       } else { 
+1773:         if ( (msh.eType != ElementType::TRI6)  && (msh.eType != ElementType::TET10)) {
+1774:           throw std::runtime_error("Taylor-Hood basis is currently applicable for TRI6 (2D) or TET10 (3D) elements only.");
+1775:         }
+
+read_files.cpp:1773
+1771:         throw std::runtime_error("Taylor-Hood basis is not allowed for NURBS mesh or shells and fibers.");
+1772:       } else { 
+1773:         if ( (msh.eType != ElementType::TRI6)  && (msh.eType != ElementType::TET10)) {
+1774:           throw std::runtime_error("Taylor-Hood basis is currently applicable for TRI6 (2D) or TET10 (3D) elements only.");
+1775:         }
+1776:         msh.nFs = 2;
+1777:       }
+1778:     }
+1779:   }
+1780: 
+1781:   // Searching for BCs
+1782:   //
+1783:   int num_bcs = eq_params->boundary_conditions.size();
+1784:   lEq.nBc = num_bcs;
+
+read_files.cpp:1776
+1774:           throw std::runtime_error("Taylor-Hood basis is currently applicable for TRI6 (2D) or TET10 (3D) elements only.");
+1775:         }
+1776:         msh.nFs = 2;
+1777:       }
+1778:     }
+1779:   }
+1780: 
+1781:   // Searching for BCs
+1782:   //
+1783:   int num_bcs = eq_params->boundary_conditions.size();
+1784:   lEq.nBc = num_bcs;
+1785: 
+1786:   if (num_bcs != 0) { 
+1787:     lEq.bc.resize(num_bcs);
+
+fs.cpp:73
+71: 
+72: 
+73: void get_thood_fs(ComMod& com_mod, std::array<fsType,2>& fs, const mshType& lM, const bool lStab, const int iOpt)
+74: {
+75:   #define n_debug_get_thood_fs 
+76:   #ifdef debug_get_thood_fs 
+77:   DebugMsg dmsg(__func__, com_mod.cm.idcm());
+78:   dmsg.banner();
+79:   dmsg << "lStab: " << lStab;
+80:   dmsg << "iOpt: " << iOpt;
+81:   #endif
+82: 
+83:   int nsd = com_mod.nsd;
+84: 
+
+fs.cpp:300
+298:   #endif
+299: 
+300:   lM.fs.resize(lM.nFs);
+301: 
+302:   // The first set of basis is inherited directly from mesh basis
+303:   lM.fs[0].lShpF = lM.lShpF;
+304:   lM.fs[0].eType = lM.eType;
+305:   lM.fs[0].eNoN  = lM.eNoN;
+306:   lM.fs[0].nG    = lM.nG;
+307: 
+308:   alloc_fs(lM.fs[0], nsd, insd);
+309: 
+310:   if (lM.eType != ElementType::NRB) {
+311:     lM.fs[0].w = lM.w;
+
+fs.cpp:321
+319: 
+320:   // Sets Taylor-Hood basis [fluid, stokes, ustruct, FSI)
+321:   if (lM.nFs == 2) {
+322:     // Select Taylor-Hood element
+323:     set_thood_fs(lM.fs[1], lM.fs[0].eType);
+324: 
+325:     // Initialize the function space
+326:     init_fs(lM.fs[1], nsd, insd);
+327:     populate_reference_hessians(lM.fs[1], insd);
+328:   }
+329: }
+330: 
+331: 
+332: /// @brief Sets Tayloor-Hood basis for a parent element type
+
+fs.cpp:365
+363:     break;
+364: 
+365:     case ElementType::TET10:
+366:       fs.eType = ElementType::TET4;
+367:       fs.lShpF = true; 
+368:       fs.eNoN  = 4;
+369:       fs.nG    = 4;
+370:     break;
+371: 
+372:     case ElementType::TRI6:
+373:       fs.eType = ElementType::TRI3;
+374:       fs.lShpF = true; 
+375:       fs.eNoN  = 3;
+376:       fs.nG    = 3;
+
+fs.cpp:394
+392: /// Reproduces 'SUBROUTINE THOOD_ValRC()'
+393: //
+394: void thood_val_rc(ComMod& com_mod)
+395: {
+396:   using namespace consts;
+397: 
+398:   #define n_debug_thood_val_rc 
+399:   #ifdef debug_thood_val_rc 
+400:   DebugMsg dmsg(__func__, com_mod.cm.idcm());
+401:   dmsg.banner();
+402:   #endif
+403: 
+404:   const int cEq = com_mod.cEq;
+405:   auto& eq = com_mod.eq[cEq];
+
+fs.cpp:421
+419: 
+420:   for (int iM = 0; iM < com_mod.nMsh; iM++) {
+421:     if (com_mod.msh[iM].nFs == 2) {
+422:       THflag = true;
+423:       break;
+424:     }
+425:   }
+426: 
+427:   #ifdef debug_thood_val_rc 
+428:   dmsg << "THflag: " << THflag;
+429:   #endif
+430: 
+431:   if (THflag) {
+432:     Vector<int> eNds(tnNo);
+
+fs.cpp:453
+451:       if (eNds(a) == 1) {
+452:         R(nsd,a) = 0.0;
+453:         int s = (nsd+1)*(nsd+1) - 1;
+454: 
+455:         for (int i = rowPtr(a); i <= rowPtr(a+1)-1; i++) {
+456:           int c = colPtr(i);
+457:           if (c == a) {
+458:             Val(s,i) = 1.0;
+459:           } else {
+460:             Val(s,i) = 0.0;
+461:           }
+462:         }
+463:       }
+464:     }
+
+fluid.cpp:496
+494:   bool vmsStab = false;
+495: 
+496:   if (lM.nFs == 1) {
+497:      vmsStab = true;
+498:   } else {
+499:      vmsStab = false;
+500:   }
+501: 
+502:   // l = 3, if nsd==2 ; else 6;
+503:   const int l = com_mod.nsymd;
+504:   const int nsd  = com_mod.nsd;
+505:   const int tDof = com_mod.tDof;
+506:   const int dof = com_mod.dof;
+507:   const int cEq = com_mod.cEq;
+
+fluid.cpp:584
+582: 
+583:     // Set function spaces for velocity and pressure.
+584:     fs::get_thood_fs(com_mod, fs, lM, vmsStab, 1);
+585: 
+586:     // Define element coordinates appropriate for function spaces
+587:     Array<double> xwl(nsd,fs[0].eNoN); 
+588:     Array<double> Nwx(nsd,fs[0].eNoN); 
+589:     Array<double> Nwxx(l,fs[0].eNoN);
+590: 
+591:     Array<double> xql(nsd,fs[1].eNoN); 
+592:     Array<double> Nqx(nsd,fs[1].eNoN);
+593: 
+594:     #ifdef debug_construct_fluid
+595:     dmsg;
+
+fluid.cpp:684
+682:     // Set function spaces for velocity and pressure.
+683:     //
+684:     fs::get_thood_fs(com_mod, fs, lM, vmsStab, 2);
+685: 
+686:     // Gauss integration 2
+687:     //
+688:     #ifdef debug_construct_fluid
+689:     dmsg;
+690:     dmsg << "Gauss integration 2 ... " << "";
+691:     dmsg << "fs[1].nG: " << fs[0].nG;
+692:     dmsg << "fs[1].lShpF: " << fs[0].lShpF;
+693:     dmsg << "fs[2].nG: " << fs[1].nG;
+694:     dmsg << "fs[2].lShpF: " << fs[1].lShpF;
+695:     #endif
+
+nn.cpp:175
+173:   static constexpr std::array<std::size_t, 6> tri6{1, 2, 0, 4, 5, 3};
+174:   static constexpr std::array<std::size_t, 4> tet4{1, 2, 3, 0};
+175:   static constexpr std::array<std::size_t, 10> tet10{1, 2, 3, 0, 5, 9, 8, 4, 6, 7};
+176: 
+177:   switch (eType) {
+178:     case consts::ElementType::TRI3:
+179:       return tri3;
+180:     case consts::ElementType::TRI6:
+181:     case consts::ElementType::WDG:
+182:       return tri6;
+183:     case consts::ElementType::TET4:
+184:       return tet4;
+185:     case consts::ElementType::TET10:
+186:       return tet10;
+
+nn.cpp:176
+174:   static constexpr std::array<std::size_t, 4> tet4{1, 2, 3, 0};
+175:   static constexpr std::array<std::size_t, 10> tet10{1, 2, 3, 0, 5, 9, 8, 4, 6, 7};
+176: 
+177:   switch (eType) {
+178:     case consts::ElementType::TRI3:
+179:       return tri3;
+180:     case consts::ElementType::TRI6:
+181:     case consts::ElementType::WDG:
+182:       return tri6;
+183:     case consts::ElementType::TET4:
+184:       return tet4;
+185:     case consts::ElementType::TET10:
+186:       return tet10;
+187:     default:
+
+nn_elem_props.h:60
+58: 
+59:  {10, [](int insd, mshType& mesh) -> void { 
+60:     mesh.eType = ElementType::TET10;
+61:     mesh.nG = 15; 
+62:     mesh.vtkType = 24;
+63:     mesh.nEf = 4; 
+64:     mesh.lShpF = false;
+65:     }
+66:   },
+67: 
+68:  {20, [](int insd, mshType& mesh) -> void {
+69:     mesh.eType = ElementType::HEX20;
+70:     mesh.nG = 27;
+71:     mesh.vtkType = 25;
+
+nn_elem_props.h:113
+111: 
+112:   {6, [](int insd, mshType& mesh) -> void {
+113:     mesh.eType = ElementType::TRI6;
+114:     mesh.nG = 7;
+115:     mesh.vtkType = 22;
+116:     mesh.nEf = 3;
+117:     mesh.lShpF = false;
+118:     }
+119:   },
+120: 
+121:   {8, [](int insd, mshType& mesh) -> void {
+122:     mesh.eType = ElementType::QUD8;
+123:     mesh.nG = 9;
+124:     mesh.vtkType = 23;
+
+nn_elem_props.h:210
+208: 
+209:   {6, [](int insd, faceType& face) -> void {
+210:     face.eType = ElementType::TRI6;
+211:     face.nG = 7;
+212:     }
+213:   },
+214: 
+215:   {8, [](int insd, faceType& face) -> void {
+216:     face.eType = ElementType::QUD8;
+217:     face.nG = 9;
+218:     }
+219:   },
+220: 
+221:   {9, [](int insd, faceType& face) -> void {
+
+nn_elem_gip.h:493
+491:   },
+492: 
+493:   {ElementType::TET10, [](mshType& mesh) -> void {
+494:       mesh.w(0) = 0.0302836780970890;
+495: 
+496:       mesh.w(1) = 0.0060267857142860;
+497:       mesh.w(2) = 0.0060267857142860;
+498:       mesh.w(3) = 0.0060267857142860;
+499:       mesh.w(4) = 0.0060267857142860;
+500: 
+501:       mesh.w(5) = 0.0116452490860290;
+502:       mesh.w(6) = 0.0116452490860290;
+503:       mesh.w(7) = 0.0116452490860290;
+504:       mesh.w(8) = 0.0116452490860290;
+
+nn_elem_gip.h:554
+552:   },
+553: 
+554:   {ElementType::TRI6, [](mshType& mesh) -> void {
+555:     mesh.w[0] = 0.225000000000000 * 5.0e-1 ;
+556:     mesh.w[1] = 0.125939180544827 * 5.0e-1 ;
+557:     mesh.w[2] = 0.125939180544827 * 5.0e-1 ;
+558:     mesh.w[3] = 0.125939180544827 * 5.0e-1 ;
+559:     mesh.w(4) = 0.132394152788506 * 5.0e-1 ;
+560:     mesh.w(5) = 0.132394152788506 * 5.0e-1 ;
+561:     mesh.w(6) = 0.132394152788506 * 5.0e-1 ;
+562: 
+563:     double s = 0.333333333333333;
+564:     mesh.xi(0,0) = s; mesh.xi(1,0) = s;
+565: 
+
+read_msh.cpp:665
+663:   //std::cout << "[check_tet_conn] mesh.gIEN.data(): " << mesh.gIEN.data() << std::endl;
+664:   //std::cout << "[check_tet_conn] mesh.x.data(): " << mesh.x.data() << std::endl;
+665: 
+666:   for (int e = 0; e < num_elems; e++) {
+667:     //std::cout << "[check_tet_conn] -------- e " << e << std::endl;
+668:     int a = 0, b = 0;
+669:     bool qFlag = false;
+670:     auto elem_conn = mesh.gIEN.col(e);
+671:     auto xl = mesh.x.cols(elem_conn);
+672: 
+673:     v1 = xl[1] - xl[0];
+674:     v2 = xl[2] - xl[1];
+675:     v3 = xl[3] - xl[2];
+676:     auto v4 = v1.cross(v2);
+
+read_msh.cpp:695
+693: 
+694:     if (qFlag) {
+695:       if (mesh.eType == consts::ElementType::TET10) {
+696:         a = 5; b = 6;
+697:         utils::swap(mesh.gIEN(a,e), mesh.gIEN(b,e));
+698:         a = 7; b = 8;
+699:         utils::swap(mesh.gIEN(a,e), mesh.gIEN(b,e));
+700:       }
+701:     }
+702:   }
+703: 
+704:   //std::cout << "[check_tet_conn] Reorder " << num_reorder << " element connectivity from " << num_elems << "  elements." << std::endl;
+705: }
+706: 
+
+vtk_xml_parser.cpp:64
+62:   {VTK_TRIANGLE, consts::ElementType::TRI3},
+63:   {VTK_WEDGE, consts::ElementType::WDG}, 
+64:   {VTK_QUADRATIC_TRIANGLE, consts::ElementType::TRI6},
+65:   {VTK_QUADRATIC_QUAD, consts::ElementType::QUD8},
+66:   {VTK_BIQUADRATIC_QUAD, consts::ElementType::QUD9}, 
+67:   {VTK_QUADRATIC_TETRA, consts::ElementType::TET10},
+68:   {VTK_QUADRATIC_HEXAHEDRON, consts::ElementType::HEX20},
+69:   {VTK_TRIQUADRATIC_HEXAHEDRON, consts::ElementType::HEX27}
+70: };
+71: 
+72: std::map<unsigned char, std::vector<std::vector<int>>> vtk_cell_ordering {
+73:   {VTK_HEXAHEDRON, {{0,3,2,1},
+74:                     {4,5,6,7},
+75:                     {0,1,5,4},
+
+vtk_xml_parser.cpp:67
+65:   {VTK_QUADRATIC_QUAD, consts::ElementType::QUD8},
+66:   {VTK_BIQUADRATIC_QUAD, consts::ElementType::QUD9}, 
+67:   {VTK_QUADRATIC_TETRA, consts::ElementType::TET10},
+68:   {VTK_QUADRATIC_HEXAHEDRON, consts::ElementType::HEX20},
+69:   {VTK_TRIQUADRATIC_HEXAHEDRON, consts::ElementType::HEX27}
+70: };
+71: 
+72: std::map<unsigned char, std::vector<std::vector<int>>> vtk_cell_ordering {
+73:   {VTK_HEXAHEDRON, {{0,3,2,1},
+74:                     {4,5,6,7},
+75:                     {0,1,5,4},
+76:                     {1,2,6,5},
+77:                     {2,3,7,6},
+78:                     {3,0,4,7}}},
+
+vtk_xml_parser.cpp:111
+109:                           {2,6,3},
+110:                           {3,7,0}}},
+111:   {VTK_QUADRATIC_TETRA, {{0,1,2,4,5,6},
+112:                        {0,3,1,7,8,4},
+113:                        {1,3,2,8,9,5},
+114:                        {2,3,0,9,7,6}}},
+115:   {VTK_QUADRATIC_HEXAHEDRON, {{0,11,3,10,2,9,1,8},
+116:                               {4,12,5,13,6,14,7,15},
+117:                               {0,8,1,17,5,12,4,16},
+118:                               {1,9,2,18,6,13,5,17},
+119:                               {2,10,3,19,7,14,6,18},
+120:                               {3,11,0,16,4,15,7,19}}},
+121:   {VTK_TRIQUADRATIC_HEXAHEDRON, {{0,11,3,10,2,9,1,8,24},
+122:                                 {4,12,5,13,6,14,7,15,25},
+
+vtk_xml_parser.cpp:700
+698:   vtkSmartPointer<vtkPolyData> vtk_polydata = reader->GetOutput();
+699: 
+700:   vtkIdType num_nodes = vtk_polydata->GetNumberOfPoints();
+701:   if (num_nodes == 0) {
+702:     throw std::runtime_error("Failed reading the VTK file '" + file_name + "'.");
+703:   }
+704: 
+705:   vtkIdType num_elems = vtk_polydata->GetNumberOfCells();
+706:   auto cell = vtkGenericCell::New();
+707:   vtk_polydata->GetCell(0, cell);
+708:   int np_elem = cell->GetNumberOfPoints();
+709:   int elem_type = cell->GetCellType();
+710: 
+711:   // Set the mesh element type from the vtk cell type.
+
+baf_ini.cpp:440
+438:   // Now correcting the inlet BC for the inlet ring
+439:   //
+440:   if (btest(lBc.bType, enum_int(BoundaryConditionType::bType_zp))) { 
+441:     for (int jFa = 0; jFa < com_mod.msh[iM].nFa; jFa++) {
+442:       if (jFa == iFa) {
+443:         continue; 
+444:       }
+445:       for (int a = 0; a < com_mod.msh[iM].fa[jFa].nNo; a++) {
+446:         int Ac = com_mod.msh[iM].fa[jFa].gN(a);
+447:         s(Ac) = 0.0;
+448:       }
+449:     }
+450:   }
+451: 
+
+baf_ini.cpp:455
+453:   //
+454:   double tmp = 1.0;
+455:   if (btest(lBc.bType, enum_int(BoundaryConditionType::bType_flx))) {
+456:     tmp = all_fun::integ(com_mod, cm_mod, lFa, s, solutions, false);
+457:     if (is_zero(tmp)) {
+458:       tmp = 1.0;
+459:       throw std::runtime_error("Face '" + lFa.name + "' used for a BC has no non-zero node.");
+460:      }
+461:   }
+462: 
+463:   for (int a = 0; a < lFa.nNo; a++) {
+464:     int Ac = lFa.gN(a);
+465:     lBc.gx(a) = s(Ac) / tmp;
+466:   }
+
+baf_ini.cpp:517
+515:   bool flag = false;
+516: 
+517:   if (std::set<ElementType>{ElementType::TRI6,ElementType::QUD8,ElementType::QUD9,
+518:       ElementType::TET10,ElementType::HEX20, ElementType::HEX27}.count(lM.eType) != 0) {
+519:     flag = true;
+520:   }
+521: 
+522:   // For linear elements or NURBS, we simply project element normals to nodes
+523:   //
+524:   #ifdef debug_face_ini
+525:   dmsg << "Flag: " << flag;
+526:   #endif
+527: 
+528:   // Compute integral of normal vector over surface element
+
+baf_ini.cpp:550
+548:     }
+549: 
+550:   // For higher order elements, use reduced order basis on mesh to project element normals. 
+551:   // Lumping method is used to project to face corners. Normals at edge nodes are computed by 
+552:   // simple interpolation from reduced basis. Standard lumping using higher order basis could 
+553:   // lead to spurious errors.
+554:   //
+555:   } else {
+556:     fsType fs;
+557:     fs::set_thood_fs(fs, lFa.eType);
+558:     fs::init_fs(fs, nsd, nsd-1);
+559: 
+560:     Array<double> xl(nsd,lM.eNoN); 
+561:     Vector<int> ptr(lM.eNoN); 
+
+baf_ini.cpp:698
+696:     int Ac = lFa.gN(a);
+697:     auto sV_col = sV.col(Ac);
+698:     double sln = utils::norm(sV_col);
+699: 
+700:     if (utils::is_zero(sln)) {
+701:       if (flag) {
+702:         throw std::runtime_error("Skipping normal calculation for node " + std::to_string(a) +  " in face '" +  lFa.name + "'.");
+703:         flag = false;
+704:       }
+705:     }
+706: 
+707:     for (int i = 0; i < lFa.nV.nrows(); i++) {
+708:       lFa.nV(i,a) = sV(i,Ac) / sln;
+709:     }
+
+VtkData.cpp:166
+164: }
+165: 
+166: void VtkData::set_point_data(const std::string &data_name,
+167:                              const Array<double> &data) {
+168:   const int num_vals = data.ncols();
+169:   const int num_comp = data.nrows();
+170: 
+171:   svmp::check<svmp::FE::InvalidArgumentException>(
+172:       num_vals == vtk_data->GetNumberOfPoints(),
+173:       "The point data array named '" + data_name + "' holds " +
+174:           std::to_string(num_vals) + " values, while the mesh has " +
+175:           std::to_string(vtk_data->GetNumberOfPoints()) + " points.");
+176: 
+177:   auto data_array = vtkSmartPointer<vtkDoubleArray>::New();
+
+VtkData.cpp:240
+238: }
+239: 
+240: void VtkData::set_points(const Array<double> &points) {
+241:   const int num_coords = points.ncols();
+242:   svmp::check<svmp::FE::InvalidArgumentException>(
+243:       num_coords != 0, "The number of points is zero.");
+244: 
+245:   svmp::check<svmp::FE::InvalidArgumentException>(
+246:       points.nrows() >= 3,
+247:       "The point coordinates are given as an array of " +
+248:           std::to_string(points.nrows()) +
+249:           " rows, while three coordinates per point are needed.");
+250: 
+251:   auto node_coords = vtkSmartPointer<vtkPoints>::New();
+
+VtkData.cpp:263
+261: 
+262: void VtkData::set_connectivity(const int nsd, const Array<int> &conn) {
+263:   int num_elems = conn.ncols();
+264:   int np_elem = conn.nrows();
+265: 
+266:   const vtkIdType num_points = vtk_data->GetNumberOfPoints();
+267: 
+268:   auto elem_nodes = vtkSmartPointer<vtkIdList>::New();
+269:   elem_nodes->Allocate(np_elem);
+270:   elem_nodes->Initialize();
+271:   elem_nodes->SetNumberOfIds(np_elem);
+272: 
+273:   for (int i = 0; i < num_elems; i++) {
+274:     for (int j = 0; j < np_elem; j++) {
+
+vtk_xml.cpp:1100
+1098:             }
+1099:           break;
+1100: 
+1101:           case OutputNameType::outGrp_Y:
+1102:             if (eq.phys != EquationType::phys_heatF) {
+1103:                 for (int a = 0; a < msh.nNo; a++) {
+1104:                     int Ac = msh.gN(a);
+1105:                     for (int i = 0; i < l; i++) {
+1106:                         d[iM].x(i + is, a) = lY(i + s, Ac);
+1107:                     }
+1108:                 }
+1109:             } else {
+1110:                 if (eq.output[iOut].name == "Velocity") {
+1111:                     for (int a = 0; a < msh.nNo; a++) {
+
+FE/Basis/NodeOrderingConventions.cpp:283
+281: }
+282: 
+283: LagrangeNodeLayout generate_tetra_nodes(int order) {
+284:     LagrangeNodeLayout out;
+285:     if (order == 0) {
+286:         return single_node_layout(Point{double(0.25), double(0.25), double(0.25)});
+287:     }
+288: 
+289:     const Point verts[] = {
+290:         Point{double(0), double(0), double(0)},
+291:         Point{double(1), double(0), double(0)},
+292:         Point{double(0), double(1), double(0)},
+293:         Point{double(0), double(0), double(1)},
+294:     };
+
+FE/Basis/NodeOrderingConventions.cpp:306
+304:     append_vertices(out, verts, vert_lattice);
+305: 
+306:     // Edge vertex pairs in VTK quadratic-tetra edge order.
+307:     const int edges[6][2] = {{0, 1}, {1, 2}, {2, 0}, {0, 3}, {1, 3}, {2, 3}};
+308:     for (const auto& edge : edges) {
+309:         for (int m = 1; m < order; ++m) {
+310:             const double t = static_cast<double>(m) / static_cast<double>(order);
+311:             out.coords.push_back(verts[edge[0]] * (double(1) - t) + verts[edge[1]] * t);
+312:             out.lattice.push_back(lerp_lattice(vert_lattice[edge[0]], vert_lattice[edge[1]], m, order));
+313:         }
+314:     }
+315: 
+316:     // Triangular faces in VTK tetra face order (vertex triples).
+317:     const int faces[4][3] = {{0, 1, 2}, {0, 1, 3}, {1, 2, 3}, {0, 2, 3}};

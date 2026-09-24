@@ -1,0 +1,179 @@
+{
+  "status": "CFD_FLOW_HEALTHY_REFEREE_FIXED_STEADY_PASS",
+  "next": "RUN HEALTHY ADAPTIVE-FLUX GRID CONVERGENCE",
+  "referee_revision_old": "ENDPOINT_INLET_MINUS_OUTLETS_V1",
+  "referee_revision_new": "MUSUBI_ONE_STEP_DISCRETE_MASS_IDENTITY_V2",
+  "production_pipeline_modified": false,
+  "seeder_calls": 0,
+  "harvester_calls": 0,
+  "normal_cfd_long_run_calls": 0,
+  "one_step_original_musubi_calls": 1,
+  "one_step_instrumented_musubi_calls": 1,
+  "grid_convergence": "NOT_RUN",
+  "endpoint_iteration": 469900,
+  "legacy_endpoint_R_boundary": 0.06366455876678251,
+  "historical_sign_contradiction": true,
+  "historical_trapezoid_closure_median": 6.547454626983966e-06,
+  "historical_trapezoid_closure_maximum": 3.233089203665527e-05,
+  "runtime_boundary_order": [
+    "wall",
+    "outlet_02",
+    "outlet_03",
+    "inlet",
+    "outlet_01"
+  ],
+  "old_slot_assumption_valid": true,
+  "overlap_slot_count": 0,
+  "pair_overlap_counts": {
+    "wall/outlet_02": 0,
+    "wall/outlet_03": 0,
+    "wall/inlet": 0,
+    "wall/outlet_01": 0,
+    "outlet_02/outlet_03": 0,
+    "outlet_02/inlet": 0,
+    "outlet_02/outlet_01": 0,
+    "outlet_03/inlet": 0,
+    "outlet_03/outlet_01": 0,
+    "inlet/outlet_01": 0
+  },
+  "endpoint_replay": {
+    "per_label_lattice": {
+      "wall": 5.1536778011878476e-05,
+      "outlet_02": -0.003981953766898069,
+      "outlet_03": -0.0036927407205074522,
+      "inlet": 0.008352396359567499,
+      "outlet_01": -0.0007175646276655796
+    },
+    "per_label_kg_s_domain": {
+      "wall": 1.7833275418392553e-14,
+      "outlet_02": -1.3778757805160403e-12,
+      "outlet_03": -1.2777993669364514e-12,
+      "inlet": 2.8901803804928508e-12,
+      "outlet_01": -2.482989455162908e-13
+    },
+    "predicted_total_lattice": 1.1674022508276205e-05,
+    "predicted_total_kg_s": 4.0395629424606165e-15,
+    "actual_total_lattice": 1.1674026769610546e-05,
+    "actual_total_kg_s": 4.0395644170104796e-15,
+    "R_one_step_identity": 5.101930221603317e-10
+  },
+  "instrumentation_required": true,
+  "instrumented_comparisons": {
+    "wall": {
+      "python_lattice": 5.1536778011878476e-05,
+      "instrumented_lattice": 5.153677801198256e-05,
+      "absolute_error_lattice": 1.0408340855860843e-16,
+      "relative_error": 2.0195947937298003e-12
+    },
+    "outlet_02": {
+      "python_lattice": -0.003981953766898069,
+      "instrumented_lattice": -0.003981953766897972,
+      "absolute_error_lattice": 9.71445146547012e-17,
+      "relative_error": 2.4396193512407068e-14
+    },
+    "outlet_03": {
+      "python_lattice": -0.0036927407205074522,
+      "instrumented_lattice": -0.003692740720507383,
+      "absolute_error_lattice": 6.938893903907228e-17,
+      "relative_error": 1.8790633919604904e-14
+    },
+    "inlet": {
+      "python_lattice": 0.008352396359567499,
+      "instrumented_lattice": 0.00835239635957857,
+      "absolute_error_lattice": 1.1071005223683983e-14,
+      "relative_error": 1.3254884882214311e-12
+    },
+    "outlet_01": {
+      "python_lattice": -0.0007175646276655796,
+      "instrumented_lattice": -0.0007175646276657323,
+      "absolute_error_lattice": 1.5265566588595902e-16,
+      "relative_error": 2.127413476087224e-13
+    }
+  },
+  "root_cause": "The V1 outlet replay treated every raw mesh coordinate as a normal fluid PULL source. TreElm marks 18 outlet_02 higher-order-stencil elements prp_solid; Musubi connectivity therefore bounce-backs all links when either the current neighbor-buffer element or its source is runtime-solid. Omitting that global runtime-solid connectivity changed only outlet_02. V1 also omitted the non-zero wall_libb contribution when comparing ports with global PDF mass.",
+  "corrected_flux_definition": "For every runtime-ordered BC write, sum replacement minus the immediately pre-write value at the exact FETCH storage slot; include wall, inlet, all outlets, overlaps by last-writer order, and other sources.",
+  "endpoint_corrected_flows_kg_s": {
+    "inlet": 2.8901803804928508e-12,
+    "outlet_01": 2.482989455162908e-13,
+    "outlet_02": 1.3778757805160403e-12,
+    "outlet_03": 1.2777993669364514e-12,
+    "net_domain": 4.0395629424606165e-15
+  },
+  "endpoint_instantaneous_pdf_derivative_kg_s": 4.0395644170104796e-15,
+  "endpoint_instant_closure_error": 5.101930221603317e-10,
+  "endpoint_residuals": {
+    "R_mass_short": 0.0015733544373813643,
+    "R_mass_long": 0.0017638913919486847,
+    "R_velocity": 0.00017242543157943297,
+    "R_pressure": 5.1779182479387036e-05,
+    "R_inlet": 4.5701772107838606e-12
+  },
+  "window_10k": {
+    "status": "PASS",
+    "sample_iterations": [
+      459166,
+      464166,
+      469166,
+      469900
+    ],
+    "predicted_mass_change_kg": 1.1927410689884153e-18,
+    "observed_mass_change_kg": 1.1916621928587555e-18,
+    "closure": 1.4244427292463097e-06,
+    "mean_flow_kg_s": {
+      "inlet": 2.8901803804982896e-12,
+      "outlet_01": 2.4824426716391127e-13,
+      "outlet_02": 1.3775592740813523e-12,
+      "outlet_03": 1.2776588432834612e-12
+    },
+    "significant_time_averaged_backflow": false
+  },
+  "window_20k": {
+    "status": "PASS",
+    "sample_iterations": [
+      449166,
+      454166,
+      459166,
+      464166,
+      469166,
+      469900
+    ],
+    "predicted_mass_change_kg": 2.5830127218075807e-18,
+    "observed_mass_change_kg": 2.58059549921751e-18,
+    "closure": 1.6522225661185303e-06,
+    "mean_flow_kg_s": {
+      "inlet": 2.8901803804957673e-12,
+      "outlet_01": 2.481853784107169e-13,
+      "outlet_02": 1.3772182958458122e-12,
+      "outlet_03": 1.27750749894495e-12
+    },
+    "significant_time_averaged_backflow": false
+  },
+  "earliest_historical_true_gate_pass_iteration": 394166,
+  "earliest_gate_pass_restart_exists": true,
+  "accepted_steady_iteration": 394166,
+  "accepted_steady_restart_path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\u3da\\f_195500\\restart\\a3274_9.623E-03.lsb",
+  "accepted_steady_restart_sha256": "8e0c3fcac06af6426441cccab7c6396240d547d1ebd8fa1e04f0d3d8f9e1012a",
+  "extra_iterations_caused_by_old_referee": 75734,
+  "source_frozen_files_unchanged": true,
+  "frozen_files_before": {
+    "E:\\ULM\\hatimb-particle_flow_simulator\\ulm_3D_vascular\\cfd_flow.py": "52a2b45112db33c38574ab8ac4c279a1b510cbf7e56a9b08c7a1de41058cf566",
+    "E:\\ULM\\hatimb-particle_flow_simulator\\ulm_3D_vascular\\configs\\cfd_flow.yaml": "fe1698199f6a01f6448ed62b7da8dd30fe944a0b65114c28d3c4a5ab4fbac923",
+    "E:\\ULM\\hatimb-particle_flow_simulator\\ulm_3D_vascular\\utils\\cfd_flow\\pipeline.py": "3b22f56c827437335158deef5c914a1fd3c84357d275137dc9234a2b7e286aa5",
+    "E:\\ULM\\hatimb-particle_flow_simulator\\ulm_3D_vascular\\outputs\\cfd_flow\\axis_aligned_ideal_plane_inlet_preflight_anchor003274_20260829_120444\\seeder\\mesh\\elemlist.lsb": "243da4b0f54d2b42d65254585460d5086364f30077fb020cfee1da65144450b1",
+    "E:\\ULM\\hatimb-particle_flow_simulator\\ulm_3D_vascular\\outputs\\cfd_flow\\axis_aligned_ideal_plane_inlet_preflight_anchor003274_20260829_120444\\seeder\\mesh\\bnd.lsb": "dd36393cd6f91bddbc3374525af35f992dd8424c97b9de4709d49e3dc398dfcc",
+    "E:\\ULM\\hatimb-particle_flow_simulator\\ulm_3D_vascular\\outputs\\cfd_flow\\axis_aligned_ideal_plane_inlet_preflight_anchor003274_20260829_120444\\seeder\\mesh\\qval.lsb": "679b4f18bd7f32b7bc4503ffab434fe56fbf63c8d23a41e0a2880c030e9b5624",
+    "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\u3da\\f_195500\\restart\\a3274_11.472E-03.lsb": "e180af2993dc4b0a1556775d14fbad0a5e7a7427f5a756507719e518726e11bf",
+    "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\build\\musubi_adaptive_flux": "e80162fb7e0e657d2e41aafc40a1b13b32204ff34692e24b7ab02c51aa97c588"
+  },
+  "frozen_files_after": {
+    "E:\\ULM\\hatimb-particle_flow_simulator\\ulm_3D_vascular\\cfd_flow.py": "52a2b45112db33c38574ab8ac4c279a1b510cbf7e56a9b08c7a1de41058cf566",
+    "E:\\ULM\\hatimb-particle_flow_simulator\\ulm_3D_vascular\\configs\\cfd_flow.yaml": "fe1698199f6a01f6448ed62b7da8dd30fe944a0b65114c28d3c4a5ab4fbac923",
+    "E:\\ULM\\hatimb-particle_flow_simulator\\ulm_3D_vascular\\utils\\cfd_flow\\pipeline.py": "3b22f56c827437335158deef5c914a1fd3c84357d275137dc9234a2b7e286aa5",
+    "E:\\ULM\\hatimb-particle_flow_simulator\\ulm_3D_vascular\\outputs\\cfd_flow\\axis_aligned_ideal_plane_inlet_preflight_anchor003274_20260829_120444\\seeder\\mesh\\elemlist.lsb": "243da4b0f54d2b42d65254585460d5086364f30077fb020cfee1da65144450b1",
+    "E:\\ULM\\hatimb-particle_flow_simulator\\ulm_3D_vascular\\outputs\\cfd_flow\\axis_aligned_ideal_plane_inlet_preflight_anchor003274_20260829_120444\\seeder\\mesh\\bnd.lsb": "dd36393cd6f91bddbc3374525af35f992dd8424c97b9de4709d49e3dc398dfcc",
+    "E:\\ULM\\hatimb-particle_flow_simulator\\ulm_3D_vascular\\outputs\\cfd_flow\\axis_aligned_ideal_plane_inlet_preflight_anchor003274_20260829_120444\\seeder\\mesh\\qval.lsb": "679b4f18bd7f32b7bc4503ffab434fe56fbf63c8d23a41e0a2880c030e9b5624",
+    "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\u3da\\f_195500\\restart\\a3274_11.472E-03.lsb": "e180af2993dc4b0a1556775d14fbad0a5e7a7427f5a756507719e518726e11bf",
+    "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-worktrees\\musubi_mcclure_adaptive_flux_20260829_1300\\build\\musubi_adaptive_flux": "e80162fb7e0e657d2e41aafc40a1b13b32204ff34692e24b7ab02c51aa97c588"
+  },
+  "first_failure": null
+}

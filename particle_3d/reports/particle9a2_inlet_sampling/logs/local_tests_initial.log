@@ -1,0 +1,71 @@
+........FF.                                                              [100%]
+=================================== FAILURES ===================================
+_________ test_accelerated_conditional_flux_matches_analytic_rectangle _________
+
+    def test_accelerated_conditional_flux_matches_analytic_rectangle():
+        s=source(FixedDistribution(1e-6),flux_slope=.6)
+        sampler,mapping,bounds=s.tree.feasible_proposal(.5e-6)
+        x=[]
+        for i in range(3500):
+            e=dict(particle_id=i,species='MB',diameter_m=1e-6,radius_m=.5e-6,q=[1.,0.,0.,0.],diameter_draw_id=[123,i,920,0])
+>           p,_,_=sample_flux_weighted_feasible_position(e,sampler=sampler,mapping=mapping,checker=s.checker,seed=123,guard=bounds['position_guard'],bounds=bounds)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+particle_3d/tests/particle9a2_inlet/test_position_flux_weighting_preserved.py:11: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+particle_3d/src/particle_3d/injection_method_c.py:85: in sample_flux_weighted_feasible_position
+    particle, status, detail = checker.check(event, position, {})
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+particle_3d/src/particle_3d/injection_admission.py:74: in check
+    return BridgeParticle.from_shape(event['particle_id'],shape,q=event['q'],velocity=free,omega=omega),'ACCEPTED',detail
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+particle_3d/src/particle_3d/lammps_state.py:53: in from_shape
+    return cls(particle_id,1 if mode==1 else 2,mode,shape.center_m,
+<string>:17: in __init__
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = BridgeParticle(particle_id=0, type_code=1, mode_code=1, position=array([8.2958966e-07, 5.7119141e-07, 0.0000000e+00]),...e_radius=0.0, capsule_length=0.0, bound_radius=np.float64(5e-07), rotation=array([0., 0., 0., 0., 0., 0., 0., 0., 0.]))
+
+    def __post_init__(self):
+        if not isinstance(self.particle_id,(int,np.integer)) or not 0<self.particle_id<2**31:
+>           raise ValueError('Positive stable 32-bit particle ID required')
+E           ValueError: Positive stable 32-bit particle ID required
+
+particle_3d/src/particle_3d/lammps_state.py:36: ValueError
+________________ test_symmetric_flux_and_geometry_no_side_bias _________________
+
+    def test_symmetric_flux_and_geometry_no_side_bias():
+        s=source(FixedDistribution(1e-6));sampler,mapping,bounds=s.tree.feasible_proposal(.5e-6)
+        centers=[]
+        for i in range(4000):
+            e=dict(particle_id=i,species='MB',diameter_m=1e-6,radius_m=.5e-6,q=[1.,0.,0.,0.],diameter_draw_id=[123,i,920,0])
+>           p,_,_=sample_flux_weighted_feasible_position(e,sampler=sampler,mapping=mapping,checker=s.checker,seed=456,guard=bounds['position_guard'],bounds=bounds)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+particle_3d/tests/particle9a2_inlet/test_symmetric_inlet_has_no_artificial_side_bias.py:10: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+particle_3d/src/particle_3d/injection_method_c.py:85: in sample_flux_weighted_feasible_position
+    particle, status, detail = checker.check(event, position, {})
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+particle_3d/src/particle_3d/injection_admission.py:74: in check
+    return BridgeParticle.from_shape(event['particle_id'],shape,q=event['q'],velocity=free,omega=omega),'ACCEPTED',detail
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+particle_3d/src/particle_3d/lammps_state.py:53: in from_shape
+    return cls(particle_id,1 if mode==1 else 2,mode,shape.center_m,
+<string>:17: in __init__
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = BridgeParticle(particle_id=0, type_code=1, mode_code=1, position=array([-1.86305105e-07,  4.46216832e-07,  0.00000000e...e_radius=0.0, capsule_length=0.0, bound_radius=np.float64(5e-07), rotation=array([0., 0., 0., 0., 0., 0., 0., 0., 0.]))
+
+    def __post_init__(self):
+        if not isinstance(self.particle_id,(int,np.integer)) or not 0<self.particle_id<2**31:
+>           raise ValueError('Positive stable 32-bit particle ID required')
+E           ValueError: Positive stable 32-bit particle ID required
+
+particle_3d/src/particle_3d/lammps_state.py:36: ValueError
+=========================== short test summary info ============================
+FAILED particle_3d/tests/particle9a2_inlet/test_position_flux_weighting_preserved.py::test_accelerated_conditional_flux_matches_analytic_rectangle
+FAILED particle_3d/tests/particle9a2_inlet/test_symmetric_inlet_has_no_artificial_side_bias.py::test_symmetric_flux_and_geometry_no_side_bias
+2 failed, 9 passed in 1.45s

@@ -1,0 +1,120 @@
+{
+  "status": "PASS",
+  "topics": [
+    {
+      "topic": "TAU1_AND_REFERENCE_PRESSURE",
+      "status": "VALIDATED",
+      "canonical_implementation": "utils/cfd_flow/validated_contract.py",
+      "canonical_test": "tests/test_validated_contract.py",
+      "canonical_evidence": "outputs/cfd_flow/healthy_mouse_capillary_tau1_reference_scaled_base_anchor003274_20260901/qc/reference_scaled_base_final.json",
+      "important_sha256": null,
+      "retired_alternatives": [
+        "fixed 23622 Pa",
+        "mis-scaled Tau1 runners"
+      ]
+    },
+    {
+      "topic": "GEOMETRY_AND_CONTINUOUS_Q",
+      "status": "PASS",
+      "canonical_implementation": "utils/cfd_flow/dimensionless_geometry_kernel.py",
+      "canonical_test": "tests/test_dimensionless_scale_invariance.py",
+      "canonical_evidence": "outputs/cfd_flow/healthy_mouse_capillary_dimensionless_qvalue_base_preflight_anchor003274_20260830/qc/final_base_geometry_validation.json",
+      "important_sha256": {
+        "base_mesh_elemlist": "f7d7b1d55273c78c336ac04e39bc018dd9ebb470a9f29ce833ff01711de8c386",
+        "base_mesh_bnd": "520d7dd1e4a46a45f9b1218a5807cfd89d6f054e0a247872362b130ff6bcfe69",
+        "base_mesh_qval": "35884406b5f0111cd4ab471f7b08ac3df00e478d3458a57636d1bd8921cb0fe6"
+      },
+      "retired_alternatives": [
+        "fallback-q solver path",
+        "q repair runners"
+      ]
+    },
+    {
+      "topic": "ADAPTIVE_ACTIVE_POPULATION",
+      "status": "PASS_375_ACTIVE_OF_376_PREFILTER",
+      "canonical_implementation": "utils/cfd_flow/adaptive_target_population.py",
+      "canonical_test": "tests/test_adaptive_target_population.py",
+      "canonical_evidence": [
+        "outputs/cfd_flow/healthy_mouse_capillary_tau1_reference_scaled_grid_convergence_anchor003274_20260901/qc/fine_adaptive_target_375_376_forensics.json",
+        "outputs/cfd_flow/healthy_mouse_capillary_tau1_reference_scaled_grid_convergence_anchor003274_20260901/qc/fine_adaptive_target_fix_validation.json",
+        "outputs/cfd_flow/healthy_mouse_capillary_tau1_reference_scaled_grid_convergence_anchor003274_20260901/fine_postfix/qc/fine_5000_safety_gate.json"
+      ],
+      "important_sha256": "90efce400bb4b6ad5ad22ddd6518ccbeb8ba8a8eece2f76f2109a26dae92758f",
+      "retired_alternatives": [
+        "stale 376 denominator",
+        "instrumented debug runners"
+      ]
+    },
+    {
+      "topic": "FULL_TIMESTEP_MASS_IDENTITY",
+      "status": "PASS",
+      "canonical_implementation": "utils/cfd_flow/full_timestep_mass_referee.py",
+      "canonical_test": "tests/test_full_timestep_identity_non_equilibrium.py",
+      "canonical_evidence": [
+        "outputs/cfd_flow/healthy_mouse_capillary_tau1_reference_scaled_base_anchor003274_20260901/qc/reference_scaled_base_full_referee.json",
+        "outputs/cfd_flow/healthy_mouse_capillary_tau1_base_anchor003274_20260830/qc/tau1_referee_v2_final.json"
+      ],
+      "important_sha256": null,
+      "retired_alternatives": [
+        "boundary-only final referee"
+      ]
+    },
+    {
+      "topic": "PHYSICAL_PORT_FLUX",
+      "status": "PASS",
+      "canonical_implementation": "utils/cfd_flow/physical_port_flux.py",
+      "canonical_test": "tests/test_interior_plane_geometry_contract.py",
+      "canonical_evidence": "outputs/cfd_flow/healthy_mouse_capillary_tau1_reference_scaled_grid_convergence_anchor003274_20260901/qc/physical_port_flux_plane_contract_v3.json",
+      "important_sha256": "ffaa49bdb6e43fb7208ff29df07a90d4e92ef9bfa4b96ca4f997d4f453a7f005",
+      "retired_alternatives": [
+        "CELL_CUBE V1",
+        "one-shot standardized-plane writer"
+      ]
+    },
+    {
+      "topic": "BASE_STEADY",
+      "status": "CFD_FLOW_REPAIRED_BASE_TAU1_STEADY_PASS",
+      "canonical_implementation": "utils/cfd_flow/steady_state.py",
+      "canonical_test": "tests/test_validated_evidence.py",
+      "canonical_evidence": "outputs/cfd_flow/healthy_mouse_capillary_tau1_reference_scaled_base_anchor003274_20260901/qc/reference_scaled_base_final.json",
+      "important_sha256": "ffcd98b2dc684d1569d937d915b603805809c581d5341e71b17afac2ac64c39f",
+      "retired_alternatives": [
+        "Base long-run orchestration"
+      ]
+    },
+    {
+      "topic": "COARSE_BASE_RESOLUTION",
+      "status": "PASS_TWO_GRID_RESOLUTION_SENSITIVITY",
+      "canonical_implementation": "utils/cfd_flow/tau1_grid_convergence.py",
+      "canonical_test": "tests/test_grid_convergence_gate.py",
+      "canonical_evidence": "outputs/cfd_flow/healthy_mouse_capillary_tau1_reference_scaled_grid_convergence_anchor003274_20260901/qc/coarse_steady_acceptance.json",
+      "important_sha256": "9eda88e685e5eaa6af650757b8c97accba392c88988df2766d2bb4de825fcfbb",
+      "retired_alternatives": [
+        "C/B/F solver runner"
+      ]
+    },
+    {
+      "topic": "FINE_STEADY",
+      "status": "NOT_COMPLETED_RESOURCE_BUDGET",
+      "canonical_implementation": "utils/cfd_flow/validated_evidence.py",
+      "canonical_test": "tests/test_validated_evidence.py",
+      "canonical_evidence": "outputs/cfd_flow/healthy_mouse_capillary_tau1_reference_scaled_grid_convergence_anchor003274_20260901/qc/resource_budget_termination.json",
+      "important_sha256": "462234ee8b59ae7b7be2234a5c1ef1ede24db6065a54b82af8cb6871d3ac7f9a",
+      "retired_alternatives": [
+        "Fine monitor",
+        "million-step continuation"
+      ]
+    },
+    {
+      "topic": "FORMAL_THREE_GRID_GCI",
+      "status": "NOT_COMPLETED_RESOURCE_BUDGET",
+      "canonical_implementation": "utils/cfd_flow/tau1_grid_convergence.py",
+      "canonical_test": "tests/test_grid_gci_uses_physical_flux_only.py",
+      "canonical_evidence": "outputs/cfd_flow/healthy_mouse_capillary_tau1_reference_scaled_grid_convergence_anchor003274_20260901/qc/coarse_steady_acceptance.json",
+      "important_sha256": null,
+      "retired_alternatives": [
+        "false three-grid PASS claims"
+      ]
+    }
+  ]
+}

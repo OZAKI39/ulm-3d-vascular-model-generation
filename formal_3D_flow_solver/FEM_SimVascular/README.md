@@ -1,14 +1,16 @@
-# Frozen 3D FEM / SimVascular baseline
+# 3D FEM / SimVascular
 
-FEM DEVELOPMENT: **FROZEN after Stage SV1.3Q**。本目录保存粒子开发需要的源码、accepted mesh/flow/boundaries、配置、证据与校验；尚未实现 Particle-0。
+当前是 Network A/H0 出口压力驱动的冻结 3D 血管流场。
 
-从 [PARTICLE_HANDOFF.md](PARTICLE_HANDOFF.md) 开始，再读 [FROZEN_FEM_BASELINE.md](FROZEN_FEM_BASELINE.md) 和 [PARTICLE_RESEARCH_ROADMAP.md](PARTICLE_RESEARCH_ROADMAP.md)。同步详情见 [SYNC_REPORT_FEM_PARTICLE_HANDOFF.md](SYNC_REPORT_FEM_PARTICLE_HANDOFF.md)，历史及可移植性见 [PORTABILITY_NOTES.md](PORTABILITY_NOTES.md)。
+- H0 算例生成：[fem_h0_case.py](../../vascular_network/network_1d0d/fem_h0_case.py)。
+- 远程求解：[solve_a_h0_fem_remote.py](../../vascular_network/scripts/solve_a_h0_fem_remote.py)。
+- 物理校验：[validate_a_h0_fem.py](../../vascular_network/scripts/validate_a_h0_fem.py)。
+- 共享实现：`src/sv_validation/`；当前日志解析：`scripts/sv13q/flow_parser.py`。
+- OLD 与 H0 算例：[flow_cases](flow_cases/)；当前派生量入口：`scripts/flow_2mmps/`。
+- 原旋转可视化接口：[OPEN_RESULTS.html](rotate_visualization/OPEN_RESULTS.html)。
+- 固定求解器源码：[vendor/svMultiPhysics_stage_q](vendor/svMultiPhysics_stage_q/)，其三个修改文件与本次服务器实际源文件逐字节相同；运行记录见 [server_evidence](../../server_evidence/README.md)。
 
-新环境：Python≥3.11，`python -m pip install -e .`。只读验证：
+`frozen_reference` 供当前 Particle 使用；`upstream_stage_q_reference` 保留 Flow 工作树的旧冻结输入。两者角色不同。独立回归脚本在临时目录选择对应输入，避免改写任何已有冻结目录。
+Stage N 的 PETSc/CUDA 与 Stage L 的 MPI/Fortran 构建脚本、启动 wrapper 和 Stage Q reuse patch 仍有实际用途，已保留。
 
-```bash
-python -B scripts/fem_freeze_sync/validate_frozen.py
-python -B scripts/fem_freeze_sync/verify_manifest.py
-```
-
-科学数值源于实际 Stage Q artifact，不源于聊天手抄。Mesh convergence / time-step sensitivity 未做且不计划在粒子开发前补做；CPU/GPU field equivalence deferred，均为用户接受的项目决定，不是 PASS。禁止把本分支当作开始进一步 FEM 调优的授权。
+完整性和当前 42 项流场测试包含在[主 README](../../README.md)的统一检查命令中。Taylor–Hood 验证已因资源成本停止，代码/日志作为历史证据保留，不代表已有完整 P2/P1 稳态场。

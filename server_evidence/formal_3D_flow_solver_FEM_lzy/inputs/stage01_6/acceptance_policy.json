@@ -1,0 +1,109 @@
+{
+  "stage": "1.6",
+  "timestamp": "2026-09-17T22:00:38.314033+00:00",
+  "candidates": {
+    "sparse_A": 3.5e-07,
+    "sparse_B": 4.5e-07,
+    "sparse_C": 5.5e-07
+  },
+  "sizing": {
+    "formula": "h(d)=h_rim+(h_center-h_rim)*min(d/(0.5*sqrt(A_projected/pi)),1)",
+    "transition_R_eq": 0.5,
+    "distance": "exact minimum Euclidean distance to frozen projected rim line segments",
+    "h_rim": "median frozen 3D rim edge length",
+    "implementation": "Gmsh setSizeCallback; two nodes per transfinite rim segment",
+    "gmsh_reference": "https://gmsh.info/doc/texinfo/#gmsh_002fmodel_002fmesh_002fsetSizeCallback",
+    "algorithm_2d": 6,
+    "smoothing": 0,
+    "geometry_tolerance_m": 1e-15
+  },
+  "geometry": {
+    "wall_displacement_m_max": 0.0,
+    "rim_displacement_m_max": 0.0,
+    "projected_area_relative_error_max": 1e-12,
+    "vector_area_relative_error_max": 1e-12,
+    "normal_dot_min": 0.999999999999,
+    "projected_centroid_displacement_m_max": 1e-12,
+    "interior_plane_deviation_m_max": 1e-15,
+    "coverage_relative_roundoff_tolerance": 1e-12,
+    "rim_ids_and_edges_exact": true,
+    "plane_origin_normal_basis_exact": true,
+    "entity_mapping_exact": true,
+    "connected_components": 1,
+    "boundary_edges": 0,
+    "nonmanifold_edges": 0
+  },
+  "density": {
+    "per_port_max": {
+      "inlet": 224,
+      "outlet_01": 176,
+      "outlet_02": 168,
+      "outlet_03": 196
+    },
+    "total_max": 800
+  },
+  "cap_quality": {
+    "q_below_0_1_max": 0,
+    "P5_min": 0.45,
+    "median_min": 0.7,
+    "positive_finite_area": true
+  },
+  "volume_meshing": {
+    "bulk_target_m": 5e-07,
+    "effective_gmsh_options": {
+      "General.NumThreads": 1,
+      "Mesh.MaxNumThreads1D": 1,
+      "Mesh.MaxNumThreads2D": 1,
+      "Mesh.MaxNumThreads3D": 1,
+      "Mesh.Algorithm3D": 1,
+      "Mesh.MeshOnlyEmpty": 1,
+      "Mesh.MeshSizeFromPoints": 0,
+      "Mesh.MeshSizeFromCurvature": 0,
+      "Mesh.MeshSizeExtendFromBoundary": 0,
+      "Mesh.MeshSizeMin": 5e-07,
+      "Mesh.MeshSizeMax": 5e-07,
+      "Mesh.Optimize": 1,
+      "Mesh.OptimizeNetgen": 0,
+      "Mesh.ElementOrder": 1,
+      "Mesh.MshFileVersion": 4.1,
+      "Mesh.Binary": 1
+    },
+    "wall_time_limit_s": 300,
+    "virtual_memory_limit_gib": 8,
+    "no_local_volume_refinement": true
+  },
+  "tetra_quality": {
+    "metric": "Gmsh minSICN",
+    "cap_adjacent_below_0_1_max": 38,
+    "total_below_0_1_max": 76,
+    "P1_min": 0.3359723496666575,
+    "P5_min": 0.47439613749869236,
+    "median_min": 0.7206460021439326,
+    "zero_inverted_degenerate_nonfinite": true,
+    "adjacency_method": "nearest exterior triangle centroid to tetrahedron centroid (same as Stage 1)",
+    "minimum_is_gate": false
+  },
+  "cost": {
+    "tetra_max": 200000,
+    "P2_velocity_ratio_max": 1.35,
+    "baseline": {
+      "N_vertex": 42968,
+      "N_edge": 224167,
+      "N_tetra": 147569,
+      "N_P2_scalar_proxy": 267135,
+      "N_P2_velocity_proxy": 801405,
+      "N_P1_pressure_proxy": 42968
+    },
+    "baseline_mesh_sha256": "e2599cf8c759db77b9d8b44eb804cb808bd5e379f5087dfcc48763c65f86baaf"
+  },
+  "selection": [
+    "quality_and_cost_survivors_only",
+    "minimum_P2_velocity_proxy",
+    "minimum_tetra",
+    "minimum_cap_adjacent_low",
+    "minimum_total_low",
+    "maximum_P1"
+  ],
+  "expansion_or_retuning_allowed": false,
+  "contract_sha256": "cf2dae365fde86ee02d92dbb1b1c97602f40c7adcce7a706551acf385cb96dc9"
+}

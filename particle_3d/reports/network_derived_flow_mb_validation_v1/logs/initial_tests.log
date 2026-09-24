@@ -1,0 +1,26 @@
+.F..........                                                             [100%]
+=================================== FAILURES ===================================
+_____________________ test_no_handoff_violation_new_smoke ______________________
+
+report = PosixPath('/home/lzy/projects/ulm_particle_3d_particle0/particle_3d/reports/network_derived_flow_mb_validation_v1')
+newpaths = [({'particle_id': 3, 'species': 'MB', 'attempt_count': 0, 'radius_m': 6.427057091159164e-07, ...}, array([[0.00000000e... 1.76477354e-04, 9.73291887e-05, ...,
+        0.00000000e+00, 3.19748151e-05, 9.12500000e-02]], shape=(537, 20))), ...]
+newenv = namespace(provenance={'stage': 'Particle-0', 'status': 'PASS', 'fem_branch': 'dev/flow-mean-2p0-mmps-20260922', 'fem_r...ular/frozen_reference/run/solver.xml', 'sha256': '1f9e9d0fd19543ec5a08e9f36b2721aebb16f36e62d4426ebed798441e3a7a48'}]})
+
+    def test_no_handoff_violation_new_smoke(report,newpaths,newenv):
+        for e,a in newpaths:
+            assert np.min(a[:,15])>=-newenv.wall.roundoff_m
+            p=report/'outputs/NEW/trajectories'/f"mb_{e['particle_id']:06d}.audit.jsonl.gz"
+            with gzip.open(p,'rt') as f:
+                for line in f:
+                    r=json.loads(line)
+                    if r['accepted']:
+                        for c in r['continuous_certificates']:
+>                           assert c['minimum_g_nf_bound_m']>=-c['roundoff_m']
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+E                           KeyError: 'minimum_g_nf_bound_m'
+
+ulm_particle_3d_particle0/particle_3d/tests/network_flow_mb_validation_v1/test_no_handoff_violation_new_smoke.py:12: KeyError
+=========================== short test summary info ============================
+FAILED ulm_particle_3d_particle0/particle_3d/tests/network_flow_mb_validation_v1/test_no_handoff_violation_new_smoke.py::test_no_handoff_violation_new_smoke
+1 failed, 11 passed in 7.21s

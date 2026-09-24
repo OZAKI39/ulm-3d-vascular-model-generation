@@ -1,0 +1,379 @@
+
+FILE /home/lzy/projects/ulm_flow_mean_2p0_mmps/formal_3D_flow_solver/FEM_SimVascular/vendor/svMultiPhysics_stage_q/Code/Source/solver/read_files.cpp
+SHA256 57ab378dc3f7e8442b28b99a908b91a546db2f63a769244a1a9e2510d7e624b4
+1740:   bool THflag = false; 
+1741:   if (eq_params->use_taylor_hood_type_basis.defined()) { 
+1742:     THflag = eq_params->use_taylor_hood_type_basis.value(); 
+1743:   }
+1744:   EquationProps propL{consts::PhysicalPropertyType::NA};
+1745:   EquationOutputs outPuts;
+1746:   EquationNdop nDOP;
+1747: 
+1748:   set_equation_properties(simulation, eq_params, lEq, propL, outPuts, nDOP);
+1749: 
+1750:   // Check if explicit geometric coupling is allowed for the equation
+1751:   if (lEq.expl_geom_cpl) {
+1752:     if (lEq.phys != EquationType::phys_FSI) {
+1753:       throw std::runtime_error("Explicit geometric coupling is only allowed for FSI equation.");
+1754:     }
+1755:   }
+1756: 
+1757:   // Read parameters related to VTU output.
+1758:   read_outputs(simulation, eq_params, lEq, nDOP, outPuts);
+1759: 
+1760:   // Set the number of function spaces
+1761:   for (int iM = 0; iM < com_mod.nMsh; iM++) {
+1762:     auto& msh = com_mod.msh[iM];
+1763:     if (!THflag) {
+1764:       msh.nFs = 1;
+1765:     } else { 
+1766:       if (com_mod.ibFlag) {
+1767:         throw std::runtime_error("Taylor-Hood basis is not implemented for immersed boundaries.");
+1768:       }
+1769:       if (msh.lShl || msh.lFib || (msh.eType == ElementType::NRB)) {
+1770:         msh.nFs = 1;
+1771:         throw std::runtime_error("Taylor-Hood basis is not allowed for NURBS mesh or shells and fibers.");
+1772:       } else { 
+1773:         if ( (msh.eType != ElementType::TRI6)  && (msh.eType != ElementType::TET10)) {
+1774:           throw std::runtime_error("Taylor-Hood basis is currently applicable for TRI6 (2D) or TET10 (3D) elements only.");
+1775:         }
+1776:         msh.nFs = 2;
+1777:       }
+
+FILE /home/lzy/projects/ulm_flow_mean_2p0_mmps/formal_3D_flow_solver/FEM_SimVascular/vendor/svMultiPhysics_stage_q/Code/Source/solver/fs.cpp
+SHA256 470029137da2ff1c245f0a12135752303594b7a0c37bd3a947fcb675dfc65e45
+300:   lM.fs.resize(lM.nFs);
+301: 
+302:   // The first set of basis is inherited directly from mesh basis
+303:   lM.fs[0].lShpF = lM.lShpF;
+304:   lM.fs[0].eType = lM.eType;
+305:   lM.fs[0].eNoN  = lM.eNoN;
+306:   lM.fs[0].nG    = lM.nG;
+307: 
+308:   alloc_fs(lM.fs[0], nsd, insd);
+309: 
+310:   if (lM.eType != ElementType::NRB) {
+311:     lM.fs[0].w = lM.w;
+312:     lM.fs[0].xi  = lM.xi;
+313:     lM.fs[0].xib = lM.xib;
+314:     lM.fs[0].N   = lM.N;
+315:     lM.fs[0].Nb  = lM.Nb;
+316:     lM.fs[0].Nx  = lM.Nx;
+317:   }
+318:   populate_reference_hessians(lM.fs[0], insd);
+319: 
+320:   // Sets Taylor-Hood basis [fluid, stokes, ustruct, FSI)
+321:   if (lM.nFs == 2) {
+322:     // Select Taylor-Hood element
+323:     set_thood_fs(lM.fs[1], lM.fs[0].eType);
+324: 
+325:     // Initialize the function space
+326:     init_fs(lM.fs[1], nsd, insd);
+327:     populate_reference_hessians(lM.fs[1], insd);
+
+FILE /home/lzy/projects/ulm_flow_mean_2p0_mmps/formal_3D_flow_solver/FEM_SimVascular/vendor/svMultiPhysics_stage_q/Code/Source/solver/nn.cpp
+SHA256 ba138fc9aaba3424ffbcbb1f2ef72cfd2fff11298466100958d1bbb96dd543b8
+80:     case consts::ElementType::LIN1:  return fe::ElementType::Line2;
+81:     case consts::ElementType::LIN2:  return fe::ElementType::Line3;
+82:     case consts::ElementType::TRI3:  return fe::ElementType::Triangle3;
+83:     case consts::ElementType::TRI6:  return fe::ElementType::Triangle6;
+84:     case consts::ElementType::QUD4:  return fe::ElementType::Quad4;
+85:     case consts::ElementType::QUD8:  return fe::ElementType::Quad8;
+86:     case consts::ElementType::QUD9:  return fe::ElementType::Quad9;
+87:     case consts::ElementType::TET4:  return fe::ElementType::Tetra4;
+88:     case consts::ElementType::TET10: return fe::ElementType::Tetra10;
+89:     case consts::ElementType::HEX8:  return fe::ElementType::Hex8;
+90:     case consts::ElementType::HEX20: return fe::ElementType::Hex20;
+170: std::span<const std::size_t> solver_to_basis_node_map(consts::ElementType eType)
+171: {
+172:   static constexpr std::array<std::size_t, 3> tri3{1, 2, 0};
+173:   static constexpr std::array<std::size_t, 6> tri6{1, 2, 0, 4, 5, 3};
+174:   static constexpr std::array<std::size_t, 4> tet4{1, 2, 3, 0};
+175:   static constexpr std::array<std::size_t, 10> tet10{1, 2, 3, 0, 5, 9, 8, 4, 6, 7};
+176: 
+177:   switch (eType) {
+178:     case consts::ElementType::TRI3:
+179:       return tri3;
+180:     case consts::ElementType::TRI6:
+181:     case consts::ElementType::WDG:
+182:       return tri6;
+183:     case consts::ElementType::TET4:
+184:       return tet4;
+185:     case consts::ElementType::TET10:
+186:       return tet10;
+
+FILE /home/lzy/projects/ulm_flow_mean_2p0_mmps/formal_3D_flow_solver/FEM_SimVascular/vendor/svMultiPhysics_stage_q/Code/Source/solver/FE/Basis/LagrangeBasis.cpp
+SHA256 d4af4bfa69fdf340ad77865055ca08a09cebb44000cc2b46bd5995518ab3518a
+30: // Validate a named-element Lagrange request and return its reference topology.
+31: //
+32: // Serendipity layouts and pyramids are rejected. The requested order must equal
+33: // the order baked into the named layout (0 for Point1, 1 for the linear
+34: // elements, 2 for the complete-quadratic aliases Line3/Triangle6/Quad9/Tetra10/
+35: // Hex27/Wedge18). A named element therefore cannot carry a conflicting order;
+36: // arbitrary orders are requested through the BasisTopology constructor, so a
+37: // reader never has to read a polynomial order out of a node-count name such as
+38: // Hex8 or Tetra10.
+39: BasisTopology validated_lagrange_topology(ElementType element_type, int order) {
+40:     switch (element_type) {
+41:         case ElementType::Quad8:
+42:             svmp::raise<BasisElementCompatibilityException>("LagrangeBasis: Quad8 is serendipity; use SerendipityBasis");
+43:         case ElementType::Hex20:
+44:             svmp::raise<BasisElementCompatibilityException>("LagrangeBasis: Hex20 is serendipity; use SerendipityBasis");
+45:         case ElementType::Wedge15:
+46:             svmp::raise<BasisElementCompatibilityException>("LagrangeBasis: Wedge15 is serendipity; use SerendipityBasis");
+47:         case ElementType::Pyramid5:
+48:         case ElementType::Pyramid13:
+49:         case ElementType::Pyramid14:
+50:             svmp::raise<BasisElementCompatibilityException>("LagrangeBasis: pyramid support is not within the current solver basis scope");
+51:         default:
+52:             break;
+53:     }
+54: 
+55:     const BasisTopology top = topology(element_type);
+56:     svmp::throw_if<BasisElementCompatibilityException>(top == BasisTopology::Unknown, "LagrangeBasis: unsupported element type");
+57: 
+58:     const int baked_order = named_lagrange_order(element_type);
+59:     svmp::throw_if<BasisConfigurationException>(order != baked_order, "LagrangeBasis: a named element layout has a fixed polynomial order; request the matching "
+60:         "BasisTopology with an explicit order to choose a different order");
+61:     return top;
+62: }
+
+FILE /home/lzy/projects/ulm_flow_mean_2p0_mmps/formal_3D_flow_solver/FEM_SimVascular/vendor/svMultiPhysics_stage_q/Code/Source/solver/fluid.cpp
+SHA256 df04669e8393de6f1eef8fcc18ce883dd39369bad64c3888f665b5525ef2ee64
+490: 
+491:   using namespace consts;
+492: 
+493:   const int eNoN = lM.eNoN;
+494:   bool vmsStab = false;
+495: 
+496:   if (lM.nFs == 1) {
+497:      vmsStab = true;
+498:   } else {
+499:      vmsStab = false;
+500:   }
+501: 
+502:   // l = 3, if nsd==2 ; else 6;
+1520:     uxx[1][1][1] += Nwxx(1,a)*yl(1,a);
+1521:     uxx[2][1][2] += Nwxx(2,a)*yl(1,a);
+1522:     uxx[1][1][0] += Nwxx(3,a)*yl(1,a);
+1523:     uxx[2][1][1] += Nwxx(4,a)*yl(1,a);
+1524:     uxx[0][1][2] += Nwxx(5,a)*yl(1,a);
+1525: 
+1526:     uxx[0][2][0] += Nwxx(0,a)*yl(2,a);
+1527:     uxx[1][2][1] += Nwxx(1,a)*yl(2,a);
+1528:     uxx[2][2][2] += Nwxx(2,a)*yl(2,a);
+1529:     uxx[1][2][0] += Nwxx(3,a)*yl(2,a);
+1530:     uxx[2][2][1] += Nwxx(4,a)*yl(2,a);
+1531:     uxx[0][2][2] += Nwxx(5,a)*yl(2,a);
+1532:   }
+1533: 
+1534:   double divU = ux[0][0] + ux[1][1] + ux[2][2];
+1535: 
+1717: 
+1718:   } else {
+1719:     tauM = 0.0;
+1720:     std::memset(up, 0, sizeof up);
+1721:     std::memset(updu, 0, sizeof updu);
+1722:   }
+1723: 
+1724:   //  Local residual
+1725:   //
+1726:   for (int a = 0; a < eNoNq; a++) {
+1727:     double upNx = up[0]*Nqx(0,a) + up[1]*Nqx(1,a) + up[2]*Nqx(2,a);
+1728:     lR(3,a) = lR(3,a) + w*(Nq(a)*divU - upNx);
+1729:   }
+1730: 
+
+FILE /home/lzy/projects/ulm_flow_mean_2p0_mmps/formal_3D_flow_solver/FEM_SimVascular/vendor/svMultiPhysics_stage_q/Code/Source/solver/output.cpp
+SHA256 da2546ac340479b5e1fdb1dbd51dab497baadffc367650272fb93ea8d639f1e3
+200: void write_restart(Simulation* simulation, std::array<double,3>& timeP, const SolutionStates& solutions)
+201: {
+202:   const auto& An = solutions.current.get_acceleration();
+203:   const auto& Yn = solutions.current.get_velocity();
+204:   const auto& Dn = solutions.current.get_displacement();
+205: 
+294:   restart_file.seekp(write_pos);
+295: 
+296:   write_restart_header(com_mod, timeP, restart_file);
+297:   restart_file.write((char*)cplBC.xn.data(), cplBC.xn.msize());
+298:   restart_file.write((char*)Yn.data(), Yn.msize());
+299:   restart_file.write((char*)An.data(), An.msize());
+300: 
+401: void write_restart_header(ComMod& com_mod, std::array<double,3>& timeP, std::ofstream& restart_file)
+402: {
+403:   auto const cTS = com_mod.cTS;
+404:   auto const time = com_mod.time;
+405:   auto& stamp = com_mod.stamp;
+406:   double cpu_time = utils::cput() - timeP[0];
+407: 
+408:   restart_file.write((char*)stamp.data(), sizeof(stamp));
+409:   restart_file.write((char*)&cTS, sizeof(cTS));
+410:   restart_file.write((char*)&time, sizeof(time));
+411:   restart_file.write((char*)&cpu_time, sizeof(cpu_time));
+412: 
+413:   for (auto& eq : com_mod.eq) {
+414:     restart_file.write((char*)&eq.iNorm, sizeof(eq.iNorm));
+415:   }
+416: }
+
+FILE /home/lzy/projects/ulm_flow_mean_2p0_mmps/formal_3D_flow_solver/FEM_SimVascular/vendor/svMultiPhysics_stage_q/Code/Source/solver/Array.h
+SHA256 4210db35dea906f3d899f48fa2e03dee640a33c440f487f7d8ef055e2c81eef9
+346:     const T& operator()(const int row, const int col) const
+347:     {
+348:       #ifdef Array_check_enabled
+349:       check_index(row, col);
+350:       #endif
+351:       return data_[row + col*nrows_];
+352:     }
+353: 
+354:     T& operator()(const int row, const int col)
+355:     {
+356:       #ifdef Array_check_enabled
+357:       check_index(row, col);
+358:       #endif
+359:       return data_[row + col*nrows_];
+360:     }
+
+FILE /home/lzy/projects/ulm_flow_mean_2p0_mmps/formal_3D_flow_solver/FEM_SimVascular/vendor/svMultiPhysics_stage_q/Code/Source/solver/vtk_xml.cpp
+SHA256 8fa32904c7849caa0268aedb15d93a5f4eabe97e15b0506b31b97e39ca2d4ddf
+923: 
+924:   auto& com_mod = simulation->com_mod;
+925:   const auto& lA = solutions.current.get_acceleration();
+926:   const auto& lY = solutions.current.get_velocity();
+927:   const auto& lD = solutions.current.get_displacement();
+928:   auto& cm = com_mod.cm;
+929:   auto& cm_mod = simulation->cm_mod;
+1099:           break;
+1100: 
+1101:           case OutputNameType::outGrp_Y:
+1102:             if (eq.phys != EquationType::phys_heatF) {
+1103:                 for (int a = 0; a < msh.nNo; a++) {
+1104:                     int Ac = msh.gN(a);
+1105:                     for (int i = 0; i < l; i++) {
+1106:                         d[iM].x(i + is, a) = lY(i + s, Ac);
+1107:                     }
+1108:                 }
+
+FILE /home/lzy/projects/ulm_flow_mean_2p0_mmps/formal_3D_flow_solver/FEM_SimVascular/vendor/svMultiPhysics_stage_q/Code/Source/solver/VtkData.cpp
+SHA256 888b1826e32d1a63318e0ed6f3f829e6c7586ab2b457766e79d5c9808eab711a
+166: void VtkData::set_point_data(const std::string &data_name,
+167:                              const Array<double> &data) {
+168:   const int num_vals = data.ncols();
+169:   const int num_comp = data.nrows();
+170: 
+171:   svmp::check<svmp::FE::InvalidArgumentException>(
+172:       num_vals == vtk_data->GetNumberOfPoints(),
+173:       "The point data array named '" + data_name + "' holds " +
+174:           std::to_string(num_vals) + " values, while the mesh has " +
+175:           std::to_string(vtk_data->GetNumberOfPoints()) + " points.");
+176: 
+177:   auto data_array = vtkSmartPointer<vtkDoubleArray>::New();
+178:   data_array->SetNumberOfComponents(num_comp);
+179:   data_array->Allocate(num_vals, 1000);
+180:   data_array->SetNumberOfTuples(num_vals);
+181:   data_array->SetName(data_name.c_str());
+182: 
+183:   for (int i = 0; i < num_vals; i++) {
+184:     for (int j = 0; j < num_comp; j++) {
+185:       data_array->SetComponent(i, j, data(j, i));
+186:     }
+187:   }
+188: 
+189:   vtk_data->GetPointData()->AddArray(data_array);
+190: }
+240: void VtkData::set_points(const Array<double> &points) {
+241:   const int num_coords = points.ncols();
+242:   svmp::check<svmp::FE::InvalidArgumentException>(
+243:       num_coords != 0, "The number of points is zero.");
+244: 
+245:   svmp::check<svmp::FE::InvalidArgumentException>(
+246:       points.nrows() >= 3,
+247:       "The point coordinates are given as an array of " +
+248:           std::to_string(points.nrows()) +
+249:           " rows, while three coordinates per point are needed.");
+250: 
+251:   auto node_coords = vtkSmartPointer<vtkPoints>::New();
+252:   node_coords->Allocate(num_coords, 1000);
+253:   node_coords->SetNumberOfPoints(num_coords);
+254: 
+255:   for (int i = 0; i < num_coords; i++) {
+256:     node_coords->SetPoint(i, points(0, i), points(1, i), points(2, i));
+257:   }
+258: 
+259:   vtk_data->SetPoints(node_coords);
+260: }
+261: 
+262: void VtkData::set_connectivity(const int nsd, const Array<int> &conn) {
+
+FILE /home/lzy/projects/ulm_flow_mean_2p0_mmps/formal_3D_flow_solver/FEM_SimVascular/vendor/svMultiPhysics_stage_q/Code/Source/solver/vtk_xml_parser.cpp
+SHA256 e72a7608ac340feca357519d543838226bee532fa113acbb5742e2577a1f966c
+524: void store_nodal_coords(vtkPoints* points, mshType& mesh)
+525: {
+526:   vtkIdType num_nodes = points->GetNumberOfPoints();
+527:   mesh.gnNo = num_nodes;
+528:   mesh.x = Array<double>(3, num_nodes);
+529: 
+530:   for (int i = 0; i < num_nodes; i++) {
+531:     double point[3];
+532:     points->GetPoint(i, point);
+533:     mesh.x(0,i) = point[0];
+534:     mesh.x(1,i) = point[1];
+535:     mesh.x(2,i) = point[2];
+536:   }
+537: }
+538: 
+539: /// @brief Store VTK node IDs data array into a mesh nodal IDs.
+540: ///
+541: /// Note: This array appeats to be optional. 
+542: ///
+543: /// Mesh variables set
+544: ///   mesh.gN - nodal IDs
+545: //
+546: void store_nodal_ids(vtkSmartPointer<vtkUnstructuredGrid> vtk_ugrid, mshType& mesh)
+547: {
+
+FILE /home/lzy/projects/ulm_flow_mean_2p0_mmps/formal_3D_flow_solver/FEM_SimVascular/vendor/svMultiPhysics_stage_q/Code/Source/solver/fs.cpp
+SHA256 470029137da2ff1c245f0a12135752303594b7a0c37bd3a947fcb675dfc65e45
+85:   if (lStab) {
+86:     for (int i = 0; i < 2; i++) {
+87:       fs[i].nG = lM.fs[0].nG;
+88:       fs[i].eType = lM.fs[0].eType;
+89:       fs[i].lShpF = lM.fs[0].lShpF;
+90:       fs[i].eNoN  = lM.fs[0].eNoN;
+91: 
+92:       alloc_fs(fs[i], nsd, nsd);
+93: 
+94:       fs[i].w   = lM.fs[0].w;
+95:       fs[i].xi  = lM.fs[0].xi;
+96:       fs[i].N   = lM.fs[0].N;
+97:       fs[i].Nx  = lM.fs[0].Nx;
+98:       fs[i].xib = lM.fs[0].xib;
+99:       fs[i].Nb  = lM.fs[0].Nb;
+100: 
+101:       // [NOTE] Not sure what this is all about. 
+102:       /*
+103:       if (fs[i].Nxx.size() != 0) {
+104:         fs[i].Nxx = lM.fs[0].Nxx;
+105:       }
+106:       */
+107:       fs[i].Nxx = lM.fs[0].Nxx;
+108:     }
+
+FILE /home/lzy/projects/ulm_flow_mean_2p0_mmps/formal_3D_flow_solver/FEM_SimVascular/vendor/svMultiPhysics_stage_q/Code/Source/solver/FE/Basis/BasisTraits.h
+SHA256 b02bc6aa4f906916d9d430dcbbdde3b73a8b5cb9c195a2c3b2a2d17926b42ffa
+115: [[nodiscard]] constexpr int complete_lagrange_alias_order(ElementType type) noexcept {
+116:     switch (type) {
+117:         case ElementType::Line2:
+118:         case ElementType::Triangle3:
+119:         case ElementType::Quad4:
+120:         case ElementType::Tetra4:
+121:         case ElementType::Hex8:
+122:         case ElementType::Wedge6:
+123:             return 1;
+124:         case ElementType::Line3:
+125:         case ElementType::Triangle6:
+126:         case ElementType::Quad9:
+127:         case ElementType::Tetra10:
+128:         case ElementType::Hex27:
+129:         case ElementType::Wedge18:
+130:             return 2;

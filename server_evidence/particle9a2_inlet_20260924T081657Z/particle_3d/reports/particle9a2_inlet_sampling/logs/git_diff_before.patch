@@ -1,0 +1,431 @@
+diff --git a/particle_3d/scripts/finalize_particle82_report.py b/particle_3d/scripts/finalize_particle82_report.py
+index f89259f..ed60822 100644
+--- a/particle_3d/scripts/finalize_particle82_report.py
++++ b/particle_3d/scripts/finalize_particle82_report.py
+@@ -20,6 +20,8 @@ def main(root):
+     guard_selection=read('natural/NATURAL_GUARD_SELECTION.json')
+     host=natural['host_provenance']
+     count=c['outlet_counts'];covered=all(count.values());factors=extended['factors'];latest=factors[-1]
++    diagnostic_outlets={str(f['guard_factor']):{o:sum(r['outlet']==o for r in f['rows']) for o in OUTLETS} for f in factors}
++    timestep_outlets={str(div):{o:sum(r['outlet']==o and r['dt_divisor']==div for r in dt['rows']) for o in OUTLETS} for div in [1,2,4]}
+     cpu=next((r['stdout'] for r in remote['commands'] if r['command']==['lscpu']), '')
+     model=next((line.split(':',1)[1].strip() for line in cpu.splitlines() if line.startswith('Model name:')),'AMD Ryzen 7 7800X3D (see raw lscpu)')
+     gpu=next((r['stdout'] for r in remote['commands'] if r['command'][0]=='nvidia-smi'),'See REMOTE_HOST_PROVENANCE.json')
+@@ -61,6 +63,7 @@ def main(root):
+             still_safety_stopped=sum(r['end_reason']=='INTEGRATION_SAFETY_STOP' for r in f['rows']),
+             other_terminal_reason=sum(not r['completed'] and r['end_reason']!='INTEGRATION_SAFETY_STOP' for r in f['rows'])) for f in factors],
+         timestep_audit=dt,natural_scheduled=c['scheduled'],natural_admitted=c['admitted'],natural_completed=c['completed'],
++        extended_diagnostic_outlet_counts=diagnostic_outlets,timestep_diagnostic_outlet_counts=timestep_outlets,
+         outlet_01_completed=count[OUTLETS[0]],outlet_02_completed=count[OUTLETS[1]],outlet_03_completed=count[OUTLETS[2]],
+         all_outlets_observed=covered,full_network_coverage_status='PASS' if covered else 'NOT_ESTABLISHED',
+         ulm_full_network_visualization_target=all(n>=50 for n in count.values()),
+@@ -75,6 +78,8 @@ def main(root):
+     table='\n'.join(f'| {b} | {doc["proposal_by_basin"][b]} | {doc["admitted_by_basin"][b]} | {doc["guard_exhausted_by_basin"][b]} |' for b in BASINS)
+     continuation='；'.join(f'预算 ×{f["guard_factor"]}：原停止转完成 {f["completed_from_stops"]}，仍不完整 {f["still_stopped"]}' for f in factors)
+     timestep='；'.join(f'{b} 可用 {dt["groups"][b]["available"]}，选取 {len(dt["groups"][b]["selected"])}' for b in OUTLETS)
++    extended_text='；'.join(f'guard ×{factor}：'+ '/'.join(str(counts[o]) for o in OUTLETS) for factor,counts in diagnostic_outlets.items())
++    timestep_text='；'.join(f'dt/{factor}：'+ '/'.join(str(counts[o]) for o in OUTLETS) for factor,counts in timestep_outlets.items())
+     review=f'''# Particle-8.2 中文人工审核报告
+ 
+ 工程审计：{doc['software_stage_status']}。完整网络覆盖：{doc['full_network_coverage_status']}。point tracer 与 Frozen 边界通量的一致性：{point['flux_sanity_status']}。这三个结论是不同的验证对象。用户人工审核仍为 **PENDING_USER_REVIEW**。
+@@ -103,7 +108,7 @@ def main(root):
+ 
+ ## 6. point tracer 是否覆盖三个出口？
+ 
+-是。原精度的 100000 条分别为 {p['outlet_counts']}，另有 {p['unresolved']} 条未解析。同一批入口位置加密空间步长和局部误差控制后为 {ref['outlet_counts']}，仍有 {ref['unresolved']} 条未解析；逐 ID 出口分类改变 {point['outlet_class_changes']} 条。
++是。按 OUTLET_01/02/03 顺序，原精度的 100000 条分别为 {' / '.join(str(p['outlet_counts'][o]) for o in OUTLETS)}，另有 {p['unresolved']} 条未解析。同一批入口位置加密空间步长和局部误差控制后为 {' / '.join(str(ref['outlet_counts'][o]) for o in OUTLETS)}，仍有 {ref['unresolved']} 条未解析；逐 ID 出口分类改变 {point['outlet_class_changes']} 条。
+ 
+ 没有使用任意 ±5% 门槛。报告使用精确二项检验及 Bonferroni 同时 95% 区间，分母始终是全部 100000 条。OUTLET_01/02 的原观察比例没有通过纯抽样误差下的 Frozen 通量匹配；未解析路径不能任意分给出口，流量一致性仍未建立。1024 个原单元速度比较的最大差约 1.1e-19 m/s；一个反复停滞例的原 P1 单元速度散度约 −111.36 s⁻¹。这个单例支持检查 P1 场局部非零散度/壁面停滞，但不能把全部未解析路径都归因于它。没有改 Frozen 场去配平统计。
+ 
+@@ -124,6 +129,8 @@ def main(root):
+ 
+ 本轮独立自然数据中，OUTLET_01 为 {count[OUTLETS[0]]}，OUTLET_03 为 {count[OUTLETS[2]]}。正式集合没有混入按目标 basin 筛选的轨迹、旧轨迹或复制轨迹。扩展预算及时间步诊断在独立目录保存。
+ 
++按 OUTLET_01/02/03 顺序，独立扩展诊断的出口完成数为：{extended_text}。时间步诊断的出口完成数为：{timestep_text}。这些诊断记录使用已选定病例，不能加入自然集合的出口数量。
++
+ ## 10. 三出口最终各有多少 complete tracks？
+ 
+ 新自然集合 scheduled={c['scheduled']}、admitted={c['admitted']}、completed={c['completed']}。三个出口完整轨迹数分别为 {count[OUTLETS[0]]} / {count[OUTLETS[1]]} / {count[OUTLETS[2]]}。全部未接纳及未完成 ID 留在事件、终止表和 catalog 中。
+diff --git a/particle_3d/src/particle_3d/nearfield_handoff.py b/particle_3d/src/particle_3d/nearfield_handoff.py
+index 9bce1a3..eb76ef0 100644
+--- a/particle_3d/src/particle_3d/nearfield_handoff.py
++++ b/particle_3d/src/particle_3d/nearfield_handoff.py
+@@ -99,3 +99,114 @@ def wall_handoff_certificate(start,end,wall,lower):
+         bound=max(bounds);minimum_bound=min(minimum_bound,bound)
+         if bound < -pad:return False,dict(proof='HANDOFF_SWEEP_NOT_CERTIFIED',triangle_id=int(i),minimum_g_nf_bound_m=bound,roundoff_m=pad)
+     return True,dict(proof='CONTINUOUS_ORIGINAL_SUPPORT_PLANE_MINUS_H_LOWER',triangle_count=len(ids),minimum_g_nf_bound_m=minimum_bound,roundoff_m=pad)
++
++
++def first_handoff_event(shapes,velocities,dt,wall,policy):
++    """First finite-geometry crossing along the solved straight center path.
++
++    Distance to a convex finite triangle is convex. Its squared-distance
++    derivative brackets the unique minimum (possibly an interval of minima).
++    Checking that minimum catches crossings even when BOTH endpoints are clear.
++    Original continuous certificates independently certify every accepted path.
++    """
++    from .convex_triangle import triangle_closest_many
++    events=[]
++    def root(gap,upper,pad,identity):
++        g0,g1=gap(0.),gap(upper)
++        if g1>=-pad or g0<=pad:return
++        lo=0.;hi=upper;iterations=0
++        for iterations in range(64):
++            mid=lo+(hi-lo)/2
++            if mid==lo or mid==hi:break
++            g=gap(mid)
++            if g>=0:lo=mid
++            else:hi=mid
++            if 0<=g<=pad/4:
++                lo=mid;break
++        value=gap(lo)
++        if 0<=value<=pad:
++            events.append(dict(time_from_start_s=lo,g_nf_at_root_m=value,
++                roundoff_m=pad,root_iterations=iterations+1,**identity))
++    if wall is not None:
++        for i,s in sorted(shapes.items()):
++            lower=policy.lower_handoff_gap(policy.reference_length(s))['h_lower_m']
++            velocity=velocities[i];delta=dt*velocity;finish=s.center_m+delta
++            ids=wall.swept_candidates(s.center_m,finish,s.radius_m+lower)
++            if not len(ids) or not np.any(delta):continue
++            wp,_=triangle_closest_many(s.center_m,wall.triangles[ids])
++            d=s.center_m-wp;distance=np.linalg.norm(d,axis=1)
++            g0=distance-s.radius_m-lower
++            pad=roundoff_length(s.center_m,finish,s.radius_m,wall.triangles)
++            # Supporting plane of each original convex triangle. No distance band.
++            direction=np.einsum('ij,j->i',d,delta)/distance
++            possible=(g0+np.minimum(direction,0)<-pad)&(g0>pad)
++            for k in np.flatnonzero(possible):
++                tri=wall.triangles[ids[k]:ids[k]+1]
++                def value(t):
++                    center=s.center_m+t*velocity;point,_=triangle_closest_many(center,tri)
++                    vector=center-point[0]
++                    return float(np.linalg.norm(vector)-s.radius_m-lower),float(vector@velocity)
++                end_g,end_derivative=value(dt);upper=dt;minimum_iterations=0
++                if end_g>=-pad:
++                    if end_derivative<=0:continue
++                    lo=0.;hi=dt
++                    for minimum_iterations in range(64):
++                        mid=lo+(hi-lo)/2
++                        if mid==lo or mid==hi:break
++                        if value(mid)[1]<0:lo=mid
++                        else:hi=mid
++                    upper=lo+(hi-lo)/2
++                root(lambda t:value(t)[0],upper,pad,dict(kind='WALL',particle_id=i,
++                    triangle_id=int(ids[k]),minimum_search_iterations=minimum_iterations,
++                    full_candidate_endpoint_g_nf_m=end_g))
++    for i,j in all_pairs(shapes):
++        a,b=shapes[i],shapes[j]
++        lower=policy.lower_handoff_gap(policy.reference_length(a,b))['h_lower_m']
++        pad=roundoff_length(a.center_m,b.center_m,a.radius_m,b.radius_m)
++        relative=a.center_m-b.center_m;dv=velocities[i]-velocities[j]
++        denominator=float(dv@dv)
++        upper=float(np.clip(-(relative@dv)/denominator,0.,dt)) if denominator else 0.
++        def gap(t):return float(np.linalg.norm(relative+t*dv)-a.radius_m-b.radius_m-lower)
++        root(gap,upper,pad,dict(kind='PAIR',particle_id=i,particle_j_id=j))
++    return min(events,key=lambda x:(x['time_from_start_s'],x['particle_id'],x.get('triangle_id',-1))) if events else None
++
++
++def partitioned_wall_handoff_certificate(start,end,wall,lower):
++    """Compose ORIGINAL certificates on the SAME held-velocity straight path.
++
++    Near a finite edge the endpoints' support planes can fail to prove a safe
++    glancing path. The minimum-distance witness partitions the proof, not the
++    dynamics. No state is accepted unless every original subcertificate passes;
++    an actual crossing still fails. No altered normals, gaps, pads or floors.
++    """
++    from .convex_triangle import triangle_closest_many
++    from .physical_time_refinement import MAX_REFINEMENT_DEPTH
++    intervals=[(0.,1.)];proved=[];delta=end.center_m-start.center_m
++    for _ in range(MAX_REFINEMENT_DEPTH):
++        if not intervals:
++            return True,dict(proof='UNION_OF_ORIGINAL_CONTINUOUS_HANDOFF_CERTIFICATES',
++                proof_partition_only=True,held_velocity_path_unchanged=True,subcertificates=proved)
++        lo,hi=intervals.pop(0)
++        a=start.moved(start.center_m+lo*delta) if lo else start
++        b=start.moved(start.center_m+hi*delta) if hi!=1 else end
++        safe,record=wall_handoff_certificate(a,b,wall,lower)
++        if safe:
++            proved.append(dict(t0_fraction=lo,t1_fraction=hi,certificate=record));continue
++        if record['proof']!='HANDOFF_SWEEP_NOT_CERTIFIED':return False,record
++        tri=wall.triangles[record['triangle_id']:record['triangle_id']+1]
++        left,right=lo,hi
++        def value(t):
++            point=start.center_m+t*delta;wp,_=triangle_closest_many(point,tri)
++            d=point-wp[0]
++            return float(np.linalg.norm(d)-start.radius_m-lower),float(d@delta)
++        if value(lo)[1]>=0 or value(hi)[1]<=0:return False,record
++        for iteration in range(64):
++            mid=left+(right-left)/2
++            if mid==left or mid==right:break
++            if value(mid)[1]<0:left=mid
++            else:right=mid
++        fraction=left+(right-left)/2
++        if not lo<fraction<hi or value(fraction)[0]<-record['roundoff_m']:return False,record
++        intervals[0:0]=[(lo,fraction),(fraction,hi)]
++    return False,dict(proof='HANDOFF_ORIGINAL_CERTIFICATE_PARTITION_LIMIT',
++        certified_subinterval_count=len(proved),unproved_subinterval_count=len(intervals))
+diff --git a/particle_3d/src/particle_3d/particle65_motion.py b/particle_3d/src/particle_3d/particle65_motion.py
+index 80c06cc..f4ad88b 100644
+--- a/particle_3d/src/particle_3d/particle65_motion.py
++++ b/particle_3d/src/particle_3d/particle65_motion.py
+@@ -9,7 +9,7 @@ import numpy as np
+ from scipy import sparse
+ from .nearfield_regularization import NearFieldRegularizationV1,CONTRACT_NAME
+ from .nearfield_handoff import (exact_interactions,require_admissible_initial,handoff_constraints,
+-    pair_handoff_certificate,wall_handoff_certificate)
++    pair_handoff_certificate,wall_handoff_certificate,first_handoff_event,partitioned_wall_handoff_certificate)
+ from .resistance_assembly import ResistanceSystem
+ from .resistance_solver import solve_resistance,contact_jacobian,ResistanceSystemIllConditioned
+ from .hydrodynamic_resistance import sphere_self_diagonal
+@@ -60,6 +60,13 @@ def v1_trial(provider,mu,wall,policy,*,boundary_classifier=None,on_accept=None,a
+                 fraction,i,hit=min(hits,key=lambda x:(x[0],x[1]))
+                 if not hit.role.startswith('OUTLET_'):raise TrialNeedsSubdivision('Center boundary event '+hit.role)
+                 dt*=fraction;events[i]=hit.role;event=hit.role;end={i:s.moved(s.center_m+dt*v[i]) for i,s in old.shapes.items()}
++        handoff_event=first_handoff_event(old.shapes,v,dt,wall,policy)
++        if handoff_event is not None:
++            event_time=old.time_s+handoff_event['time_from_start_s']
++            if event_time<=old.time_s:raise TrialNeedsSubdivision('HANDOFF_EVENT_TIME_NOT_REPRESENTABLE')
++            dt=event_time-old.time_s
++            end={i:s.moved(s.center_m+dt*v[i]) for i,s in old.shapes.items()}
++            events={};event='ACTIVE'
+         _,end_records,_=exact_interactions(end,wall,policy,mu)
+         attempt=dict(t0_s=old.time_s,requested_dt_s=requested_dt,trial_t1_s=old.time_s+dt,
+             minimum_g_nf_m=min((r['g_nf_m'] for r in end_records),default=None),accepted=False)
+@@ -78,6 +85,8 @@ def v1_trial(provider,mu,wall,policy,*,boundary_classifier=None,on_accept=None,a
+             for i,s in end.items():
+                 lower=policy.lower_handoff_gap(policy.reference_length(s))['h_lower_m']
+                 safe,record=wall_handoff_certificate(old.shapes[i],s,wall,lower)
++                if not safe and record['proof']=='HANDOFF_SWEEP_NOT_CERTIFIED':
++                    safe,record=partitioned_wall_handoff_certificate(old.shapes[i],s,wall,lower)
+                 if not safe:reject(record['proof'])
+                 geometric,proof,triangle=swept_clearance_certificate(old.shapes[i],s,wall)
+                 if not geometric:reject(proof)
+@@ -88,7 +97,8 @@ def v1_trial(provider,mu,wall,policy,*,boundary_classifier=None,on_accept=None,a
+         audit=dict(solved.record,model=CONTRACT_NAME,potential_blocks=system.blocks,accepted_interactions=end_records,
+             handoff_constraints=contact_rows,continuous_certificates=proofs,
+             free_generalized_velocities={i:free[i] for i in system.ids},hydro_generalized_velocity=solved.unconstrained,
+-            constrained_generalized_velocity=solved.velocity,evaluated_at_time_s=old.time_s,position_projection=False)
++            constrained_generalized_velocity=solved.velocity,evaluated_at_time_s=old.time_s,position_projection=False,
++            handoff_event=handoff_event)
+         if matrix_audit is not None:matrix_audit.append(dict(time_s=old.time_s,R=system.matrix.toarray(),b=system.rhs,U=solved.velocity,J=j,
+             eligible_pairs=[(r['particle_i_id'],r['particle_j_id']) for r in system.blocks if r['kind']=='PAIR' and r['active']],
+             constraint_ids=[c.canonical_id for c in ordered]))
+diff --git a/particle_3d/src/particle_3d/particle82_figures.py b/particle_3d/src/particle_3d/particle82_figures.py
+index 6c7c7b1..33483fc 100644
+--- a/particle_3d/src/particle_3d/particle82_figures.py
++++ b/particle_3d/src/particle_3d/particle82_figures.py
+@@ -109,6 +109,7 @@ def other_figures(root,scene,stop,extended,timestep,paths):
+     view.plotter.add_mesh(mesh,scalars='basin',cmap=['#999999',*COLORS.values()],clim=(0,3),point_size=5,show_scalar_bar=False,render=False)
+     image,_=view.capture(70);scale_bar(image,view);view.close();ax=fig.add_axes([.035,.16,.66,.69]);ax.imshow(image);ax.axis('off')
+     ax=fig.add_axes([.75,.32,.20,.41]);counts=stop['by_basin'];ax.bar(['01','02','03','?'],[counts.get(b,0) for b in OUTLETS+['UNRESOLVED_POINT_PATH']],color=[*COLORS.values(),'#999999']);ax.set(ylabel='Original safety stops',xlabel='Point basin')
++    for i,b in enumerate(OUTLETS+['UNRESOLVED_POINT_PATH']):ax.text(i,counts.get(b,0)+8,str(counts.get(b,0)),ha='center',fontsize=11)
+     fig.text(.73,.21,'Markers are display symbols.\nNo physiological capture claim.\nRaw gaps, times and provider counts saved.',fontsize=11,color='#884b43')
+     save(fig,root,'05_safety_stop_spatial_map',scene,[paths[0]])
+     fig=canvas('06  Extended computational-guard outcomes','Same initial states, radii, dt and P6.5 acceptance rule; exact original accepted-prefix comparisons')
+diff --git a/particle_3d/src/particle_3d/particle82_visuals.py b/particle_3d/src/particle_3d/particle82_visuals.py
+index 514b056..b173319 100644
+--- a/particle_3d/src/particle_3d/particle82_visuals.py
++++ b/particle_3d/src/particle_3d/particle82_visuals.py
+@@ -41,7 +41,8 @@ def schedule(scene,kind):
+ 
+ def compose(scene,view,kind,index,total,spec):
+     state=scene.snapshot(spec['time_s']);view.clear();finished=state['completed_ids']
+-    view.paths(finished,'history',opacity=.6 if kind=='02_ulm_accumulation' else .4,width=1.3)
++    view.paths(finished,'history',opacity=.8 if kind=='03_outlet_colored' else .6 if kind=='02_ulm_accumulation' else .4,
++               width=1.9 if kind=='03_outlet_colored' else 1.3)
+     if kind!='02_ulm_accumulation':
+         partial={p['particle_id']:scene.partial_path(p['particle_id'],p['elapsed_time_s']) for p in state['active']}
+         view.paths(list(partial),'active_path',partial=partial,opacity=.95,width=3.)
+@@ -89,6 +90,7 @@ def compose(scene,view,kind,index,total,spec):
+     receipt=dict(frame_index=index,physical_time_s=spec['time_s'],state=state,state_sha256=canonical_hash(state),
+         source_scene_sha256=scene.sha256,rendered_completed_ids=finished,rendered_active_ids=[r['particle_id'] for r in state['active']],
+         rendered_stop_ids=stops,camera=camera,physical_coordinates_rotated=False,no_resampling=True,no_extrapolation=True,
++        render_window_backend=view.plotter.render_window.GetClassName(),renderer_source_sha256=__import__('hashlib').sha256(Path(__file__).read_bytes()).hexdigest(),
+         display_only_interpolation=True,polyline_decimation=False,time_mapping_label=spec['label'],labels=[TITLE,INDEPENDENT,*FOOTERS])
+     return image,receipt
+ 
+diff --git a/particle_3d/src/particle_3d/particle9a_motion.py b/particle_3d/src/particle_3d/particle9a_motion.py
+index 6004c15..8f6f036 100644
+--- a/particle_3d/src/particle_3d/particle9a_motion.py
++++ b/particle_3d/src/particle_3d/particle9a_motion.py
+@@ -7,6 +7,7 @@ from .resistance_assembly import ResistanceSystem
+ from .particle81_simulation import SavedTrajectoryStepper
+ from .particle81_cache import cached_step_to
+ from .planar_wall_hydrodynamics import planar_wall_affine_block
++from .open_boundary_rim import rim_witness
+ 
+ 
+ @dataclass
+@@ -36,6 +37,12 @@ def augment_planar_system(system,shapes,mu,wall,gradient_at,gap_query):
+         gap=gap_query(shape,wall)
+         dr,db,diag=planar_wall_affine_block(shape.radius_m,mu,gap.gap_m,
+             gap.normal_inward,gradient_at(shape.center_m),system.free[6*k:6*k+6])
++        rim=rim_witness(shape,wall,gap)
++        if rim is not None:
++            dr[:]=0.;db[:]=0.
++            diag.update(candidate_wall_weight=diag['wall_weight'],wall_weight=0.,
++                open_rim_fallback=rim,applicability='OPEN_BOUNDARY_RIM_P65_FALLBACK')
++        else:diag['applicability']='NEAREST_SINGLE_PLANAR_WALL'
+         diag.update(particle_id=i,triangle_id=int(gap.wall_triangle_id),
+             normal_role='AUTHORITATIVE_NEAREST_FINITE_WALL_FEATURE_NORMAL_LOCAL_PLANAR_APPROXIMATION')
+         blocks.append(dr);rhs[6*k:6*k+6]=db;diagnostics.append(diag)
+diff --git a/particle_3d/src/particle_3d/physical_time_refinement.py b/particle_3d/src/particle_3d/physical_time_refinement.py
+index c510fc5..dba4ab0 100644
+--- a/particle_3d/src/particle_3d/physical_time_refinement.py
++++ b/particle_3d/src/particle_3d/physical_time_refinement.py
+@@ -24,7 +24,7 @@ class TrialNeedsSubdivision(RuntimeError):
+         super().__init__(reason)
+ 
+ 
+-def refine_interval(state,end_time,trial,*,max_depth=MAX_REFINEMENT_DEPTH,depth=0,ledger=None):
++def refine_interval(state,end_time,trial,*,max_depth=MAX_REFINEMENT_DEPTH,depth=0,ledger=None,event_count=0):
+     """trial(state,dt) returns a certified new state, or requests a true split."""
+     ledger=[] if ledger is None else ledger
+     begin=float(state.time_s);end=float(end_time)
+@@ -32,6 +32,13 @@ def refine_interval(state,end_time,trial,*,max_depth=MAX_REFINEMENT_DEPTH,depth=
+     try:
+         new,proof=trial(state,end-begin)
+         terminal=getattr(new,'boundary_event','ACTIVE').startswith('OUTLET_')
++        handoff=getattr(new,'projection',{}).get('handoff_event')
++        if handoff and not terminal and begin<new.time_s<end:
++            ledger.append(dict(t0_s=begin,t1_s=float(new.time_s),dt_s=float(new.time_s)-begin,
++                requested_t1_s=end,depth=depth,accepted=True,proof=proof,handoff_event=handoff))
++            if event_count>=max_depth:
++                raise PhysicalTimeRefinementError('HANDOFF_EVENT_COUNT_LIMIT',(new.time_s,end),state=new.to_dict())
++            return refine_interval(new,end,trial,max_depth=max_depth,depth=depth,ledger=ledger,event_count=event_count+1)
+         if new.time_s!=end and not terminal:
+             if abs(new.time_s-end)>4*np.spacing(max(abs(end),np.finfo(float).tiny)):
+                 raise ValueError('trial did not cover requested physical time')
+@@ -44,9 +51,9 @@ def refine_interval(state,end_time,trial,*,max_depth=MAX_REFINEMENT_DEPTH,depth=
+             snapshot=state.to_dict() if hasattr(state,'to_dict') else repr(state)
+             raise PhysicalTimeRefinementError('DEPTH_LIMIT' if depth>=max_depth else 'TIME_ULP_FLOOR',
+                     (begin,end),error.gap,error.triangle_id,getattr(state,'shape_mode',None),snapshot) from error
+-        left,_=refine_interval(state,mid,trial,max_depth=max_depth,depth=depth+1,ledger=ledger)
++        left,_=refine_interval(state,mid,trial,max_depth=max_depth,depth=depth+1,ledger=ledger,event_count=event_count)
+         if getattr(left,'boundary_event','ACTIVE').startswith('OUTLET_'):return left,ledger
+-        return refine_interval(left,end,trial,max_depth=max_depth,depth=depth+1,ledger=ledger)
++        return refine_interval(left,end,trial,max_depth=max_depth,depth=depth+1,ledger=ledger,event_count=event_count)
+ 
+ 
+ def capsule_plane_minimum(start,end,normal,triangle):
+diff --git a/particle_3d/src/particle_3d/planar_wall_hydrodynamics.py b/particle_3d/src/particle_3d/planar_wall_hydrodynamics.py
+index fd5cb82..cba1b98 100644
+--- a/particle_3d/src/particle_3d/planar_wall_hydrodynamics.py
++++ b/particle_3d/src/particle_3d/planar_wall_hydrodynamics.py
+@@ -80,13 +80,22 @@ def planar_wall_affine_block(radius_m,mu,gap_m,normal,gradient,free_velocity):
+     force=SHEAR_FORCE_COEFFICIENT*6*np.pi*mu*a*(a+max(h,0.))*shear
+     torque=SHEAR_TORQUE_COEFFICIENT*4*np.pi*mu*a**3*np.cross(shear,n)
+     load=np.r_[t.T@force,t.T@torque/a]
+-    bulk=L@u;wall=near@load;target=(1-w)*bulk+w*wall
++    bulk=L@u;wall=near@load
++    # Calibrate only the affine shear load against canonical planar shear.
++    # The actual FEM bulk forcing is never replaced by H*s. In the canonical
++    # case bulk==linear, this is algebraically the original P9-A target.
++    linear=np.r_[t.T@((a+max(h,0.))*shear), a*t.T@(.5*np.cross(n,shear))]
++    reference=(1-w)*linear+w*wall
+     # Only the local 4x4 block is inverted. No inverse of a 6N matrix.
+     r_eff=np.linalg.solve(effective,np.eye(4));r_free=np.linalg.solve(free,np.eye(4))
+-    dr4=r_eff-r_free;db4=r_eff@target-r_free@bulk
++    dr4=r_eff-r_free;db4=r_eff@reference-r_free@linear
++    target=reference+effective@(r_free@(bulk-linear))
+     if w==0:dr4[:]=0.;db4[:]=0.
+     dr=L.T@dr4@L;db=L.T@db4
+-    diag=dict(gap_m=h,gap_ratio=xi,wall_weight=w,wall_normal_xyz=n.tolist(),
++    diag=dict(formulation='BULK_PRESERVING_CANONICAL_AFFINE_V1',
++        canonical_linear_q=linear.tolist(),canonical_reference_q=reference.tolist(),
++        actual_bulk_q=bulk.tolist(),affine_shear_load=db4.tolist(),
++        gap_m=h,gap_ratio=xi,wall_weight=w,wall_normal_xyz=n.tolist(),
+         shear_vector_xyz=shear.tolist(),shear_force_N=force.tolist(),shear_torque_N_m=torque.tolist(),
+         wall_normal_shear_force_N=float(force@n),m_tt=c['m_tt'],m_cross=c['m_cross'],m_rr=c['m_rr'],
+         effective_m_tt=float(effective[0,0]/free[0,0]),effective_m_rr=float(effective[2,2]/free[0,0]),
+diff --git a/particle_3d/src/particle_3d/resistance_solver.py b/particle_3d/src/particle_3d/resistance_solver.py
+index 8afac12..e1034c5 100644
+--- a/particle_3d/src/particle_3d/resistance_solver.py
++++ b/particle_3d/src/particle_3d/resistance_solver.py
+@@ -6,6 +6,7 @@ from scipy.sparse.linalg import splu
+ from scipy.linalg import solve_triangular
+ from .kinematic_contact import _dual_active_set
+ from .particle_shapes import EPS
++from .contact_redundancy import independent_contact_rows
+ 
+ 
+ class ResistanceSystemIllConditioned(RuntimeError):
+@@ -73,7 +74,9 @@ def solve_resistance(system, *, particles=None, constraints=(), scaled=True):
+         whitened = solve_triangular(chol, (j*d).T, lower=True).T
+         scale = max(float(np.max(np.abs(hydro.reshape(-1, 6)[:, :3]))),
+                     float(np.max(np.abs(system.free.reshape(-1, 6)[:, :3]))), np.finfo(float).tiny)
+-        lam, _, kkt = _dual_active_set(whitened, j@hydro, scale)
++        kept, redundancy=independent_contact_rows(whitened,[c.canonical_id for c in contacts])
++        reduced_lam, _, kkt = _dual_active_set(whitened[kept], (j@hydro)[kept], scale)
++        lam=np.zeros(len(contacts));lam[kept]=reduced_lam
+         u = hydro+d*lu.solve(d*(j.T@lam))
+         speed = j@u
+         if np.min(speed) < -kkt['velocity_budget_m_s']:
+@@ -81,6 +84,7 @@ def solve_resistance(system, *, particles=None, constraints=(), scaled=True):
+         delta = u-hydro
+         audit.update(contact_count=len(contacts), contact_ids=[c.canonical_id for c in contacts],
+             multipliers=lam.tolist(), normal_speeds_m_s=speed.tolist(), contact_kkt=kkt,
++            contact_redundancy=redundancy,
+             max_constraint_violation_m_s=max(0., -float(np.min(speed))),
+             resistance_correction_objective=float(.5*delta@(r@delta)),
+             max_complementarity_residual=float(np.max(np.abs(lam*speed))))
+diff --git a/particle_3d/src/particle_3d/wall_geometry.py b/particle_3d/src/particle_3d/wall_geometry.py
+index 06f1c4b..a1218eb 100644
+--- a/particle_3d/src/particle_3d/wall_geometry.py
++++ b/particle_3d/src/particle_3d/wall_geometry.py
+@@ -39,6 +39,18 @@ class WallGeometry:
+         obj=cls(np.asarray(wall.points)[faces[:,1:]],provenance=dict(path=str(path),sha256=spec['sha256'],triangle_count=wall.n_cells,
+                 boundary_ids=mesh['face_ids'],solid_boundaries=['WALL'],wall_rigid=True,wall_stationary=True,physical_coating_thickness_m=0.))
+         obj.global_node_ids=np.asarray(wall.point_data['GlobalNodeID'])[faces[:,1:]]-1
++        from .open_boundary_rim import build_rim_topology
++        caps={};hashes={'WALL':spec['sha256']}
++        for role,cap in boundaries['boundaries'].items():
++            if role!='INLET' and not role.startswith('OUTLET_'):continue
++            cap_path=(root/cap['path']).resolve()
++            if not cap_path.is_relative_to(root):raise ValueError('Cap outside frozen root')
++            check_hash(cap_path,cap['sha256']);surface=pv.read(cap_path)
++            cf=surface.faces.reshape(-1,4)
++            if not np.all(cf[:,0]==3):raise ValueError('Triangular open cap required')
++            caps[role]=np.asarray(surface.point_data['GlobalNodeID'])[cf[:,1:]]-1
++            hashes[role]=cap['sha256']
++        obj.open_boundary_topology=build_rim_topology(obj.global_node_ids,caps,hashes)
+         return obj
+ 
+     def candidates(self,center_m,radius_m):
+diff --git a/particle_3d/tests/particle6_5/test_handoff_time_refinement.py b/particle_3d/tests/particle6_5/test_handoff_time_refinement.py
+index c2c96ac..2712fa2 100644
+--- a/particle_3d/tests/particle6_5/test_handoff_time_refinement.py
++++ b/particle_3d/tests/particle6_5/test_handoff_time_refinement.py
+@@ -2,7 +2,11 @@ from particle_3d.particle65_cases import run_case
+ 
+ def test_crossing_trial_is_split():
+  d=run_case('wall',.032,.032)
+- assert d['attempts'][0]['minimum_g_nf_m']<0 and not d['attempts'][0]['accepted']
+- assert d['summary']['rejected_trials']>0 and max(x['depth'] for x in d['ledger'])>0
++ # P9-A.1 resolves the first crossing as a certified real-time event. The
++ # old rejected midpoint staircase is intentionally no longer required.
++ assert d['attempts'][0]['accepted']
++ assert d['summary']['all_accepted_above_lower']
++ assert d['summary']['rejected_trials']==0 and max(x['depth'] for x in d['ledger'])==0
++ assert d['ledger'][0]['handoff_event']['kind']=='WALL'
+  assert d['summary']['handoff_time_s']<.032 and d['summary']['final_time_s']==.032
+  assert d['summary']['tangential_displacement_m']>6.39e-8
+diff --git a/particle_3d/tests/particle6_5/test_particle6_dependency_locked.py b/particle_3d/tests/particle6_5/test_particle6_dependency_locked.py
+index 13535bc..b142895 100644
+--- a/particle_3d/tests/particle6_5/test_particle6_dependency_locked.py
++++ b/particle_3d/tests/particle6_5/test_particle6_dependency_locked.py
+@@ -12,6 +12,13 @@ def test_dependency(repo,report):
+    assert hashlib.sha256(baseline).hexdigest()==v
+    from particle_3d.particle9a_provenance import require_current_flow
+    assert require_current_flow()['case_role']=='MEAN_2P0_MMPS'
++  elif k in {'particle_3d/src/particle_3d/wall_geometry.py',
++             'particle_3d/src/particle_3d/resistance_solver.py',
++             'particle_3d/src/particle_3d/physical_time_refinement.py'}:
++   # Authorized P9-A.1 topology/contact/event repairs; historical evidence
++   # still verifies against its original immutable Git object.
++   baseline=subprocess.check_output(['git','show','775adc019536585a4ee2f4dbf2c083c959e0a339:'+k],cwd=repo)
++   assert hashlib.sha256(baseline).hexdigest()==v
+   else: assert sha256(repo/k)==v
+  assert all(sha256(repo/k)==v for k,v in d['historical_p5_sha256'].items())
+  subprocess.run(['git','merge-base','--is-ancestor','c8e22f99359d15fd6075f2083ed60724ad0cfc2f','HEAD'],cwd=repo,check=True)

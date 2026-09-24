@@ -1,0 +1,109 @@
+{
+  "status": "PASS_SOURCE_PROVEN",
+  "routine": {
+    "name": "tem_line_module::intersect_RayTriangle",
+    "definition": {
+      "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-pinned\\seeder_official\\tem\\source\\shapes\\tem_line_module.fpp",
+      "line": 189,
+      "token": "function intersect_RayTriangle( line, triangle, intersect_p )",
+      "sha256": "ba2d84b5731ea0811887054256dd770cd0a692d284d150517575481aff1fd446"
+    }
+  },
+  "edges": [
+    {
+      "caller": "sdr_qValByNode",
+      "callee": "intersect_RayTriangle",
+      "categories": [
+        "QVALUE_DISTANCE",
+        "GEOMETRY_INTERSECTION"
+      ],
+      "evidence": {
+        "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-pinned\\seeder_official\\sdr\\source\\sdr_boundary_module.f90",
+        "line": 860,
+        "token": "intersected = intersect_RayTriangle(",
+        "sha256": "eabdc414ec3fa0fedd739ce0e6805fc47a682ae94a21b81f4d0b1809b0e7aa33"
+      }
+    },
+    {
+      "caller": "flood_periphery",
+      "callee": "sdr_qValByNode",
+      "categories": [
+        "FLOODING",
+        "QVALUE_DISTANCE"
+      ],
+      "evidence": {
+        "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-pinned\\seeder_official\\sdr\\source\\sdr_flooding_module.f90",
+        "line": 395,
+        "token": "call sdr_qValByNode( proto, geometry, dx, iDir,",
+        "sha256": "7cf5c24bc1a798f4135ca95cde8a4a3d013eec1d4bfca5c24ae9c054137f2b35"
+      }
+    },
+    {
+      "caller": "getBCID_and_calcQval",
+      "callee": "sdr_qValByNode",
+      "categories": [
+        "BOUNDARY_IDENTIFICATION",
+        "QVALUE_DISTANCE"
+      ],
+      "evidence": {
+        "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-pinned\\seeder_official\\sdr\\source\\sdr_boundary_module.f90",
+        "line": 419,
+        "token": "call sdr_qValByNode( proto, geometry, leVal%dx, iDir,",
+        "sha256": "eabdc414ec3fa0fedd739ce0e6805fc47a682ae94a21b81f4d0b1809b0e7aa33"
+      }
+    },
+    {
+      "caller": "sdr_identify_boundary",
+      "callee": "getBCID_and_calcQval",
+      "categories": [
+        "BOUNDARY_IDENTIFICATION"
+      ],
+      "evidence": {
+        "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-pinned\\seeder_official\\sdr\\source\\sdr_boundary_module.f90",
+        "line": 174,
+        "token": "call getBCID_and_calcQval( proto",
+        "sha256": "eabdc414ec3fa0fedd739ce0e6805fc47a682ae94a21b81f4d0b1809b0e7aa33"
+      }
+    },
+    {
+      "caller": "proto2Treelm",
+      "callee": "sdr_identify_boundary",
+      "categories": [
+        "BOUNDARY_IDENTIFICATION"
+      ],
+      "evidence": {
+        "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-pinned\\seeder_official\\sdr\\source\\sdr_proto2treelm_module.f90",
+        "line": 462,
+        "token": "call sdr_identify_boundary(node_pos",
+        "sha256": "4b109abddf10fc8e11ebd57778e3ffb91d7595a04701e833adc27a9607aefad1"
+      }
+    },
+    {
+      "caller": "seeder main",
+      "callee": "sdr_flood_tree",
+      "categories": [
+        "FLOODING"
+      ],
+      "evidence": {
+        "path": "\\\\wsl.localhost\\Ubuntu\\home\\lzy\\apes-pinned\\seeder_official\\sdr\\source\\seeder.f90",
+        "line": 99,
+        "token": "call sdr_flood_tree(",
+        "sha256": "3d271a8498b77608027d6964e2383193cc558f205211d7a4b342c474735a7320"
+      }
+    }
+  ],
+  "caller_categories": [
+    "BOUNDARY_IDENTIFICATION",
+    "FLOODING",
+    "GEOMETRY_INTERSECTION",
+    "QVALUE_DISTANCE"
+  ],
+  "calc_dist_false_paths": [],
+  "calc_dist_false_conclusion": "No direct caller reaches intersect_RayTriangle when every boundary has calc_dist=false; both flooding and boundary-identification qVal paths are guarded by needCalcQValByBCID/calc_dist.",
+  "patch_affects_flooding_or_topology": true,
+  "topology_effect_source_proof": "With wall calc_dist=true, flood_periphery calls sdr_qValByNode for all 26 directions and floods a wetted periphery cell only when the tested link has qVal<0. Changing ray/triangle hits therefore changes the set of flooded leaves before sdr_proto2treelm writes tree IDs.",
+  "proto_tree_refinement_use": false,
+  "actual_head_at_execution": "be6c08b5c6b822f3be106a6d51a17cc644776c51",
+  "seeder_calls": 0,
+  "musubi_calls": 0
+}

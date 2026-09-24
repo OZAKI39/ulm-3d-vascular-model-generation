@@ -1,0 +1,87 @@
+schema_version: 1
+
+# Paths are relative to the ulm_3D_vascular project directory.
+paths:
+  input_dir: vessel_model/T - Brava/swc_files
+  output_dir: outputs/human_brava
+
+pipeline:
+  stage: all
+  source_run: null
+  cohort: brava
+  # Select one file by its stem (filename without .swc), including .CNG.
+  # Example alternatives: BG0003.CNG, BH0002.CNG, BG001_ColorCoded.CNG.
+  sample_id: BG001.CNG
+  parent_group_id: null
+  split: null
+  max_samples: 1
+
+coordinates:
+  # BraVa physical coordinates AND radii are interpreted in millimetres.
+  # Convert both to micrometres once on input; do not apply MRA voxel size again.
+  swc_units: mm
+  spacing_xyz_um: [1.0, 1.0, 1.0]
+  expected_shape_zyx: null
+  enforce_expected_shape: false
+
+preprocessing:
+  smooth_centerlines: false
+  smoothing_window_points: 5
+  # Derived geometry only; matches the paper's 0.62-mm acquisition resolution.
+  # Interpolation does not create additional anatomical information.
+  resample_step_um: 620.0
+  strict_nonpositive_radius: false
+  analysis_component_id: null
+
+exports:
+  save_graphml: true
+  save_vtp: true
+  save_npz: true
+
+visualization:
+  enabled: true
+  max_samples: 1
+  max_direction_arrows: 600
+  figure2a:
+    enabled: true
+    volume_opacity: 0.32
+    window_size: [1800, 900]
+    show_gui: true   # !!!!!!!
+
+sampling:
+  enabled: true
+  seed: 42
+  anchor:
+    mode: farthest_point
+    min_distance_um: 15000.0
+    max_candidates: 80
+  roi:
+    # Study settings for macroscopic arteries: 30 x 30 x 40 mm.
+    # These ROI settings are not claimed to be parameters from Wright et al.
+    size_um: [30000.0, 30000.0, 40000.0]
+    min_branch_count: 2
+    max_cut_ports: null
+  features:
+    mode: radius_plus_structure
+    radius_quantiles: [0.10, 0.25, 0.50, 0.75, 0.90]
+    scaler: robust
+    radius_weight: 1.0
+    structure_weight: 1.0
+  clustering:
+    method: kmeans
+    n_clusters: 5
+    exploratory_k: [2, 3, 4, 5, 8, 10]
+    kmeans_max_iter: 200
+  selection:
+    mode: coverage_balanced
+    target_count: 10
+    representatives_per_cluster: 2
+    max_overlap: 0.25
+    min_representative_distance_um: 10000.0
+  comparison:
+    compare_feature_modes: true
+  visualization:
+    max_roi_previews: 12
+
+runtime:
+  verbose: true

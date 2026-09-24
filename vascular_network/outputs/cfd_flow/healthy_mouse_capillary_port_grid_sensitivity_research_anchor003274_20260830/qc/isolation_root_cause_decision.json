@@ -1,0 +1,47 @@
+{
+  "status": "CFD_FLOW_WALL_QVALUE_CONTRACT_ERROR_IDENTIFIED",
+  "root_cause_final": "WALL_QVALUE_CONTRACT_ERROR",
+  "actual_head": "cdbbd934155183787f34306d9e010c5c7b15acc1",
+  "production_pipeline_modified": false,
+  "evidence": {
+    "wall_qvalue_oracle": "E:\\ULM\\hatimb-particle_flow_simulator\\ulm_3D_vascular\\outputs\\cfd_flow\\healthy_mouse_capillary_port_grid_sensitivity_research_anchor003274_20260830\\qc\\wall_qvalue_oracle.json",
+    "links_tested": 278508,
+    "direction_mismatch_count": 207908,
+    "all_declared_wall_qvalues_equal_halfway": false,
+    "overall_halfway_fallback_fraction": 0.994384362388154,
+    "observed_qvalue_support": [
+      "0.5",
+      "1"
+    ],
+    "worst_case_q_error": {
+      "rms": 0.35538130451465705,
+      "p95": 0.49327842688328466,
+      "max": 0.9938840174205363
+    },
+    "aggregate_q_error": {
+      "count": 70600,
+      "mean": 0.25508093591544917,
+      "mean_absolute": 0.25550793145710904,
+      "rms": 0.29871069693832825,
+      "p95": 0.46404903760174,
+      "max": 0.9938840174205363
+    },
+    "source_direction_storage_pull_contract": "PASS"
+  },
+  "downstream_stage_decisions": {
+    "periodic_pipe_force": "NOT_RUN_QVALUE_GATE_FAILED",
+    "interior_pressure": "NOT_RUN_WALL_GATE_NOT_REACHED",
+    "outlet_02_placement": "NOT_RUN_WALL_AND_PRESSURE_GATES_NOT_REACHED",
+    "vascular_cfd": "NOT_RUN"
+  },
+  "calls": {
+    "vascular_seeder": 0,
+    "vascular_musubi": 0,
+    "harvester": 0,
+    "small_pipe_seeder": 0,
+    "small_pipe_musubi": 0
+  },
+  "selected_remediation_concept": "Correct the isolated pipe mesh q-value generation so calc_dist produces source-consistent ray/surface fractions instead of uniform halfway fallback; then rerun the zero-run analytic oracle before any CFD.",
+  "first_failure": "Existing pressure-benchmark meshes contain qVal=0.5 on every axis-aligned declared D3Q19 wall link and on more than 98% of oblique links (the remainder are qVal=1.0), while the analytic cylinder oracle finds missing forward intersections and systematic positive q bias.",
+  "next": "FIX QVALUE CONTRACT BEFORE ANY CFD"
+}

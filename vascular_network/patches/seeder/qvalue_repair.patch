@@ -1,0 +1,49 @@
+diff --git a/source/shapes/tem_line_module.fpp b/source/shapes/tem_line_module.fpp
+--- a/source/shapes/tem_line_module.fpp
++++ b/source/shapes/tem_line_module.fpp
+@@ -202,31 +202,43 @@
+     real(kind=rk) :: uu, uv, vv, wu, wv, D
+     real(kind=rk) :: s, t
+     real(kind=rk) :: temp_p(3)
++    real(kind=rk) :: normal_length, direction_length
++    logical :: ray_is_parallel
+     ! ---------------------------------------------------------------------------!
+     isIntersect = .false. ! set not intersect as default
+ 
+     ! get triangle edge vectors u & v, and plane normal n
+     u(:) = triangle%nodes(:,2) - triangle%nodes(:,1)
+     v(:) = triangle%nodes(:,3) - triangle%nodes(:,1)
+     n = cross_product3D( u, v )
++    normal_length = sqrt(dot_product(n, n))
+ 
+     ! triangle is degenerate
+     ! do not deal with this case
+     if (all(n .feq. 0._rk)) return
+ 
+     dir = line%vec   ! ray direction vector
++    direction_length = sqrt(dot_product(dir, dir))
++    if (direction_length == 0._rk) return
+     w0 = line%origin - triangle%nodes(:,1)
+     a = -dot_product( n, w0);
+     b =  dot_product( n, dir);
+ 
++    ! b scales with length cubed.  Comparing it directly with the
++    ! dimensionless machine epsilon makes valid intersections disappear when
++    ! otherwise identical geometries are expressed at micrometre scale.
++    ! Compare the normalized dot product instead so the parallel test is
++    ! invariant under a uniform change of length units.
++    ray_is_parallel = abs(b) <= eps * normal_length * direction_length
++
+     ! if ray parallel to triangle plane, treat it as no intersecting
+-    if (abs(b) < eps .and. abs(a) > tiny(a)) return
++    if (ray_is_parallel .and. abs(a) > tiny(a)) return
+ !    {   if (a == 0.0_rk)         ! ray lies in triangle plane
+ !          return 2;
+ !        else return 0;             ! ray disjoint from plane
+ !    }
+ 
+-    if (abs(b) < eps) then
++    if (ray_is_parallel) then
+       ! origin is very close to triangle plane, but parallel.
+       ! Just use the origin itself as point to check.
+       r = 0.0_rk

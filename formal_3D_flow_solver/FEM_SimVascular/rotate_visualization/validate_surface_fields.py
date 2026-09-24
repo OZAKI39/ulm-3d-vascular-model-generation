@@ -24,7 +24,7 @@ def validate(case,output):
     for name,value in media['source_sha256'].items():
         assert sha(case/name) == value
     expected = {
-        'pressure': ('Steady FEM pressure on the vessel surface','Pressure (Pa)',[-5.,2500.]),
+        'pressure': ('Steady FEM pressure on the vessel surface','Pressure (Pa)',[-5.,5000.]),
         'wss': ('Derived from FEM velocity gradient','WSS (Pa)',[0.,55.]),
     }
     pressure = pv.read(case/'field_diagnostics/data/pressure_surface_si.vtp')
