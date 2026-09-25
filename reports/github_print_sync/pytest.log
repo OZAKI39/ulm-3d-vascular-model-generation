@@ -1,0 +1,336 @@
+..........................................................F............. [ 65%]
+................F....EE..E.E..........                                   [100%]
+==================================== ERRORS ====================================
+_ ERROR at setup of test_five_component_summary_preserves_bifurcating_roots_and_model_failure _
+
+    @pytest.fixture(scope='module')
+    def cache():
+        with prohibit_recomputation():
+>           value=load_cache(INPUT)
+                  ^^^^^^^^^^^^^^^^^
+
+tests/test_boundary_review_export.py:21: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+directory = PosixPath('/home/lzy/projects/.github-print-sync-20260925/ulm_3D_vascular/outputs/topbrain_brava_transfer/nn_production/BG001/RMCA')
+
+    def load_cache(directory):
+        """Check hashes before creating any review output; missing optional votes warn."""
+        import pyvista as pv
+        directory=Path(directory).resolve();manifest_path=directory/'roi_manifest.json'
+        try:
+            manifest=json.loads(manifest_path.read_text())
+            contract_path=directory.parent/'input_provenance.json'
+            contract=json.loads(contract_path.read_text())
+            source=manifest['source'];raw=Path(source['raw_source']);color=Path(source['color_source'])
+            if manifest['side']!='RMCA' or contract['subject']!='BG001' or manifest['major_artery']['type_code']!=4:
+                raise ReviewSourceMismatch('This exporter is locked to BG001 RMCA TYPE 4')
+            for key,path,expected in [('raw',raw,RAW_SHA),('color',color,COLOR_SHA)]:
+                if source[key+'_sha256']!=expected or contract[key+'_sha256']!=expected or sha256(path)!=expected:
+                    raise ReviewSourceMismatch(key+' source / manifest / input provenance disagree')
+            if contract['major_arteries']['RMCA']!=4:raise ReviewSourceMismatch('Major artery mapping changed')
+            snapshot={str(p):sha256(p) for p in [manifest_path,contract_path,raw,color]}
+            warnings=[]
+            for relative,digest in manifest['artifact_hashes'].items():
+                path=(directory/relative).resolve()
+                if not path.is_relative_to(directory):raise ReviewSourceMismatch('Artifact path escapes input directory')
+                if relative=='point_support.npz' and not path.exists():
+                    warnings.append('DONOR_DETAIL_UNAVAILABLE: point_support.npz is absent');continue
+                if not path.is_file() or sha256(path)!=digest:raise ReviewSourceMismatch('Frozen artifact hash: '+relative)
+                snapshot[str(path)]=digest
+            required=['point_predictions.csv','branch_predictions.csv','labeled_tree.vtp','node_mapping.csv',
+                      'branch_mapping.csv','donor_registrations.json','donor_registrations.csv']
+            if any(name not in manifest['artifact_hashes'] for name in required):
+                raise ReviewSourceMismatch('Required prediction artifact is not bound by the ROI manifest')
+            for component in manifest['roi_components']:
+                for kind in ['strict','modelable']:
+                    info=component[kind];p=Path(info['path'])
+>                   if sha256(p)!=info['sha256'] or str(p) not in snapshot:raise ReviewSourceMismatch('ROI hash / artifact binding: '+str(p))
+                                                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E                   vascular_processing.boundary_review_export.ReviewSourceMismatch: REVIEW_SOURCE_MISMATCH: ROI hash / artifact binding: /home/lzy/projects/ulm_3D_vascular/outputs/topbrain_brava_transfer/nn_production/BG001/RMCA/ROI/roi_part01.swc
+
+vascular_processing/boundary_review_export.py:178: ReviewSourceMismatch
+______ ERROR at setup of test_stable_boundary_id_independent_of_row_order ______
+
+    @pytest.fixture(scope='module')
+    def cache():
+        with prohibit_recomputation():
+>           value=load_cache(INPUT)
+                  ^^^^^^^^^^^^^^^^^
+
+tests/test_boundary_review_export.py:21: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+directory = PosixPath('/home/lzy/projects/.github-print-sync-20260925/ulm_3D_vascular/outputs/topbrain_brava_transfer/nn_production/BG001/RMCA')
+
+    def load_cache(directory):
+        """Check hashes before creating any review output; missing optional votes warn."""
+        import pyvista as pv
+        directory=Path(directory).resolve();manifest_path=directory/'roi_manifest.json'
+        try:
+            manifest=json.loads(manifest_path.read_text())
+            contract_path=directory.parent/'input_provenance.json'
+            contract=json.loads(contract_path.read_text())
+            source=manifest['source'];raw=Path(source['raw_source']);color=Path(source['color_source'])
+            if manifest['side']!='RMCA' or contract['subject']!='BG001' or manifest['major_artery']['type_code']!=4:
+                raise ReviewSourceMismatch('This exporter is locked to BG001 RMCA TYPE 4')
+            for key,path,expected in [('raw',raw,RAW_SHA),('color',color,COLOR_SHA)]:
+                if source[key+'_sha256']!=expected or contract[key+'_sha256']!=expected or sha256(path)!=expected:
+                    raise ReviewSourceMismatch(key+' source / manifest / input provenance disagree')
+            if contract['major_arteries']['RMCA']!=4:raise ReviewSourceMismatch('Major artery mapping changed')
+            snapshot={str(p):sha256(p) for p in [manifest_path,contract_path,raw,color]}
+            warnings=[]
+            for relative,digest in manifest['artifact_hashes'].items():
+                path=(directory/relative).resolve()
+                if not path.is_relative_to(directory):raise ReviewSourceMismatch('Artifact path escapes input directory')
+                if relative=='point_support.npz' and not path.exists():
+                    warnings.append('DONOR_DETAIL_UNAVAILABLE: point_support.npz is absent');continue
+                if not path.is_file() or sha256(path)!=digest:raise ReviewSourceMismatch('Frozen artifact hash: '+relative)
+                snapshot[str(path)]=digest
+            required=['point_predictions.csv','branch_predictions.csv','labeled_tree.vtp','node_mapping.csv',
+                      'branch_mapping.csv','donor_registrations.json','donor_registrations.csv']
+            if any(name not in manifest['artifact_hashes'] for name in required):
+                raise ReviewSourceMismatch('Required prediction artifact is not bound by the ROI manifest')
+            for component in manifest['roi_components']:
+                for kind in ['strict','modelable']:
+                    info=component[kind];p=Path(info['path'])
+>                   if sha256(p)!=info['sha256'] or str(p) not in snapshot:raise ReviewSourceMismatch('ROI hash / artifact binding: '+str(p))
+                                                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E                   vascular_processing.boundary_review_export.ReviewSourceMismatch: REVIEW_SOURCE_MISMATCH: ROI hash / artifact binding: /home/lzy/projects/ulm_3D_vascular/outputs/topbrain_brava_transfer/nn_production/BG001/RMCA/ROI/roi_part01.swc
+
+vascular_processing/boundary_review_export.py:178: ReviewSourceMismatch
+__________ ERROR at setup of test_review_png_and_local_geometry_smoke __________
+
+    @pytest.fixture(scope='module')
+    def cache():
+        with prohibit_recomputation():
+>           value=load_cache(INPUT)
+                  ^^^^^^^^^^^^^^^^^
+
+tests/test_boundary_review_export.py:21: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+directory = PosixPath('/home/lzy/projects/.github-print-sync-20260925/ulm_3D_vascular/outputs/topbrain_brava_transfer/nn_production/BG001/RMCA')
+
+    def load_cache(directory):
+        """Check hashes before creating any review output; missing optional votes warn."""
+        import pyvista as pv
+        directory=Path(directory).resolve();manifest_path=directory/'roi_manifest.json'
+        try:
+            manifest=json.loads(manifest_path.read_text())
+            contract_path=directory.parent/'input_provenance.json'
+            contract=json.loads(contract_path.read_text())
+            source=manifest['source'];raw=Path(source['raw_source']);color=Path(source['color_source'])
+            if manifest['side']!='RMCA' or contract['subject']!='BG001' or manifest['major_artery']['type_code']!=4:
+                raise ReviewSourceMismatch('This exporter is locked to BG001 RMCA TYPE 4')
+            for key,path,expected in [('raw',raw,RAW_SHA),('color',color,COLOR_SHA)]:
+                if source[key+'_sha256']!=expected or contract[key+'_sha256']!=expected or sha256(path)!=expected:
+                    raise ReviewSourceMismatch(key+' source / manifest / input provenance disagree')
+            if contract['major_arteries']['RMCA']!=4:raise ReviewSourceMismatch('Major artery mapping changed')
+            snapshot={str(p):sha256(p) for p in [manifest_path,contract_path,raw,color]}
+            warnings=[]
+            for relative,digest in manifest['artifact_hashes'].items():
+                path=(directory/relative).resolve()
+                if not path.is_relative_to(directory):raise ReviewSourceMismatch('Artifact path escapes input directory')
+                if relative=='point_support.npz' and not path.exists():
+                    warnings.append('DONOR_DETAIL_UNAVAILABLE: point_support.npz is absent');continue
+                if not path.is_file() or sha256(path)!=digest:raise ReviewSourceMismatch('Frozen artifact hash: '+relative)
+                snapshot[str(path)]=digest
+            required=['point_predictions.csv','branch_predictions.csv','labeled_tree.vtp','node_mapping.csv',
+                      'branch_mapping.csv','donor_registrations.json','donor_registrations.csv']
+            if any(name not in manifest['artifact_hashes'] for name in required):
+                raise ReviewSourceMismatch('Required prediction artifact is not bound by the ROI manifest')
+            for component in manifest['roi_components']:
+                for kind in ['strict','modelable']:
+                    info=component[kind];p=Path(info['path'])
+>                   if sha256(p)!=info['sha256'] or str(p) not in snapshot:raise ReviewSourceMismatch('ROI hash / artifact binding: '+str(p))
+                                                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E                   vascular_processing.boundary_review_export.ReviewSourceMismatch: REVIEW_SOURCE_MISMATCH: ROI hash / artifact binding: /home/lzy/projects/ulm_3D_vascular/outputs/topbrain_brava_transfer/nn_production/BG001/RMCA/ROI/roi_part01.swc
+
+vascular_processing/boundary_review_export.py:178: ReviewSourceMismatch
+_________________ ERROR at setup of test_human_hash_unchanged __________________
+
+    @pytest.fixture(scope='module')
+    def cache():
+        with prohibit_recomputation():
+>           value=load_cache(INPUT)
+                  ^^^^^^^^^^^^^^^^^
+
+tests/test_boundary_review_export.py:21: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+directory = PosixPath('/home/lzy/projects/.github-print-sync-20260925/ulm_3D_vascular/outputs/topbrain_brava_transfer/nn_production/BG001/RMCA')
+
+    def load_cache(directory):
+        """Check hashes before creating any review output; missing optional votes warn."""
+        import pyvista as pv
+        directory=Path(directory).resolve();manifest_path=directory/'roi_manifest.json'
+        try:
+            manifest=json.loads(manifest_path.read_text())
+            contract_path=directory.parent/'input_provenance.json'
+            contract=json.loads(contract_path.read_text())
+            source=manifest['source'];raw=Path(source['raw_source']);color=Path(source['color_source'])
+            if manifest['side']!='RMCA' or contract['subject']!='BG001' or manifest['major_artery']['type_code']!=4:
+                raise ReviewSourceMismatch('This exporter is locked to BG001 RMCA TYPE 4')
+            for key,path,expected in [('raw',raw,RAW_SHA),('color',color,COLOR_SHA)]:
+                if source[key+'_sha256']!=expected or contract[key+'_sha256']!=expected or sha256(path)!=expected:
+                    raise ReviewSourceMismatch(key+' source / manifest / input provenance disagree')
+            if contract['major_arteries']['RMCA']!=4:raise ReviewSourceMismatch('Major artery mapping changed')
+            snapshot={str(p):sha256(p) for p in [manifest_path,contract_path,raw,color]}
+            warnings=[]
+            for relative,digest in manifest['artifact_hashes'].items():
+                path=(directory/relative).resolve()
+                if not path.is_relative_to(directory):raise ReviewSourceMismatch('Artifact path escapes input directory')
+                if relative=='point_support.npz' and not path.exists():
+                    warnings.append('DONOR_DETAIL_UNAVAILABLE: point_support.npz is absent');continue
+                if not path.is_file() or sha256(path)!=digest:raise ReviewSourceMismatch('Frozen artifact hash: '+relative)
+                snapshot[str(path)]=digest
+            required=['point_predictions.csv','branch_predictions.csv','labeled_tree.vtp','node_mapping.csv',
+                      'branch_mapping.csv','donor_registrations.json','donor_registrations.csv']
+            if any(name not in manifest['artifact_hashes'] for name in required):
+                raise ReviewSourceMismatch('Required prediction artifact is not bound by the ROI manifest')
+            for component in manifest['roi_components']:
+                for kind in ['strict','modelable']:
+                    info=component[kind];p=Path(info['path'])
+>                   if sha256(p)!=info['sha256'] or str(p) not in snapshot:raise ReviewSourceMismatch('ROI hash / artifact binding: '+str(p))
+                                                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E                   vascular_processing.boundary_review_export.ReviewSourceMismatch: REVIEW_SOURCE_MISMATCH: ROI hash / artifact binding: /home/lzy/projects/ulm_3D_vascular/outputs/topbrain_brava_transfer/nn_production/BG001/RMCA/ROI/roi_part01.swc
+
+vascular_processing/boundary_review_export.py:178: ReviewSourceMismatch
+=================================== FAILURES ===================================
+____ test_full_human_entry_generates_mevo_roi_library_and_existing_preview _____
+
+tmp_path = PosixPath('/tmp/pytest-of-lzy/pytest-90/test_full_human_entry_generate0')
+
+    def test_full_human_entry_generates_mevo_roi_library_and_existing_preview(tmp_path):
+        _, _, _, path = fixture_configuration(tmp_path)
+        process = subprocess.run([sys.executable, str(ROOT / "s1-2_swc_roi_generate_human.py"), str(path)],
+                                 cwd=ROOT, capture_output=True, text=True, timeout=120)
+>       assert process.returncode == 0, process.stdout + process.stderr
+E       AssertionError: 
+E         ========================================================================
+E         [21:41:19] [准备] [文档 4.3.1] 运行配置与阶段说明
+E         ------------------------------------------------------------------------
+E           输入配置（Configuration）：/tmp/pytest-of-lzy/pytest-90/test_full_human_entry_generate0/config.yaml
+E             用途：本次实际读取的 YAML 参数文件。
+E           文档：references/文本记录 - SWC 预处理与 ROI 生成.md
+E           日志中的章节号对应上述文档；结果保存与验收（4.3.7）在各阶段分别执行。
+E           全局处理范围：pipeline.stage=all；4.3.1～4.3.4 数据编目、SWC 预处理与血管层级图构建
+E           ROI 采样开关：启用；双视窗开关：启用；显示方式：屏幕外预览
+E         
+E         ========================================================================
+E         [21:41:19] [开始] [文档 4.3.1～4.3.4 数据编目、SWC 预处理与血管层级图构建] 全局 SWC 处理
+E         ------------------------------------------------------------------------
+E         [21:41:19] [INFO] [文档 4.3.1 整体处理流程与运行约定]
+E             Starting rodent vasculature stage=all
+E         [21:41:19] [INFO] [文档 4.3.1 整体处理流程与运行约定]
+E             Direction convention: SWC parent_id node -> current node (structural inference)
+E         [21:41:19] [INFO] [文档 4.3.1 整体处理流程与运行约定]
+E             Cataloged 1 records (1 eligible); selected 1.
+E         [21:41:19] [INFO] [文档 4.3.3 主血管网络的连通性预处理]
+E             SWC-centric preprocessing for brava__synthetic: reference components=1, nodes=61; analysis component=0, nodes=61, edges=60; topology modifications=0; mask available=False and role=QC/display only
+E         [21:41:19] [INFO] [文档 4.3.2～4.3.3 输入检查、尺度统一与连通性预处理]
+E             Preprocessed brava__synthetic: PASS
+E         [21:41:21] [INFO] [文档 4.3.4 血管层级图构建与结构方向表达]
+E             Built directed graph for brava__synthetic: PASS
+E         [21:41:21] [INFO] [文档 4.3.6～4.3.7 可视化图像保存]
+E             Wrote 4 visualizations for brava__synthetic: direction_parent_to_current_3d.png, direction_parent_to_current_orthogonal.png, directed_branch_topology_xy.png, figure2a_interactive_preview.png
+E         [21:41:21] [INFO] [文档 4.3.7 结果保存与功能验收]
+E             Run finished: completed (PASS)
+E         
+E         ========================================================================
+E         [21:41:21] [结果] [文档 4.3.7] 全局 SWC 处理：输出文件与验收结果
+E         ------------------------------------------------------------------------
+E           全局结果目录（Run directory）：/tmp/pytest-of-lzy/pytest-90/test_full_human_entry_generate0/output/rodent_vasculature/all_run_20260925_214119
+E             用途：保存本次全局处理的清单、样本数据、图结构和验收文件。
+E           源配置副本（Saved source configuration）：/tmp/pytest-of-lzy/pytest-90/test_full_human_entry_generate0/output/rodent_vasculature/all_run_20260925_214119/source_swc_roi_generate.yaml
+E             用途：保存输入 YAML 的原样副本，便于追溯和复现本次参数。
+E           全局有效配置：/tmp/pytest-of-lzy/pytest-90/test_full_human_entry_generate0/output/rodent_vasculature/all_run_20260925_214119/run_config.json
+E             用途：保存解析后的全局处理参数与实际路径。
+E           全局验收报告（Acceptance report）：/tmp/pytest-of-lzy/pytest-90/test_full_human_entry_generate0/output/rodent_vasculature/all_run_20260925_214119/acceptance_report.html
+E             用途：用浏览器打开，查看本次全局处理的检查项目和通过 / 警告 / 失败原因。
+E           全局详细日志：/tmp/pytest-of-lzy/pytest-90/test_full_human_entry_generate0/output/rodent_vasculature/all_run_20260925_214119/pipeline.log
+E             用途：查看全局 SWC 处理的详细过程和异常堆栈。
+E           全局验收状态（Acceptance status）：PASS（通过）
+E           验收范围：本次 pipeline.stage=all 的全局处理；ROI 采样另行验收。
+E         
+E         ========================================================================
+E         [21:41:21] [开始] [文档 4.3.5] MeVO 解剖边界限定的 ROI 提取
+E         ------------------------------------------------------------------------
+E           处理顺序：校验 anatomical landmarks → 检查全部远端路径 → 精确提取 MeVO 子图 → 接入原双视窗
+E         
+E         [错误] [文档 4.3.5 / 4.3.7] ROI 采样或源配置保存失败：MeVO extraction FAILED; see /tmp/pytest-of-lzy/pytest-90/test_full_human_entry_generate0/output/sampling/20260925_214121_mevo_landmarks/mevo/synthetic_mevo_manifest.json
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/home/lzy/projects/ulm_particle_3d_particle0/.venv/bin/python', '/home/lzy/projects/.github-pr...90/test_full_human_entry_generate0/output/sampling/20260925_214121_mevo_landmarks/mevo/synthetic_mevo_manifest.json\n').returncode
+
+tests/test_mevo_display.py:114: AssertionError
+____________ test_all_frozen_sources_and_semantic_layers_unchanged _____________
+
+    def test_all_frozen_sources_and_semantic_layers_unchanged():
+>       _,_,_,_,snapshot=load_semantic(ROOT/'outputs/topbrain_brava_transfer/nn_production/BG001/RMCA/refined_roi')
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_manufacturing.py:168: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+vascular_processing/manufacturing_roi.py:90: in load_semantic
+    cache = load_cache(directory.parent)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+directory = PosixPath('/home/lzy/projects/.github-print-sync-20260925/ulm_3D_vascular/outputs/topbrain_brava_transfer/nn_production/BG001/RMCA')
+
+    def load_cache(directory):
+        """Check hashes before creating any review output; missing optional votes warn."""
+        import pyvista as pv
+        directory=Path(directory).resolve();manifest_path=directory/'roi_manifest.json'
+        try:
+            manifest=json.loads(manifest_path.read_text())
+            contract_path=directory.parent/'input_provenance.json'
+            contract=json.loads(contract_path.read_text())
+            source=manifest['source'];raw=Path(source['raw_source']);color=Path(source['color_source'])
+            if manifest['side']!='RMCA' or contract['subject']!='BG001' or manifest['major_artery']['type_code']!=4:
+                raise ReviewSourceMismatch('This exporter is locked to BG001 RMCA TYPE 4')
+            for key,path,expected in [('raw',raw,RAW_SHA),('color',color,COLOR_SHA)]:
+                if source[key+'_sha256']!=expected or contract[key+'_sha256']!=expected or sha256(path)!=expected:
+                    raise ReviewSourceMismatch(key+' source / manifest / input provenance disagree')
+            if contract['major_arteries']['RMCA']!=4:raise ReviewSourceMismatch('Major artery mapping changed')
+            snapshot={str(p):sha256(p) for p in [manifest_path,contract_path,raw,color]}
+            warnings=[]
+            for relative,digest in manifest['artifact_hashes'].items():
+                path=(directory/relative).resolve()
+                if not path.is_relative_to(directory):raise ReviewSourceMismatch('Artifact path escapes input directory')
+                if relative=='point_support.npz' and not path.exists():
+                    warnings.append('DONOR_DETAIL_UNAVAILABLE: point_support.npz is absent');continue
+                if not path.is_file() or sha256(path)!=digest:raise ReviewSourceMismatch('Frozen artifact hash: '+relative)
+                snapshot[str(path)]=digest
+            required=['point_predictions.csv','branch_predictions.csv','labeled_tree.vtp','node_mapping.csv',
+                      'branch_mapping.csv','donor_registrations.json','donor_registrations.csv']
+            if any(name not in manifest['artifact_hashes'] for name in required):
+                raise ReviewSourceMismatch('Required prediction artifact is not bound by the ROI manifest')
+            for component in manifest['roi_components']:
+                for kind in ['strict','modelable']:
+                    info=component[kind];p=Path(info['path'])
+>                   if sha256(p)!=info['sha256'] or str(p) not in snapshot:raise ReviewSourceMismatch('ROI hash / artifact binding: '+str(p))
+                                                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E                   vascular_processing.boundary_review_export.ReviewSourceMismatch: REVIEW_SOURCE_MISMATCH: ROI hash / artifact binding: /home/lzy/projects/ulm_3D_vascular/outputs/topbrain_brava_transfer/nn_production/BG001/RMCA/ROI/roi_part01.swc
+
+vascular_processing/boundary_review_export.py:178: ReviewSourceMismatch
+=============================== warnings summary ===============================
+tests/test_s1_4_sacrificial_box_and_ports.py: 4 warnings
+tests/test_compact_manufacturing.py: 28 warnings
+tests/test_roi_display_surface.py: 44 warnings
+tests/test_manufacturing.py: 33 warnings
+  /home/lzy/projects/ulm_particle_3d_particle0/.venv/lib/python3.13/site-packages/vtkmodules/util/numpy_support.py:244: DeprecationWarning: Setting the shape on a NumPy array has been deprecated in NumPy 2.5.
+  As an alternative, you can create a new view using np.reshape (with copy=False if needed).
+    result.shape = shape
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_mevo_display.py::test_full_human_entry_generates_mevo_roi_library_and_existing_preview
+FAILED tests/test_manufacturing.py::test_all_frozen_sources_and_semantic_layers_unchanged
+ERROR tests/test_boundary_review_export.py::test_five_component_summary_preserves_bifurcating_roots_and_model_failure
+ERROR tests/test_boundary_review_export.py::test_stable_boundary_id_independent_of_row_order
+ERROR tests/test_boundary_review_export.py::test_review_png_and_local_geometry_smoke
+ERROR tests/test_boundary_review_export.py::test_human_hash_unchanged - vascu...
+2 failed, 104 passed, 109 warnings, 4 errors in 15.68s

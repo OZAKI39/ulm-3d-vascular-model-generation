@@ -196,7 +196,17 @@ def load_swc(
     *,
     spacing_xyz_um: tuple[float, float, float],
     volume_shape_zyx: tuple[int, int, int] | None,
+    swc_units: str = "voxel",
 ) -> SWCData:
+    """Normalize physical SWCs to a 1-um grid; retain legacy voxel semantics.
+
+    Conversion applies once, to raw input only. The normalized NPZ loader
+    already reads micrometre radii and must not apply this conversion again.
+    """
+    if swc_units not in {"voxel", "um", "mm"}:
+        raise ValueError(f"Unsupported swc_units: {swc_units}")
+    if swc_units != "voxel" and tuple(spacing_xyz_um) != (1.0, 1.0, 1.0):
+        raise ValueError("Physical SWCs require spacing_xyz_um=[1, 1, 1]; units are converted on input")
     rows: list[tuple[int, int, float, float, float, float, int]] = []
     noninteger_lines: list[int] = []
     malformed_lines: list[int] = []
@@ -224,6 +234,9 @@ def load_swc(
         raise EmptySWCError(f"SWC contains no usable records: {path}")
 
     array = np.asarray(rows, dtype=float)
+    if swc_units == "mm":
+        # SWC column 6 is radius, not diameter. Scale it together with XYZ.
+        array[:, 2:6] *= 1000.0
     return swc_from_arrays(
         path=path,
         node_ids=array[:, 0],

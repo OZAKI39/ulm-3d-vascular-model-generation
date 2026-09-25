@@ -1,0 +1,63 @@
+{
+  "status": "failed",
+  "needs_manual_review": true,
+  "source": "/home/lzy/projects/ulm_3D_vascular/outputs/topbrain_brava_transfer/nn_production/BG001/RMCA/ROI/roi_part03_modelable.swc",
+  "source_sha256": "dd1ea64924c738dd332898b84df5a940d1a0f5a50808fa462df75728157f0fad",
+  "vascularmd_commit": "770feb8fbfb591d6d43f966db57b1465010b9a13",
+  "options": {
+    "sample_mode": "original-count",
+    "spacing_mm": null,
+    "auto_resample": null,
+    "surface": true,
+    "circumferential_n": 24,
+    "longitudinal_density": 0.2,
+    "qc_plot": false,
+    "plot_branches": 6,
+    "blas_threads": 1,
+    "accept_native_merges": false,
+    "input_units": "mm",
+    "model_mode": "network"
+  },
+  "warnings": [],
+  "failed_components": [
+    {
+      "stage": "native_load_and_preprocessing",
+      "error_type": "ValueError",
+      "message": "SWC root 1: VascularMD would treat a branching inlet as a sink; manual review required",
+      "component": null,
+      "traceback": "Traceback (most recent call last):\n  File \"/home/lzy/projects/ulm_3D_vascular/vascular_processing/pipeline.py\", line 122, in process_file\n    tree, original_topo, branches = load_tree(source, options.auto_resample)\n                                    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lzy/projects/ulm_3D_vascular/vascular_processing/vascularmd_adapter.py\", line 166, in load_tree\n    raise ValueError(f\"SWC root {root}: VascularMD would treat a branching inlet as a sink; manual review required\")\nValueError: SWC root 1: VascularMD would treat a branching inlet as a sink; manual review required\n"
+    }
+  ],
+  "units": "XYZ and radius in mm; original numerical units preserved; no scaling",
+  "bifurcation_swc_policy": "Nfurcation trajectory splines have zero-radius placeholders. Positions use the native trajectory; radii use its corresponding native shape spline at the nearest projected centerline position. The inlet uses shape spline 0; each outlet uses its own shape spline. A shared junction has one representative radius from inlet shape 0, without averaging. SWC cannot encode the complete noncircular bifurcation; the native VTK surface is authoritative.",
+  "native_model_call": {
+    "radius_model": true,
+    "criterion": "AIC",
+    "akaike": false,
+    "note": "criterion chooses native smoothing lambdas; akaike controls a different control-point-count selection option"
+  },
+  "versions": {
+    "python": "3.13.11",
+    "numpy": "2.5.3",
+    "scipy": "1.18.1",
+    "pyvista": "0.49.0",
+    "vtk": "9.7.0",
+    "networkx": "3.7",
+    "geomdl": "5.4.0",
+    "threadpoolctl": "3.6.0"
+  },
+  "outputs": {},
+  "upstream": {
+    "repository": "https://github.com/megdec/vascularmd",
+    "commit": "770feb8fbfb591d6d43f966db57b1465010b9a13",
+    "source_files_sha256": {
+      "ArterialTree.py": "eb2f737d41cbfbea2d3d065627084c5f20c160874e2d5082ce08f5ad5f63ac30",
+      "Spline.py": "baffd4264157f1328bd5c75df80804135d5ae71b8ba2c5d4095eac09a9484811",
+      "Model.py": "dae532cfcfbe2bf2234659b6b8f770545ace8ae4f95e191468c4a4b9f4a1d876",
+      "Nfurcation.py": "bd2b64db4a2f2d5097c331cd2476e8c6b41e7e13f016cdddaf104d9d002408f1",
+      "utils.py": "43aea9d1d2f83b0a598b2afc094effa73215334ee21c1e484f7b019e51a3e2db"
+    }
+  },
+  "original_file_preserved": true,
+  "elapsed_seconds": 0.02823036200061324
+}

@@ -1,0 +1,133 @@
+diff --git a/ArterialTree.py b/ArterialTree.py
+index 287e6ec..58fd8b1 100644
+--- a/ArterialTree.py
++++ b/ArterialTree.py
+@@ -31,9 +31,9 @@ import os
+ 
+ import networkx as nx
+ 
+-from utils import *
+-from Nfurcation import Nfurcation
+-from Spline import Spline
++from .utils import *
++from .Nfurcation import Nfurcation
++from .Spline import Spline
+ 
+ 
+ 
+@@ -525,7 +525,7 @@ class ArterialTree:
+ 
+ 		MIN_LEN_IN = 3 # Minimum length to consider before merging
+ 
+-		from Model import Model
++		from .Model import Model
+ 		original_label_modif = original_label
+ 
+ 		# Get original label dictionary
+diff --git a/Model.py b/Model.py
+index 6d113ce..eef433a 100644
+--- a/Model.py
++++ b/Model.py
+@@ -15,8 +15,8 @@ import numpy as np # Tools for matrices
+ from numpy.linalg import norm 
+ from geomdl import BSpline, operations, helpers # Spline storage and evaluation
+ 
+-from Spline import Spline
+-from utils import *
++from .Spline import Spline
++from .utils import *
+ import math
+ 
+ class Model:
+diff --git a/Nfurcation.py b/Nfurcation.py
+index 1f82b92..747f0e7 100644
+--- a/Nfurcation.py
++++ b/Nfurcation.py
+@@ -22,8 +22,8 @@ from numpy import dot, cross
+ import matplotlib.pyplot as plt # Tools for plots
+ from mpl_toolkits.mplot3d import Axes3D # 3D display
+ 
+-from utils import *
+-from Spline import Spline
++from .utils import *
++from .Spline import Spline
+ 
+ 
+ class Nfurcation:
+@@ -1249,7 +1249,7 @@ class Nfurcation:
+ 			pts = self._crsec
+ 
+ 		mesh = self.mesh_surface()
+-		mesh = mesh.smooth(n_iter, boundary_smoothing=False, relaxation_factor=0.8) # Laplacian smooth
++		mesh = mesh.smooth(n_iter=n_iter, boundary_smoothing=False, relaxation_factor=0.8) # Laplacian smooth
+ 		self.mesh_to_crsec(mesh)
+ 
+ 
+diff --git a/Spline.py b/Spline.py
+index a8dd67c..caefb50 100644
+--- a/Spline.py
++++ b/Spline.py
+@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt # Tools for plots
+ from mpl_toolkits.mplot3d import Axes3D # 3D display
+ import math
+ 
+-from utils import *
++from .utils import *
+ 
+ 
+ class Spline:
+@@ -375,7 +375,7 @@ class Spline:
+ 		criterion -- smoothing criterion
+ 		"""
+ 	
+-		from Model import Model
++		from .Model import Model
+ 		
+ 		if n == None:
+ 			if akaike:
+@@ -478,7 +478,7 @@ class Spline:
+ 
+ 		""" Find the optimal number of control points for a given RMSE threshold """
+ 
+-		from Model import Model
++		from .Model import Model
+ 
+ 		# Find the maximum number of control point in function of the spline length
+ 		MAX_N = 200
+@@ -502,7 +502,7 @@ class Spline:
+ 
+ 		""" Find the optimal number of control points using Akaike criterion """
+ 
+-		from Model import Model
++		from .Model import Model
+ 
+ 		n = 4
+ 		model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
+@@ -653,7 +653,7 @@ class Spline:
+ 
+ 		# Keep model if the original spline had one
+ 		if self._model[0] is not None and self._model[1] is not None:
+-			from Model import Model
++			from .Model import Model
+ 
+ 			# Separate data points 
+ 			T = self._model[0].get_t()
+diff --git a/utils.py b/utils.py
+index a5437ca..abebcf9 100644
+--- a/utils.py
++++ b/utils.py
+@@ -277,7 +277,7 @@ def averaging_knot(data, p):
+ 
+ 
+ def optimal_knot(nb_max, data):
+-	from Spline import Spline
++	from .Spline import Spline
+ 
+ 	""" Search of dominant points in data data. """
+ 	# Approximation of the curvature values
+diff --git a/__init__.py b/__init__.py
+new file mode 100644
+--- /dev/null
++++ b/__init__.py
+@@ -0,0 +1 @@
++"""Vendored VascularMD; see ../vascularmd_integration.md for local changes."""

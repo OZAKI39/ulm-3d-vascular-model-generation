@@ -33,10 +33,10 @@ class SamplingOutputLayout:
     summary_file: Path
 
 
-def create_sampling_layout(config: SamplingConfig) -> SamplingOutputLayout:
+def create_sampling_layout(config: SamplingConfig, *, run_label: str | None = None) -> SamplingOutputLayout:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     base = config.output_root.resolve() / "sampling"
-    stem = f"{timestamp}_{config.feature_mode}_k{config.n_clusters}"
+    stem = f"{timestamp}_{run_label or f'{config.feature_mode}_k{config.n_clusters}'}"
     run_root = base / stem
     counter = 1
     while run_root.exists():

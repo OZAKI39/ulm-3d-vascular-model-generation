@@ -1,0 +1,55 @@
+inherits: bambu_manufacturing_profile.yaml
+profile_name: compact_bambu_abs_0p4
+# Prototype engineering targets, NOT anatomical definitions or guaranteed print limits.
+compact_roi:
+  enabled: true
+  component_priority: [4, 3]
+  source_level_priority: [diameter_075, semantic_refined]
+  minimum_semantic_support: 0.80
+  minimum_longest_dimension_mm: 60
+  allow_undersized_candidate: true
+  adaptive_path:
+    enabled: true
+    maximum_trials: 64
+    # User authorized adaptive paths. 60/80 mm below are reference targets,
+    # not hard clipping when adaptive mode is enabled. Complexity/size stay hard.
+    authorization: "用户允许自适应路径长度，保持合理血管复杂度和区域范围；不严格限制60mm。"
+    score_weights: {size_deficit: 1.0, structure_deficit: 0.50, length_excess: 0.35, compensation: 0.25}
+  preferred_longest_dimension_mm: {min: 60, max: 90}
+  hard_max_longest_dimension_mm: 110
+  preferred_bbox_diagonal_mm: {min: 70, max: 120}
+  hard_max_bbox_diagonal_mm: 140
+  preferred_total_centerline_mm: {min: 80, max: 160}
+  hard_max_total_centerline_mm: 200
+  max_topology_branches: 6
+  preferred_topology_branches: {min: 3, max: 5}
+  min_bifurcations: 1
+  preferred_bifurcations: {min: 1, max: 2}
+  hard_max_bifurcations: 3
+  preferred_outlets: {min: 2, max: 4}
+  hard_max_outlets: 4
+  max_bifurcation_depth: 2
+  max_daughters_per_bifurcation: 2
+  preferred_path_length_mm: 40
+  hard_max_path_length_mm: 60
+  max_inlet_to_outlet_mm: 80
+  daughter_score_weights: {semantic: 0.45, diameter: 0.35, length: 0.20}
+  candidate_compensation_penalty_weight: 0.25
+  terminal_twig: {max_length_mm: 12, original_diameter_below_mm: 1.0}
+compact_phantom:
+  default_mode: BALANCED
+  mini: {max_branches: 3, max_bifurcations: 1, max_outlets: 2, max_path_mm: 45, target_longest_dimension_mm: 60, max_longest_dimension_mm: 80}
+  balanced: {max_branches: 5, max_bifurcations: 2, max_outlets: 3, max_path_mm: 55, target_longest_dimension_mm: 70, max_longest_dimension_mm: 100}
+  # Global hard size/complexity limits take precedence. Paths adapt to native geometry.
+  rich: {max_branches: 6, max_bifurcations: 3, max_outlets: 4, max_path_mm: 65, target_longest_dimension_mm: 90, max_longest_dimension_mm: 120}
+  proximal_context: {preferred_mm: 10, min_mm: 8, max_mm: 15}
+manufacturing:
+  max_radius_inflation_factor: 1.75
+orientation:
+  tilt_steps_each_side: 1
+  yaw_offsets_deg: [0, 45, 90, 135]
+  candidate_count_for_slicer: 3
+  compact_score_weights: {surface_score: 0.60, inlet_height: 0.20, stem_angle: 0.10, distal_horizontal: 0.10}
+  preferred_stem_angle_deg: {min: 30, max: 60}
+  maximum_candidates: 150
+  minimum_candidates: 50

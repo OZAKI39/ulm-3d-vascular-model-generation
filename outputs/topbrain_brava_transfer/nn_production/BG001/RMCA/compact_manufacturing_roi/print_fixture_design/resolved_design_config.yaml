@@ -1,0 +1,85 @@
+schema_version: 1
+input:
+  compact_root: outputs/topbrain_brava_transfer/nn_production/BG001/RMCA/compact_manufacturing_roi
+  candidate: BALANCED
+  source_stl: BG001_RMCA_BALANCED_print_candidate.stl
+  manifest: compact_manifest.json
+  transform: print_transform.json
+  compact_swc: candidates/BALANCED/compensated.swc
+  fitted_swc: candidates/BALANCED/VascularMD/compensated_vmd_smooth.swc
+  node_mapping: candidates/BALANCED/compensated_mapping.csv
+  edge_mapping: candidates/BALANCED/compensated_edges.csv
+output:
+  directory: print_fixture_design
+  basename: BG001_RMCA_BALANCED
+box:
+  margin_x_mm: 12.0
+  margin_y_mm: 12.0
+  margin_bottom_mm: 10.0
+  margin_top_mm: 12.0
+  wall_thickness_mm: 3.0
+  bottom_thickness_mm: 3.0
+  open_top: true
+ports:
+  outside_stub_mm: 10.0
+  min_wall_edge_clearance_mm: 8.0
+  min_port_spacing_mm: 8.0
+  route_clearance_mm: 3.0
+  assembly_clearance_mm: 0.2
+  preferred_max_turn_angle_deg: 45.0
+  minimum_bend_radius_mm: 6.0
+routing:
+  prefer_opposite_faces: true
+  max_outlet_faces: 2
+  tangent_window_mm: 5.0
+  tangent_resample_step_mm: 0.25
+  attachment_overlap_mm: 0.6
+  attachment_exemption_mm: 5.0
+  wall_approach_mm: 3.0
+  target_lateral_offsets_mm:
+  - 0
+  - -10
+  - 10
+  target_vertical_offsets_mm:
+  - 0
+  - 8
+  - -8
+  spline_tangent_scales:
+  - 0.7
+  - 1.0
+  - 1.5
+  - 2.0
+  natural_bend_radii_mm:
+  - 6.2
+  - 8.0
+  - 10.0
+  - 12.0
+  natural_bend_interpolation_points: 17
+  curvature_step_mm: 0.25
+  bend_radius_safety_factor: 1.02
+  options_per_face: 8
+  preferred_max_curved_turn_angle_deg: 120.0
+  score_weights:
+    normalized_distance: 0.35
+    normalized_turn_angle: 0.35
+    collision_penalty: 0.2
+    wall_edge_penalty: 0.1
+geometry:
+  mesh_tolerance_mm: 0.02
+  mesh_angular_tolerance_rad: 0.1
+  centerline_label_sample_step_mm: 0.2
+  volume_tolerance_mm3: 0.001
+  coordinate_tolerance_mm: 0.0001
+  minimum_triangle_area_mm2: 1.0e-10
+  boolean_cleanup_tolerance_mm: 1.0e-05
+visualization:
+  window_size:
+  - 1500
+  - 1100
+  arrow_length_mm: 6.0
+  chinese_font: /mnt/c/Windows/Fonts/msyh.ttc
+  title_font_size: 34
+  legend_font_size: 23
+vmtk:
+  probe_python: /mnt/d/anaconda3/envs/vmtk-env/python.exe
+  timeout_seconds: 30
