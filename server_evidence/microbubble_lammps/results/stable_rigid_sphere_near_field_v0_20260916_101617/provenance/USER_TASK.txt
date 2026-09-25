@@ -1,0 +1,1675 @@
+执行独立科研修复与开发任务：
+
+# STABLE_LAMMPS_RIGID_SPHERE_NEAR_FIELD_V0
+
+总目标：
+
+放弃 2Sep2026 release candidate。
+
+继续使用当前已经完整验证过的最新正式 stable：
+
+LAMMPS 22Jul2025 Update 6
+commit =
+9c5ab448c78a14fd534619622162ba418d6a1fb1
+
+将其作为：
+
+唯一 active LAMMPS
+
+然后建立并验证：
+
+RIGID-SPHERE NEAR-FIELD HYDRODYNAMICS V0
+
+需要覆盖：
+
+1. normal / squeeze lubrication
+2. tangential / shear lubrication
+3. rotational lubrication
+4. translation-rotation coupling
+5. hard non-overlap
+
+不研究：
+
+bubble deformation
+shell deformation
+shell elasticity
+coalescence
+bubble breakup
+ultrasound oscillation
+RBC
+
+==================================================
+0. 当前状态
+==================================================
+
+SONOVUE_CONTINUOUS_SAMPLER_V0 = PASS
+
+MINIMAL_LAMMPS_PARTICLE_ENGINE = PASS
+
+PALABOS_LAMMPS_COUPLING_V0 = PASS
+
+PASSIVE_MICROBUBBLE_TRANSPORT_V0 = PASS
+
+当前 passive model：
+
+DYNAMICS =
+OVERDAMPED_QUASI_STEADY
+
+dX/dt =
+U(X)
+
+INTEGRATOR =
+RK2_MIDPOINT
+
+C_adv =
+0.25
+
+当前正式 active LAMMPS：
+
+RELEASE =
+22Jul2025 Update 6
+
+COMMIT =
+9c5ab448c78a14fd534619622162ba418d6a1fb1
+
+CPU_BINARY_SHA256 =
+188ebc166c967cb004af3df6e75b1903e4f5df7123eca46264899831a845bee4
+
+GPU_BINARY_SHA256 =
+82dd028a0fd648b5e2355c6b955a367d7bfac4847b0ed69640e5d101fed04f65
+
+==================================================
+1. Version policy
+==================================================
+
+正式版本：
+
+22Jul2025 Update 6
+
+必须保持：
+
+ACTIVE_LAMMPS_COUNT = 1
+
+禁止：
+
+使用 2Sep2026 candidate
+develop HEAD
+feature release
+nightly source
+
+==================================================
+2. 清理 2Sep2026 candidate
+==================================================
+
+之前失败候选：
+
+2Sep2026
+commit =
+d71abe6102c44577442ba7f03b7378a83166b9fd
+
+它从未被 promoted。
+
+首先生成：
+
+LAMMPS_2SEP2026_CANDIDATE_RETIREMENT_MANIFEST.json
+
+记录：
+
+source path
+build path
+binary path
+size
+SHA256
+candidate commit
+
+保留：
+
+之前 migration FAIL 的科研报告
+source audit
+logs
+SHA256
+independent validation
+
+这些属于：
+
+historical evidence
+
+然后删除候选版：
+
+source checkout
+build tree
+candidate CPU binary
+candidate GPU binary
+temporary install/runtime tree
+
+要求最终：
+
+CANDIDATE_2SEP2026_SOURCE_PRESENT = NO
+CANDIDATE_2SEP2026_BUILD_PRESENT = NO
+CANDIDATE_2SEP2026_BINARY_PRESENT = NO
+
+但：
+
+CANDIDATE_FAILURE_EVIDENCE_PRESERVED = YES
+
+==================================================
+3. 唯一 active audit
+==================================================
+
+确认：
+
+只有：
+
+22Jul2025 Update 6
+
+作为 active runtime。
+
+检查：
+
+all custom coupling binaries
+library linkage
+absolute runtime paths
+build provenance
+
+不得引用：
+
+2Sep2026 candidate library。
+
+要求：
+
+ACTIVE_LAMMPS_COUNT = 1
+
+LAMMPS_VERSION_COEXISTENCE = NO
+
+==================================================
+4. 不修改 stable LAMMPS core
+==================================================
+
+22Jul2025 Update 6：
+
+作为 frozen upstream。
+
+禁止直接修改：
+
+LAMMPS core source
+
+正式新增代码使用：
+
+external embedding
+custom fix
+custom plugin
+project-owned source
+
+==================================================
+5. 为什么不直接相信 built-in lubrication
+==================================================
+
+上一轮已经说明：
+
+不同版本的 lubrication implementation
+行为可能变化。
+
+因此：
+
+22Jul2025 Update 6 built-in lubrication
+
+只能作为：
+
+REFERENCE TO AUDIT
+
+不能未经独立验证
+直接成为 production ground truth。
+
+==================================================
+6. 先审计 stable built-in implementation
+==================================================
+
+审计：
+
+pair_style lubricate/poly
+pair_style lubricateU/poly
+
+冻结源码。
+
+生成：
+
+STABLE_LAMMPS_LUBRICATION_SOURCE_AUDIT.md
+
+必须明确列出：
+
+normal squeeze
+tangential shear
+pump
+translation-rotation coupling
+twist
+
+各项：
+
+IMPLEMENTED
+NOT_IMPLEMENTED
+PARTIAL
+UNVERIFIED
+
+==================================================
+7. 必须区分 rotational modes
+==================================================
+
+“rotation”不能只写一个 ON/OFF。
+
+至少拆成：
+
+ROTATION_TRANSVERSE =
+粒子绕垂直于球心连线方向旋转
+
+ROTATION_TWIST =
+粒子绕球心连线方向相对旋转
+
+检查 stable upstream
+实际包含哪些 resistance terms。
+
+不得：
+
+因为有 angular velocity
+就声称全部 rotational lubrication
+都已实现。
+
+==================================================
+8. LAMMPS documented near-field structure
+==================================================
+
+审计目标至少覆盖：
+
+A_sq =
+normal squeeze
+
+A_sh =
+tangential shear
++
+translation-rotation coupling
+
+A_pu =
+relative transverse rotation / pump
+
+A_tw =
+relative twist around center-center axis
+
+对 frozen source
+逐项映射。
+
+==================================================
+9. Twist special rule
+==================================================
+
+如果 frozen stable upstream：
+
+A_tw =
+NOT IMPLEMENTED
+
+则必须独立处理。
+
+执行：
+
+TWIST_PHYSICS_AUDIT
+
+读取 authoritative theory：
+
+Ball & Melrose
+以及 LAMMPS source references。
+
+判断：
+
+A.
+可可靠实现并验证
+
+则加入 custom model。
+
+B.
+当前证据不足以安全实现
+
+则：
+
+ROTATIONAL_TWIST =
+PENDING_BLOCKER
+
+此时不能声称：
+
+FULL_ROTATIONAL_LUBRICATION = PASS
+
+不得编造公式。
+
+==================================================
+10. 科学目标
+==================================================
+
+目标模型：
+
+RIGID SPHERES
+
+允许：
+
+translation x,y,z
+
+rotation omega_x,omega_y,omega_z
+
+禁止：
+
+shape deformation
+
+因此：
+
+BUBBLE_SHAPE =
+SPHERE
+
+RADIUS =
+FIXED_PER_PARTICLE
+
+DEFORMATION =
+OFF
+
+==================================================
+11. Fluid model
+==================================================
+
+背景流：
+
+Palabos frozen field
+
+PBS + 1% BSA
+
+mu =
+1.0e-3 Pa*s
+
+粒子：
+
+SonoVue polydisperse spheres
+
+support =
+0.75–5.25 um
+
+==================================================
+12. Dynamics
+==================================================
+
+保持：
+
+OVERDAMPED
+
+禁止：
+
+m*dV/dt
+
+正式求解变量：
+
+translational velocities V_i
+
+angular velocities Omega_i
+
+在每个 instant 满足：
+
+hydrodynamic resistance
++
+other allowed forces/torques
++
+non-overlap constraints
+=
+0
+
+==================================================
+13. 背景流
+==================================================
+
+每颗粒子：
+
+U_inf_i =
+FlowFieldSampler(x_i)
+
+另外为了 rigid-sphere rotational response：
+
+需要：
+
+velocity gradient
+grad(U)
+
+从 frozen Palabos field
+三线性/一致方法计算。
+
+从中得到：
+
+fluid vorticity
+
+Omega_inf =
+0.5 curl(U)
+
+以及：
+
+strain-rate tensor
+
+E_inf =
+0.5 *
+(
+grad(U)
++
+grad(U)^T
+)
+
+==================================================
+14. Gradient sampler
+==================================================
+
+建立：
+
+FlowGradientSampler
+
+必须独立验证。
+
+synthetic affine field：
+
+gradient 是解析常数。
+
+要求：
+
+CPP vs analytic
+
+MAX_GRADIENT_ERROR
+<= 1e-10 1/s
+
+并建立：
+
+Python independent reference。
+
+==================================================
+15. 为什么需要 gradient
+==================================================
+
+平移只需要：
+
+U(x)
+
+但：
+
+particle rotation
+shear lubrication
+translation-rotation coupling
+
+还需要知道：
+
+周围流体局部是否：
+
+旋转
+剪切
+拉伸。
+
+因此不能只读取速度。
+
+==================================================
+16. Production interaction implementation
+==================================================
+
+优先：
+
+project-owned custom plugin
+
+例如：
+
+sonovue_rigid_lubrication
+
+LAMMPS 负责：
+
+sphere storage
+neighbor list
+MPI ownership
+ghost particles
+IDs
+domain decomposition
+
+custom module 负责：
+
+near-field resistance
+overdamped solve
+non-overlap
+
+==================================================
+17. 不重新造 neighbor list
+==================================================
+
+禁止：
+
+O(N^2)
+
+正式 particle search。
+
+必须使用：
+
+LAMMPS neighbor infrastructure。
+
+==================================================
+18. Pair geometry
+==================================================
+
+对于 i,j：
+
+a_i
+a_j
+
+r =
+|x_i-x_j|
+
+n =
+(x_i-x_j)/r
+
+gap：
+
+h =
+r-a_i-a_j
+
+所有公式必须：
+
+支持 a_i != a_j
+
+==================================================
+19. Required near-field modes
+==================================================
+
+生产目标：
+
+NORMAL_SQUEEZE =
+ON
+
+TANGENTIAL_SHEAR =
+ON
+
+TRANSVERSE_ROTATION =
+ON
+
+TRANSLATION_ROTATION_COUPLING =
+ON
+
+TWIST_ROTATION =
+ON_IF_VALIDATED
+
+否则：
+
+PENDING_BLOCKER
+
+==================================================
+20. 不允许 normal-only 偷偷替代
+==================================================
+
+用户明确要求：
+
+切向运动
+旋转运动
+
+也是研究对象。
+
+因此：
+
+NORMAL_ONLY_MODEL
+
+不能作为最终：
+
+BUBBLE_BUBBLE_INTERACTION_V0 PASS。
+
+==================================================
+21. Independent mathematical reference
+==================================================
+
+不能：
+
+只拿 LAMMPS 自己
+验证 LAMMPS 自己。
+
+建立：
+
+reference_rigid_sphere_lubrication.py
+
+其公式来源必须明确引用：
+
+Ball & Melrose
+
+以及 frozen stable source
+使用的理论 reference。
+
+==================================================
+22. Reference contract
+==================================================
+
+生成：
+
+RIGID_SPHERE_LUBRICATION_REFERENCE_CONTRACT.json
+
+至少记录：
+
+formula source
+equation identifiers
+radius convention
+gap convention
+units
+sign convention
+normal mode
+shear mode
+pump mode
+twist mode
+
+==================================================
+23. Stable source comparison
+==================================================
+
+随机：
+
+>=100000
+
+pair states。
+
+覆盖：
+
+equal radii
+unequal radii
+
+dmin-dmin
+dmin-dmax
+d50-d90
+
+multiple gaps
+
+normal approach
+normal separation
+tangential slip
+rotation
+combined translation+rotation
+
+比较：
+
+stable LAMMPS coefficients
+vs
+independent reference。
+
+==================================================
+24. coefficient gates
+==================================================
+
+每一个 production-used resistance mode：
+
+MAX_RELATIVE_COEFFICIENT_ERROR
+<= 1e-10
+
+如果 reference 在零附近：
+
+使用 absolute tolerance。
+
+任一 production-required mode FAIL：
+
+停止。
+
+不得进入真实 interaction run。
+
+==================================================
+25. exchange symmetry
+==================================================
+
+对每个 random unequal-radius state：
+
+交换：
+
+i ↔ j
+
+要求物理 resistance
+满足正确交换对称性。
+
+至少：
+
+force pair equal/opposite
+torque transformation correct
+dissipation invariant。
+
+==================================================
+26. Newton third law
+==================================================
+
+内部 pair interaction：
+
+F_i + F_j =
+0
+
+要求：
+
+normalized error <= 1e-12
+
+随机：
+
+>=10000
+
+combined-motion states。
+
+==================================================
+27. Angular momentum audit
+==================================================
+
+不能只检查：
+
+F_i + F_j = 0
+
+还必须检查：
+
+pair force moments
++
+particle torques
+
+整体 angular momentum consistency。
+
+建立：
+
+PAIR_TORQUE_BALANCE_AUDIT
+
+==================================================
+28. Dissipation
+==================================================
+
+lubrication resistance
+必须耗散相对运动。
+
+对随机 states：
+
+hydrodynamic dissipation
+
+要求：
+
+>= -numerical_tolerance
+
+按定义统一符号。
+
+最终：
+
+NEGATIVE_DISSIPATION_VIOLATIONS =
+0
+
+==================================================
+29. Resistance matrix
+==================================================
+
+正式 pair resistance
+应组织为：
+
+translation
++
+rotation
+
+coupled block system。
+
+不能将：
+
+normal
+tangential
+rotation
+
+彼此完全独立地
+逐个加经验 force。
+
+==================================================
+30. Global overdamped solve
+==================================================
+
+对于 interacting particle set：
+
+求解：
+
+R * q =
+rhs
+
+q 包含：
+
+Vx,Vy,Vz
+Omega_x,Omega_y,Omega_z
+
+每颗 particle：
+
+6 DOF
+
+背景：
+
+U_inf
+Omega_inf
+E_inf
+
+进入 RHS / hydrodynamic terms。
+
+==================================================
+31. Matrix properties
+==================================================
+
+审计：
+
+symmetry
+
+positive semidefinite / dissipative structure
+
+conditioning
+
+随机小系统：
+
+N =
+2,3,5,10
+
+与 dense Python reference
+比较。
+
+==================================================
+32. Solver
+==================================================
+
+根据 resistance matrix
+实际数学性质选择：
+
+PCG
+MINRES
+GMRES
+
+不要预先强制 PCG。
+
+正式选择前：
+
+做 matrix-property audit。
+
+记录：
+
+SOLVER_SELECTION_REASON。
+
+==================================================
+33. Solver tolerance
+==================================================
+
+要求：
+
+REL_RESIDUAL <= 1e-10
+
+并检查：
+
+solution error vs dense reference。
+
+==================================================
+34. hard non-overlap
+==================================================
+
+额外加入：
+
+HARD_NONOVERLAP
+
+不是：
+
+Hertz
+Hooke
+shell compression
+
+只是：
+
+rigid-sphere geometry constraint。
+
+==================================================
+35. non-overlap gate
+==================================================
+
+accepted states：
+
+gap >= -1e-12 m
+
+全过程：
+
+continuous swept-sphere audit。
+
+==================================================
+36. interaction-aware timestep
+==================================================
+
+保留：
+
+C_adv =
+0.25
+
+增加：
+
+gap control：
+
+C_gap candidates =
+0.4
+0.2
+0.1
+
+0.1 reference。
+
+选择：
+
+最大通过 trajectory/gap
+convergence 的值。
+
+==================================================
+37. CASE A — pure normal approach
+==================================================
+
+两个不同半径 bubble
+
+验证：
+
+normal squeeze resistance。
+
+输出：
+
+gap vs time
+
+relative normal velocity。
+
+==================================================
+38. CASE B — pure tangential slide
+==================================================
+
+两个不同半径 bubble
+
+保持近距离
+
+施加纯切向 background relative motion。
+
+要求：
+
+normal component ~0
+
+tangential resistance
+与 reference 一致。
+
+==================================================
+39. CASE C — pure particle rotation
+==================================================
+
+测试至少：
+
+C1.
+equal transverse rotation
+
+C2.
+opposite transverse rotation
+
+C3.
+relative twist around n
+
+检查：
+
+Omega
+torque
+resistance
+reference identity。
+
+如果 twist 未实现：
+
+C3 =
+BLOCKED_TWIST_NOT_IMPLEMENTED
+
+并阻止 full rotational PASS。
+
+==================================================
+40. CASE D — translation-rotation coupling
+==================================================
+
+构造：
+
+bubble i
+从 bubble j 旁边擦过。
+
+要求同时出现：
+
+tangential translation
++
+angular velocity
+
+比较：
+
+C++ solver
+vs
+Python reference。
+
+==================================================
+41. CASE E — combined arbitrary pair motion
+==================================================
+
+随机：
+
+translation
+rotation
+unequal radii
+
+验证：
+
+完整 12 DOF
+two-particle solution。
+
+==================================================
+42. CASE F — non-overlap stress
+==================================================
+
+强制 converging background flow。
+
+要求：
+
+lubrication
++
+hard constraint
+
+可以连续运行。
+
+不能：
+
+首次预测 collision
+立即 safety-stop。
+
+ACCEPTED_OVERLAP_COUNT =
+0
+
+==================================================
+43. CASE G — three-particle near-field
+==================================================
+
+不同尺寸：
+
+three bubbles
+
+多个 simultaneous pair interactions。
+
+比较：
+
+C++
+vs
+dense Python resistance solve。
+
+==================================================
+44. CASE H — permutation invariance
+==================================================
+
+交换 particle IDs。
+
+恢复物理对应后：
+
+positions
+velocities
+angular velocities
+
+应一致。
+
+==================================================
+45. CASE I — MPI1 vs MPI4
+==================================================
+
+必须有：
+
+active pair crossing rank boundary。
+
+比较：
+
+V
+Omega
+trajectory
+pair gap。
+
+要求：
+
+MAX_POSITION_DIFF <= 1e-10 m
+
+MAX_VELOCITY_DIFF <= 1e-10 m/s
+
+MAX_OMEGA_DIFF
+设合理 SI tolerance
+并在 contract 冻结。
+
+==================================================
+46. CASE J — passive regression
+==================================================
+
+所有 pair：
+
+outside lubrication cutoff。
+
+必须恢复：
+
+PASSIVE_MICROBUBBLE_TRANSPORT_V0
+
+V =
+U
+
+particle rotation：
+
+若当前 baseline
+没有 rotation，
+需要明确新增 rotation
+不影响 center trajectory。
+
+要求：
+
+center trajectories
+与旧 passive baseline
+一致。
+
+==================================================
+47. CASE K — real old 8-bubble replay
+==================================================
+
+复用：
+
+PASSIVE_MICROBUBBLE_TRANSPORT_V0
+Case 5
+
+完全相同：
+
+8 bubbles
+diameters
+initial positions
+frozen Palabos field
+
+旧 passive：
+
+0.00567591443217 s
+
+预测 overlap
+而停止。
+
+==================================================
+48. CASE K 目标
+==================================================
+
+新 near-field model：
+
+必须处理原 collision event。
+
+目标至少：
+
+> 0.008514 s
+
+优选：
+
+0.02 s
+
+除非：
+
+wall safety boundary
+先被触发。
+
+==================================================
+49. wall remains undefined
+==================================================
+
+MICROBUBBLE_WALL_HYDRODYNAMICS =
+PENDING
+
+因此：
+
+surface-wall gap < 3dx
+
+则：
+
+WALL_SAFETY_STOP
+
+不能用 bubble-bubble model
+代替 wall model。
+
+==================================================
+50. Case K angular outputs
+==================================================
+
+真实 8-bubble case
+必须开始记录：
+
+omega_x
+omega_y
+omega_z
+
+angular_speed
+
+nearest_pair_gap
+
+tangential_relative_speed
+
+normal_relative_speed
+
+lubrication mode contributions。
+
+==================================================
+51. interaction decomposition
+==================================================
+
+每个 active pair
+记录至少：
+
+normal squeeze contribution
+
+tangential shear contribution
+
+pump / transverse rotational contribution
+
+twist contribution
+或明确 NOT_IMPLEMENTED
+
+force vector
+
+torque_i
+torque_j。
+
+==================================================
+52. PAIR_EVENT CSV
+==================================================
+
+生成：
+
+PAIR_HYDRODYNAMIC_EVENTS.csv
+
+至少：
+
+time
+id_i
+id_j
+
+diameters
+gap
+
+normal relative speed
+tangential relative speed
+
+omega_i
+omega_j
+
+normal resistance
+shear resistance
+pump resistance
+twist resistance
+
+force
+torque
+
+constraint_active。
+
+==================================================
+53. 可视化 — resistance functions
+==================================================
+
+生成：
+
+VIS_RESISTANCE_MODES.png
+
+至少：
+
+normal
+tangential
+rotational
+
+不同：
+
+gap / effective radius。
+
+==================================================
+54. 可视化 — normal approach
+==================================================
+
+VIS_NORMAL_APPROACH.png
+
+gap vs time
+
+passive
+lubrication
+lubrication+constraint。
+
+==================================================
+55. 可视化 — tangential sliding
+==================================================
+
+VIS_TANGENTIAL_SLIDE.png
+
+显示：
+
+relative tangential position
+velocity
+resistance。
+
+==================================================
+56. 可视化 — rotation
+==================================================
+
+VIS_ROTATIONAL_LUBRICATION.png
+
+显示：
+
+Omega_i
+Omega_j
+torques
+vs time。
+
+==================================================
+57. 可视化 — translation rotation
+==================================================
+
+VIS_TRANSLATION_ROTATION_COUPLING.png
+
+显示：
+
+两个 bubble trajectories
++
+rotation arrows / angular speed。
+
+==================================================
+58. 可视化 — real 8 bubbles
+==================================================
+
+VIS_REAL_8BUBBLE_RIGID_HYDRO.png
+
+真实 lumen
++
+8 bubble trajectories
+
+overlay：
+
+old passive trajectories
+
+标记：
+
+old collision stop time。
+
+==================================================
+59. ParaView
+==================================================
+
+输出：
+
+CASE_K_TRAJECTORIES.vtp
+
+包含：
+
+particle_id
+diameter_um
+time_s
+velocity
+angular_velocity
+nearest_gap
+active_pair_count
+
+必要时：
+
+rotation direction vectors。
+
+==================================================
+60. stable built-in use policy
+==================================================
+
+如果：
+
+22Jul2025 Update 6
+全部 required resistance modes
+
+通过独立 reference
+和 symmetry/dissipation audit，
+
+允许：
+
+复用 stable source mathematics。
+
+但是：
+
+由于现有 Palabos
+提供 arbitrary U_inf(x),
+
+最终仍优先：
+
+project-owned adapter/plugin
+
+而不是强制直接调用
+pair_style lubricateU/poly。
+
+==================================================
+61. 如果 stable built-in 某 mode FAIL
+==================================================
+
+不要：
+
+换 candidate
+放宽 gate
+关闭用户关心的 mode。
+
+改为：
+
+只针对 FAIL 的数学项
+实现 verified custom formula。
+
+然后重新：
+
+reference
+symmetry
+dissipation
+pair cases。
+
+==================================================
+62. candidate cleanup
+==================================================
+
+确认全部 candidate runtime
+删除后：
+
+CANDIDATE_2SEP2026_PRESENT =
+NO
+
+ACTIVE_LAMMPS_RELEASE =
+22Jul2025 Update 6
+
+ACTIVE_LAMMPS_COUNT =
+1
+
+==================================================
+63. GPU
+==================================================
+
+GPU_PERFORMANCE_READY =
+NO
+
+本 Stage：
+
+CPU MPI correctness first。
+
+Kokkos 只做：
+
+compatibility smoke。
+
+不要做 GPU optimization。
+
+==================================================
+64. existing baselines
+==================================================
+
+不得修改：
+
+Palabos baseline
+frozen field
+SonoVue sampler
+passive transport baseline
+LAMMPS stable core
+
+要求：
+
+ALL_PREVIOUS_BASELINES_MODIFIED =
+NO
+
+==================================================
+65. final scientific status
+==================================================
+
+只有以下都通过：
+
+NORMAL
+TANGENTIAL
+TRANSVERSE_ROTATION
+TRANSLATION_ROTATION_COUPLING
+TWIST
+NONOVERLAP
+
+才能：
+
+RIGID_SPHERE_NEAR_FIELD_HYDRODYNAMICS_V0 =
+PASS_FULL
+
+如果 twist
+因权威公式/implementation
+无法完成：
+
+只能：
+
+PASS_WITH_TWIST_PENDING
+
+不得称：
+
+FULL_ROTATIONAL_LUBRICATION = PASS
+
+==================================================
+66. Stage report
+==================================================
+
+生成中文：
+
+STABLE_LAMMPS_RIGID_SPHERE_NEAR_FIELD_V0_REPORT.md
+
+开头用门外汉语言解释：
+
+两个刚性微泡靠近时，
+不仅会因为正面挤压液体而减速，
+还会因为擦肩滑动和旋转
+受到液体阻力。
+
+本模型考虑这些刚性球运动，
+但不允许微泡改变形状。
+
+==================================================
+67. result paths
+==================================================
+
+远端：
+
+/workspace/microbubble_lammps/results/stable_rigid_sphere_near_field_v0_<timestamp>
+
+本地：
+
+/home/lzy/projects/compre_output/stable_rigid_sphere_near_field_v0/<timestamp>
+
+SHA256 全量校验。
+
+==================================================
+68. 最终终端摘要
+==================================================
+
+输出：
+
+STABLE_LAMMPS_RIGID_SPHERE_NEAR_FIELD_V0 =
+
+ACTIVE_LAMMPS_RELEASE =
+22Jul2025 Update 6
+
+ACTIVE_LAMMPS_COMMIT =
+9c5ab448c78a14fd534619622162ba418d6a1fb1
+
+ACTIVE_LAMMPS_COUNT =
+1
+
+CANDIDATE_2SEP2026_PRESENT =
+NO
+
+CANDIDATE_FAILURE_EVIDENCE_PRESERVED =
+YES
+
+LAMMPS_CORE_MODIFIED =
+NO
+
+RIGID_SPHERE =
+YES
+
+DEFORMATION =
+OFF
+
+OVERDAMPED =
+YES
+
+NORMAL_SQUEEZE =
+
+TANGENTIAL_SHEAR =
+
+TRANSVERSE_ROTATION =
+
+TRANSLATION_ROTATION_COUPLING =
+
+TWIST_ROTATION =
+
+FULL_ROTATIONAL_LUBRICATION =
+
+HARD_NONOVERLAP =
+
+MAX_REFERENCE_COEFFICIENT_ERROR =
+
+MAX_PAIR_FORCE_SYMMETRY_ERROR =
+
+MAX_TORQUE_BALANCE_ERROR =
+
+DISSIPATION_VIOLATIONS =
+
+MAX_SOLVER_RESIDUAL =
+
+SELECTED_LINEAR_SOLVER =
+
+SELECTED_C_GAP =
+
+ACCEPTED_OVERLAP_COUNT =
+
+CASE_A_NORMAL =
+CASE_B_TANGENTIAL =
+CASE_C_ROTATIONAL =
+CASE_D_TRANSLATION_ROTATION =
+CASE_E_ARBITRARY_PAIR =
+CASE_F_NONOVERLAP =
+CASE_G_THREE_PARTICLE =
+CASE_H_PERMUTATION =
+CASE_I_MPI =
+CASE_J_PASSIVE_REGRESSION =
+CASE_K_REAL_8BUBBLE =
+
+CASE_K_NEW_TIME_S =
+
+CASE_K_MIN_PAIR_GAP_UM =
+
+CASE_K_MAX_ANGULAR_SPEED_RAD_S =
+
+WALL_SAFETY_STOP =
+
+INDEPENDENT_FINALIZER =
+
+VISUALIZATION_GENERATION =
+
+HUMAN_VISUAL_REVIEW =
+PENDING
+
+GPU_PERFORMANCE_READY =
+NO
+
+PALABOS_BASELINE_MODIFIED =
+NO
+
+PASSIVE_BASELINE_MODIFIED =
+NO
+
+SONOVUE_SAMPLER_MODIFIED =
+NO
+
+MICROBUBBLE_WALL_HYDRODYNAMICS =
+PENDING
+
+MICROBUBBLE_ADHESION =
+PENDING
+
+RBC =
+OFF
+
+REMOTE_TO_WSL_INTEGRITY =
+
+REMOTE_RESULT_DIR =
+
+LOCAL_RESULT_DIR =
+
+REPORT =
+
+NEXT_STAGE =
+USER_REVIEW_BEFORE_MICROBUBBLE_WALL_HYDRODYNAMICS_V0

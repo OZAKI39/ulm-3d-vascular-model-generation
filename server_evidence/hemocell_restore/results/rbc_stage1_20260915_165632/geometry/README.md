@@ -1,0 +1,1 @@
+此目录的BEST_RIGID_PLACEMENT.vtp为明确不合格的失败诊断姿态，不是可运行spawn。与FROZEN_LUMEN_LU.vtp共同打开；单位LU。没有RBC运行帧。

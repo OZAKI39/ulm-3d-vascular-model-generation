@@ -1,0 +1,1380 @@
+执行独立科研任务：
+
+# RBC_ONLY_VALIDATION_STAGE_1 — CURRENT PRODUCTION VERSION
+
+目标：
+
+在当前已经验证通过的新 Vast RTX4090 平台上，
+使用 MOUSE_RBC_DEV_V0，
+验证少量 mouse-like RBC 在当前真实血管几何 + PBS/BSA 开发介质中是否能够：
+
+1. 正确初始化；
+2. 保持膜结构稳定；
+3. 不出现 NaN / Inf；
+4. 不发生明显非物理穿墙；
+5. 不发生灾难性 RBC-RBC 重叠；
+6. 正确与流体进行 HemoCell IBM 耦合；
+7. 在 MPI 下稳定运行。
+
+本阶段只做“RBC 数值正确性 smoke”。
+
+不是：
+- mouse RBC 生物力学最终标定；
+- Hct=10% 群体物理验证；
+- RBC GPU 移植；
+- microbubble 模拟。
+
+==================================================
+0. 当前已经通过的前置条件
+==================================================
+
+NEW_VAST4090_PURE_FLUID_BASELINE = PASS
+
+PURE_FLUID_NEW_MEDIUM_SMOKE_STATUS = PASS
+
+SUSPENDING_MEDIUM_NUMERICS = PASS
+
+GPU platform：
+
+NVIDIA GeForce RTX 4090
+NVHPC 26.5
+Palabos GPU commit =
+4127697e90169bbef982295f1d1c933cf6e90caa
+
+注意：
+
+RBC_GPU_CORRECTNESS = PENDING
+
+因此：
+
+本 Stage1 不使用新 GPU RBC/IBM 路径。
+
+优先使用已经可信的 HemoCell CPU/MPI particle + IBM 路径。
+
+不要同时做：
+“新 RBC physics + 新 RBC GPU port”。
+
+==================================================
+1. 当前开发介质
+==================================================
+
+SUSPENDING_MEDIUM =
+1x PBS + 1% BSA
+
+TEMPERATURE_C =
+25
+
+DEVELOPMENT_ASSUMPTION =
+YES
+
+EXPERIMENTALLY_MEASURED =
+NO
+
+rho =
+1000 kg/m3
+
+nu =
+1.0e-6 m2/s
+
+tau =
+1.0
+
+dt =
+6.65994708146172e-9 s
+
+三个出口 rho_LU：
+
+outlet_01 =
+1.0000484343922278
+
+outlet_02 =
+1.0004402376508774
+
+outlet_03 =
+0.9999543772756865
+
+这些已经在：
+
+PURE_FLUID_NEW_MEDIUM_SMOKE
+
+中验证通过。
+
+不得重新调参。
+
+==================================================
+2. prepare_numerics.py 继续作为唯一生成源
+==================================================
+
+正式要求：
+
+prepare_numerics.py
+=
+dt 和 outlet rho_LU 的唯一生成源。
+
+solver：
+
+只读取冻结的 numerics contract。
+
+不得：
+
+在 C++ 中重新计算另一套 dt
+手填另一套 rho_LU
+修改 tau
+
+运行前验证：
+
+ACTUAL_DT_MATCHES_CONTRACT = PASS
+
+ACTUAL_OUTLET_RHO_LU_MATCH_CONTRACT = PASS
+
+==================================================
+3. MOUSE_RBC_DEV_V0
+==================================================
+
+Species：
+
+mouse-like RBC
+
+Geometry：
+
+HemoCell biconcave RBC
+
+target volume =
+50 um^3
+
+uniform geometry scale ≈
+0.8221
+
+effective diameter ≈
+6.43 um
+
+Mechanical model：
+
+RbcHighOrderModel
+
+固定：
+
+kLink   = 15
+kArea   = 5
+kBend   = 80
+kVolume = 20
+
+minNumTriangles >= 600
+
+Interior viscosity：
+
+OFF
+
+禁止在本 Stage1：
+
+修改 kLink
+修改 kArea
+修改 kBend
+修改 kVolume
+自动缩小 RBC
+自动调整 mesh
+打开 interior viscosity
+
+状态仍然：
+
+MOUSE_SPECIFIC_MEMBRANE_MECHANICS = UNVERIFIED
+
+MOUSE_SPECIFIC_INTERIOR_VISCOSITY = UNVERIFIED
+
+==================================================
+4. Hct 状态
+==================================================
+
+未来计划：
+
+0%
+5%
+10% baseline
+20%
+
+但本 Stage1：
+
+不是 Hct validation。
+
+禁止为了达到：
+
+Hct = 10%
+
+而大量填充 RBC。
+
+Stage1 只验证：
+
+single RBC
++
+small RBC pack
+
+最终必须写：
+
+SMALL_PACK_IS_NOT_HCT_VALIDATION = YES
+
+==================================================
+5. Microbubble / adhesion / ultrasound
+==================================================
+
+全部关闭：
+
+MICROBUBBLE = OFF
+ADHESION = OFF
+ULTRASOUND = OFF
+
+不得在本任务加入任何微泡逻辑。
+
+==================================================
+6. 服务器和目录
+==================================================
+
+Codex 运行：
+
+本地 WSL
+
+远端：
+
+ssh vast4090
+
+远端项目根：
+
+/workspace/hemocell_restore
+
+建立唯一：
+
+/workspace/hemocell_restore/work/rbc_stage1_<timestamp>
+
+结果：
+
+/workspace/hemocell_restore/results/rbc_stage1_<timestamp>
+
+本地下载：
+
+/home/lzy/projects/compre_output/rbc_stage1/<timestamp>
+
+不要修改只读 minimal restore archive。
+
+==================================================
+7. 先检查服务器资源
+==================================================
+
+运行前记录：
+
+df -h /workspace
+free -h
+nproc
+
+要求：
+
+FREE_DISK >= 20 GiB
+
+本服务器约 300 GB 空间，
+因此当前不应再受到旧磁盘问题限制。
+
+如果不足：
+
+RBC_STAGE1_STATUS =
+BLOCKED_RESOURCE_PREFLIGHT
+
+不要自动删除科研资产。
+
+==================================================
+8. 清理旧 incomplete full upload
+==================================================
+
+当前已知可能存在：
+
+INCOMPLETE_FULL_UPLOAD ≈ 3.32 GiB
+
+本任务默认：
+
+不要自动删除。
+
+只报告：
+
+INCOMPLETE_FULL_UPLOAD_EXISTS
+INCOMPLETE_FULL_UPLOAD_GIB
+
+除非用户已经在当前任务明确授权删除，
+否则保持。
+
+==================================================
+9. CPU HemoCell 环境恢复
+==================================================
+
+Stage1 使用：
+
+HemoCell CPU/MPI path
+
+固定 HemoCell：
+
+commit =
+5a410848bd5c57d5ae1c171112e78eab4a82e650
+
+原 HemoCell Palabos：
+
+05712164d940a42e06afdd705249912fa0c49f14
+
+优先从 minimal restore / provenance 恢复：
+
+HemoCell source
+Palabos source
+official patch
+validation-compatible build setup
+
+不要修改 HemoCell core physics。
+
+记录：
+
+compiler
+MPI
+CMake
+HDF5
+
+要求：
+
+parallel HDF5 compatibility
+MPI build PASS
+
+==================================================
+10. 编译验证
+==================================================
+
+先构建一个新的：
+
+RBC_STAGE1_CPU_BINARY
+
+不得复用旧服务器未知 binary 作为正式运行文件。
+
+保存：
+
+source SHA256
+binary SHA256
+compiler version
+MPI version
+build flags
+
+生成：
+
+RBC_STAGE1_BUILD_PROVENANCE.json
+
+==================================================
+11. RBC geometry fit 是第一硬门
+==================================================
+
+在启动 solver 前：
+
+必须先检查：
+
+6.43 um mouse-like RBC
+
+能否在当前真实 lumen 中安全放置。
+
+不能只按：
+
+“RBC直径 < 血管直径”
+
+做判断。
+
+必须使用真实 RBC mesh：
+
+bounding box
+maximum vertex extent
+thickness
+orientation
+
+以及真实 lumen / wall geometry。
+
+生成：
+
+RBC_GEOMETRY_FIT_REPORT.md
+
+==================================================
+12. 寻找安全 spawn region
+==================================================
+
+优先寻找：
+
+较宽
+较直
+远离分叉
+远离 wall
+
+的 lumen 区域。
+
+定义：
+
+CASE_A spawn
+
+以及：
+
+CASE_B near-wall spawn
+
+和：
+
+CASE_C small-pack spawn positions
+
+所有位置必须在运行前冻结。
+
+不得看结果后移动 RBC 到“更容易通过”的位置。
+
+==================================================
+13. 不允许自动缩小 RBC
+==================================================
+
+如果真实 6.43 um RBC 无法安全初始化：
+
+RBC_GEOMETRIC_FIT = FAIL
+
+停止。
+
+不得自动：
+
+缩到 5 um
+改变体积
+改变 geometry scale
+
+==================================================
+14. Orientation
+==================================================
+
+每个 case：
+
+使用确定性 orientation。
+
+记录：
+
+rotation / orientation
+
+禁止随机 orientation，
+
+除非：
+
+固定 random seed
+
+并记录 seed。
+
+==================================================
+15. wall penetration metric
+==================================================
+
+运行前必须明确：
+
+如何判断 RBC vertex 是否穿过 wall。
+
+优先使用：
+
+现有 signed distance
+wall voxel / triangle geometry
+HemoCell wall interaction geometry
+
+不得事后根据结果修改 penetration tolerance。
+
+如果当前代码无法可靠判断 wall penetration：
+
+WALL_PENETRATION_METRIC =
+UNVERIFIED
+
+此时 CASE_B 不能完整 PASS。
+
+不得编造 tolerance。
+
+==================================================
+16. wall interaction implementation 审计
+==================================================
+
+在 CASE_B 前先确认：
+
+当前 HemoCell vascular setup 是否真的包含：
+
+RBC-wall repulsion / wall-particle interaction
+
+如果存在：
+
+记录 implementation。
+
+如果不存在：
+
+CASE_B_SINGLE_NEAR_WALL =
+BLOCKED_WALL_INTERACTION_IMPLEMENTATION
+
+不要伪造 wall force。
+
+==================================================
+17. Monitor / output 低开销策略
+==================================================
+
+本 Stage1 不恢复纯流体长验证中的高频 monitor。
+
+目标：
+
+保证 correctness，
+减少 I/O 和不必要计算。
+
+--------------------------------------------------
+每一步
+--------------------------------------------------
+
+对少量 RBC 做廉价：
+
+finite node position
+finite velocity
+finite force
+
+检查。
+
+不要每步输出文件。
+
+--------------------------------------------------
+每 10 steps
+--------------------------------------------------
+
+记录：
+
+RBC volume
+RBC area
+volume relative error
+area relative error
+max node velocity
+max node force
+mesh extent
+minimum wall distance
+triangle inversion count（如果实现可靠）
+
+CASE C 额外：
+
+minimum RBC-RBC separation indicator
+
+--------------------------------------------------
+每 50 steps
+--------------------------------------------------
+
+fluid：
+
+rho_min
+rho_max
+Mach_max
+nonfinite
+total mass
+
+--------------------------------------------------
+每 100 steps
+--------------------------------------------------
+
+compact CSV：
+
+iteration
+physical_time
+
+per RBC:
+center of mass
+volume
+area
+volume_error
+area_error
+min_wall_distance
+max_velocity
+max_force
+
+fluid:
+Qin
+Qout01
+Qout02
+Qout03
+
+--------------------------------------------------
+禁止
+--------------------------------------------------
+
+R_velocity
+R_pressure
+240k convergence windows
+flow-fraction convergence
+长期确认逻辑
+
+本 Stage1 不需要这些。
+
+==================================================
+18. Full-field output policy
+==================================================
+
+Fluid full field：
+
+step 0
+final
+failure only
+
+RBC mesh：
+
+initial
+mid
+final
+failure only
+
+不要生成大量 ParaView frames。
+
+目标：
+
+TOTAL_STAGE1_OUTPUT < 1 GiB
+
+==================================================
+19. Checkpoint
+==================================================
+
+Stage1 每个 case <= 5000 steps。
+
+默认：
+
+CHECKPOINT = OFF
+
+不需要周期 checkpoint。
+
+==================================================
+20. stdout
+==================================================
+
+每：
+
+100 steps
+
+打印一次 compact status。
+
+禁止每 timestep 打印。
+
+==================================================
+21. Stage1 run sequence
+==================================================
+
+严格顺序：
+
+BUILD
+↓
+GEOMETRY FIT
+↓
+MPI1 sanity
+↓
+CASE A
+↓
+CASE B
+↓
+CASE C
+
+任一硬门失败：
+
+停止后续 dependent stage。
+
+==================================================
+22. MPI1 sanity
+==================================================
+
+先使用：
+
+MPI1
+
+只运行：
+
+200 steps
+
+使用 CASE_A 的单 RBC 初始化。
+
+检查：
+
+RBC creation
+particle count
+fluid coupling
+force finite
+volume finite
+area finite
+output pipeline
+
+这是：
+
+sanity only
+
+不是正式 CASE_A。
+
+要求：
+
+MPI1_SANITY = PASS
+
+否则停止。
+
+==================================================
+23. CASE A — single RBC center
+==================================================
+
+目的：
+
+验证：
+
+最基础的 RBC + fluid IBM coupling。
+
+放置：
+
+1 RBC
+
+位置：
+
+预先冻结的安全中央 lumen 区域。
+
+运行：
+
+2000 steps max
+
+从 iteration 0。
+
+检查：
+
+nonfinite
+volume
+area
+force
+velocity
+mesh geometry
+wall distance
+fluid rho/Mach/mass
+
+不要求：
+
+RBC 穿过整个血管。
+
+物理时间非常短。
+
+==================================================
+24. CASE A PASS gate
+==================================================
+
+要求：
+
+NONFINITE_COUNT = 0
+
+triangle inversion = 0
+（如果 metric available）
+
+catastrophic wall penetration = 0
+
+relative volume error <= 5%
+
+relative area error <= 5%
+
+无：
+
+uncontrolled force growth
+uncontrolled velocity growth
+mesh explosion
+
+fluid safety = PASS
+
+==================================================
+25. CASE B — single RBC near wall
+==================================================
+
+只有：
+
+wall interaction implementation confirmed
+
+后才运行。
+
+放置：
+
+1 RBC
+
+靠近 wall，
+但初始 mesh 完全不与 wall 相交。
+
+运行：
+
+2000 steps max
+
+检查：
+
+wall distance
+membrane shape
+force
+volume
+area
+node position
+
+目标：
+
+验证：
+
+接近壁面时不会数值穿墙或爆炸。
+
+==================================================
+26. CASE B 判定
+==================================================
+
+可能状态：
+
+PASS
+
+FAIL
+
+BLOCKED_WALL_INTERACTION_IMPLEMENTATION
+
+如果 BLOCKED：
+
+不能把整个 Stage1 标完整 PASS。
+
+==================================================
+27. CASE C — small pack
+==================================================
+
+目的：
+
+验证：
+
+基础 RBC-RBC interaction。
+
+在运行前根据：
+
+实际安全空间
+
+固定：
+
+2–4 RBC
+
+具体数量必须在运行前记录。
+
+不得运行后根据结果改变。
+
+所有 RBC：
+
+initial non-overlap
+wall safe
+deterministic placement
+
+运行：
+
+5000 steps max
+
+==================================================
+28. CASE C 检查
+==================================================
+
+检查：
+
+nonfinite
+volume
+area
+force
+velocity
+
+RBC-RBC separation
+
+catastrophic interpenetration
+
+particle ownership
+
+MPI stability
+
+fluid stability
+
+不得要求：
+
+Hct=10% physiology。
+
+==================================================
+29. MPI4 正式运行
+==================================================
+
+MPI1 sanity PASS 后，
+
+CASE A/B/C 正式测试使用：
+
+MPI4
+
+前提：
+
+当前 HemoCell MPI particle path build/run PASS。
+
+如果：
+
+MPI1 PASS
+MPI4 FAIL
+
+则：
+
+MPI4_CORRECTNESS = FAIL
+
+Stage1 不得通过。
+
+不要自动退回 MPI1 并宣称 PASS。
+
+==================================================
+30. Stage1 smoke correctness contract
+==================================================
+
+在任何正式 case 运行前：
+
+生成：
+
+RBC_STAGE1_CONTRACT.json
+
+冻结：
+
+volume threshold
+area threshold
+wall metric
+finite checks
+triangle inversion definition
+run steps
+RBC count
+positions
+orientations
+MPI ranks
+
+不得看结果后修改。
+
+==================================================
+31. volume / area gate
+==================================================
+
+本 Stage1 暂用宽松 correctness gate：
+
+MAX_RELATIVE_VOLUME_ERROR <= 0.05
+
+MAX_RELATIVE_AREA_ERROR <= 0.05
+
+含义：
+
+只验证模型没有坏掉。
+
+不代表：
+
+真实 mouse RBC mechanics 已校准。
+
+==================================================
+32. triangle inversion
+==================================================
+
+如果当前 mesh implementation 可可靠判断：
+
+要求：
+
+TRIANGLE_INVERSION_COUNT = 0
+
+如果没有可靠实现：
+
+TRIANGLE_INVERSION_COUNT =
+UNVERIFIED
+
+不得假装 PASS。
+
+==================================================
+33. force / velocity runaway
+==================================================
+
+不能只看最终值。
+
+检查时间序列。
+
+如果：
+
+force
+velocity
+mesh extent
+
+出现明显持续指数增长或爆炸：
+
+RUNTIME_SAFETY = FAIL
+
+停止 case。
+
+==================================================
+34. fluid safety
+==================================================
+
+使用刚通过的：
+
+PBS/BSA numerics
+
+检查：
+
+rho finite
+Mach safe
+mass finite
+nonfinite = 0
+
+短 transient outlet backflow：
+
+允许。
+
+不要因为 CASE A/B/C 早期 outlet 01/02 backflow 自动 FAIL。
+
+==================================================
+35. inlet multiplier 注意
+==================================================
+
+当前：
+
+NEW_MEDIUM_INLET_MULTIPLIER_VALIDATION =
+NOT_PERFORMED
+
+Stage1 不做长期入口重新校准。
+
+因此：
+
+入口 flux 只用于 sanity。
+
+不要要求：
+
+R_inlet <= 1%
+
+不要自动调整 multiplier。
+
+==================================================
+36. CPU/MPI performance
+==================================================
+
+低频记录：
+
+steps/s
+CPU utilization
+RAM
+
+只是参考。
+
+不进行 CPU performance tuning。
+
+==================================================
+37. RBC GPU
+==================================================
+
+本 Stage1：
+
+RBC_GPU_CORRECTNESS = PENDING
+
+禁止：
+
+GPU IBM
+GPU particle mechanics
+RBC GPU port
+
+Stage1 全部通过后，
+才单独做：
+
+RBC_GPU_ARCHITECTURE / CORRECTNESS
+
+==================================================
+38. 独立 finalizer
+==================================================
+
+每个 case 完成后：
+
+使用独立代码读取结果。
+
+重新计算/核对：
+
+RBC count
+initial positions
+final positions
+volume
+area
+volume error
+area error
+wall distance
+finite values
+triangle integrity
+fluid safety
+steps
+
+solver 自己打印 PASS 不够。
+
+要求：
+
+SOLVER_FINALIZER_IDENTITY = PASS
+
+==================================================
+39. 人工 ParaView
+==================================================
+
+每个成功 case：
+
+只准备：
+
+initial
+mid
+final
+
+供人工检查。
+
+当前：
+
+HUMAN_RBC_REVIEW = PENDING
+
+不要自动宣称人工 PASS。
+
+==================================================
+40. 结果下载
+==================================================
+
+远端：
+
+/workspace/hemocell_restore/results/rbc_stage1_<timestamp>
+
+下载 compact result 到：
+
+/home/lzy/projects/compre_output/rbc_stage1/<timestamp>
+
+本地重新 SHA256。
+
+要求：
+
+REMOTE_TO_WSL_INTEGRITY = PASS
+
+==================================================
+41. Stage1 状态
+==================================================
+
+完整 PASS 要求：
+
+SUSPENDING_MEDIUM_NUMERICS = PASS
+
+RBC_GEOMETRIC_FIT = PASS
+
+MPI1_SANITY = PASS
+
+CASE_A = PASS
+
+CASE_B = PASS
+
+CASE_C = PASS
+
+MPI4_CORRECTNESS = PASS
+
+RUNTIME_SAFETY = PASS
+
+SOLVER_FINALIZER_IDENTITY = PASS
+
+全部满足：
+
+RBC_ONLY_VALIDATION_STAGE_1 = PASS
+
+如果 CASE B 因 wall implementation 缺失：
+
+RBC_ONLY_VALIDATION_STAGE_1 =
+PARTIAL_BLOCKED_WALL_INTERACTION
+
+如果其它硬门失败：
+
+RBC_ONLY_VALIDATION_STAGE_1 =
+FAIL
+
+==================================================
+42. Stage1 通过后仍然不能升级的状态
+==================================================
+
+即使 Stage1 PASS：
+
+MOUSE_SPECIFIC_MEMBRANE_MECHANICS =
+UNVERIFIED
+
+MOUSE_SPECIFIC_INTERIOR_VISCOSITY =
+UNVERIFIED
+
+EXPERIMENTAL_MOUSE_RBC_CALIBRATION =
+PENDING
+
+RBC_ONLY_VALIDATION_STAGE_2 =
+PENDING
+
+RBC_GPU_CORRECTNESS =
+PENDING
+
+MICROBUBBLE_WITH_RBC =
+PENDING
+
+READY_FOR_MICROBUBBLE =
+NO
+
+==================================================
+43. 不自动启动 Stage2
+==================================================
+
+Stage1 完成后：
+
+停止。
+
+不要自动运行：
+
+Hct=5%
+Hct=10%
+Hct=20%
+
+不要加入：
+
+microbubble
+
+等待用户审阅结果。
+
+==================================================
+44. 结果文件
+==================================================
+
+至少生成：
+
+RBC_STAGE1_CONTRACT.json
+
+RBC_STAGE1_BUILD_PROVENANCE.json
+
+RBC_GEOMETRY_FIT_REPORT.md
+
+CASE_A/
+CASE_B/
+CASE_C/
+
+RBC_STAGE1_METRICS.csv
+
+RBC_STAGE1_FINAL_AUDIT.json
+
+RBC_STAGE1_REPORT.md
+
+SHA256SUMS
+
+==================================================
+45. 最终终端摘要
+==================================================
+
+输出：
+
+RBC_ONLY_VALIDATION_STAGE_1 =
+
+PLATFORM =
+VAST RTX4090
+
+SUSPENDING_MEDIUM_NUMERICS =
+PASS
+
+SUSPENDING_MEDIUM =
+1x PBS + 1% BSA
+
+RHO_KG_M3 =
+1000
+
+NU_M2_S =
+1.0e-6
+
+TAU =
+1.0
+
+DT_S =
+6.65994708146172e-9
+
+PREPARE_NUMERICS_SINGLE_SOURCE =
+PASS
+
+MOUSE_RBC_MODEL =
+MOUSE_RBC_DEV_V0
+
+RBC_TARGET_VOLUME_UM3 =
+50
+
+RBC_EFFECTIVE_DIAMETER_UM =
+~6.43
+
+RBC_GEOMETRIC_FIT =
+
+WALL_INTERACTION_IMPLEMENTATION =
+PRESENT / ABSENT / UNVERIFIED
+
+WALL_PENETRATION_METRIC =
+VERIFIED / UNVERIFIED
+
+MPI1_SANITY =
+
+CASE_A_SINGLE_CENTER =
+
+CASE_A_STEPS =
+
+CASE_B_SINGLE_NEAR_WALL =
+
+CASE_B_STEPS =
+
+CASE_C_SMALL_PACK =
+
+CASE_C_RBC_COUNT =
+
+CASE_C_STEPS =
+
+MPI4_CORRECTNESS =
+
+MAX_RELATIVE_VOLUME_ERROR =
+
+MAX_RELATIVE_AREA_ERROR =
+
+TRIANGLE_INVERSION_COUNT =
+
+WALL_PENETRATION =
+YES / NO / UNVERIFIED
+
+NONFINITE_COUNT =
+
+MAX_RBC_NODE_VELOCITY =
+
+MAX_RBC_NODE_FORCE =
+
+RUNTIME_SAFETY =
+
+FLUID_SAFETY =
+
+SOLVER_FINALIZER_IDENTITY =
+
+TOTAL_STAGE1_OUTPUT_GIB =
+
+REMOTE_TO_WSL_INTEGRITY =
+
+HUMAN_RBC_REVIEW =
+PENDING
+
+SMALL_PACK_IS_NOT_HCT_VALIDATION =
+YES
+
+NEW_MEDIUM_INLET_MULTIPLIER_VALIDATION =
+NOT_PERFORMED
+
+MOUSE_SPECIFIC_MEMBRANE_MECHANICS =
+UNVERIFIED
+
+MOUSE_SPECIFIC_INTERIOR_VISCOSITY =
+UNVERIFIED
+
+EXPERIMENTAL_MOUSE_RBC_CALIBRATION =
+PENDING
+
+RBC_GPU_CORRECTNESS =
+PENDING
+
+RBC_ONLY_VALIDATION_STAGE_2 =
+PENDING
+
+MICROBUBBLE_WITH_RBC =
+PENDING
+
+READY_FOR_MICROBUBBLE =
+NO
+
+PHYSICS_PARAMETERS_TUNED =
+NO
+
+FORMAL_PURE_FLUID_BASELINE_MODIFIED =
+NO
+
+MICROBUBBLE =
+OFF
+
+ADHESION =
+OFF
+
+ULTRASOUND =
+OFF
+
+REMOTE_RESULT_DIR =
+
+LOCAL_RESULT_DIR =
+
+RBC_STAGE1_REPORT =
+
+NEXT_STEP =
+USER_REVIEW_BEFORE_RBC_STAGE2

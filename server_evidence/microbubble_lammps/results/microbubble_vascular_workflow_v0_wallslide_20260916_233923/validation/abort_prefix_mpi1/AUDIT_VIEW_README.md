@@ -1,0 +1,1 @@
+This is a derived readback view of the common complete CSV prefix, not a simulation run or recovered terminal state. Original aborted files remain unchanged under runs/LONG_TRANSPORT_release_mpi1. Near-wall event buffering and the unflushed tail cannot be validated. Pending list is empty per native accounting.

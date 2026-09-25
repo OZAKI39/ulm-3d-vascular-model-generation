@@ -1,0 +1,222 @@
+[
+  {
+    "stage": "compiler_cc89_acceptance",
+    "command": [
+      "nvc++",
+      "-stdpar",
+      "-gpu=cc89",
+      "-E",
+      "-x",
+      "c++",
+      "/dev/null"
+    ],
+    "cwd": "None",
+    "returncode": 0,
+    "seconds": 0.2670739400200546,
+    "log": "logs/compiler_cc89_acceptance.log"
+  },
+  {
+    "stage": "mpi_binding_preflight",
+    "command": [
+      "/usr/bin/mpirun",
+      "--allow-run-as-root",
+      "-np",
+      "1",
+      "--bind-to",
+      "core",
+      "--map-by",
+      "core",
+      "--report-bindings",
+      "/usr/bin/python3",
+      "-c",
+      "import os,json,pathlib; a=sorted(os.sched_getaffinity(0)); c=sorted(set((pathlib.Path(f'/sys/devices/system/cpu/cpu{x}/topology/physical_package_id').read_text().strip(),pathlib.Path(f'/sys/devices/system/cpu/cpu{x}/topology/core_id').read_text().strip()) for x in a)); print(json.dumps(dict(affinity=a,physical_cores=c))); assert len(c)==1"
+    ],
+    "cwd": "None",
+    "returncode": 0,
+    "seconds": 120.35857420499087,
+    "log": "logs/mpi_binding_preflight.log"
+  },
+  {
+    "stage": "official_configure",
+    "command": [
+      "cmake",
+      "-S",
+      "/workspace/hemocell_restore/work/stage4_restore_20260915_150938/official_palabos/examples/gpuExamples/cavity3d",
+      "-B",
+      "/workspace/hemocell_restore/work/stage4_restore_20260915_150938/build/official",
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DCMAKE_C_COMPILER=/workspace/hemocell_restore/toolchains/nvhpc_26_5/Linux_x86_64/26.5/compilers/bin/nvc",
+      "-DCMAKE_CXX_COMPILER=/workspace/hemocell_restore/toolchains/nvhpc_26_5/Linux_x86_64/26.5/compilers/bin/nvc++",
+      "-DCMAKE_CXX_COMPILER_ARG1=-gpu=cc89",
+      "-DTBB_DIR=/workspace/hemocell_restore/work/stage4_restore_20260915_150938/tbb/usr/lib/x86_64-linux-gnu/cmake/TBB",
+      "-DENABLE_MPI=ON",
+      "-DCMAKE_EXE_LINKER_FLAGS=-L/workspace/hemocell_restore/work/stage4_restore_20260915_150938/tbb/usr/lib/x86_64-linux-gnu"
+    ],
+    "cwd": "None",
+    "returncode": 0,
+    "seconds": 3.4983232919767033,
+    "log": "logs/official_configure.log"
+  },
+  {
+    "stage": "official_build",
+    "command": [
+      "cmake",
+      "--build",
+      "/workspace/hemocell_restore/work/stage4_restore_20260915_150938/build/official",
+      "--parallel",
+      "8",
+      "--verbose"
+    ],
+    "cwd": "None",
+    "returncode": 0,
+    "seconds": 105.0040178259951,
+    "log": "logs/official_build.log"
+  },
+  {
+    "stage": "official_smoke",
+    "command": [
+      "python3",
+      "-u",
+      "-B",
+      "/workspace/hemocell_restore/work/stage4_restore_20260915_150938/scripts/run_official.py"
+    ],
+    "cwd": "None",
+    "returncode": 0,
+    "seconds": 194.15351851200103,
+    "log": "logs/official_smoke.log"
+  },
+  {
+    "stage": "stage4_configure",
+    "command": [
+      "cmake",
+      "-S",
+      "/workspace/hemocell_restore/work/stage4_restore_20260915_150938/scripts/recipe",
+      "-B",
+      "/workspace/hemocell_restore/work/stage4_restore_20260915_150938/build/stage4",
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DCMAKE_C_COMPILER=/workspace/hemocell_restore/toolchains/nvhpc_26_5/Linux_x86_64/26.5/compilers/bin/nvc",
+      "-DCMAKE_CXX_COMPILER=/workspace/hemocell_restore/toolchains/nvhpc_26_5/Linux_x86_64/26.5/compilers/bin/nvc++",
+      "-DTBB_DIR=/workspace/hemocell_restore/work/stage4_restore_20260915_150938/tbb/usr/lib/x86_64-linux-gnu/cmake/TBB",
+      "-DRESTORE_GPU_ARCH=89",
+      "-DRESTORE_GPU_BUILD_ROOT=/workspace/hemocell_restore/work/stage4_restore_20260915_150938/build",
+      "-DCMAKE_EXE_LINKER_FLAGS=-L/workspace/hemocell_restore/work/stage4_restore_20260915_150938/tbb/usr/lib/x86_64-linux-gnu"
+    ],
+    "cwd": "None",
+    "returncode": 0,
+    "seconds": 1.8879706540028565,
+    "log": "logs/stage4_configure.log"
+  },
+  {
+    "stage": "stage4_build",
+    "command": [
+      "cmake",
+      "--build",
+      "/workspace/hemocell_restore/work/stage4_restore_20260915_150938/build/stage4",
+      "--parallel",
+      "1",
+      "--verbose"
+    ],
+    "cwd": "None",
+    "returncode": 0,
+    "seconds": 62.49744328297675,
+    "log": "logs/stage4_build.log"
+  },
+  {
+    "stage": "stage4_200_run",
+    "command": [
+      "python3",
+      "-u",
+      "-B",
+      "/workspace/hemocell_restore/work/stage4_restore_20260915_150938/scripts/run_stage4.py",
+      "200"
+    ],
+    "cwd": "None",
+    "returncode": 1,
+    "seconds": 0.026575286989100277,
+    "log": "logs/stage4_200_run.log"
+  },
+  {
+    "stage": "stage4_200_actual_run",
+    "command": [
+      "python3",
+      "-u",
+      "-B",
+      "/workspace/hemocell_restore/work/stage4_restore_20260915_150938/scripts/run_stage4.py",
+      "200"
+    ],
+    "returncode": 0,
+    "seconds": 336.40304708998883,
+    "log": "logs/stage4_200_actual_run.log",
+    "scope": "Resume never-launched solver after provenance-only collision repair"
+  },
+  {
+    "stage": "stage4_200_compare",
+    "command": [
+      "python3",
+      "-u",
+      "-B",
+      "/workspace/hemocell_restore/work/stage4_restore_20260915_150938/scripts/compare_restore.py",
+      "200"
+    ],
+    "returncode": 0,
+    "seconds": 0.5207587080076337,
+    "log": "logs/stage4_200_compare.log",
+    "scope": "Resume never-launched solver after provenance-only collision repair"
+  },
+  {
+    "stage": "stage4_1000_actual_run",
+    "command": [
+      "python3",
+      "-u",
+      "-B",
+      "/workspace/hemocell_restore/work/stage4_restore_20260915_150938/scripts/run_stage4.py",
+      "1000"
+    ],
+    "returncode": 0,
+    "seconds": 340.7768932270119,
+    "log": "logs/stage4_1000_actual_run.log",
+    "scope": "Resume never-launched solver after provenance-only collision repair"
+  },
+  {
+    "stage": "stage4_1000_compare",
+    "command": [
+      "python3",
+      "-u",
+      "-B",
+      "/workspace/hemocell_restore/work/stage4_restore_20260915_150938/scripts/compare_restore.py",
+      "1000"
+    ],
+    "returncode": 0,
+    "seconds": 0.9346356759779155,
+    "log": "logs/stage4_1000_compare.log",
+    "scope": "Resume never-launched solver after provenance-only collision repair"
+  },
+  {
+    "stage": "stage4_5000_actual_run",
+    "command": [
+      "python3",
+      "-u",
+      "-B",
+      "/workspace/hemocell_restore/work/stage4_restore_20260915_150938/scripts/run_stage4.py",
+      "5000"
+    ],
+    "returncode": 0,
+    "seconds": 375.568325892993,
+    "log": "logs/stage4_5000_actual_run.log",
+    "scope": "Resume never-launched solver after provenance-only collision repair"
+  },
+  {
+    "stage": "stage4_5000_compare",
+    "command": [
+      "python3",
+      "-u",
+      "-B",
+      "/workspace/hemocell_restore/work/stage4_restore_20260915_150938/scripts/compare_restore.py",
+      "5000"
+    ],
+    "returncode": 0,
+    "seconds": 3.2796128540067,
+    "log": "logs/stage4_5000_compare.log",
+    "scope": "Resume never-launched solver after provenance-only collision repair"
+  }
+]

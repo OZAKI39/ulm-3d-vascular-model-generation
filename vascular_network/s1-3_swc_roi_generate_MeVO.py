@@ -1,4 +1,4 @@
-"""TopBrain anatomical MeVO entry; human/BraVa entry and renderer remain read-only."""
+"""TopBrain MeVO and precomputed BraVa candidates; the human renderer is read-only."""
 from __future__ import annotations
 
 import argparse
@@ -18,6 +18,10 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 
 def arguments(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--source',choices=['topbrain','topbrain-brava'],default='topbrain')
+    parser.add_argument('--brava-results',type=Path,default=PROJECT_ROOT/'outputs/topbrain_brava_transfer/nn_production/BG001')
+    parser.add_argument('--brava-side',choices=['LMCA','RMCA'])
+    parser.add_argument('--brava-view',choices=['strict','surface'],default='strict')
     parser.add_argument('--config', type=Path, default=PROJECT_ROOT/'configs/topbrain_mevo.yaml')
     parser.add_argument('--topbrain-root', type=Path)
     parser.add_argument('--case-id')
@@ -39,6 +43,8 @@ def arguments(argv=None):
 
 def main(argv=None):
     args = arguments(argv)
+    if args.source=='topbrain-brava':
+        return show_brava(args)
     config = yaml.safe_load(args.config.read_text()) if args.config.is_file() else {}
     root = args.topbrain_root or Path(os.environ.get('TOPBRAIN_ROOT',config.get('topbrain_root','data/TopBrain')))
     if not root.is_absolute():
@@ -91,6 +97,29 @@ def main(argv=None):
     except Exception as exc:
         print(f'TOPBRAIN_FAILED: {type(exc).__name__}: {exc}',file=sys.stderr,flush=True)
         return 1
+
+
+def show_brava(args):
+    """Read saved results only; no registration or modeling in the viewer."""
+    try:
+        path=args.brava_results/'summary.json'
+        if not path.is_file():raise ValueError('BRAVA_RESULTS_MISSING: run tools/transfer_topbrain_to_brava.py first')
+        summary=json.loads(path.read_text())
+        if args.no_gui:
+            print(json.dumps(summary,indent=2,ensure_ascii=False))
+            sides=[summary.get(args.brava_side,{})] if args.brava_side else summary.values()
+            return 0 if any(r.get('roi_components') for r in sides) else 2
+        from vascular_processing.brava_display_adapter import BraVaViewer
+        display=bool(os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY') or sys.platform in {'win32','darwin'})
+        show=display and not args.off_screen
+        viewer=BraVaViewer(args.brava_results,side=args.brava_side,initial_roi=args.roi,view=args.brava_view,show=show)
+        report=viewer.run_window(show=show,smoke_seconds=args.smoke_gui_seconds)
+        print(json.dumps(report,indent=2,ensure_ascii=False))
+        if args.smoke_gui_seconds and not report['gui_smoke_passed']:return 2
+        return 0
+    except Exception as exc:
+        print(f'BRAVA_VIEW_FAILED: {type(exc).__name__}: {exc}',file=sys.stderr,flush=True)
+        return 2
 
 
 if __name__ == '__main__':

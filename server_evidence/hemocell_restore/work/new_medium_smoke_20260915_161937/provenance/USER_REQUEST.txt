@@ -1,0 +1,985 @@
+你现在执行独立科研任务：
+
+# PURE_FLUID_NEW_MEDIUM_SMOKE
+
+目标：
+
+在新的 Vast RTX4090 平台上，
+使用已经通过恢复验证的 Stage4 GPU 纯流体版本，
+
+把背景液体从原来的“整血等效流体”：
+
+rho = 1056 kg/m3
+nu  = 3.27e-6 m2/s
+
+切换为开发阶段暂定的：
+
+PBS + 1% BSA
+25°C
+rho = 1000 kg/m3
+nu  = 1.0e-6 m2/s
+
+然后只做一个短时间 pure-fluid smoke test，
+
+确认：
+
+1. prepare_numerics.py 生成的 dt 正确；
+2. 三个 outlet rho_LU 正确；
+3. tau / Mach / density 安全；
+4. 新介质下流体能够稳定运行；
+5. 没有 NaN / Inf；
+6. 没有明显质量异常；
+7. 入口/出口方向和流量符号合理；
+8. 不需要长时间收敛验证。
+
+本任务通过后：
+
+SUSPENDING_MEDIUM_NUMERICS = PASS
+
+才允许进入：
+
+RBC_ONLY_VALIDATION_STAGE_1
+
+==================================================
+0. 当前已验证平台
+==================================================
+
+NEW_VAST4090_PURE_FLUID_BASELINE = PASS
+
+GPU：
+
+NVIDIA GeForce RTX 4090
+
+NVHPC：
+
+26.5
+
+Palabos GPU commit：
+
+4127697e90169bbef982295f1d1c933cf6e90caa
+
+Stage4：
+
+CORRECTNESS = PASS
+
+5000-step sustained correctness = PASS
+
+新平台持续 solver：
+
+~109.77 steps/s
+
+不要再次验证旧 Stage4 平台。
+
+==================================================
+1. 当前任务不是修改旧 pure-fluid baseline
+==================================================
+
+旧纯流体正式科学基线：
+
+rho = 1056
+nu = 3.27e-6
+
+仍然：
+
+PURE_FLUID_BASELINE = PASS
+
+不得覆盖或删除。
+
+本任务建立的是：
+
+NEW_SUSPENDING_MEDIUM_DEVELOPMENT_BASELINE
+
+两者必须并存。
+
+==================================================
+2. 新 suspending medium 合同
+==================================================
+
+开发阶段暂定：
+
+SUSPENDING_MEDIUM =
+1× PBS + 1% BSA
+
+TEMPERATURE_C =
+25
+
+RHO_KG_M3 =
+1000
+
+DYNAMIC_VISCOSITY_PA_S =
+1.0e-3
+
+KINEMATIC_VISCOSITY_M2_S =
+1.0e-6
+
+这些必须标记：
+
+DEVELOPMENT_ASSUMPTION = YES
+
+EXPERIMENTALLY_MEASURED = NO
+
+FINAL_EXPERIMENTAL_CONTRACT = PENDING
+
+不得写成：
+
+真实实验测量值。
+
+==================================================
+3. 几何和物理边界保持
+==================================================
+
+保持冻结：
+
+geometry
+STL
+dx
+port mapping
+port normals
+Guo wall
+measurement planes
+control volume
+
+保持：
+
+Qtarget =
+2.7369132390905703e-15 m3/s
+
+outlet_01 physical gauge pressure =
+14.544978101274268 Pa
+
+outlet_02 physical gauge pressure =
+132.20454922317552 Pa
+
+outlet_03 physical gauge pressure =
+-13.700626673311461 Pa
+
+重要：
+
+物理 pressure 不变。
+
+但对应 lattice rho_LU 必须根据新的：
+
+rho
+nu
+dt
+
+重新生成。
+
+==================================================
+4. inlet multiplier 暂时处理
+==================================================
+
+原 Step3C multiplier：
+
+1.1197286861799598
+
+它是在旧：
+
+rho=1056
+nu=3.27e-6
+
+纯流体条件下校准的。
+
+因此本 smoke 中：
+
+不得直接把它升级为
+“新介质正式校准倍率”。
+
+原则：
+
+继续沿用仅用于
+“保持同一 numerical inlet implementation”
+的开发 smoke，
+但必须明确：
+
+NEW_MEDIUM_INLET_MULTIPLIER_VALIDATION =
+NOT_PERFORMED
+
+本 smoke 不判断长期入口流量精度。
+
+不得自动重新校准 multiplier。
+
+==================================================
+5. prepare_numerics.py 是唯一生成源
+==================================================
+
+正式规定：
+
+prepare_numerics.py
+
+是：
+
+dt
+outlet rho_LU
+
+的唯一生成源。
+
+solver：
+
+不得自行独立重新计算。
+
+不得手填 dt。
+
+不得手填 outlet rho_LU。
+
+solver 只能：
+
+读取 frozen numerics contract
++
+运行时验证所读值匹配合同。
+
+==================================================
+6. prepare_numerics.py 输入
+==================================================
+
+输入：
+
+rho =
+1000 kg/m3
+
+nu =
+1.0e-6 m2/s
+
+dx =
+冻结的有效 dx
+
+tau =
+1.0
+
+Qtarget =
+原 physical Qtarget
+
+three physical outlet pressures =
+原冻结压力
+
+使用：
+
+旧项目同一压力转换定义。
+
+不得换公式。
+
+==================================================
+7. 当前预期值
+==================================================
+
+目前静态准备得到：
+
+TAU =
+1.0
+
+DT_S =
+6.65994708146172e-9
+
+OUTLET_01_RHO_LU =
+1.0000484343922278
+
+OUTLET_02_RHO_LU =
+1.0004402376508774
+
+OUTLET_03_RHO_LU =
+0.9999543772756865
+
+这些只是：
+
+EXPECTED_REFERENCE
+
+正式值必须由当前：
+
+prepare_numerics.py
+
+重新生成。
+
+如果生成值与这些参考存在超出浮点合理范围的差异：
+
+NUMERICS_STATIC_REPRODUCTION = FAIL
+
+停止。
+
+==================================================
+8. 输出 numerics contract
+==================================================
+
+生成：
+
+NEW_MEDIUM_NUMERICS_CONTRACT.json
+
+至少包含：
+
+input rho
+input nu
+input dx
+input tau
+
+nu_LU
+dt_s
+
+pressure_unit_pa
+
+outlet_01 physical Pa
+outlet_01 rho_LU
+
+outlet_02 physical Pa
+outlet_02 rho_LU
+
+outlet_03 physical Pa
+outlet_03 rho_LU
+
+Qtarget
+
+script SHA256
+input SHA256
+output SHA256
+
+conversion formulas / provenance
+
+==================================================
+9. 静态数值安全检查
+==================================================
+
+运行前检查：
+
+tau finite
+
+tau 位于项目既有安全范围
+
+dt finite
+dt > 0
+
+三个 rho_LU finite
+
+三个 rho_LU 与 reference density 1 的偏移很小
+
+pressure conversion finite
+
+estimated lattice velocity finite
+
+estimated Mach safe
+
+输出：
+
+NUMERICS_STATIC_CHECK =
+PASS / FAIL
+
+==================================================
+10. 不修改 Stage4 GPU 核心
+==================================================
+
+使用已经恢复通过的：
+
+Stage4 GPU implementation
+
+不得修改：
+
+batch dispatch
+managed-memory policy
+halo
+GPU monitor implementation
+Guo mathematics
+pressure BC mathematics
+kernel layout
+
+只允许：
+
+读取新的 numerics contract。
+
+==================================================
+11. 独立工作目录
+==================================================
+
+创建：
+
+/workspace/hemocell_restore/work/new_medium_smoke_<timestamp>
+
+结果：
+
+/workspace/hemocell_restore/results/new_medium_smoke_<timestamp>
+
+不要覆盖：
+
+Stage4 restore
+Step3C
+旧 pure-fluid baseline
+
+==================================================
+12. 第一阶段：500-step quick smoke
+==================================================
+
+从 iteration 0。
+
+初始化：
+
+rho_LU = 1
+u = 0
+
+startup ramp：
+
+保持原定义。
+
+运行：
+
+500 steps
+
+每一步检查：
+
+nonfinite
+
+每 10 或 50 steps 记录低成本：
+
+rho_min
+rho_max
+Mach_max
+total mass
+
+每 100 steps：
+
+Qin
+Qout01
+Qout02
+Qout03
+
+不要启用正式长 convergence monitor。
+
+==================================================
+13. 500-step 硬门
+==================================================
+
+要求：
+
+NONFINITE_COUNT = 0
+
+rho finite
+
+Mach finite
+
+mass finite
+
+没有明显爆炸增长
+
+三个 outlet rho_LU 实际读取值
+与 contract 完全一致
+
+如果 FAIL：
+
+停止。
+
+不得进入 5000-step。
+
+状态：
+
+SUSPENDING_MEDIUM_NUMERICS =
+FAIL_RUNTIME_SMOKE
+
+==================================================
+14. 第二阶段：5000-step smoke
+==================================================
+
+只有 500-step PASS 后。
+
+重新从 iteration 0 启动。
+
+运行：
+
+5000 steps
+
+不是 restart。
+
+目的：
+
+检查短期持续稳定性。
+
+==================================================
+15. 5000-step 监测
+==================================================
+
+保留低成本 monitor。
+
+不要恢复旧 Step3C 的完整正式收敛监测。
+
+建议：
+
+每 step：
+nonfinite
+
+每 50 steps：
+rho min/max
+Mach
+mass
+
+每 100 steps：
+Qin
+Qout01
+Qout02
+Qout03
+
+每 500 steps：
+control-volume mass / simple mass closure
+
+full-field snapshot 只允许：
+
+step 0
+step 5000
+failure
+
+==================================================
+16. runtime safety
+==================================================
+
+必须检查：
+
+NONFINITE_COUNT = 0
+
+rho_min / rho_max
+保持在项目已知安全范围
+
+Mach_max
+保持远低于项目安全门槛
+
+total mass
+没有异常跳变
+
+GPU memory
+没有持续增长
+
+solver
+没有 runtime error
+
+==================================================
+17. 流量方向
+==================================================
+
+注意：
+
+5000 steps 是 transient。
+
+不要求：
+
+三个 outlet 全部已经长期稳定正向。
+
+只要求：
+
+入口/出口量有限且合理，
+不存在明显发散，
+不存在数值符号异常或巨大非物理 flux。
+
+如果某 outlet 在短 transient 期间暂时回流：
+
+不要自动判 FAIL。
+
+但必须记录。
+
+==================================================
+18. mass 检查
+==================================================
+
+本 smoke 不要求长期 R_flow <= 1%。
+
+只要求：
+
+mass 没有持续失控漂移。
+
+计算：
+
+total mass drift
+
+simple control-volume balance
+
+如果 mass error 随时间单调快速恶化：
+
+FAIL。
+
+==================================================
+19. Mach 检查
+==================================================
+
+因为：
+
+dt 改变了
+
+所以必须特别检查：
+
+lattice velocity
+Mach
+
+确认新的 dt 没有把数值速度推到不安全范围。
+
+输出：
+
+MAX_MACH =
+
+MACH_SAFETY =
+PASS / FAIL
+
+==================================================
+20. 对旧介质不做“结果一致”要求
+==================================================
+
+新 PBS/BSA：
+
+nu 不同
+
+所以：
+
+velocity field
+pressure field
+transient flux
+
+不要求与旧整血等效流体相同。
+
+不要做：
+
+OLD_MEDIUM vs NEW_MEDIUM
+field byte-identical
+
+因为这是不同物理介质。
+
+只比较：
+
+数值稳定性和单位转换正确性。
+
+==================================================
+21. dt 的意义核查
+==================================================
+
+报告中明确：
+
+旧 dt ≈
+2.0366810646671923e-9 s
+
+新 dt ≈
+6.65994708146172e-9 s
+
+因此：
+
+new dt / old dt ≈ 3.27
+
+解释：
+
+保持：
+
+dx
+tau
+
+不变时，
+
+更低的 physical viscosity
+对应更大的 physical time per LBM step。
+
+但不要因此自动宣称：
+
+RBC simulation 一定快 3.27×
+
+因为：
+
+加入 RBC 后还有新的计算成本和时间尺度约束。
+
+==================================================
+22. 性能记录
+==================================================
+
+记录：
+
+GPU steps/s
+wall time
+GPU utilization
+VRAM
+
+但性能不是 PASS 门槛。
+
+不要重新做 GPU 优化。
+
+==================================================
+23. output 限制
+==================================================
+
+目标：
+
+TOTAL_OUTPUT < 500 MiB
+
+只保存：
+
+contracts
+compact CSV
+key logs
+step0 snapshot
+step5000 snapshot
+failure snapshot if needed
+report
+SHA256
+
+不要产生大量 ParaView frames。
+
+==================================================
+24. 独立 final audit
+==================================================
+
+solver 完成后：
+
+独立读取：
+
+numerics contract
+runtime diagnostics
+snapshots
+
+重新核查：
+
+actual dt
+actual outlet rho_LU
+rho
+Mach
+mass
+nonfinite
+flux sanity
+
+要求：
+
+SOLVER_FINALIZER_IDENTITY =
+PASS
+
+==================================================
+25. PASS 条件
+==================================================
+
+只有：
+
+prepare_numerics reproduction PASS
+
+NUMERICS_STATIC_CHECK PASS
+
+500-step runtime PASS
+
+5000-step runtime PASS
+
+nonfinite = 0
+
+Mach safety PASS
+
+density safety PASS
+
+mass stability PASS
+
+actual dt matches contract
+
+actual outlet rho_LU matches contract
+
+finalizer PASS
+
+才允许：
+
+SUSPENDING_MEDIUM_NUMERICS =
+PASS
+
+==================================================
+26. 不允许升级的状态
+==================================================
+
+即使本 smoke PASS：
+
+仍保持：
+
+SUSPENDING_MEDIUM_CONTRACT =
+PROVISIONAL_PASS
+
+EXPERIMENTALLY_MEASURED =
+NO
+
+FINAL_EXPERIMENTAL_CONTRACT =
+PENDING
+
+NEW_MEDIUM_INLET_MULTIPLIER_VALIDATION =
+NOT_PERFORMED
+
+RBC_INCLUDED =
+NO
+
+RBC_GPU_CORRECTNESS =
+PENDING
+
+==================================================
+27. 本任务不运行 RBC
+==================================================
+
+RBC_TIMESTEPS =
+0
+
+MICROBUBBLE =
+OFF
+
+ADHESION =
+OFF
+
+ULTRASOUND =
+OFF
+
+==================================================
+28. 下载回 WSL
+==================================================
+
+远端 compact result：
+
+/workspace/hemocell_restore/results/new_medium_smoke_<timestamp>
+
+下载到：
+
+/home/lzy/projects/compre_output/pure_fluid_new_medium_smoke/<timestamp>
+
+然后：
+
+本地 SHA256 verify
+
+要求：
+
+REMOTE_TO_WSL_INTEGRITY =
+PASS
+
+==================================================
+29. 结果文件
+==================================================
+
+至少：
+
+NEW_MEDIUM_NUMERICS_CONTRACT.json
+
+NEW_MEDIUM_RUNTIME_HISTORY.csv
+
+NEW_MEDIUM_FLUX_HISTORY.csv
+
+NEW_MEDIUM_MASS_HISTORY.csv
+
+NEW_MEDIUM_FINAL_AUDIT.json
+
+PURE_FLUID_NEW_MEDIUM_SMOKE_REPORT.md
+
+SHA256SUMS
+
+==================================================
+30. 最终终端摘要
+==================================================
+
+必须输出：
+
+PURE_FLUID_NEW_MEDIUM_SMOKE_STATUS =
+
+SUSPENDING_MEDIUM =
+1x PBS + 1% BSA
+
+TEMPERATURE_C =
+25
+
+DEVELOPMENT_ASSUMPTION =
+YES
+
+EXPERIMENTALLY_MEASURED =
+NO
+
+RHO_KG_M3 =
+1000
+
+NU_M2_S =
+1.0e-6
+
+DX_M =
+
+TAU =
+1.0
+
+GENERATED_DT_S =
+
+EXPECTED_DT_S =
+6.65994708146172e-9
+
+DT_REPRODUCTION =
+PASS / FAIL
+
+PRESSURE_UNIT_PA =
+
+GENERATED_OUTLET_01_RHO_LU =
+GENERATED_OUTLET_02_RHO_LU =
+GENERATED_OUTLET_03_RHO_LU =
+
+EXPECTED_OUTLET_01_RHO_LU =
+1.0000484343922278
+
+EXPECTED_OUTLET_02_RHO_LU =
+1.0004402376508774
+
+EXPECTED_OUTLET_03_RHO_LU =
+0.9999543772756865
+
+OUTLET_RHO_LU_REPRODUCTION =
+PASS / FAIL
+
+PREPARE_NUMERICS_SINGLE_SOURCE =
+PASS
+
+NUMERICS_STATIC_CHECK =
+
+QUICK_SMOKE_500 =
+PASS / FAIL
+
+SUSTAINED_SMOKE_5000 =
+PASS / FAIL
+
+NONFINITE_COUNT =
+
+RHO_MIN =
+RHO_MAX =
+
+MAX_MACH =
+
+MACH_SAFETY =
+
+TOTAL_MASS_DRIFT =
+
+MASS_STABILITY =
+
+FINAL_QIN =
+FINAL_QOUT01 =
+FINAL_QOUT02 =
+FINAL_QOUT03 =
+
+TRANSIENT_BACKFLOW_OBSERVED =
+YES / NO
+
+GPU_STEPS_PER_SEC =
+GPU_VRAM_PEAK_MIB =
+
+ACTUAL_DT_MATCHES_CONTRACT =
+PASS / FAIL
+
+ACTUAL_OUTLET_RHO_LU_MATCH_CONTRACT =
+PASS / FAIL
+
+SOLVER_FINALIZER_IDENTITY =
+PASS / FAIL
+
+SUSPENDING_MEDIUM_NUMERICS =
+PASS / FAIL
+
+SUSPENDING_MEDIUM_CONTRACT =
+PROVISIONAL_PASS
+
+NEW_MEDIUM_INLET_MULTIPLIER_VALIDATION =
+NOT_PERFORMED
+
+RBC_INCLUDED =
+NO
+
+RBC_TIMESTEPS =
+0
+
+MICROBUBBLE =
+OFF
+
+FORMAL_OLD_PURE_FLUID_BASELINE_MODIFIED =
+NO
+
+REMOTE_TO_WSL_INTEGRITY =
+
+REMOTE_RESULT_DIR =
+
+LOCAL_RESULT_DIR =
+
+PURE_FLUID_NEW_MEDIUM_SMOKE_REPORT =
+
+NEXT_STEP =
+RBC_ONLY_VALIDATION_STAGE_1

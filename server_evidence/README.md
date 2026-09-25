@@ -1,12 +1,11 @@
 # 服务器源码与执行证据
 
-各子目录保留原 `/workspace/<目录名>/` 下当前仍存在的源码、配置和选定日志；Git 会复用相同内容的对象。这些历史证据不作为默认开发代码入口。
+来源 `root@50.115.148.16:4159`。本目录保留前一版服务器快照，并纳入当前额外代码、配置、日志和关键科学数据。原始服务器目录与源文件没有搬移。
 
-- `particle_network_flow_mb_validation_v1_20260924T210047Z/`：当前 30 泡配对验证、源快照和执行记录。
-- `flow_mean_2p0_mmps_A_H0_20260924T181140Z/`：当前 H0 求解器入口、输入与实际运行证据。
-- `flow_mean_2p0_mmps_A_H0_TaylorHood_20260924T194503Z/`：已停止的 P2/P1 验证代码与资源/失败记录。
-- `formal_3D_flow_solver_FEM_SimVascular_lzy/`：保留的 Stage L/N/Q 工具链脚本、配置、日志和版本来源。
-- `pinned_solver_source/`：实际运行的 svMultiPhysics 修改文件、上游 commit 和完整 tracked diff。
+最新P9-A.4服务器目录为 `/workspace/particle9a4_population_inlet_20260924T233708Z`；其源码、154个已回传输出与本次root `particle_3d/`内容相同时，使用manifest引用而不复制。新增部署manifest位于对应服务器证据目录。原始时间戳和绝对路径属于来源记录。
 
-第三方安装目录、CUDA/PETSc/MPI 二进制、解释器缓存、重复部署包及大中间结果未上传。历史脚本中的服务器路径保持原样；重建和重新运行时应按当前机器配置迁移。
-已在代码瘦身中删除的 371 个服务器脚本没有恢复到本分支。
+H0求解、Network配对验证、P8/P9历史运行、shear-lift，以及历史HemoCell RBC、LAMMPS/Palabos资料均已检查。历史模拟的代码/日志保留不等于对其物理模型作新的审核。HemoCell/LAMMPS的原生大状态、完整第三方源码/工具链不全量打包。
+
+本轮逐文件映射、去重引用与排除原因：[server_delta_inventory.json.gz](../sync_metadata/p9a4_flow_particle_rbc_20260925/server_delta_inventory.json.gz)；[汇总](../sync_metadata/p9a4_flow_particle_rbc_20260925/server_delta_summary.json)。`REPRESENTED_BY_EXISTING_ARTIFACT`指相同SHA内容已在仓库其他路径；representation明确普通字节或gzip原始字节。所有此类引用在整理后校验。`EXCLUDED_FROM_DELTA`只表示本次不新增，不删除父提交已经保存的历史证据。
+
+固定svMultiPhysics补丁及实际源文件仍在 `pinned_solver_source/`；完整当前源与许可证见根目录`vendor/`。CUDA/PETSc/MPI安装、二进制和Python环境留在服务器，按构建/版本记录复现。

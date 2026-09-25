@@ -1,25 +1,11 @@
-# 当前 Particle 科学代码
+# Particle：最新 P9-A.4 与历史微泡/RBC
 
-当前任务是 Network H0 新旧流场的 30 泡配对验证，状态 `NETWORK_FLOW_MB_VALIDATION_PASS_WITH_STATIONARY`。OLD/NEW 各 29 条完成、1 条 stationary、0 条数值失败。
+当前入口为 [P9-A.4](reports/particle9a4_population_inlet/P9A4_POPULATION_INLET_REVIEW_ZH.md)：固定NEW H0，Poisson source、条件SonoVue D≤4 µm、全入口通量采样、单次真实WALL+handoff筛选，所有拒绝保留。P9-A.1动力学与原B/C源码不变；首30泡28 completed、2 supported stationary、0 solver fail。
 
-- 运行入口：[runner.py](reports/network_derived_flow_mb_validation_v1/scripts/runner.py)。
-- 正式报告：[NETWORK_DERIVED_FLOW_MB_VALIDATION_ZH.md](reports/network_derived_flow_mb_validation_v1/NETWORK_DERIVED_FLOW_MB_VALIDATION_ZH.md)。
-- 科学实现：`src/particle_3d/`；原科学快照与固定输入：`reports/network_derived_flow_mb_validation_v1/server_bundle/`。
-- 核心调用：`Particle9AStepper → particle82a_integration.integrate_admitted → particle6_stepper / particle65_motion → 阻力与接触求解`。轨迹在 CPU 上按泡并行。
+源码 `src/particle_3d/continuous_infusion.py` 与 `population_inlet_p9a4.py`；合同 `contracts/P9A4_CONTINUOUS_INFUSION_V1.json`；测试 `tests/particle9a4_population_inlet/`；所有报告/日志/图件/原始30泡结果在 `reports/particle9a4_population_inlet/`。
 
-`FrozenFEMField` 进行四面体场查询，壁面/阻力/接触共享模块及历史数学回归均保留。点示踪对照使用 `NativePointTracer`。旧阶段名称仍包含实际依赖，未按编号删除科学核心。
+100k ledger、accepted births及Method B大文本以gzip保存。先从仓库根执行 `python3 sync_metadata/p9a4_flow_particle_rbc_20260925/restore_large_artifacts.py`，恢复逐字节相同的原路径，再使用原审计/重放入口。[发布复现说明](../sync_metadata/p9a4_flow_particle_rbc_20260925/SYNC_REPORT_ZH.md)。
 
-从仓库根目录运行 [run_checks.py](../sync_metadata/network_h0_particle_20260925/run_checks.py)，可完成包含当前 Particle 24 项的完整 115 项回归；它在临时目录迁移历史路径，不修改本仓库数据。
+RBC与MB共用该包。`rbc.py`、`rbc_distribution.py`、`rbc_orientation.py`、`rbc_integrator.py`、`rbc_capillary_surrogate.py`与`coflow_rotation.py`均保留；RBC历史结果位于`reports/particle2/`、`particle3/`、`rbc_mb_flow_rotation/`。最后一个是理想化Poiseuille演示。
 
-新计算必须指定新的输出名。CPU 配对复现可使用：
-
-```bash
-env PYTHONDONTWRITEBYTECODE=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 VTK_SMP_MAX_THREADS=1 \
-python particle_3d/reports/network_derived_flow_mb_validation_v1/scripts/runner.py \
-  --root particle_3d/reports/network_derived_flow_mb_validation_v1/server_bundle \
-  --label NEW --workers 6 --ids all --output replay_new_001
-```
-
-该命令会实际重新积分，入口会验证科学快照哈希并拒绝覆盖已有输出。本次同步仅运行回归与完整性检查。本次验证的确切依赖版本见 [requirements-verified.txt](../sync_metadata/network_h0_particle_20260925/requirements-verified.txt)。
-
-各阶段历史数据、RBC 示例与独立升力审核保留其原科学适用范围。跨仓库入口见[主 README](../README.md)。
+`reports/network_derived_flow_mb_validation_v1/`保留前一阶段OLD/NEW配对证据。旧P9-A.1/A.2/A.3/A.3B及P8.2A/PPT仍在原相对路径；旧合同与结果不改。默认frozen_reference是历史OLD场，P9-A.4须经专用NEW loader。没有自动正式500。

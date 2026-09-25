@@ -1,0 +1,39 @@
+{
+  "stage": "REDUCED_NEAR_WALL_HYDRODYNAMICS_V0_PHASE1",
+  "contract_status": "IMPLEMENTATION_NOT_FROZEN_GCB_REFERENCE_STOP",
+  "scope": "Standalone flat rigid no-slip plane and rigid sphere; Stokes/overdamped; resistance plus analytic simple-shear RHS",
+  "stop_code": "STOP_GCB_REFERENCE_INSUFFICIENT",
+  "stop_authority": "User request sections 5 and 25",
+  "permitted_after_stop": "Record reference capability, provenance, discrepancy diagnostics, BLOCKED report and local mirror; no kernel implementation",
+  "geometry": {"distance": "d", "gap": "h=d-a", "epsilon": "h/a", "normal": "wall to center"},
+  "frame": "Q=[t1 t2 n], right-handed orthonormal; T=diag(Q,Q)",
+  "intended_equations_not_implemented": [
+    "R_total=R_bulk+R_wall_excess",
+    "g_t=(I-n*n^T)*g_wall",
+    "q_free=[d*g_t,0.5*(n cross g_t)]",
+    "q_GCB=[FU*d*g_t,0.5*FOmega*(n cross g_t)]",
+    "b_wall_shear=R_total*q_GCB-R_bulk*q_free"
+  ],
+  "R_bulk": "diag(6*pi*mu*a x3,8*pi*mu*a^3 x3)",
+  "reference_table_epsilon_domain": [0.001,20.0],
+  "certified_shear_epsilon_domain": [],
+  "production_active_cutoff": null,
+  "gcb_closure_selected": false,
+  "intermediate_gap_interpolation_selected": false,
+  "analytic_shear_only": true,
+  "general_strain_supported": false,
+  "normal_attraction_allowed": false,
+  "required_invalid_gap_behavior": "h<=0: INVALID_GAP; no clamp",
+  "required_nonfinite_behavior": "FAIL for NaN/Inf inputs or results",
+  "planned_algebra_thresholds_from_user_not_executed": {
+    "matrix_symmetry_relative": 1e-10,
+    "frame_rotation_invariance_relative": 1e-9,
+    "zero_shear_over_characteristic_RHS": 1e-12,
+    "shear_reversal_scaling_relative": 1e-10,
+    "isolated_GCB_recovery_relative": 1e-8
+  },
+  "physical_reference_tolerance": null,
+  "physical_reference_tolerance_reason": "No inherited GCB accuracy acceptance tolerance; descriptive agreement bands are not gates",
+  "rollback": "Only this new stage contains writes. Historical inputs and Git handoff remain immutable.",
+  "next_authorized_stage": "NONE"
+}

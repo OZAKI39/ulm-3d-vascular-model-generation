@@ -1,0 +1,1072 @@
+你现在继续：
+
+MICROBUBBLE_VASCULAR_WORKFLOW_V0
+
+新的目标：
+
+RESUME_ADAPTIVE_FLUX_WORKFLOW_USING_AUTHORITATIVE_INLET_BC
+
+上一阶段：
+
+/home/lzy/projects/compre_output/microbubble_vascular_workflow_v0/adaptive_flux_20260916_222104
+
+状态：
+
+STOP_INLET_FLUX_INCOMPLETE_SAMPLER_COVERAGE
+
+首先读取：
+
+report/MICROBUBBLE_VASCULAR_WORKFLOW_V0_ADAPTIVE_FLUX_REPORT.md
+WORKFLOW_STATUS.json
+validation/INLET_FLUX_AUDIT.json
+validation/STOP.json
+geometry/BOUNDARY_MANIFEST.json
+provenance/INPUT_MANIFEST.tsv
+
+上一阶段保持 immutable。
+
+============================================================
+1. 修改核心设计
+============================================================
+
+不再要求：
+
+从 FROZEN_FLOW_FIELD_V0.h5
+对整个入口截面积分，
+才能得到 total inlet Q。
+
+原因：
+
+当前 Frozen Flow sampler
+在靠壁约 16.4% 的真实流体区域
+没有完整 8-corner interpolation support。
+
+这属于 frozen-field sampling coverage limitation，
+不是 inlet total flow rate 本身未知。
+
+新的原则：
+
+TOTAL INLET FLOW RATE
+来自 CFD / Palabos 的 authoritative boundary condition。
+
+FROZEN FLOW
+只负责提供内部粒子位置处的局部速度。
+
+============================================================
+2. 追踪真正的 inlet Q
+============================================================
+
+血管项目：
+
+/home/lzy/projects/ulm_3D_vascular
+
+重点检查：
+
+configs/cfd_preprocess.yaml
+
+对应实际 production run：
+
+outputs/cfd_preprocess/...
+
+以及：
+
+outputs/cfd_surface_prepare/...
+
+寻找实际：
+
+boundary_conditions_original.json
+boundary_conditions_refined.json
+boundary manifest
+1D flow transfer records
+run summary
+source manifest
+
+配置中已知设计：
+
+boundary_transfer:
+  inlet:
+    type: flow_rate_1d
+    velocity_profile: parabolic
+
+必须找到：
+
+当前 anchor003274
+实际使用的 inlet flow rate Q
+
+单位：
+
+m^3/s
+
+不要只根据：
+
+mean_velocity_mm_s = 0.7
+
+和当前入口面积自行重新推算，
+除非 provenance 明确证明这就是最终使用方式。
+
+必须优先读取最终保存的 production boundary condition。
+
+============================================================
+3. 建立 inlet Q provenance
+============================================================
+
+生成：
+
+validation/AUTHORITATIVE_INLET_FLOW_AUDIT.json
+
+至少记录：
+
+source file
+source run
+boundary index
+port id
+flow rate
+unit
+whether preserved during CFD surface preparation
+whether used by the PBS/BSA Palabos case
+SHA256 / provenance
+
+必须追踪：
+
+1D network
+↓
+ROI boundary transfer
+↓
+CFD surface preparation
+↓
+Palabos input
+
+如果无法证明当前 Palabos case
+使用的是同一个 inlet Q：
+
+STOP_INLET_BC_PROVENANCE_AMBIGUOUS
+
+不要猜。
+
+============================================================
+4. 不要把 Frozen Flow 局部积分结果删除
+============================================================
+
+保留上一阶段：
+
+local valid-area Q_positive
+=
+约 2.4716e-15 m^3/s
+
+以及：
+
+valid area ≈ 83.6%
+
+作为：
+
+FROZEN_FIELD_LOCAL_CROSSCHECK_ONLY
+
+不要用它替代 total Q。
+
+也不要把 unknown 16.4%：
+
+设置成 zero
+nearest extrapolation
+clamp
+renormalize
+
+============================================================
+5. total flux provider
+============================================================
+
+实现：
+
+AuthoritativeBoundaryFlowProvider
+
+返回：
+
+Q_in
+
+当前 frozen-flow workflow
+可以把它视为常数。
+
+接口仍保留：
+
+volume_flux(time)
+
+方便未来 time-dependent flow。
+
+============================================================
+6. bubble number flux
+============================================================
+
+支持：
+
+lambda(t)
+=
+C_b * Q_in(t)
+
+其中：
+
+C_b:
+bubble / m^3
+
+Q:
+m^3 / s
+
+lambda:
+bubble / s
+
+同时继续支持：
+
+TEST_ONLY_DIRECT_NUMBER_FLUX
+
+用于当前软件验证。
+
+============================================================
+7. 当前生产浓度仍然未知
+============================================================
+
+保持：
+
+PRODUCTION_BUBBLE_CONCENTRATION_STATUS
+=
+UNSPECIFIED
+
+不要搜索不到以后自己编一个值。
+
+本阶段 full workflow validation：
+
+使用：
+
+TEST_ONLY_DIRECT_NUMBER_FLUX
+
+必须在所有：
+
+config
+CSV
+plots
+report
+
+明确标记：
+
+NOT EXPERIMENTAL CONCENTRATION
+
+============================================================
+8. 注入位置和总注入量必须解耦
+============================================================
+
+Total injection demand：
+
+由 authoritative Q
+和 bubble concentration / test flux 决定。
+
+Injection position：
+
+是另一个问题。
+
+不要因为入口靠壁区域没有 velocity support
+就改变 total number flux。
+
+============================================================
+9. Workflow V0 的位置策略
+============================================================
+
+当前粗糙 workflow 允许：
+
+INJECTION_POSITION_POLICY
+=
+VALID_SAMPLER_SUPPORT_ONLY
+
+即：
+
+只从入口截面上：
+
+FlowFieldSampler == VALID
+
+且：
+
+positive inward velocity
+
+且：
+
+sphere wall clearance 足够
+
+的区域中选择粒子中心。
+
+上一阶段已证明：
+
+约 83.6% area 有 sampler support。
+
+这个策略必须明确标记：
+
+WORKFLOW_V0_APPROXIMATION
+
+不是：
+
+FULL_PHYSICAL_INLET_SAMPLING
+
+============================================================
+10. 不允许的位置
+============================================================
+
+禁止在：
+
+FlowFieldSampler SOLID
+
+MISSING
+
+OUTSIDE
+
+nonfinite
+
+local backflow
+
+wall clearance insufficient
+
+particle overlap
+
+的位置注入。
+
+candidate 失败则重新找位置。
+
+============================================================
+11. 位置采样模式
+============================================================
+
+本阶段优先实现两个模式：
+
+VALID_AREA_UNIFORM
+
+和：
+
+VALID_AREA_FLUX_WEIGHTED
+
+其中：
+
+VALID_AREA_FLUX_WEIGHTED
+
+只在 VALID 区域内：
+
+P(x) ∝ positive u_n(x)
+
+注意：
+
+这不是整个真实入口的完整 flux-weighted distribution。
+
+必须称为：
+
+VALID_SUPPORT_FLUX_WEIGHTED
+
+不要省略这个限定。
+
+============================================================
+12. 默认 workflow validation
+============================================================
+
+建议默认：
+
+VALID_AREA_UNIFORM
+
+先把整个软件链跑通。
+
+原因：
+
+本阶段目标是：
+
+workflow correctness
+
+而不是：
+
+入口粒子空间分布最终物理精度。
+
+同时运行一个：
+
+VALID_SUPPORT_FLUX_WEIGHTED
+
+小型比较 case，
+确认接口可用。
+
+============================================================
+13. 不要再阻塞在 16.4% coverage
+============================================================
+
+16.4% incomplete support：
+
+记录为：
+
+KNOWN_INPUT_LIMITATION
+
+不能再触发：
+
+STOP_INLET_FLUX_INCOMPLETE_SAMPLER_COVERAGE
+
+因为 total inlet Q
+不再依赖 Frozen Flow 截面积分。
+
+但如果 authoritative inlet Q provenance 不成立：
+
+仍然必须 STOP。
+
+============================================================
+14. 实现 adaptive injection controller
+============================================================
+
+恢复上一任务尚未实现的：
+
+target_cumulative += lambda * dt
+
+flux_debt =
+target_cumulative - admitted_count
+
+N_due =
+floor(flux_debt + tolerance)
+
+每个 timestep：
+
+N_due 可以：
+
+0
+1
+2
+...
+
+禁止：
+
+fixed-time injection
+
+one-per-step
+
+fixed N_active controller
+
+============================================================
+15. 动态尺寸
+============================================================
+
+继续使用冻结 SonoVue size sampler。
+
+保留：
+
+SOURCE_POPULATION
+
+和：
+
+ADMITTED_POPULATION
+
+两种控制语义。
+
+当前 software validation
+两种模式都测试。
+
+不得修改原始 histogram。
+
+============================================================
+16. size inadmissibility
+============================================================
+
+如果 bubble radius
+从几何上永远不能通过 inlet：
+
+SIZE_INADMISSIBLE_AT_INLET
+
+不要进入 transient backlog。
+
+不要缩小它。
+
+不要换 radius。
+
+============================================================
+17. transient congestion
+============================================================
+
+如果尺寸可通过，
+但当前其它 bubble 挡住：
+
+TRANSIENTLY_BLOCKED
+
+保持 candidate identity / size。
+
+进入 FIFO pending queue。
+
+入口清空后再次尝试。
+
+============================================================
+18. 继续实现完整 dynamics
+============================================================
+
+这次不要再只做 preflight。
+
+在 adaptive injector 通过 unit tests 后：
+
+真正接入：
+
+LAMMPS particle insertion
+stable rigid bubble-bubble solver
+FlowFieldSampler
+midpoint RK2
+pair hard safety
+geometric WALL_ONLY safety
+outlet crossing/removal
+near-wall geometric events
+
+============================================================
+19. wall physics 仍然 OFF
+============================================================
+
+保持：
+
+R_total
+=
+R_bulk
++
+R_bubble_bubble_excess
+
+不使用：
+
+RMBW
+CF2003
+Falade–Brenner
+Rallabandi
+Higdon–Muldowney
+WSS wall force
+wall lubrication
+adhesion
+
+============================================================
+20. injection timestep 顺序
+============================================================
+
+冻结：
+
+begin timestep
+
+1. update target cumulative injection
+
+2. process pending queue
+
+3. create new candidate demand
+
+4. attempt safe injection
+
+5. insert admitted particles into LAMMPS
+
+6. assemble active particle state
+
+7. RK2 start evaluation
+
+8. RK2 midpoint evaluation
+
+9. hard wall / pair safety
+
+10. accept step
+
+11. outlet/inlet crossing detection
+
+12. remove exited particles
+
+13. update accounting / events / flux statistics
+
+============================================================
+21. 实现 particle accounting
+============================================================
+
+至少跟踪：
+
+N_source_drawn
+N_size_rejected
+N_pending
+N_admitted
+N_active
+N_exited_outlet
+N_exited_inlet_backflow
+N_terminal_failure
+
+任何 silent loss：
+
+FAIL_PARTICLE_ACCOUNTING
+
+============================================================
+22. TEST_ONLY flux 选择
+============================================================
+
+不要为了快速出现很多 bubble
+设置一个会严重堵塞入口的值。
+
+先根据：
+
+inlet Q
+typical transit time
+geometry capacity
+
+选择三个纯软件测试档：
+
+LOW
+MEDIUM
+CAPACITY_STRESS
+
+这些不是实验浓度。
+
+保存到：
+
+configs/test_flux_cases.yaml
+
+============================================================
+23. LOW case
+============================================================
+
+目标：
+
+验证完整 pipeline。
+
+需要出现：
+
+多次 dynamic injection
+
+至少一个 active bubble
+
+稳定 RK2
+
+hard wall safety
+
+particle bookkeeping
+
+如果模拟时间允许：
+
+至少一个出口事件。
+
+============================================================
+24. MEDIUM case
+============================================================
+
+目标：
+
+同时存在多颗 bubble。
+
+真正触发：
+
+bubble-bubble hydrodynamics
+
+pending queue 如自然发生则记录。
+
+累计注入应明显多于 LOW。
+
+============================================================
+25. CAPACITY_STRESS
+============================================================
+
+故意把 target flux 提高。
+
+验证：
+
+backlog
+capacity diagnostic
+
+不会：
+
+overlap
+silent drop
+无限循环。
+
+如果超过定义门：
+
+INJECTION_CAPACITY_EXCEEDED
+
+是预期的 safety result。
+
+============================================================
+26. outlet handling
+============================================================
+
+继承已有：
+
+1 inlet
+3 outlets
+
+PORT caps 不是 wall。
+
+bubble outward crossing outlet：
+
+EXITED_OUTLET
+
+并从 LAMMPS active population 移除。
+
+============================================================
+27. backflow
+============================================================
+
+若 bubble 穿 inlet 向外：
+
+EXITED_INLET_BACKFLOW
+
+不要反弹。
+
+============================================================
+28. MPI deterministic injection
+============================================================
+
+只有一个全局 injection controller。
+
+推荐：
+
+rank 0
+
+负责：
+
+flux accumulator
+SonoVue draws
+pending queue
+candidate IDs
+admission decisions
+
+然后同步。
+
+不得各 rank
+自行生成 bubble。
+
+MPI1 与 MPI4：
+
+source draws
+particle IDs
+injection times
+size rejections
+
+必须一致。
+
+============================================================
+29. 独立 validator
+============================================================
+
+升级：
+
+scripts/validate_workflow.py
+
+独立重算：
+
+target cumulative flux
+
+injection counts
+
+particle accounting
+
+outlet crossing
+
+near-wall events
+
+MPI consistency
+
+不得只信 engine PASS。
+
+============================================================
+30. 必须输出的关键时间序列
+============================================================
+
+flux_timeseries.csv：
+
+time
+
+authoritative_Q_in
+
+target_number_flux
+
+target_cumulative
+
+admitted_cumulative
+
+pending_count
+
+active_count
+
+outlet_0_cumulative
+
+outlet_1_cumulative
+
+outlet_2_cumulative
+
+inlet_backflow_cumulative
+
+size_rejected_cumulative
+
+flux_deficit
+
+============================================================
+31. visualization
+============================================================
+
+至少生成：
+
+target_vs_actual_injection.png
+
+active_bubbles_vs_time.png
+
+pending_backlog_vs_time.png
+
+outlet_counts_vs_time.png
+
+source_vs_admitted_size_distribution.png
+
+trajectories_3d.png
+
+injection_positions.png
+
+particle_accounting.png
+
+============================================================
+32. 报告中必须明确这两个不同的限制
+============================================================
+
+A.
+
+TOTAL INLET FLOW RATE
+
+来源：
+
+authoritative CFD boundary condition
+
+如果验证成功：
+KNOWN
+
+
+B.
+
+LOCAL FROZEN-FIELD COVERAGE AT INJECTION PLANE
+
+约：
+
+83.6% supported
+
+16.4% unsupported near boundary
+
+状态：
+
+PARTIAL
+
+不能把 A 和 B 混成一个问题。
+
+============================================================
+33. 科研状态仍然保持
+============================================================
+
+即使 workflow PASS：
+
+FLOW_FIELD_STATUS
+=
+ENGINEERING_TRANSIENT_FIELD_ONLY
+
+INLET_POSITION_DISTRIBUTION_STATUS
+=
+WORKFLOW_V0_APPROXIMATION
+
+PRODUCTION_BUBBLE_CONCENTRATION_STATUS
+=
+UNSPECIFIED
+
+WALL_HYDRODYNAMICS_STATUS
+=
+NOT_IMPLEMENTED
+
+REAL_SCIENTIFIC_PRODUCTION_READY
+=
+NO
+
+============================================================
+34. 新 stage
+============================================================
+
+不要修改上一 BLOCKED stage。
+
+建立：
+
+/workspace/microbubble_lammps/results/microbubble_vascular_workflow_v0_bcflux_<timestamp>
+
+/workspace/microbubble_lammps/work/microbubble_vascular_workflow_v0_bcflux_<timestamp>
+
+/home/lzy/projects/compre_output/microbubble_vascular_workflow_v0/bcflux_<timestamp>
+
+============================================================
+35. 完成后报告
+============================================================
+
+生成：
+
+MICROBUBBLE_VASCULAR_WORKFLOW_V0_BCFLUX_REPORT.md
+
+报告开头用通俗语言回答：
+
+1.
+入口总流量现在从哪里获得？
+
+2.
+为什么不再从 sparse Frozen Flow
+重新积分整个入口？
+
+3.
+16.4% sampler 缺口现在影响什么？
+不影响什么？
+
+4.
+微泡怎样自适应进入？
+
+5.
+怎样处理过大 bubble？
+
+6.
+怎样处理临时拥堵？
+
+7.
+有没有真正运行 RK2 / LAMMPS？
+
+8.
+微泡有没有从 outlet 出去？
+
+9.
+MPI1 / MPI4 是否一致？
+
+============================================================
+36. 最终状态
+============================================================
+
+输出：
+
+AUTHORITATIVE_INLET_FLOW_STATUS:
+PASS / BLOCKED
+
+AUTHORITATIVE_INLET_FLOW_M3_S:
+<value or NONE>
+
+FROZEN_FIELD_INJECTION_PLANE_COVERAGE:
+<percent>
+
+INJECTION_POSITION_POLICY:
+<...>
+
+ADAPTIVE_INJECTION_CONTROLLER_STATUS:
+PASS / FAIL / BLOCKED
+
+SIZE_ADMISSIBILITY_STATUS:
+PASS / FAIL
+
+TRANSIENT_BACKLOG_STATUS:
+PASS / FAIL
+
+DYNAMIC_PARTICLE_LIFECYCLE_STATUS:
+PASS / FAIL
+
+FLOW_SAMPLER_RUNTIME_STATUS:
+PASS / FAIL
+
+RK2_STATUS:
+PASS / FAIL
+
+BUBBLE_BUBBLE_STATUS:
+PASS_WITH_TWIST_PENDING / FAIL
+
+HARD_WALL_STATUS:
+PASS / FAIL
+
+OUTLET_TRACKING_STATUS:
+PASS / FAIL
+
+PARTICLE_ACCOUNTING_STATUS:
+PASS / FAIL
+
+MPI_STATUS:
+PASS / FAIL
+
+WORKFLOW_TECHNICAL_STATUS:
+PASS / PARTIAL / BLOCKED / FAIL
+
+PRODUCTION_BUBBLE_CONCENTRATION_STATUS:
+UNSPECIFIED
+
+FLOW_PHYSICS_STATUS:
+ENGINEERING_TRANSIENT_FIELD_ONLY
+
+WALL_HYDRODYNAMICS_STATUS:
+NOT_IMPLEMENTED
+
+REAL_SCIENTIFIC_PRODUCTION_READY:
+NO
+
+============================================================
+37. 禁止事项
+============================================================
+
+NO boundary velocity reconstruction
+
+NO nearest velocity fallback
+
+NO zero-fill of unsupported inlet area
+
+NO Frozen Flow extrapolation
+
+NO Palabos modification
+
+NO wall hydrodynamics
+
+NO fixed-time injection
+
+NO BATCH_AT_T0
+
+NO constant active-particle controller
+
+NO experimental concentration invention
+
+NO historical stage modification
+
+NO git commit/push
+
+============================================================
+38. 最终终端输出
+============================================================
+
+打印：
+
+MICROBUBBLE_VASCULAR_BCFLUX_V0_COMPLETE
+
+AUTHORITATIVE_INLET_FLOW_STATUS:
+<...>
+
+AUTHORITATIVE_INLET_FLOW_M3_S:
+<...>
+
+FROZEN_FIELD_INJECTION_PLANE_COVERAGE:
+<...>
+
+ADAPTIVE_INJECTION_CONTROLLER_STATUS:
+<...>
+
+DYNAMIC_PARTICLE_LIFECYCLE_STATUS:
+<...>
+
+RK2_STATUS:
+<...>
+
+HARD_WALL_STATUS:
+<...>
+
+OUTLET_TRACKING_STATUS:
+<...>
+
+PARTICLE_ACCOUNTING_STATUS:
+<...>
+
+MPI_STATUS:
+<...>
+
+WORKFLOW_TECHNICAL_STATUS:
+<...>
+
+RMBW_USED:
+NO
+
+CF2003_USED:
+NO
+
+FALADE_BRENNER_USED:
+NO
+
+WSS_USED:
+NO
+
+REAL_SCIENTIFIC_PRODUCTION_READY:
+NO
+
+REPORT:
+<absolute path>
+
+然后停止。

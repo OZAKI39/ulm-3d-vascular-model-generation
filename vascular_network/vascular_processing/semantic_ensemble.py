@@ -1,9 +1,7 @@
-"""Equal donor votes with explicit missing-support accounting."""
+"""Frozen registration ranking and equal multi-donor nearest-neighbor votes."""
 import numpy as np
 from scipy.spatial import cKDTree
 from .similarity_registration import register,transform_points
-
-ENSEMBLE_RULES=dict(top_k=5,weighting='equal among supported donors at each point',minimum_supported_donors_fraction=.5,confidence_gate=.60)
 
 
 def select_donors(pool,target,top_k=5):
@@ -18,18 +16,6 @@ def select_donors(pool,target,top_k=5):
     return selected,[r for _,r in ranked]
 
 
-def ensemble(results):
-    if not results:raise ValueError('No valid donor transports')
-    valid=np.array([r['valid'] for r in results]);counts=valid.sum(axis=0)
-    probs=np.array([r['probabilities'] for r in results])
-    mean=np.divide((probs*valid[:,:,None]).sum(axis=0),counts[:,None],out=np.zeros_like(probs[0]),where=counts[:,None]>0)
-    support=np.mean([r['support_mass'] for r in results],axis=0)
-    enough=counts>=max(1,int(np.ceil(.5*len(results))))
-    confidence=np.where(enough,mean.max(axis=1),0.)
-    return dict(probabilities=mean,support_mass=support,valid_donor_count=counts,
-                confidence=confidence,predicted_label=np.where(enough,mean.argmax(axis=1)+1,0),valid=enough)
-
-
 def nearest_baseline(selected,target):
     votes=[]
     for donor,registration in selected:
@@ -38,3 +24,37 @@ def nearest_baseline(selected,target):
         votes.append(np.eye(3)[donor.labels[ids]-1])
     probabilities=np.mean(votes,axis=0)
     return probabilities.argmax(axis=1)+1
+
+
+def nearest_support(selected,points):
+    """Existing NN queries plus auditable per-donor votes and distance support.
+
+    Binary production votes combine native M2/M3 *before* voting. No target
+    labels are accepted, and the caller supplies the frozen QC/ranked donors.
+    """
+    votes=[];distances=[];normalized=[];identities=[]
+    for donor,registration in selected:
+        if registration['status']!='VALID':
+            raise ValueError('Only registration-QC-valid donors may vote')
+        transformed=transform_points(donor.geometry.points,np.asarray(registration['transform']))
+        distance,ids=cKDTree(transformed).query(points)
+        rmse=float(registration['inlier_rmse'])
+        if not np.isfinite(rmse) or rmse<0:raise ValueError('Invalid registration inlier RMSE')
+        votes.append(donor.labels[ids]);distances.append(distance)
+        normalized.append(distance/max(rmse,1e-8))
+        identities.append(donor.geometry.case_id)
+    n=len(points)
+    native=np.asarray(votes,dtype=np.int8).reshape(len(votes),n)
+    binary=np.where(native==3,2,native)
+    counts=np.full(n,len(votes),dtype=np.int16)
+    p1=np.mean(binary==1,axis=0) if votes else np.zeros(n)
+    p2=np.mean(binary==2,axis=0) if votes else np.zeros(n)
+    return dict(per_donor_native_vote=native,per_donor_binary_vote=binary,
+        per_donor_distance_mm=np.asarray(distances).reshape(len(votes),n),
+        per_donor_normalized_distance=np.asarray(normalized).reshape(len(votes),n),
+        donor_ids=np.asarray(identities,dtype='U16'),valid_donor_count=counts,
+        vote_M1=(binary==1).sum(axis=0),vote_MeVO=(binary==2).sum(axis=0),
+        p_M1=p1,p_MeVO=p2,agreement_M1=p1,agreement_MeVO=p2,
+        agreement=np.maximum(p1,p2),vote_margin=abs(p2-p1),
+        winner=np.where(counts>0,np.where(p1>=p2,1,2),0).astype(np.int8),
+        median_normalized_distance=np.median(normalized,axis=0) if votes else np.full(n,np.inf))

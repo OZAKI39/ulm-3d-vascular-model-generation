@@ -1,0 +1,193 @@
+{
+  "schema_version": 1,
+  "status": "FROZEN_BEFORE_ANY_BUILD_OR_SOLVER_EXECUTION",
+  "gate_role": "STEP3B_CROSS_SOLVER_COMPARISON_GATE",
+  "experimental_validation": false,
+  "dx_status": "CANDIDATE_BASELINE",
+  "physiological_role_status": "ASSUMED",
+  "physical_contract_copies": [
+    {
+      "path": "/home/lzy/projects/compre_output/step3/20260913_002844/contracts/physical_bc_contract.json",
+      "copy": "contracts/physical_bc_contract.json",
+      "sha256": "7304bf97264c9d4422eda740e9c3f4955df733ab7999a7eaa16c71ff1dafe186"
+    },
+    {
+      "path": "/home/lzy/projects/compre_output/step3/20260913_002844/contracts/lattice_unit_contract.json",
+      "copy": "contracts/lattice_unit_contract.json",
+      "sha256": "52396ede8b996ab707c16bcd9691e714a04dd39a73f66682568f4966448e3a68"
+    },
+    {
+      "path": "/home/lzy/projects/compre_output/step3/20260913_002844/contracts/geometry_reuse_contract.json",
+      "copy": "contracts/geometry_reuse_contract.json",
+      "sha256": "7e95bebc59b61cdc2b45fad61ba2420f923e465264e4240ab2baac75afadb973"
+    }
+  ],
+  "dt_s": 2.0366810646671923e-09,
+  "dx_effective_m": 1.9989918081065344e-07,
+  "tau": 1.0,
+  "Qtarget_m3_s": 2.7369132390905703e-15,
+  "rho_kg_m3": 1056.0,
+  "nu_m2_s": 3.27e-06,
+  "outlet_pressures_pa": {
+    "outlet_01": 14.544978101274268,
+    "outlet_02": 132.20454922317552,
+    "outlet_03": -13.700626673311461
+  },
+  "windows": {
+    "role": "REFERENCE_WINDOW_FROM_SOURCE_CFD",
+    "short_s": 0.0002441406727828746,
+    "long_s": 0.0004882813455657492,
+    "short_equivalent_iterations": 119871.82333959042,
+    "long_equivalent_iterations": 239743.64667918085,
+    "short_required_steps_ceil": 119872,
+    "long_required_steps_ceil": 239744,
+    "short_sample_intervals_ceil": 1199,
+    "long_sample_intervals_ceil": 2398,
+    "time_mean": "Piecewise linear interpolation at exact physical window endpoints, trapezoidal integral / exact W; all interior 100-step samples used.",
+    "exclude_ramp": "window start > 10*dt; incomplete windows remain NOT_EVALUATED"
+  },
+  "execution": {
+    "max_steps": 700000,
+    "ceiling_role": "RESOURCE / VALIDATION CEILING",
+    "max_physical_time_s": 0.0014256767452670346,
+    "mpi_ranks": 1,
+    "mpi2": "NOT_VALIDATED",
+    "initialization": "from zero: rhoLU=1, u=0; no snapshot restart",
+    "ramp_steps": 10,
+    "ramp": "exact Step3 linear 0 to full inlet Q and gauge outlet density over first 10 steps",
+    "safety_every_steps": 1,
+    "scalar_every_steps": 100,
+    "evaluation_every_steps": 5000,
+    "first_possible_evaluation_step": 240000,
+    "required_pass_confirmations": 2,
+    "confirmation_separation_steps": 120000,
+    "confirmation_rule": "Start candidate after a full long window excluding ramp. Every intervening evaluation must pass; confirm only at least one additional short physical window later. Any failed gate resets candidate. Record first-ever candidate, accepted candidate, confirmation and stop separately.",
+    "field_snapshots": [
+      0,
+      1000,
+      10000,
+      50000,
+      100000,
+      200000,
+      300000,
+      400000,
+      500000,
+      600000
+    ],
+    "extra_snapshots": [
+      "first_candidate",
+      "confirmation",
+      "final"
+    ],
+    "fields": [
+      "velocity",
+      "velocity_magnitude",
+      "rhoLU",
+      "gauge_pressure",
+      "FluidMask",
+      "PortLabel",
+      "ControlVolumeMask"
+    ],
+    "restart": "NOT_IMPLEMENTED",
+    "restart_identity": "NOT_APPLICABLE",
+    "solver_implementation": "PENDING_RESOURCE_PREFLIGHT"
+  },
+  "runtime_safety": {
+    "finite_density_velocity_fluid_and_boundary_support": true,
+    "fluid_density_bounds": [
+      0.99,
+      1.01
+    ],
+    "boundary_support_density_positive": true,
+    "mach_max": 0.05,
+    "failure_status": "FAIL_RUNTIME_SAFETY",
+    "abort_on": [
+      "NaN",
+      "Inf",
+      "negative rho",
+      "density bounds",
+      "Mach limit",
+      "MPI_ABORT",
+      "segfault"
+    ]
+  },
+  "flux": {
+    "primary_offset_dx": 4,
+    "all_offsets_dx": [
+      2,
+      4,
+      6
+    ],
+    "primary_max_triangle_edge_m": 1.9989918081065344e-07,
+    "validation_max_triangle_edge_m": 9.994959040532672e-08,
+    "dx4": "NOT_PLANNED_RESOURCE_COST",
+    "velocity_interpolation": "Step3 trilinear interpolation of live atomic bulk cell velocity; no cached MultiBlock distributedCell proxy.",
+    "volume_flux": "FQ=sum(area_q * dot(u_q,n_out)); Qin=-FQ_in; Qout_i=FQ_out_i",
+    "mass_flux": "Fm=sum(area_q * rho_q * dot(u_q,n_out)); rho_q and u_q independently trilinearly interpolated; rho_q=rhoPhys*rhoLU_q; all signs outward.",
+    "boundary_profile_Q": "Qtarget*ramp: theoretical profile integral only; never substitute it for measured Qin",
+    "cross_plane_spread": "For each port and W, (max_k mean_W(Q_port,k)-min_k mean_W(Q_port,k))/max(mean_k(abs(mean_W(Q_port,k))),Qtarget*1e-12), k=2,4,6; gate max over ports and short/long windows.",
+    "quadrature_error": "abs(Q_dx-Q_dx2)/max(abs(Q_dx2),Qtarget*1e-12); max over all 12 planes at each evaluation; dx/2 is integration validation, never changes solver.",
+    "geometry_sha256": "46109a2f5e2732cdd754f0a3b230f330f6f52a223631402feadcd651c4467940"
+  },
+  "control_volume": {
+    "geometry_sha256": "519f32e9565d7da50211a29685fa7f8347f83c1670664f95ee10c9fe93c7aa1a",
+    "mask_sha256": "dcfe037cff780882808b5e0b2920030dec5f7dac607b6b6dff66a9afebe0cbcb",
+    "mass": "sum_CV(rhoLU_i)*rhoPhys*dx^3",
+    "transient_residual": "abs((M1-M0)/(t1-t0)+0.5*(sum(Fm(t0))+sum(Fm(t1))))/max(abs(0.5*(Fm_in(t0)+Fm_in(t1))),sum_out abs(0.5*(Fm_i(t0)+Fm_i(t1))),rhoPhys*Qtarget*1e-12)",
+    "window_residual": "R_CV(W)=abs((M(t_end)-M(t_start))/W+sum_ports mean_W(Fm_i))/max(abs(mean_W(Fm_in)),sum_out abs(mean_W(Fm_i)),rhoPhys*Qtarget*1e-12)",
+    "gate": "max(R_CV(short),R_CV(long))",
+    "relative_mass_drift_is_not_mass_closure": true,
+    "discretization": "whole physical fluid lattice node volumes; geometric mask connectivity does not imply conservation"
+  },
+  "formulas": {
+    "R_inlet": "max_W abs(mean_W(Qin)-Qtarget)/Qtarget, W=short,long",
+    "R_flow": "max_W abs(mean_W(Qin)-sum_out mean_W(Qout_i))/max(mean_W(abs(Qin)),Qtarget*1e-12)",
+    "source_R_mass_companion": "abs(mean_W(Qin)-sum mean_W(Qout_i))/max(abs(mean_W(Qin)),float64.tiny)",
+    "R_velocity": "norm2(u(t)-u(t-delta))/max(norm2(u(t)),sqrt(N)*1e-12 m/s)",
+    "R_pressure": "norm2(p_gauge(t)-p_gauge(t-delta))/max(norm2(p_gauge(t)),sqrt(N)*1 Pa)",
+    "field_delta_steps": 119872,
+    "field_delta_s": 0.0002441410325837857,
+    "field_metric_role": "HEMOCELL_SPECIFIC_CONVERGENCE_METRIC; solver-independent L2 algebra; distinct from source scalar metrics",
+    "field_domain": "all frozen physical fluid lattice nodes, same order and same fixed pressure reference rhoLU=1",
+    "source_velocity_companion": "abs(mean_speed(t)-mean_speed(t-delta))/max(abs(mean_speed(t)),1e-12 m/s)",
+    "flow_fraction": "f_i(W)=mean_W(Qout_i)/sum_j mean_W(Qout_j); undefined for nonpositive total => gate FAIL",
+    "flow_fraction_drift": "maximum absolute fraction difference over outlets: short vs long, and each W now vs candidate confirmation reference; undefined fraction => FAIL",
+    "source_fraction_drift_companion": "max across outlet i of range(f_i at long-start, short-start, end)",
+    "outlet_direction": "mean_W(Qout_i)>0 for every outlet and both W",
+    "significant_backflow_companion": "any mean_W(Qout_i)<0 and abs(mean_W(Qout_i))>0.05*abs(mean_W(Qin))",
+    "persistent_mean_backflow": "any long-window mean outlet flux <0 at final eligible evaluation"
+  },
+  "gates": {
+    "R_inlet": 0.01,
+    "R_flow": 0.01,
+    "R_CV": 0.01,
+    "R_velocity": 0.01,
+    "R_pressure": 0.005,
+    "flow_fraction_drift": 0.01,
+    "cross_plane_spread": 0.02,
+    "quadrature_dx_vs_dx2": 0.01,
+    "quadrature_dx2_vs_dx4_if_used": 0.005,
+    "every_outlet_mean_positive": true,
+    "input_integrity": true,
+    "step3_physics_unchanged": true,
+    "build": true,
+    "runtime_safety": true,
+    "control_volume_geometry": true,
+    "two_confirmations": true
+  },
+  "cross_solver": {
+    "execute_only_after": "AUTO_CONVERGED",
+    "relative_difference": "abs(HemoCell_mean-source_mean)/max(abs(source_mean),float64.tiny)",
+    "source_role": "SOURCE_CFD_STEADY_REFERENCE",
+    "never_fit_parameters": true,
+    "voxelwise_identity_expected": false
+  },
+  "final_states": {
+    "all_gates_confirmed": "AUTO_PASS_HUMAN_PENDING",
+    "at_700000_without_all_gates": "NOT_CONVERGED_WITHIN_VALIDATION_HORIZON",
+    "resource_preflight_failure": "BLOCKED_RESOURCE_PREFLIGHT",
+    "partial_before_ceiling": "PARTIAL_NOT_FULLY_CONVERGED"
+  },
+  "ready_to_add_rbc": "NO_PENDING_PLASMA_VISCOSITY_CONTRACT",
+  "frozen_utc": "2026-09-13T00:42:37.928012+00:00"
+}

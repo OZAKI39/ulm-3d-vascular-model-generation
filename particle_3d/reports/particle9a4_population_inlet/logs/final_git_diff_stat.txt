@@ -1,0 +1,318 @@
+ .../contracts/P9A4_CONTINUOUS_INFUSION_V1.json     |       1 +
+ .../BUG_FIX_LEDGER_ZH.md                           |      20 +
+ .../CONCENTRATION_PROVENANCE_ZH.md                 |      15 +
+ .../CURRENT_CODE_LOGIC_AUDIT_ZH.md                 |     232 +
+ .../OPEN_INLET_AUDIT_ZH.md                         |      22 +
+ .../particle9a4_population_inlet/OPEN_RESULTS.html |       1 +
+ .../P9A4_MATHEMATICAL_CONTRACT_ZH.md               |      39 +
+ .../P9A4_POPULATION_INLET_REVIEW_ZH.md             |     103 +
+ .../particle9a4_population_inlet/REPRODUCE.md      |      53 +
+ .../SMOKE30_REVIEW_ZH.md                           |      17 +
+ .../data/TASK_REQUEST.txt                          |    1912 +
+ .../data/audit_tolerances.json                     |       1 +
+ .../data/baseline_git.json                         |       8 +
+ .../data/baseline_regression.json                  |      35 +
+ .../data/code_change_ledger.json                   |       1 +
+ .../data/code_logic_audit.json                     |     245 +
+ .../data/code_logic_audit_execution.json           |      27 +
+ .../concentration_literature_verification.json     |      12 +
+ .../data/delivery_verification.json                |     107 +
+ .../data/final_regression.json                     |      43 +
+ .../data/final_summary.json                        |     341 +
+ .../data/inlet100k/accepted_births.json            |       1 +
+ .../data/inlet100k/manifest.json                   |       1 +
+ .../data/inlet100k/proposal_ledger.jsonl           |  100000 +
+ .../data/inlet100k/smoke30_births.json             |       1 +
+ .../data/inlet100k/state.json                      |       1 +
+ .../data/inlet100k/summary.json                    |       1 +
+ ...nlet_audit_gate_evidence.attempt01.partial.json |       0
+ .../data/inlet_audit_gate_evidence.json            |       1 +
+ .../data/inlet_geometry.npz                        |     Bin 0 -> 4760 bytes
+ .../data/input_probe.json                          |     314 +
+ .../data/legacy_b_inlet_500.json                   | 1769002 +++++++++++++++++
+ .../data/legacy_c_inlet_500.json                   |   72943 +
+ .../data/legacy_comparison_summary.json            |      25 +
+ .../data/open_inlet_geometry.json                  |       1 +
+ .../data/presmoke_regression.json                  |      35 +
+ .../data/qacc_diagnostic.json                      |       1 +
+ .../data/qacc_positions.npz                        |     Bin 0 -> 649593 bytes
+ .../data/rejections_by_diameter.csv                |      19 +
+ .../data/rejections_by_inlet_triangle.csv          |     180 +
+ .../data/server_deployment.json                    |     213 +
+ .../data/server_output_manifest.json               |     156 +
+ .../data/smoke30_contact_audit.json                |    6712 +
+ .../data/smoke30_metrics.json                      |    1742 +
+ .../data/smoke30_summary.json                      |      50 +
+ .../data/smoke_gate.json                           |       1 +
+ .../data/synthetic_poiseuille_audit.json           |      38 +
+ .../data/worker_replay_1.json                      |       1 +
+ .../data/worker_replay_3.json                      |       1 +
+ .../figures/Figure_01_p9a4_concept.pdf             |     Bin 0 -> 35921 bytes
+ .../figures/Figure_01_p9a4_concept.png             |     Bin 0 -> 239691 bytes
+ .../figures/Figure_02_source_entering_size.pdf     |     Bin 0 -> 24885 bytes
+ .../figures/Figure_02_source_entering_size.png     |     Bin 0 -> 237929 bytes
+ .../figures/Figure_03_inlet_position_density.pdf   |     Bin 0 -> 68657 bytes
+ .../figures/Figure_03_inlet_position_density.png   |     Bin 0 -> 161506 bytes
+ .../figures/Figure_04_accessible_flux.pdf          |     Bin 0 -> 24244 bytes
+ .../figures/Figure_04_accessible_flux.png          |     Bin 0 -> 137845 bytes
+ .../figures/Figure_05_poisson_thinning_times.pdf   |     Bin 0 -> 20390 bytes
+ .../figures/Figure_05_poisson_thinning_times.png   |     Bin 0 -> 156109 bytes
+ .../figures/Figure_06_rejection_by_diameter.pdf    |     Bin 0 -> 19496 bytes
+ .../figures/Figure_06_rejection_by_diameter.png    |     Bin 0 -> 163877 bytes
+ .../Figure_07_legacy_semantic_comparison.pdf       |     Bin 0 -> 23862 bytes
+ .../Figure_07_legacy_semantic_comparison.png       |     Bin 0 -> 329229 bytes
+ .../figures/Figure_08_smoke30_trajectories.pdf     |     Bin 0 -> 91685 bytes
+ .../figures/Figure_08_smoke30_trajectories.png     |     Bin 0 -> 549582 bytes
+ .../logs/baseline_full_regression.txt              |       3 +
+ .../logs/baseline_portable/flow.log                |       2 +
+ .../logs/baseline_portable/flow.xml                |       1 +
+ .../logs/baseline_portable/network.log             |       2 +
+ .../logs/baseline_portable/network.xml             |       1 +
+ .../logs/baseline_portable/particle.log            |       2 +
+ .../logs/baseline_portable/particle.xml            |       1 +
+ .../logs/baseline_portable/relocation_receipt.json |      32 +
+ .../logs/baseline_portable/summary.json            |      33 +
+ .../logs/build_reports.txt                         |       5 +
+ .../logs/build_reports_pass.txt                    |       1 +
+ .../logs/collect_smoke.txt                         |       4 +
+ .../logs/deploy_smoke.txt                          |       7 +
+ .../particle9a4_population_inlet/logs/figure08.txt |       1 +
+ .../logs/figures_01_07.txt                         |       1 +
+ .../logs/final_full_regression.txt                 |      13 +
+ .../logs/final_full_regression_pass.txt            |       3 +
+ .../logs/final_new_and_legacy.txt                  |      49 +
+ .../logs/final_new_and_legacy.xml                  |      33 +
+ .../logs/final_new_and_legacy_pass.txt             |       2 +
+ .../logs/final_new_and_legacy_pass.xml             |       1 +
+ .../logs/final_portable/particle.log               |       2 +
+ .../logs/final_portable/relocation_receipt.json    |      32 +
+ .../logs/final_portable_pass/flow.log              |       2 +
+ .../logs/final_portable_pass/flow.xml              |       1 +
+ .../logs/final_portable_pass/network.log           |       2 +
+ .../logs/final_portable_pass/network.xml           |       1 +
+ .../logs/final_portable_pass/particle.log          |       2 +
+ .../logs/final_portable_pass/particle.xml          |       1 +
+ .../final_portable_pass/relocation_receipt.json    |      32 +
+ .../logs/final_portable_pass/summary.json          |      33 +
+ .../logs/final_protection_manifest.txt             |       8 +
+ .../logs/inlet100k_workers6.txt                    |      25 +
+ .../logs/inlet_gate.txt                            |      18 +
+ .../logs/inlet_gate_pass.txt                       |      56 +
+ .../logs/input_probe.txt                           |      47 +
+ .../logs/legacy_b_c.txt                            |       2 +
+ .../logs/legacy_b_c.xml                            |       1 +
+ .../logs/legacy_comparison.txt                     |      11 +
+ .../logs/new_initial.txt                           |      15 +
+ .../logs/new_initial.xml                           |       8 +
+ .../logs/new_pass1.txt                             |       2 +
+ .../logs/new_pass1.xml                             |       1 +
+ .../logs/prepare_inlet.txt                         |       1 +
+ .../logs/presmoke_full_regression.txt              |       3 +
+ .../logs/presmoke_portable/flow.log                |       2 +
+ .../logs/presmoke_portable/flow.xml                |       1 +
+ .../logs/presmoke_portable/network.log             |       2 +
+ .../logs/presmoke_portable/network.xml             |       1 +
+ .../logs/presmoke_portable/particle.log            |       2 +
+ .../logs/presmoke_portable/particle.xml            |       1 +
+ .../logs/presmoke_portable/relocation_receipt.json |      32 +
+ .../logs/presmoke_portable/summary.json            |      33 +
+ .../logs/server_agent_guide.txt                    |     470 +
+ .../logs/server_smoke30.txt                        |      31 +
+ .../logs/server_smoke_session.txt                  |       3 +
+ .../logs/smoke_analysis.txt                        |      11 +
+ .../logs/smoke_analysis_pass.txt                   |      80 +
+ .../logs/synthetic_audit.txt                       |      38 +
+ .../logs/worker_replay_1.txt                       |      25 +
+ .../logs/worker_replay_3.txt                       |      25 +
+ .../outputs/smoke30/completed.json                 |       1 +
+ .../outputs/smoke30/config.json                    |       1 +
+ .../outputs/smoke30/initial_states.json            |       1 +
+ .../outputs/smoke30/point/point_000001.json        |      46 +
+ .../outputs/smoke30/point/point_000001.npz         |     Bin 0 -> 68566 bytes
+ .../outputs/smoke30/point/point_000002.json        |      46 +
+ .../outputs/smoke30/point/point_000002.npz         |     Bin 0 -> 26281 bytes
+ .../outputs/smoke30/point/point_000003.json        |      46 +
+ .../outputs/smoke30/point/point_000003.npz         |     Bin 0 -> 26368 bytes
+ .../outputs/smoke30/point/point_000004.json        |      46 +
+ .../outputs/smoke30/point/point_000004.npz         |     Bin 0 -> 26582 bytes
+ .../outputs/smoke30/point/point_000005.json        |      46 +
+ .../outputs/smoke30/point/point_000005.npz         |     Bin 0 -> 31035 bytes
+ .../outputs/smoke30/point/point_000006.json        |      46 +
+ .../outputs/smoke30/point/point_000006.npz         |     Bin 0 -> 64287 bytes
+ .../outputs/smoke30/point/point_000007.json        |      46 +
+ .../outputs/smoke30/point/point_000007.npz         |     Bin 0 -> 63463 bytes
+ .../outputs/smoke30/point/point_000008.json        |      46 +
+ .../outputs/smoke30/point/point_000008.npz         |     Bin 0 -> 27138 bytes
+ .../outputs/smoke30/point/point_000009.json        |      46 +
+ .../outputs/smoke30/point/point_000009.npz         |     Bin 0 -> 63724 bytes
+ .../outputs/smoke30/point/point_000010.json        |      46 +
+ .../outputs/smoke30/point/point_000010.npz         |     Bin 0 -> 100375 bytes
+ .../outputs/smoke30/point/point_000011.json        |      46 +
+ .../outputs/smoke30/point/point_000011.npz         |     Bin 0 -> 26739 bytes
+ .../outputs/smoke30/point/point_000012.json        |      46 +
+ .../outputs/smoke30/point/point_000012.npz         |     Bin 0 -> 63327 bytes
+ .../outputs/smoke30/point/point_000013.json        |      46 +
+ .../outputs/smoke30/point/point_000013.npz         |     Bin 0 -> 27527 bytes
+ .../outputs/smoke30/point/point_000014.json        |      46 +
+ .../outputs/smoke30/point/point_000014.npz         |     Bin 0 -> 80720 bytes
+ .../outputs/smoke30/point/point_000015.json        |      46 +
+ .../outputs/smoke30/point/point_000015.npz         |     Bin 0 -> 31067 bytes
+ .../outputs/smoke30/point/point_000016.json        |      46 +
+ .../outputs/smoke30/point/point_000016.npz         |     Bin 0 -> 66935 bytes
+ .../outputs/smoke30/point/point_000017.json        |      46 +
+ .../outputs/smoke30/point/point_000017.npz         |     Bin 0 -> 25704 bytes
+ .../outputs/smoke30/point/point_000018.json        |      46 +
+ .../outputs/smoke30/point/point_000018.npz         |     Bin 0 -> 116253 bytes
+ .../outputs/smoke30/point/point_000019.json        |      46 +
+ .../outputs/smoke30/point/point_000019.npz         |     Bin 0 -> 66288 bytes
+ .../outputs/smoke30/point/point_000020.json        |      46 +
+ .../outputs/smoke30/point/point_000020.npz         |     Bin 0 -> 27342 bytes
+ .../outputs/smoke30/point/point_000021.json        |      46 +
+ .../outputs/smoke30/point/point_000021.npz         |     Bin 0 -> 74137 bytes
+ .../outputs/smoke30/point/point_000022.json        |      46 +
+ .../outputs/smoke30/point/point_000022.npz         |     Bin 0 -> 87304 bytes
+ .../outputs/smoke30/point/point_000023.json        |      46 +
+ .../outputs/smoke30/point/point_000023.npz         |     Bin 0 -> 26884 bytes
+ .../outputs/smoke30/point/point_000024.json        |      46 +
+ .../outputs/smoke30/point/point_000024.npz         |     Bin 0 -> 64817 bytes
+ .../outputs/smoke30/point/point_000025.json        |      46 +
+ .../outputs/smoke30/point/point_000025.npz         |     Bin 0 -> 38400 bytes
+ .../outputs/smoke30/point/point_000026.json        |      46 +
+ .../outputs/smoke30/point/point_000026.npz         |     Bin 0 -> 69290 bytes
+ .../outputs/smoke30/point/point_000027.json        |      46 +
+ .../outputs/smoke30/point/point_000027.npz         |     Bin 0 -> 26518 bytes
+ .../outputs/smoke30/point/point_000028.json        |      46 +
+ .../outputs/smoke30/point/point_000028.npz         |     Bin 0 -> 114919 bytes
+ .../outputs/smoke30/point/point_000029.json        |      46 +
+ .../outputs/smoke30/point/point_000029.npz         |     Bin 0 -> 63855 bytes
+ .../outputs/smoke30/point/point_000030.json        |      46 +
+ .../outputs/smoke30/point/point_000030.npz         |     Bin 0 -> 66414 bytes
+ .../outputs/smoke30/point_completed.json           |       1 +
+ .../smoke30/trajectories/mb_000001.audit.jsonl.gz  |     Bin 0 -> 343042 bytes
+ .../outputs/smoke30/trajectories/mb_000001.json    |     208 +
+ .../outputs/smoke30/trajectories/mb_000001.npz     |     Bin 0 -> 52049 bytes
+ .../smoke30/trajectories/mb_000002.audit.jsonl.gz  |     Bin 0 -> 205312 bytes
+ .../outputs/smoke30/trajectories/mb_000002.json    |     208 +
+ .../outputs/smoke30/trajectories/mb_000002.npz     |     Bin 0 -> 28435 bytes
+ .../smoke30/trajectories/mb_000003.audit.jsonl.gz  |     Bin 0 -> 406310 bytes
+ .../outputs/smoke30/trajectories/mb_000003.json    |     208 +
+ .../outputs/smoke30/trajectories/mb_000003.npz     |     Bin 0 -> 60036 bytes
+ .../smoke30/trajectories/mb_000004.audit.jsonl.gz  |     Bin 0 -> 240865 bytes
+ .../outputs/smoke30/trajectories/mb_000004.json    |     193 +
+ .../outputs/smoke30/trajectories/mb_000004.npz     |     Bin 0 -> 33004 bytes
+ .../smoke30/trajectories/mb_000005.audit.jsonl.gz  |     Bin 0 -> 523565 bytes
+ .../outputs/smoke30/trajectories/mb_000005.json    |     208 +
+ .../outputs/smoke30/trajectories/mb_000005.npz     |     Bin 0 -> 75214 bytes
+ .../smoke30/trajectories/mb_000006.audit.jsonl.gz  |     Bin 0 -> 362327 bytes
+ .../outputs/smoke30/trajectories/mb_000006.json    |     208 +
+ .../outputs/smoke30/trajectories/mb_000006.npz     |     Bin 0 -> 56016 bytes
+ .../smoke30/trajectories/mb_000007.audit.jsonl.gz  |     Bin 0 -> 672163 bytes
+ .../outputs/smoke30/trajectories/mb_000007.json    |     208 +
+ .../outputs/smoke30/trajectories/mb_000007.npz     |     Bin 0 -> 93590 bytes
+ .../smoke30/trajectories/mb_000008.audit.jsonl.gz  |     Bin 0 -> 145678 bytes
+ .../outputs/smoke30/trajectories/mb_000008.json    |     193 +
+ .../outputs/smoke30/trajectories/mb_000008.npz     |     Bin 0 -> 21131 bytes
+ .../smoke30/trajectories/mb_000009.audit.jsonl.gz  |     Bin 0 -> 355503 bytes
+ .../outputs/smoke30/trajectories/mb_000009.json    |     208 +
+ .../outputs/smoke30/trajectories/mb_000009.npz     |     Bin 0 -> 54720 bytes
+ .../smoke30/trajectories/mb_000010.audit.jsonl.gz  |     Bin 0 -> 430229 bytes
+ .../outputs/smoke30/trajectories/mb_000010.json    |     208 +
+ .../outputs/smoke30/trajectories/mb_000010.npz     |     Bin 0 -> 63088 bytes
+ .../smoke30/trajectories/mb_000011.audit.jsonl.gz  |     Bin 0 -> 518160 bytes
+ .../outputs/smoke30/trajectories/mb_000011.json    |     208 +
+ .../outputs/smoke30/trajectories/mb_000011.npz     |     Bin 0 -> 73801 bytes
+ .../smoke30/trajectories/mb_000012.audit.jsonl.gz  |     Bin 0 -> 666560 bytes
+ .../outputs/smoke30/trajectories/mb_000012.json    |     208 +
+ .../outputs/smoke30/trajectories/mb_000012.npz     |     Bin 0 -> 97782 bytes
+ .../smoke30/trajectories/mb_000013.audit.jsonl.gz  |     Bin 0 -> 367624 bytes
+ .../outputs/smoke30/trajectories/mb_000013.json    |     208 +
+ .../outputs/smoke30/trajectories/mb_000013.npz     |     Bin 0 -> 55057 bytes
+ .../smoke30/trajectories/mb_000014.audit.jsonl.gz  |     Bin 0 -> 455334 bytes
+ .../outputs/smoke30/trajectories/mb_000014.json    |     208 +
+ .../outputs/smoke30/trajectories/mb_000014.npz     |     Bin 0 -> 65772 bytes
+ .../smoke30/trajectories/mb_000015.audit.jsonl.gz  |     Bin 0 -> 235062 bytes
+ .../outputs/smoke30/trajectories/mb_000015.json    |     208 +
+ .../outputs/smoke30/trajectories/mb_000015.npz     |     Bin 0 -> 31991 bytes
+ .../smoke30/trajectories/mb_000016.audit.jsonl.gz  |     Bin 0 -> 478536 bytes
+ .../outputs/smoke30/trajectories/mb_000016.json    |     208 +
+ .../outputs/smoke30/trajectories/mb_000016.npz     |     Bin 0 -> 69222 bytes
+ .../smoke30/trajectories/mb_000017.audit.jsonl.gz  |     Bin 0 -> 513348 bytes
+ .../outputs/smoke30/trajectories/mb_000017.json    |     208 +
+ .../outputs/smoke30/trajectories/mb_000017.npz     |     Bin 0 -> 73281 bytes
+ .../smoke30/trajectories/mb_000018.audit.jsonl.gz  |     Bin 0 -> 598995 bytes
+ .../outputs/smoke30/trajectories/mb_000018.json    |     208 +
+ .../outputs/smoke30/trajectories/mb_000018.npz     |     Bin 0 -> 83650 bytes
+ .../smoke30/trajectories/mb_000019.audit.jsonl.gz  |     Bin 0 -> 407715 bytes
+ .../outputs/smoke30/trajectories/mb_000019.json    |     208 +
+ .../outputs/smoke30/trajectories/mb_000019.npz     |     Bin 0 -> 59686 bytes
+ .../smoke30/trajectories/mb_000020.audit.jsonl.gz  |     Bin 0 -> 175621 bytes
+ .../outputs/smoke30/trajectories/mb_000020.json    |     208 +
+ .../outputs/smoke30/trajectories/mb_000020.npz     |     Bin 0 -> 24754 bytes
+ .../smoke30/trajectories/mb_000021.audit.jsonl.gz  |     Bin 0 -> 139847 bytes
+ .../outputs/smoke30/trajectories/mb_000021.json    |     208 +
+ .../outputs/smoke30/trajectories/mb_000021.npz     |     Bin 0 -> 20196 bytes
+ .../smoke30/trajectories/mb_000022.audit.jsonl.gz  |     Bin 0 -> 126395 bytes
+ .../outputs/smoke30/trajectories/mb_000022.json    |     208 +
+ .../outputs/smoke30/trajectories/mb_000022.npz     |     Bin 0 -> 19249 bytes
+ .../smoke30/trajectories/mb_000023.audit.jsonl.gz  |     Bin 0 -> 421302 bytes
+ .../outputs/smoke30/trajectories/mb_000023.json    |     208 +
+ .../outputs/smoke30/trajectories/mb_000023.npz     |     Bin 0 -> 61955 bytes
+ .../smoke30/trajectories/mb_000024.audit.jsonl.gz  |     Bin 0 -> 447037 bytes
+ .../outputs/smoke30/trajectories/mb_000024.json    |     208 +
+ .../outputs/smoke30/trajectories/mb_000024.npz     |     Bin 0 -> 66114 bytes
+ .../smoke30/trajectories/mb_000025.audit.jsonl.gz  |     Bin 0 -> 502134 bytes
+ .../outputs/smoke30/trajectories/mb_000025.json    |     208 +
+ .../outputs/smoke30/trajectories/mb_000025.npz     |     Bin 0 -> 73348 bytes
+ .../smoke30/trajectories/mb_000026.audit.jsonl.gz  |     Bin 0 -> 485540 bytes
+ .../outputs/smoke30/trajectories/mb_000026.json    |     208 +
+ .../outputs/smoke30/trajectories/mb_000026.npz     |     Bin 0 -> 70330 bytes
+ .../smoke30/trajectories/mb_000027.audit.jsonl.gz  |     Bin 0 -> 461757 bytes
+ .../outputs/smoke30/trajectories/mb_000027.json    |     208 +
+ .../outputs/smoke30/trajectories/mb_000027.npz     |     Bin 0 -> 66272 bytes
+ .../smoke30/trajectories/mb_000028.audit.jsonl.gz  |     Bin 0 -> 224272 bytes
+ .../outputs/smoke30/trajectories/mb_000028.json    |     208 +
+ .../outputs/smoke30/trajectories/mb_000028.npz     |     Bin 0 -> 30945 bytes
+ .../smoke30/trajectories/mb_000029.audit.jsonl.gz  |     Bin 0 -> 352937 bytes
+ .../outputs/smoke30/trajectories/mb_000029.json    |     208 +
+ .../outputs/smoke30/trajectories/mb_000029.npz     |     Bin 0 -> 54049 bytes
+ .../smoke30/trajectories/mb_000030.audit.jsonl.gz  |     Bin 0 -> 452698 bytes
+ .../outputs/smoke30/trajectories/mb_000030.json    |     208 +
+ .../outputs/smoke30/trajectories/mb_000030.npz     |     Bin 0 -> 66373 bytes
+ .../scripts/analyze_smoke.py                       |      63 +
+ .../scripts/build_reports.py                       |     360 +
+ .../scripts/collect_smoke.py                       |      14 +
+ .../scripts/compare_legacy.py                      |      31 +
+ .../scripts/deploy_smoke.py                        |      31 +
+ .../scripts/gate_inlet.py                          |      63 +
+ .../scripts/probe_inputs.py                        |      15 +
+ .../scripts/render_figures.py                      |     101 +
+ .../scripts/run_inlet_audit.py                     |      80 +
+ .../scripts/run_smoke30.py                         |      57 +
+ .../scripts/synthetic_audit.py                     |      30 +
+ particle_3d/src/particle_3d/continuous_infusion.py |     241 +
+ .../src/particle_3d/population_inlet_p9a4.py       |     140 +
+ .../tests/particle9a4_population_inlet/__init__.py |       1 +
+ .../tests/particle9a4_population_inlet/conftest.py |      73 +
+ ...ular_poiseuille_accepted_radial_distribution.py |      11 +
+ .../test_circular_poiseuille_accessible_flux.py    |       6 +
+ .../test_circular_poiseuille_size_marginal.py      |       6 +
+ .../test_flux_position_sampler_unchanged.py        |      20 +
+ .../test_inlet_cap_not_solid.py                    |      24 +
+ .../test_new_contract_uses_network_h0_flow.py      |      12 +
+ .../test_old_flow_rejected_for_p9a4.py             |       8 +
+ .../test_old_method_b_replay_unchanged.py          |      12 +
+ .../test_old_method_c_replay_unchanged.py          |       9 +
+ .../test_open_inlet_straddling_sphere_accepts.py   |       9 +
+ .../test_particle_id_only_for_accepted_birth.py    |       7 +
+ .../test_poisson_fixed_seed_replay.py              |       6 +
+ .../test_poisson_inverse_transform.py              |      23 +
+ .../test_poisson_thinning_rate.py                  |      10 +
+ .../test_real_wall_overlap_rejects.py              |       9 +
+ .../test_rejected_event_never_retries_position.py  |       7 +
+ .../test_rejected_event_never_retries_size.py      |       6 +
+ .../test_restart_preserves_next_source_event.py    |      19 +
+ ...ource_and_entering_distribution_are_distinct.py |       5 +
+ .../test_source_event_id_includes_rejections.py    |       7 +
+ .../test_truncated_sonovue_no_4um_spike.py         |       8 +
+ .../test_worker_independent_proposal_ledger.py     |      14 +
+ 317 files changed, 1965067 insertions(+)

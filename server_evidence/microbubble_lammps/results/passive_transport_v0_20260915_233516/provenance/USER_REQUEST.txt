@@ -1,0 +1,1908 @@
+执行独立科研任务：
+
+# PASSIVE_MICROBUBBLE_TRANSPORT_V0
+
+目标：
+
+建立并验证第一版正式的 overdamped / quasi-steady
+SonoVue 微泡输运 baseline。
+
+核心模型：
+
+particle inertia = OFF
+
+在当前 V0 中：
+
+bubble velocity = local fluid velocity
+
+即：
+
+dx_b/dt = u_f(x_b)
+
+其中：
+
+u_f(x_b)
+
+来自已经验证通过的：
+
+FROZEN_FLOW_FIELD_V0
++
+TRILINEAR_INTERPOLATION
+
+本阶段首先回答：
+
+“如果不考虑浮力、lift、wall hydrodynamics、
+bubble-bubble physics、adhesion 和 RBC，
+一颗有限尺寸 SonoVue 微泡仅随冻结血流运动时，
+我们的数值输运流程是否正确、稳定、可复现？”
+
+==================================================
+0. 当前已通过的基础设施
+==================================================
+
+SONOVUE_CONTINUOUS_SAMPLER_V0 = PASS
+
+MINIMAL_LAMMPS_PARTICLE_ENGINE = PASS
+
+PALABOS_LAMMPS_COUPLING_V0 = PASS
+
+当前 frozen flow：
+
+FROZEN_FLOW_FIELD_V0.h5
+
+SHA256 =
+7828ed32b0cdd1e0e85836a564b6737128e7dbe30181ddd43110233b37b64a7f
+
+fluid nodes =
+182694
+
+lattice dims =
+493 x 497 x 280
+
+dx =
+1.9989918081065344e-7 m
+
+origin =
+[8.00903149195763e-05,
+ 5.5701359566515553e-05,
+ 0.00011143341591952393] m
+
+velocity source =
+Velocity_m_s
+
+禁止使用：
+
+VelocityMagnitude_m_s
+
+==================================================
+1. 真实 field 的科学身份保持不变
+==================================================
+
+当前真实 PBS/BSA field 来自：
+
+5000-step new-medium smoke。
+
+因此：
+
+FLOW_FIELD_SCIENTIFIC_STATUS =
+ENGINEERING_TRANSIENT_FIELD_ONLY
+
+不是：
+
+FORMAL_LONG_STEADY_BASELINE
+
+仍保持：
+
+NEW_MEDIUM_INLET_MULTIPLIER_VALIDATION =
+NOT_PERFORMED
+
+TRANSIENT_BACKFLOW_OBSERVED =
+YES
+
+所以本 Stage 主要验证：
+
+transport implementation
+
+不得用结果声称：
+
+真实实验 margination 已验证
+真实 branch probability 已验证
+真实 adhesion 已验证
+
+==================================================
+2. 正式 V0 transport physics
+==================================================
+
+冻结：
+
+DYNAMICS =
+OVERDAMPED_QUASI_STEADY
+
+PARTICLE_INERTIA =
+OFF
+
+NEWTON_SECOND_LAW_INTEGRATION =
+OFF
+
+BULK_DRAG_MODEL =
+STOKES
+
+但是：
+
+当前只有 bulk Stokes drag，
+没有其它 external force。
+
+因此从：
+
+0 =
+3*pi*mu*d*(u_f-v_b)
+
+直接得到：
+
+v_b =
+u_f
+
+正式实现应直接使用：
+
+dx_b/dt =
+u_f(x_b)
+
+不要再通过：
+
+technical density
+mass
+acceleration
+relaxation time
+fix nve/sphere
+
+间接逼近 v_b = u_f。
+
+==================================================
+3. 当前明确关闭的物理
+==================================================
+
+BUOYANCY =
+OFF_IN_V0
+
+LIFT =
+OFF_IN_V0
+
+ADDED_MASS =
+OFF
+
+BASSET_HISTORY =
+OFF
+
+BUBBLE_BUBBLE_FORCE =
+OFF_IN_V0
+
+BUBBLE_BUBBLE_LUBRICATION =
+OFF
+
+WALL_HYDRODYNAMIC_CORRECTION =
+OFF
+
+WALL_CONTACT_FORCE =
+OFF
+
+ADHESION =
+OFF
+
+RBC =
+OFF
+
+ULTRASOUND =
+OFF
+
+TWO_WAY_COUPLING =
+OFF
+
+==================================================
+4. 当前模型的解释
+==================================================
+
+报告中必须明确：
+
+本 Stage 是：
+
+PASSIVE ADVECTION BASELINE
+
+不是完整 SonoVue transport model。
+
+微泡仍具有：
+
+diameter
+radius
+particle ID
+position
+
+但在 V0 中：
+
+diameter 不改变 bulk passive trajectory。
+
+这是模型的自然结果：
+
+只有 Stokes drag + overdamped
+且无其它力时，
+
+v_b = u_f
+
+与 d 无关。
+
+不得把这一结果误判为：
+
+“粒径没有物理意义”。
+
+以后：
+
+buoyancy
+wall hydrodynamics
+bubble-bubble interaction
+adhesion
+
+都会重新引入 diameter dependence。
+
+==================================================
+5. 不修改已有 baseline
+==================================================
+
+禁止修改：
+
+Palabos Stage4
+FROZEN_FLOW_FIELD_V0
+PBS/BSA numerics
+SonoVue histogram
+SonoVue sampler
+LAMMPS core
+previous coupling V0 results
+
+要求：
+
+FORMAL_PURE_FLUID_BASELINE_MODIFIED = NO
+COUPLING_V0_BASELINE_MODIFIED = NO
+SONOVUE_SAMPLER_MODIFIED = NO
+LAMMPS_ENGINE_BASELINE_MODIFIED = NO
+
+==================================================
+6. 工作目录
+==================================================
+
+远端：
+
+ssh vast4090
+
+建立：
+
+/workspace/microbubble_lammps/work/passive_transport_v0_<timestamp>
+
+结果：
+
+/workspace/microbubble_lammps/results/passive_transport_v0_<timestamp>
+
+本地下载：
+
+/home/lzy/projects/compre_output/passive_transport_v0/<timestamp>
+
+==================================================
+7. 实现方式
+==================================================
+
+保留：
+
+LAMMPS particle storage
+particle IDs
+MPI ownership/migration
+future neighbor infrastructure
+
+但新建一个独立：
+
+overdamped passive transport fix/module
+
+建议语义：
+
+fix sonovue/passive/flow
+
+实际名字可调整。
+
+禁止修改 LAMMPS core。
+
+==================================================
+8. 不再使用 nve/sphere 作为正式推进器
+==================================================
+
+本 Stage 正式 transport cases：
+
+不得使用：
+
+fix nve/sphere
+
+来实现惯性推进。
+
+可以继续：
+
+atom_style sphere
+
+保存有限尺寸。
+
+但 position update
+由 overdamped transport integrator
+直接完成。
+
+==================================================
+9. 数学方程
+==================================================
+
+正式 ODE：
+
+dX/dt =
+U(X)
+
+其中：
+
+X =
+bubble center position
+
+U(X) =
+FlowFieldSampler
+对 frozen velocity field
+做三线性插值得到的速度。
+
+==================================================
+10. 时间积分方法
+==================================================
+
+不要使用最简单 forward Euler
+作为最终 production V0。
+
+正式采用：
+
+SECOND_ORDER_MIDPOINT_RK2
+
+每一步：
+
+k1 = U(X_n)
+
+X_mid =
+X_n + 0.5*dt*k1
+
+k2 =
+U(X_mid)
+
+X_{n+1} =
+X_n + dt*k2
+
+然后：
+
+V_{n+1} =
+U(X_{n+1})
+
+保存：
+
+particle velocity =
+sampled advective velocity
+
+==================================================
+11. 为什么使用 RK2
+==================================================
+
+报告说明：
+
+RK2：
+
+比 forward Euler 更稳定/准确，
+
+但比 RK4 更便宜，
+
+适合作为第一版大量粒子
+frozen-flow transport baseline。
+
+Python 独立 reference：
+
+允许使用：
+
+DOP853 / RK45 high accuracy
+
+验证 RK2。
+
+==================================================
+12. RK2 midpoint query policy
+==================================================
+
+如果：
+
+X_mid
+
+或：
+
+X_{n+1}
+
+进入：
+
+INVALID_QUERY
+SOLID
+MISSING
+outside domain
+
+必须：
+
+hard stop current particle/case
+
+不得：
+
+nearest fallback
+clamp
+silent extrapolation
+
+记录：
+
+INVALID_QUERY_COUNT
+
+==================================================
+13. timestep 不再由 relaxation time 决定
+==================================================
+
+旧 coupling validation：
+
+dt =
+6.25e-11 s
+
+是为了显式解析技术性 particle inertia。
+
+本 Stage：
+
+不得沿用该逻辑。
+
+新的 timestep 基于：
+
+SPATIAL_DISPLACEMENT_CONTROL
+
+==================================================
+14. timestep 基础定义
+==================================================
+
+从 frozen field 计算：
+
+U_MAX =
+max magnitude of valid fluid-node velocity
+
+定义：
+
+dt_base =
+C_adv * dx / U_MAX
+
+其中：
+
+C_adv
+
+是 particle advection CFL-like factor。
+
+初始候选：
+
+C_adv =
+0.25
+
+含义：
+
+在最大流速区域，
+
+单个 timestep
+预计不超过约 0.25 dx 位移。
+
+==================================================
+15. timestep convergence test
+==================================================
+
+不要直接宣布：
+
+C_adv=0.25
+
+就是正确生产步长。
+
+必须测试：
+
+C_adv =
+0.50
+0.25
+0.125
+
+即：
+
+dt
+dt/2
+dt/4
+
+比较轨迹。
+
+==================================================
+16. timestep freeze rule
+==================================================
+
+使用：
+
+0.125
+
+作为高分辨率 reference。
+
+检查：
+
+0.25 vs 0.125
+
+以及：
+
+0.50 vs 0.25
+
+最终选择：
+
+最大的满足 convergence gate
+的 timestep。
+
+不得：
+
+看最终科学结果后调 timestep。
+
+生成：
+
+PASSIVE_TRANSPORT_TIMESTEP_CONTRACT.json
+
+==================================================
+17. convergence gate
+==================================================
+
+对于 synthetic trajectory：
+
+最终位置差：
+
+norm(X_dt - X_ref)
+
+要求：
+
+<= 0.05*dx
+
+并比较整个记录轨迹：
+
+MAX_TRAJECTORY_DIFFERENCE
+<= 0.10*dx
+
+对于 real field：
+
+采用相同宽松 gate。
+
+如果：
+
+C_adv=0.25 PASS
+
+则正式 V0：
+
+C_adv=0.25
+
+如果 FAIL：
+
+使用 0.125。
+
+如果 0.125
+仍不能稳定：
+
+TRANSPORT_TIMESTEP =
+FAIL
+
+不要继续真实场。
+
+==================================================
+18. CASE 0 — uniform flow analytic
+==================================================
+
+使用已经存在的：
+
+UNIFORM_FIELD
+
+正式方程：
+
+dX/dt =
+constant U
+
+解析解：
+
+X(t) =
+X0 + U*t
+
+使用：
+
+1 bubble
+
+diameter：
+
+来自 SonoVue sampler
+
+seed =
+20260922
+
+虽然 trajectory 与 diameter 无关，
+仍保存真实 diameter provenance。
+
+==================================================
+19. CASE 0 gate
+==================================================
+
+运行足够时间：
+
+粒子移动多个 dx
+
+但不触及 domain boundary。
+
+比较：
+
+RK2
+vs
+analytic solution
+
+要求：
+
+MAX_POSITION_ERROR
+<= 1e-12 m
+
+MAX_VELOCITY_ERROR
+<= 1e-13 m/s
+
+CASE_0_UNIFORM_PASSIVE =
+PASS
+
+==================================================
+20. CASE 1 — linear velocity field
+==================================================
+
+使用已有：
+
+LINEAR_FIELD
+
+1 bubble
+
+seed =
+20260923
+
+reference：
+
+Python solve_ivp DOP853
+
+rtol <= 1e-12
+
+tight atol。
+
+==================================================
+21. CASE 1 gate
+==================================================
+
+比较整个 trajectory：
+
+LAMMPS RK2
+vs
+Python reference
+
+要求：
+
+MAX_POSITION_ERROR
+<= 0.05*dx
+
+FINAL_POSITION_ERROR
+<= 0.02*dx
+
+sampled velocity finite
+
+INVALID_QUERY_COUNT = 0
+
+CASE_1_LINEAR_PASSIVE =
+PASS
+
+==================================================
+22. CASE 2 —真实 field 单泡 transport
+==================================================
+
+使用：
+
+FROZEN_FLOW_FIELD_V0
+
+从 SonoVue sampler：
+
+seed =
+20260924
+
+生成 100 samples
+
+根据：
+
+closest to d50
+
+选择 bubble。
+
+选择规则必须在 geometry search 前冻结。
+
+==================================================
+23. CASE 2 spawn
+==================================================
+
+使用已有 closed STL
+以及 validated wall-distance tools。
+
+找到：
+
+SAFE_INTERIOR_START
+
+要求：
+
+center-wall distance >
+radius + 5*dx
+
+比上一 coupling test
+稍微保守。
+
+同时：
+
+当前位置 interpolation cell
+8 corners all valid fluid。
+
+==================================================
+24. CASE 2 path safety
+==================================================
+
+当前没有 wall model。
+
+所以运行过程中：
+
+bubble surface-wall gap
+
+必须始终：
+
+>= 3*dx
+
+如果预测下一步：
+
+gap < 3*dx
+
+则：
+
+SAFETY_STOP
+
+不是 FAIL。
+
+状态写：
+
+CASE_2_TERMINATED_AT_WALL_SAFETY_BOUNDARY
+
+因为当前物理模型
+本来就没有定义 near-wall region。
+
+不得让 bubble 继续进入
+未定义 wall physics 区域。
+
+==================================================
+25. CASE 2 trajectory duration
+==================================================
+
+尽可能运行到：
+
+A.
+达到预定 maximum physical time
+
+或
+
+B.
+到达 safety wall boundary
+
+或
+
+C.
+接近 outlet / invalid interpolation boundary
+
+三者最早发生者。
+
+maximum physical time：
+
+根据真实 field 和 domain 尺度
+在正式运行前冻结。
+
+目标：
+
+明显长于上一 Case C 的
+~1 microsecond 工程 smoke。
+
+不要只移动 1e-10 m
+就宣称 transport PASS。
+
+==================================================
+26. Case 2 最低有效位移
+==================================================
+
+为了真正证明输运流程：
+
+要求：
+
+TOTAL_CENTER_DISPLACEMENT
+>= 10*dx
+
+如果 geometry/path
+无法允许至少 10dx：
+
+CASE_2 =
+BLOCKED_SHORT_SAFE_PATH
+
+不得为了过门：
+
+减小 bubble
+换 seed
+改 wall margin。
+
+==================================================
+27. Case 2 检查
+==================================================
+
+每 step：
+
+finite position
+finite sampled velocity
+query valid
+
+适当低频记录：
+
+time
+x,y,z
+vx,vy,vz
+speed
+diameter
+center-wall distance
+surface-wall gap
+local fluid speed
+query status
+
+要求：
+
+NONFINITE = 0
+INVALID_QUERY = 0
+LOST_ATOMS = 0
+
+==================================================
+28. CASE 3 — diameter-independence sanity
+==================================================
+
+这是 V0 特有的验证。
+
+从 SonoVue sampler：
+
+seed =
+20260925
+
+生成：
+
+10000 particles
+
+选择：
+
+closest d10
+closest d50
+closest d90
+
+三个粒径。
+
+使用：
+
+完全相同初始 center
++
+完全相同 frozen flow。
+
+由于当前：
+
+overdamped
+Stokes only
+no other force
+
+理论上三条 trajectory
+必须相同。
+
+==================================================
+29. CASE 3 gate
+==================================================
+
+按 time 比较：
+
+d10 trajectory
+d50 trajectory
+d90 trajectory
+
+要求：
+
+MAX_POSITION_DIFFERENCE
+<= 1e-12 m
+
+MAX_VELOCITY_DIFFERENCE
+<= 1e-13 m/s
+
+结果：
+
+DIAMETER_INDEPENDENCE_V0 =
+PASS
+
+报告必须解释：
+
+这不是说 SonoVue 实际运动
+永远与 diameter 无关。
+
+只是当前 minimal baseline
+的数学结果。
+
+==================================================
+30. CASE 4 — multi-particle passive transport
+==================================================
+
+使用：
+
+N =
+1000
+
+SonoVue sampler seed =
+20260926
+
+bubble-bubble interaction =
+OFF
+
+wall interaction =
+OFF
+
+==================================================
+31. CASE 4 initial positions
+==================================================
+
+不要把 1000 particles
+直接塞进狭窄真实 lumen
+导致 geometry packing 问题。
+
+本 case 首先使用：
+
+synthetic field / sufficiently large domain
+
+验证：
+
+batch overdamped integration
+MPI migration
+particle identity。
+
+==================================================
+32. CASE 4 MPI
+==================================================
+
+相同初态分别：
+
+MPI1
+MPI4
+
+run 相同 steps。
+
+按 particle ID 比较：
+
+diameter
+position
+velocity
+
+要求：
+
+diameter exact
+
+MAX_MPI_POSITION_DIFFERENCE
+<= 1e-10 m
+
+MAX_MPI_VELOCITY_DIFFERENCE
+<= 1e-12 m/s
+
+CASE_4_MULTIPARTICLE_PASSIVE =
+PASS
+
+==================================================
+33. CASE 5 — small real-field population smoke
+==================================================
+
+只有 Case 2 PASS
+才运行。
+
+不要一开始塞 1000 particles。
+
+选择：
+
+N = 10
+
+SonoVue sampler：
+
+seed =
+20260927
+
+==================================================
+34. Case 5 geometry placement
+==================================================
+
+必须寻找：
+
+10 个彼此独立的
+safe interior starts。
+
+初始：
+
+sphere-sphere non-overlap
+
+surface-wall gap >= 5dx
+
+8-corner interpolation valid。
+
+如果不能安全放 10 个：
+
+减少到：
+
+最大 deterministic safe count
+
+但必须：
+
+在 run 前报告并冻结。
+
+最低：
+
+N >= 3
+
+否则：
+
+CASE_5 =
+BLOCKED_INSUFFICIENT_SAFE_STARTS
+
+==================================================
+35. Case 5 interaction status
+==================================================
+
+虽然有多个 bubble：
+
+BUBBLE_BUBBLE_FORCE =
+OFF
+
+如果两颗 sphere
+未来发生几何 overlap：
+
+立即：
+
+SAFETY_STOP
+
+并记录。
+
+不允许依靠技术 granular contact
+偷偷代替科学 bubble-bubble interaction。
+
+==================================================
+36. Case 5 purpose
+==================================================
+
+只验证：
+
+不同 SonoVue diameter
++
+不同初始位置
++
+真实 frozen flow
+
+能够产生多条独立 passive trajectories。
+
+不得：
+
+统计 margination probability
+
+不得：
+
+统计 bubble-bubble physics。
+
+==================================================
+37. Kokkos / GPU policy
+==================================================
+
+上一 coupling V0 已证明：
+
+KOKKOS compatibility =
+PASS
+
+但是：
+
+GPU_PERFORMANCE_READY =
+NO
+
+大量 host/device sync
+和 H2D/D2H 已被观测。
+
+因此本 Stage：
+
+CORRECTNESS FIRST
+
+不做 GPU optimization。
+
+==================================================
+38. 正式运行 backend
+==================================================
+
+为了避免 host Fix GPU 同步
+干扰本阶段科学 correctness：
+
+主要 validation
+允许使用：
+
+CPU MPI path
+
+因为 frozen-flow transport
+不需要重跑 Palabos。
+
+另外做：
+
+KOKKOS_COMPATIBILITY_SMOKE
+
+即可。
+
+==================================================
+39. GPU smoke
+==================================================
+
+使用：
+
+1000 synthetic particles
+
+短 run
+
+确认：
+
+custom overdamped fix
+在 GPU binary 下可运行
+
+nonfinite = 0
+lost atoms = 0
+
+但：
+
+GPU_PERFORMANCE_READY
+仍保持：
+
+NO
+
+除非本任务没有专门性能优化，
+不得升级。
+
+==================================================
+40. 不进行 GPU optimization
+==================================================
+
+禁止：
+
+CUDA rewrite
+Kokkos custom kernels
+zero-copy
+device hash map
+GPU field sampler rewrite
+kernel batching optimization
+
+这些放到：
+
+PASSIVE_TRANSPORT_GPU_OPTIMIZATION
+
+后续独立阶段。
+
+==================================================
+41. Independent Python reference
+==================================================
+
+建立：
+
+reference_passive_transport.py
+
+独立实现：
+
+trilinear interpolation
+RK2
+DOP853 reference
+
+不得调用 C++ coupling library。
+
+==================================================
+42. 独立 finalizer
+==================================================
+
+建立：
+
+finalize_passive_transport_v0.py
+
+独立计算：
+
+trajectory errors
+velocity errors
+dt convergence
+diameter independence
+MPI identity
+wall distances
+query validity
+nonfinite
+particle IDs
+
+要求：
+
+INDEPENDENT_FINALIZER =
+PASS
+
+==================================================
+43. 必须生成的可视化
+==================================================
+
+所有可视化必须：
+
+由独立 Python validation script
+从最终冻结 CSV/HDF5 生成。
+
+不能：
+
+手工画
+手工修改轨迹
+为了好看平滑 trajectory
+
+==================================================
+44. VIS 1 — uniform analytic trajectory
+==================================================
+
+文件：
+
+VIS_CASE0_UNIFORM_ANALYTIC.png
+
+内容：
+
+X/Y/Z trajectory
+数值结果 vs 解析解
+
+至少：
+
+position vs time
+
+让两条线直接叠加。
+
+另画：
+
+absolute position error vs time。
+
+==================================================
+45. VIS 2 — linear-field reference comparison
+==================================================
+
+文件：
+
+VIS_CASE1_LINEAR_REFERENCE.png
+
+至少显示：
+
+3D 或三个平面中的 particle trajectory：
+
+LAMMPS RK2
+vs
+Python DOP853
+
+以及：
+
+position error vs time。
+
+==================================================
+46. VIS 3 — timestep convergence
+==================================================
+
+文件：
+
+VIS_TIMESTEP_CONVERGENCE.png
+
+显示：
+
+C_adv =
+0.5
+0.25
+0.125
+
+对应：
+
+final-position error
+和/或 trajectory max difference。
+
+必须清晰标记：
+
+最终选择的 production C_adv。
+
+==================================================
+47. VIS 4 — real vascular trajectory
+==================================================
+
+文件：
+
+VIS_CASE2_REAL_TRAJECTORY.png
+
+至少生成三张 orthographic projection：
+
+XY
+XZ
+YZ
+
+显示：
+
+vascular lumen / wall outline
++
+bubble center trajectory
++
+start
++
+end/safety-stop
+
+不能只画裸 trajectory
+而没有 geometry context。
+
+==================================================
+48. ParaView-friendly trajectory
+==================================================
+
+同时生成：
+
+CASE2_TRAJECTORY.vtp
+
+包含 point data：
+
+time_s
+diameter_um
+speed_m_s
+fluid_speed_m_s
+center_wall_distance_um
+surface_wall_gap_um
+
+以及：
+
+FROZEN_LUMEN reference
+
+方便人工 ParaView 核查。
+
+==================================================
+49. VIS 5 — real trajectory speed
+==================================================
+
+文件：
+
+VIS_CASE2_SPEED_TIME.png
+
+显示：
+
+time
+
+particle speed
+
+sampled fluid speed
+
+因为 V0：
+
+理论上两者应该重合。
+
+同时可以生成：
+
+|v_particle - u_fluid|
+
+误差曲线。
+
+==================================================
+50. VIS 6 — wall clearance
+==================================================
+
+文件：
+
+VIS_CASE2_WALL_CLEARANCE.png
+
+显示：
+
+surface-wall gap vs time
+
+并画：
+
+5dx initial target
+3dx safety boundary
+
+如果触发 safety stop：
+
+明确标记 stop point。
+
+==================================================
+51. VIS 7 — diameter-independence
+==================================================
+
+文件：
+
+VIS_CASE3_DIAMETER_INDEPENDENCE.png
+
+将：
+
+d10
+d50
+d90
+
+三条 trajectory
+画在同一坐标图。
+
+应几乎完全重合。
+
+标题/annotation 明确：
+
+“Expected in passive Stokes-only overdamped V0”
+
+避免误解。
+
+==================================================
+52. VIS 8 — multi-bubble real-field smoke
+==================================================
+
+如果 Case 5 可运行：
+
+生成：
+
+VIS_CASE5_MULTIBUBBLE_TRAJECTORIES.png
+
+显示：
+
+所有真实场粒子轨迹
+
+使用统一 geometry context。
+
+至少：
+
+XY/XZ/YZ
+其中一个最有信息量的 projection
+
+另外保存：
+
+CASE5_TRAJECTORIES.vtp
+
+供 ParaView。
+
+==================================================
+53. visualization correctness gate
+==================================================
+
+每张图的数据来源：
+
+必须写入：
+
+VISUALIZATION_PROVENANCE.json
+
+包含：
+
+source file
+source SHA256
+plot script SHA256
+
+禁止：
+
+图和正式数值结果
+来自不同版本数据。
+
+==================================================
+54. 可视化人工审阅状态
+==================================================
+
+Codex 可以检查：
+
+文件存在
+数据一致
+图生成成功
+
+但：
+
+HUMAN_VISUAL_REVIEW =
+PENDING
+
+不得自动填：
+
+PASS
+
+==================================================
+55. 输出粒子轨迹格式
+==================================================
+
+统一：
+
+trajectory CSV
+
+字段至少：
+
+particle_id
+time_s
+
+x_m
+y_m
+z_m
+
+vx_m_s
+vy_m_s
+vz_m_s
+
+fluid_ux_m_s
+fluid_uy_m_s
+fluid_uz_m_s
+
+speed_m_s
+fluid_speed_m_s
+
+diameter_um
+
+center_wall_distance_um
+surface_wall_gap_um
+
+query_status
+
+==================================================
+56. 输出频率
+==================================================
+
+内部 timestep
+可以很小。
+
+但 trajectory output：
+
+不要每一步都写磁盘。
+
+目标：
+
+每条轨迹约：
+
+500–2000 samples
+
+同时：
+
+初始
+最终
+failure/safety stop
+
+必须保存。
+
+==================================================
+57. output interpolation
+==================================================
+
+如果内部 timestep
+和 desired output interval
+不整除：
+
+允许按时间选择最近 timestep。
+
+不要为了输出修改 integrator timestep。
+
+==================================================
+58. 性能记录
+==================================================
+
+记录：
+
+particle steps/s
+wall time
+MPI ranks
+RAM
+
+GPU smoke：
+
+GPU util
+VRAM
+
+但是：
+
+PERFORMANCE_GATE =
+NONE
+
+==================================================
+59. Stage contract
+==================================================
+
+正式数值运行前生成：
+
+PASSIVE_MICROBUBBLE_TRANSPORT_V0_CONTRACT.json
+
+冻结：
+
+overdamped model
+disabled forces
+RK2
+C_adv candidates
+convergence thresholds
+seeds
+selection rules
+wall safety margins
+case durations
+output policy
+
+正式结果生成后：
+
+不得改 gate。
+
+==================================================
+60. Scientific interpretation
+==================================================
+
+Stage PASS 后允许说：
+
+OVERDAMPED_TRANSPORT_IMPLEMENTATION =
+PASS
+
+PASSIVE_ADVECTION =
+PASS
+
+FROZEN_FLOW_MICROBUBBLE_TRANSPORT =
+PASS
+
+不允许说：
+
+REAL_SONOVUE_MARGINATION =
+PASS
+
+REAL_MICROBUBBLE_WALL_INTERACTION =
+PASS
+
+REAL_BUBBLE_BUBBLE_PHYSICS =
+PASS
+
+ADHESION =
+PASS
+
+==================================================
+61. Stage PASS 条件
+==================================================
+
+要求：
+
+OVERDAMPED_FIX_BUILD = PASS
+
+CASE_0_UNIFORM_PASSIVE = PASS
+
+CASE_1_LINEAR_PASSIVE = PASS
+
+TIMESTEP_CONVERGENCE = PASS
+
+CASE_2_REAL_FIELD_PASSIVE = PASS
+或合理 SAFETY_STOP
+但至少达到 10dx transport
+
+CASE_3_DIAMETER_INDEPENDENCE = PASS
+
+CASE_4_MULTIPARTICLE_PASSIVE = PASS
+
+MPI_COMPARISON = PASS
+
+CASE_5_REAL_MULTIBUBBLE =
+PASS / BLOCKED_GEOMETRY
+按证据报告
+
+KOKKOS_COMPATIBILITY_SMOKE = PASS
+
+INDEPENDENT_FINALIZER = PASS
+
+VISUALIZATION_GENERATION = PASS
+
+REMOTE_TO_WSL_INTEGRITY = PASS
+
+满足核心门后：
+
+PASSIVE_MICROBUBBLE_TRANSPORT_V0 =
+PASS
+
+==================================================
+62. 仍保持 PENDING
+==================================================
+
+Stage PASS 后：
+
+FULL_MICROBUBBLE_TRANSPORT_MODEL =
+PENDING
+
+BUOYANCY =
+OFF_IN_V0
+
+LIFT =
+OFF_IN_V0
+
+BUBBLE_BUBBLE_INTERACTION_MODEL =
+PENDING
+
+BUBBLE_BUBBLE_LUBRICATION =
+PENDING
+
+WALL_HYDRODYNAMICS =
+PENDING
+
+WALL_EXCLUSION =
+PENDING
+
+ADHESION =
+PENDING
+
+RBC =
+OFF
+
+TWO_WAY_COUPLING =
+OFF
+
+GPU_PERFORMANCE_READY =
+NO
+
+==================================================
+63. 下载与完整性
+==================================================
+
+远端结果：
+
+/workspace/microbubble_lammps/results/passive_transport_v0_<timestamp>
+
+生成：
+
+SHA256SUMS
+
+下载到：
+
+/home/lzy/projects/compre_output/passive_transport_v0/<timestamp>
+
+WSL：
+
+sha256sum -c
+
+要求：
+
+REMOTE_TO_WSL_INTEGRITY =
+PASS
+
+==================================================
+64. 中文报告
+==================================================
+
+生成：
+
+PASSIVE_MICROBUBBLE_TRANSPORT_V0_REPORT.md
+
+报告开头必须用门外汉能理解的语言说明：
+
+“这一版微泡没有自己的惯性，
+它每一刻都按照所在位置的流体速度移动。”
+
+并解释：
+
+这是 passive baseline，
+不是最终完整 SonoVue physics。
+
+==================================================
+65. 最终终端摘要
+==================================================
+
+输出：
+
+PASSIVE_MICROBUBBLE_TRANSPORT_V0 =
+
+DYNAMICS =
+OVERDAMPED_QUASI_STEADY
+
+EQUATION =
+dX/dt = U(X)
+
+PARTICLE_INERTIA =
+OFF
+
+BULK_DRAG =
+STOKES
+
+BUOYANCY =
+OFF_IN_V0
+
+LIFT =
+OFF_IN_V0
+
+ADDED_MASS =
+OFF
+
+BASSET_HISTORY =
+OFF
+
+BUBBLE_BUBBLE_FORCE =
+OFF
+
+WALL_HYDRODYNAMICS =
+OFF
+
+ADHESION =
+OFF
+
+RBC =
+OFF
+
+INTEGRATOR =
+RK2_MIDPOINT
+
+U_MAX_M_S =
+
+DX_M =
+1.9989918081065344e-7
+
+C_ADV_TESTED =
+0.5,0.25,0.125
+
+SELECTED_C_ADV =
+
+PARTICLE_DT_S =
+
+CASE_0_UNIFORM_PASSIVE =
+CASE_0_MAX_POSITION_ERROR_M =
+
+CASE_1_LINEAR_PASSIVE =
+CASE_1_MAX_POSITION_ERROR_M =
+
+TIMESTEP_CONVERGENCE =
+DT025_VS_DT0125_FINAL_POSITION_DIFF_M =
+
+CASE_2_REAL_FIELD_PASSIVE =
+CASE_2_DIAMETER_UM =
+CASE_2_STEPS =
+CASE_2_PHYSICAL_TIME_S =
+CASE_2_TOTAL_DISPLACEMENT_UM =
+CASE_2_MIN_SURFACE_WALL_GAP_UM =
+CASE_2_TERMINATION_REASON =
+
+CASE_3_DIAMETER_INDEPENDENCE =
+D10_UM =
+D50_UM =
+D90_UM =
+CASE_3_MAX_POSITION_DIFFERENCE_M =
+
+CASE_4_MULTIPARTICLE_PASSIVE =
+CASE_4_N =
+1000
+
+MPI_COMPARISON =
+MPI1_MPI4_MAX_POSITION_DIFFERENCE_M =
+
+CASE_5_REAL_MULTIBUBBLE =
+CASE_5_N =
+
+KOKKOS_COMPATIBILITY_SMOKE =
+
+GPU_PERFORMANCE_READY =
+NO
+
+NONFINITE_COUNT =
+LOST_ATOMS =
+INVALID_QUERY_COUNT =
+
+INDEPENDENT_FINALIZER =
+
+VIS_CASE0_UNIFORM_ANALYTIC =
+VIS_CASE1_LINEAR_REFERENCE =
+VIS_TIMESTEP_CONVERGENCE =
+VIS_CASE2_REAL_TRAJECTORY =
+VIS_CASE2_SPEED_TIME =
+VIS_CASE2_WALL_CLEARANCE =
+VIS_CASE3_DIAMETER_INDEPENDENCE =
+VIS_CASE5_MULTIBUBBLE_TRAJECTORIES =
+
+HUMAN_VISUAL_REVIEW =
+PENDING
+
+REMOTE_TO_WSL_INTEGRITY =
+
+FORMAL_PURE_FLUID_BASELINE_MODIFIED =
+NO
+
+COUPLING_V0_BASELINE_MODIFIED =
+NO
+
+FULL_MICROBUBBLE_TRANSPORT_MODEL =
+PENDING
+
+BUBBLE_BUBBLE_INTERACTION_MODEL =
+PENDING
+
+MICROBUBBLE_WALL_HYDRODYNAMICS =
+PENDING
+
+MICROBUBBLE_ADHESION =
+PENDING
+
+REMOTE_RESULT_DIR =
+
+LOCAL_RESULT_DIR =
+
+REPORT =
+
+NEXT_STAGE =
+USER_REVIEW_BEFORE_BUBBLE_BUBBLE_INTERACTION_V0

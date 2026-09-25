@@ -1,0 +1,1062 @@
+你现在开始：
+
+REDUCED_NEAR_WALL_HYDRODYNAMICS_V0
+
+但本任务严格限定为：
+
+PHASE 1 — FLAT-WALL REDUCED HYDRODYNAMICS KERNEL
+
+目标是建立并验证一个独立的 reduced wall kernel。
+
+本阶段：
+
+不接真实 vascular trajectory。
+不修改 Palabos。
+不生成 WSS。
+不接 adhesion。
+不接 RBC。
+不实现 BIE/QBX。
+不重新运行 fixed multiblob。
+不做 GPU rewrite。
+不修改历史 stage。
+
+============================================================
+0. 开始前重新确认状态
+============================================================
+
+先 READ ONLY 检查：
+
+Git repo：
+
+/home/lzy/projects/github_sync/ulm_microbubble_20260916_173258
+
+expected branch：
+
+codex/microbubble-wall-audits-handoff-20260916-173258
+
+expected commit：
+
+a466b77be19559bc7d1d91b49f88ab78a976c529
+
+允许的 dirty 状态只有：
+
+review/server_environment_audit_20260916/SERVER_ENVIRONMENT_REPORT.md
+
+review/server_environment_audit_20260916/SERVER_ENVIRONMENT_STATE.json
+
+如果 tracked source 有其他变化：
+
+STOP
+
+输出：
+
+STATE_DRIFT_DETECTED
+
+不要修复。
+
+同时读取：
+
+review/server_environment_audit_20260916/SERVER_ENVIRONMENT_REPORT.md
+
+review/server_environment_audit_20260916/SERVER_ENVIRONMENT_STATE.json
+
+review/microbubble_wall_handoff_20260916/CURRENT_PROJECT_STATUS.md
+
+review/microbubble_wall_handoff_20260916/CURRENT_STATE.json
+
+确认 Vast 当前关键路径仍存在。
+
+============================================================
+1. 冻结本阶段的科学范围
+============================================================
+
+本阶段要实现的是：
+
+flat rigid no-slip plane
++
+rigid undeformable sphere
++
+Stokes / overdamped
++
+gap-dependent wall excess resistance
++
+simple-shear Goldman-Cox-Brenner response
++
+NO artificial normal wall attraction
+
+核心方程：
+
+R_total
+=
+R_bulk
++
+R_wall_excess
+
+对于 simple shear：
+
+b_wall_shear
+=
+R_total * q_GCB
+-
+R_bulk * q_free_shear
+
+并验证孤立球：
+
+R_total q
+=
+R_bulk q_free_shear
++
+b_wall_shear
+
+能够恢复：
+
+q = q_GCB
+
+禁止直接：
+
+V *= correction_factor
+
+或在 solve 后覆盖 velocity。
+
+wall shear 必须进入 resistance/RHS 框架。
+
+============================================================
+2. 输入几何定义
+============================================================
+
+定义：
+
+distance d
+gap h = d - a
+epsilon = h / a
+
+local frame：
+
+t1
+t2
+n
+
+其中：
+
+n 指 wall -> sphere center。
+
+使用：
+
+Q = [t1 t2 n]
+
+6DOF transform：
+
+T = diag(Q,Q)
+
+要求明确记录 local/global coordinate convention。
+
+============================================================
+3. 当前允许复用的历史输入
+============================================================
+
+可以 READ ONLY 使用：
+
+wall reference table：
+
+/workspace/microbubble_lammps/results/wall_hydrodynamics_v0_20260916_130547/tables/RMBW_WALL_RESISTANCE_TABLE_V0.h5
+
+existing wall implementation：
+
+/workspace/microbubble_lammps/results/wall_hydrodynamics_v0_20260916_130547/src/wall_model.cpp
+
+/workspace/microbubble_lammps/results/wall_hydrodynamics_v0_20260916_130547/src/wall_model.hpp
+
+reference audit：
+
+/home/lzy/projects/compre_output/wall_hydrodynamics_reference_audit/20260916_115322/src/rmbw_reference_adapter.py
+
+/home/lzy/projects/compre_output/wall_hydrodynamics_reference_audit/20260916_115322/src/classical_wall_reference.py
+
+/home/lzy/projects/compre_output/wall_hydrodynamics_reference_audit/20260916_115322/src/compare_oneill_table.py
+
+production pair mathematics for conventions：
+
+/workspace/microbubble_lammps/results/stable_rigid_sphere_near_field_v0_20260916_101617/src/rigid_math.cpp
+
+但是：
+
+这些文件全部视为 immutable upstream evidence。
+
+不得覆盖。
+
+============================================================
+4. 第一件事不是写代码：审计 reference capability
+============================================================
+
+检查：
+
+RMBW_WALL_RESISTANCE_TABLE_V0.h5
+
+记录：
+
+dataset names
+attributes
+epsilon / gap domain
+radius dependence
+viscosity convention
+DOF ordering
+local frame convention
+whether stored matrix is total or excess
+
+确认现有 wall_model 如何进行：
+
+scaling
+interpolation
+rotation
+
+然后审计：
+
+classical_wall_reference.py
+compare_oneill_table.py
+rmbw_reference_adapter.py
+
+生成：
+
+REFERENCE_CAPABILITY.json
+
+字段至少：
+
+{
+  "normal_translation": {
+    "available": true/false,
+    "source": "",
+    "gap_domain": ""
+  },
+
+  "tangential_translation": {},
+  "parallel_rotation": {},
+  "translation_rotation": {},
+  "normal_axis_rotation": {},
+
+  "gcb_free_shear_translation": {
+    "available": true/false,
+    "source": ""
+  },
+
+  "gcb_free_shear_rotation": {
+    "available": true/false,
+    "source": ""
+  }
+}
+
+不要假设这些脚本包含完整 Goldman-Cox-Brenner Couette solution。
+
+如果不存在：
+
+明确记录。
+
+============================================================
+5. GCB 文献 closure
+============================================================
+
+本阶段采用 Goldman, Cox & Brenner 1967
+“Slow viscous motion of a sphere parallel to a plane wall — II Couette flow”
+作为 flat-wall simple-shear 物理依据。
+
+DOI：
+
+10.1016/0009-2509(67)80048-4
+
+near-wall asymptotic 如果实现，必须在代码和 contract 中明确：
+
+它只属于 h/a << 1 approximation。
+
+不要把 near-wall asymptotic 宣称为 all-gap exact solution。
+
+定义 dimensionless functions：
+
+FU(epsilon)
+
+FOmega(epsilon)
+
+采用统一定义：
+
+V_GCB
+=
+FU(epsilon)
+*
+d
+*
+g_wall
+
+Omega_GCB
+=
+0.5
+*
+FOmega(epsilon)
+*
+(n cross g_wall)
+
+这样 far-field convention 是：
+
+FU -> 1
+FOmega -> 1
+
+如果本地已有可信的 GCB numerical/table reference：
+优先使用它验证。
+
+如果只有 near-wall asymptotic：
+只允许将其认证为：
+
+NEAR_WALL_ASYMPTOTIC
+
+不得自己虚构 intermediate-gap interpolation 作为 literature exact result。
+
+如果需要插值才能继续：
+先 STOP 并报告，不要自行选择经验公式。
+
+============================================================
+6. 新 stage 目录
+============================================================
+
+不要覆盖历史目录。
+
+生成 timestamp，例如：
+
+YYYYMMDD_HHMMSS
+
+本地归档 root：
+
+/home/lzy/projects/compre_output/reduced_near_wall_hydrodynamics_v0/<timestamp>
+
+远端 results root：
+
+/workspace/microbubble_lammps/results/reduced_near_wall_hydrodynamics_v0_<timestamp>
+
+远端 work root：
+
+/workspace/microbubble_lammps/work/reduced_near_wall_hydrodynamics_v0_<timestamp>
+
+结构至少：
+
+src/
+tests/
+scripts/
+contracts/
+reference/
+raw/
+validation/
+visualization/
+provenance/
+
+远端 build：
+
+<work root>/build
+
+创建前先确保目标不存在。
+
+============================================================
+7. provenance
+============================================================
+
+生成：
+
+provenance/UPSTREAM_INPUTS.tsv
+
+记录：
+
+absolute path
+classification
+SHA256
+size
+
+至少包括：
+
+RMBW table
+wall_model.cpp/hpp
+classical_wall_reference.py
+compare_oneill_table.py
+rmbw_reference_adapter.py
+stable rigid_math.cpp
+
+记录：
+
+hostname
+OS
+compiler
+cmake
+MPI
+current timestamp
+
+不需要跑 GPU。
+
+============================================================
+8. 实现独立 reduced wall kernel
+============================================================
+
+新文件建议：
+
+src/reduced_wall_kernel.hpp
+
+src/reduced_wall_kernel.cpp
+
+src/reduced_wall_types.hpp
+
+不要修改旧 wall_model.cpp。
+
+定义清晰的数据结构，例如：
+
+WallFrame
+
+ReducedWallInput
+
+ReducedWallResistance
+
+ReducedWallShearContribution
+
+WallShearSource
+
+WallShearSource 至少包括：
+
+ANALYTIC
+GRADIENT_PROXY
+PALABOS_VALIDATED
+
+Phase 1 只允许：
+
+ANALYTIC
+
+其他两个 enum 可以存在，但不能作为 PASS 路径使用。
+
+============================================================
+9. Resistance API
+============================================================
+
+实现 API，语义等价于：
+
+evaluate_resistance(
+    radius_m,
+    viscosity_Pa_s,
+    gap_m,
+    frame
+)
+
+返回：
+
+6x6 wall excess resistance
+in SI units
+
+要求：
+
+不要重复 bulk Stokes resistance。
+
+使用现有 frozen RMBW excess table 时：
+
+确认它本身是否已经是 excess。
+
+禁止在没有确认的情况下再减一次 free-space drag。
+
+============================================================
+10. Shear API
+============================================================
+
+实现概念 API：
+
+evaluate_shear_rhs(
+    radius_m,
+    viscosity_Pa_s,
+    gap_m,
+    frame,
+    g_wall
+)
+
+其中：
+
+g_wall 单位：
+
+1/s
+
+并且必须 tangent to wall。
+
+先显式投影：
+
+P = I - n n^T
+
+g_t = P g_wall
+
+构造：
+
+d = a + h
+
+V_free =
+d * g_t
+
+Omega_free =
+0.5 * cross(n,g_t)
+
+构造：
+
+V_GCB =
+FU(epsilon) * d * g_t
+
+Omega_GCB =
+0.5 * FOmega(epsilon) * cross(n,g_t)
+
+然后：
+
+q_free =
+[V_free, Omega_free]
+
+q_GCB =
+[V_GCB, Omega_GCB]
+
+R_single =
+R_bulk + R_wall_excess
+
+最后：
+
+b_wall_shear =
+R_single*q_GCB
+-
+R_bulk*q_free
+
+注意：
+
+不得人为加入任何 normal force。
+
+============================================================
+11. Phase 1 不处理 general strain
+============================================================
+
+当前只处理：
+
+simple wall-tangential shear component。
+
+不要宣称支持：
+
+full arbitrary E infinity
+
+不要实现任意：
+
+R_FE : E
+
+不要增加：
+
+ambient normal strain wall force
+
+这些以后单独处理。
+
+============================================================
+12. Gap domain
+============================================================
+
+不要一开始自己硬编码生产 active cutoff。
+
+先分析：
+
+RMBW reference domain
+
+和：
+
+GCB reference/asymptotic domain。
+
+建议用于测试的 candidate grid 可以包括：
+
+epsilon =
+0.001
+0.002
+0.005
+0.01
+0.02
+0.05
+0.1
+0.2
+
+但：
+
+某个点只有在 reference 支持它时才能进入 PHYSICS_PASS。
+
+unsupported 点可以作为：
+
+EXTRAPOLATION_DIAGNOSTIC
+
+但不能影响 PASS。
+
+禁止悄悄 extrapolate HDF5 table。
+
+============================================================
+13. C++ standalone tests
+============================================================
+
+至少实现：
+
+A. matrix symmetry
+
+B. positive dissipation / SPD check
+
+C. SI scaling
+
+TT ~ mu*a
+
+TR ~ mu*a^2
+
+RR ~ mu*a^3
+
+D. frame rotation invariance
+
+将 t1/t2 绕 n 旋转不同角度，
+global result 必须一致。
+
+E. tangent basis sign flip invariance
+
+F. zero shear
+
+g=0
+=> b_wall_shear=0
+
+G. shear sign reversal
+
+g -> -g
+=> b -> -b
+
+H. shear magnitude linearity
+
+2g
+=> 2b
+
+I. no fake normal shear forcing
+
+simple planar shear 中，
+normal component 必须为 numerical roundoff。
+
+J. isolated sphere GCB recovery
+
+实际组装：
+
+R_total
+
+和：
+
+RHS
+
+使用真正 linear solve
+
+确认求出的：
+
+V
+Omega
+
+恢复：
+
+V_GCB
+Omega_GCB
+
+不要直接比较“构造函数自己返回的 q_GCB”。
+
+============================================================
+14. 独立 Python validator
+============================================================
+
+创建：
+
+scripts/validate_phase1.py
+
+Python 实现必须独立于 C++ 代码。
+
+不要：
+
+从 C++ 输出直接复制答案。
+
+Python 应独立读取：
+
+RMBW HDF5 reference
+
+并独立计算：
+
+frame rotation
+bulk resistance
+GCB target
+expected shear RHS
+matrix properties
+
+比较：
+
+C++ raw CSV/JSON output
+
+生成：
+
+validation/PHASE1_VALIDATION.json
+
+============================================================
+15. reference physics gate
+============================================================
+
+必须区分：
+
+ALGEBRA_PASS
+
+和：
+
+PHYSICS_REFERENCE_PASS
+
+ALGEBRA_PASS 可以由：
+
+symmetry
+SPD
+rotation invariance
+linear shear identities
+GCB algebra recovery
+
+证明。
+
+但：
+
+PHYSICS_REFERENCE_PASS
+
+必须要求有独立文献/reference comparison。
+
+对于 GCB：
+
+如果只有同一个 asymptotic formula
+在 C++ 和 Python 两边重复实现，
+
+不能叫：
+
+independent physics validation。
+
+这种情况下写：
+
+PHYSICS_REFERENCE_STATUS =
+PARTIAL
+
+或者：
+
+BLOCKED_REFERENCE_DATA
+
+============================================================
+16. acceptance thresholds
+============================================================
+
+建议：
+
+matrix symmetry relative error <= 1e-10
+
+frame rotation invariance <= 1e-9
+
+zero-shear absolute numerical noise：
+relative to characteristic RHS <= 1e-12
+
+shear reversal / scaling <= 1e-10
+
+isolated GCB recovery <= 1e-8
+
+任何：
+
+NaN
+Inf
+negative gap silently accepted
+non-positive dissipation
+
+直接 FAIL。
+
+对于 physical reference：
+
+不要预先捏造 tolerance。
+
+先读取历史 reference audit 使用的 tolerance。
+
+如果历史没有：
+
+报告推荐 tolerance，
+但不要自行宣布 scientific PASS。
+
+============================================================
+17. negative gap
+============================================================
+
+Phase 1 kernel：
+
+h <= 0
+
+必须明确返回：
+
+INVALID_GAP
+
+不要：
+
+clamp 到正值后继续装作正常物理结果。
+
+hard wall correction 属于 dynamics layer，
+不是 reference kernel 偷偷修复输入。
+
+============================================================
+18. 可视化
+============================================================
+
+生成小型静态图：
+
+visualization/resistance_vs_epsilon.png
+
+至少包含：
+
+normal TT
+tangential TT
+
+如果 reference 支持：
+
+parallel RR
+TR
+
+生成：
+
+visualization/gcb_translation_vs_epsilon.png
+
+visualization/gcb_rotation_vs_epsilon.png
+
+生成：
+
+visualization/shear_rhs_components_vs_epsilon.png
+
+其中必须明确显示：
+
+normal component ~ 0
+
+同时保存 CSV。
+
+不要需要 ParaView 才能审核 Phase 1。
+
+============================================================
+19. 不接 LAMMPS
+============================================================
+
+本阶段不要修改：
+
+rigid_lammps_main.cpp
+rigid_math.cpp
+LAMMPS upstream
+
+不要跑：
+
+real vascular case
+RK2 trajectory
+MPI 4-rank production
+GPU case
+
+Phase 1 是 standalone wall kernel qualification。
+
+============================================================
+20. 编译与运行
+============================================================
+
+只在新 stage 中编译。
+
+CPU 即可。
+
+优先使用现有：
+
+GCC 13.3
+CMake 3.28
+
+如果需要 HDF5：
+复用系统/现有项目可读取该 reference table 的库。
+
+不要：
+
+apt install
+pip install
+sudo
+修改系统 environment
+
+Python 缺包时优先复用已有 env。
+
+找不到依赖则 STOP 报告。
+
+============================================================
+21. 结果报告
+============================================================
+
+生成：
+
+REDUCED_NEAR_WALL_HYDRODYNAMICS_V0_PHASE1_REPORT.md
+
+至少写：
+
+1. scope
+
+2. source/provenance
+
+3. mathematical convention
+
+4. local frame convention
+
+5. resistance table interpretation
+
+6. GCB convention
+
+7. gap domains
+
+8. tests
+
+9. acceptance results
+
+10. known limitations
+
+11. physics reference status
+
+12. recommendation for Phase 2
+
+============================================================
+22. 状态文件
+============================================================
+
+生成：
+
+CURRENT_STATE.json
+
+但只放在新的 stage 中。
+
+不要修改旧：
+
+microbubble_wall_handoff/CURRENT_STATE.json
+
+新 state 至少有：
+
+{
+  "stage": "REDUCED_NEAR_WALL_HYDRODYNAMICS_V0_PHASE1",
+  "status": "",
+  "algebra_pass": false,
+  "physics_reference_status": "",
+  "gcb_translation_reference": "",
+  "gcb_rotation_reference": "",
+  "resistance_reference": "",
+  "certified_epsilon_domain": "",
+  "source_sha256_manifest": "",
+  "next_authorized_stage": "NONE"
+}
+
+============================================================
+23. local mirror
+============================================================
+
+Vast overlay persistence 未确认。
+
+因此在任务完成后：
+
+把新 stage 的：
+
+src
+tests
+scripts
+contracts
+reference metadata
+validation
+visualization
+report
+CURRENT_STATE.json
+provenance
+
+同步回：
+
+/home/lzy/projects/compre_output/reduced_near_wall_hydrodynamics_v0/<timestamp>
+
+不要同步大型无意义 build objects。
+
+同步后进行 SHA256 cross-check。
+
+remote/local source 必须一致。
+
+============================================================
+24. Git
+============================================================
+
+本任务结束时：
+
+不要 git add
+不要 commit
+不要 push
+
+Git handoff 等用户人工审核 Phase 1 后再决定。
+
+============================================================
+25. 遇到下面任一情况停止
+============================================================
+
+STOP_REFERENCE_AMBIGUITY：
+
+不能确定 RMBW table 是 total 还是 excess。
+
+STOP_GCB_REFERENCE_INSUFFICIENT：
+
+无法建立可靠的 GCB translation/rotation reference。
+
+STOP_UNIT_AMBIGUITY：
+
+无法确定 reference units/scaling。
+
+STOP_STATE_DRIFT：
+
+baseline 文件或 SHA 与 handoff 不符。
+
+STOP_DEPENDENCY：
+
+只能通过修改系统环境才能继续。
+
+不要为了“完成任务”猜答案。
+
+============================================================
+26. 最后终端输出
+============================================================
+
+打印：
+
+REDUCED_NEAR_WALL_PHASE1_COMPLETE
+
+STATUS:
+<PASS / PARTIAL / BLOCKED / FAIL>
+
+ALGEBRA_PASS:
+YES/NO
+
+PHYSICS_REFERENCE_STATUS:
+<PASS/PARTIAL/BLOCKED>
+
+CERTIFIED_EPSILON_DOMAIN:
+<value>
+
+LOCAL_STAGE:
+<absolute path>
+
+REMOTE_STAGE:
+<absolute path>
+
+REPORT:
+<absolute path>
+
+STATE:
+<absolute path>
+
+RMBW_REFERENCE:
+<path + sha>
+
+GCB_REFERENCE:
+<description>
+
+SOURCE_REMOTE_LOCAL_SHA_MATCH:
+YES/NO
+
+OLD_SOURCE_MODIFIED:
+NO
+
+LAMMPS_MODIFIED:
+NO
+
+PALABOS_MODIFIED:
+NO
+
+REAL_VASCULAR_RUN:
+NO
+
+GPU_RUN:
+NO
+
+GIT_COMMIT:
+NO
+
+然后停止。
+
+不要自动进入 Phase 2。

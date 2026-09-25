@@ -1,0 +1,1928 @@
+你现在开始一个新的开发阶段：
+
+MICROBUBBLE_VASCULAR_WORKFLOW_V0
+
+目标不是继续完善近壁水动力。
+
+目标是：
+
+先建立一条完整、稳定、可重复运行的
+SonoVue 微泡血管输运 workflow。
+
+============================================================
+一、这一阶段到底要完成什么
+============================================================
+
+最终希望实现：
+
+真实血管几何
+        ↓
+Palabos 已冻结背景流
+        ↓
+生成一批 SonoVue 微泡
+        ↓
+从入口附近放入血管
+        ↓
+LAMMPS 管理粒子
+        ↓
+读取当前位置背景流
+        ↓
+现有 bubble-bubble hydrodynamics
+        ↓
+RK2 更新位置
+        ↓
+真实血管壁不能穿透
+        ↓
+检测从哪个出口离开
+        ↓
+保存轨迹
+        ↓
+统计 near-wall events
+        ↓
+输出报告和可视化
+
+这一阶段的关键词：
+
+COMPLETE WORKFLOW
+
+不是：
+
+PERFECT WALL PHYSICS
+
+============================================================
+二、停止当前近壁理论开发
+============================================================
+
+用户当前决定：
+
+先不继续开发近壁水动力修正。
+
+因此本阶段：
+
+RMBW = OFF
+
+CF2003 production correction = OFF
+
+Falade–Brenner 1988 = OFF
+
+Rallabandi wall correction = OFF
+
+Higdon–Muldowney = OFF
+
+WSS wall force = OFF
+
+BIE/QBX = OFF
+
+wall lubrication = OFF
+
+adhesion = OFF
+
+RBC = OFF
+
+buoyancy = OFF
+
+lift = OFF
+
+particle inertia = OFF
+
+如果之前存在：
+
+Falade–Brenner applicability audit
+RMBW Phase2
+curved-wall audit
+
+保留现有结果。
+
+不要继续执行。
+
+不要删除。
+
+============================================================
+三、本阶段墙面只负责一件事
+============================================================
+
+墙面只负责：
+
+微泡不能穿进固体壁面。
+
+即：
+
+GEOMETRIC HARD WALL ONLY
+
+墙面暂时不提供：
+
+额外 hydrodynamic resistance
+
+额外 shear correction
+
+额外 normal lubrication
+
+额外 attraction
+
+因此当前动力学核心仍然是：
+
+R_total
+=
+R_bulk
++
+R_bubble_bubble_excess
+
+墙面不加入：
+
+R_wall
+
+============================================================
+四、必须准确描述这一版本
+============================================================
+
+这个版本不能称为：
+
+FULL NEAR-WALL HYDRODYNAMICS
+
+正确描述应该是：
+
+Frozen-flow vascular microbubble transport
+with bubble-bubble hydrodynamics
+and geometric hard-wall exclusion.
+
+也就是：
+
+冻结血流
++
+微泡之间水动力
++
+有限半径
++
+真实血管几何
++
+不能穿墙
+
+============================================================
+五、已有环境
+============================================================
+
+WSL 微泡 Git handoff：
+
+/home/lzy/projects/github_sync/ulm_microbubble_20260916_173258
+
+历史 branch：
+
+codex/microbubble-wall-audits-handoff-20260916-173258
+
+历史 commit：
+
+a466b77be19559bc7d1d91b49f88ab78a976c529
+
+WSL 血管模型项目：
+
+/home/lzy/projects/ulm_3D_vascular
+
+Vast：
+
+hostname historically:
+
+f7c62a262077
+
+实际开始前重新确认。
+
+Vast 主要 microbubble root：
+
+/workspace/microbubble_lammps
+
+Vast Palabos/HemoCell root：
+
+/workspace/hemocell_restore
+
+不要假设 Vast instance 永远不变。
+
+如果 hostname / paths 明显变化：
+
+STATE_DRIFT_DETECTED
+
+先报告。
+
+============================================================
+六、已有 production particle baseline
+============================================================
+
+当前稳定 bubble-bubble 主干：
+
+/workspace/microbubble_lammps/results/stable_rigid_sphere_near_field_v0_20260916_101617
+
+主要源码：
+
+src/rigid_lammps_main.cpp
+
+src/rigid_math.cpp
+
+src/frozen_flow.cpp
+
+这是本阶段 particle dynamics 的主干。
+
+必须从这里继承。
+
+不要从：
+
+wall_hydrodynamics_v0
+
+作为主干继续开发。
+
+============================================================
+七、已有功能必须尽量复用
+============================================================
+
+stable rigid baseline 已有：
+
+LAMMPS particle storage
+
+MPI ownership
+
+neighbor list
+
+ghost particles
+
+bubble radii
+
+FlowFieldSampler
+
+FlowGradientSampler
+（本阶段不需要 wall gradient physics）
+
+bubble-bubble resistance
+
+PCG
+
+RK2 midpoint
+
+bubble-bubble hard non-overlap
+
+这些不要重新实现。
+
+============================================================
+八、wall_v0 只允许复用几何功能
+============================================================
+
+旧 wall stage：
+
+/workspace/microbubble_lammps/results/wall_hydrodynamics_v0_20260916_130547
+
+只允许 READ ONLY 审计并提取：
+
+wall_distance.cpp
+
+相关：
+
+nearest surface query
+
+distance
+
+gap
+
+segment safety
+
+swept path safety
+
+可以把“纯几何代码”复制进入新 stage。
+
+禁止复制：
+
+wall_model.cpp 中 RMBW resistance
+
+RMBW HDF5 table
+
+local-plane validity gate
+
+wall hydrodynamic blocks
+
+wall shear RHS
+
+============================================================
+九、本阶段最重要的第一关：
+入口/出口不能当成墙
+============================================================
+
+当前：
+
+closed_geometry_m.stl
+
+是封闭表面。
+
+它包含：
+
+真实血管壁
++
+人工 inlet cap
++
+人工 outlet caps
+
+因此不能：
+
+对整个 closed STL
+直接执行 hard wall。
+
+否则：
+
+微泡会被 outlet cap 挡住，
+永远无法正常离开血管。
+
+所以新 workflow 必须建立：
+
+WALL SURFACE
+
+和：
+
+PORT SURFACES
+
+两类不同边界。
+
+============================================================
+十、先恢复真实边界标签
+============================================================
+
+血管模型 WSL 项目：
+
+/home/lzy/projects/ulm_3D_vascular
+
+重点读取：
+
+swc_roi_generate.py
+
+swc_stl_model_generate.py
+
+cfd_surface_prepare.py
+
+configs/swc_roi_generate.yaml
+
+configs/swc_stl_model_generate.yaml
+
+configs/cfd_surface_prepare.yaml
+
+docs/CFD_SURFACE_PREPARE.md
+
+寻找实际生产 geometry 对应 run。
+
+优先寻找：
+
+cfd_surface_refined_um.vtp
+
+或其它带 cell tags 的 VTP。
+
+这些文件可能包含：
+
+wall
+
+inlet
+
+outlet
+
+boundary index
+
+extension
+
+axial-band
+
+等标签。
+
+实际数组名称必须读取文件确认。
+
+不要猜。
+
+============================================================
+十一、建立 geometry provenance
+============================================================
+
+当前微泡 stage 中记录的 geometry：
+
+/workspace/microbubble_lammps/results/wall_hydrodynamics_v0_20260916_130547/provenance/closed_geometry_m.stl
+
+历史 SHA256：
+
+840da5e1c43ec31ac70ec781cbf75b32940bc73538b5dba83c58af1ddf5e36fb
+
+需要找到它在：
+
+/home/lzy/projects/ulm_3D_vascular
+
+中的上游来源。
+
+通过：
+
+manifest
+SHA256
+meter/micrometre scale
+surface identity
+vertex/surface comparison
+
+建立：
+
+GEOMETRY_PROVENANCE.json
+
+必须回答：
+
+这个 closed geometry
+来自哪个：
+
+ROI
+Ultraliser run
+CFD preprocess run
+CFD surface prepare run
+
+如果无法确认：
+
+STOP_GEOMETRY_PROVENANCE_AMBIGUOUS
+
+============================================================
+十二、必须生成 wall-only geometry
+============================================================
+
+本阶段允许在新 stage 中：
+
+从已标签的 CFD surface
+
+导出：
+
+WALL_ONLY surface
+
+以及：
+
+INLET surface
+
+OUTLET_0
+OUTLET_1
+OUTLET_2
+
+具体出口数量以实际 metadata 为准。
+
+注意：
+
+这是派生 simulation asset。
+
+不得修改原始 vascular project geometry。
+
+生成：
+
+geometry/WALL_ONLY.vtp
+
+geometry/WALL_ONLY.stl
+
+geometry/INLET.vtp
+
+geometry/OUTLET_*.vtp
+
+以及：
+
+geometry/BOUNDARY_MANIFEST.json
+
+============================================================
+十三、人工 extension 怎么处理
+============================================================
+
+CFD surface preparation 中可能包含：
+
+人工 inlet/outlet extension
+
+这些 extension 的侧壁：
+
+仍然可以作为流体计算边界。
+
+在 workflow 中可以选择保留它们作为：
+
+GEOMETRIC WALL
+
+但是：
+
+它们必须明确标记：
+
+ARTIFICIAL_EXTENSION_WALL
+
+不要把它们统计成：
+
+BIOLOGICAL_NEAR_WALL_EVENT
+
+所以 wall region 至少分：
+
+BIOLOGICAL_CORE_WALL
+
+ARTIFICIAL_EXTENSION_WALL
+
+INLET_PORT
+
+OUTLET_PORT
+
+CAP / PORT SURFACE
+
+UNKNOWN
+
+============================================================
+十四、建立新的 workflow stage
+============================================================
+
+使用 timestamp。
+
+Vast：
+
+/workspace/microbubble_lammps/results/microbubble_vascular_workflow_v0_<timestamp>
+
+/workspace/microbubble_lammps/work/microbubble_vascular_workflow_v0_<timestamp>
+
+WSL mirror：
+
+/home/lzy/projects/compre_output/microbubble_vascular_workflow_v0/<timestamp>
+
+目录至少：
+
+src/
+scripts/
+configs/
+contracts/
+geometry/
+fields/
+inputs/
+cases/
+raw/
+validation/
+visualization/
+provenance/
+report/
+
+禁止覆盖历史目录。
+
+============================================================
+十五、Frozen Flow 暂时继续使用当前版本
+============================================================
+
+当前 frozen field：
+
+/workspace/microbubble_lammps/results/wall_hydrodynamics_v0_20260916_130547/fields/FROZEN_FLOW_FIELD_V0.h5
+
+历史 SHA256：
+
+7828ed32b0cdd1e0e85836a564b6737128e7dbe30181ddd43110233b37b64a7f
+
+但必须在报告明确写：
+
+ENGINEERING_TRANSIENT_FIELD_ONLY
+
+它是：
+
+PBS/BSA 5000-step smoke field
+
+不是最终 steady production flow。
+
+这一阶段允许使用它：
+
+因为目标只是建立 workflow。
+
+不得因为 workflow PASS
+就把 flow 状态升级为 scientific production.
+
+============================================================
+十六、SonoVue bubble size
+============================================================
+
+使用已经冻结的 SonoVue sampler。
+
+优先寻找：
+
+/home/lzy/projects/sonovue_size_distribution_v0
+
+以及 handoff：
+
+review/microbubble_wall_handoff_20260916/sonovue
+
+必须确认：
+
+输入是 diameter 还是 radius。
+
+生成 deterministic bubble input。
+
+例如：
+
+inputs/BUBBLES_INITIAL.csv
+
+至少包含：
+
+particle_id
+diameter_m
+radius_m
+initial_x
+initial_y
+initial_z
+
+sample_uniform_0_1
+random_seed
+
+============================================================
+十七、第一版不做连续注入
+============================================================
+
+为了保持 workflow 简单：
+
+只做：
+
+BATCH INJECTION AT t=0
+
+即：
+
+模拟开始时一次性放入 N 个微泡。
+
+暂时不做：
+
+持续不断从入口注入。
+
+CONTINUOUS_INJECTION = OFF
+
+以后再扩展。
+
+============================================================
+十八、入口放泡
+============================================================
+
+使用真实 inlet boundary。
+
+不要把粒子直接放在 cap 上。
+
+需要建立一个：
+
+INJECTION_PLANE
+
+位于入口向血管内部偏移一小段距离。
+
+偏移距离必须由：
+
+mesh / flow field / bubble size
+
+合理决定并记录。
+
+禁止随便硬编码一个未知单位的数字。
+
+============================================================
+十九、入口采样必须考虑微泡半径
+============================================================
+
+一个有限大小微泡不能：
+
+中心就在 inlet 边缘附近，
+导致球的一部分一开始就在墙里。
+
+所以初始位置必须满足：
+
+gap_to_wall > 0
+
+建议保留额外 numerical clearance：
+
+initial_gap >= configurable margin
+
+margin 只作为初始化安全值。
+
+不是 wall hydrodynamic model。
+
+============================================================
+二十、入口位置采样
+============================================================
+
+第一版使用：
+
+uniform-by-area inlet sampling
+
+或者：
+
+清楚记录的 deterministic sampling。
+
+必须：
+
+seed 固定。
+
+例如：
+
+seed = 42
+
+同一个 config
+必须生成完全一样的 bubble list。
+
+============================================================
+二十一、必须先检查每个初始位置
+============================================================
+
+每个 bubble：
+
+1.
+FlowFieldSampler query 必须成功
+
+2.
+必须位于 fluid region
+
+3.
+sphere 不得穿墙
+
+4.
+不能与其它 bubble 初始重叠
+
+如果失败：
+
+重新采样有限次数。
+
+超过次数：
+
+INITIALIZATION_FAILED
+
+不要偷偷缩小 bubble。
+
+============================================================
+二十二、第一版推荐粒子规模
+============================================================
+
+本阶段是 correctness workflow。
+
+不要一开始跑：
+
+10000
+100000
+
+粒子。
+
+至少做：
+
+CASE W1:
+1 bubble
+
+CASE W2:
+8 bubbles
+
+CASE W3:
+小规模 multi-bubble smoke
+例如 16 或 32
+
+具体第三个规模可以根据内存/运行时间合理选择。
+
+不要做性能宣传。
+
+============================================================
+二十三、真实 dynamics
+============================================================
+
+每一步：
+
+current positions
+↓
+sample frozen Palabos velocity
+↓
+assemble bulk resistance
+↓
+assemble existing bubble-bubble excess resistance
+↓
+solve overdamped V / Omega
+↓
+RK2 midpoint
+↓
+重新 sample midpoint field
+↓
+重新 solve
+↓
+proposal
+↓
+wall / pair safety
+↓
+accept or reduce timestep
+
+没有：
+
+R_wall
+
+没有：
+
+CF2003 correction
+
+============================================================
+二十四、墙面 hard safety
+============================================================
+
+对：
+
+WALL_ONLY surface
+
+执行 sphere-wall gap query。
+
+定义：
+
+gap
+=
+center-to-wall distance
+-
+bubble radius
+
+要求：
+
+gap >= 0
+
+并且 swept trajectory：
+
+从 start 到 end
+
+不得穿 wall。
+
+============================================================
+二十五、hard wall 不是物理斥力
+============================================================
+
+禁止添加：
+
+F_repulsive
+
+F_wall
+
+spring
+
+penalty force
+
+fake attraction
+
+fake lubrication
+
+如果 RK2 proposal 穿墙：
+
+优先：
+
+reject proposal
+↓
+reduce dt
+↓
+retry
+
+如果不断减小 dt
+仍无法取得安全 step：
+
+标记：
+
+WALL_CONSTRAINT_STALL
+
+停止该 particle / case，
+不要偷偷添加力。
+
+============================================================
+二十六、入口/出口 crossing
+============================================================
+
+PORT surfaces
+不是 wall。
+
+一个 bubble 穿过 OUTLET surface
+且运动方向为 outward：
+
+记录：
+
+EXIT_EVENT
+
+包括：
+
+particle_id
+outlet_id
+time
+position
+radius
+
+然后该粒子进入：
+
+EXITED
+
+状态。
+
+不再参与后续 hydrodynamics。
+
+============================================================
+二十七、入口反流也要记录
+============================================================
+
+当前 frozen field 曾观察到 transient backflow。
+
+如果 particle 从 inlet 向外离开：
+
+记录：
+
+EXIT_INLET_BACKFLOW
+
+不要当成程序错误。
+
+但是报告必须提醒：
+
+当前 frozen field 仍是 transient smoke field。
+
+============================================================
+二十八、粒子生命周期
+============================================================
+
+定义明确状态：
+
+ACTIVE
+
+EXITED_OUTLET
+
+EXITED_INLET_BACKFLOW
+
+WALL_CONSTRAINT_STALL
+
+FLOW_QUERY_FAILED
+
+PAIR_SAFETY_FAILED
+
+MAX_TIME_REACHED
+
+其它必要状态。
+
+不得让“消失的 particle”
+静默丢失。
+
+============================================================
+二十九、near-wall event 只做统计
+============================================================
+
+虽然没有 near-wall hydrodynamics，
+仍然可以记录几何距离。
+
+定义：
+
+epsilon_wall
+=
+gap / radius
+
+第一版统计 threshold：
+
+1.0
+0.5
+0.2
+0.1
+
+这些只是：
+
+GEOMETRIC NEAR-WALL EVENTS
+
+不是：
+
+hydrodynamic regimes
+
+不是：
+
+adhesion
+
+============================================================
+三十、near-wall event 数据
+============================================================
+
+记录：
+
+第一次进入 threshold 的时间
+
+最后离开时间
+
+累计停留时间
+
+最小 gap
+
+最小 gap/radius
+
+nearest wall position
+
+wall region：
+
+BIOLOGICAL_CORE
+
+或者：
+
+ARTIFICIAL_EXTENSION
+
+不要把 extension event
+算入 biological near-wall statistics。
+
+============================================================
+三十一、每颗微泡最终 summary
+============================================================
+
+至少输出：
+
+particle_id
+
+radius
+
+initial_position
+
+final_status
+
+exit_port
+
+simulation_time
+
+path_length
+
+minimum_gap
+
+minimum_gap_over_radius
+
+near_wall_time_eps_lt_1
+
+near_wall_time_eps_lt_0.5
+
+near_wall_time_eps_lt_0.2
+
+near_wall_time_eps_lt_0.1
+
+bubble_bubble_close_event_count
+
+wall_retry_count
+
+final_position
+
+============================================================
+三十二、整体 summary
+============================================================
+
+输出：
+
+total_bubbles
+
+outlet_0_count
+outlet_1_count
+outlet_2_count
+...
+
+inlet_backflow_count
+
+max_time_count
+
+wall_stall_count
+
+flow_query_failure_count
+
+fraction_reaching_eps_lt_1
+
+fraction_reaching_eps_lt_0.5
+
+fraction_reaching_eps_lt_0.2
+
+fraction_reaching_eps_lt_0.1
+
+这些是 workflow statistics。
+
+不能解释成：
+
+adhesion probability
+
+============================================================
+三十三、时间步
+============================================================
+
+继续继承 stable rigid baseline
+已有 adaptive / RK2 timestep 规则。
+
+不要为了这轮重写 integrator。
+
+增加 wall safety 以后：
+
+如果 wall swept check 失败：
+
+允许 timestep halving。
+
+必须设置：
+
+minimum_dt
+
+maximum_retry_count
+
+防止无限循环。
+
+============================================================
+三十四、第一轮 validation：
+几何
+============================================================
+
+先不跑 full workflow。
+
+验证：
+
+TEST G1
+
+随机/确定性采样 wall 点：
+
+nearest point 合理。
+
+TEST G2
+
+已知 interior point：
+
+gap > 0。
+
+TEST G3
+
+已知 penetrating sphere：
+
+gap < 0。
+
+TEST G4
+
+crossing wall segment：
+
+segment safety = reject。
+
+TEST G5
+
+crossing outlet surface：
+
+应识别为 outlet exit，
+不能识别为 wall collision。
+
+============================================================
+三十五、第二轮 validation：
+单 bubble
+============================================================
+
+CASE W1：
+
+1 bubble
+
+从 inlet 内部开始。
+
+要求：
+
+FlowFieldSampler 可持续工作。
+
+particle trajectory 连续。
+
+不穿 biological wall。
+
+如果到 outlet：
+
+正确识别 outlet ID。
+
+如果当前 transient field
+导致 backflow：
+
+正确记录。
+
+============================================================
+三十六、第三轮 validation：
+多 bubble
+============================================================
+
+CASE W2：
+
+8 bubbles
+
+使用真实 SonoVue size sampling。
+
+开启：
+
+现有 bubble-bubble hydrodynamics。
+
+检查：
+
+no bubble overlap
+
+no wall penetration
+
+all particle IDs preserved
+
+exit tracking correct
+
+============================================================
+三十七、MPI consistency
+============================================================
+
+同一个小 case：
+
+MPI 1
+
+MPI 4
+
+比较：
+
+initial bubbles
+
+trajectories
+
+exit statuses
+
+minimum gaps
+
+outlet IDs
+
+允许使用已有项目的合理数值 tolerance。
+
+如果 particle ownership migration
+导致结果改变：
+
+FAIL_MPI_WORKFLOW
+
+============================================================
+三十八、不要默认 GPU
+============================================================
+
+当前 project-owned：
+
+resistance
+PCG
+RK2
+wall query
+
+仍主要在 CPU。
+
+本阶段优先：
+
+CPU correctness
+
+MPI 1 / 4
+
+不要做：
+
+GPU rewrite
+
+不要宣称：
+
+GPU workflow ready
+
+============================================================
+三十九、输出轨迹
+============================================================
+
+至少保存一种机器可读格式：
+
+CSV
+或 HDF5
+
+建议 HDF5 用于完整 trajectory，
+CSV 用于 summaries/events。
+
+每个 trajectory sample 至少有：
+
+time
+step
+particle_id
+
+x
+y
+z
+
+radius
+
+vx
+vy
+vz
+
+omega_x
+omega_y
+omega_z
+
+gap
+
+gap_over_radius
+
+nearest_wall_region
+
+particle_status
+
+owner_rank
+如果可得。
+
+============================================================
+四十、事件日志
+============================================================
+
+单独生成：
+
+events.csv
+
+事件类型至少：
+
+INJECTION
+
+NEAR_WALL_ENTER
+
+NEAR_WALL_EXIT
+
+OUTLET_EXIT
+
+INLET_BACKFLOW_EXIT
+
+WALL_RETRY
+
+WALL_CONSTRAINT_STALL
+
+FLOW_QUERY_FAILURE
+
+PAIR_SAFETY_FAILURE
+
+============================================================
+四十一、可视化
+============================================================
+
+生成容易人工检查的图。
+
+至少：
+
+1.
+workflow_geometry.png
+
+显示：
+
+blood vessel
+inlet
+outlets
+injection plane
+
+2.
+initial_bubbles.png
+
+3.
+trajectories_3d.png
+
+4.
+trajectories_colored_by_radius.png
+
+5.
+trajectories_colored_by_exit.png
+
+6.
+minimum_gap_distribution.png
+
+7.
+near_wall_fraction.png
+
+8.
+outlet_distribution.png
+
+9.
+gap_vs_time_example.png
+
+10.
+MPI1_vs_MPI4.png
+
+如果 VTK/PyVista 已有：
+
+生成：
+
+WORKFLOW_TRAJECTORIES.vtp
+
+方便 ParaView 查看。
+
+============================================================
+四十二、特别需要一个 3D 人工检查图
+============================================================
+
+必须能看到：
+
+真实 wall
++
+入口
++
+三个出口（实际数量为准）
++
+所有 bubble trajectories
+
+并且端口和 wall 使用不同标记。
+
+这样可以人工发现：
+
+particle 是否错误撞在 outlet cap 上。
+
+============================================================
+四十三、独立 validator
+============================================================
+
+创建：
+
+scripts/validate_workflow.py
+
+独立检查：
+
+trajectory continuity
+
+particle ID uniqueness
+
+gap >= tolerance
+
+no bubble overlap
+
+exit crossing geometry
+
+near-wall statistics recomputation
+
+MPI comparison
+
+不要只相信 C++ 自己输出的：
+
+PASS
+
+============================================================
+四十四、当前 Frozen Flow 的限制必须保留
+============================================================
+
+报告必须写：
+
+FLOW_STATUS =
+ENGINEERING_TRANSIENT_FIELD_ONLY
+
+不能写：
+
+VALIDATED_STEADY_VASCULAR_FLOW
+
+因此 workflow PASS
+表示：
+
+软件链跑通。
+
+不是：
+
+最终科研结果已经可信。
+
+============================================================
+四十五、当前 wall physics 的限制必须保留
+============================================================
+
+报告必须明确：
+
+WALL_HYDRODYNAMICS_STATUS =
+NOT_IMPLEMENTED_IN_WORKFLOW_V0
+
+当前只有：
+
+GEOMETRIC_HARD_WALL
+
+因此：
+
+near-wall residence
+
+sliding velocity
+
+rolling velocity
+
+adhesion probability
+
+不能作为最终物理结论。
+
+============================================================
+四十六、当前 bubble-bubble twist
+============================================================
+
+保持历史：
+
+TWIST_PENDING
+
+不要顺便修。
+
+不要阻塞 workflow，
+除非当前现有 contract 明确要求。
+
+报告记录：
+
+BUBBLE_BUBBLE_STATUS =
+PASS_WITH_TWIST_PENDING
+
+============================================================
+四十七、性能状态
+============================================================
+
+保持：
+
+GPU_PERFORMANCE_READY = NO
+
+LARGE_N_READY = NO
+
+这一轮不做 large-N scalability。
+
+============================================================
+四十八、建立 workflow 配置
+============================================================
+
+创建清楚的 YAML，例如：
+
+configs/workflow_v0.yaml
+
+包含：
+
+paths:
+  frozen_flow:
+  wall_surface:
+  inlet_surface:
+  outlet_surfaces:
+
+bubbles:
+  count:
+  random_seed:
+  sonovue_distribution:
+
+injection:
+  mode:
+  inward_offset:
+  initial_clearance:
+
+simulation:
+  maximum_time:
+  maximum_steps:
+  dt settings:
+  retry settings:
+
+near_wall:
+  thresholds:
+    - 1.0
+    - 0.5
+    - 0.2
+    - 0.1
+
+output:
+  trajectory_stride:
+  visualization_stride:
+
+所有数值必须带单位
+或明确约定 SI。
+
+============================================================
+四十九、不要硬编码生产路径
+============================================================
+
+代码里不要直接写死：
+
+/workspace/...
+
+把：
+
+field
+geometry
+bubble input
+output
+
+放到 YAML/config。
+
+绝对路径只在：
+
+provenance
+
+和实际 run configuration
+中冻结。
+
+============================================================
+五十、provenance
+============================================================
+
+记录所有主要输入：
+
+stable rigid source SHA
+
+wall geometry donor source SHA
+
+SonoVue sampler SHA
+
+Frozen Flow SHA
+
+closed geometry SHA
+
+tagged CFD surface SHA
+
+workflow config SHA
+
+LAMMPS build identity
+
+compiler
+MPI
+hostname
+date
+
+生成：
+
+provenance/INPUT_MANIFEST.tsv
+
+============================================================
+五十一、不要修改历史 stage
+============================================================
+
+禁止修改：
+
+stable_rigid_sphere_near_field_v0
+
+wall_hydrodynamics_v0
+
+reduced_near_wall_hydrodynamics_v0
+
+Falade-Brenner audit
+
+vascular source project
+
+所有开发都在：
+
+MICROBUBBLE_VASCULAR_WORKFLOW_V0
+
+新 stage 中。
+
+============================================================
+五十二、本地 / 远端同步
+============================================================
+
+完成后将：
+
+source
+scripts
+configs
+contracts
+geometry manifests
+small inputs
+validation
+visualization
+reports
+provenance
+summaries
+
+同步回：
+
+/home/lzy/projects/compre_output/microbubble_vascular_workflow_v0/<timestamp>
+
+不要同步：
+
+巨大 build objects
+
+无意义 cache。
+
+完成：
+
+SHA256 remote/local check。
+
+============================================================
+五十三、Git
+============================================================
+
+本轮：
+
+不要 git add
+
+不要 commit
+
+不要 push
+
+用户审核 workflow 后
+再决定如何归档。
+
+============================================================
+五十四、最终报告
+============================================================
+
+生成：
+
+MICROBUBBLE_VASCULAR_WORKFLOW_V0_REPORT.md
+
+必须先用简单语言写：
+
+“这个 workflow 目前到底能做什么？”
+
+然后分别说明：
+
+1.
+几何来源
+
+2.
+inlet/outlet 如何处理
+
+3.
+微泡如何生成
+
+4.
+微泡如何进入模拟
+
+5.
+水流如何读取
+
+6.
+bubble-bubble 如何计算
+
+7.
+墙面如何防穿透
+
+8.
+如何检测出口
+
+9.
+如何记录 near-wall events
+
+10.
+MPI 是否一致
+
+11.
+哪些物理目前没有实现
+
+============================================================
+五十五、最终状态不要只写 PASS
+============================================================
+
+必须分别输出：
+
+GEOMETRY_PROVENANCE_STATUS:
+PASS / BLOCKED
+
+PORT_CLASSIFICATION_STATUS:
+PASS / BLOCKED
+
+SONOVUE_INITIALIZATION_STATUS:
+PASS / FAIL
+
+FLOW_SAMPLER_STATUS:
+PASS / FAIL
+
+BUBBLE_BUBBLE_STATUS:
+PASS_WITH_TWIST_PENDING / FAIL
+
+HARD_WALL_STATUS:
+PASS / FAIL
+
+OUTLET_TRACKING_STATUS:
+PASS / FAIL
+
+NEAR_WALL_EVENT_STATUS:
+PASS / FAIL
+
+RK2_STATUS:
+PASS / FAIL
+
+MPI_STATUS:
+PASS / FAIL
+
+WORKFLOW_TECHNICAL_STATUS:
+PASS / PARTIAL / BLOCKED / FAIL
+
+FLOW_PHYSICS_STATUS:
+ENGINEERING_TRANSIENT_FIELD_ONLY
+
+WALL_HYDRODYNAMICS_STATUS:
+NOT_IMPLEMENTED
+
+ADHESION_STATUS:
+OFF
+
+REAL_SCIENTIFIC_PRODUCTION_READY:
+NO
+
+LARGE_N_READY:
+NO
+
+GPU_PERFORMANCE_READY:
+NO
+
+============================================================
+五十六、通过标准
+============================================================
+
+WORKFLOW_TECHNICAL_STATUS = PASS
+
+至少要求：
+
+能够从入口生成微泡
+
+能够读取 frozen flow
+
+能够运行 RK2
+
+bubble 不互穿
+
+bubble 不穿 biological wall
+
+outlet 不被误认为 wall
+
+能够正确记录出口
+
+能够记录 near-wall event
+
+trajectory 完整
+
+MPI1/MPI4 一致
+
+没有 silent particle loss
+
+没有 NaN/Inf
+
+没有修改历史 source
+
+============================================================
+五十七、如果遇到严重问题
+============================================================
+
+下面任何一个发生：
+
+无法确认 tagged geometry 来源
+
+无法区分 wall 与 port
+
+当前 flow field 和 geometry 不匹配
+
+当前 inlet injection plane 无法稳定采样
+
+hard wall 与 outlet detection 冲突
+
+现有 solver RHS / RK2 无法安全复用
+
+不要为了完成 workflow
+临时 hack。
+
+使用：
+
+STOP_<REASON>
+
+记录：
+
+EXPECTED
+ACTUAL
+IMPACT
+NEXT_OPTIONS
+
+然后停止等待用户。
+
+============================================================
+五十八、最终终端输出
+============================================================
+
+打印：
+
+MICROBUBBLE_VASCULAR_WORKFLOW_V0_COMPLETE
+
+GEOMETRY_PROVENANCE_STATUS:
+<...>
+
+PORT_CLASSIFICATION_STATUS:
+<...>
+
+SONOVUE_INITIALIZATION_STATUS:
+<...>
+
+FLOW_SAMPLER_STATUS:
+<...>
+
+BUBBLE_BUBBLE_STATUS:
+<...>
+
+HARD_WALL_STATUS:
+<...>
+
+OUTLET_TRACKING_STATUS:
+<...>
+
+NEAR_WALL_EVENT_STATUS:
+<...>
+
+RK2_STATUS:
+<...>
+
+MPI_STATUS:
+<...>
+
+WORKFLOW_TECHNICAL_STATUS:
+<...>
+
+FLOW_PHYSICS_STATUS:
+ENGINEERING_TRANSIENT_FIELD_ONLY
+
+WALL_HYDRODYNAMICS_STATUS:
+NOT_IMPLEMENTED
+
+RMBW_USED:
+NO
+
+CF2003_USED:
+NO
+
+FALADE_BRENNER_USED:
+NO
+
+WSS_USED:
+NO
+
+ADHESION:
+OFF
+
+REAL_SCIENTIFIC_PRODUCTION_READY:
+NO
+
+LARGE_N_READY:
+NO
+
+GPU_PERFORMANCE_READY:
+NO
+
+REPORT:
+<absolute path>
+
+LOCAL_STAGE:
+<absolute path>
+
+REMOTE_STAGE:
+<absolute path>
+
+SOURCE_MODIFIED_OUTSIDE_NEW_STAGE:
+NO
+
+GIT_COMMIT:
+NO
+
+然后停止。
+
+不要自动进入：
+
+wall hydrodynamics
+adhesion
+RBC
+GPU optimization
+large-N production
+
+等待用户和 ChatGPT 审核。

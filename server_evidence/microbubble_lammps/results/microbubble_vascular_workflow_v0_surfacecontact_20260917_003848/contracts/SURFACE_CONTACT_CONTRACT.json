@@ -1,0 +1,50 @@
+{
+  "model": "CONTINUOUS_SURFACE_CONTACT_3D_V0",
+  "geometry": "Unmodified production WALL_ONLY STL; exact-coordinate welding only; port caps excluded",
+  "triangle_identity": "Lexicographic vertex coordinate IDs; canonical sorted vertex-ID triple for face IDs; labels never choose the physical normal",
+  "adjacency": "Shared manifold edge, consistent local orientation, dihedral <= threshold. Region labels are diagnostics only. Group local nearest candidates, never whole global connected component.",
+  "tie_tolerance": "factor * 64 * DBL_EPSILON * max(norm(query),1e-6 m)",
+  "tie_factor_default": 1,
+  "tie_factor_sensitivity": [
+    0.5,
+    1,
+    2
+  ],
+  "smooth_dihedral_threshold_deg": 15,
+  "smooth_threshold_sensitivity_deg": [
+    10,
+    15,
+    25
+  ],
+  "threshold_role": "NUMERICAL_MESH_PARAMETER_NOT_PHYSICS",
+  "feature_barycentric_zero_tolerance": 1e-09,
+  "normal": {
+    "face": "fluid-side face normal",
+    "smooth_edge": "area-weighted adjacent smooth face normals",
+    "vertex": "angle-weighted smooth vertex one-ring normals",
+    "orientation": "flip toward query center relative to weighted candidate closest point; zero/cancelled orientation stops",
+    "limitation": "Mesh defines piecewise planar geometry. Pseudonormals identify smooth continuation; no analytic surface or mesh smoothing is claimed.",
+    "finite_radius_contact": "At a single smooth edge/vertex/patch use the center-to-weighted-feature distance gradient for the sphere offset constraint; retain weighted face pseudonormal separately for orientation and diagnostics. Face interior and true multi patches use their face pseudonormals."
+  },
+  "activation": "Full raw swept segment unsafe; binary search monotone prefix safety (40 iterations) for predicted first contact; query there",
+  "projection": "Enumerate active sets of size 0..3, solve small Gram KKT, all normals feasible, choose minimum Euclidean translation change",
+  "rank_pivot_tolerance": 1e-12,
+  "qp_feasibility_tolerance": "2e-12 * max(norm(Vraw),1e-30)",
+  "rotation": "Omega bitwise unchanged",
+  "raw_resistance": "R_bulk+R_BB_excess; coefficients/PCG/hard pair KKT unchanged; twist pending",
+  "safety": "Inherited exact segment-to-triangle continuous minimum distance after projection and correction; final endpoint plus pair sweep",
+  "wall_margin_m": 1e-10,
+  "independent_wall_validation_tolerance_m": 2e-14,
+  "pair_swept_tolerance_m": 1e-12,
+  "position_correction": {
+    "cap_m": 2.5e-11,
+    "conditions": "single cluster at first contact and endpoint, projected inward motion, prior actual wall retry, positive tiny endpoint OR swept residual deficit",
+    "direction": "center minus cluster-weighted closest point, normalized",
+    "cushion": "64 * epsilon * max(norm(endpoint),radius+margin)",
+    "limit": "one correction per stage; corrected full swept certificate must pass; multi-surface correction disabled"
+  },
+  "rollback": "Entire trial/controller/RNG/admissions rollback; dt halves physical interval; no held-position time advance",
+  "fatal_archive": "WALL_CONTACT_FAILURE.json flushes full query topology, normals, velocities, stage, dt and exact swept gaps before stop",
+  "wall_hydrodynamics": "NOT_IMPLEMENTED",
+  "disclaimer": "NOT EXPERIMENTAL CONCENTRATION"
+}

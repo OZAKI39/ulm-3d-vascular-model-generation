@@ -1,49 +1,49 @@
-# Network A/H0 → 3D FEM → Microbubble
+# Network H0 → 3D FEM → Microbubble / RBC
 
-这是截至 2026-09-25（柏林时间）的工作流同步分支，包含代码瘦身后的本地实现、必要输入、冻结流场、轨迹、可视化、正式报告，以及服务器源码和执行记录。
+当前同步分支：`sync/p9a4-flow-particle-rbc-20260925`，基于 `abb3ab05fb8dcddcf120765702b682f23a63a71d`。包含当前本地工作文件、P9-A.4新源码和完整审计结果、历史RBC模块、服务器代码/日志/配置和来源记录。原工作树与服务器科学结果保持原位；主分支未合并。
 
-当前结果为 **NETWORK_FLOW_MB_VALIDATION_PASS_WITH_STATIONARY**：同一组 30 个初始状态，OLD/NEW 各 29 条完成、1 条 stationary、0 条数值失败。500 条新流场生产计算尚未启动。
+最新 **P9A4_POPULATION_INLET_READY_FOR_LARGE_SAMPLE_REVIEW**：100,000 source proposals → 19,221 accepted births；NEW Network-H0上首30泡为28 completed / 2 supported stationary / 0 solver fail。恒定绝对浓度是明确的模型假设。没有运行正式500。
 
 | 内容 | 仓库入口 |
 | --- | --- |
-| 血管 A、ROI、端口、Network H0 | [vascular_network](vascular_network/README.md) |
-| H0 3D FEM 算例、求解、校验 | [FEM_SimVascular](formal_3D_flow_solver/FEM_SimVascular/README.md) |
-| 当前 OLD/NEW 配对轨迹与科学代码 | [particle_3d](particle_3d/README.md) |
-| 配对验证正式报告 | [NETWORK_DERIVED_FLOW_MB_VALIDATION_ZH.md](particle_3d/reports/network_derived_flow_mb_validation_v1/NETWORK_DERIVED_FLOW_MB_VALIDATION_ZH.md) |
-| 压力、WSS、流线、局部矢量原可视化接口 | [rotate_visualization](formal_3D_flow_solver/FEM_SimVascular/rotate_visualization/OPEN_RESULTS.html) |
-| 服务器保留源码、配置、日志、执行证据 | [server_evidence](server_evidence/README.md) |
-| SonoVue 固定分布 | [sonovue_size_distribution_v0](sonovue_size_distribution_v0/README.md) |
-| 历史 FEM / RBC / 2D 来源 | `formal_3D_flow_solver/FEM/`、`particle_3d/reports/`、`source_dependencies/` |
-| 同步范围、清理记录、逐文件来源与排除原因 | [同步报告](sync_metadata/network_h0_particle_20260925/SYNC_REPORT_ZH.md) |
+| 新P9-A.4正式报告 | [入口群体审核](particle_3d/reports/particle9a4_population_inlet/P9A4_POPULATION_INLET_REVIEW_ZH.md) |
+| P9-A.4代码 | [continuous_infusion.py](particle_3d/src/particle_3d/continuous_infusion.py)、[population_inlet_p9a4.py](particle_3d/src/particle_3d/population_inlet_p9a4.py) |
+| 科学代码逻辑审核 | [CURRENT_CODE_LOGIC_AUDIT_ZH.md](particle_3d/reports/particle9a4_population_inlet/CURRENT_CODE_LOGIC_AUDIT_ZH.md) |
+| 100k全部候选事件/拒绝、births、checkpoint | [data/inlet100k](particle_3d/reports/particle9a4_population_inlet/data/inlet100k/)；大文本gzip无损保存，先按下文还原 |
+| 30泡轨迹及point数据 | [outputs/smoke30](particle_3d/reports/particle9a4_population_inlet/outputs/smoke30/) |
+| 8组英文PNG/PDF图件 | [figures](particle_3d/reports/particle9a4_population_inlet/figures/)；[HTML总览](particle_3d/reports/particle9a4_population_inlet/OPEN_RESULTS.html)下载后浏览 |
+| vascular A、ROI及Network H0 | [vascular_network](vascular_network/README.md) |
+| NEW H0 FEM算例/网格/配置/冻结流场 | [mean-2p0-mmps-A-H0-pressure-v1](formal_3D_flow_solver/FEM_SimVascular/flow_cases/mean-2p0-mmps-A-H0-pressure-v1/) |
+| 微泡/RBC完整科学源码、测试、合同 | [particle_3d](particle_3d/README.md) |
+| 历史RBC运动、变形代理和共流展示 | [particle2](particle_3d/reports/particle2/)、[particle3](particle_3d/reports/particle3/)、[rbc_mb_flow_rotation](particle_3d/reports/rbc_mb_flow_rotation/) |
+| 固定SonoVue分布 | [sonovue_size_distribution_v0](sonovue_size_distribution_v0/) |
+| 压力/WSS/流线/速度矢量可视化 | [rotate_visualization](formal_3D_flow_solver/FEM_SimVascular/rotate_visualization/) |
+| 服务器代码和执行记录 | [server_evidence](server_evidence/README.md) |
+| 当前目录映射 | [WORKFLOW_PATHS_ZH.md](WORKFLOW_PATHS_ZH.md) |
+| 本次同步范围、排除规则及验证 | [SYNC_REPORT_ZH.md](sync_metadata/p9a4_flow_particle_rbc_20260925/SYNC_REPORT_ZH.md) |
 
-## 下载与检查
+## 克隆、校验和无损还原
 
 ```bash
-git clone --single-branch --branch sync/network-h0-particle-cleanup-20260925 \
+git clone --single-branch --branch sync/p9a4-flow-particle-rbc-20260925 \
   https://github.com/OZAKI39/ulm-3d-vascular-model-generation.git
 cd ulm-3d-vascular-model-generation
-python3 sync_metadata/network_h0_particle_20260925/verify_snapshot.py
+python3 sync_metadata/p9a4_flow_particle_rbc_20260925/verify_snapshot.py --scientific-inputs
+python3 sync_metadata/p9a4_flow_particle_rbc_20260925/restore_large_artifacts.py
 ```
 
-完整性检查只需 Python 标准库；本分支使用普通 Git 对象。发布验证使用 Python 3.13.11，依赖版本见 [requirements-verified.txt](sync_metadata/network_h0_particle_20260925/requirements-verified.txt)。在具备这些依赖的环境中运行：
+普通Git对象，无需Git LFS。还原脚本验证gzip及原始字节SHA，恢复3份科学大文本到原路径；已有同SHA文件可重复执行，遇到不同内容拒绝覆盖。原科学源码、合同及原始报告不因压缩而修改。还原后可直接读取原checkpoint和旧报告所引用的JSON/JSONL。原阶段delivery manifest中绝对机器路径是历史来源记录，不是克隆目录要求。
+
+使用已记录的科学Python依赖运行：
 
 ```bash
-python sync_metadata/network_h0_particle_20260925/verify_snapshot.py --scientific-inputs
-python sync_metadata/network_h0_particle_20260925/run_checks.py --output /tmp/ulm-workflow-checks
+python sync_metadata/p9a4_flow_particle_rbc_20260925/run_checks.py --output /tmp/ulm-p9a4-checks-new
 ```
 
-发布前在临时迁移目录中完成 **115 项回归，全部通过**（Particle 24、Network 49、流场 42）。测试使用仓库内文件；只在临时副本中迁移 5 份 JSON 的历史绝对路径，源码、数组、公式、参数及测试断言保持原字节。原科学清单中的 92 个解释器缓存条目在临时验证清单中排除，全部 114 个实际科学源文件仍校验原 SHA。原报告和原清单保留。
+输出目录须为全新目录。验证范围为portable 115项 + P9-A.4 35项 + legacy入口/open-cap 15项，共165项。历史HemoCell/LAMMPS及独立TopBrain开发只保存快照，不因此获得当前主线的验收状态。依赖版本见 [requirements-verified.txt](sync_metadata/network_h0_particle_20260925/requirements-verified.txt)。历史绝对路径迁移规则见[既有迁移说明](sync_metadata/network_h0_particle_20260925/PORTABILITY_ZH.md)。
 
-## 流场角色
+## 输入版本
 
-| 路径 | 角色 |
-| --- | --- |
-| `formal_3D_flow_solver/FEM_SimVascular/frozen_reference/` | Particle 默认使用的历史 2 mm/s 场 |
-| `formal_3D_flow_solver/FEM_SimVascular/flow_cases/mean-2p0-mmps/frozen_flow/` | OLD，SHA `129ebb77396550b300b20ce29cde7b03919e6037b7a81de60fe75d6c6efb616d` |
-| `formal_3D_flow_solver/FEM_SimVascular/flow_cases/mean-2p0-mmps-A-H0-pressure-v1/frozen_flow/` | NEW/H0，SHA `064cbd28f3efa72f426fc946b2f29da21f056c596609095e7283d39070aa55f4` |
-| `formal_3D_flow_solver/FEM_SimVascular/upstream_stage_q_reference/` | Flow 原工作树的早期 Stage Q 冻结交付，用于历史流场回归 |
-| `formal_3D_flow_solver/FEM_SimVascular/legacy_inputs/` | Particle 迁移前输入的历史角色 |
+NEW H0 SHA：`064cbd28f3efa72f426fc946b2f29da21f056c596609095e7283d39070aa55f4`。当前新入口显式验证该流场；Particle默认frozen_reference仍是历史OLD equal-pressure 2 mm/s场，不能混用。更早P8.2A/PPT500和RBC理想化Poiseuille演示保留各自来源；RBC演示不冒充NEW H0 RBC生产轨迹。Taylor-Hood仍为已停止验证阶段。
 
-流场求解使用固定的 svMultiPhysics/PETSc GPU 工具链；微泡轨迹由 CPU 进程按泡并行。必要构建脚本、源补丁、版本与服务器记录已保留；已安装环境与二进制可按记录重建。
-
-原始全脑数据、虚拟环境/构建树、多余渲染帧、中间 CFD 状态、重复部署包及非必要大文件未纳入。依赖当前回归的约 29.5 MiB 流线候选池作为重要文件保留。历史全流程脚本仍有原机器路径，重新计算前需按[迁移说明](sync_metadata/network_h0_particle_20260925/PORTABILITY_ZH.md)配置；本次没有重算 CFD 或轨迹。
+同步排除环境、构建/安装树、完整上游脑数据、渲染帧、大型重复部署包和非必要中间状态。重要100k科学数据无损保留。原报告中的“未push”是开发阶段历史记录；本分支是其后的发布快照。

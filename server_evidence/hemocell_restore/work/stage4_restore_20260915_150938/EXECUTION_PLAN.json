@@ -1,0 +1,81 @@
+{
+  "task": "VAST4090_STAGE4_RESTORE_AND_VALIDATION",
+  "run_id": "20260915_150938",
+  "from_zero": true,
+  "official_smoke_max_steps": 200,
+  "stage4_horizons": [
+    200,
+    1000,
+    5000
+  ],
+  "runs_each_horizon": 1,
+  "automatic_solver_retries": 0,
+  "gate_order": [
+    "official",
+    "200",
+    "1000",
+    "5000"
+  ],
+  "CXX_source_change_allowed": false,
+  "physics_change_allowed": false,
+  "profile_stage4": false,
+  "official_cuda_API_trace_only": "Direct required kernel evidence, not performance baseline",
+  "gpu_arch_source": "actual nvidia-smi compute_cap=8.9",
+  "gpu_arch_target": "cc89",
+  "compiler": "NVHPC26.5",
+  "cuda": "13.2",
+  "comparison_contract_sha256": "5e78c61974be7ca2a52b3add288858330804c8d74d47ae909fced717d1f02456",
+  "checkpoint_policy": {
+    "200": [
+      0,
+      1,
+      10,
+      100,
+      200
+    ],
+    "1000": [
+      0,
+      100,
+      200,
+      1000
+    ],
+    "5000": [
+      0,
+      100,
+      200,
+      1000,
+      5000
+    ]
+  },
+  "warmup": {
+    "200": 100,
+    "1000": 100,
+    "5000": 500
+  },
+  "reference_pairs": [
+    "same-horizon archived CPU MPI12",
+    "same-horizon archived RTX5090 Stage4"
+  ],
+  "correctness_evaluator": "Unmodified frozen evaluate_case.py",
+  "sustained_rules": {
+    "correctness": "All Stage2 tolerances unchanged, all history rows plus covered field checkpoints tested",
+    "divergence": "FAIL if any frozen tolerance fails. GROWING if a checkpoint error at >=5000 exceeds both4x its step1000 value and1% of its frozen tolerance. Otherwise STABLE within the tested contract; this does not claim exact equality or machine-epsilon noise.",
+    "performance_stability": "Compare median steady GPU rates at5000 and10000: relative change<=5% STABLE; fall>5% DEGRADING; rise>5% IMPROVING_AFTER_WARMUP.",
+    "severe_performance_stop": "At5000: median GPU rate<80% of1000 median, or last1000-step window rate<80% of first full1000-step interval after warmup.",
+    "memory_growth_stop": "After initialization, VRAM growth>256MiB or solver RSS growth>512MiB between steady thirds, with nondecreasing thirds; report measurements before10000.",
+    "migration_stop": "If post-optimization short profile ordinary-step managed bytes exceed Stage2 ordinary-step bytes by>20%, stop10000 cases. Late5000 migration count is UNVERIFIED without trace.",
+    "fit": "Ordinary least squares T=A+b*N on all valid unprofiled repetitions; S_fit=1/b. Report residuals and measured horizon brackets.",
+    "projections": "Only if5000/10000 GPU rates stable within5%, all correctness PASS and no divergence; use current10000 median sustained speeds, fitted fixed overhead, mark PROJECTED."
+  },
+  "memory_stability": "Steady thirds (after500): nondecreasing medianVRAM growth>256MiB or solverRSS>512MiB => GROWING; retain actual medians. Original Stage3 stop rule.",
+  "performance_stability_scope": "Single1000 and5000. Severe drop rule:5000 rate<80%1000, or last1000 window<80%first complete1000 afterwarmup. Original5000vs10000 5% rule is NOT_TESTED: no10000 authorized.",
+  "RBC_steps": 0,
+  "long_run": false,
+  "archive_write_allowed": false,
+  "Stage4_sustained_performance_rule": {
+    "max_drop_vs_1000": 0.05,
+    "repeated_run_spread": "NOT_TESTED: one run per horizon explicitly requested",
+    "source": "Frozen STAGE4_EXECUTION_CONTRACT.json performance.sustained",
+    "not_a_correctness_gate": true
+  }
+}

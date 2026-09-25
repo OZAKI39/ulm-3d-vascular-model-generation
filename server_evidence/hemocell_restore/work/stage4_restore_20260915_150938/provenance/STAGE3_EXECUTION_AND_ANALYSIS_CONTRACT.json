@@ -1,0 +1,60 @@
+{
+  "stage": "GPU_POC_STAGE_3",
+  "horizons": {
+    "1000": 3,
+    "5000": 2,
+    "10000": 2
+  },
+  "from_zero": true,
+  "conditional_third_GPU_10000": {
+    "enabled": true,
+    "trigger": "abs(S1-S2)/mean(S1,S2)>0.05",
+    "max_extra": 1
+  },
+  "profile": {
+    "total_steps": 200,
+    "capture_first": 101,
+    "capture_last": 200,
+    "normal_performance_evidence": false
+  },
+  "warmup": {
+    "n1000": 100,
+    "n5000": 500,
+    "n10000": 1000
+  },
+  "checkpoints": [
+    0,
+    100,
+    200,
+    1000,
+    5000,
+    10000
+  ],
+  "safety_every_step": true,
+  "all24flux_groups_every_step": true,
+  "output_frequency_identical": true,
+  "maximum_physical_steps_any_run": 10000,
+  "new_optimization_allowed": false,
+  "RBC_INCLUDED": false,
+  "correctness_contract_sha256": "5e78c61974be7ca2a52b3add288858330804c8d74d47ae909fced717d1f02456",
+  "analysis_rules": {
+    "correctness": "All Stage2 tolerances unchanged, all history rows plus covered field checkpoints tested",
+    "divergence": "FAIL if any frozen tolerance fails. GROWING if a checkpoint error at >=5000 exceeds both4x its step1000 value and1% of its frozen tolerance. Otherwise STABLE within the tested contract; this does not claim exact equality or machine-epsilon noise.",
+    "performance_stability": "Compare median steady GPU rates at5000 and10000: relative change<=5% STABLE; fall>5% DEGRADING; rise>5% IMPROVING_AFTER_WARMUP.",
+    "severe_performance_stop": "At5000: median GPU rate<80% of1000 median, or last1000-step window rate<80% of first full1000-step interval after warmup.",
+    "memory_growth_stop": "After initialization, VRAM growth>256MiB or solver RSS growth>512MiB between steady thirds, with nondecreasing thirds; report measurements before10000.",
+    "migration_stop": "If post-optimization short profile ordinary-step managed bytes exceed Stage2 ordinary-step bytes by>20%, stop10000 cases. Late5000 migration count is UNVERIFIED without trace.",
+    "fit": "Ordinary least squares T=A+b*N on all valid unprofiled repetitions; S_fit=1/b. Report residuals and measured horizon brackets.",
+    "projections": "Only if5000/10000 GPU rates stable within5%, all correctness PASS and no divergence; use current10000 median sustained speeds, fitted fixed overhead, mark PROJECTED."
+  },
+  "resource_guards": {
+    "min_available_RAM_GiB": 16,
+    "min_disk_start_MiB": 256,
+    "min_disk_stop_MiB": 192,
+    "max_single_run_wall_seconds": 3600,
+    "max_whole_schedule_wall_seconds": 18000,
+    "no_concurrent_solver": true,
+    "no_automatic_retry": true
+  },
+  "storage": "All required files written during E2E. After successful close/checksum, byte-identical Stage3 snapshots may be hardlinked without deleting any path or changing bytes."
+}

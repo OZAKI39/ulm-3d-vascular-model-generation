@@ -1,0 +1,65 @@
+{
+  "schema": "NEW_MEDIUM_SMOKE_SAFETY_V1",
+  "frozen_before_first_solver": true,
+  "scope": "Short transient stability only, not convergence/accuracy/calibration",
+  "horizons": [
+    500,
+    5000
+  ],
+  "from_zero_each": true,
+  "runs_per_horizon": 1,
+  "automatic_solver_retries": 0,
+  "MPI_ranks": 1,
+  "rho_min": 0.99,
+  "rho_max": 1.01,
+  "tau_lower_open_bound": 0.5,
+  "required_tau": 1.0,
+  "mach_hard_limit": 0.05,
+  "mach_smoke_pass_limit": 0.01,
+  "max_total_mass_drift_fraction": 0.01,
+  "max_mass_jump_per50_fraction": 0.001,
+  "fast_monotonic_mass_growth_per500_fraction": 0.001,
+  "fast_monotonic_consecutive_intervals": 3,
+  "max_abs_CV_interval_balance_over_initial_mass": 0.01,
+  "max_abs_CV_cumulative_balance_over_initial_mass": 0.01,
+  "max_abs_flux_over_Qtarget": 100.0,
+  "final_inlet_Q_min_over_Qtarget": -1e-12,
+  "VRAM_growth_limit_MiB": 256.0,
+  "RSS_growth_limit_MiB": 512.0,
+  "independent_snapshot_rho_abs_tolerance": 1e-12,
+  "independent_snapshot_velocity_abs_tolerance": 1e-12,
+  "independent_snapshot_mass_relative_tolerance": 1e-10,
+  "independent_snapshot_flux_over_Qtarget_tolerance": 1e-08,
+  "expected_dt_and_rho_reproduction_ulp": 8,
+  "output_limit_bytes": 524288000,
+  "output_intervals": {
+    "nonfinite": 1,
+    "rho_Mach_mass": 50,
+    "all24flux": 100,
+    "CV_mass_and_balance": 500
+  },
+  "full_field_snapshots": {
+    "500": [
+      0
+    ],
+    "5000": [
+      0,
+      5000
+    ],
+    "failure": "Current failed step if field is initialized; never fabricate a snapshot before a lattice exists"
+  },
+  "formal_convergence_monitor": false,
+  "steady_R_flow_gate": false,
+  "outlet_transient_backflow_is_automatic_failure": false,
+  "new_medium_inlet_multiplier_validation": "NOT_PERFORMED",
+  "RBC_steps": 0,
+  "basis": {
+    "rho_Mach_tau": "Existing frozen Step3 safety:rho in[.99,1.01],Mach<=.05,tau>.5 and retainedtau1",
+    "Mach_pass_margin": "Smoke-specific conservative margin:observedMach<=20%existinghardlimit; fixed before results",
+    "mass_drift": "Existing1% density excursion gives1% physical-total-mass scale; smoke checks additionally per50 jump<=0.1%",
+    "fast_mass_growth": "Three consecutive500-step abs-drift increases each>0.1% is fast monotonic deterioration; transient tiny monotone filling alone does not fail",
+    "CV_balance": "Dimensional storage+trapezoidal outward mass flux, normalized by initialCVmass;1% permits bounded transient/quadrature error, not a convergence gate",
+    "flux": "Gross-anomaly screen100xQtarget, all24groups finite; no target-accuracy gate and temporary negative outletflow recorded",
+    "memory": "Original Stage3 steady-thirds growth criterion256MiBVRAM/512MiBRSS; no changes toGPUmemorypolicy"
+  }
+}

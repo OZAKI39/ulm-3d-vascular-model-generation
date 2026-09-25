@@ -1,0 +1,126 @@
+{
+  "STOP_REASON": "STOP_INLET_BATCH_INITIALIZATION_INFEASIBLE",
+  "EXPECTED": "W1=1, W2=8 and W3=16 fixed SonoVue radii, simultaneously on one inward-offset inlet plane, without wall/pair overlap and with successful frozen-flow query.",
+  "ACTUAL": [
+    {
+      "case": "W1",
+      "count": 1,
+      "seed": 42,
+      "status": "PASS",
+      "offset_m": 1.4582582667959747e-06,
+      "offset_rule": "max(4*dx,maximum_radius+dx)",
+      "initial_clearance_m": 1.9989918081065344e-07,
+      "initial_clearance_rule": "one frozen field voxel",
+      "plane_center_m": [
+        0.00010367370665514164,
+        5.7554233920036226e-05,
+        0.00015734814061458492
+      ],
+      "plane_normal": [
+        -7.007266199383469e-07,
+        -6.027718016794421e-07,
+        0.9999999999995729
+      ],
+      "section_area_m2": 7.806134250046687e-12,
+      "bubble_disks_area_m2": 4.974610145685284e-12,
+      "disk_area_over_available": 0.6372693559114144,
+      "section_widths_m": [
+        3.153332420330888e-06,
+        3.155489368854146e-06
+      ],
+      "inscribed_radius_upper_bound_m": 1.576666210165444e-06,
+      "maximum_bubble_radius_m": 1.2583590859853213e-06,
+      "necessary_coplanar_area_condition": true,
+      "necessary_individual_size_with_margin_condition": true,
+      "reason": "",
+      "position_retry_budget": 5000,
+      "actual_attempts_per_placed_bubble": [
+        206
+      ],
+      "geometric_infeasibility_short_circuits_futile_retries": false,
+      "radii_never_resampled_or_shrunk": true,
+      "accepted_count": 1
+    },
+    {
+      "case": "W2",
+      "count": 8,
+      "seed": 42,
+      "status": "INITIALIZATION_FAILED",
+      "offset_m": 2.059054325175469e-06,
+      "offset_rule": "max(4*dx,maximum_radius+dx)",
+      "initial_clearance_m": 1.9989918081065344e-07,
+      "initial_clearance_rule": "one frozen field voxel",
+      "plane_center_m": [
+        0.00010367370707613543,
+        5.755423428217915e-05,
+        0.00015674734455620567
+      ],
+      "plane_normal": [
+        -7.007266199383469e-07,
+        -6.027718016794421e-07,
+        0.9999999999995729
+      ],
+      "section_area_m2": 7.803643985117494e-12,
+      "bubble_disks_area_m2": 4.026484411070014e-11,
+      "disk_area_over_available": 5.159748982333142,
+      "section_widths_m": [
+        3.1557614992805468e-06,
+        3.1554911335081203e-06
+      ],
+      "inscribed_radius_upper_bound_m": 1.5777455667540601e-06,
+      "maximum_bubble_radius_m": 1.8591551443648157e-06,
+      "necessary_coplanar_area_condition": false,
+      "necessary_individual_size_with_margin_condition": false,
+      "reason": "COPLANAR_DISK_AREA_EXCEEDS_FLUID_SECTION",
+      "position_retry_budget": 5000,
+      "actual_attempts_per_placed_bubble": [],
+      "geometric_infeasibility_short_circuits_futile_retries": true,
+      "radii_never_resampled_or_shrunk": true,
+      "accepted_count": 0
+    },
+    {
+      "case": "W3",
+      "count": 16,
+      "seed": 42,
+      "status": "INITIALIZATION_FAILED",
+      "offset_m": 2.059054325175469e-06,
+      "offset_rule": "max(4*dx,maximum_radius+dx)",
+      "initial_clearance_m": 1.9989918081065344e-07,
+      "initial_clearance_rule": "one frozen field voxel",
+      "plane_center_m": [
+        0.00010367370707613543,
+        5.755423428217915e-05,
+        0.00015674734455620567
+      ],
+      "plane_normal": [
+        -7.007266199383469e-07,
+        -6.027718016794421e-07,
+        0.9999999999995729
+      ],
+      "section_area_m2": 7.803643985117494e-12,
+      "bubble_disks_area_m2": 6.888029369363067e-11,
+      "disk_area_over_available": 8.826683255283536,
+      "section_widths_m": [
+        3.1557614992805468e-06,
+        3.1554911335081203e-06
+      ],
+      "inscribed_radius_upper_bound_m": 1.5777455667540601e-06,
+      "maximum_bubble_radius_m": 1.8591551443648157e-06,
+      "necessary_coplanar_area_condition": false,
+      "necessary_individual_size_with_margin_condition": false,
+      "reason": "COPLANAR_DISK_AREA_EXCEEDS_FLUID_SECTION",
+      "position_retry_budget": 5000,
+      "actual_attempts_per_placed_bubble": [],
+      "geometric_infeasibility_short_circuits_futile_retries": true,
+      "radii_never_resampled_or_shrunk": true,
+      "accepted_count": 0
+    }
+  ],
+  "IMPACT": "W1 initialization can be checked, but W2/W3 cannot initialize under the frozen single-plane batch configuration. No RK2/MPI workflow cases have been started.",
+  "NEXT_OPTIONS": [
+    "User authorizes a 3D inlet buffer/slab batch placement policy; individually oversized bubbles still require an explicit admission policy or a wider inlet.",
+    "User chooses a wider real inlet/geometry compatible with the intended size range; establish matching frozen flow rather than scaling existing geometry.",
+    "User explicitly limits the first stage to W1 or authorizes a disclosed geometry-conditioned size population. No implicit filtering or seed selection is applied."
+  ],
+  "USER_RULE": "Request section57: stop when inlet injection plane cannot be sampled reliably; do not hack completion."
+}

@@ -1,0 +1,87 @@
+{
+  "status": "PASS",
+  "dx_status": "CANDIDATE_BASELINE",
+  "tau_status": "STEP3_CANDIDATE_TAU",
+  "dx_requested_m": 2e-07,
+  "dx_effective_m": 1.9989918081065344e-07,
+  "rho_phys_kg_m3": 1056.0,
+  "nu_phys_m2_s": 3.27e-06,
+  "cs2": 0.3333333333333333,
+  "tau": 1.0,
+  "nu_lu": 0.16666666666666666,
+  "dt_s": 2.0366810646671923e-09,
+  "reference_physical_gauge_pressure_pa": 0.0,
+  "reference_lattice_density": 1.0,
+  "gauge_reference": "GLOBAL_STRUCTURAL_LEAVES_ZERO_GAUGE",
+  "velocity_conversion": {
+    "formula": "u_phys=u_lu*dx/dt",
+    "m_s_per_lu": 98.14947675340535
+  },
+  "pressure_conversion": {
+    "formula": "p_gauge_phys=(rho_lu-1)*cs2*rho_phys*(dx/dt)^2; p_gauge_lu=p_phys/[rho_phys*(dx/dt)^2]",
+    "pa_per_lu": 10172785.695037425,
+    "note": "Fixed reference rho=1; do NOT use offLatticeBC.computePressure() which subtracts instantaneous average density."
+  },
+  "flow_conversion": {
+    "formula": "Q_phys=Q_lu*dx^3/dt",
+    "m3_s_per_lu": 3.922021927505021e-12
+  },
+  "mass_conversion": {
+    "kg_per_lu": 8.435230631476704e-18
+  },
+  "force_conversion": {
+    "newton_per_lu": 4.065012864000001e-07,
+    "used": false
+  },
+  "target_Q_phys": 2.7369132390905703e-15,
+  "target_Q_lu": 0.0006978322124862894,
+  "outlets": {
+    "outlet_01": {
+      "pressure_phys_pa": 14.544978101274268,
+      "pressure_gauge_lu": 1.4297930318506291e-06,
+      "density_lu": 1.0000042893790955
+    },
+    "outlet_02": {
+      "pressure_phys_pa": 132.20454922317552,
+      "pressure_gauge_lu": 1.2995904286833514e-05,
+      "density_lu": 1.0000389877128606
+    },
+    "outlet_03": {
+      "pressure_phys_pa": -13.700626673311461,
+      "pressure_gauge_lu": -1.3467920276738964e-06,
+      "density_lu": 0.999995959623917
+    }
+  },
+  "sources": [
+    {
+      "path": "/home/lzy/projects/hemocell_starter/palabos/src/offLattice/offLatticeBoundaryCondition3D.hh",
+      "sha256": "00caee998b86faf32e1403685b7f93177126ea8136b8b9bebe3911a750153804",
+      "context": "insert() no packed-field arguments supported; computePressure subtracts MEAN density, unsuitable for our fixed gauge reference",
+      "lines": 603
+    },
+    {
+      "path": "/home/lzy/projects/hemocell_starter/mechanics/constantConversion.cpp",
+      "sha256": "28cf72c29d22dd6dc7357d1237051fdc07131bf9c59beb1b891cbafa1c5fe941",
+      "context": "36-54: nuLU=(tau-.5)/3, dt=nuLU*dx²/nuPhys, dm=rhoPhys*dx³, df=dm*dx/dt²",
+      "lines": 140
+    },
+    {
+      "path": "/home/lzy/projects/hemocell_starter/palabos/src/latticeBoltzmann/nearestNeighborLattices3D.hh",
+      "sha256": "b3463c440b222aa8a4fe1e658e66d3b5a1ac29f4ff8aaebc0905cef660f681d3",
+      "context": "D3Q19 weights, velocities, cs²=1/3",
+      "lines": 328
+    },
+    {
+      "path": "/home/lzy/projects/hemocell_starter/palabos/src/latticeBoltzmann/dynamicsTemplates.h",
+      "sha256": "df0263344a10114e26311c32542278e190b90b8891af66df8858b9ae1db5ad18",
+      "context": "BGK second-order equilibrium; second moment = cs²*rho*I + rho*u*u",
+      "lines": 651
+    },
+    {
+      "path": "/home/lzy/projects/hemocell_starter/palabos/src/basicDynamics/isoThermalDynamics.hh",
+      "sha256": "898118394f0598dde2cc003c30443b833e7fdfa72c02598aa8a975d40d4b8fc6",
+      "context": "360-365 BGKdynamics::computeEquilibrium delegates to bgk_ma2_equilibrium",
+      "lines": 2596
+    }
+  ]
+}

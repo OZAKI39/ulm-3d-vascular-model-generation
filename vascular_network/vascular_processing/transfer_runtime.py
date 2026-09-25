@@ -13,6 +13,6 @@ def prepare_runtime():
 
 def require_versions():
     import importlib.metadata as m
-    for name,version in [('open3d','0.20.0'),('POT','0.9.7.post1')]:
+    for name,version in [('open3d','0.20.0')]:
         if m.version(name)!=version:raise RuntimeError(f'Run tools/setup_topbrain_brava_transfer.py: expected {name} {version}')
     prepare_runtime()

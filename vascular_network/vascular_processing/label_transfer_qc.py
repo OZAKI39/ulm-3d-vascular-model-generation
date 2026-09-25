@@ -1,9 +1,6 @@
-"""Held-out semantic scores and explicit production admission gates."""
+"""Held-out semantic and binary ROI scores; UNKNOWN remains a false negative."""
 import numpy as np
 from scipy.spatial import cKDTree
-
-GATES=dict(macro_f1=.70,M2_f1=.65,M3_f1=.65,require_baseline_superiority=True,roi_confidence=.60)
-
 
 def scores(truth,prediction):
     truth,prediction=np.asarray(truth),np.asarray(prediction)
@@ -35,5 +32,48 @@ def boundary_error(points,truth,prediction,pair):
     return float(np.median(np.r_[cKDTree(actual).query(predicted)[0],cKDTree(predicted).query(actual)[0]]))
 
 
-def pilot_gate(metric,baseline):
-    return bool(metric['macro_f1']>=GATES['macro_f1'] and metric['M2_f1']>=GATES['M2_f1'] and metric['M3_f1']>=GATES['M3_f1'] and metric['macro_f1']>baseline['macro_f1'])
+def collapse_labels_to_mevo(labels, *, truth=False):
+    """0=UNKNOWN, 1=M1, 2=MeVO; preserve the existing rejection decision."""
+    labels=np.asarray(labels)
+    allowed=[1,2,3] if truth else [0,1,2,3]
+    if labels.ndim!=1 or not np.isin(labels,allowed).all():
+        raise ValueError('Expected a vector of native semantic labels; truth cannot be UNKNOWN')
+    return np.where(labels==3,2,labels).astype(np.int8)
+
+
+def evaluate_mevo_binary(truth, prediction):
+    actual=collapse_labels_to_mevo(truth,truth=True)
+    predicted=collapse_labels_to_mevo(prediction)
+    if actual.shape!=predicted.shape or not len(actual):
+        raise ValueError('Truth and prediction must cover the same nonempty sample set')
+    # UNKNOWN contributes to the true class FN through the full row total.
+    matrix=np.array([[np.sum((actual==a)&(predicted==b)) for b in [1,2,0]] for a in [1,2]])
+    divide=lambda a,b:float(a/b) if b else 0.
+    result={}
+    for i,name in enumerate(['M1','MeVO']):
+        tp=matrix[i,i];fn=matrix[i].sum()-tp;fp=matrix[:,i].sum()-tp
+        result.update({name+'_precision':divide(tp,tp+fp),name+'_recall':divide(tp,tp+fn),
+                       name+'_f1':divide(2*tp,2*tp+fp+fn)})
+    result.update(binary_macro_f1=(result['M1_f1']+result['MeVO_f1'])/2,
+        false_inclusion=divide(matrix[0,1],matrix[0].sum()),
+        false_exclusion_to_M1=divide(matrix[1,0],matrix[1].sum()),
+        false_exclusion_to_UNKNOWN=divide(matrix[1,2],matrix[1].sum()),
+        false_exclusion_total=divide(matrix[1,0]+matrix[1,2],matrix[1].sum()),
+        UNKNOWN_fraction=float(np.mean(predicted==0)),sample_count=len(actual),
+        confusion_matrix=matrix.tolist())
+    native_truth,native_prediction=np.asarray(truth),np.asarray(prediction)
+    mevo_count=int(np.isin(native_truth,[2,3]).sum());within={}
+    for a,b in [(2,3),(3,2)]:
+        count=int(np.sum((native_truth==a)&(native_prediction==b)))
+        within[f'M{a}_to_M{b}']=dict(count=count,within_mevo_fraction=divide(count,mevo_count),
+                                     true_class_fraction=divide(count,int(np.sum(native_truth==a))))
+    within['true_mevo_count']=mevo_count
+    within['now_correct_binary_count']=sum(within[k]['count'] for k in ['M2_to_M3','M3_to_M2'])
+    result['within_mevo']=within
+    return result
+
+
+def evaluate_mevo_boundary(points,truth,prediction):
+    return boundary_error(points,collapse_labels_to_mevo(truth,truth=True),
+                          collapse_labels_to_mevo(prediction),(1,2))
+

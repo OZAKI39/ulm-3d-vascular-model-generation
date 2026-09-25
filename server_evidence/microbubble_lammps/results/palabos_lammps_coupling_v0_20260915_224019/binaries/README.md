@@ -1,0 +1,1 @@
+Built on this Vast Ubuntu 24.04 instance against unchanged validated LAMMPS static libraries. SHA256 identity supplied. These executables retain build-tree runtime library paths and are evidence, not a portable binary distribution. Rebuild from CMakeLists.txt with ENGINE_ROOT for reuse; or provide compatible libfrozen_flow_coupling.so, HDF5/OpenMPI/CUDA runtime via loader paths.
