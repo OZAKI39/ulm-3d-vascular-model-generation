@@ -47,29 +47,13 @@ def edge_resistance(
 ) -> float:
     """Exact resistance for an edge whose radius varies linearly in arc length."""
 
-    values = np.asarray((length_m, radius0_m, radius1_m, mu_pa_s), dtype=float)
-    if (
-        not np.all(np.isfinite(values))
-        or length_m < 0
-        or min(radius0_m, radius1_m, mu_pa_s) <= 0
-    ):
-        raise ValueError(
-            "Length must be non-negative and radii/viscosity finite positive"
-        )
-    if length_m == 0:
-        return 0.0
-    if np.isclose(radius0_m, radius1_m, rtol=1.0e-10, atol=0.0):
-        integral = length_m / radius0_m**4
-    else:
-        integral = (
-            length_m
-            / (3.0 * (radius1_m - radius0_m))
-            * (1.0 / radius0_m**3 - 1.0 / radius1_m**3)
-        )
-    result = 8.0 * mu_pa_s / np.pi * integral
-    if not np.isfinite(result) or result <= 0:
+    # One authoritative, cancellation-free local law. Keep this scalar API for
+    # existing preprocessing callers; the new optimizer imports the law directly.
+    from network_1d0d.hydraulic_resistance import linear_radius_resistance
+    result = float(linear_radius_resistance(length_m, radius0_m, radius1_m, mu_pa_s))
+    if length_m > 0 and result <= 0:
         raise ValueError("Edge resistance is not finite positive")
-    return float(result)
+    return result
 
 
 def _root_and_leaves(model: GlobalVascularModel) -> tuple[int, np.ndarray]:
