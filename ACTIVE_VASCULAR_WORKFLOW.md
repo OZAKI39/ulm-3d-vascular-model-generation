@@ -1,0 +1,26 @@
+# 当前血管、流场、微泡与 RBC 工作流
+
+2026-09-27 已执行 WSL 历史内容清理。本文件是当前路径入口；旧同步快照和旧目录总表已删除。服务器内容和独立的血管打印项目保留。
+
+| 当前内容 | 本地路径 |
+|---|---|
+| 血管 A、ROI、表面与 1D/0D Network H0 | [ulm_3D_vascular](ulm_3D_vascular/README.md) |
+| 原始小鼠几何与共享预处理代码 | `vascular_printing/`；`ulm_3D_vascular` 中保留兼容链接 |
+| 新边界条件 FEM | [H0 算例](ulm_flow_mean_2p0_mmps/formal_3D_flow_solver/FEM_SimVascular/flow_cases/mean-2p0-mmps-A-H0-pressure-v1/) |
+| 表面导入、TetGen 四面体生成及网格检查 | [mesh_generate](formal_3D_flow_solver/FEM_SimVascular/mesh_generate/README.md) |
+| formal_3D_flow_solver 目录用途与结构 | [目录说明](formal_3D_flow_solver/README.md) |
+| 求解器日志、检查点、GPU/PETSc 支持 | [solver_support](formal_3D_flow_solver/FEM_SimVascular/solver_support/README.md) |
+| 当前微泡生成、计算和轨迹，dt=1 ms | [ulm_particle_formal_p9a5](ulm_particle_formal_p9a5/README.md) |
+| RBC 代码、轨迹和展示 | [RBC/微泡结果索引](ulm_particle_formal_p9a5/CURRENT_RESULTS.md) |
+| 流线、速度、压力、WSS 旋转展示 | [OPEN_RESULTS.html](formal_3D_flow_solver/FEM_SimVascular/rotate_visualization/OPEN_RESULTS.html) |
+| 新场残差表格 | [A_Global_Transient_Evolution_A_H0.xlsx](A_Global_Transient_Evolution_A_H0.xlsx) |
+| 当前服务器路径 | [CURRENT_SERVER_PATHS.md](CURRENT_SERVER_PATHS.md) |
+| 本次清理回执 | [清理回执](temp_storage/cleanup_20260927/result.json) |
+
+当前流场 SHA256：`064cbd28f3efa72f426fc946b2f29da21f056c596609095e7283d39070aa55f4`。以 `mean-2p0-mmps-A-H0-pressure-v1/frozen_flow/steady_flow_mean_2p0_mmps_A_H0.vtu` 为准。
+
+`temp_storage/ulm_particle_3d_particle0/` 现在仅保留共享 Python 环境与 Git 标记；旧工程内容已删除。该环境还被独立血管打印项目使用，并引用 `formal_3D_flow_solver/FEM_SimVascular/.venv/`。`temp_storage/ulm-3d-vascular-model-generation/.git/` 是当前工作树共用的 Git 元数据库，不能随旧主检出内容一起删除。
+
+仍带旧阶段名的少量文件是当前代码直接读取的依赖：v1 网络图与端口数据、P9A4 冻结出生样本、NEW 流场适配器、网格/黏度契约、RBC 原始场以及部分轨迹时长验证输入。它们不代表仍保留旧开发流程。
+
+辅助目录现统一存放于 [temp_storage](temp_storage/README.md)：Git 元数据、共享 Python、旧 FEM 溯源契约和清理回执。原目录已移除，当前代码直接使用新路径。

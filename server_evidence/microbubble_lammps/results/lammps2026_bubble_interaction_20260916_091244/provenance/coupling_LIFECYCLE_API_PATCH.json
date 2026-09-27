@@ -1,9 +1,0 @@
-{
-  "stage": "coupling",
-  "scope": "EXPLICIT_LIFECYCLE_API_COMPATIBILITY_ONLY",
-  "math_changed": false,
-  "reference": "frozen target src/main.cpp finalize() sequence after deleting LAMMPS and before MPI_Finalize",
-  "before_sha256": "55743dc1659aac47bef9a3367c68d6056a505c2d53d757989b5666595fc0c927",
-  "after_sha256": "89300c854f0933e0c32114736fb3aff9c393d278fedfb9b26529adc7bc0edd56",
-  "diff": "--- before/src/coupled_lammps_main.cpp\n+++ after/src/coupled_lammps_main.cpp\n@@ -1,5 +1,6 @@\n // External embedding adapter. The upstream LAMMPS main/core and libraries remain unchanged.\n #include \"lammps.h\"\n+#include \"library.h\"\n #include \"input.h\"\n #include \"modify.h\"\n #include \"exceptions.h\"\n@@ -8,4 +9,4 @@\n #include <iostream>\n using namespace LAMMPS_NS;\n static Fix* make_drag(LAMMPS*lmp,int n,char**a){return new FixFrozenFlowDrag(lmp,n,a);}\n-int main(int argc,char**argv){MPI_Init(&argc,&argv);try{auto*lmp=new LAMMPS(argc,argv,MPI_COMM_WORLD);Modify::fix_styles().set_plugin(\"frozen/flow/drag\", &make_drag);lmp->input->file();delete lmp;MPI_Finalize();return 0;}catch(std::exception const&e){std::cerr<<\"Coupling adapter error: \"<<e.what()<<std::endl;MPI_Abort(MPI_COMM_WORLD,1);return 1;}}\n+int main(int argc,char**argv){MPI_Init(&argc,&argv);try{auto*lmp=new LAMMPS(argc,argv,MPI_COMM_WORLD);Modify::fix_styles().set_plugin(\"frozen/flow/drag\", &make_drag);lmp->input->file();delete lmp;lammps_kokkos_finalize();lammps_python_finalize();lammps_plugin_finalize();MPI_Finalize();return 0;}catch(std::exception const&e){std::cerr<<\"Coupling adapter error: \"<<e.what()<<std::endl;MPI_Abort(MPI_COMM_WORLD,1);return 1;}}\n"
-}

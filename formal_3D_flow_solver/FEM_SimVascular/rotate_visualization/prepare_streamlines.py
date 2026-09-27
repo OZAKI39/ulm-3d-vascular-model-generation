@@ -12,7 +12,7 @@ import pyvista as pv
 
 ROOT=Path(__file__).resolve().parent
 CASE=ROOT/'input_data';OUT=CASE/'streamlines'
-PARTICLE_SOURCE=Path('/home/lzy/projects/ulm_particle_3d_particle0/particle_3d/src')
+PARTICLE_SOURCE=Path('/home/lzy/projects/ulm_particle_formal_p9a5/particle_3d/src')
 QUOTAS={'OUTLET_01':16,'OUTLET_02':56,'OUTLET_03':24}
 STEP=.15e-6;ERROR=1e-11;SEED=2026092203
 
@@ -29,7 +29,7 @@ def setup(source=PARTICLE_SOURCE):
     from particle_3d.particle82_point_native import NativePointTracer
     a=np.load(CASE/'frozen_flow/flow_arrays_si.npz')
     field=FrozenFEMField(a['points_m'],a['tetra'],a['velocity_m_s'],a['pressure_pa'])
-    boundaries={role:pv.read(CASE/'SV_MESH/mesh-surfaces'/f'{role}.vtp') for role in ['INLET',*QUOTAS]}
+    boundaries={role:pv.read(CASE/'solver_mesh/mesh-surfaces'/f'{role}.vtp') for role in ['INLET',*QUOTAS]}
     classifier=ValidationBoundaryClassifier({k:v for k,v in boundaries.items() if k in QUOTAS})
     env=SimpleNamespace(field=field,boundaries=boundaries,classifier=classifier)
     native=NativePointTracer(env)
@@ -67,7 +67,7 @@ def main():
     p.add_argument('--candidates',type=int,default=768);a=p.parse_args()
     OUT.mkdir(exist_ok=True);(OUT/'data').mkdir(exist_ok=True)
     if (OUT/'COMPUTE_VALIDATION.json').exists():raise RuntimeError('Existing completed streamlines: render/review saved data; do not recompute')
-    paths=list((CASE/'frozen_flow').rglob('*'))+list((CASE/'SV_MESH').rglob('*'))
+    paths=list((CASE/'frozen_flow').rglob('*'))+list((CASE/'solver_mesh').rglob('*'))
     paths+=list((CASE/'figures').glob('*'))+list((CASE/'animations').glob('*'))
     paths+=[CASE/'reports/physics_validation_H0.json',CASE/'reports/physics_validation_H0.json',CASE/'reports/render_manifest.json']
     lock={str(p.relative_to(CASE)):sha(p) for p in paths if p.is_file()}

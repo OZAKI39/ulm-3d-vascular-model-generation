@@ -1,0 +1,5 @@
+#!/bin/bash
+set -euo pipefail
+cd /workspace/particle9a5_formal_trajectories_20260925T080115Z_dt1ms
+/root/particle8_2_runs/env/bin/python /workspace/particle9a5_formal_trajectories_20260925T080115Z_dt1ms/particle_3d/reports/particle9a5_formal_trajectories/scripts/run_server.py --stage production
+/root/particle8_2_runs/env/bin/python /workspace/particle9a5_formal_trajectories_20260925T080115Z_dt1ms/particle_3d/reports/particle9a5_formal_trajectories/scripts/run_points.py

@@ -1,6 +1,0 @@
-from runner_remote import *
-sv=load('svmp_reuse_build');w=sv['PETSc_build'];N=BASE.parent/'sv1_3n';launcher=json.loads((N/'configs/baseline_L_mpi_application_gate.json').read_text())['working_launcher']
-header=Path(sv['source'])/'Code/Source/solver/sv13q_reuse.h';binary=BASE/'benchmarks/recovery_probe'
-r=run([launcher,'-n','1',w['candidate_wrapper'],binary,'-skip_petscrc','-use_gpu_aware_mpi','0','-ksp_converged_reason','-log_view',':recovery_probe_profile.txt','-log_view_gpu_time'],'recovery_probe_run_v2',cuda=w['candidate_wrapper'],extra_env={'LD_LIBRARY_PATH':sv['runtime_library_path']});assert okay(r)
-s=text(r);assert 'recovery=STALE_ILU_RECOVERED' in s and 'no_third_attempt=1' in s
-write('adaptive_recovery_probe',dict(status='PASS',synthetic_fault_injection=True,not_CFD=True,not_performance_evidence=True,production_header_sha256=digest(header),compile=load('recovery_probe_compile'),run=r,original_RHS_restored=True,same_operator=True,zero_initial_guess=True,fresh_failure_retained=True,at_most_one_retry=True,initial_probe_issue='Standalone invocation initially omitted existing -use_gpu_aware_mpi 0; aborted before solve. Original failed log retained; production adapter unchanged.'))

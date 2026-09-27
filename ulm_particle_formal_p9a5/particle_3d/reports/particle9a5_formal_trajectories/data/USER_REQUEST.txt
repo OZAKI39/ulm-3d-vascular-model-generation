@@ -1,0 +1,1455 @@
+你现在接手当前最新同步版本：
+
+https://github.com/OZAKI39/ulm-3d-vascular-model-generation/tree/sync/p9a4-flow-particle-rbc-20260925
+
+本轮任务：
+
+P9-A.5 — Formal Large-Sample Microbubble Trajectories
+         with Adaptive Sequential Sample Expansion
+         + Monotonic Trajectory-Horizon Extension
+         + Natural O1/O2/O3 Coverage Audit
+
+======================================================================
+一、这一阶段到底要完成什么
+======================================================================
+
+P9-A.4 已经完成：
+
+- Poisson source arrival；
+- SonoVue D<=4 µm source；
+- FEM positive-flux-weighted inlet position；
+- single-shot finite-size admission；
+- 100,000 source proposals；
+- 19,221 accepted births；
+- 30 MB smoke。
+
+本轮不再重新设计入口 population。
+
+本轮真正要做的是：
+
+把 P9-A.4 已经确定的 accepted births
+正式交给现有 P9-A.1 finite-size MB dynamics，
+
+生成：
+
+正式、可复现、可统计、可人工审核
+的大样本微泡轨迹。
+
+微泡数量：
+
+绝对不能少于 500。
+
+500 只是：
+
+MINIMUM FORMAL SAMPLE SIZE
+
+而不是最大数量。
+
+最终：
+
+N_FORMAL >= 500
+
+可根据 O1/O2/O3
+实际自然观察情况继续增加。
+
+======================================================================
+二、最重要的科学原则
+======================================================================
+
+用户希望：
+
+在正式模拟中，
+尽量让 O1、O2、O3 三个出口
+都能观察到微泡自然流经。
+
+但是：
+
+绝对禁止为了获得某个出口
+人为改变入口 population。
+
+不能：
+
+- 按 future outlet 选择微泡；
+- 按 point tracer basin 选择微泡；
+- 对 O1-friendly inlet region 定向采样；
+- 设置 O1/O2/O3 quota；
+- 为缺失出口重抽 birth position；
+- 为缺失出口重抽 diameter；
+- 删除“不想要”的轨迹；
+- 只保留成功走某出口的结果。
+
+允许做的只有：
+
+增加无偏、顺序的 accepted births 数量。
+
+即：
+
+如果前500颗没有覆盖所有出口，
+
+继续取：
+
+501, 502, 503 ...
+
+而不是：
+
+“去找一颗将来会去 O1 的泡”。
+
+======================================================================
+三、正式样本定义
+======================================================================
+
+定义：
+
+N_CORE = 500
+
+CORE500：
+
+P9-A.4 accepted births
+按正式 accepted particle_id / accepted order
+升序后的前500个。
+
+这是永远固定的 benchmark cohort。
+
+在任何轨迹运行前创建：
+
+CORE500_COHORT.json
+
+并保存：
+
+source_event_id
+particle_id
+birth_time_s
+diameter
+position
+orientation
+seed
+birth metadata
+SHA256
+
+CORE500 一旦冻结：
+
+永远不能替换成员。
+
+新增永久测试：
+
+test_core500_is_fixed_before_trajectory_execution.py
+test_core500_matches_p9a4_accepted_order.py
+test_core500_does_not_use_future_outlet.py
+
+======================================================================
+四、正式数量：500 是下限，不是总数
+======================================================================
+
+先运行：
+
+N_FORMAL = 500
+
+完成第一批后检查：
+
+completed trajectories 中：
+
+O1 是否至少出现1颗
+O2 是否至少出现1颗
+O3 是否至少出现1颗
+
+如果：
+
+O1、O2、O3全部自然出现：
+
+可以停止扩样。
+
+最终：
+
+N_FORMAL = 500
+
+如果任一出口没有出现：
+
+必须继续增加样本。
+
+默认扩样批大小：
+
+N_INCREMENT = 250
+
+例如：
+
+500
+→ 750
+→ 1000
+→ 1250
+→ 1500
+...
+
+每次只能加入：
+
+当前 cohort 后面
+连续的下一批 accepted births。
+
+例如：
+
+501–750
+751–1000
+1001–1250
+
+严禁跳号寻找特定 outcome。
+
+======================================================================
+五、扩样停止规则
+======================================================================
+
+每一个扩样 checkpoint：
+
+N = 500
+750
+1000
+1250
+...
+
+重新统计：
+
+O1
+O2
+O3
+stationary
+long-residence
+solver failure
+
+如果：
+
+O1 >= 1
+O2 >= 1
+O3 >= 1
+
+则：
+
+ALL_OUTLETS_NATURALLY_OBSERVED = true
+
+可以停止继续增加 population。
+
+这里：
+
+“至少1颗”
+
+只是 outlet coverage 条件，
+
+不是认为1颗已经足够估计
+该出口的真实概率。
+
+仍必须报告：
+
+count
+fraction
+uncertainty
+
+======================================================================
+六、稀有出口情况下继续扩大
+======================================================================
+
+如果到：
+
+N_FORMAL = 2000
+
+仍有出口未观察到：
+
+不要修改模型。
+
+继续：
+
+每500颗
+作为一个较大扩样批：
+
+2000 → 2500 → 3000 → ...
+
+默认允许继续到：
+
+N_FORMAL_MAX = 5000
+
+前提：
+
+服务器资源、
+运行时间、
+磁盘空间允许。
+
+在正式生产前，
+根据 worker benchmark
+估算5000条轨迹最坏成本。
+
+如果服务器资源充分：
+
+优先允许扩到5000。
+
+如果存在明确的：
+
+磁盘
+RAM
+运行时间
+服务器租用限制
+
+导致5000不现实：
+
+必须在运行前记录：
+
+RESOURCE_LIMITED_N_MAX
+
+但：
+
+RESOURCE_LIMITED_N_MAX >= 500
+
+不能因为资源原因
+把已经运行的数量减少。
+
+======================================================================
+七、如果5000仍没有某个出口
+======================================================================
+
+如果：
+
+N_FORMAL = 5000
+
+后仍有例如：
+
+O1 = 0
+
+则停止。
+
+如实记录：
+
+O1_NOT_OBSERVED_IN_5000_UNBIASED_FORMAL_TRAJECTORIES
+
+这是一个科学结果。
+
+绝对禁止：
+
+为了“完成三个出口”
+继续人为改入口或挑选轨迹。
+
+======================================================================
+八、CORE500 与 FULL_FORMAL_N 必须同时报告
+======================================================================
+
+由于最终 N
+可能根据 outlet coverage 扩大，
+
+报告必须同时保留两个视角。
+
+A.
+
+CORE500
+
+固定、预先声明的前500颗。
+
+用于：
+
+版本之间直接比较
+固定样本统计
+以后复现实验
+
+B.
+
+FULL_FORMAL_N
+
+实际最终运行的：
+
+N_FORMAL >= 500
+
+用于：
+
+最终轨迹库
+outlet coverage
+更稳定的 population 描述
+人工展示
+
+如果最终：
+
+N_FORMAL = 1250
+
+则：
+
+CORE500 = 前500
+
+FULL_FORMAL_N = 前1250
+
+不能只展示1250
+而隐藏最初500的结果。
+
+======================================================================
+九、扩样不能重新开始 source population
+======================================================================
+
+扩样必须继续使用
+原 P9-A.4 accepted ordering。
+
+例如：
+
+CORE500:
+accepted IDs 1–500
+
+Extension 1:
+501–750
+
+Extension 2:
+751–1000
+
+...
+
+不能：
+
+每一轮重新随机抽500颗。
+
+新增永久测试：
+
+test_formal_extensions_are_contiguous.py
+test_extension_never_replaces_existing_particle.py
+test_final_formal_cohort_is_prefix_of_p9a4_births.py
+
+======================================================================
+十、权威 flow 和 population
+======================================================================
+
+必须继续使用：
+
+NEW Network-H0 outlet-pressure flow
+
+当前参考 SHA256：
+
+064cbd28f3efa72f426fc946b2f29da21f056c596609095e7283d39070aa55f4
+
+必须重新实际核对。
+
+禁止使用：
+
+OLD equal-pressure flow
+
+作为 production input。
+
+P9-A.4 accepted births
+必须来自已审核 population ledger。
+
+禁止重新调用：
+
+Method B
+Method C
+
+生成正式 cohort。
+
+======================================================================
+十一、上一轮正式轨迹时间必须重新核查
+======================================================================
+
+从历史正式 P8.2A/PPT500：
+
+particle_3d/outputs/particle8_2a_ppt/
+particle_3d/reports/particle8_2a_ppt/
+
+实际核对：
+
+trajectory_catalog.csv
+PPT_REVIEW.md
+PPT_VALIDATION.json
+
+确认：
+
+T_PREVIOUS_FORMAL
+
+当前已有证据提示：
+
+T_PREVIOUS_FORMAL = 1.5 s
+
+但不能只相信 prompt。
+
+必须从数据核对。
+
+新增永久测试：
+
+test_new_formal_horizon_not_shorter_than_historical_formal.py
+
+硬约束：
+
+T_NEW >= T_PREVIOUS_FORMAL
+
+只能增加，
+不能缩短。
+
+======================================================================
+十二、本轮 trajectory horizon
+======================================================================
+
+正式初始 maximum age：
+
+T_INITIAL = 3.0 s
+
+即历史 1.5 s 的两倍。
+
+保持：
+
+dt = 0.00025 s
+
+除非存在永久测试证明
+当前 dt 有真实 bug，
+
+否则不修改。
+
+如果正常运动轨迹
+在3.0 s达到：
+
+PHYSICAL_RESIDENCE_HORIZON_REACHED
+
+继续同一轨迹：
+
+3.0 → 6.0 s
+
+如果6.0 s仍达到 horizon：
+
+6.0 → 12.0 s
+
+禁止：
+
+12 → 6
+6 → 3
+3 → 1.5
+
+所有 horizon：
+
+只能单调增加。
+
+新增永久测试：
+
+test_horizon_is_monotonic.py
+test_extended_trajectory_preserves_old_prefix.py
+
+======================================================================
+十三、不能把“时间到了”叫 stationary
+======================================================================
+
+严格区分：
+
+SUPPORTED_STATIONARY
+
+与：
+
+HORIZON_REACHED
+
+以及：
+
+LONG_RESIDENCE_CENSORED
+
+stationary 必须继续满足
+现有 P9-A.1 contact / KKT support。
+
+不能因为：
+
+“12秒还没有走出去”
+
+就自动标 stationary。
+
+新增测试：
+
+test_horizon_reached_is_not_stationary.py
+test_stationary_requires_contact_support.py
+
+======================================================================
+十四、正式轨迹动力学冻结
+======================================================================
+
+继续使用当前已审核：
+
+P9-A.1 / P6.5
+
+包括：
+
+finite-size
+wall hydrodynamics
+lubrication
+translation
+rotation
+contact
+handoff
+active-set
+integration
+
+默认全部冻结。
+
+本轮重点：
+
+formal production
+
+不是再次重写动力学。
+
+只有发现：
+
+明确 failing reproducer
+
+才能进行最小 bug fix。
+
+======================================================================
+十五、服务器资源：必须充分利用
+======================================================================
+
+服务器：
+
+ssh -p 4159 root@50.115.148.16 -L 8080:localhost:8080
+
+创建全新目录：
+
+/workspace/
+particle9a5_formal_trajectories_<UTC_TIMESTAMP>
+
+禁止覆盖任何历史目录。
+
+服务器 Python：
+
+/root/particle8_2_runs/env/bin/python
+
+连接后先保存：
+
+hostname
+date
+lscpu
+nproc --all
+free -h
+df -h
+nvidia-smi
+ulimit -a
+
+保存：
+
+logs/server_resource_inventory.txt
+
+======================================================================
+十六、不要机械沿用6 workers
+======================================================================
+
+过去30泡使用过：
+
+6 CPU workers
+
+但这不代表当前服务器
+6 workers 一定最优。
+
+正式500+前：
+
+必须做 worker scaling benchmark。
+
+使用固定的：
+
+24或32条轨迹
+
+比较：
+
+1
+2
+4
+6
+8
+12
+16
+以及适合实际CPU核数的其它值。
+
+每个配置：
+
+OMP_NUM_THREADS=1
+OPENBLAS_NUM_THREADS=1
+MKL_NUM_THREADS=1
+NUMEXPR_NUM_THREADS=1
+
+记录：
+
+wall time
+tracks/s
+CPU utilization
+peak RAM
+load average
+failure
+科学结果SHA
+
+选择：
+
+吞吐量最高，
+又没有明显oversubscription
+或内存压力
+
+的：
+
+WORKERS_PRODUCTION
+
+======================================================================
+十七、GPU 使用原则
+======================================================================
+
+先检查当前 trajectory kernel
+是否真的有经过验证的 GPU implementation。
+
+如果没有：
+
+不要为了“使用GPU”
+临时重写科学代码。
+
+可以明确记录：
+
+GPU_TRAJECTORY_KERNEL_AVAILABLE = false
+
+此时：
+
+充分利用服务器资源
+
+主要意味着：
+
+高效 CPU multiprocessing
+合理 worker 数
+checkpoint/resume
+批量并发
+I/O优化
+
+而不是强行把未验证代码迁GPU。
+
+======================================================================
+十八、扩样与服务器调度
+======================================================================
+
+不要每扩250颗
+都重新部署全部工程。
+
+应设计：
+
+一次部署
+持续追加 cohort
+
+例如：
+
+primary/core:
+1–500
+
+extension_001:
+501–750
+
+extension_002:
+751–1000
+
+...
+
+每一批：
+
+独立 manifest
+独立完成标志
+独立 SHA
+
+允许：
+
+中断后 resume。
+
+已经完成且SHA匹配的轨迹：
+
+不要重算。
+
+======================================================================
+十九、数值安全 gate
+======================================================================
+
+对所有 formal trajectories：
+
+要求统计：
+
+completed
+O1/O2/O3
+stationary
+horizon reached
+long residence
+solver failure
+penetration
+handoff violation
+inlet escape
+NaN/Inf
+unclassified corruption
+
+正式 PASS 要求：
+
+penetration = 0
+
+unresolved handoff violation = 0
+
+inlet escape = 0
+
+NaN/Inf = 0
+
+unclassified corruption = 0
+
+solver failure：
+
+目标为0。
+
+若出现：
+
+不能静默过滤。
+
+必须保存：
+
+particle ID
+last valid state
+debug evidence
+error log
+
+======================================================================
+二十、每条轨迹必须保留的指标
+======================================================================
+
+至少：
+
+particle_id
+source_event_id
+diameter
+birth_time
+
+terminal status
+outlet
+
+trajectory age
+transit/residence time
+path length
+
+minimum real-wall gap
+near-wall exposure time
+
+contact count
+contact duration
+handoff count
+
+maximum / representative speed
+
+initial position
+final position
+
+trajectory file SHA
+
+======================================================================
+二十一、point tracer
+======================================================================
+
+可以在正式 MB cohort 确定之后：
+
+对相同出生中心
+运行 point tracer。
+
+必须：
+
+MB cohort先冻结。
+
+point outlet
+不得影响formal cohort selection。
+
+point只用于：
+
+MB vs fluid-path
+事后解释。
+
+新增测试：
+
+test_point_tracer_never_changes_formal_membership.py
+
+======================================================================
+二十二、baseline regression
+======================================================================
+
+生产前重新运行：
+
+portable tests
+P9-A.4 tests
+legacy/open-cap tests
+
+当前参考总数：
+
+165
+
+但以实际为准。
+
+要求：
+
+0 unexpected failures
+0 unexpected skips
+
+保存：
+
+logs/baseline_tests.txt
+logs/baseline_tests.xml
+
+======================================================================
+二十三、本轮新增永久测试
+======================================================================
+
+创建：
+
+particle_3d/tests/
+particle9a5_formal_trajectories/
+
+至少保留：
+
+test_core500_is_fixed_before_trajectory_execution.py
+test_core500_matches_p9a4_accepted_order.py
+test_core500_does_not_use_future_outlet.py
+
+test_formal_extensions_are_contiguous.py
+test_extension_never_replaces_existing_particle.py
+test_final_formal_cohort_is_prefix_of_p9a4_births.py
+
+test_new_formal_horizon_not_shorter_than_historical_formal.py
+test_horizon_is_monotonic.py
+test_extended_trajectory_preserves_old_prefix.py
+
+test_horizon_reached_is_not_stationary.py
+test_stationary_requires_contact_support.py
+
+test_worker_independent_fixed_subset.py
+test_parallel_output_merge_is_deterministic.py
+
+test_partial_output_not_counted_as_completed.py
+test_restart_uses_only_hash_matching_output.py
+
+test_point_tracer_never_changes_formal_membership.py
+
+test_visualization_matches_formal_manifest.py
+
+这些测试必须作为后续项目资产保留。
+
+不得任务结束后删除。
+
+======================================================================
+二十四、每一个开发阶段都必须有可视化
+======================================================================
+
+这是以后所有开发阶段的永久要求。
+
+不能只输出：
+
+JSON
+CSV
+log
+
+每一步开发完成后必须有：
+
+阅读友好的图
+以及HTML入口。
+
+本轮至少输出：
+
+PNG 300 dpi
+PDF
+OPEN_RESULTS.html
+
+======================================================================
+二十五、Figure 01：所有正式轨迹
+======================================================================
+
+画：
+
+FULL_FORMAL_N
+全部微泡的3D轨迹。
+
+按：
+
+O1
+O2
+O3
+stationary
+long residence
+
+区分。
+
+不能因为轨迹多
+直接堆成看不清的一团。
+
+需要：
+
+全体低透明度
++ representative trajectories
++ 清楚legend
+
+标题必须告诉人：
+
+“正式 N 条微泡在三维血管中的运动路径”
+
+======================================================================
+二十六、Figure 02：随着样本数量增加，三个出口什么时候出现
+======================================================================
+
+这是本轮最重要的新图。
+
+x轴：
+
+formal particle count N
+
+例如：
+
+100
+200
+300
+500
+750
+1000
+...
+
+y轴：
+
+cumulative O1
+cumulative O2
+cumulative O3
+
+标记：
+
+FIRST_O1_AT_N
+FIRST_O2_AT_N
+FIRST_O3_AT_N
+
+同时用竖线标：
+
+500 minimum threshold
+
+让人工审核者一眼看懂：
+
+“为什么500之后还继续跑？”
+
+======================================================================
+二十七、Figure 03：出口数量与比例
+======================================================================
+
+必须同时画：
+
+CORE500
+
+和：
+
+FULL_FORMAL_N
+
+但不能混成一个数字。
+
+例如：
+
+CORE500:
+O1/O2/O3
+
+FULL N:
+O1/O2/O3
+
+让人工审核看到：
+
+扩样有没有明显改变结论。
+
+======================================================================
+二十八、Figure 04：最终N为什么停止
+======================================================================
+
+做一个简单流程图/时间线：
+
+500
+↓
+是否三出口都有？
+↓ no
+750
+↓
+是否三出口都有？
+...
+
+直到：
+
+FINAL N
+
+用普通中文解释：
+
+“样本增加不是为了改变比例，
+只是为了提高看到稀有出口实例的机会。”
+
+======================================================================
+二十九、其他图件
+======================================================================
+
+至少还生成：
+
+Figure 05
+diameter vs outcome
+
+Figure 06
+birth inlet position vs final outlet
+
+Figure 07
+transit time by outlet
+
+Figure 08
+minimum wall gap / near-wall exposure
+
+Figure 09
+historical 1.5 s vs 3/6/12 s horizon resolution
+
+Figure 10
+MB vs point-tracer outcome
+
+Figure 11
+worker scaling / tracks per second
+
+如果 N > 500：
+
+增加：
+
+Figure 12
+CORE500 vs FULL_FORMAL_N
+关键统计稳定性比较。
+
+======================================================================
+三十、动画
+======================================================================
+
+若三出口都有自然 completed MB：
+
+分别生成：
+
+O1 representative
+O2 representative
+O3 representative
+
+选择规则必须 deterministic：
+
+每个出口中：
+
+particle_id 最小
+且 completed
+
+的轨迹。
+
+不要人工挑“最好看的”。
+
+另生成：
+
+formal-overview animation
+
+不能同时高亮数千条轨迹
+导致无法阅读。
+
+======================================================================
+三十一、HTML总览必须适合人工审核
+======================================================================
+
+创建：
+
+particle_3d/reports/
+particle9a5_formal_trajectories/
+OPEN_RESULTS.html
+
+首页首先显示：
+
+最终跑了多少颗
+
+500最低要求是否满足
+
+为什么最后是这个N
+
+O1数量
+O2数量
+O3数量
+
+三个出口是否都出现
+
+completed
+stationary
+long-residence
+failure
+
+最大使用horizon
+
+penetration是否为0
+handoff violation是否为0
+
+production workers
+
+runtime
+
+然后再链接：
+
+各图
+动画
+CSV
+JSON
+raw trajectory
+test log
+
+不要首页先展示一堆：
+
+SHA
+class name
+internal solver variable。
+
+======================================================================
+三十二、报告必须用通俗语言
+======================================================================
+
+创建：
+
+P9A5_FORMAL_TRAJECTORY_REVIEW_ZH.md
+
+建议结构：
+
+# 一句话结果
+
+# 这次为什么至少要跑500颗
+
+# 最后实际跑了多少颗
+
+# 为什么500之后还继续增加
+
+# 500颗时三个出口分别有多少
+
+# 最终N时三个出口分别有多少
+
+# 有没有为了让某个出口出现而挑微泡
+回答：没有
+
+# 微泡数量是怎样顺序增加的
+
+# 模拟时间为什么从旧值延长
+
+# 哪些微泡顺利走出去了
+
+# 哪些微泡没有出去
+
+# stationary 和时间不够有什么区别
+
+# 不同大小的微泡有什么差别
+
+# 有限尺寸微泡与point tracer有什么不同
+
+# 近壁过程是否安全
+
+# 服务器实际用了多少计算资源
+
+# 当前结果可以说明什么
+
+# 当前结果仍然不能说明什么
+
+技术细节：
+
+SHA
+合同
+测试名
+参数表
+
+放在报告后半部分或附录。
+
+======================================================================
+三十三、final_summary.json
+======================================================================
+
+至少：
+
+baseline_commit
+new_branch
+
+flow_sha256
+source_contract_sha
+
+previous_formal_horizon_s
+initial_horizon_s
+maximum_horizon_used_s
+
+dt_s
+
+core_N
+core_cohort_sha
+
+final_formal_N
+final_formal_cohort_sha
+
+increment_size_initial
+increment_size_after_2000
+
+first_O1_at_N
+first_O2_at_N
+first_O3_at_N
+
+all_outlets_observed_at_N
+
+core500:
+  O1
+  O2
+  O3
+  completed
+  stationary
+  censored
+  failed
+
+full_formal:
+  O1
+  O2
+  O3
+  completed
+  stationary
+  censored
+  failed
+
+penetration_count
+handoff_violation_count
+inlet_escape_count
+nan_inf_count
+
+diameter_stats
+transit_stats
+wall_gap_stats
+nearwall_stats
+
+point_basin_counts
+
+production_workers
+worker_scaling_results
+
+runtime_seconds
+
+baseline_tests
+new_tests
+final_tests
+
+old_files_changed
+
+final_status
+
+======================================================================
+三十四、结果统计必须同时报告CORE500和FULL
+======================================================================
+
+不能只报告最终大样本。
+
+必须至少有：
+
+CORE500 outlet fractions
+
+FULL_FORMAL_N outlet fractions
+
+并比较：
+
+difference
+
+这样以后才能判断：
+
+继续扩样后
+总体统计是否趋于稳定。
+
+如果某出口：
+
+500时=0
+
+例如1000时首次出现：
+
+必须如实写：
+
+“这是增加无偏样本后自然出现，
+不是通过改变入口population得到。”
+
+======================================================================
+三十五、正式生产结束后的完整 regression
+======================================================================
+
+结束前重新运行：
+
+全部旧 regression
+P9-A.4 tests
+P9-A.5 tests
+
+要求：
+
+0 unexpected fail
+0 unexpected skip
+
+保护：
+
+旧 reports
+旧 outputs
+旧 contracts
+旧 flow
+
+SHA不变。
+
+生成：
+
+protected_manifest
+
+======================================================================
+三十六、最终状态
+======================================================================
+
+根据实际结果选择：
+
+P9A5_FORMAL_TRAJECTORIES_PASS_ALL_OUTLETS_OBSERVED
+
+P9A5_FORMAL_TRAJECTORIES_PASS_OUTLET_COVERAGE_INCOMPLETE
+
+P9A5_FORMAL_TRAJECTORIES_PASS_WITH_SUPPORTED_STATIONARY
+
+P9A5_FORMAL_TRAJECTORIES_LONG_RESIDENCE_REVIEW_REQUIRED
+
+P9A5_FORMAL_TRAJECTORIES_NUMERICAL_SAFETY_FAIL
+
+P9A5_REGRESSION_FAIL
+
+注意：
+
+N > 500
+
+不是 failure。
+
+它可能只是：
+
+为了自然观察稀有出口
+按预定规则扩大无偏样本。
+
+======================================================================
+三十七、最终回复用户
+======================================================================
+
+用通俗中文回答：
+
+1. 实际 baseline commit
+2. 新 worktree / branch
+3. 历史正式 horizon 实际是多少
+4. 本轮 initial horizon
+5. 最终最大 horizon
+6. 是否发生3→6→12延长
+7. 500最低要求是否完成
+8. CORE500 cohort SHA
+9. CORE500 O1/O2/O3
+10. 500时是否三个出口都有
+11. 如果没有，为什么继续增加
+12. 最终实际 N_FORMAL
+13. 最终 cohort SHA
+14. 每轮扩样分别增加多少
+15. O1首次在第几个样本前出现
+16. O2首次在第几个样本前出现
+17. O3首次在第几个样本前出现
+18. 最终O1/O2/O3数量
+19. 三出口最终是否全部自然观察到
+20. completed
+21. stationary
+22. long-residence
+23. solver failure
+24. penetration
+25. handoff violation
+26. inlet escape
+27. NaN/Inf
+28. transit time摘要
+29. diameter vs outcome摘要
+30. wall/near-wall摘要
+31. point tracer比较
+32. worker scaling结果
+33. production worker数量
+34. CPU/GPU实际使用情况
+35. 总服务器runtime
+36. baseline tests
+37. final tests
+38. 新永久测试
+39. 旧文件是否改变
+40. Figure 01-12路径
+41. 动画路径
+42. OPEN_RESULTS.html
+43. P9A5_FORMAL_TRAJECTORY_REVIEW_ZH.md
+44. final_summary.json
+45. 最终状态
+
+最后单独回答：
+
+“为什么最后跑的是N颗，而不是500颗？”
+
+用不超过5句话解释清楚。
+
+开始执行。

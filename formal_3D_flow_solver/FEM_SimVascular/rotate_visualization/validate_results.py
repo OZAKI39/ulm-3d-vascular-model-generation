@@ -59,7 +59,7 @@ def validate_annotations(case, output, name, camera,
         points = np.asarray(wall.points,dtype=float)*1e6
         faces = wall.faces.reshape(-1,4)[:,1:]
         caps = {('Inlet' if role == 'INLET' else 'Outlet '+role[-2:]):
-                np.array(pv.read(case/'SV_MESH/mesh-surfaces'/f'{role}.vtp').center)*1e6
+                np.array(pv.read(case/'solver_mesh/mesh-surfaces'/f'{role}.vtp').center)*1e6
                 for role in ['INLET','OUTLET_01','OUTLET_02','OUTLET_03']}
         direction = np.array([np.cos(np.deg2rad(6))/np.sqrt(2)]*2+[np.sin(np.deg2rad(6))])
         right = np.cross([0,0,1],direction);right /= np.linalg.norm(right)
