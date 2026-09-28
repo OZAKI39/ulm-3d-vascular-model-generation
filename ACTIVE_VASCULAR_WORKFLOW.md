@@ -6,18 +6,19 @@
 |---|---|
 | 血管 A、ROI、表面与 1D/0D Network H0 | [ulm_3D_vascular](ulm_3D_vascular/README.md) |
 | 原始小鼠几何与共享预处理代码 | `vascular_printing/`；`ulm_3D_vascular` 中保留兼容链接 |
-| 新边界条件 FEM | [H0 算例](ulm_flow_mean_2p0_mmps/formal_3D_flow_solver/FEM_SimVascular/flow_cases/mean-2p0-mmps-A-H0-pressure-v1/) |
+| 当前 FEM：ROI-only-balanced-pressure-v1 | [新流场算例](ulm_flow_mean_2p0_mmps/formal_3D_flow_solver/FEM_SimVascular/flow_cases/mean-2p0-mmps-A-ROI-only-balanced-pressure-v1/) |
+| 保留 H0 FEM 基线 | [H0 算例](ulm_flow_mean_2p0_mmps/formal_3D_flow_solver/FEM_SimVascular/flow_cases/mean-2p0-mmps-A-H0-pressure-v1/) |
 | 表面导入、TetGen 四面体生成及网格检查 | [mesh_generate](formal_3D_flow_solver/FEM_SimVascular/mesh_generate/README.md) |
 | formal_3D_flow_solver 目录用途与结构 | [目录说明](formal_3D_flow_solver/README.md) |
 | 求解器日志、检查点、GPU/PETSc 支持 | [solver_support](formal_3D_flow_solver/FEM_SimVascular/solver_support/README.md) |
-| 当前微泡生成、计算和轨迹，dt=1 ms | [ulm_particle_formal_p9a5](ulm_particle_formal_p9a5/README.md) |
+| 当前微泡生成、计算和轨迹，1500 条、dt=0.5 ms | [ulm_particle_formal_p9a5](ulm_particle_formal_p9a5/README.md) |
 | RBC 代码、轨迹和展示 | [RBC/微泡结果索引](ulm_particle_formal_p9a5/CURRENT_RESULTS.md) |
 | 流线、速度、压力、WSS 旋转展示 | [OPEN_RESULTS.html](formal_3D_flow_solver/FEM_SimVascular/rotate_visualization/OPEN_RESULTS.html) |
-| 新场残差表格 | [A_Global_Transient_Evolution_A_H0.xlsx](A_Global_Transient_Evolution_A_H0.xlsx) |
+| 保留 H0 残差表格 | [A_Global_Transient_Evolution_A_H0.xlsx](A_Global_Transient_Evolution_A_H0.xlsx) |
 | 当前服务器路径 | [CURRENT_SERVER_PATHS.md](CURRENT_SERVER_PATHS.md) |
 | 本次清理回执 | [清理回执](temp_storage/cleanup_20260927/result.json) |
 
-当前流场 SHA256：`064cbd28f3efa72f426fc946b2f29da21f056c596609095e7283d39070aa55f4`。以 `mean-2p0-mmps-A-H0-pressure-v1/frozen_flow/steady_flow_mean_2p0_mmps_A_H0.vtu` 为准。
+2026-09-28 最新流场 SHA256：`fb3c6ad0815d156b09b289fc347766486f24ddb521b8e51e8bbc4cf1fd2ace12`，对应 `mean-2p0-mmps-A-ROI-only-balanced-pressure-v1/frozen_flow/steady_flow_mean_2p0_mmps_A_ROI_only_balanced_pressure.vtu`。新微泡 1500 条及动画已完成，具体数据与核验见 [最新结果](ulm_particle_formal_p9a5/CURRENT_RESULTS.md)。H0 的残差表格和 CORE500 是单独保留的基线。
 
 `temp_storage/ulm_particle_3d_particle0/` 现在仅保留共享 Python 环境与 Git 标记；旧工程内容已删除。该环境还被独立血管打印项目使用，并引用 `formal_3D_flow_solver/FEM_SimVascular/.venv/`。`temp_storage/ulm-3d-vascular-model-generation/.git/` 是当前工作树共用的 Git 元数据库，不能随旧主检出内容一起删除。
 

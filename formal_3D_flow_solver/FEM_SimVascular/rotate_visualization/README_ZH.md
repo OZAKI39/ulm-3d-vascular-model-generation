@@ -1,6 +1,18 @@
-# 新 A-H0 三维稳态流场可视化
+# 当前 ROI-only 新边界：三维流场可视化
 
-打开 [OPEN_RESULTS.html](OPEN_RESULTS.html) 查看全血管流线、局部速度矢量、压力和 WSS。当前输入来自 `mean-2p0-mmps-A-H0-pressure-v1` 的最终第 71 步冻结流场。审核说明见 [REVIEW_NEW_FLOW_ZH.md](REVIEW_NEW_FLOW_ZH.md)。
+[总预览 OPEN_RESULTS.html](OPEN_RESULTS.html) 已更新为 `mean-2p0-mmps-A-ROI-only-balanced-pressure-v1` 最终第 71 步流场。
+
+最新文件位于 [roi_only_balance_v1/](roi_only_balance_v1/)，数据来源、复现命令及验证记录见其 [README_ZH.md](roi_only_balance_v1/README_ZH.md) 和 [VISUALIZATION_VALIDATION.json](roi_only_balance_v1/VISUALIZATION_VALIDATION.json)。四段动画展示全血管流线、局部速度矢量、压力和 WSS，均为 1920×1080、24 fps、18 秒；配套 4K 图片已生成。
+
+保留原放大显示、固定 Z 轴旋转、英文图内文字、旁置箭头和渐变文字。新压力最高约 6446 Pa，压力色标扩展为 −5–7000 Pa；速度和 WSS 色标分别保持 0–7.5 mm/s、0–55 Pa。18 秒为稳态场的展示旋转时长，流线显示条数不代表流量比例。
+
+服务器渲染使用 NVIDIA EGL / RTX 4090，CPU 进行视频编码。当前数据及四段视频通过原有独立验证器检查。
+
+上一版 full-A 数据位于 [best_feasible_balance_v1/](best_feasible_balance_v1/)，打开其 [预览页面](best_feasible_balance_v1/OPEN_RESULTS.html)。原 H0 数据和结果仍在本目录原有 `input_data/`、`results/`，打开 [OPEN_H0_RESULTS.html](OPEN_H0_RESULTS.html)。本目录原始渲染代码保持不变，新结果使用子目录中的副本。
+
+## 保留的 H0 对照说明
+
+打开 [OPEN_H0_RESULTS.html](OPEN_H0_RESULTS.html) 查看全血管流线、局部速度矢量、压力和 WSS。H0 对照输入来自 `mean-2p0-mmps-A-H0-pressure-v1` 的最终第 71 步冻结流场。审核说明见 [REVIEW_NEW_FLOW_ZH.md](REVIEW_NEW_FLOW_ZH.md)。
 
 沿用原版放大显示、固定 Z 轴旋转、旁置箭头标签、透明文字及渐变切换。压力色标为用户已确认的 −5–5000 Pa，速度色标为 0–7.5 mm/s，WSS 为 0–55 Pa。
 

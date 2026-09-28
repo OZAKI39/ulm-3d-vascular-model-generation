@@ -1,0 +1,324 @@
+--- before/rotate_visualization/prepare_surface_data.py
++++ after/rotate_visualization/prepare_surface_data.py
+@@ -1,82 +1,112 @@
+-"""Replace derived surface data using the existing P1 WSS implementation."""
++"""Recover production P1 WSS from an explicitly identified SI flow and case XML."""
+ from pathlib import Path
+-import importlib.util,json,sys,time
++import argparse
++import json
++import sys
++import time
+ import numpy as np
+ import pyvista as pv
+ 
+-HERE=Path(__file__).resolve().parent
+-CASE=HERE/'input_data'
++HERE = Path(__file__).resolve().parent
++sys.path.insert(0, str(HERE.parent / 'solver_support/src'))
++from flow_solver_support import wss
++from flow_solver_support.wss_case import material, recover, sha, coordinate_identity
++
+ 
+ def main():
+-    started=time.perf_counter()
+-    context=json.loads((HERE/'BUILD_CONTEXT.json').read_text())
+-    source=Path(context['source_case']);flow=source.parents[1]
+-    implementation=flow/'scripts/flow_2mmps/compute_field_diagnostics.py'
+-    spec=importlib.util.spec_from_file_location('existing_field_diagnostics',implementation)
+-    old=importlib.util.module_from_spec(spec);spec.loader.exec_module(old)
+-    sys.path.insert(0,str(HERE.parent/'mesh_generate/src'))
+-    from vascular_validation.postprocess import SolutionMeasurements
+-    manifest=json.loads((source/'frozen_flow/manifest.json').read_text())
+-    for name,entry in manifest['files'].items():
+-        assert old.sha(source/'frozen_flow'/name)==entry['sha256'],name
+-    assert old.sha(CASE/'frozen_flow/steady_flow_mean_2p0_mmps.vtu')==context['source_field_sha256']
+-    assert old.sha(CASE/'frozen_flow/flow_arrays_si.npz')==old.sha(source/'frozen_flow/flow_arrays_si.npz')
+-    policy=json.loads((source/'policy.json').read_text())
+-    measurements=SolutionMeasurements(source/'SV_MESH/mesh_arrays.npz',policy['Q_target_m3_s'],policy['Umean_m_s'])
+-    u,p=measurements.read(CASE/'frozen_flow/steady_flow_mean_2p0_mmps.vtu')
+-    actual=measurements.measure(u,p)
+-    assert actual['epsilon_Q']<=1e-6 and actual['epsilon_mass']<=1e-6
+-    assert actual['wall_noslip_pass'] and actual['velocity_finite'] and actual['pressure_finite']
+-    frozen=np.load(CASE/'frozen_flow/flow_arrays_si.npz')
+-    points,tetra,triangles,tags,velocity,pressure=[frozen[k] for k in ['points_m','tetra','boundary_triangles','facet_tags','velocity_m_s','pressure_pa']]
+-    assert np.array_equal(u,velocity) and np.array_equal(p,pressure)
+-    assert np.array_equal(points,measurements.points) and np.array_equal(tetra,measurements.tetra)
+-    wall_ids=np.flatnonzero(tags==1);wall=triangles[wall_ids]
+-    owners=old.boundary_owners(tetra,wall)
+-    centers,area,normal=old.wall_geometry(points,tetra,wall,owners)
+-    gradient=old.p1_gradients(points,tetra,velocity)
+-    viscosity=.00345312
+-    traction=old.tangential_traction(gradient[owners],normal,viscosity)
+-    magnitude=np.linalg.norm(traction,axis=1)
+-    display,weight=old.nodal_average(wall,magnitude,area,len(points))
+-    mesh,ids=old.surface(points,wall)
+-    mesh.point_data['WSS_display_Pa']=display[ids]
+-    mesh.point_data['Pressure_Pa']=pressure[ids]
+-    for key,value in {'WSS_raw_Pa':magnitude,'Tangential_viscous_traction_Pa':traction,
+-                      'Outward_normal':normal,'Area_m2':area,'Parent_tetra_zero_based':owners,
+-                      'Global_boundary_facet_zero_based':wall_ids}.items():mesh.cell_data[key]=value
+-    out=CASE/'field_diagnostics';mesh.save(out/'data/wall_wss_si.vtp')
+-    full,pressure_ids=old.surface(points,triangles)
+-    full.point_data['Pressure_Pa']=pressure[pressure_ids];full.cell_data['Boundary_tag']=tags
++    started = time.perf_counter()
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--case', type=Path, help='Case owning the solver configuration and policy')
++    parser.add_argument('--config', type=Path, help='Default: CASE/run/solver.xml')
++    parser.add_argument('--flow', type=Path, help='Explicit solver VTU; default: case frozen VTU')
++    parser.add_argument('--arrays', type=Path, help='Default: CASE/frozen_flow/flow_arrays_si.npz')
++    parser.add_argument('--mesh', type=Path, help='Default: CASE/SV_MESH/mesh_arrays.npz')
++    parser.add_argument('--output', type=Path, default=HERE/'input_data/field_diagnostics')
++    args = parser.parse_args()
++    context = json.loads((HERE/'BUILD_CONTEXT.json').read_text()) if args.case is None else None
++    case = (args.case or Path(context['source_case'])).resolve()
++    flow = args.flow
++    if flow is None:
++        candidates = sorted((case/'frozen_flow').glob('*.vtu'))
++        if len(candidates) != 1:
++            raise ValueError('Specify --flow when frozen_flow does not contain exactly one VTU')
++        flow = candidates[0]
++    flow = flow.resolve()
++    arrays = (args.arrays or case/'frozen_flow/flow_arrays_si.npz').resolve()
++    mesh_path = (args.mesh or case/'SV_MESH/mesh_arrays.npz').resolve()
++    props = material(case, args.config)
++    manifest_path = case/'frozen_flow/manifest.json'
++    if manifest_path.exists() and flow.parent == manifest_path.parent.resolve():
++        manifest = json.loads(manifest_path.read_text())
++        if 'input_configuration_sha256' in manifest:
++            assert props['config_sha256'] == manifest['input_configuration_sha256'], 'Configuration differs from frozen solve'
++        if 'mesh_arrays_sha256' in manifest:
++            assert sha(mesh_path) == manifest['mesh_arrays_sha256'], 'Mesh differs from frozen solve'
++        if 'policy_sha256' in manifest:
++            assert props['policy_sha256'] == manifest['policy_sha256'], 'Policy differs from frozen solve'
++        for name, entry in manifest['files'].items():
++            assert sha(manifest_path.parent/name) == entry['sha256'], name
++    input_lock = case/'input_hashes.json'
++    if input_lock.exists():
++        locked = json.loads(input_lock.read_text())
++        for key, path in [('run/solver.xml', Path(props['config'])),
++                          ('policy.json', case/'policy.json'), ('SV_MESH/mesh_arrays.npz', mesh_path)]:
++            assert key in locked and sha(path) == locked[key], 'Case input lock mismatch: '+key
++    if context is not None:
++        assert sha(flow) == context['source_field_sha256']
++    frozen = np.load(arrays)
++    points, tetra, triangles, tags, velocity, pressure = [frozen[k] for k in
++        ['points_m', 'tetra', 'boundary_triangles', 'facet_tags', 'velocity_m_s', 'pressure_pa']]
++    mesh_arrays = np.load(mesh_path)
++    for key in ['points_m', 'tetra', 'boundary_triangles', 'facet_tags']:
++        assert np.array_equal(frozen[key], mesh_arrays[key]), key
++    grid = pv.read(flow)
++    coordinate_record = coordinate_identity(grid.points, points)
++    assert np.array_equal(np.sort(grid.cells_dict[pv.CellType.TETRA], axis=1), np.sort(tetra, axis=1))
++    assert np.array_equal(grid['Velocity'], velocity) and np.array_equal(grid['Pressure'].reshape(-1), pressure)
++    assert np.isfinite(velocity).all() and np.isfinite(pressure).all()
++    xyz = points[triangles]
++    oriented_area = .5*np.cross(xyz[:, 1]-xyz[:, 0], xyz[:, 2]-xyz[:, 0])
++    facet_flux = np.einsum('ij,ij->i', oriented_area, velocity[triangles].mean(axis=1))
++    flows = {int(tag): float(facet_flux[tags == tag].sum()) for tag in np.unique(tags)}
++    target = float(json.loads((case/'policy.json').read_text())['Q_target_m3_s'])
++    assert target > 0 and 4 in flows, 'SI target flow and inlet tag 4 are required'
++    epsilon_Q = abs(-flows[4]-target)/target
++    epsilon_mass = abs(sum(flows.values()))/target
++    assert epsilon_Q <= 1e-6 and epsilon_mass <= 1e-6, (epsilon_Q, epsilon_mass)
++    mesh, d = recover(points, tetra, triangles, tags, velocity, pressure, props['mu_Pa_s'])
++    ids = d['ids']; magnitude = d['magnitude']; area = d['area']
++    assert np.linalg.norm(velocity[ids], axis=1).max() <= 1e-12
++    tangent_error = float(abs(np.einsum('ij,ij->i', d['traction'], d['normal'])).max())
++    assert tangent_error < max(1., magnitude.max()) * 1e-12
++    out = args.output.resolve(); (out/'data').mkdir(parents=True, exist_ok=True)
++    mesh.save(out/'data/wall_wss_si.vtp')
++    full, pressure_ids = wss.surface(points, triangles)
++    full.point_data['Pressure_Pa'] = pressure[pressure_ids]; full.cell_data['Boundary_tag'] = tags
+     full.save(out/'data/pressure_surface_si.vtp')
+-    selected=np.unique(owners)[np.linspace(0,len(np.unique(owners))-1,128,dtype=int)]
+-    affine=np.concatenate([np.ones((len(selected),4,1)),points[tetra[selected]]],axis=2)
+-    independent=np.swapaxes(np.linalg.solve(affine,velocity[tetra[selected]])[:,1:],1,2)
+-    gradient_error=float(abs(independent-gradient[selected]).max())
+-    assert np.allclose(independent,gradient[selected],rtol=2e-10,atol=1e-7)
+-    tangent_error=float(abs(np.einsum('ij,ij->i',traction,normal)).max())
+-    assert tangent_error<max(1.,magnitude.max())*1e-12
+-    assert np.isfinite(magnitude).all() and np.all(weight[ids]>0)
+-    assert np.linalg.norm(velocity[ids],axis=1).max()==0
+-    record=dict(all_pass=True,case=source.name,source_field_sha256=context['source_field_sha256'],
+-        source_case=str(source),original_diagnostics_implementation=str(implementation),
+-        original_diagnostics_sha256=old.sha(implementation),viscosity_Pa_s=viscosity,
+-        pressure_Pa=dict(min=float(pressure.min()),max=float(pressure.max()),surface_min=float(pressure[pressure_ids].min()),surface_max=float(pressure[pressure_ids].max())),
+-        wss_Pa=dict(raw_min=float(magnitude.min()),raw_max=float(magnitude.max()),
+-            area_weighted_mean=float(np.sum(area*magnitude)/area.sum()),display_min=float(display[ids].min()),display_max=float(display[ids].max())),
++    record = dict(all_pass=True, case=case.name, source_case=str(case), source_field=str(flow),
++        source_field_sha256=sha(flow), flow_arrays=str(arrays), flow_arrays_sha256=sha(arrays),
++        mesh_arrays=str(mesh_path), mesh_arrays_sha256=sha(mesh_path), material=props,
++        coordinate_identity=coordinate_record,
++        viscosity_Pa_s=props['mu_Pa_s'], core_implementation=str(Path(wss.__file__).resolve()),
++        core_sha256=sha(wss.__file__), entry_sha256=sha(__file__),
++        case_adapter_sha256=sha(HERE.parent/'solver_support/src/flow_solver_support/wss_case.py'),
++        pressure_Pa=dict(min=float(pressure.min()), max=float(pressure.max())),
++        wss_Pa=dict(raw_min=float(magnitude.min()), raw_max=float(magnitude.max()),
++            area_weighted_mean=float(np.average(magnitude, weights=area)),
++            display_min=float(d['display'][ids].min()), display_max=float(d['display'][ids].max())),
+         wss_method='Exact P1 tetra velocity gradients; tangential viscous traction on outward planar WALL facets',
+         wss_display='Area-weighted mean of incident facet magnitudes at original wall nodes; geometry unchanged',
+         wss_vector_convention='(I-n*n^T)*mu*(grad(u)+grad(u)^T)*n',
+-        wss_not_native_saved_solver_output=True,mesh_convergence_not_assessed=True,
+-        wall_facets=len(wall),independent_gradient_max_absolute_error_s_inv=gradient_error,
+-        tangency_max_error_Pa=tangent_error,unique_parent_for_all_wall_facets=True,max_wall_speed_m_s=0.,
+-        physical_geometry_unchanged=True,source_values_clipped=False,
+-        outputs_sha256={str(f.relative_to(out)):old.sha(f) for f in (out/'data').glob('*.vtp')},
++        wall_facets=len(magnitude), tangency_max_error_Pa=tangent_error,
++        max_wall_speed_m_s=float(np.linalg.norm(velocity[ids], axis=1).max()),
++        source_values_clipped=False, mesh_convergence_not_assessed=True,
++        measurements=dict(outward_flows_by_tag_m3_s=flows, epsilon_Q=epsilon_Q, epsilon_mass=epsilon_mass),
++        outputs_sha256={str(p.relative_to(out)):sha(p) for p in (out/'data').glob('*.vtp')},
+         elapsed_seconds=time.perf_counter()-started)
+-    old.dump(out/'COMPUTE_VALIDATION.json',record)
+-    old.dump(HERE/'audit/NEW_FLOW_REVIEW.json',dict(all_pass=True,source_field_sha256=context['source_field_sha256'],
+-        frozen_manifest_hashes_match=True,NPZ_and_VTU_values_exactly_equal=True,measurements=actual,
+-        pressure=record['pressure_Pa'],WSS=record['wss_Pa'],source_solver_case_unchanged=True))
++    (out/'COMPUTE_VALIDATION.json').write_text(json.dumps(record,indent=2,allow_nan=False)+'\n')
+     print(json.dumps(record,indent=2),flush=True)
+ 
+-if __name__=='__main__':main()
++
++if __name__ == '__main__':
++    main()
+--- before/solver_support/src/flow_solver_support/wss.py
++++ after/solver_support/src/flow_solver_support/wss.py
+@@ -0,0 +1,65 @@
++"""P1 wall traction recovery in SI units; no solver/log/case imports.
++
++Extracted unchanged algebra from production diagnostics SHA256
++efa12e218bcaf99ba07db7194d3b8da79251da709c0a54a97ad6f6179be6e438.
++Surface I/O imports PyVista only when called.
++"""
++import numpy as np
++
++
++def p1_gradients(points, tetra, velocity):
++    x = points[tetra]
++    u = velocity[tetra]
++    return np.swapaxes(np.linalg.solve(x[:, 1:] - x[:, :1], u[:, 1:] - u[:, :1]), 1, 2)
++
++
++def face_keys(faces):
++    a = np.ascontiguousarray(np.sort(faces, axis=1), dtype=np.int64)
++    return a.view(np.dtype([('a', '<i8'), ('b', '<i8'), ('c', '<i8')])).ravel()
++
++
++def boundary_owners(tetra, triangles):
++    faces = tetra[:, [[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]]].reshape(-1, 3)
++    keys, first, counts = np.unique(face_keys(faces), return_index=True, return_counts=True)
++    query = face_keys(triangles)
++    index = np.searchsorted(keys, query)
++    assert np.all(index < len(keys)), 'Boundary face absent from tetrahedra'
++    assert np.array_equal(keys[index], query)
++    assert np.all(counts[index] == 1), 'Boundary triangles must have exactly one adjacent element'
++    return first[index] // 4
++
++
++def wall_geometry(points, tetra, triangles, owners):
++    xyz = points[triangles]
++    cross = np.cross(xyz[:, 1] - xyz[:, 0], xyz[:, 2] - xyz[:, 0])
++    norm = np.linalg.norm(cross, axis=1)
++    assert np.all(norm > 0)
++    normal = cross / norm[:, None]
++    center = xyz.mean(axis=1)
++    direction = center - points[tetra[owners]].mean(axis=1)
++    normal[np.einsum('ij,ij->i', normal, direction) < 0] *= -1
++    assert np.all(np.einsum('ij,ij->i', normal, direction) > 0)
++    return center, norm / 2, normal
++
++
++def tangential_traction(gradient, normal, viscosity):
++    """Tangential part of viscous stress times outward fluid normal [Pa]."""
++    traction = viscosity * np.einsum('nij,nj->ni', gradient + gradient.swapaxes(1, 2), normal)
++    return traction - np.einsum('ij,ij->i', traction, normal)[:, None] * normal
++
++
++def nodal_average(triangles, values, areas, npoints):
++    weight = np.bincount(triangles.ravel(), weights=np.repeat(areas, 3), minlength=npoints)
++    total = np.bincount(triangles.ravel(), weights=np.repeat(areas * values, 3), minlength=npoints)
++    result = np.zeros(npoints)
++    np.divide(total, weight, out=result, where=weight > 0)
++    return result, weight
++
++
++def surface(points, triangles):
++    import pyvista as pv
++    ids, inv = np.unique(triangles, return_inverse=True)
++    faces = np.column_stack((np.full(len(triangles), 3), inv.reshape(-1, 3)))
++    mesh = pv.PolyData(points[ids], faces)
++    mesh.point_data['GlobalNodeID_zero_based'] = ids
++    return mesh, ids
+--- before/solver_support/src/flow_solver_support/wss_case.py
++++ after/solver_support/src/flow_solver_support/wss_case.py
+@@ -0,0 +1,69 @@
++"""Explicit-case SI inputs and provenance for production P1 WSS recovery."""
++from pathlib import Path
++import hashlib
++import json
++import xml.etree.ElementTree as ET
++import numpy as np
++from . import wss
++
++
++def sha(path):
++    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
++
++
++def coordinate_identity(serialized, original):
++    """Accept only exact original order or the solver's exact float32 writeout."""
++    exact = np.array_equal(serialized, original)
++    float32 = np.array_equal(serialized, np.asarray(original, dtype=np.float32))
++    if not (exact or float32):
++        raise ValueError('VTU coordinates/order differ from explicit mesh and exact float32 serialization')
++    return dict(exact=exact, exact_float32_serialization=float32,
++                max_serialization_difference_m=float(np.max(abs(serialized-original))),
++                gradients_use_original_mesh_coordinates=True)
++
++
++def material(case, config=None):
++    case = Path(case).resolve()
++    config = Path(config).resolve() if config else case / 'run/solver.xml'
++    equation = ET.parse(config).find('.//Add_equation[@type="fluid"]')
++    if equation is None:
++        raise ValueError('Expected an explicit fluid equation in case XML')
++    viscosity = equation.find('Viscosity')
++    if viscosity is None or viscosity.get('model') != 'Constant':
++        raise ValueError('P1 WSS entry currently requires constant Newtonian viscosity')
++    mu = float(viscosity.findtext('Value'))
++    rho = float(equation.findtext('Density'))
++    if not (np.isfinite(mu) and mu > 0 and np.isfinite(rho) and rho > 0):
++        raise ValueError('Invalid SI material constants')
++    policy_path = case / 'policy.json'
++    policy = json.loads(policy_path.read_text())
++    if 'nu_m2_s' in policy and not np.isclose(mu/rho, policy['nu_m2_s'], rtol=1e-12, atol=0):
++        raise ValueError('Case XML dynamic viscosity disagrees with case policy nu*rho')
++    if 'mu_Pa_s' in policy and not np.isclose(mu, policy['mu_Pa_s'], rtol=1e-12, atol=0):
++        raise ValueError('Case XML viscosity disagrees with case policy mu')
++    return dict(mu_Pa_s=mu, rho_kg_m3=rho, nu_m2_s=mu/rho,
++                config=str(config), config_sha256=sha(config),
++                policy=str(policy_path), policy_sha256=sha(policy_path),
++                unit_contract='SI: points_m, velocity_m_s, pressure_pa; XML mu in Pa.s, rho in kg/m3')
++
++
++def recover(points, tetra, triangles, tags, velocity, pressure, mu):
++    wall_ids = np.flatnonzero(tags == 1)
++    wall = triangles[wall_ids]
++    owners = wss.boundary_owners(tetra, wall)
++    centers, area, normal = wss.wall_geometry(points, tetra, wall, owners)
++    gradient = wss.p1_gradients(points, tetra, velocity)
++    traction = wss.tangential_traction(gradient[owners], normal, mu)
++    magnitude = np.linalg.norm(traction, axis=1)
++    display, weight = wss.nodal_average(wall, magnitude, area, len(points))
++    mesh, ids = wss.surface(points, wall)
++    mesh.point_data['WSS_display_Pa'] = display[ids]
++    mesh.point_data['Pressure_Pa'] = pressure[ids]
++    for key, value in {'WSS_raw_Pa': magnitude, 'Tangential_viscous_traction_Pa': traction,
++                       'Outward_normal': normal, 'Area_m2': area, 'Parent_tetra_zero_based': owners,
++                       'Global_boundary_facet_zero_based': wall_ids}.items():
++        mesh.cell_data[key] = value
++    assert np.isfinite(magnitude).all() and np.all(weight[ids] > 0)
++    return mesh, dict(wall_ids=wall_ids, owners=owners, centers=centers, area=area,
++                      normal=normal, gradient=gradient, traction=traction,
++                      magnitude=magnitude, display=display, weight=weight, ids=ids)

@@ -1,0 +1,123 @@
+"""Generate the Chinese explanation from the measured CSVs; writes only here."""
+from pathlib import Path
+import csv,json,hashlib
+M=Path(__file__).resolve().parents[1];V=M.parent
+def rows(p): return list(csv.DictReader(p.open()))
+rr=rows(M/'data/region_summary.csv')
+prof=rows(M/'data/J1_J2_wall_profile.csv')
+def stat(case,region): return next(r for r in rr if r['case']=='vessel_'+case and r['region']==region)
+def f(r,k,d=3): return f'{float(r[k]):.{d}f}'
+b=stat('baseline','J1_r5um');m=stat('medium','J1_r5um');low=stat('medium','all_wall');o=stat('medium','O1_extension')
+flow=rows(V/'data/vessel_flow_split_comparison.csv');o1=next(r for r in flow if r['boundary']=='OUTLET_01')
+current=[r for r in prof if r['case']=='vessel_medium']
+imax=max(range(len(current)),key=lambda i:float(current[i]['mean_Pa']))
+imin=min(range(imax,len(current)),key=lambda i:float(current[i]['mean_Pa']))
+profile_points=[current[0],current[imax],current[imin],current[-1]]
+coordinates=rows(M/'data/verified_port_coordinates.csv')
+coordinates += [dict(label='J1',x_um=92,y_um=49,z_um=111),dict(label='J2',x_um=130.04,y_um=82.04,z_um=87.18)]
+coordinates += [dict(label='中档最低值面片中心',**{k+'_um':low['min_'+k+'_um'] for k in 'xyz'})]
+porttable='\n'.join('| '+r['label']+' | '+', '.join(f(r,k+'_um',5) for k in 'xyz')+' |' for r in coordinates)
+profiletable='\n'.join(f"| {f(r,'s_start_um',2)}–{f(r,'s_end_um',2)} | {f(r,'s_mid_um',2)} | {f(r,'mean_Pa')} | {f(r,'p05_Pa')}–{f(r,'p95_Pa')} |" for r in profile_points)
+summarycheck=rows(M/'data/existing_statistics_crosscheck.csv')
+checkmax=max(float(r['maximum_difference_from_existing_summary']) for r in summarycheck)
+manifest=json.loads((M/'data/source_manifest.json').read_text())
+inputstable='\n'.join(f'| `{Path(p).relative_to(V) if Path(p).is_relative_to(V) else p}` | `{r["sha256"]}` |' for p,r in manifest['inputs'].items() if p.endswith('wall_wss_si.vtp'))
+text=f'''# 周五会议疑问位置说明
+
+本次交付是**疑问位置对照**，不是错误诊断。只读取已有原网格和中档 WSS，核算小规模区域统计并绘图；没有启动 CFD、细档任务或出口压力实验，没有修改原始结果、求解器和边界条件。**会议原图与当前数据版本尚未核实对应。**
+
+## 1. 三个疑问分别在哪里
+
+| 疑问 | 他们在问哪里 | 当前图实际显示什么 | 能解释什么／仍不能确定什么 |
+|---|---|---|---|
+| A，11:21—13:15 | J1 第一处分叉和通往 O2 的连接区。“像被分开”“高值旁边近零”是同一处疑问；随后追问 O2 压力。 | 图 1 红圈定位；图 2 的同尺度正、反视角显示两侧明显不同。中档 J1 球区范围 {f(m,'min_Pa')}–{f(m,'max_Pa')} Pa。 | 确有空间反差；正面不能代表背面。但两档 J1 球区均无 <1 / <2 Pa 面片，不能称已找到会议“近零点”，更不能据此确认压力错误。 |
+| B，13:15 | 经过 O2 的分叉位置后，继续观察 **J1—J2 主干**。不是流体离开 O2 后返回。 | 图 1 蓝虚线给出候选区；图 3 左侧真实壁面与分箱均值显示先升、后降，接近 J2 前再升。 | 当前候选区存在相似趋势；没有会议指针记录，不能确定当时指的是哪个壁面或哪一段，也不能确定趋势的唯一原因。 |
+| C | O1 支路整体较低。 | 图 1 紫色标记、图 3 右侧同区域双尺度显示低值支路。中档 O1 流量占入口 {float(o1['medium_fraction_pct']):.5f}%。 | 全局色标把低值压在很窄的深蓝紫色区间；低流量与低 WSS 的定性对应有数据支持，但不能由流量单独推断局部 WSS 或证明绝对精度。 |
+
+**另行标记的 J2 最低值**为 {f(low,'min_Pa',6)} Pa，位于下表坐标。它不是已确认的会议 J1 指示位置。两档全壁面都没有恰好为 0 Pa 的面片。分叉 WSS 不必均匀，本次没有通过平滑、调参、归一化或修改数值来追求均匀颜色。
+
+## 2. 图 2：J1 局部怎么读
+
+| 半径 5 μm 球区 | 原网格 | 中档 |
+|---|---:|---:|
+| 面片数 | {b['facets']} | {m['facets']} |
+| 均值，Pa | {f(b,'mean_Pa')} | {f(m,'mean_Pa')} |
+| P5 / P50 / P95，Pa | {f(b,'p05_Pa')} / {f(b,'p50_Pa')} / {f(b,'p95_Pa')} | {f(m,'p05_Pa')} / {f(m,'p50_Pa')} / {f(m,'p95_Pa')} |
+| 最低 / 最高，Pa | {f(b,'min_Pa')} / {f(b,'max_Pa')} | {f(m,'min_Pa')} / {f(m,'max_Pa')} |
+| <1 Pa / <2 Pa 面片数 | {b['below1_count']} / {b['below2_count']} | {m['below1_count']} / {m['below2_count']} |
+
+**当前 J1 统计区未复现相应阈值的近零区。**但 {f(m,'min_Pa')} Pa 相对于局部约 {f(m,'max_Pa',1)} Pa 的高值仍很低；<1 / <2 Pa 是本次明确检查的阈值，不等同于会议中口语化的“看起来接近零”。统计以三角形中心到 J1 的三维距离 <5 μm 判定；显示选取 <8.5 μm 的面片，不能把显示窗口当作统计区。灰虚线仅是 5 μm 球的投影轮廓，不能按二维圈内像素计数。高、低值引线指向面片中心；经真实网格射线检查，正向图的最低值位于背面，用“背面投影”及虚线 × 标明。反向图可见低值区。这里标的是局部极值，不代表一对相邻面片。极值面片 ID 和坐标保存在 `data/region_summary.csv`，并非会议原指针位置。
+
+## 3. 图 3：B 的变化与 C 的低值
+
+J1→J2 路径来自已有 ROI 管网中 SWC 节点 **3238→3274** 的唯一连通路径，共 37 点、弧长 58.46001 μm。本次没有临时用 WSS 极值拼接路径。每个壁面面片中心投影到参考折线；与 INLET→J1、J1→O2、J2→O1、J2→O3 四条支路竞争最近归属，并要求到路径的距离小于 2.5 倍插值管网半径。排除 J1/J2 半径 5 μm 球区，沿弧长 [5, 53.46001) μm 作 2 μm 分箱，最后一箱 0.46001 μm。
+
+下表仅摘出首箱、最高均值箱、其后最低均值箱和末箱帮助读图，**曲线绘出全部 25 箱，没有按预期趋势删点或平滑**。
+
+| 分箱范围，μm | 中心弧长，μm | 中档面积均值，Pa | 中档 P5–P95，Pa |
+|---|---:|---:|---:|
+{profiletable}
+
+因此当前曲线并非简单单调降低，也不是整段只有一个升降过程。这里的阴影是**壁面 WSS 的面积分位区间**，不是误差条或置信区间；中心线仅给出位置索引，没有被当作 WSS 采样点。参考折线是结构路径，分箱是空间归类，不是血液质点轨迹或严格壁面流线；分叉端部及不同背面不应仅靠此均值曲线解释。
+
+图 3 右侧两幅采用完全相同的 O1/J2 表面、视角和窗口。左为 0–55 Pa，右为明确标注的 0–5 Pa 局部色标（>5 Pa 只在该显示中饱和为黄色，原数据未裁剪）。中档 **O1 人工延伸段**均值 {f(o,'mean_Pa')} Pa，P5–P95 为 {f(o,'p05_Pa')}–{f(o,'p95_Pa')} Pa；这不是整条 O1 支路均值。延伸段始于源资料的真实切口平面，图中标出起点。O1 流量占比取实际边界通量积分，原网格 {float(o1['baseline_fraction_pct']):.5f}%，中档 {float(o1['medium_fraction_pct']):.5f}%。
+
+已有两档网格敏感性分析还提示局部面片跳变、极小值和小阈值岛存在离散敏感性，因此这些位置图不能判定空间反差纯属物理，也不能宣称网格无关。本次没有新增压力敏感性证据。
+
+## 4. 可核对的位置、数据和作图方式
+
+坐标均为 **μm**。INLET/O1/O2/O3 按命名端口表和实际 `mesh-surfaces/*.vtp` 面积中心核对，并检查 `solver.xml` 的同名边界；未按标签大小猜编号。
+
+| 位置 | (x, y, z)，μm |
+|---|---|
+{porttable}
+
+两档 WSS 数据均位于 `{V}`；管网参考路径和切口身份资料另来自同级 `wss_audit/inputs/network/`。使用 `stage3/vessel_baseline/wss/data/wall_wss_si.vtp` 和 `stage3/vessel_medium/wss/data/wall_wss_si.vtp` 的 **cell_data / WSS_raw_Pa**，来自既有求解流场的 P1 速度梯度与切向黏性牵引力恢复。这里只读取已算好的 WSS，不重新求解或重新恢复梯度。原坐标为 m，仅绘图内存副本乘 10⁶；WSS 保持 Pa。
+
+| 输入壁面 | SHA256 |
+|---|---|
+{inputstable}
+
+所有主图使用 0–55 Pa 线性色标。原始壁面三角形上取常数面片值，**不使用 `WSS_display_Pa` 节点平均、不插值到节点、不进行场平滑、补零或归一化**；关闭光照着色以免亮度混淆 WSS。图 2 黑线是真实三角网格。PNG 中的像素采样是渲染，不改变面片或统计数值。
+
+均值按三角形面积加权；P5/P50/P95 与验证报告一致，排序后以 `(累计面积−半片面积)/总面积` 的位置线性插值。区域通过面片中心归属，不精确切割跨区域三角形。CSV 中 `*_cell_index` 是当前壁面 VTP 的零基 cell 序号，`*_boundary_facet` 是 `Global_boundary_facet_zero_based`；不可跨两档网格直接复用 ID。12 组既有区域统计复核最大绝对差 {checkmax:.3g}（浮点舍入量级）；命名端口坐标与原表差为 0 μm。来源哈希在绘图前后核对一致。
+
+## 5. 文件和复现
+
+| 文件 | 内容 |
+|---|---|
+| `Figure_01_meeting_question_locations.png/.pdf` | 全血管 A/B/C 位置、端口、J1/J2 与独立最低值标记 |
+| `Figure_02_J1_two_mesh_views.png/.pdf` | 原网格／中档，正反视角、原始面片及统计区极值 |
+| `Figure_03_trunk_and_O1.png/.pdf` | J1—J2 壁面分布与沿程统计；O1 双色标对照 |
+| `data/region_summary.csv` | 区域面积、WSS 均值、分位数、极值、面片 ID、阈值计数 |
+| `data/J1_J2_wall_profile.csv` | 两档全部分箱，范围、面积和 WSS 统计 |
+| `data/reference_paths_um.csv` | 原有管网路径节点、弧长与半径 |
+| `data/verified_port_coordinates.csv` | 端口身份和实际命名端面的面积中心 |
+| `data/source_manifest.json` | 输入文件完整路径与 SHA256、版本和只读核对 |
+| `data/view_metadata.json` / `annotation_targets.json` | 相机、窗口、色标和标注落点坐标 |
+| `scripts/make_meeting_maps.py` | 轻量统计与 PyVista / Matplotlib 科学绘图，无 CFD 调用 |
+| `scripts/write_explanation.py` | 从已核算 CSV 生成本说明 |
+| `logs/render.log` / `data/QA.json` | 执行日志与最后核查记录 |
+
+复现命令见 `REPRODUCE.md`。附件 `assets/` 是作图中间面板，仅用于复核，三张正式说明图位于本目录根部。本次任务完成于现有数据解释，不要求追加 CFD。
+'''
+(M/'MEETING_QUESTION_MAPS_CN.md').write_text(text)
+py=V.parent/'.venv/bin/python'
+commands=f'''# 复现命令
+
+以下两条命令只读取既有 WSS、端口和管网文件，输出到当前 meeting_question_maps/；不调用求解器或任务管理器。
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 \\
+  {py} -B \\
+  {M}/scripts/make_meeting_maps.py \\
+  > {M}/logs/render.log 2>&1
+
+PYTHONDONTWRITEBYTECODE=1 {py} -B \\
+  {M}/scripts/write_explanation.py
+```
+
+中文字体使用 `/mnt/c/Windows/Fonts/msyh.ttc` 和 `msyhbd.ttc`；换环境时可改成已安装的中文字体路径。Matplotlib 缓存固定放在本目录 `.mplconfig/`。PyVista 使用离屏渲染。
+'''
+(M/'REPRODUCE.md').write_text(commands)
+print('Chinese explanation written:',M/'MEETING_QUESTION_MAPS_CN.md')
