@@ -1,0 +1,16 @@
+--- original/petsc_impl.cpp
++++ patched/petsc_impl.cpp
+@@ -304,6 +304,13 @@
+     if (psol[cEq].rcs){
+         VecPointwiseMult(psol[cEq].b, psol[cEq].b, psol[cEq].Dc);
+     }
++
++    // The ghost-local sequential view shares the host buffer, but its state
++    // does not track writes made to the parent CUDA vector by KSPSolve.
++    // Synchronize owned solution entries before the CPU ghost-local export.
++    const PetscScalar* brava_owned_host = nullptr;
++    PetscCallAbort(MPI_COMM_WORLD, VecGetArrayRead(psol[cEq].b, &brava_owned_host));
++    PetscCallAbort(MPI_COMM_WORLD, VecRestoreArrayRead(psol[cEq].b, &brava_owned_host));
+ 
+     /* Fill the ghost vertices with correct values. */
+     VecGhostUpdateBegin(psol[cEq].b, INSERT_VALUES, SCATTER_FORWARD);

@@ -1,3 +1,15 @@
+# 2026-09-29 新增 BraVa 服务器路径
+
+| 内容 | 路径 |
+|---|---|
+| BraVa当前独立算例 | `vast4090:/workspace/brava_flow_roi_18mlmin_20260928/` |
+| 正式压力出口CFD | 该目录下 `cases/balanced_pressure_final/` |
+| candidate 0 / 15流场动画 | 该目录下 `visualization/candidate_0/`、`candidate_15/` |
+| 已停止的微泡批次 | 该目录下 `microbubble/`；`data/USER_STOP.json`为取消标记 |
+| 隔离的GPU同步修复求解器 | 该目录下 `gpu_solver_fix/svmultiphysics` |
+
+微泡服务为STOPPED、autostart=false、autorestart=false；本次同步不恢复计算。下列小鼠/RBC路径为独立保留流程：
+
 # 当前服务器路径
 
 连接别名：`vast4090`（已有 SSH 配置）。2026-09-27 的清理仅针对 WSL；2026-09-28 新增下列独立流场及微泡结果目录。旧依赖和独立 RBC 入口保留。

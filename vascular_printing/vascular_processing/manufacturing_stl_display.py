@@ -7,12 +7,15 @@ import json
 import numpy as np
 from scipy.spatial import cKDTree
 
-from .compact_display_adapter import CompactBraVaViewer, compact_record
+from .compact_display_adapter import CompactBraVaViewer, compact_record, CONTEXT_COLORS
 from .manufacturing_roi import topology_paths
 from .print_orientation import transform_points
 from .swc_export import read_source
 from .topbrain_qc import sha256, write_json
 from utils.rodent_vasculature import interactive as ui
+
+STL_ROI_LEGEND_LABEL = 'Selected ROI vessels'
+STL_BOX_LEGEND_LABEL = 'ROI bounding box'
 
 
 def diameter_on_surface(points_mm, smooth_graph):
@@ -133,24 +136,69 @@ class ManufacturingSTLViewer(CompactBraVaViewer):
         data,raw,records,self.stl_surface,self.stl_provenance=load_print_stl(self.stl_path)
         return data,raw,records
 
+    def style_annotations(self, panel):
+        """Match the legends to the saved STL and the actual global selection."""
+        self.plotter.subplot(0, panel)
+        renderer = self.plotter.renderers[panel]
+        if panel == 0:
+            # A single saved ROI is selected in red. The inherited cyan
+            # candidate-box legend does not describe those selected vessels.
+            for name in list(renderer.actors):
+                if name.startswith('full_scene_legend_'):
+                    self.plotter.remove_actor(name, reset_camera=False, render=False)
+            ui._add_scientific_bottom_legend(self.plotter, [
+                ui._ScientificLegendEntry('parent -> current', '#FF9F1C', 'arrow'),
+                ui._ScientificLegendEntry(STL_ROI_LEGEND_LABEL, '#FF0000', 'line'),
+                ui._ScientificLegendEntry(STL_BOX_LEGEND_LABEL, ui.ACTIVE_ROI_FILL_COLOR, 'patch'),
+            ], name_prefix='full_scene_legend')
+        else:
+            # This independently interpolated display curve is not the STL's
+            # generating spline and can protrude beyond its surface. Keep the
+            # actual STL, its diameter colours, arrows and endpoint markers.
+            self.plotter.remove_actor('sampling_roi_centerline', reset_camera=False, render=False)
+            for name, actor in list(renderer.actors.items()):
+                if name.startswith('sampling_roi_legend_text_') and actor.GetInput() == 'ROI centerline':
+                    self.plotter.remove_actor(name, reset_camera=False, render=False)
+                    self.plotter.remove_actor(name.replace('_text_', '_symbol_'), reset_camera=False, render=False)
+        # Retain the shared font, centred row, height, arrow glyph and no background.
+        super().style_annotations(panel)
+
     def select(self,index):
-        super().select(index)
-        self.plotter.subplot(0,1)
-        actors=[actor for actor in self.plotter.renderer.actors.values()
-            if getattr(actor,'mapper',None) is not None and hasattr(actor.mapper,'dataset')
-            and actor.mapper.scalar_visibility and ui.DIAMETER_SCALAR_NAME in actor.mapper.dataset.point_data]
-        if len(actors)!=1:raise ValueError('EXPECTED_EXISTING_DIAMETER_TUBE_ACTOR')
-        self.stl_actor=actors[0]
-        self.stl_actor.mapper.dataset=self.stl_surface
-        values=self.stl_surface.point_data[ui.DIAMETER_SCALAR_NAME]
-        self.stl_actor.mapper.scalar_range=(float(values.min()),float(values.max()))
+        import pyvista as pv
+
+        suppressed=self.plotter.suppress_rendering
+        self.plotter.suppress_rendering=True
+        try:
+            # Keep other semantic MeVO candidates as neutral global context.
+            # The parent then highlights only this STL's exact source edges red.
+            self.base_rgb[self.full_mesh.cell_data['label'] == 2] = pv.Color(CONTEXT_COLORS[0]).int_rgb
+            super().select(index)
+            self.plotter.subplot(0,1)
+            actors=[actor for actor in self.plotter.renderer.actors.values()
+                if getattr(actor,'mapper',None) is not None and hasattr(actor.mapper,'dataset')
+                and actor.mapper.scalar_visibility and ui.DIAMETER_SCALAR_NAME in actor.mapper.dataset.point_data]
+            if len(actors)!=1:raise ValueError('EXPECTED_EXISTING_DIAMETER_TUBE_ACTOR')
+            self.stl_actor=actors[0]
+            self.stl_actor.mapper.dataset=self.stl_surface
+            values=self.stl_surface.point_data[ui.DIAMETER_SCALAR_NAME]
+            self.stl_actor.mapper.scalar_range=(float(values.min()),float(values.max()))
+        finally:
+            # Never expose an intermediate SWC tube/overlay during ROI refresh.
+            self.plotter.suppress_rendering=suppressed
         self.plotter.subplot(0,0);self.plotter.render()
 
     def run_window(self, *, show=True, smoke_seconds=0):
         report=super().run_window(show=show,smoke_seconds=smoke_seconds)
         report.update(source='manufacturing-stl',stl_provenance=self.stl_provenance,
             roi_surface='Actual saved STL triangles; inverse print transform in memory only',
-            differences=['Data-only STL mode; shared current rendering properties retained'],
+            right_centerline_overlay_visible=False,
+            unselected_mevo_highlight_visible=False,
+            candidate_legend=STL_ROI_LEGEND_LABEL,selected_vessel_legend_colour='#FF0000',
+            roi_box_legend=STL_BOX_LEGEND_LABEL,
+            differences=['Saved STL with shared current rendering properties',
+                'Independent interpolated centreline overlay and its legend removed in STL mode',
+                'Global legend identifies red selected vessels and the grey ROI bounding box',
+                'Other MeVO candidates use grey global context; only the STL source edges are selected red'],
             displayed_stl_triangles=self.stl_surface.n_cells)
         write_json(self.run/'brava_strict_ui_compatibility.json',report)
         return report
