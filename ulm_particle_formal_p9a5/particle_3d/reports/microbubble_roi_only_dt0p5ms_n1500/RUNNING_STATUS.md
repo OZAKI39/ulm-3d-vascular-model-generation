@@ -1,0 +1,5 @@
+# 已完成并通过本地独立核验
+
+1500/1500，dt=0.5 ms；O1=787、O2=61、O3=467。终态：COMPLETED=1315、SUPPORTED_STATIONARY=185。
+
+入口：[OPEN_RESULTS.html](OPEN_RESULTS.html)。运动积分、CUDA 复核及英文 1.30 倍动画均已完成。
