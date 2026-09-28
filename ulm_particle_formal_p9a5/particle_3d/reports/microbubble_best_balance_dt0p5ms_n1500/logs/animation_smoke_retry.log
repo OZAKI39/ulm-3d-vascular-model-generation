@@ -1,0 +1,35 @@
+[h264_nvenc @ 0x55b891dd8480] OpenEncodeSessionEx failed: unsupported device (2): (no details)
+[h264_nvenc @ 0x55b891dd8480] No capable devices found
+[vost#0:0/h264_nvenc @ 0x55b891dd8080] Error while opening encoder - maybe incorrect parameters such as bit_rate, rate, width or height.
+Error while filtering: Generic error in an external library
+[out#0/mp4 @ 0x55b891dd6d80] Nothing was written into output file, because at least one of its streams received no packets.
+Traceback (most recent call last):
+  File "/root/particle8_2_runs/env/lib/python3.13/site-packages/imageio_ffmpeg/_io.py", line 627, in write_frames
+    p.stdin.write(bb)
+    ~~~~~~~~~~~~~^^^^
+BrokenPipeError: [Errno 32] Broken pipe
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/workspace/microbubble_best_balance_dt0p5ms_n1500_20260928/scripts/render_results.py", line 162, in <module>
+    a=p.parse_args();main(a.preview or a.animation_smoke,a.animation_smoke)
+                     ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/microbubble_best_balance_dt0p5ms_n1500_20260928/scripts/render_results.py", line 138, in main
+    writer.append_data(np.asarray(pixels))
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/root/particle8_2_runs/env/lib/python3.13/site-packages/imageio/core/format.py", line 589, in append_data
+    return self._append_data(im, total_meta)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "/root/particle8_2_runs/env/lib/python3.13/site-packages/imageio/plugins/ffmpeg.py", line 606, in _append_data
+    self._write_gen.send(im)
+    ~~~~~~~~~~~~~~~~~~~~^^^^
+  File "/root/particle8_2_runs/env/lib/python3.13/site-packages/imageio_ffmpeg/_io.py", line 634, in write_frames
+    raise IOError(msg)
+OSError: [Errno 32] Broken pipe
+
+FFMPEG COMMAND:
+/usr/bin/ffmpeg -y -f rawvideo -vcodec rawvideo -s 1920x1080 -pix_fmt rgb24 -r 24.00 -i - -an -vcodec h264_nvenc -pix_fmt yuv420p -v warning -preset p6 -cq 19 -b:v 0 /workspace/microbubble_best_balance_dt0p5ms_n1500_20260928/preview/animations/microbubble_age_aligned.mp4
+
+FFMPEG STDERR OUTPUT:
+
