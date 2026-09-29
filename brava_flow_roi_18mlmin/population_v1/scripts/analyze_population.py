@@ -94,7 +94,7 @@ for n,(a,b) in enumerate(zip(boundaries[:-1],boundaries[1:])):
  live=(frame_time>=t[0])&(frame_time<t[-1])
  for j in range(3):frame_x[live,n,j]=np.interp(frame_time[live],t,x[:,j])
  # Exact vertices, display decimation only; raw accepted endpoints remain above.
- stride=max(1,len(t)//1500);ix=np.unique(np.r_[np.arange(0,len(t),stride),len(t)-1]);trackpoints.append(x[ix]);trackoffsets.append(trackoffsets[-1]+len(ix))
+ stride=max(1,int(np.ceil((len(t)-1)/1499)));ix=np.unique(np.r_[np.arange(0,len(t),stride),len(t)-1]);trackpoints.append(x[ix]);trackoffsets.append(trackoffsets[-1]+len(ix))
 print('EXIT_PARITY',sum(r['PASS'] for r in exitchecks),len(exitchecks),flush=True)
 wall_rows=[]
 for pid,t,x,r,stored,is_birth in wall_samples:
@@ -129,6 +129,7 @@ for r in sorted(terminals,key=lambda r:r['physical_time_s']):
 test_override=manifest['identity']['population_contract'].get('fixed_infusion_test_override_s')
 if test_override is None:assert firstcoverage==summary['infusion_stop_time_s']
 result=dict(status='AUDIT_COMPLETED_WITH_EXPLICIT_LIMITATIONS',run_name=args.run_name,flow_sha256=env.flow_sha256,
+ production_identity=manifest['identity'],postprocessing_script_sha256=digest(Path(__file__)),
  source_and_terminal_accounting_pass=True,all_file_and_scientific_hashes_pass=True,finite_arrays=finite,
  maximum_age_identity_error_s=max_age_error,maximum_held_velocity_path_error_m=max_kinematic_error,
  recorded_particle_states=len(p['id']),independent_outlet_checks=len(exitchecks),independent_outlet_pass=all(r['PASS'] for r in exitchecks),
@@ -142,4 +143,17 @@ result=dict(status='AUDIT_COMPLETED_WITH_EXPLICIT_LIMITATIONS',run_name=args.run
  failure_count=len(failures),scientific_integrity_pass=summary['scientific_integrity_pass'],
  animation_time='ABSOLUTE_PHYSICAL_TIME; held-velocity interpolation; no age alignment',
  diameter_um=dict(min=min(r['diameter_um'] for r in rows),max=max(r['diameter_um'] for r in rows)))
+oldrun=root/'runs/realization_0000_final'
+if args.run_name=='realization_0000_contactfix' and (oldrun/'MANIFEST.json').exists():
+ oldmanifest=json.loads((oldrun/'MANIFEST.json').read_text())
+ comparison=dict(scope='SOURCE_LEDGER_AND_PREVIOUSLY_FAILED_ID_ONLY; OLD_RUN_NOT_VALID_PRODUCTION',
+  source_scientific_hash_identical=ledger_hashes['source']==oldmanifest['ledger_scientific_hashes']['source'])
+ with gzip.open(oldrun/'terminals.jsonl.gz','rt') as f:
+  oldterminal=next((json.loads(l) for l in f if json.loads(l)['particle_id']==1131),None)
+ if oldterminal is not None and 1131 in byterminal:
+  track=np.load(out/'tracks/mb_001131.npz');ot=oldterminal['physical_time_s'];t=track['physical_time_s'];x=track['x_m'];oldx=np.array(oldterminal['support_evidence'][-1]['position_m'])
+  later=x[t>ot];comparison.update(particle_id=1131,previous_terminal_time_s=ot,
+   revised_terminal={k:v for k,v in byterminal[1131].items() if k!='support_evidence'},later_recorded_states=len(later),
+   maximum_later_displacement_from_previous_stop_m=float(np.linalg.norm(later-oldx,axis=1).max()) if len(later) else 0.)
+ write_json(out/'contact_fix_comparison.json',comparison);result['contact_fix_comparison']=comparison
 write_json(out/'INDEPENDENT_AUDIT.json',result);print(json.dumps(result,indent=2),flush=True)

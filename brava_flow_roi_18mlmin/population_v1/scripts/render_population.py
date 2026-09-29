@@ -1,6 +1,6 @@
 """English physical-time animation; inherited BraVa style and exact 1.30 zoom."""
 from pathlib import Path
-import argparse,json,csv,os
+import argparse,json,csv,os,hashlib
 os.environ.setdefault('VTK_DEFAULT_OPENGL_WINDOW','vtkEGLRenderWindow')
 import numpy as np
 import pyvista as pv
@@ -51,12 +51,15 @@ def overlay(pixels,t=None,static=False):
   title=f'Continuous microbubble perfusion | Physical time: {t:.3f} s | Infusion: {mode} | Active: {active}'
  assert titlefont.getlength(title)<=1840;d.text((40,22),title,font=titlefont,fill='white')
  for j,(key,ids) in enumerate(groups.items()):
-  text=f'{labels[key]}: {len(ids)}';d.text((40+j*min(350,1840/len(groups)),69),text,font=smallfont,fill=COLORS[key])
+  text=f'Final {labels[key]}: {len(ids)}';d.text((40+j*min(350,1840/len(groups)),69),text,font=smallfont,fill=COLORS[key])
  footer='Color = final outcome | dt = 0.5 ms | C = 4e9 m^-3 | 18 mL/min | Markers enlarged for display; physical sizes are unchanged.'
  assert smallfont.getlength(footer)<=1840;d.text((40,1018),footer,font=smallfont,fill='#cad4e2')
  # Same neutral side labels, rigidly transformed official cap identity.
  for role,(x,y) in (ports.items() if static else []):
-  name='INLET' if role=='INLET' else 'O'+str(int(role[-2:]));left=x<960;tx=55 if left else 1780;ty=float(np.clip(y,135,965))
+  name='INLET' if role=='INLET' else 'O'+str(int(role[-2:]));left=x<960;tx=55 if left else 1780
+  # At far frame edges put labels in a vertical margin, not on the cap.
+  label_offset=-50 if x<180 or x>1700 else 0
+  ty=float(np.clip(y+label_offset,135,965))
   d.text((tx,ty-14),name,font=smallfont,fill='white')
   anchor=(tx+85 if left else tx-8,ty+2);d.line([anchor,(x,y)],fill='#dce2ed',width=2)
   vec=np.array(anchor)-[x,y];vec/=max(np.linalg.norm(vec),1e-30);side=np.array([-vec[1],vec[0]])
@@ -88,7 +91,14 @@ for j in indices:
  if j%48==0:print('FRAME',args.pose,j,len(ft),flush=True)
 if not args.preview:writer.close()
 plot.close()
-record=dict(run_name=args.run_name,flow_sha256=json.loads((root/'runs'/args.run_name/'IDENTITY.json').read_text())['flow_sha256'],
+identity=json.loads((root/'runs'/args.run_name/'IDENTITY.json').read_text())
+record=dict(run_name=args.run_name,flow_sha256=identity['flow_sha256'],
+ production_git_commit=identity['git_commit'],population_contract_sha256=identity['population_contract_sha256'],
+ source_identity_sha256=identity['source_identity_sha256'],source_distribution_identity=identity['source_distribution_identity'],
+ master_seed=identity['master_seed'],realization_id=identity['realization_id'],
+ renderer_script_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+ style_script_sha256=hashlib.sha256((Path(__file__).parent/'style_reference.py').read_bytes()).hexdigest(),
+ pyvista_version=pv.__version__,vtk_version=vtk.vtkVersion.GetVTKVersion(),
  candidate_id=int(args.pose),text_language='English',video_semantics='PHYSICAL_TIME_SHARED_POPULATION_NOT_AGE_ALIGNED',
  original_camera_style='microbubble/scripts/render_results.py',zoom=1.30,layout=layout,marker_size_display_px=9.1,
  render_backend=gpu_strings,encoder='libx264_CPU_2_THREADS',physical_time_end_s=float(ft[-1]),frames=len(ft),fps=24,

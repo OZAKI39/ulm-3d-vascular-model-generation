@@ -14,6 +14,9 @@ fig,axes=plt.subplots(2,2,figsize=(13,9),layout='constrained')
 t=np.array([float(r['physical_time_s']) for r in timeline]);active=[int(r['active_count']) for r in timeline]
 axes[0,0].plot(t,active,color='#167ca0');axes[0,0].axvline(s['infusion_stop_time_s'],ls='--',color='k',label='Source stopped: all outlets >= 20')
 axes[0,0].set(xlabel='Absolute physical time (s)',ylabel='Simultaneously active particles',title='Shared population clock');axes[0,0].legend(fontsize=9)
+axes[0,0].annotate(f"{s['censored_count']} observation-censored\n(not outlet crossings)",
+ xy=(s['physical_time_s'],s['censored_count']),xytext=(.52,.28),textcoords='axes fraction',
+ fontsize=9,color=colors['OBSERVATION_CENSORED'],arrowprops=dict(arrowstyle='->',color=colors['OBSERVATION_CENSORED']))
 for o in s['outlets']:axes[0,1].plot(t,[int(r[o]) for r in timeline],color=colors[o],label=o.replace('OUTLET_0','O'))
 axes[0,1].axhline(20,color='k',ls=':',label='Coverage target');axes[0,1].set(xlabel='Absolute physical time (s)',ylabel='Actual cumulative center crossings',title='Observed outlet coverage');axes[0,1].legend()
 keys=sorted(set(r['outlet'] or r['status'] for r in rows));counts=[sum((r['outlet'] or r['status'])==k for r in rows) for k in keys]

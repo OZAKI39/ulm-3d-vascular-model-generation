@@ -5,6 +5,7 @@ import numpy as np
 ap=argparse.ArgumentParser();ap.add_argument('--run-name',required=True);args=ap.parse_args()
 root=Path(__file__).resolve().parents[1];base=root.parent
 validation=root/'validation/server' if (root/'validation/server/phase9_sparse_batch_benchmark.json').exists() else root/'validation'
+validation_label=str(validation.relative_to(root))
 def get(name):return json.loads((validation/(name+'.json')).read_text())
 analysis=root/'analysis'/args.run_name;a=json.loads((analysis/'INDEPENDENT_AUDIT.json').read_text());s=a['summary']
 identity=json.loads((root/'runs'/args.run_name/'IDENTITY.json').read_text());contract=identity['population_contract']
@@ -12,9 +13,12 @@ fail=json.loads((analysis/'failure_diagnostics.json').read_text());counts=collec
 rows=list(csv.DictReader((analysis/'trajectory_catalog.csv').open()));outlets=s['outlets'];bc=s['backend_counts'];gpu_fraction=bc['accepted_gpu_authoritative_particle_updates']/bc['accepted_particle_updates']
 gpu=get('phase9_benchmark_gpu')['rows'];cpu=get('phase9_benchmark_cpu')['rows'];batch=get('phase9_sparse_batch_benchmark');paircost=get('phase9_pair_component_cost')['rows']
 source=get('phase4_real_inlet_statistics');field=get('phase5_real_fem_gpu');wall=get('phase7_real_wall_gpu');resistance=get('phase7_gpu_resistance');parity=get('phase7_real_gpu_dynamics')
+finalqc=get('final_delivery_qc')
 telemetry=root/'logs/server'/f'{args.run_name}_telemetry.csv'
 if not telemetry.exists():telemetry=root/'logs'/f'{args.run_name}_telemetry.csv'
 tele=list(csv.DictReader(telemetry.open()))
+receipt=json.loads((telemetry.parent/f'{args.run_name}_PROCESS.json').read_text())
+job_wall=receipt.get('ended_unix_s',float(tele[-1]['unix_s']))-receipt['started_unix_s']
 stats={k:dict(mean=float(np.mean([float(r[k]) for r in tele])),max=float(np.max([float(r[k]) for r in tele]))) for k in ['gpu_utilization_percent','gpu_memory_MiB','process_CPU_percent_one_core_100','process_RSS_bytes']}
 (root/'analysis'/args.run_name/'resource_statistics.json').write_text(json.dumps(stats,indent=2)+'\n')
 validation_rows=[
@@ -36,9 +40,10 @@ validation_rows=[
 ('V17','实际近共线接触回退','实际失败历史32个状态，原GPU候选被正确丢弃；有效CPU回退恢复原解','actual_contact_fallback_regression'),
 ('V16','共享时钟保护责任','极小步保护不误停旁观微泡；拒绝试步记录实际球对/壁面触发者','rejected_trial_owner_regression')]
 vr=[]
-for code,name,scope,artifact in validation_rows:
- r=get(artifact);vr.append(f'|{code}|{name}|已运行；{"PASS" if r.get("PASS") else "见原记录"}|{scope}|`validation/server/{artifact}.json`|')
+for code,name,scope,artifact in sorted(validation_rows):
+ r=get(artifact);vr.append(f'|{code}|{name}|已运行；{"PASS" if r.get("PASS") else "见原记录"}|{scope}|`{validation_label}/{artifact}.json`|')
 benchmark='\n'.join(f"|{c['N_active']}|{c['wall_s']:.6g}|{g['wall_s']:.6g}|{g['particle_updates_s']:.6g}|{c['wall_s']/g['wall_s']:.2f}×|" for c,g in zip(cpu,gpu))
+pairtable='\n'.join(f"|{r['particles']}|{r['contacts']}|{1e3*r['pair_resistance_assembly_s']:.4f}|{1e3*r['contact_geometry_s']:.4f}|{1e3*r['coupled_contact_solve_s']:.4f}|" for r in paircost)
 outtable='\n'.join(f"|{o.replace('OUTLET_0','O')}|{n}|{100*n/s['accepted_birth_count']:.3f}%|" for o,n in outlets.items())
 failtable='\n'.join(f'|{k}|{v}|' for k,v in counts.items()) or '|无|0|'
 zero=[r for r in fail if r['actual_FEM_speed_m_s']==0]
@@ -84,11 +89,11 @@ F_{{ij}}=-\\zeta[(v_i-v_j)\\cdot n]n.$$
 
 GPU 实际承担：SoA 状态、FEM tetra walking/BVH recovery、速度/压力/G/curl/strain 插值、空间散列候选与精确球间隙、真实有限壁面 BVH/连续路径检查、孤立泡 6×6 阻力与多法向接触求解、位置/姿态推进。**稀有球对组件及困难有限边缘路径细分仍在 CPU 小子集上处理**；CPU 还执行源事件、准入、严格出口分类及写出。没有宣称全部接触都已 GPU 化。
 
-不包含：可变形壳、声学振荡、溶解/破裂/聚并、RBC、双向 CFD 反馈、球对切向润滑/摩擦。模型支持静止依据原 32 状态 rank/KKT 证据，终态即移除；不代表生理栓塞。
+不包含：远场多体流动相互作用、可变形壳、声学振荡、溶解/破裂/聚并、RBC、双向 CFD 反馈、球对切向润滑/摩擦。模型支持静止依据原 32 状态 rank/KKT 证据，终态即移除；不代表生理栓塞。
 
 ## 4. 按顺序实际执行的验证
 
-Phase 1 审查 → Phase 2 CPU 时钟与原模块 → Phase 3 球对/组件 → Phase 4 灌注 → Phase 5 GPU FEM → Phase 6 GPU 状态/邻居 → Phase 7 GPU 动力学 → Phase 8 独立群体 batch → Phase 9 性能与生产。每个阶段的 README、脚本、日志、JSON 均保留。最终新增测试组 **26 passed**；日志 `logs/server/tests_contact_fallback.log`。本地无 Torch 的环境不能运行 GPU 测试；上述 GPU 测试实际在服务器 RTX 4090 执行。
+Phase 1 审查 → Phase 2 CPU 时钟与原模块 → Phase 3 球对/组件 → Phase 4 灌注 → Phase 5 GPU FEM → Phase 6 GPU 状态/邻居 → Phase 7 GPU 动力学 → Phase 8 独立群体 batch → Phase 9 性能与生产。每个阶段的 README、脚本、日志、JSON 均保留。最终新增测试组 **26 passed**；日志 `{telemetry.parent.relative_to(root)}/tests_contact_fallback.log`。本地无 Torch 的环境不能运行 GPU 测试；上述 GPU 测试实际在服务器 RTX 4090 执行。
 
 |编号|对象|执行结果|判定范围与限制|数值附件|
 |---|---|---|---|---|
@@ -111,7 +116,7 @@ Phase 1 审查 → Phase 2 CPU 时钟与原模块 → Phase 3 球对/组件 → 
 
 源提议 {s['source_event_count']}；接受 {s['accepted_birth_count']}；壁面拒绝 {s['wall_rejected_source_count']}；球对拒绝 {s['pair_rejected_inlet_count']}；其他拒绝 {s['other_rejected_source_count']}。实际源/接受率为观察到的数量除以灌注时长，约 {s['source_event_count']/s['infusion_stop_time_s']:.3f}/s；与理论 1200/s 的区别是随机实现和依赖出口的停止规则，不能靠调源强制等于期望。
 
-最终 active={s['active_count']}；实际 pair nearfield 进入事件 {s['pair_nearfield_event_count']}、pair contact 进入事件 {s['pair_collision_event_count']}、最大同时 pair contacts={s['maximum_simultaneous_pair_contacts']}。这些是接触/近场集合从未激活到激活的事件计数，不是每个采样步重复计数，也不是人为添加碰撞。涉及唯一近场球对 {a['unique_nearfield_pairs']} 组、唯一接触球对 {a['unique_contact_pairs']} 组。每次涉及的 IDs 和接触乘子/残差可在原 interaction ledger 核对。
+最终 active={s['active_count']}；实际 pair nearfield 进入事件 {s['pair_nearfield_event_count']}、pair contact 进入事件 {s['pair_collision_event_count']}、最大同时 pair contacts={s['maximum_simultaneous_pair_contacts']}。这些是接触/近场集合从未激活到激活的事件计数，不是每个采样步重复计数，也不是人为添加碰撞。接触集合在 handoff 舍入尺度附近也可能反复切换，事件数不能当作独立弹性撞击次数；本模型本身是过阻尼约束动力学。涉及唯一近场球对 {a['unique_nearfield_pairs']} 组、唯一接触球对 {a['unique_contact_pairs']} 组。每次涉及的 IDs 和接触乘子/残差可在原 interaction ledger 核对。
 
 独立审计 `analysis/{args.run_name}/INDEPENDENT_AUDIT.json`：
 
@@ -121,6 +126,8 @@ Phase 1 审查 → Phase 2 CPU 时钟与原模块 → Phase 3 球对/组件 → 
 - CPU 有限三角形壁面独立复核 {a['independent_wall_checks']} 个出生/终点/每轨迹最小 gap 状态，接受状态 gap 最大误差 {a['independent_wall_max_error_m']:.6g} m，独立最小 gap {a['independent_wall_min_gap_m']:.9g} m；几何 roundoff {a['wall_roundoff_m']:.6g} m。
 - 原出生行 `wall_gap` 是准入保守下界，`tetra_id=-1` 表示尚未初始化搜索 hint；不能误当精确距离或网格外。派生 `analysis/.../tracks/` 在出生点单独用 CPU 补算精确 gap/tetra，原始数据不变。其余接受步均记录真实查询 gap；出生下界最大违约量 {a['birth_admission_lower_bound_max_violation_m']:.6g} m。
 - 另抽查 {a['pair_sampled_states']} 个实际群体状态，KD-tree 枚举所有距离≤2r_max+2 nm 的球对；最小近接触原始 gap 为 {a['sampled_near_contact_minimum_raw_gap_m']} m。它是独立抽查，不能冒充每一步全配对证明；每步连续路径的主计算证书仍在 ledger 中。
+
+修复前后来源账本及 ID1131 后续运动的比较保存在 `analysis/{args.run_name}/contact_fix_comparison.json`；只比较相同来源和已定位的程序差异，不将中止批次当作有效生产样本。
 
 ### 数值失败明确保留
 
@@ -132,7 +139,7 @@ Phase 1 审查 → Phase 2 CPU 时钟与原模块 → Phase 3 球对/组件 → 
 |---:|---:|---:|---:|---:|---:|---|
 {failed_details}
 
-其中 {len(zero)} 条失败的最终 FEM 速度严格为零；详情保留末点 tetra、四个顶点速度、壁面三角形编号、gap、32 次 CPU 独立重算与 GPU 速度差。其余失败涉及近壁极小步/进展保护时，按实际日志说明，不一概称为低速、接触支持或生理堵塞。失败终态移除是计算策略，可能影响其后的群体相互作用，因此 **有失败时不把整批当作完整物理输运统计**。出口覆盖数字是本数值实现的真实已记录穿越数。
+其中 {len(zero)} 条失败的最终 FEM 速度严格为零；详情保留末点 tetra、四个顶点速度、壁面三角形编号、gap、32 次 CPU 独立重算与 GPU 速度差。对于四节点速度全零的单元，这里确认的是冻结输入的线性插值为零，不等于证明连续流体在该体积内真实静止。其余失败涉及近壁极小步/进展保护时，按实际日志说明，不一概称为低速、接触支持或生理堵塞。失败终态移除是计算策略，可能影响其后的群体相互作用，因此 **有失败时不把整批当作完整物理输运统计**。出口覆盖数字是本数值实现的真实已记录穿越数。
 
 停源依赖观察到的出口覆盖，12 秒之后尚在途为右删失；失败/删失 residence time 不是完成输运时间。没有将失败或删失剔除后重新归一化为“所有泡的出口概率”。
 
@@ -146,11 +153,19 @@ Phase 1 审查 → Phase 2 CPU 时钟与原模块 → Phase 3 球对/组件 → 
 
 N=10,000 峰值 Torch allocated={gpu[-1]['gpu_peak_allocated_bytes']/2**30:.3f} GiB（该进程累计峰值）；当时 nvidia-smi `{gpu[-1]['nvidia_smi_snapshot']}`。分阶段 FEM、wall、邻居、阻力装配、接触解、连续路径及输出时间见 `04_performance.png` 和 JSON。无相互作用夹具的 active pair physics 为 0，不把邻居构建时间称为碰撞求解性能；有碰撞的组件性能仅由碰撞测试/正式回退记录体现。
 
-单独测量了 CPU 球对组件（无壁面、五次预热后中位数）：`{paircost}`。其中 pair resistance assembly 是球间阻力实际装配，contact geometry 是约束生成，coupled solve 是接触求解；没有把这些 CPU 回退时间冒充成 GPU 球对计算。该补充分阶段测试与正式作业同时运行，主机竞争可能影响耗时。
+单独测量了 CPU 球对组件（无壁面、预热后五次测量取中位数）：
+
+|粒子数|接触数|球对阻力装配 ms|接触几何 ms|耦合约束求解 ms|
+|---:|---:|---:|---:|---:|
+{pairtable}
+
+没有把这些 CPU 回退时间当成 GPU 球对计算。该补充分阶段测试与正式作业同时运行，主机竞争可能影响耗时。
 
 16 组各 1 泡、各 20 步稀疏独立实验：逐组 {batch['rows'][0]['wall_s']:.6f}s，batch {batch['rows'][1]['wall_s']:.6f}s，约 {batch['batched_vs_sequential_speedup']:.3f}×；末位置最大差 {batch['maximum_position_difference_m']:.6g}m。每个 realization 的 clock/source/IDs 独立。单次计时不作为稳定吞吐置信区间。
 
-正式灌注墙钟 **{s['elapsed_wall_s']:.3f}s**，接受 particle updates **{bc['accepted_particle_updates']}**，含日志/源/几何处理的平均 **{bc['accepted_particle_updates']/s['elapsed_wall_s']:.3f} updates/s**；其中 **{gpu_fraction*100:.6f}%** 的接受动力学更新由 GPU 实际求解，CPU 组件权威更新 {bc['accepted_cpu_component_authoritative_particle_updates']} 次。GPU 平均/峰值利用率 {stats['gpu_utilization_percent']['mean']:.2f}/{stats['gpu_utilization_percent']['max']:.2f}%；显存均值/峰值 {stats['gpu_memory_MiB']['mean']:.1f}/{stats['gpu_memory_MiB']['max']:.1f} MiB；CPU 进程平均 {stats['process_CPU_percent_one_core_100']['mean']:.2f}%（100%=一核）。压缩输出使用两线程；稀疏小群体及严格事件驱动意味着 GPU 不必持续满载。没有为提高利用率改变浓度/物理或制造额外 production realization。
+正式作业总墙钟（含进程/环境初始化与最终关闭）约 **{job_wall:.3f}s**；其中积分及动态写出循环 **{s['elapsed_wall_s']:.3f}s**，接受 particle updates **{bc['accepted_particle_updates']}**，含日志/源/几何处理的平均 **{bc['accepted_particle_updates']/s['elapsed_wall_s']:.3f} updates/s**；其中 **{gpu_fraction*100:.6f}%** 的接受动力学更新由 GPU 实际求解，CPU 组件权威更新 {bc['accepted_cpu_component_authoritative_particle_updates']} 次。GPU 平均/峰值利用率 {stats['gpu_utilization_percent']['mean']:.2f}/{stats['gpu_utilization_percent']['max']:.2f}%；显存均值/峰值 {stats['gpu_memory_MiB']['mean']:.1f}/{stats['gpu_memory_MiB']['max']:.1f} MiB；CPU 进程平均 {stats['process_CPU_percent_one_core_100']['mean']:.2f}%（100%=一核）。压缩输出使用两线程；稀疏小群体及严格事件驱动意味着 GPU 不必持续满载。没有为提高利用率改变浓度/物理或制造额外 production realization。
+
+以上 GPU 利用率、显存来自 `nvidia-smi --query-gpu`，是**整张设备**的采样，可能包含同期验证和渲染进程，不能独占归因于生产进程；CPU 百分比则是生产 PID 自身。逐接受更新的 GPU/CPU 分工由引擎内部计数确定，不由设备利用率推断。
 
 ## 7. 开发中发现的问题及保留记录
 
@@ -162,13 +177,21 @@ N=10,000 峰值 Torch allocated={gpu[-1]['gpu_peak_allocated_bytes']/2**30:.3f} 
 
 ## 8. 动画和数据读取
 
+交付终检 `{validation_label}/final_delivery_qc.json`：数据一致性为 **{finalqc['data_integrity_pass']}**；原流场/网格/边界哈希和实际生产源码身份一致；全部原始状态的半径相对出生值漂移 **{finalqc['maximum_radius_drift_from_original_source_m']} m**，直径相对两倍半径误差 **{finalqc['maximum_diameter_vs_2radius_error_m']} m**，内部 tetra 身份有效。两个视频均实际解码计数为 576 帧、1920×1080、24 fps、24 秒，并保存视频 SHA256。此终检不改变两条数值失败和141条观察截止的科学分类。
+
 - `candidate_0/OPEN_RESULTS.html`、`candidate_15/OPEN_RESULTS.html`：**同一真实物理群体**的两种刚体姿态；MP4 为 PHYSICAL_TIME，不做 age alignment。
-- 动画延用现有深蓝背景、半透明血管、终态颜色、固定视角、旁置端口标签，主图正交倍率测量为 1.30、marker 9.1px；投影边界检查保证不出画。文字全英文，记录来源和相机参数在各自 `data/render_manifest.json`。
+- 动画沿用现有深蓝背景、半透明血管、终态颜色、固定视角；静态总览保留旁置端口标签。主图正交倍率测量为 1.30、marker 9.1px；投影边界检查保证不出画。文字全英文，记录来源和相机参数在各自 `data/render_manifest.json`。
 - GPU 用 NVIDIA EGL 实际渲染；MP4 用已验证可用的 CPU libx264 两线程编码，不宣称本机不可用的 NVENC。
 - `runs/{args.run_name}/states/chunk_*.npz`：所有接受子步完整状态，包括 q/ω/原半径/身份；`state_offsets` 和 `state_time_s` 组织每个同时群体快照。
 - `source.jsonl.gz`：每个提议及一次准入；`terminals.jsonl.gz`：出口/失败/静止/删失；`interaction_audit.jsonl.gz`：pair IDs、接触、CPU fallback、handoff、拒绝与责任者。
 - `analysis/{args.run_name}/trajectory_catalog.csv`、`population_timeline.csv`、`pair_interactions.csv`、`independent_outlet_checks.csv`、`independent_wall_checks.csv`、`failure_diagnostics.json` 提供审阅用摘要。所有数组使用 SI；catalog diameter_um 明确使用 μm。
 - 任意绝对时刻的群体可由出生/终态筛选，再在逐接受端点之间沿 held velocity 线性重建。生存区间用 birth≤t<terminal；精确 terminal 点作为轨迹端点保留，之后不冻结在动画里。
+
+![实际轨迹总览](candidate_0/figures/01_trajectories.png)
+
+![群体记账与终态](figures/03_population_accounting.png)
+
+![实际性能测试](figures/04_performance.png)
 
 ## 9. 能支持的结论与限制
 
@@ -180,3 +203,15 @@ N=10,000 峰值 Torch allocated={gpu[-1]['gpu_peak_allocated_bytes']/2**30:.3f} 
 '''
 (root/'POPULATION_VALIDATION_REPORT_ZH.md').write_text(report)
 print('REPORT_WRITTEN',root/'POPULATION_VALIDATION_REPORT_ZH.md')
+
+html=f"""<!doctype html><meta charset="utf-8"><title>BraVa continuous microbubble perfusion</title>
+<style>body{{background:#101824;color:#dce2ed;font:17px sans-serif;max-width:1400px;margin:30px auto}}video,img{{width:100%}}a{{color:#39d8e6}}section{{margin:30px 0}}.note{{background:#202d40;padding:20px}}</style>
+<h1>BraVa continuous microbubble perfusion</h1><p>C = 4e9 m^-3 · Q = 18 mL/min · nominal dt = 0.5 ms</p>
+<div class="note">Accepted births: {s['accepted_birth_count']} · Actual exits O1/O2/O3: {outlets['OUTLET_01']} / {outlets['OUTLET_02']} / {outlets['OUTLET_03']} · Solver failures: {s['solver_failed_count']} · Observation-censored: {s['censored_count']}.<br>Stop infusion at {s['infusion_stop_time_s']:.6f} s, after every outlet reaches 20 crossings. Observation ends at {s['physical_time_s']:.6f} s. Failed or censored tracks are not completed outlet transits or evidence of physiological trapping.</div>
+<p><a href="POPULATION_VALIDATION_REPORT_ZH.md">Chinese validation report</a> · <a href="REPRODUCE.md">Reproduction commands</a> · <a href="analysis/{args.run_name}/trajectory_catalog.csv">Trajectory catalog (CSV)</a> · <a href="analysis/{args.run_name}/INDEPENDENT_AUDIT.json">Independent audit</a></p>
+<section><h2>Candidate 0 | Physical time</h2><video src="candidate_0/animations/microbubble_physical_time.mp4" controls loop></video><a href="candidate_0/OPEN_RESULTS.html">Candidate 0 files</a></section>
+<section><h2>Candidate 15 | Same flow and population, rigid print pose</h2><video src="candidate_15/animations/microbubble_physical_time.mp4" controls loop></video><a href="candidate_15/OPEN_RESULTS.html">Candidate 15 files</a></section>
+<section><h2>Population accounting</h2><img src="figures/03_population_accounting.png"></section>
+<section><h2>Compute benchmark</h2><img src="figures/04_performance.png"><p>Synthetic noninteracting benchmark states; not the physical infusion population. CPU reference is single-core.</p></section>
+"""
+(root/'OPEN_RESULTS.html').write_text(html)

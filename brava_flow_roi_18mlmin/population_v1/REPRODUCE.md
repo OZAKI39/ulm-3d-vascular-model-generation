@@ -51,10 +51,20 @@ env/bin/python -u scripts/analyze_population.py --source-root source --run-name 
 env/bin/python -u scripts/render_population.py --run-name realization_0000_contactfix --pose 0
 env/bin/python -u scripts/render_population.py --run-name realization_0000_contactfix --pose 15
 env/bin/python scripts/plot_summary.py --run-name realization_0000_contactfix
+env/bin/python scripts/final_qc.py --run-name realization_0000_contactfix
 env/bin/python scripts/build_report.py --run-name realization_0000_contactfix
 ```
 
 动画要求有效 NVIDIA EGL；默认 `VTK_DEFAULT_OPENGL_WINDOW=vtkEGLRenderWindow`。编码固定 libx264 CPU 两线程。相机和所有文本布局由 `style_reference.py` 和 `render_population.py` 保存。
+
+依赖清单为 `validation/server/environment_packages_final.txt`，动画需 `imageio`、`imageio-ffmpeg` 及 `/usr/bin/ffmpeg`。所有新增包仅安装在本任务隔离环境中。下载与本地清单命令：
+
+```bash
+cd /home/lzy/projects/brava_flow_roi_18mlmin/population_v1
+bash scripts/collect_results.sh
+/home/lzy/projects/temp_storage/ulm_particle_3d_particle0/.venv/bin/python scripts/build_report.py --run-name realization_0000_contactfix
+/home/lzy/projects/temp_storage/ulm_particle_3d_particle0/.venv/bin/python scripts/inventory_delivery.py --run-name realization_0000_contactfix
+```
 
 `data/environment.json` 保存实际服务器路径；`data/environment.local.json` 是只改路径并保留哈希的 WSL 只读适配。WSL 环境无 CUDA Torch，不能把本地 skip 写成 GPU 通过。
 

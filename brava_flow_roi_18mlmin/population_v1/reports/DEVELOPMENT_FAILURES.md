@@ -12,3 +12,5 @@
 7. `realization_0000_final`（e62d654a6）是第三个开发/审计运行，不能因名字含 final 就当最终产品。真实失败点1131的32个历史状态暴露近共线法向的 GPU 容差过宽：场/壁面几何一致，但速度最大差2.633736141417612e-7 m/s。生产已核实PID后中止。改用与原 dual Gram 相同的 sqrt(n*eps) 数值分辨率识别无法可靠处理的奇异值；这类状态明确交由原 CPU 正锥约简权威处理。新增合成近共线回归，另实际回放该32状态验证有效回退，而非仅另写公式自证。当前交付使用 `realization_0000_contactfix`、commit `98d705f13babdfa0cba6c12331623292a588cb77`。
 
 补充脚本的失败也保留：`benchmark_pair_component.log` 曾把组件容器当作单组件读取字段；修正读取 `components` 后计时成功。实际接触回退回归最初要求32个状态全部回退；其中12个已是精确重复法向，原GPU严格解可处理，因此修为只在需要回退的状态走真实引擎回退，并对所有32个有效结果与原CPU逐一比较。
+
+最终动画初次编码因隔离环境缺少 imageio 而停止；保留 `render_final0_missing_imageio.log` 和 `render_final15_missing_imageio.log`。安装 imageio/imageio-ffmpeg 只限本任务 env，随后重新渲染完整视频；不重跑微泡或 CFD。
