@@ -125,9 +125,9 @@ class ComponentSystem:
     systems: list
 
 
-def assemble_components(shapes,free,mu,wall,*,policy,gradient_at,raw_candidates=None):
+def assemble_components(shapes,free,mu,wall,*,policy,gradient_at,raw_candidates=None,pairs_enabled=True):
     ids=tuple(sorted(shapes));systems=[];blocks=[]
-    pairs=candidates(shapes)
+    pairs=candidates(shapes) if pairs_enabled else []
     # Extra broadphase edges are safe, and include contact shells for very small radii.
     for group in components(ids,pairs):
         local={i:shapes[i] for i in group};lf={i:free[i] for i in group}

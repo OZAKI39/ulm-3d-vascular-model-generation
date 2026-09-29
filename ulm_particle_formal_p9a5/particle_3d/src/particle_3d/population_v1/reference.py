@@ -31,13 +31,14 @@ class ReferenceDynamics:
         interactions = bind_query_dependency(exact_interactions, pair_list)
         contacts = bind_query_dependency(handoff_constraints, pair_list)
         handoff = bind_query_dependency(first_handoff_event, pair_list)
-        base = bind_query_dependency(p65.assemble_v1, {'exact_interactions': interactions})
+        from .components import assemble_components,solve_components,sparse_jacobian
         def assembly(shapes, free, mu, wall=None, **options):
-            return augment_planar_system(base(shapes, free, mu, wall, **options),
-                shapes, mu, wall, lambda x: self.env.field.sample(x).velocity_gradient_s_inv, wall_gap)
+            return assemble_components(shapes,free,mu,wall,pairs_enabled=False,
+                gradient_at=lambda x:self.env.field.sample(x).velocity_gradient_s_inv,**options)
         return bind_query_dependency(p65.v1_trial, dict(
             assemble_v1=assembly, exact_interactions=interactions,
-            handoff_constraints=contacts, first_handoff_event=handoff, **pair_list))
+            handoff_constraints=contacts, first_handoff_event=handoff,
+            solve_resistance=solve_components,contact_jacobian=sparse_jacobian,**pair_list))
 
     def _pair_trial_factory(self):
         from .pairs import candidates, sphere_gap

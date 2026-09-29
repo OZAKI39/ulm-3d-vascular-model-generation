@@ -133,9 +133,18 @@ class GPUPopulationEngine(PopulationEngine):
         if not self.pairs or p.n<2:return None,None
         pairs,_,_=neighbors(p.x[:p.n],p.radius[:p.n],p.realization_id[:p.n],delta=dt*velocity)
         if not len(pairs):return None,pairs
-        ix=torch.unique(pairs);shapes=self._shapes(ix)
+        i,j=pairs[:,0],pairs[:,1];relative=p.x[i]-p.x[j];dv=velocity[i]-velocity[j]
+        den=(dv*dv).sum(1);upper=torch.where(den>0,-(relative*dv).sum(1)/den,torch.zeros_like(den)).clamp(0.,dt)
+        hmin=torch.linalg.vector_norm(relative+upper[:,None]*dv,dim=1)-p.radius[i]-p.radius[j]
+        h0=torch.linalg.vector_norm(relative,dim=1)-p.radius[i]-p.radius[j]
+        lower=torch.maximum(torch.full_like(hmin,2e-9),.001*torch.minimum(p.radius[i],p.radius[j]))
+        scale=torch.stack([p.x[i].abs().max(1).values,p.x[j].abs().max(1).values,p.radius[i],p.radius[j]]).max(0).values
+        pad=512*torch.finfo(torch.float64).eps*scale
+        possible=pairs[(hmin-lower < -pad)&(h0-lower>pad)]
+        if not len(possible):return None,pairs
+        ix=torch.unique(possible);shapes=self._shapes(ix)
         ids=p.particle_id[ix].cpu().tolist();vs=velocity[ix].cpu().numpy()
-        edge=[(int(p.particle_id[i]),int(p.particle_id[j])) for i,j in pairs.cpu().tolist()]
+        edge=[(int(p.particle_id[i]),int(p.particle_id[j])) for i,j in possible.cpu().tolist()]
         root=bind_query_dependency(first_handoff_event,dict(all_pairs=lambda s:edge))(
             shapes,{int(i):v for i,v in zip(ids,vs)},dt,None,self.policy)
         self.backend_counts['cpu_pair_sweep_particles']+=len(ix)
@@ -277,6 +286,8 @@ class GPUPopulationEngine(PopulationEngine):
         self._previous_pair_nearfield=near;self._previous_pair_contacts=contacts
         self.counts['maximum_simultaneous_pair_contacts']=max(self.counts['maximum_simultaneous_pair_contacts'],len(contacts))
         self.backend_counts['accepted_intervals']+=1;self.backend_counts['accepted_particle_updates']+=n
+        self.backend_counts['accepted_gpu_authoritative_particle_updates']+=n-len(ix)
+        self.backend_counts['accepted_cpu_component_authoritative_particle_updates']+=len(ix)
         self.last_audit=dict(physical_time_s=self.time,evaluated_at_time_s=start,accepted_dt_s=dt,
             handoff_event=handoff,pair_ids=sorted(near),pair_contact_ids=sorted(contacts),
             cpu_component_particle_count=len(ix),cpu_components=cpu_audit,
