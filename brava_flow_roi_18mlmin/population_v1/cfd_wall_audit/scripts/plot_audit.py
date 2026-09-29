@@ -14,6 +14,7 @@ m=pv.read(ident['input_paths']['mesh']);m.points=m.points*1000;wall=pv.read(out/
 plt.rcParams.update({'font.size':11,'axes.titlesize':13,'figure.dpi':120,'savefig.dpi':300})
 figures=[]
 def save(fig,name,caption):
+ fig.subplots_adjust(bottom=.19)
  fig.text(.015,.015,caption,fontsize=9,va='bottom');fig.savefig(figdir/(name+'.png'),dpi=300,bbox_inches='tight');fig.savefig(figdir/(name+'.pdf'),dpi=300,bbox_inches='tight');plt.close(fig);figures.append(dict(file=name,caption=caption));print(name,flush=True)
 def view(mesh,scalar=None,clim=(0,1),context=False,zoom=1.,edges=False,cmap='viridis',vector=None):
  p=pv.Plotter(off_screen=True,window_size=(1400,1050));p.set_background('white')
