@@ -77,6 +77,11 @@ def solve_isolated(matrix,rhs,diagonal,free,contact_normals,contact_count):
         white=torch.linalg.solve_triangular(chol[ix],jd.transpose(1,2),upper=False).transpose(1,2)
         gram=white@white.transpose(1,2);sv=torch.linalg.svdvals(white)
         significant=sv>max(k,6)*eps*sv[:,:1]
+        # The preserved CPU dual resolves W W^T at sqrt(n*eps), not eps.
+        # Nearly dependent rows need its deterministic positive-cone reduction;
+        # never inflate the admissible normal velocity by their spurious rank.
+        unresolved=(significant & (sv <= (max(k,6)*eps)**.5*sv[:,:1])).any(1)
+        fallback[ix]|=unresolved
         rank[ix]=significant.sum(1)
         minimum=torch.where(significant,sv,torch.full_like(sv,float('inf'))).min(1).values
         cw=(sv[:,0]/minimum).clamp(min=1.)

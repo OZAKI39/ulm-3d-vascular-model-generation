@@ -53,3 +53,18 @@ def test_cuda_affine_resistance_and_all_contact_inequalities():
         includes_exact_redundant_and_opposing_constraints=True)
     write_json(Path(os.environ.get('POPULATION_VALIDATION_DIR','/tmp/population_v1_validation'))/'phase7_gpu_resistance.json',result)
     assert result['PASS'],result
+
+
+def test_nearly_parallel_wall_constraints_require_original_cpu_reduction():
+    from particle_3d.population_v1.gpu_resistance import solve_isolated
+    # Two normals separated below the resolvable dual-Gram rank scale, but
+    # above the ordinary matrix SVD epsilon floor. Original authority decides
+    # positive-cone redundancy; no relaxed GPU velocity budget is accepted.
+    matrix=torch.eye(6,device='cuda',dtype=torch.float64)[None]
+    free=torch.tensor([[.001,-.001,0.,0.,0.,0.]],device='cuda',dtype=torch.float64)
+    normals=torch.zeros((1,32,3),device='cuda',dtype=torch.float64)
+    normals[0,0]=torch.tensor([0.,1.,0.],device='cuda')
+    normals[0,1]=torch.tensor([1e-8,1.,0.],device='cuda',dtype=torch.float64)
+    normals[0,1]/=torch.linalg.vector_norm(normals[0,1])
+    _,_,audit=solve_isolated(matrix,free,torch.ones_like(free),free,normals,torch.tensor([2],device='cuda'))
+    assert bool(audit['fallback'][0])
