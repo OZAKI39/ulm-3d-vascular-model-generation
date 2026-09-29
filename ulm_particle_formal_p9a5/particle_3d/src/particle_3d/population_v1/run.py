@@ -103,7 +103,11 @@ def main():
     except BaseException as error:
         if hasattr(engine,'flush_output'):engine.flush_output()
         (args.output/'error.log').write_text(traceback.format_exc())
-        summary=dict(status='FAILED_EXECUTION_PARTIAL_STATES_PRESERVED',error=str(error),**engine.accounting(),
+        try:failed_accounting=engine.accounting()
+        except AssertionError:
+            failed_accounting=dict(engine.counts,physical_time_s=engine.time,active_count=engine.pool.n,conservation_pass=False,
+                reason='INTERRUPTED_DURING_NONATOMIC_TERMINAL_AUDIT; PARTIAL_RUN_NOT_VALID_OUTPUT')
+        summary=dict(status='FAILED_EXECUTION_PARTIAL_STATES_PRESERVED',error=repr(error),**failed_accounting,
             backend_counts=dict(getattr(engine,'backend_counts',{})),outlets=coverage,infusion_stop_time_s=infusion_stop)
         writer.close(summary);write_json(args.output/'FAILED_EXECUTION.json',summary)
         raise

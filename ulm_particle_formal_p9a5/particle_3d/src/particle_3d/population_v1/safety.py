@@ -20,6 +20,7 @@ POLICY=dict(name='INHERITED_PROGRESS_GUARDS_AND_SUPPORTED_STATIONARY_REMOVAL_V1'
     supported_terminal_reason='MODEL_SUPPORTED_STATIONARY_TERMINATION',
     unsupported_stop='SOLVER_FAILURE_NOT_STATIONARY_NOT_OUTLET',
     nominal_clock='GLOBAL_REALIZATION_GRID',support_scope='ISOLATED_PARTICLE_ORIGINAL_SINGLE_MB_CONTRACT',
+    shared_clock_guard_scope='TINY_PROGRESS_ONLY_ACTUAL_HANDOFF_OWNERS; NOT_UNRELATED_SYNCHRONIZED_PARTICLES',
     physiological_trapping_claimed=False,dissolution_claimed=False)
 
 
@@ -31,7 +32,7 @@ class CPUSafetyMonitor:
     def __init__(self,env,dt):self.env=env;self.dt=dt;self.rows={};self.last_tick=None
     def insert(self,p,time):
         self.rows[p.particle_id]=dict(calls=0,count=1,last_count=0,no_acceptance=0,
-            history=deque([(time,p.position.copy())],maxlen=64),support=deque(maxlen=32),
+            history=deque([(time,p.position.copy())],maxlen=64),limiter=deque([False],maxlen=64),support=deque(maxlen=32),
             previous_nominal=p.position.copy(),unchanged=0)
     def provider(self,pid):
         r=self.rows[pid];r['calls']+=1
@@ -42,13 +43,17 @@ class CPUSafetyMonitor:
         if len(r['history'])==64:
             positions=np.array([v[1] for v in r['history']]);pad=0. if self.env.wall is None else self.env.wall.roundoff_m
             isolated=len(r['support'])==32 and all(bool(v['solver']) for v in r['support'])
-            if isolated and np.linalg.norm(np.ptp(positions,axis=0))<=16*pad:raise PopulationSafetyEvent(pid,'ROUNDOFF_SCALE_STAGNATION_64_ACCEPTED_SUBSTEPS')
-            if r['history'][-1][0]-r['history'][0][0]<self.dt*.01:raise PopulationSafetyEvent(pid,'EXCESSIVE_SUBDIVISION_PROGRESS_GUARD')
+            tiny=r['history'][-1][0]-r['history'][0][0]<self.dt*.01
+            responsible=any(r['limiter'])
+            if isolated and (not tiny or responsible) and np.linalg.norm(np.ptp(positions,axis=0))<=16*pad:raise PopulationSafetyEvent(pid,'ROUNDOFF_SCALE_STAGNATION_64_ACCEPTED_SUBSTEPS')
+            if tiny and responsible:raise PopulationSafetyEvent(pid,'EXCESSIVE_SUBDIVISION_PROGRESS_GUARD')
     def accepted(self,world):
         a=world.projection;components=a.get('components',[dict(particle_ids=tuple(sorted(world.shapes)),**a)])
         byid={i:c for c in components for i in c['particle_ids']}
         for pid,shape in world.shapes.items():
-            r=self.rows[pid];r['count']+=1;r['history'].append((world.time_s,shape.center_m.copy()))
+            r=self.rows[pid];handoff=a.get('handoff_event') or {}
+            r['limiter'].append(pid in [handoff.get('particle_id'),handoff.get('particle_j_id')])
+            r['count']+=1;r['history'].append((world.time_s,shape.center_m.copy()))
             component=byid[pid]
             r['support'].append(dict(solver=component if len(component['particle_ids'])==1 else {},velocity=world.velocities[pid].tolist()))
     def nominal(self,time,shapes):

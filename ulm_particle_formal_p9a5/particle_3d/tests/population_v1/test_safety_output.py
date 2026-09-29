@@ -57,3 +57,31 @@ def test_full_accepted_time_output_roundtrip(tmp_path):
     assert len(states)==5 and np.array_equal(states[-1]['x'],expected)
     assert states[-1]['physical_time_s']==.002 and states[-1]['age'][0]==.002
     assert len(manifest['chunks'])==2
+
+
+def test_shared_clock_tiny_steps_only_stop_limiting_particles():
+    torch=pytest.importorskip('torch')
+    if not torch.cuda.is_available():pytest.skip('Requires CUDA')
+    from particle_3d.population_v1.gpu_safety import GPUSafetyMonitor
+    from particle_3d.population_v1.safety import CPUSafetyMonitor,PopulationSafetyEvent
+    env=shear_environment();monitor=GPUSafetyMonitor(env,.0005,'cuda')
+    x=torch.tensor([[0.,0.,2e-6],[.0001,0.,2e-6]],device='cuda',dtype=torch.float64)
+    for row in x:monitor.insert(row,0.)
+    for k in range(127):
+        assert not bool(monitor.provider().any())
+        v=torch.ones_like(x)*.01;end=x+1e-12*v
+        monitor.accepted(x,end,v,(k+1)*1e-12,torch.ones(2,device='cuda',dtype=torch.bool),torch.tensor([True,False],device='cuda'))
+        x=end
+    reasons=monitor.provider().cpu().tolist()
+    assert reasons[0] in (1,2) and reasons[1]==0,reasons
+    cpu=CPUSafetyMonitor(env,.0005)
+    from collections import deque
+    for i in [1,2]:
+        cpu.insert(particle(env,i,[0,0,2e-6]),0.)
+        r=cpu.rows[i];r['calls']=127;r['count']=128
+        r['history']=deque([(k*1e-12,np.array([k*1e-14,0,2e-6])) for k in range(64)],maxlen=64)
+        r['limiter']=deque([i==1]*64,maxlen=64)
+    with pytest.raises(PopulationSafetyEvent):cpu.provider(1)
+    cpu.provider(2)
+    save('shared_clock_guard_regression',dict(PASS=True,GPU_reasons=reasons,
+        unchanged_thresholds=True,scope='Actual handoff owner only; unrelated synchronized particle survives'))

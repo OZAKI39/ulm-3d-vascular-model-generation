@@ -275,7 +275,11 @@ class GPUPopulationEngine(PopulationEngine):
             bad=set(torch.nonzero(newfield[0]<0).flatten().cpu().tolist())
             if not bad.issubset(outlets):raise TrialNeedsSubdivision('GPU_ENDPOINT_OUTSIDE_FEM_WITHOUT_OUTLET')
         if not bool(torch.isfinite(velocity).all()):raise ValueError('GPU_NONFINITE_VELOCITY')
-        self.safety.accepted(p.x[:n],end,v,start+dt,isolated)
+        limiter=torch.zeros(n,device=p.device,dtype=torch.bool)
+        if handoff is not None:
+            responsible=[handoff[k] for k in ['particle_id','particle_j_id'] if k in handoff]
+            for pid in responsible:limiter|=p.particle_id[:n]==pid
+        self.safety.accepted(p.x[:n],end,v,start+dt,isolated,limiter)
         p.x[:n]=end;p.v[:n]=v;p.omega[:n]=velocity[:,3:];p.q[:n]=advance_quaternion(p.q[:n],velocity[:,3:],dt)
         self.time=start+dt if handoff is not None or outlets else float(target)
         p.age[:n]=self.time-p.birth_time[:n];p.tetra_id[:n]=newfield[0]

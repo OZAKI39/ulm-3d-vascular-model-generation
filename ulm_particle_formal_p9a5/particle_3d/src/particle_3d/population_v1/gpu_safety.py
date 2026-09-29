@@ -8,9 +8,9 @@ class GPUSafetyMonitor:
         self.env=env;self.dt=dt;self.device=device;self.n=0;self.capacity=0;self.arrays={};self.last_tick=None
     def _resize(self,capacity):
         shapes=dict(calls=(),count=(),last_count=(),no_acceptance=(),unchanged=(),
-            history=(64,3),times=(64,),eval_x=(32,3),velocity=(32,3),isolated=(32,),previous_nominal=(3,))
+            history=(64,3),times=(64,),eval_x=(32,3),velocity=(32,3),isolated=(32,),limiter=(64,),previous_nominal=(3,))
         for name,shape in shapes.items():
-            dtype=torch.int64 if name in ['calls','count','last_count','no_acceptance','unchanged'] else torch.bool if name=='isolated' else torch.float64
+            dtype=torch.int64 if name in ['calls','count','last_count','no_acceptance','unchanged'] else torch.bool if name in ['isolated','limiter'] else torch.float64
             a=torch.zeros((capacity,*shape),device=self.device,dtype=dtype)
             if name in self.arrays:a[:self.n]=self.arrays[name][:self.n]
             self.arrays[name]=a
@@ -38,10 +38,13 @@ class GPUSafetyMonitor:
                 pad=0. if self.env.wall is None else self.env.wall.roundoff_m
                 stagnant=(torch.linalg.vector_norm(positions.max(1).values-positions.min(1).values,dim=1)<=16*pad)&a['isolated'][ready].all(1)
                 tiny=(times.max(1).values-times.min(1).values)<self.dt*.01
-                reasons[ready[tiny]]=2;reasons[ready[stagnant]]=1
+                responsible=a['limiter'][ready].any(1)
+                reasons[ready[tiny & responsible]]=2
+                reasons[ready[stagnant & (~tiny | responsible)]]=1
         return reasons
-    def accepted(self,oldx,endx,velocity,time,isolated):
+    def accepted(self,oldx,endx,velocity,time,isolated,limiter=None):
         a=self.arrays;n=self.n;ix=torch.arange(n,device=self.device);count=a['count'][:n]
+        a['limiter'][ix,count%64]=False if limiter is None else limiter
         a['history'][ix,count%64]=endx;a['times'][ix,count%64]=time
         a['eval_x'][ix,(count-1)%32]=oldx;a['velocity'][ix,(count-1)%32]=velocity
         a['isolated'][ix,(count-1)%32]=isolated;a['count'][:n]+=1
