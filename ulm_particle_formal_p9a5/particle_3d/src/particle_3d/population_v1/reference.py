@@ -18,6 +18,7 @@ class ReferenceDynamics:
         self.last_ledger = []
 
     def provider(self, pid, sphere, time):
+        if hasattr(self,'monitor'):self.monitor.provider(pid)
         sample = self.env.field.sample(sphere.center_m)
         if not sample.inside_lumen:
             raise ValueError('CENTER_OUTSIDE_AUTHORITATIVE_FEM')

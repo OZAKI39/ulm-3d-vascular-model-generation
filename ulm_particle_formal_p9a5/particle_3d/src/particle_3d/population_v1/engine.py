@@ -4,6 +4,7 @@ import numpy as np
 from ..rbc_orientation import advance_orientation
 from .state import ActiveParticlePool
 from .reference import ReferenceDynamics
+from .safety import CPUSafetyMonitor,PopulationSafetyEvent
 
 
 class PopulationEngine:
@@ -13,9 +14,15 @@ class PopulationEngine:
         self.realization_id = int(realization_id)
         self.pool = ActiveParticlePool()
         self.dynamics = ReferenceDynamics(environment, pairs=pairs)
+        self.safety=CPUSafetyMonitor(environment,self.dt);self.dynamics.monitor=self.safety
         self.recorder = recorder
         self.snapshots = []; self.terminals = []; self.timeline = []
-        self.births = {}; self.source_ledger = []; self.counts = Counter()
+        self.births = {}; self.source_ledger = []; self.counts = Counter({k:0 for k in [
+            'source_event_count','wall_rejected_source_count','pair_rejected_inlet_count','other_rejected_source_count',
+            'accepted_birth_count','supported_stationary_terminated_count','solver_failed_count','censored_count',
+            'pair_collision_event_count','pair_nearfield_event_count','maximum_simultaneous_pair_contacts']})
+        for name in getattr(environment,'boundaries',{}):
+            if name.startswith('OUTLET_'):self.counts['exited_'+name]=0
         self.maximum_active = 0
         self._simultaneous_outlets = {}
         self._previous_pair_nearfield = set(); self._previous_pair_contacts = set()
@@ -24,6 +31,7 @@ class PopulationEngine:
         if event.get('realization_id', self.realization_id) != self.realization_id:
             raise ValueError('Particle belongs to a different realization')
         self.pool.insert(particle, event, self.time)
+        self.safety.insert(particle,self.time)
         self.births[particle.particle_id] = dict(event)
         self.counts['accepted_birth_count'] += 1
         self.maximum_active = max(self.maximum_active, self.pool.n)
@@ -35,6 +43,7 @@ class PopulationEngine:
         else: self.recorder.snapshot(row)
 
     def _accepted(self, world):
+        self.safety.accepted(world)
         interval = world.time_s - self.time
         if interval <= 0: raise ValueError('Accepted state must advance global physical time')
         for k, pid in enumerate(self.pool.particle_id[:self.pool.n]):
@@ -80,6 +89,19 @@ class PopulationEngine:
             self.counts['exited_' + role] += 1
             if self.recorder is not None: self.recorder.terminal(row)
         self.pool.remove(events)
+        for pid in events:self.safety.rows.pop(pid,None)
+
+    def _safety_terminal(self,pid,reason):
+        supported,evidence=self.safety.support(pid);birth=self.births[pid]
+        status='SUPPORTED_STATIONARY' if supported else 'SOLVER_FAILURE'
+        row=dict(particle_id=pid,source_event_id=birth['source_event_id'],realization_id=self.realization_id,
+            birth_time_s=birth['birth_time_s'],physical_time_s=self.time,residence_time_s=self.time-birth['birth_time_s'],
+            status=status,terminal_reason='MODEL_SUPPORTED_STATIONARY_TERMINATION' if supported else 'INTEGRATION_SAFETY_STOP_UNSUPPORTED',
+            trigger=reason,outlet=None,exit_time_s=None,support_verified=supported,support_evidence=evidence,
+            biological_trapping_claimed=False,dissolution_claimed=False)
+        self.terminals.append(row);self.counts['supported_stationary_terminated_count' if supported else 'solver_failed_count']+=1
+        if self.recorder is not None:self.recorder.terminal(row)
+        self.pool.remove([pid]);self.safety.rows.pop(pid,None)
 
     def advance(self, target):
         if not np.isfinite(target) or target < self.time: raise ValueError('Global time cannot decrease')
@@ -87,9 +109,12 @@ class PopulationEngine:
             if not self.pool.n:
                 self.time = float(target); break
             old = self.time
-            world = self.dynamics.advance(self.pool, self.time, float(target), self._accepted)
+            try:world = self.dynamics.advance(self.pool, self.time, float(target), self._accepted)
+            except PopulationSafetyEvent as error:
+                self._safety_terminal(error.pid,error.reason);continue
             self._remove_outlets(world)
             if self.time <= old: raise RuntimeError('Population made no physical progress')
+        for pid,reason in self.safety.nominal(self.time,self.pool.shapes()):self._safety_terminal(pid,reason)
         self.accounting()
 
     def step_to(self, target):

@@ -66,7 +66,7 @@ class PerfusionSource:
         if engine.realization_id!=self.realization_id:raise ValueError('Foreign realization')
         provisional=engine.counts['accepted_birth_count']+1
         event=dict(species='MB',particle_id=provisional,radius_m=row['radius_m'],q=row['q'])
-        active=engine.pool.shapes()
+        active=engine.admission_shapes(row['position_m'],row['radius_m']) if hasattr(engine,'admission_shapes') else engine.pool.shapes()
         p,status,detail=self.check(self.env.checker,event,np.array(row['position_m']),active)
         row.update(admission_check_count=1,admission_status=status,admission_detail=detail,
             status='ACCEPTED_BIRTH' if p is not None else 'REJECTED_SOURCE_EVENT',
