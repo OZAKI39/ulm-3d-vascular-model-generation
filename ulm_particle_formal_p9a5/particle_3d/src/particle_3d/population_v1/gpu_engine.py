@@ -47,7 +47,7 @@ class GPUPopulationEngine(PopulationEngine):
         self.wall=None if environment.wall is None else (gpu_wall or GPUWall(environment.wall))
         self.policy=NearFieldRegularizationV1();self.backend_counts=Counter();self.last_audit=None
         self.cached_field=None;self.cached_wall=None;self.device_output=[]
-        self.prefetched=None
+        self.prefetched=None;self.refinement_owners=set()
         if environment.classifier is not None:
             boxes=[]
             for role in sorted(set(environment.classifier.roles)):
@@ -160,7 +160,9 @@ class GPUPopulationEngine(PopulationEngine):
         scale=torch.stack([p.x[i].abs().max(1).values,p.x[j].abs().max(1).values,
             (p.x[i]+dt*velocity[i]).abs().max(1).values,(p.x[j]+dt*velocity[j]).abs().max(1).values,
             p.radius[i],p.radius[j]]).max(0).values
-        if bool((gap-lower < -512*torch.finfo(torch.float64).eps*scale).any()):
+        bad=gap-lower < -512*torch.finfo(torch.float64).eps*scale
+        if bool(bad.any()):
+            self.refinement_owners.update(p.particle_id[pairs[bad].flatten()].cpu().tolist())
             raise TrialNeedsSubdivision('GPU_EXACT_SPHERE_SWEEP_BELOW_HANDOFF')
 
     def _remove_gpu_outlets(self,events):
@@ -255,7 +257,9 @@ class GPUPopulationEngine(PopulationEngine):
         if pair_root is not None and (handoff is None or pair_root['time_from_start_s']<handoff['time_from_start_s']):handoff=pair_root
         if handoff is not None:
             newtime=start+handoff['time_from_start_s']
-            if newtime<=start:raise TrialNeedsSubdivision('GPU_HANDOFF_TIME_NOT_REPRESENTABLE')
+            if newtime<=start:
+                self.refinement_owners.update(handoff[k] for k in ['particle_id','particle_j_id'] if k in handoff)
+                raise TrialNeedsSubdivision('GPU_HANDOFF_TIME_NOT_REPRESENTABLE')
             dt=newtime-start;outlets={}
         end=p.x[:n]+dt*v
         if self.wall is not None:
@@ -267,15 +271,20 @@ class GPUPopulationEngine(PopulationEngine):
                     s=shapes[int(pid)];lower=self.policy.lower_handoff_gap(s.radius_m)['h_lower_m']
                     safe,proof=wall_handoff_certificate(s,s.moved(finish),self.env.wall,lower)
                     if not safe and proof['proof']=='HANDOFF_SWEEP_NOT_CERTIFIED':safe,proof=partitioned_wall_handoff_certificate(s,s.moved(finish),self.env.wall,lower)
-                    if not safe:raise TrialNeedsSubdivision(proof['proof'])
+                    if not safe:
+                        self.refinement_owners.add(int(pid))
+                        raise TrialNeedsSubdivision(proof['proof'])
                 self.backend_counts['cpu_partition_path_particles']+=len(difficult)
         self._pair_certificate(v,dt,swept_pairs)
         newfield=self.field.sample(end,sampled[0]);newwall=None if self.wall is None else self.wall.query(end,p.radius[:n])
         if bool((newfield[0]<0).any()):
             bad=set(torch.nonzero(newfield[0]<0).flatten().cpu().tolist())
-            if not bad.issubset(outlets):raise TrialNeedsSubdivision('GPU_ENDPOINT_OUTSIDE_FEM_WITHOUT_OUTLET')
+            if not bad.issubset(outlets):
+                self.refinement_owners.update(int(p.particle_id[k]) for k in bad.difference(outlets))
+                raise TrialNeedsSubdivision('GPU_ENDPOINT_OUTSIDE_FEM_WITHOUT_OUTLET')
         if not bool(torch.isfinite(velocity).all()):raise ValueError('GPU_NONFINITE_VELOCITY')
         limiter=torch.zeros(n,device=p.device,dtype=torch.bool)
+        for pid in self.refinement_owners:limiter|=p.particle_id[:n]==pid
         if handoff is not None:
             responsible=[handoff[k] for k in ['particle_id','particle_j_id'] if k in handoff]
             for pid in responsible:limiter|=p.particle_id[:n]==pid
@@ -293,7 +302,7 @@ class GPUPopulationEngine(PopulationEngine):
         self.backend_counts['accepted_gpu_authoritative_particle_updates']+=n-len(ix)
         self.backend_counts['accepted_cpu_component_authoritative_particle_updates']+=len(ix)
         self.last_audit=dict(physical_time_s=self.time,evaluated_at_time_s=start,accepted_dt_s=dt,
-            handoff_event=handoff,pair_ids=sorted(near),pair_contact_ids=sorted(contacts),
+            handoff_event=handoff,refinement_owners=sorted(self.refinement_owners),pair_ids=sorted(near),pair_contact_ids=sorted(contacts),
             cpu_component_particle_count=len(ix),cpu_components=cpu_audit,
             maximum_gpu_backward_residual=float(audit['backward_residual'][~fallback].max()) if bool((~fallback).any()) else None,
             maximum_wall_contacts=int(wall[4].max()),gpu_particle_updates=n)
@@ -314,6 +323,9 @@ class GPUPopulationEngine(PopulationEngine):
                     if depth>=48 or mid<=start or mid>=end:
                         raise PhysicalTimeRefinementError('GPU_PHYSICAL_TIME_REFINEMENT_LIMIT',(start,end),state=str(error)) from error
                     self.backend_counts['rejected_trials']+=1
+                    if self.recorder is not None:
+                        self.recorder._row('interaction_audit',dict(event='REJECTED_TRIAL',physical_time_s=start,requested_end_time_s=end,
+                            reason=str(error),responsible_particle_ids=sorted(self.refinement_owners)))
                     interval(mid,depth+1);interval(end,depth+1);return
                 if self.time==start:
                     if not self.pool.n:continue
@@ -322,5 +334,6 @@ class GPUPopulationEngine(PopulationEngine):
                     if events>48:raise RuntimeError('GPU_ZERO_TIME_EVENT_LIMIT')
                 else:events=0
         interval(float(target))
+        self.refinement_owners.clear()
         if self.pool.n:self._gpu_safety_terminal(self.safety.nominal(self.time,self.pool.x[:self.pool.n]))
         self.accounting()

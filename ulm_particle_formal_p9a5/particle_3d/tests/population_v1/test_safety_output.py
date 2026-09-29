@@ -85,3 +85,17 @@ def test_shared_clock_tiny_steps_only_stop_limiting_particles():
     cpu.provider(2)
     save('shared_clock_guard_regression',dict(PASS=True,GPU_reasons=reasons,
         unchanged_thresholds=True,scope='Actual handoff owner only; unrelated synchronized particle survives'))
+
+
+def test_rejected_interval_tags_only_actual_pair_owners():
+    torch=pytest.importorskip('torch')
+    if not torch.cuda.is_available():pytest.skip('Requires CUDA')
+    from particle_3d.population_v1.gpu_engine import GPUPopulationEngine
+    from particle_3d.physical_time_refinement import TrialNeedsSubdivision
+    env=shear_environment();engine=GPUPopulationEngine(env,pairs=True)
+    for pid,x in [(1,[0,0,2e-6]),(2,[5e-6,0,2e-6]),(3,[.001,0,2e-6])]:
+        p=particle(env,pid,x);engine.insert_accepted(p,event(p))
+    velocity=torch.tensor([[.01,0,0],[-.01,0,0],[0,0,0]],device='cuda',dtype=torch.float64)
+    with pytest.raises(TrialNeedsSubdivision):engine._pair_certificate(velocity,.0005,torch.tensor([[0,1]],device='cuda'))
+    assert engine.refinement_owners=={1,2}
+    save('rejected_trial_owner_regression',dict(PASS=True,responsible_particle_ids=sorted(engine.refinement_owners),unrelated_particle_id=3))
