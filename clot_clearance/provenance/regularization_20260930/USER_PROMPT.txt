@@ -1,0 +1,1070 @@
+You are continuing development in the EXISTING project:
+
+    /home/lzy/projects/clot_clearance
+
+DO NOT create a new standalone replacement project.
+
+The current project already demonstrates the qualitative pipeline:
+
+    synthetic streaming-like loading
+        ->
+    NOSB-PD deformation
+        ->
+    cyclic damage
+        ->
+    irreversible bond failure
+        ->
+    loss of connectivity
+        ->
+    detachment
+        ->
+    surrogate fluid-driven transport
+
+The current forced-failure demo is useful as software verification, but it is
+NOT yet physically trustworthy.
+
+The latest selected run produced approximately:
+
+    broken bonds ~ 87.8%
+    attached volume ~ 39.4%
+    detached volume ~ 60.6%
+    detached components = 177
+
+of which:
+
+    172 components were single-particle components
+    4 were two-particle components
+    only 1 was a substantial multi-particle fragment.
+
+The current model also produced many support-rank-zero particles.
+
+THIS NEXT DEVELOPMENT ROUND MUST NOT TRY TO CREATE MORE FAILURE.
+
+Its purpose is to make the clot failure model more physically and numerically
+meaningful.
+
+====================================================================
+PRIMARY SCIENTIFIC GOAL
+====================================================================
+
+Develop the next prototype toward:
+
+    microbubble-induced streaming
+        ->
+    localized clot loading
+        ->
+    localized cyclic damage
+        ->
+    energy-regularized PD failure
+        ->
+    finite-size clot erosion / fragmentation
+        ->
+    fluid-driven fragment transport
+
+The main questions for this development round are:
+
+1. Is the predicted damaged/detached clot volume reasonably insensitive to
+   particle spacing?
+
+2. Does failure localize near the streaming influence region rather than
+   globally pulverizing the PD cloud?
+
+3. Is new crack-surface formation controlled by an energy scale rather than
+   primarily by the numerical particle spacing?
+
+4. Can we distinguish resolved physical fragments from under-resolved numerical
+   debris?
+
+5. Can fluid traction and fragment transport be generated from one consistent
+   velocity/pressure field rather than two unrelated prescribed fields?
+
+Do NOT claim that the resulting model is quantitatively calibrated for
+sonothrombolysis.
+
+====================================================================
+0. PRESERVE ALL EXISTING RESULTS
+====================================================================
+
+Before modifying code:
+
+1. identify the current git/source state;
+2. hash all existing source/config/result files used by:
+       straight_pipe_damage_demo
+       streaming_fragmentation_demo
+3. preserve those runs exactly;
+4. rerun regression tests before changing physics.
+
+Do not overwrite:
+
+    results/straight_pipe_damage_demo
+    results/streaming_fragmentation_demo
+    runs/fragmentation_pilot_*
+
+Create a new development namespace such as:
+
+    configs/streaming_regularized_demo*.json
+    results/streaming_regularized_demo/
+    verification/regularization/
+    visualization/streaming_regularized_demo/
+
+The existing forced-failure demo must remain reproducible.
+
+====================================================================
+1. REMOVE EARLY ARTIFICIAL BOND BREAKING FROM THE NEW SCIENTIFIC DEMO
+====================================================================
+
+The previous forced-failure case used:
+
+    D_break = 0.25
+
+This was acceptable for software verification but is not acceptable as the
+default scientific-development model.
+
+For the NEW regularized demo:
+
+    D_break = 1.0
+
+must be the default.
+
+A bond breaks only after its complete damage variable reaches 1.
+
+Do not lower D_break merely to make fragmentation appear.
+
+Keep support for configurable D_break for legacy verification cases, but emit a
+warning whenever:
+
+    D_break < 1
+
+and label the run:
+
+    forced_failure_verification = true.
+
+The new regularized demo must NOT use that mode.
+
+====================================================================
+2. REPLACE ARBITRARY Q_ref FAILURE SCALING WITH AN ENERGY-CALIBRATED LAYER
+====================================================================
+
+The current cyclic law is approximately:
+
+    DeltaD =
+        DeltaN * C_damage
+        * max(Q / Q_ref - 1, 0)^m
+
+and the previous fragmentation demo used an aggressively reduced Q_ref.
+
+Keep the legacy law for regression, but add a new damage mode:
+
+    energy_regularized_cyclic
+
+The new mode should use a physically interpretable bond-level or particle-level
+work/energy driver.
+
+Suggested structure:
+
+    W_cycle_ij
+
+or
+
+    DeltaPsi_ij
+
+representing a non-negative cyclic mechanical work/strain-energy amplitude for
+bond ij.
+
+Damage may have a generic form such as:
+
+    DeltaD_ij =
+        DeltaN
+        * C_E
+        * <W_cycle_ij / Wcrit_ij - 1>^m_E
+
+but Wcrit MUST NOT simply be a constant copied across discretizations.
+
+Instead introduce an energy calibration procedure described below.
+
+Do not silently invent a closed-form Gc-to-bond formula unless it is derived
+and documented.
+
+====================================================================
+3. ADD A NUMERICAL FRACTURE-ENERGY CALIBRATION COUPON
+====================================================================
+
+Create a separate calibration problem:
+
+    pd_fracture_energy_coupon
+
+Purpose:
+
+For each particle spacing / horizon configuration, calibrate the damage energy
+scale so that creation of a prescribed macroscopic crack consumes an
+approximately mesh-independent target energy:
+
+    Gc_demo [J/m^2]
+
+Gc_demo is a USER INPUT.
+
+It is a demonstration parameter unless the user later supplies an experimentally
+measured clot fracture energy.
+
+Recommended calibration geometry:
+
+    rectangular PD coupon
+    pre-notch or symmetric weak plane
+    displacement-controlled opening
+
+Measure:
+
+    external work
+    stored elastic energy
+    dissipated damage energy
+    newly created crack area
+
+Estimate:
+
+    Gc_measured =
+        dissipated fracture work / created crack area
+
+Implement an automatic scalar calibration loop for the damage energy parameter
+so that:
+
+    |Gc_measured - Gc_demo| / Gc_demo
+
+falls below a configurable tolerance, e.g. 5-10%.
+
+IMPORTANT:
+
+The objective is NOT to make crack force curves identical at every resolution.
+
+The objective is to make the ENERGY required to create macroscopic crack area
+approximately resolution-consistent.
+
+Save calibration results separately for each:
+
+    particle_spacing
+    horizon_ratio
+
+Never reuse an energy parameter calibrated for one discretization on another
+without explicit warning.
+
+====================================================================
+4. ADD DAMAGE-ENERGY ACCOUNTING
+====================================================================
+
+For every macro step output:
+
+    elastic_energy
+    stabilization_energy
+    external_work
+    kinetic_energy
+    damage_dissipation_estimate
+    numerical_energy_residual
+
+For every failed bond store:
+
+    failure_cycle
+    pre_failure_damage
+    local cyclic energy driver
+    accumulated dissipated energy
+    particle spacing
+    horizon
+    local support rank
+
+Create:
+
+    fracture_energy_ledger.jsonl
+
+The current failure ledger should remain available.
+
+The new energy ledger is required for diagnosing whether a new crack surface
+is created with a reasonable and mesh-stable energy cost.
+
+====================================================================
+5. DO NOT TREAT EVERY CONNECTED COMPONENT AS A RESOLVED PHYSICAL FRAGMENT
+====================================================================
+
+Keep exact connected-component analysis, but classify detached components into:
+
+A. RESOLVED_FRAGMENT
+
+B. UNDER_RESOLVED_DEBRIS
+
+C. SINGLETON_NUMERICAL_COMPONENT
+
+Do NOT merge particles artificially.
+
+Do NOT delete them.
+
+This classification is DIAGNOSTIC only.
+
+Suggested criteria for a resolved fragment must be configurable and based on
+numerical support, for example:
+
+    minimum particle count
+    minimum physical volume
+    fraction of particles with support rank >= 2
+    presence of internal active bonds
+
+Create configuration fields such as:
+
+    fragment_resolution:
+        minimum_particles:
+        minimum_volume_m3:
+        minimum_internal_bonds:
+        minimum_supported_fraction:
+
+Do not present these thresholds as physical clot-size thresholds.
+
+Report separately:
+
+    detached_total_volume
+    resolved_fragment_volume
+    under_resolved_debris_volume
+    singleton_volume
+
+and normalized quantities:
+
+    resolved_fragment_volume_fraction
+    under_resolved_debris_fraction
+    singleton_detached_volume_fraction
+
+The figure title must never call a singleton particle a validated clot embolus.
+
+====================================================================
+6. ADD A NUMERICAL PULVERIZATION DIAGNOSTIC
+====================================================================
+
+Define:
+
+    P_singleton =
+        detached volume in single-particle components
+        /
+        total detached volume
+
+and:
+
+    P_lowrank =
+        detached volume represented by support-rank-0/1 particles
+        /
+        total detached volume
+
+Also output fragment-size distributions by:
+
+    particle count
+    physical volume
+    equivalent spherical diameter
+
+The development objective is to REDUCE numerical pulverization as resolution is
+refined and damage is energy-regularized.
+
+Do not artificially force P_singleton below a target.
+
+If it remains large, report that result honestly.
+
+For the new candidate model, mark the run as numerically unresolved if:
+
+    P_singleton > 0.20
+
+or
+
+    P_lowrank > 0.30
+
+These thresholds are SOFTWARE QUALITY FLAGS, not physical laws.
+
+====================================================================
+7. ADD PARTICLE-SPACING / HORIZON CONVERGENCE STUDIES
+====================================================================
+
+Use exactly the SAME PHYSICAL clot geometry and material parameters.
+
+Create at least:
+
+    COARSE
+        spacing = existing 0.125 mm
+
+    MEDIUM
+        approximately 1.5x finer spacing
+
+    FINE
+        approximately 2x finer spacing
+
+Keep:
+
+    physical geometry
+    bubble/streaming position
+    fluid properties
+    material constants
+    target Gc_demo
+    total represented cycle exposure
+
+fixed.
+
+Maintain a consistent horizon/spacing ratio unless explicitly testing horizon
+sensitivity.
+
+Recalibrate the fracture energy parameter separately for each spacing using the
+fracture-energy coupon.
+
+For the main streaming test compare:
+
+    attached_volume_fraction
+    detached_volume_fraction
+    resolved_fragment_volume_fraction
+    singleton_detached_volume_fraction
+    first_failure_cycle
+    first_detachment_cycle
+    total fracture dissipation
+    largest resolved fragment volume
+
+Do NOT use raw fragment COUNT as the primary convergence metric because fragment
+count can increase under refinement.
+
+Create plots versus particle spacing.
+
+If full FINE runtime is excessive:
+
+1. run the calibration coupon fully;
+2. run the streaming model through first detachment;
+3. continue full run only if practical;
+4. document runtime constraints.
+
+====================================================================
+8. ADD CYCLE-JUMP CONVERGENCE
+====================================================================
+
+The existing model uses:
+
+    DeltaN = 1000 cycles
+
+This may make damage evolution artificially coarse.
+
+Create otherwise identical runs using at least:
+
+    DeltaN = 1000
+    DeltaN = 500
+
+and, if computationally reasonable:
+
+    DeltaN = 250
+
+Compare:
+
+    first bond failure N
+    first detachment N
+    attached volume at common N
+    total damage dissipation
+    detached volume at common N
+
+Damage evolution must remain monotonic.
+
+Report relative differences.
+
+Do not recalibrate material parameters between cycle-jump tests.
+
+====================================================================
+9. ADD TIME-STEP SENSITIVITY FOR THE FRACTURING CASE
+====================================================================
+
+The old mild case had a time-step check.
+
+Now perform a time-step sensitivity test for the NEW regularized failure case.
+
+At minimum compare:
+
+    dt
+    dt / 2
+
+over a window containing:
+
+    pre-damage response
+    first bond failure
+    early damage propagation
+
+Compare:
+
+    displacement
+    energy terms
+    first-failure event
+    accumulated damage
+
+Do not claim full temporal convergence if only a short window is tested.
+
+====================================================================
+10. MAKE SYNTHETIC STREAMING FIELD INTERNALLY CONSISTENT
+====================================================================
+
+The current model can prescribe traction and velocity independently.
+
+For the NEW development demo this is not acceptable as the default.
+
+Create a unified interface:
+
+    StreamingFlowProvider
+
+It returns, at arbitrary x,t:
+
+    u_f(x,t)
+    p_f(x,t)
+    grad_u_f(x,t)
+
+and optionally:
+
+    du_dt
+
+Compute fluid Cauchy stress from ONE field:
+
+    sigma_f =
+        -p_f I
+        + mu_f * (grad_u_f + grad_u_f^T)
+
+Compute clot traction as:
+
+    t_f = sigma_f * n
+
+Use the SAME u_f for post-detachment transport.
+
+Therefore:
+
+    loading
+and
+    transport
+
+must originate from the same field.
+
+Keep legacy independent traction/velocity providers for regression only.
+
+====================================================================
+11. ADD A MANUFACTURED DIVERGENCE-FREE STREAMING FIELD
+====================================================================
+
+Until real microbubble CFD data are available, implement a mathematically
+consistent verification field.
+
+The exact analytic form is up to the implementation, but it must:
+
+    be smooth
+    be localized near the prescribed bubble
+    be divergence-free to numerical tolerance
+    contain recirculating/vortex structure
+    decay spatially
+    provide analytic or accurate grad(u)
+
+Do NOT claim that it is a physical coated-microbubble streaming solution.
+
+Call it:
+
+    ManufacturedStreamingProvider
+
+Add tests for:
+
+    divergence approximately zero
+    analytic/numerical gradient consistency
+    traction sign
+    localization
+    spatial decay
+
+Use this provider in the new regularized demo.
+
+====================================================================
+12. ADD IMPORT OF REAL RESOLVED MICROSTREAMING FIELDS
+====================================================================
+
+Extend the existing FileStreaming functionality into:
+
+    ResolvedStreamingFieldProvider
+
+Supported input should include VTK-family data when possible:
+
+    VTU
+    VTP
+    legacy VTK
+
+and CSV fallback.
+
+Required field data:
+
+    velocity
+    pressure
+
+Optional:
+
+    velocity_gradient
+
+If grad(u) is not supplied, compute it consistently from the volume field.
+
+Do not infer pressure units.
+
+Require explicit metadata:
+
+    length_unit
+    velocity_unit
+    pressure_unit
+    time_unit
+
+Convert to SI internally.
+
+Before accepting imported data, run validation:
+
+    spatial bounds
+    NaN check
+    pressure range
+    velocity range
+    gradient range
+    divergence
+    surface coverage
+    normal convention
+
+Generate an import diagnostic report.
+
+The importer must be usable later with an actual microbubble-resolved CFD
+dataset without changing the PD solver.
+
+====================================================================
+13. DAMAGE LOCALIZATION METRICS
+====================================================================
+
+The scientific target is streaming-induced LOCAL erosion, not whole-clot
+pulverization.
+
+Define a streaming influence region relative to the prescribed bubble center or
+to high fluid traction.
+
+For example:
+
+    R_influence
+
+or a traction-based mask:
+
+    |t_f| >= fraction * max(|t_f|)
+
+Calculate:
+
+    fraction_of_damage_inside_influence_region
+    fraction_of_broken_bonds_inside_influence_region
+    fraction_of_detached_volume_originating_in_influence_region
+
+Also compute damage-weighted distance from the bubble:
+
+    r_damage =
+        sum_i D_i * distance_i
+        /
+        sum_i D_i
+
+Create localization plots.
+
+Do not force damage to remain localized by deleting or freezing distant bonds.
+
+Localization must emerge from loading + material response.
+
+====================================================================
+14. REPLACE PER-PARTICLE tau_h TRANSPORT WITH AN OPTIONAL FRAGMENT DRAG MODEL
+====================================================================
+
+Keep the existing relaxation model:
+
+    a_h = (u_f - v) / tau_h
+
+for regression.
+
+Add a second transport mode:
+
+    fragment_drag
+
+For each detached RESOLVED connected component:
+
+1. compute:
+       volume V
+       mass
+       center of mass
+       center-of-mass velocity
+       equivalent diameter
+       characteristic projected area
+
+2. sample local fluid velocity around the fragment;
+
+3. estimate fragment Reynolds number;
+
+4. apply a documented drag law suitable for a first surrogate.
+
+A reasonable first implementation may use:
+
+    Stokes drag at low Re
+
+and a smooth empirical correction at moderate Re.
+
+Do not claim accuracy for irregular deformable clot fragments.
+
+Distribute net fragment drag to the component particles in a conservative way.
+
+If practical, also include hydrodynamic torque from spatially varying fluid
+velocity.
+
+The purpose is to avoid giving every particle the same arbitrary relaxation time.
+
+Output the chosen drag regime and Reynolds number for every resolved fragment.
+
+UNDER_RESOLVED_DEBRIS may continue using the legacy particle relaxation model,
+but must be labeled separately.
+
+====================================================================
+15. DO NOT COUNT UNDER-RESOLVED DEBRIS AS RESOLVED FRAGMENT CLEARANCE
+====================================================================
+
+Keep:
+
+    total_clearance_volume_fraction
+
+but add:
+
+    resolved_fragment_clearance_fraction
+    under_resolved_debris_clearance_fraction
+
+The scientifically useful primary metric should eventually become:
+
+    attached clot volume fraction
+
+and:
+
+    resolved detached/transported volume fraction
+
+not raw connected-component count.
+
+====================================================================
+16. SUPPORT-RANK HANDLING
+====================================================================
+
+Do NOT silently treat support-rank-zero particles as valid 3-D NOSB material.
+
+Keep the current intrinsic low-dimensional fallback only as an explicitly
+diagnosed numerical continuation mechanism.
+
+For every saved state report:
+
+    rank_3_particle_fraction
+    rank_2_particle_fraction
+    rank_1_particle_fraction
+    rank_0_particle_fraction
+
+and the same quantities restricted to detached material.
+
+A scientific candidate run must display a visible warning if a large fraction
+of detached material becomes rank 0/1.
+
+Do not hide this by automatically adding bonds.
+
+Do not use pseudoinverse silently.
+
+====================================================================
+17. ADD MATERIAL/FAILURE PARAMETER SWEEP INFRASTRUCTURE
+====================================================================
+
+Do NOT search for a single configuration that merely "looks good".
+
+Create scripted parameter sweeps for:
+
+    Gc_demo
+    damage exponent m_E
+    cyclic damage coefficient C_E
+    streaming amplitude
+
+For each run store:
+
+    configuration hash
+    first-failure N
+    first-detachment N
+    final attached volume
+    final resolved detached volume
+    singleton fraction
+    energy residual
+
+Generate response-surface style summary CSV/plots.
+
+The purpose is sensitivity analysis, not parameter fitting.
+
+====================================================================
+18. VISUALIZATION REQUIREMENTS
+====================================================================
+
+Create a new visualization package that emphasizes:
+
+A. DAMAGE LOCALIZATION
+
+    bubble location
+    streaming velocity vectors or streamlines
+    fluid traction magnitude
+    PD damage
+
+B. TOPOLOGY
+
+    active bonds
+    newly failed bonds
+    attached material
+    resolved fragments
+    under-resolved debris
+
+Use visually distinct markers for:
+
+    fixed base
+    attached clot
+    resolved detached fragment
+    under-resolved debris
+
+Do NOT visually present singletons as equivalent to resolved fragments.
+
+Create:
+
+    regularized_damage_transport.mp4
+
+with a fixed camera and true displacement scale.
+
+Also create:
+
+    mesh_convergence.png
+    cycle_jump_convergence.png
+    fracture_energy_calibration.png
+    fragment_size_distribution.png
+    localization_metrics.png
+    energy_history.png
+
+====================================================================
+19. NEW FOUR-STAGE SUMMARY
+====================================================================
+
+Create a summary figure with:
+
+Panel A:
+    intact clot + streaming field
+
+Panel B:
+    localized damage before first failure
+
+Panel C:
+    localized bond failure / first resolved detachment
+
+Panel D:
+    late state showing resolved fragment transport and under-resolved debris
+
+Annotate:
+
+    represented cycles N
+    damage
+    broken bond %
+    attached volume %
+    resolved detached volume %
+    under-resolved debris %
+    fracture energy dissipated
+
+====================================================================
+20. ACCEPTANCE CRITERIA
+====================================================================
+
+This development round is successful if:
+
+SOFTWARE:
+
+1. all previous regression tests still pass;
+
+2. old forced-failure result remains reproducible;
+
+3. the fracture-energy calibration coupon runs automatically;
+
+4. energy bookkeeping is finite and saved;
+
+5. coarse/medium discretizations both complete at least through first detachment;
+
+6. cycle-jump sensitivity tests complete;
+
+7. StreamingFlowProvider produces velocity, pressure, gradient and traction from
+   one consistent field;
+
+8. resolved vs under-resolved fragments are reported separately;
+
+9. rank-0/1 detached volume is explicitly reported;
+
+10. real-field importer is implemented and independently tested.
+
+NUMERICAL / DEVELOPMENT TARGETS:
+
+11. the new regularized run uses:
+
+        D_break = 1
+
+12. the model must NOT be tuned solely to maximize broken bonds;
+
+13. failure should be spatially concentrated near the high-streaming-load region;
+
+14. the dominant detached volume should preferably reside in multi-particle
+    resolved fragments rather than singletons;
+
+15. if singleton detached volume exceeds 20%, explicitly mark:
+
+        FRAGMENT_RESOLUTION_INADEQUATE
+
+rather than hiding or merging the result;
+
+16. coarse-to-medium refinement should show improved agreement in:
+
+        detached volume
+        damage localization
+        fracture dissipation
+
+17. if convergence is poor, label the model NOT CONVERGED and report the result
+    instead of tuning parameters to pass.
+
+====================================================================
+21. DO NOT MAKE THESE CHANGES
+====================================================================
+
+DO NOT:
+
+    manually cut bonds;
+    prescribe fragment separation;
+    merge singleton particles into fake larger fragments;
+    delete under-resolved particles to make plots look cleaner;
+    reduce D_break below 1 for the regularized demo;
+    arbitrarily amplify displacement;
+    tune parameters only to generate attractive fragmentation;
+    call manufactured flow "microbubble CFD";
+    call clearance-plane crossing "clinical thrombolysis";
+    call a single PD particle a physically resolved clot embolus.
+
+====================================================================
+22. REPORTING
+====================================================================
+
+Create:
+
+    REGULARIZATION_REPORT_ZH.md
+    REGULARIZATION_REPORT_EN.md
+
+The report must clearly answer:
+
+A. FRACTURE ENERGY
+    What Gc_demo was specified?
+    What value was measured for each discretization?
+    How large was the calibration error?
+
+B. MESH SENSITIVITY
+    How do detached-volume predictions change with spacing?
+    How does fragment-size distribution change?
+    Does singleton debris decrease, stay constant, or increase?
+
+C. CYCLE-JUMP SENSITIVITY
+    How much do failure/detachment event cycles move?
+
+D. LOCALIZATION
+    How much damage/failure occurred in the streaming influence region?
+
+E. ENERGY
+    What are elastic, kinetic, stabilization and fracture-dissipation histories?
+
+F. FRAGMENTS
+    How much detached volume is:
+        resolved fragments
+        low-rank debris
+        singletons?
+
+G. TRANSPORT
+    How much of the transported volume is resolved fragment volume?
+
+H. LIMITATIONS
+    State explicitly that:
+        clot material is not yet experimentally calibrated;
+        fatigue law is not yet sonothrombolysis-calibrated;
+        manufactured streaming is not resolved microbubble flow;
+        no two-way fluid-PD feedback is solved yet.
+
+====================================================================
+23. DEVELOPMENT ORDER
+====================================================================
+
+Proceed in this order and DO NOT skip validation steps.
+
+PHASE 0
+    repository audit
+    preserve old hashes
+    baseline tests
+
+PHASE 1
+    energy bookkeeping
+
+PHASE 2
+    fracture-energy calibration coupon
+
+PHASE 3
+    energy-regularized cyclic damage
+
+PHASE 4
+    resolved / under-resolved fragment classification
+
+PHASE 5
+    manufactured consistent streaming field
+
+PHASE 6
+    regularized clot run
+
+PHASE 7
+    cycle-jump sensitivity
+
+PHASE 8
+    coarse/medium/fine particle-spacing study
+
+PHASE 9
+    fragment-level drag surrogate
+
+PHASE 10
+    real CFD field importer tests
+
+PHASE 11
+    visualizations and reports
+
+After EACH phase:
+
+    run unit tests
+    run relevant verification case
+    inspect numerical diagnostics
+    do not proceed if NaN, invalid Jacobian, unexplained energy growth,
+    or graph inconsistency occurs.
+
+====================================================================
+24. FINAL RESPONSE TO ME
+====================================================================
+
+When the work is complete, return:
+
+1. exact paths of all modified/new source files;
+
+2. exact commands to reproduce:
+       fracture-energy calibration
+       regularized demo
+       mesh study
+       cycle-jump study
+
+3. a compact table containing for every discretization:
+
+       spacing
+       particle count
+       active initial bonds
+       calibrated fracture parameter
+       measured Gc
+       first failure N
+       first detachment N
+       final attached volume
+       final detached volume
+       resolved fragment volume
+       singleton volume
+       rank-0/1 detached volume
+       total fracture dissipation
+
+4. report whether the model is:
+
+       SOFTWARE VERIFIED
+       ENERGY REGULARIZED
+       MESH CONVERGED / NOT CONVERGED
+       FRAGMENT RESOLUTION ADEQUATE / INADEQUATE
+
+5. show the exact reason for any NOT CONVERGED / INADEQUATE status;
+
+6. provide paths to all PNG/PDF/MP4 outputs;
+
+7. identify the smallest next step needed to replace
+   ManufacturedStreamingProvider with a real resolved microbubble CFD dataset.

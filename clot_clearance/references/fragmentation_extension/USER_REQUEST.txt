@@ -1,0 +1,590 @@
+Continue working on the EXISTING clot_clearance prototype.
+
+DO NOT start a new project and DO NOT replace the current validated NOSB-PD
+implementation.
+
+The current project already demonstrates:
+
+    synthetic streaming traction
+        ->
+    NOSB-PD deformation
+        ->
+    empirical cyclic damage
+
+but the main straight-pipe case currently produces:
+
+    broken bonds = 0
+    connected components = 1
+    detached volume = 0
+
+Therefore the current visualization only shows a DAMAGE FIELD.
+It does NOT yet demonstrate clot destruction, erosion, fragmentation,
+or post-detachment transport.
+
+The next task is to extend the existing prototype to demonstrate the full
+qualitative sequence:
+
+    streaming
+        ->
+    progressive PD bond damage
+        ->
+    bond failure
+        ->
+    loss of connectivity
+        ->
+    detachment from the wall-connected clot
+        ->
+    free fragment motion under the prescribed fluid field
+
+This is still a synthetic verification model.
+It must NOT be presented as quantitatively predictive sonothrombolysis.
+
+====================================================================
+1. DO NOT USE ARTIFICIAL KINEMATIC CLEAVAGE
+====================================================================
+
+The existing artificial_fragmentation test is useful only as a graph/connectivity
+unit test.
+
+DO NOT use:
+    prescribed opening displacement,
+    manual bond cutting,
+    manual particle separation,
+    manual fragment IDs
+
+to generate the new fragmentation animation.
+
+The new failure demonstration must originate from:
+
+    prescribed streaming / background fluid loading
+        ->
+    PD deformation
+        ->
+    cyclic damage
+        ->
+    actual bond failure
+
+The only allowed way to obtain fragments in the new demo is failure of PD bonds
+under the load/damage model.
+
+Keep the existing artificial cleavage test separately as a software test.
+
+====================================================================
+2. CREATE TWO DISTINCT PHYSICS DEMOS
+====================================================================
+
+Keep the existing mild-damage case unchanged as:
+
+    straight_pipe_damage_demo
+
+Add a new case:
+
+    streaming_fragmentation_demo
+
+The second case is intentionally configured to cross the failure threshold in a
+reasonable runtime.
+
+It is acceptable to use aggressive UNCALIBRATED synthetic damage parameters in
+this verification case.
+
+However:
+    - parameters must live only in the configuration file;
+    - they must be labelled "qualitative forced-failure verification";
+    - no source-code constants may be silently altered;
+    - documentation must state that the values are NOT experimental clot
+      parameters.
+
+Do not artificially scale displacement only for visualization.
+
+The simulation itself must truly produce broken PD bonds.
+
+====================================================================
+3. MAKE CYCLIC DAMAGE ACTUALLY CONTROL BOND INTEGRITY
+====================================================================
+
+Audit the current cyclic-damage implementation.
+
+For every PD bond ij maintain:
+
+    D_ij in [0,1]
+
+Define bond integrity:
+
+    g_ij = max(0, 1 - D_ij)
+
+The NOSB-PD pair interaction must be weakened consistently by g_ij.
+
+Introduce a configurable failure threshold:
+
+    D_break
+
+For example:
+
+    if D_ij >= D_break:
+        bond_active_ij = false
+        g_ij = 0
+
+The default physical convention should preferably remain D_break = 1.
+
+For the intentionally aggressive qualitative demo a separate configured value
+may be used if necessary, but it MUST be reported.
+
+Once a bond breaks:
+
+    it must never heal.
+
+Verify numerically:
+
+    active_bond_count decreases,
+    broken_bond_count increases,
+    broken_bond_fraction > 0.
+
+The new demo is not successful merely because particle damage changes color.
+
+====================================================================
+4. DISTINGUISH DAMAGE, EROSION, AND FRAGMENTATION
+====================================================================
+
+Implement three separate diagnostics.
+
+A) DAMAGE
+
+    local loss of PD bond integrity
+
+B) EROSION / DETACHMENT
+
+A particle is considered part of "attached clot" if it is connected by active
+PD bonds to at least one anchored/base particle.
+
+After every macro damage update perform a graph search beginning from all
+FIXED_BASE / anchor particles.
+
+Particles reachable from the base through active bonds are:
+
+    attached_clot
+
+Particles no longer reachable from the base are:
+
+    detached_material
+
+Define:
+
+    attached_volume_fraction
+    detached_volume_fraction
+
+This detached-volume metric is the preferred first measure of
+streaming-induced clot clearance.
+
+C) FRAGMENTATION
+
+Perform connected-component analysis of the active PD graph.
+
+Each disconnected cluster receives:
+
+    fragment_id
+
+Report:
+
+    total_components
+    attached_components
+    detached_components
+    largest_component_volume
+    detached_fragment_volumes
+
+Damage alone is NOT fragmentation.
+
+====================================================================
+5. DO NOT DELETE DETACHED PARTICLES
+====================================================================
+
+This is essential.
+
+When a portion of the clot detaches:
+
+    DO NOT delete its particles.
+    DO NOT freeze them.
+    DO NOT hide them.
+    DO NOT convert them to visualization-only objects.
+
+They must remain active PD particles.
+
+Internal active bonds inside each fragment must continue to transmit force.
+
+Therefore a detached fragment may:
+
+    translate,
+    rotate,
+    deform further,
+    fragment again.
+
+This is required to visualize the actual progression:
+
+    clot
+      ->
+    damaged clot
+      ->
+    partially detached clot
+      ->
+    fragment
+      ->
+    fragment transported by fluid.
+
+====================================================================
+6. ADD POST-DETACHMENT HYDRODYNAMIC TRANSPORT
+====================================================================
+
+The present model applies a prescribed one-way streaming/background-flow field.
+
+Use that existing field to continue loading free fragments.
+
+Define:
+
+    u_f(x,t) =
+        u_background(x)
+        +
+        u_streaming(x,t)
+
+For each mobile PD particle obtain the local prescribed fluid velocity.
+
+Implement a configurable particle-centered hydrodynamic coupling inspired by
+the fluid-to-solid forcing used in CFD-PD immersed formulations.
+
+For the verification prototype use a clearly documented relaxation form:
+
+    a_h,i =
+        (u_f(x_i,t) - v_i) / tau_h
+
+or equivalently
+
+    f_h,i =
+        rho_s * V_i / tau_h
+        * (u_f(x_i,t) - v_i)
+
+where:
+
+    tau_h
+
+is a configurable hydrodynamic relaxation time.
+
+IMPORTANT:
+
+This is a verification-level surrogate for post-detachment transport.
+Do NOT claim that it is the final physical fluid-solid coupling law.
+
+Put tau_h in configuration.
+
+The architecture must allow replacing this surrogate later with the full
+CFD-to-PD hydrodynamic force formulation.
+
+Apply this hydrodynamic transport only to mobile particles.
+
+FIXED_BASE particles must remain fixed.
+
+====================================================================
+7. DYNAMICALLY UPDATE WHICH PARTICLES ARE FLUID EXPOSED
+====================================================================
+
+The current code must not assume that only the ORIGINAL upper surface receives
+fluid loading.
+
+After fracture, newly created surfaces are exposed to the fluid.
+
+Implement a simple dynamic surface-particle detector.
+
+A reasonable first implementation is based on neighborhood deficiency:
+
+    compare current active-neighbor count / weighted neighborhood volume
+    with the intact bulk value.
+
+A particle whose neighborhood is sufficiently deficient is considered
+fluid-exposed.
+
+Exclude FIXED_BASE particles.
+
+Store:
+
+    is_surface_particle
+
+at every saved state.
+
+The exact surface criterion must be configurable and documented.
+
+This is important because newly formed fragments must continue to interact with
+the prescribed fluid field.
+
+====================================================================
+8. ADD A SYNTHETIC FRAGMENTATION VERIFICATION CASE
+====================================================================
+
+Construct a scenario in which the existing localized streaming field plus
+background pipe flow causes:
+
+    concentrated damage
+        ->
+    bond failure
+        ->
+    local material detachment
+        ->
+    downstream movement.
+
+Tune ONLY the configuration parameters of this verification case.
+
+Do not manually cut the clot.
+
+A successful run should show a temporal sequence approximately like:
+
+    state 0:
+        intact clot
+
+    state 1:
+        localized damage
+
+    state 2:
+        damaged zone broadens
+
+    state 3:
+        first broken bonds
+
+    state 4:
+        attached volume decreases
+
+    state 5:
+        one or more detached connected components appear
+
+    state 6+:
+        detached component center of mass moves under the fluid field
+
+The case does NOT need to represent clinically correct times or stresses.
+
+Its purpose is to verify the complete numerical workflow.
+
+====================================================================
+9. DEFINE A CLEARANCE METRIC
+====================================================================
+
+Introduce the following time-dependent quantities:
+
+    attached_volume_fraction(N)
+    detached_volume_fraction(N)
+    broken_bond_fraction(N)
+    fragment_count(N)
+
+For every detached component calculate:
+
+    center_of_mass
+    velocity_of_center_of_mass
+    bounding_box
+    volume
+
+Define a downstream clearance plane:
+
+    x = x_clearance
+
+When the center of mass of a detached fragment crosses this plane:
+
+    count its volume as cleared_volume.
+
+Do NOT immediately destroy the particles unless domain-management requires it.
+
+If particles are removed after crossing the clearance boundary:
+
+    record their mass/volume first
+    and preserve conservation accounting.
+
+Output:
+
+    cleared_volume_fraction(N)
+
+This will become the prototype analogue of "clot ablation / clearance".
+
+====================================================================
+10. VISUALIZATION MUST SHOW THE PHYSICS, NOT ONLY DAMAGE COLOR
+====================================================================
+
+Replace the current damage-only animation for the fragmentation demo with an
+animation designed to make topology change obvious.
+
+Each frame must show:
+
+    actual particle positions
+    true displacement scale
+    active PD bonds, at least for a useful subsample
+    broken bonds or recently broken bonds
+    particle damage
+    fragment ID
+    anchored/base particles
+    prescribed bubble location
+    fluid-flow direction
+
+Use a fixed camera across all frames.
+
+Before fragmentation:
+    color particles by damage.
+
+After fragmentation:
+    provide a second panel or second rendering colored by fragment_id.
+
+Detached fragments must visibly move through space.
+
+Do not use an artificially amplified displacement factor in the primary result.
+
+Optionally create a secondary exaggerated-displacement diagnostic, but label it
+clearly.
+
+Generate at least:
+
+    fragmentation_damage.mp4
+    fragmentation_fragments.mp4
+
+and corresponding GIFs if practical.
+
+====================================================================
+11. ADD A FOUR-PANEL SUMMARY FIGURE
+====================================================================
+
+Create a publication-style summary containing:
+
+Panel A:
+    N = 0
+    intact clot
+
+Panel B:
+    first non-zero broken-bond state
+
+Panel C:
+    first detached component
+
+Panel D:
+    late state showing fragment transport
+
+Annotate each with:
+
+    N
+    mean damage
+    max damage
+    broken bond %
+    attached volume %
+    detached volume %
+    number of detached fragments
+
+A reader should be able to understand the entire
+damage -> fragmentation -> transport progression
+from this one figure.
+
+====================================================================
+12. ADD TIME-HISTORY PLOTS
+====================================================================
+
+Generate plots versus represented cycle count N for:
+
+    mean damage
+    maximum damage
+    broken bond fraction
+    attached volume fraction
+    detached volume fraction
+    cleared volume fraction
+    number of detached fragments
+
+Mark vertical events:
+
+    first bond break
+    first detachment
+    first fragment
+    first clearance-plane crossing
+
+====================================================================
+13. SOFTWARE ACCEPTANCE CRITERIA
+====================================================================
+
+The new streaming_fragmentation_demo passes only if ALL are true:
+
+1. No prescribed cleavage is used.
+
+2. PD cyclic damage causes actual bond failure.
+
+3. broken_bond_fraction becomes > 0.
+
+4. At least one non-base connected component forms.
+
+5. detached_volume_fraction becomes > 0.
+
+6. Detached particles remain dynamically simulated.
+
+7. At least one detached component has non-zero center-of-mass displacement
+   after detachment.
+
+8. Fragment motion is caused by the prescribed fluid field / hydrodynamic
+   coupling, not by an artificial displacement command.
+
+9. Fragment IDs are stable and updated correctly.
+
+10. VTK output contains:
+        damage
+        fragment_id
+        attached_to_base
+        is_surface_particle
+        velocity
+        displacement
+
+11. The animation visibly shows separation and downstream/advection motion.
+
+12. The original mild-damage case still reproduces its previous result.
+
+====================================================================
+14. PHYSICAL HONESTY
+====================================================================
+
+README and report must explicitly state:
+
+The new fragmentation demo proves ONLY that the numerical pipeline can perform:
+
+    streaming-like loading
+        ->
+    PD damage
+        ->
+    bond failure
+        ->
+    detachment
+        ->
+    fragment transport.
+
+It does NOT prove:
+
+    correct ultrasound frequency response,
+    correct microbubble shape oscillation,
+    correct clinical clot ablation rate,
+    experimentally calibrated fatigue lifetime,
+    quantitatively correct fragment size.
+
+The next scientific step remains replacement of the synthetic streaming field
+and surrogate hydrodynamic coupling by a resolved / experimentally validated
+microbubble-generated flow field.
+
+====================================================================
+15. DO NOT STOP AFTER CODING
+====================================================================
+
+After implementing:
+
+    build/run all existing tests
+    run straight_pipe_damage_demo
+    run streaming_fragmentation_demo
+    inspect VTK outputs
+    render all requested figures
+    render MP4 animation
+    verify the MP4 is decodable
+    inspect first, fracture-onset, detachment, and final frames
+
+At the end report exact numerical values for:
+
+    cycle of first bond failure
+    cycle of first detachment
+    final broken-bond fraction
+    final attached volume fraction
+    final detached volume fraction
+    final number of fragments
+    maximum fragment travel distance
+    cleared volume fraction
+
+Also report every configuration parameter that was intentionally made
+aggressive to force the qualitative fragmentation verification.

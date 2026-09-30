@@ -1,0 +1,125 @@
+{
+  "name": "streaming_regularized_demo_coarse",
+  "simulation": {
+    "dt_s": 5e-07,
+    "number_of_macro_steps": 25,
+    "output_interval": 1,
+    "representative_frequency_Hz": 500.0,
+    "representative_cycles": 1,
+    "damping_s_inv": 3500.0,
+    "detached_damping_s_inv": 0.0
+  },
+  "pipe": {
+    "radius_m": 0.00125,
+    "length_m": 0.006,
+    "flow_rate_m3_s": 3e-07,
+    "viscosity_Pa_s": 0.00345312,
+    "density_kg_m3": 1056.0
+  },
+  "clot": {
+    "geometry": "rectangular_wall_patch",
+    "cells": [
+      10,
+      6,
+      6
+    ],
+    "origin_m": [
+      -0.000625,
+      -0.000375,
+      -0.0011
+    ],
+    "particle_spacing_m": 0.000125,
+    "horizon_ratio": 3.01,
+    "density_kg_m3": 1056.0,
+    "fixed_base_thickness_m": 0.000125
+  },
+  "material": {
+    "model": "neo_hookean",
+    "shear_modulus_Pa": 1000.0,
+    "bulk_modulus_Pa": 50000.0,
+    "stabilization_alpha": 3.0
+  },
+  "streaming": {
+    "provider": "manufactured",
+    "bubble_center_m": [
+      -0.000825,
+      0.0,
+      -0.000725
+    ],
+    "bubble_radius_m": 2e-06,
+    "ultrasound_frequency_Hz": 1000000.0,
+    "streaming_velocity_scale_m_s": 0.01,
+    "streaming_length_scale_m": 0.00035,
+    "oscillatory_amplitude": 0.9,
+    "mean_fraction": 1.0,
+    "phase_rad": 0.0,
+    "include_pipe_traction": true,
+    "uniform": false,
+    "pressure_amplitude_Pa": 0.0
+  },
+  "damage": {
+    "enabled": true,
+    "mode": "energy_regularized_cyclic",
+    "driver": "bond_stretch_amplitude",
+    "DeltaN": 1000,
+    "C_damage": 5e-07,
+    "m_damage": 2.0,
+    "Q_ref": 0.001,
+    "s1": 1.1,
+    "s2": 1.3,
+    "connectivity_threshold": 0.0,
+    "damaged_particle_threshold": 0.05,
+    "D_break": 1.0
+  },
+  "safety": {
+    "minimum_neighbors": 4,
+    "maximum_shape_condition": 100000000.0,
+    "minimum_J": 0.2,
+    "dt_safety_factor": 0.2,
+    "maximum_acceleration_m_s2": 10000000.0,
+    "maximum_displacement_m": 0.004,
+    "rank_deficient_policy": "intrinsic_correspondence",
+    "support_rank_relative_tolerance": 1e-12,
+    "maximum_radius_ratio": 1.0
+  },
+  "verification_label": "UNCALIBRATED energy-regularization development; manufactured one-way flow",
+  "surface": {
+    "weighted_bulk_fraction": 0.8,
+    "normal_moment_tolerance": 1e-12,
+    "area_factor": 1.0
+  },
+  "transport": {
+    "enabled": true,
+    "tau_h_s": 0.0002,
+    "background_velocity_multiplier": 1.0,
+    "x_clearance_m": 0.001,
+    "mode": "relaxation"
+  },
+  "regularized_damage": {
+    "Gc_demo_J_m2": 0.01,
+    "C_E": 0.001,
+    "m_E": 1.0,
+    "threshold_ratio": 0.0,
+    "D_break": 1.0,
+    "calibration_tolerance": 0.05,
+    "demonstration_parameter": true
+  },
+  "fragment_resolution": {
+    "minimum_particles": 8,
+    "minimum_volume_m3": 1.5625e-11,
+    "minimum_internal_bonds": 12,
+    "minimum_supported_fraction": 0.8,
+    "minimum_support_rank": 2,
+    "singleton_flag_threshold": 0.2,
+    "lowrank_flag_threshold": 0.3
+  },
+  "localization": {
+    "influence_radius_m": 0.000525,
+    "coordinate_convention": "Reference particle positions; bond reference midpoints"
+  },
+  "energy_audit": {
+    "maximum_relative_residual": 0.05,
+    "minimum_absolute_tolerance_J": 1e-15
+  },
+  "source_position_description": "0.2 mm upstream of clot left face, centered in y and z"
+}

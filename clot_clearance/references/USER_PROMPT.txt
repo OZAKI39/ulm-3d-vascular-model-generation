@@ -1,0 +1,740 @@
+You are working inside an existing local SimVascular source tree.
+
+Repository root:
+<SIMVASCULAR_DIR>
+
+Your task is to inspect this repository and build a MINIMAL, ISOLATED, REPRODUCIBLE proof-of-concept for:
+
+    microbubble
+        -> microstreaming
+        -> hydrodynamic loading on a blood clot
+        -> peridynamic clot deformation
+        -> progressive clot damage
+        -> erosion / possible fragmentation
+
+This is a research prototype, NOT a clinically validated model.
+
+============================================================
+0. IMPORTANT SCOPE
+============================================================
+
+Do NOT attempt a full ultrasound + acoustic propagation + deformable microbubble +
+two-way fluid-PD simulation in the first implementation.
+
+The first milestone must be a one-way coupled prototype:
+
+    prescribed / imported microstreaming field
+            ->
+    fluid traction on clot
+            ->
+    PD clot solver
+            ->
+    damage accumulation
+
+The architecture must make it possible to replace the prescribed streaming field
+with a real microbubble-resolved CFD field later.
+
+Do not make invasive changes to SimVascular core unless absolutely necessary.
+
+Prefer:
+    - a standalone module/example/tool inside the repository;
+    - existing SimVascular/VTK/CMake infrastructure;
+    - small, reviewable commits;
+    - clear documentation.
+
+Do not introduce large external dependencies unless the repository already uses them.
+
+Before writing code:
+1. inspect the repository;
+2. identify relevant solver, mesh, VTK and build infrastructure;
+3. search for existing solid mechanics, FSI, body-force, traction, particle,
+   material, damage, fracture, or peridynamics implementations;
+4. write a short PLAN.md describing what you found and the least-invasive
+   integration strategy.
+
+Do not assume directory names or APIs before inspecting them.
+
+============================================================
+1. PHYSICAL MODEL TO IMPLEMENT
+============================================================
+
+The clot should be represented by a Lagrangian peridynamic particle cloud.
+
+Preferred formulation:
+
+    stabilized non-ordinary state-based peridynamics (NOSB-PD)
+
+for a nearly incompressible hyperelastic solid.
+
+The prototype should support a simple compressible Neo-Hookean material first.
+The design must allow replacing it later with a first-order Ogden clot model.
+
+Do NOT use bond-based PD as the final clot formulation because the blood clot is
+nearly incompressible and bond-based PD has restrictive Poisson-ratio behavior.
+
+A temporary simpler PD formulation is acceptable only for an intermediate unit
+test, but the final demo in this task should use correspondence/NOSB-PD if
+reasonably feasible.
+
+============================================================
+2. NOSB-PD CORE
+============================================================
+
+Represent the clot as particles i with:
+
+    reference position X_i
+    current position x_i
+    velocity v_i
+    particle volume V_i
+    density rho_i
+    damage D_i
+
+Each particle interacts with neighbors within a horizon:
+
+    delta ~= 3 * particle_spacing
+
+Implement a neighbor list.
+
+For each particle i, construct the shape tensor
+
+    K_i = sum_j w_ij * (xi_ij tensor xi_ij) * V_j
+
+where
+
+    xi_ij = X_j - X_i
+
+and compute a nonlocal deformation gradient
+
+    F_i =
+      [sum_j w_ij * (eta_ij tensor xi_ij) * V_j] * inverse(K_i)
+
+where
+
+    eta_ij = x_j - x_i.
+
+Use a compressible or nearly incompressible Neo-Hookean constitutive model
+to calculate the first Piola-Kirchhoff stress P_i.
+
+Implement correspondence force states consistent with NOSB-PD, e.g.
+
+    T_ij = w_ij * P_i * inverse(K_i) * xi_ij
+
+and assemble internal force from the contribution of particle i and j.
+
+Verify pair interactions carefully and document all sign conventions.
+
+Include a stabilization mechanism to suppress correspondence zero-energy modes.
+
+If a full published stabilization is too large for the first prototype,
+implement a clearly isolated stabilization term behind a configuration switch
+and document that it is provisional.
+
+Do not silently ignore zero-energy mode stability.
+
+============================================================
+3. CLOT GEOMETRY
+============================================================
+
+Create a very small canonical validation geometry first.
+
+Example:
+
+    clot length : 1-2 mm
+    clot width  : 1 mm
+    clot height : 0.5 mm
+
+A rectangular block or dome is acceptable for the first test.
+
+The lower layer represents attachment to the vessel wall.
+
+Mark particle sets:
+
+    FIXED_BASE
+    EXPOSED_SURFACE
+    INTERIOR
+
+For the first model:
+
+    FIXED_BASE particles:
+        displacement = 0
+
+This intentionally removes clot-wall delamination from the first milestone.
+
+We are initially studying INTERNAL clot damage caused by streaming.
+
+============================================================
+4. MICROSTREAMING INPUT ABSTRACTION
+============================================================
+
+Implement a modular interface similar to:
+
+    StreamingProvider
+
+with at least two backends.
+
+------------------------------------------------------------
+Backend A: AnalyticTestStreaming
+------------------------------------------------------------
+
+This is ONLY for verification.
+
+It should generate a localized streaming field or clot traction field centered
+beneath a hypothetical microbubble.
+
+Configuration parameters should include:
+
+    bubble_center
+    bubble_radius
+    ultrasound_frequency
+    streaming_velocity_scale
+    streaming_length_scale
+    oscillatory_amplitude
+    phase
+
+Do NOT claim that this analytic field is a quantitatively accurate microbubble
+model.
+
+Its purpose is to produce a smooth localized load with known parameters so the
+PD solver can be tested.
+
+Prefer a divergence-free vortex-like field if a velocity field is generated.
+
+If direct traction is simpler for the first implementation, support:
+
+    tau(x,y,z,t)
+
+with a localized Gaussian-like spatial envelope.
+
+For example conceptually:
+
+    tau(r,t) =
+        tau_mean(r)
+        + tau_amp(r) * sin(2*pi*f*t)
+
+The exact verification function can differ if there is a numerically better
+choice.
+
+------------------------------------------------------------
+Backend B: FileStreaming
+------------------------------------------------------------
+
+Read an externally computed streaming result.
+
+Prefer formats already supported by SimVascular / VTK, such as:
+
+    .vtp
+    .vtu
+    .vtk
+
+or a simple CSV fallback containing:
+
+    x, y, z,
+    ux, uy, uz,
+    p
+
+or directly
+
+    x, y, z,
+    tx, ty, tz
+
+The code must interpolate these quantities onto exposed PD particles.
+
+The future intended workflow is:
+
+    microbubble CFD
+        ->
+    u(x,t), p(x,t)
+        ->
+    sigma_f
+        ->
+    traction
+        ->
+    PD clot
+
+============================================================
+5. FLUID -> CLOT LOAD
+============================================================
+
+When velocity and pressure are supplied, compute the fluid Cauchy stress
+
+    sigma_f =
+        -p I
+        + mu_f (grad(u) + grad(u)^T)
+
+and the traction on the clot surface
+
+    t_f = sigma_f * n
+
+Separate and output:
+
+    normal traction
+    tangential traction
+
+For the very first test it is acceptable to apply a directly supplied traction
+field without solving CFD inside this module.
+
+Map traction to EXPOSED_SURFACE PD particles.
+
+Clearly document how surface traction is converted to particle force/body-force
+density.
+
+Avoid arbitrary scaling constants hidden in the source.
+
+All conversion factors must appear in the input configuration or be derived
+geometrically.
+
+============================================================
+6. DAMAGE MODEL
+============================================================
+
+Implement TWO damage modes.
+
+------------------------------------------------------------
+Mode 1: instantaneous_stretch
+------------------------------------------------------------
+
+This is primarily a mechanical verification mode.
+
+For every bond ij define stretch
+
+    s_ij = |x_j - x_i| / |X_j - X_i|
+
+Use two thresholds:
+
+    s1
+    s2
+
+with an irreversible bond integrity variable mu_ij:
+
+    mu_ij = 1                     if s < s1
+
+    mu_ij decreases smoothly      if s1 <= s < s2
+
+    mu_ij = 0                     if s >= s2
+
+and enforce irreversibility:
+
+    mu_ij(new) = min(mu_ij(old), mu_candidate)
+
+Use mu_ij to weaken/remove bond interactions.
+
+This mode should reproduce the qualitative behavior of progressive PD cohesive
+failure.
+
+------------------------------------------------------------
+Mode 2: cyclic_accumulation
+------------------------------------------------------------
+
+This mode is the more relevant prototype for ultrasound-driven clot ablation.
+
+Introduce a bond damage variable:
+
+    D_ij in [0,1]
+
+with:
+
+    bond integrity = 1 - D_ij
+
+Damage must depend on loading history.
+
+Implement a simple empirical CYCLE-JUMP law such as:
+
+    D_ij(N + DeltaN)
+      =
+    clamp[
+        D_ij(N)
+        +
+        DeltaN * C_damage
+        * <Q_ij / Q_ref - 1>^m_damage,
+        0,
+        1
+    ]
+
+where Q_ij is configurable and can initially be one of:
+
+    bond stretch amplitude
+    bond strain-energy amplitude
+    cycle dissipated energy proxy
+
+and
+
+    <x> = max(x,0).
+
+IMPORTANT:
+This law is only a placeholder research law.
+It must NOT be presented as experimentally validated.
+
+Put all parameters in the input file:
+
+    C_damage
+    m_damage
+    Q_ref
+    DeltaN
+
+The goal is to test whether repeated localized streaming loading can produce:
+
+    progressive damage
+    surface erosion-like loss of connectivity
+    eventual fragment formation.
+
+============================================================
+7. CYCLE JUMPING
+============================================================
+
+Do NOT explicitly simulate hundreds of thousands of MHz ultrasound cycles.
+
+Implement two time scales:
+
+FAST SCALE:
+    resolve a small number of representative load cycles
+    or use a supplied cycle amplitude.
+
+SLOW SCALE:
+    advance damage by DeltaN cycles.
+
+Pseudo-algorithm:
+
+    for macro_step in damage_steps:
+
+        apply representative streaming cycle
+
+        compute:
+            stretch amplitude
+            strain-energy amplitude
+            or selected damage driver
+
+        update damage by DeltaN cycles
+
+        update bond integrity
+
+        update particle connectivity
+
+        write output
+
+This is essential for keeping the prototype computationally manageable.
+
+============================================================
+8. FRAGMENT DETECTION
+============================================================
+
+After bond failure, identify connected components.
+
+Two particles belong to the same clot fragment if they are connected through
+a path of active bonds satisfying:
+
+    bond_integrity > connectivity_threshold
+
+Implement connected-component detection.
+
+Output:
+
+    fragment_id per particle
+    number_of_fragments
+    size/volume of each fragment
+    largest_fragment_fraction
+
+Important distinction:
+
+    damage != fragmentation
+
+Fragmentation only occurs when the original clot becomes more than one
+disconnected particle cluster.
+
+============================================================
+9. OUTPUT
+============================================================
+
+Write VTK-compatible results at every selected macro step.
+
+At minimum output per particle:
+
+    displacement
+    velocity
+    particle_damage
+    max_bond_damage
+    number_of_active_bonds
+    strain_energy_density
+    fragment_id
+
+Also output:
+
+    total damaged fraction
+    total broken-bond fraction
+    number of fragments
+    volume of largest fragment
+
+If feasible also export active/broken PD bonds for visualization.
+
+All outputs should be directly viewable in ParaView and ideally loadable through
+the existing SimVascular visualization ecosystem.
+
+============================================================
+10. CONFIGURATION
+============================================================
+
+Use a human-readable input file, preferably YAML or JSON if already supported
+by the repository.
+
+Example conceptual configuration:
+
+simulation:
+    dt:
+    number_of_macro_steps:
+    output_interval:
+
+clot:
+    geometry:
+    particle_spacing:
+    horizon_ratio:
+    density:
+
+material:
+    model: neo_hookean
+    shear_modulus:
+    bulk_modulus:
+
+streaming:
+    provider: analytic_test
+    bubble_center:
+    bubble_radius:
+    ultrasound_frequency:
+    streaming_velocity_scale:
+    traction_scale:
+
+damage:
+    mode: cyclic_accumulation
+    cycle_jump:
+    C_damage:
+    m_damage:
+    Q_ref:
+
+boundary:
+    fixed_base_thickness:
+
+Do not hard-code physical parameters in C++ source.
+
+============================================================
+11. VALIDATION TESTS
+============================================================
+
+Create automated or scripted tests.
+
+Test A:
+    no streaming
+
+Expected:
+    zero or negligible displacement
+    zero damage
+    one fragment
+
+Test B:
+    small uniform traction
+
+Expected:
+    deformation
+    no damage if below threshold
+
+Test C:
+    stronger localized traction
+
+Expected:
+    maximum deformation and damage near the loaded region
+
+Test D:
+    cyclic accumulation with identical loading but increasing number of cycles
+
+Expected:
+
+    damage(N2) >= damage(N1)
+
+for N2 > N1.
+
+Test E:
+    zero damage rate
+
+Expected:
+    no progressive damage regardless of cycle count.
+
+Test F:
+    sufficiently aggressive artificial parameters
+
+Expected:
+    bond network separates and fragment_count > 1.
+
+The artificial fragmentation test is only a software verification test.
+
+============================================================
+12. NUMERICAL SAFETY
+============================================================
+
+Check for:
+
+    singular shape tensors
+    insufficient neighbors
+    negative/near-zero Jacobian J
+    unstable explicit time step
+    NaNs
+    unbounded particle acceleration
+    zero-energy modes
+
+Fail loudly with useful diagnostics.
+
+Provide a reasonable explicit time-step estimate or safety factor.
+
+Do not silently continue with invalid deformation gradients.
+
+============================================================
+13. REPOSITORY INTEGRATION
+============================================================
+
+First inspect the SimVascular tree and determine the most appropriate location.
+
+Prefer creating an isolated prototype such as:
+
+    <repo>/pd_clot_demo/
+
+or the repository's existing convention for examples/tools.
+
+Do NOT modify unrelated SimVascular modules.
+
+If existing VTK data structures, mesh readers, CMake macros, or logging
+facilities are useful, reuse them.
+
+If existing svMultiPhysics data can be consumed directly, provide an adapter
+rather than duplicating its file parser.
+
+Keep the PD solver itself independent enough that it could later be coupled to:
+
+    svMultiPhysics CFD
+    OpenFOAM
+    another microbubble solver
+
+without rewriting the PD mechanics.
+
+============================================================
+14. DOCUMENTATION
+============================================================
+
+Create:
+
+    README.md
+    PLAN.md
+    MODEL_ASSUMPTIONS.md
+
+README.md must include exact commands to:
+
+    configure
+    compile
+    run the smallest example
+    visualize output
+
+MODEL_ASSUMPTIONS.md must clearly distinguish:
+
+A. physically established components:
+    continuum momentum balance
+    fluid traction
+    PD nonlocal mechanics
+
+B. modeling approximations:
+    prescribed microstreaming
+    fixed clot base
+    one-way coupling
+
+C. unvalidated prototype components:
+    empirical cyclic damage law
+    cycle-jump parameters
+
+D. future work:
+    first-order Ogden clot material
+    experimentally calibrated cyclic damage
+    resolved coated-microbubble CFD
+    two-way CFD-PD coupling
+    clot-wall adhesion
+    fragment-fluid transport
+
+============================================================
+15. ACCEPTANCE CRITERIA
+============================================================
+
+The task is successful when all of the following are true:
+
+1. The project builds from documented commands.
+
+2. A small PD clot particle cloud is generated.
+
+3. The clot is fixed at its base.
+
+4. A localized synthetic streaming load can be applied.
+
+5. The clot deforms.
+
+6. Damage accumulates only when enabled.
+
+7. More cycles / stronger loading do not reduce accumulated damage.
+
+8. Broken bonds can produce disconnected particle components.
+
+9. Fragment IDs are calculated.
+
+10. Results are exported to VTK.
+
+11. A no-load test remains undamaged.
+
+12. The prototype runs on a small problem size suitable for rapid iteration.
+
+13. No statement in the documentation claims that the empirical damage model is
+    quantitatively validated for ultrasound thrombolysis.
+
+============================================================
+16. WORKFLOW
+============================================================
+
+Work in this order:
+
+PHASE 0
+    inspect repository
+    write PLAN.md
+    report existing reusable infrastructure
+
+PHASE 1
+    build particle cloud
+    neighbor search
+    NOSB-PD mechanics
+    fixed-base test
+
+PHASE 2
+    add synthetic streaming traction
+    verify deformation
+
+PHASE 3
+    add instantaneous bond damage
+
+PHASE 4
+    add cyclic damage + cycle jumping
+
+PHASE 5
+    add connected-component fragment detection
+
+PHASE 6
+    add FileStreaming importer
+
+PHASE 7
+    tests + VTK output + documentation
+
+Do not skip directly to the coupled model.
+
+After each phase:
+    build
+    run a minimal test
+    fix errors before proceeding.
+
+At the end, give me:
+
+1. a concise summary of repository changes;
+2. paths of all newly created/modified files;
+3. exact build commands;
+4. exact run commands;
+5. location of sample VTK output;
+6. known numerical/physical limitations;
+7. the next smallest step required to replace synthetic streaming with
+   real microbubble CFD data.

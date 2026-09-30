@@ -1,0 +1,98 @@
+{
+  "name": "streaming_fragmentation_demo",
+  "simulation": {
+    "dt_s": 2e-06,
+    "number_of_macro_steps": 25,
+    "output_interval": 1,
+    "representative_frequency_Hz": 500.0,
+    "representative_cycles": 1,
+    "damping_s_inv": 3500.0,
+    "detached_damping_s_inv": 0.0
+  },
+  "pipe": {
+    "radius_m": 0.00125,
+    "length_m": 0.006,
+    "flow_rate_m3_s": 3e-07,
+    "viscosity_Pa_s": 0.00345312,
+    "density_kg_m3": 1056.0
+  },
+  "clot": {
+    "geometry": "rectangular_wall_patch",
+    "cells": [
+      10,
+      6,
+      6
+    ],
+    "origin_m": [
+      -0.000625,
+      -0.000375,
+      -0.0011
+    ],
+    "particle_spacing_m": 0.000125,
+    "horizon_ratio": 3.01,
+    "density_kg_m3": 1056.0,
+    "fixed_base_thickness_m": 0.000125
+  },
+  "material": {
+    "model": "neo_hookean",
+    "shear_modulus_Pa": 1000.0,
+    "bulk_modulus_Pa": 50000.0,
+    "stabilization_alpha": 3.0
+  },
+  "streaming": {
+    "provider": "analytic_test",
+    "bubble_center_m": [
+      0.0001,
+      0,
+      -0.0002
+    ],
+    "bubble_radius_m": 2e-06,
+    "ultrasound_frequency_Hz": 1000000.0,
+    "streaming_velocity_scale_m_s": 0.01,
+    "streaming_length_scale_m": 0.00035,
+    "traction_scale_Pa": 100.0,
+    "normal_traction_scale_Pa": 0.0,
+    "oscillatory_amplitude": 0.9,
+    "mean_fraction": 1.0,
+    "phase_rad": 0.0,
+    "include_pipe_traction": true,
+    "uniform": false
+  },
+  "damage": {
+    "enabled": true,
+    "mode": "cyclic_accumulation",
+    "driver": "bond_stretch_amplitude",
+    "DeltaN": 1000,
+    "C_damage": 5e-07,
+    "m_damage": 2.0,
+    "Q_ref": 0.001,
+    "s1": 1.1,
+    "s2": 1.3,
+    "connectivity_threshold": 0.0,
+    "damaged_particle_threshold": 0.05,
+    "D_break": 0.25
+  },
+  "safety": {
+    "minimum_neighbors": 4,
+    "maximum_shape_condition": 100000000.0,
+    "minimum_J": 0.2,
+    "dt_safety_factor": 0.2,
+    "maximum_acceleration_m_s2": 10000000.0,
+    "maximum_displacement_m": 0.004,
+    "rank_deficient_policy": "intrinsic_correspondence",
+    "support_rank_relative_tolerance": 1e-12,
+    "maximum_radius_ratio": 1.0
+  },
+  "verification_label": "qualitative forced-failure verification; UNCALIBRATED",
+  "surface": {
+    "weighted_bulk_fraction": 0.8,
+    "normal_moment_tolerance": 1e-12,
+    "area_factor": 1.0
+  },
+  "transport": {
+    "enabled": true,
+    "tau_h_s": 0.0002,
+    "background_velocity_multiplier": 1.0,
+    "x_clearance_m": 0.001
+  }
+}
