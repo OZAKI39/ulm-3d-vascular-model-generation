@@ -1,0 +1,74 @@
+                                                   C. Miehe et al. / Computer Methods in Applied Mechanics and Engineering 199 (2010) 2765–2778                               2771
+
+the history ﬁeld H of maximum reference energy ψ0+ and the      4.1. Staggered update scheme of time-discrete ﬁelds
+variational derivative δdγ of the crack density function. This  is
+considered to be the most simple representation of rate-independent      4.1.1. Time-discrete ﬁelds
+diffusive fracture, associated with the multi-ﬁeld scenario visualized     We now consider ﬁeld variables at the discrete times 0, t1, t2, …, tn,
+in Fig. 4.                                                                             tn + 1, …, T of the process interval [0, T]. In order to advance the
+                                                                         solution within a typical time step, we focus on the ﬁnite time
+3.4. Viscous regularization of the rate-independent problem              increment [tn, tn + 1], where
+
+   As commented on in Section 5, a viscous regularization of the    τn+1 := tn+1−tn N 0                                         ð50Þ
+above rate-independent formulation may stabilize the numerical
+treatment. It can be formulated in terms of a variational principle    denotes the step length. In the subsequent treatment,  all ﬁeld
+based on the potential                                                    variables at time tn are assumed to be known. The goal then is to
+                                                                determine the ﬁelds at time tn + 1 based on variational principles valid
+Πηð ˙u; ˙d; β; u; dÞ = ˙Eð ˙u; ˙d; u; dÞ + Dηð ˙d; β; dÞ−Pð˙uÞ;             ð43Þ     for the time increment under consideration. In order to obtain a
+                                                             compact notation, we drop in what follows the subscript n+1 and
+                                                                     consider all variables without subscript to be evaluated at time tn + 1.
+that includes a modiﬁed extended dissipation functional
+                                                                          In particular, we write
+
+                                                  := uðx; tn+1Þ  and  dðxÞ := dðx; tn+1Þ                    ð51ÞDηð ˙d; β; dÞ = ∫B ½β ˙d−1 〈tcðβ; dÞ〉2þ dV;                          ð44Þ    uðxÞ                  η
+
+                                                                              for the displacement and fracture phase ﬁeld at the current time tn + 1
+where η≥0  is a viscosity parameter. The modiﬁed variational    and
+principle
+                                                                       unðxÞ := uðx; tnÞ  and  dnðxÞ := dðx; tnÞ                       ð52Þ
+f˙u; ˙d; βg = Argf stat Πηð˙u; ˙d; β; u; dÞg                          ð45Þ     for the ﬁelds at time  tn. As a consequence, the rates of the
+                                 ˙u; ˙d; β
+                                                                  displacement and the fracture phase ﬁeld are considered to be
+                                                                        constant in the time increment Eq. (50) under consideration, deﬁned
+then results in the coupled set of local equations                    by u̇=(u−un)/τ and ḋ:=(d−dn)/τ. Note that, due to the given
+                                                                     ﬁelds at time tn, the above rates associated with the time increment
+ð1Þ :       Div½σ +  Pγ = 0;                                          Eq. (50) are linear functions of the variables (Eq. (51)) at the current
+                                                              ð46Þ    time tn+1.
+ð2Þ :  ˙d−1 〈f −gcδdγ〉þ  = 0;         η
+                                                                                       4.1.2. Update of history ﬁeld
+                                             We consider an operator split algorithm within the typical time step
+where the ﬁeld β has been eliminated. Note that the evolution ḋof the      [tn, tn+ 1] that allows a staggered update of the fracture phase ﬁeld and
+phase ﬁeld is now governed by a viscous equation governed by the    the displacement ﬁeld. The central idea for an algorithmic decoupling of
+‘over-force’ 〈f−gcδdγ〉+. As a consequence, Eq. (41) may be recast into    the coupled equations is an approximated formulation of the current
+the viscous regularized format                                            history ﬁeld H:=H(x, tn + 1) in terms of the displacement ﬁeld un at
+   hh       ii                                                      time tn deﬁned in Eq. (52). Starting from the initial conditiongcgc   d−l2Δdd−l2Δd ++ηη˙d˙d==22ðð1−d1−dÞHÞH                               ð47Þ                                                      H0 := Hðx; t = t0Þ = 0;                                       ð53Þ  l l
+
+                                                 we assume the current value of maximum reference energy obtained
+again driven by the local history ﬁeld H of maximum positive
+                                                                           in history to be determined by
+reference energy deﬁned in Eq. (40). This equation equips the crack
+topology Eq. (9)1 by the viscous resistance term on the left hand side      (                                                             ψþ0 ð∇sunÞ  for ψþ0 ð∇sunÞ N Hn;
+and the crack source term on the right hand side. Thus the viscous   H =                                                         ð54Þ
+regularization of the system (42) reads                               Hn         otherwise:
+
+                                                              As a consequence of this simple deﬁnition, the energy H that drives
+ð1Þ :           Div½σðu; dÞ +  Pγ = 0;
+                                                              ð48Þ    the current fracture phase ﬁeld d at time tn + 1 is in the case of damage
+ð2Þ :  gcδdγðdÞ + η ˙d−2ð1−dÞH = 0:                               loading dependent on the displacement un at time  tn. With this
+                                                                    algorithmic definition at hand, we may deﬁne two decoupled
+The model  is thermodynamically consistent by satisfying the     variational problems which deﬁne the phase ﬁeld d and the
+constraints                                                                  displacement u at the current time tn + 1.
+
+δdγ + η ˙d ≥0  and    ˙d ≥0;                                   ð49Þ      4.1.3. Update of phase ﬁeld
+                                                                         Considering the energetic history H deﬁned in Eq. (54) to be constant
+which contain in addition to Eq. (29) a contribution to the dissipation due     in the time interval [tn, tn + 1], we introduce the algorithmic functional
+to the viscous resistance of the phase ﬁeld evolution. Observe that the
+                                                                                     ηrate-independent                 case                            is recovered                            by simply                                              setting                                    η=0. This feature is   ΠτdðdÞ =  ∫B ½gcγðd; ∇dÞ + 2τ ðd−dnÞ2−ð1−dÞ2H dV          ð55Þa very convenient                  ingredient                              of a robust                                    numerical                                              implementation.
+
+                                                           where γ is the crack surface density function introduced in Eq. (7). The
+4. Staggered solution of incremental multi-ﬁeld problem
+                                                                        current fracture phase ﬁeld is then computed from the algorithmic
+                                                                              variational problem
+  We construct in this section a robust solution procedure of the
+multi-ﬁeld problem visualized in  Fig. 4 based on convenient
+                                                             d = Argfinf ΠτdðdÞg:                                           ð56Þ
+algorithmic operator splits of the evolution equations.                                   d

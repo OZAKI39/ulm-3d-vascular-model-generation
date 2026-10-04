@@ -1,0 +1,1692 @@
+你正在继续开发血栓 CFD–PD 项目。
+
+============================================================
+0. 工作目录与核心资料
+============================================================
+
+首先自行定位当前仓库根目录：
+
+    git rev-parse --show-toplevel
+
+不要假设仓库只有 Git HEAD 中的文件。
+当前工作区包含前几轮尚需保护的开发/验证成果。
+
+Phase-Field Peridynamics 原始论文 PDF：
+
+    /home/lzy/projects/2604.09215v1.pdf
+
+论文：
+Kai Partmann, Christian Wieners, Michael Ortiz,
+Kerstin Weinberg,
+"Phase-Field Peridynamics", 2026
+arXiv:
+https://arxiv.org/abs/2604.09215
+
+官方 Peridynamics.jl：
+
+    https://github.com/kaipartmann/Peridynamics.jl
+
+文档：
+
+    https://kaipartmann.github.io/Peridynamics.jl/stable/
+
+BAQP 核心方法的相关论文：
+
+Behzadinasab, Trask, Bazilevs,
+"A Unified, Stable and Accurate Meshfree Framework for
+Peridynamic Correspondence Modeling—Part I: Core Methods"
+
+DOI:
+https://doi.org/10.1007/s42102-020-00040-z
+
+Part II:
+https://doi.org/10.1007/s42102-020-00039-6
+
+============================================================
+1. 当前已确认科学状态
+============================================================
+
+必须继承并保持：
+
+CORE SOFTWARE:
+    VERIFIED
+
+MECHANICAL EQUILIBRIUM:
+    VERIFIED_FOR_CURRENT_DEVELOPMENT_CASE
+
+ADR:
+    VERIFIED AGAINST SCIPY SMALL-CASE REFERENCE
+
+STREAMING_EROSION RATE UPDATE:
+    SOFTWARE VERIFIED
+
+STREAMING_EROSION SLOW-TIME STEP:
+    PASSED DEVELOPMENT CONSISTENCY STUDY
+
+DAMAGE ENERGY AUDIT:
+    COMPLETED
+
+ENERGY INCREASE SOURCE:
+    IDENTIFIED FOR AUDITED STATES
+
+PRIMARY CURRENT MECHANISM:
+    damage-dependent correspondence reconstruction changes F,
+    increasing W(F) enough to outweigh softening
+
+CURRENT DAMAGE VARIABLE:
+    THERMODYNAMIC DISSIPATION NOT ESTABLISHED
+
+FAILURE / DETACHMENT:
+    NOT OBSERVED
+
+PHYSICAL CALIBRATION:
+    NOT PERFORMED
+
+MESH OBJECTIVITY:
+    STILL OPEN
+
+WALL ATTACHMENT:
+    STILL OPEN
+
+REAL MICROBUBBLE CFD:
+    NOT USED
+
+现有测试基线：
+
+    130 passed
+    0 failed
+    0 skipped
+
+本轮开始前必须重新运行并保存 baseline test log。
+
+============================================================
+2. 本轮任务名称
+============================================================
+
+PFPD_CANDIDATE_V1
+
+任务性质：
+
+    METHOD REPRODUCTION
+    +
+    KINEMATIC / ENERGETIC SEPARATION STUDY
+
+不是：
+
+    PRODUCTION MODEL REPLACEMENT
+
+本轮必须保持 production NOSB / erosion solver 不变。
+
+禁止直接把论文公式塞进：
+
+    pd_clot/mechanics.py
+    pd_clot/fragment_mechanics.py
+    pd_clot/regularization/erosion.py
+    pd_clot/regularization/erosion_equilibrium_runner.py
+
+除非只是增加完全只读 diagnostic hook，
+且有 regression test 证明生产结果不变。
+
+============================================================
+3. 核心科学问题
+============================================================
+
+当前模型基本是：
+
+    g = 1 - D
+
+并且 g 同时进入：
+
+    material softening
+    K
+    F reconstruction
+
+所以 very small D 也立即改变 kinematic reconstruction。
+
+PFPD 论文则分开：
+
+ENERGETIC DEGRADATION:
+
+    g(s) = (1 - s)^2
+
+KINEMATIC DEGRADATION:
+
+    h(s) = 1                      if s <= s_c
+
+    h(s) = ((1-s)/(1-s_c))^2     if s > s_c
+
+论文典型 numerical examples 使用：
+
+    s_c = 0.95
+
+因此在：
+
+    s << 0.95
+
+阶段：
+
+    energetic response may degrade
+
+但：
+
+    kinematic reconstruction should remain intact
+    because h = 1
+
+本轮第一核心假设检验：
+
+    当前历史 erosion 状态的最大 bond D
+    约为 3.3e-3，远低于 0.95。
+
+如果仅采用“energetic degradation 与 kinematic degradation 分离”
+这一论文原则，
+
+那么 early damage 不应该改变 K/F reconstruction。
+
+检查这是否能消除当前已经发现的
+reconstruction-driven energy anomaly。
+
+注意：
+
+这只是 compatibility hypothesis test。
+
+当前 D 不能直接声称等价于 PFPD 的 s。
+
+============================================================
+4. 第一阶段：资源和论文一致性审计
+============================================================
+
+在写代码前必须执行。
+
+读取：
+
+    /home/lzy/projects/2604.09215v1.pdf
+
+使用：
+    pdftotext
+    PDF page rendering
+    manual equation verification
+
+不要只读 arXiv HTML 或摘要。
+
+计算并保存 PDF SHA256。
+
+生成：
+
+verification/pfpd_candidate_v1/
+    resources/PAPER_IDENTITY.json
+    resources/PFPD_EQUATION_AUDIT.md
+
+至少人工核对以下公式：
+
+2.10   bond-associated deformation gradient F_tilde
+2.11   F_tilde_avg
+
+2.12   BAQP point strain-energy density
+2.13   averaged bond kernel w_bar_b
+2.14   kernel integral omega_0
+
+2.17   bond PK stress
+2.18   non-uniform stress Z
+2.19   force state
+
+3.4    PFPD total energy
+3.6    bond crack dissipation
+3.8    gamma_c(s)
+3.9    g(s)
+
+3.11   h(s)
+3.13   damage-dependent shape tensor
+3.14   bond shape vector
+
+3.15   bond energy
+3.16–3.18 variational stationary equation and Y_c
+3.19   energy-based crack driver
+
+3.23   stress-based crack driver
+3.24   history variable
+3.25   phase-field evolution
+
+3.47 / 3.59
+        normalization constant
+
+Algorithm 2
+        PFPD force/damage algorithm
+
+============================================================
+5. 必须首先审计论文内部的 damage-law 一致性
+============================================================
+
+这是一个 HARD GATE。
+
+当前 v1 论文写出：
+
+    gamma_c(s) = s                (AT1)
+    g(s) = (1-s)^2
+
+并给出 stationary condition：
+
+    -2(1-s) Psi_0
+    + Gc/(c0 delta)
+    = 0
+
+定义：
+
+    Yc = Gc/(2 c0 delta)
+
+从这组三个公式代数上得到：
+
+    s = 1 - Yc/Psi_0
+
+仅在 Psi_0 >= Yc 时得到内部解；
+低于阈值时 constrained minimum 应在 s = 0。
+
+但论文后面 Eq. 3.25 写成：
+
+    s = Y_history / (Y_history + Yc)
+
+请不要自行决定哪个公式正确。
+
+这个形式更接近：
+
+    gamma(s) = s^2
+
+时的 stationary relation，
+而不是前文声明的 gamma(s)=s。
+
+本轮必须：
+
+1. 检查 PDF 原图确认不是文本解析错误；
+2. 检查 arXiv 是否已有 v2/v3/new revision；
+3. 检查作者官方 Peridynamics.jl 当前 main/tags/branches；
+4. 搜索关键词：
+
+       PFPD
+       PhaseField
+       phase_field
+       critical_phase
+       sc
+       Yc
+       crack_driving
+       kinematic_degradation
+
+5. 检查 GitHub PR / branch / release / tags；
+6. 如发现公开 PFPD code：
+       记录 commit SHA
+       LICENSE
+       source file
+       exact line range
+       以作者代码作为主要算法解释依据。
+
+7. 如仍未公开：
+       不得凭猜测把 Eq. 3.25 当 canonical evolution。
+
+生成：
+
+    FORMULA_CONSISTENCY_GATE.json
+
+状态只能是：
+
+    RESOLVED_BY_AUTHOR_CODE
+    RESOLVED_BY_NEWER_MANUSCRIPT
+    UNRESOLVED_IN_V1
+
+如果为 UNRESOLVED_IN_V1：
+
+允许继续：
+    BAQP mechanics
+    g/h separation
+    c0 verification
+    historical-state diagnostics
+
+禁止把完整 PFPD damage evolution
+升级为 verified candidate。
+
+如后续任务确实需要完整 evolution，
+最终报告向用户明确询问：
+
+    是否可以提供作者后续源码、
+    更新版论文、
+    或允许按哪个明确变分模型继续。
+
+不要隐式选择。
+
+============================================================
+6. 第二阶段：优先复用官方开源资源
+============================================================
+
+首先检查当前 Peridynamics.jl。
+
+不要重新实现已经公开且可合法调用的 BAQP/BAC 基础模块。
+
+在新独立目录中 clone：
+
+    verification/pfpd_candidate_v1/external/
+
+固定：
+
+    repository URL
+    commit SHA
+    tag/version
+    LICENSE SHA
+
+不要 vendor 到 production Python package。
+
+不要复制大量 Julia source。
+
+优先方式：
+
+    use official package as an external benchmark/reference
+
+如果服务器已有 Julia：
+    创建独立 local project environment。
+
+如果没有 Julia：
+    不要修改 system-wide installation。
+
+如允许联网，可在项目 scratch 目录安装官方 Julia distribution；
+否则记录：
+
+    JULIA_REFERENCE_NOT_AVAILABLE
+
+并继续 Python candidate。
+
+不得因为 Julia 不可用而阻止论文公式验证。
+
+============================================================
+7. 第三阶段：建立独立 BAQP candidate
+============================================================
+
+建议新建：
+
+pd_clot/pfpd_candidate/
+    __init__.py
+    kernel.py
+    baqp.py
+    energy.py
+    degradation.py
+    normalization.py
+
+不要放进 production mechanics 文件。
+
+第一版只做：
+    3D
+    regular point cloud
+    existing project cloud geometry
+
+不要做 MPI/GPU rewrite。
+
+------------------------------------------------------------
+7.1 family data model
+------------------------------------------------------------
+
+当前项目 cloud.pairs 是 unordered bonds。
+
+论文 BAQP 公式使用：
+
+    point X
+    neighbor X'
+
+即 oriented family contribution。
+
+必须建立清楚的数据结构，
+保证：
+
+- unordered physical bond identity
+- endpoint-oriented family entries
+- no accidental double counting
+- symmetric bond s
+- endpoint-specific omega0 / shape data
+
+不要复制两套物理 bonds。
+
+增加 tests 检查：
+
+sum / pair orientation
+momentum conservation
+volume factors
+
+------------------------------------------------------------
+7.2 kernel normalization
+------------------------------------------------------------
+
+论文定义：
+
+    omega0(X)
+      = integral_H omega dV'
+
+离散实现：
+
+    omega0_i
+      = sum_j omega_ij V_j
+
+boundary particle 的 omega0 不等于 interior。
+
+averaged bond kernel：
+
+    wbar_ij =
+      0.5 * (
+        omega_ij / omega0_i
+        +
+        omega_ji / omega0_j
+      )
+
+使用论文 Eq. 2.13。
+
+不要把现有 unnormalized bond weight
+直接冒充 Eq. 2.13 的 wbar。
+
+============================================================
+8. 实现 intact BAQP mechanics
+============================================================
+
+严格实现论文：
+
+Fbar_i
+
+Ftilde_ij =
+    Ftilde_avg_ij
+    +
+    (
+      dx_ij - Ftilde_avg_ij dX_ij
+    )
+    tensor dX_ij / |dX_ij|^2
+
+Ftilde_avg =
+    0.5 (Fbar_i + Fbar_j)
+
+以及：
+
+bond energy
+bond PK stress
+Z_i
+force state
+internal force
+
+对应 Eq. 2.10–2.19。
+
+尽量使用论文和官方 Peridynamics.jl
+而不是自己创造替代版本。
+
+============================================================
+9. BAQP 必须先通过 mechanics gate
+============================================================
+
+未通过这一节前禁止进入 phase-field damage。
+
+至少：
+
+TEST A:
+rigid translation
+
+    F = I
+    energy ≈ 0
+    internal force ≈ 0
+
+TEST B:
+rigid rotation
+
+    objective hyperelastic model
+    internal elastic energy invariant
+
+TEST C:
+homogeneous affine deformation
+
+至少：
+    tension
+    compression
+    simple shear
+    isotropic stretch
+
+要求：
+
+    Fbar reproduces F_macro
+
+并检查 bond Ftilde。
+
+TEST D:
+boundary affine reproduction
+
+尤其检查 truncated families。
+
+TEST E:
+global internal force balance
+
+    sum F_internal ≈ 0
+
+TEST F:
+global moment balance
+如该 formulation 理论上要求。
+
+TEST G:
+energy-force finite difference
+
+对小 cloud：
+
+    -dE/dx
+    approximately equals internal force
+
+需要多 epsilon 检查。
+
+不能只用一个 finite-difference step。
+
+TEST H:
+comparison against official Peridynamics.jl
+如果可运行。
+
+用同一：
+    point cloud
+    material
+    deformation
+
+比较：
+    energy
+    force
+    Fbar/Ftilde
+至少到合理数值 tolerance。
+
+============================================================
+10. 本轮先使用简单材料，不引入 clot 新物理
+============================================================
+
+BAQP/PFPD method reproduction 中：
+
+不要马上加入：
+
+    Ogden
+    viscoelasticity
+    current erosion law
+
+优先使用论文相同或足够简单的：
+    Saint-Venant–Kirchhoff
+或
+    existing verified Neo-Hookean
+
+但同一个 benchmark 中只能使用明确一致的一套 constitutive law。
+
+建议：
+
+A.
+先用论文 Saint-Venant–Kirchhoff
+进行 paper-method reproduction。
+
+B.
+通过后，再测试项目现有 Neo-Hookean
+作为 compatibility test。
+
+不要因此修改 production material。
+
+============================================================
+11. 验证 normalization constant c0
+============================================================
+
+论文 Eq. 3.59：
+
+    c0 =
+      integral_0^1 omega(rho delta) rho^3 d rho
+      ------------------------------------------------
+      2 integral_0^1 omega(rho delta) rho^2 d rho
+
+项目当前 radial kernel：
+
+    omega(rho) = (1-rho)^2
+
+要求：
+
+A.
+手工/symbolic derivation
+
+    numerator = 1/60
+    denominator = 1/15
+
+所以：
+
+    c0 = 1/4
+
+B.
+使用 scipy.integrate.quad 数值验证。
+
+C.
+如果 sympy 已安装，可做 symbolic cross-check；
+不要因此新增重型 dependency。
+
+D.
+测试至少另外两个论文 kernel：
+    constant
+    linear
+如果足够简单。
+
+论文 constant kernel 应得到：
+    c0 = 3/8
+
+生成：
+
+    NORMALIZATION_CONSTANTS.json
+
+============================================================
+12. 离散 Griffith crack-energy normalization test
+============================================================
+
+不需要 fracture dynamics。
+
+建立规则 3D coupon，
+指定一个 planar crack。
+
+令 crossing bonds：
+
+    s = 1
+
+non-crossing：
+
+    s = 0
+
+根据论文 crack-energy term：
+
+    E_gamma =
+      double sum
+      wbar * Gc * gamma(s)/(c0 delta)
+      * Vi * Vj
+
+严格遵守论文 double integral 的离散化；
+禁止随意除以2，除非从有向/无向离散推导证明需要。
+
+比较：
+
+    measured E_gamma / crack_area
+
+与：
+
+    input Gc
+
+做：
+
+spacing study
+horizon-ratio study
+
+至少：
+    3 spacings
+    3 horizon ratios
+
+如计算量可接受。
+
+目的：
+
+验证：
+    current kernel c0=0.25
+在 discrete implementation 下是否趋向 Gc。
+
+这不是 clot Gc calibration。
+
+使用 demonstration Gc 即可，
+明确标：
+    NUMERICAL NORMALIZATION TEST
+
+============================================================
+13. energetic / kinematic degradation 分离实现
+============================================================
+
+实现论文无争议部分：
+
+    g(s) = (1-s)^2
+
+以及：
+
+    h(s; sc)
+
+默认 paper value：
+
+    sc = 0.95
+
+同时支持 diagnostic：
+
+    sc = 1.0
+        kinematic degradation disabled
+
+    sc = 0.95
+        paper default
+
+    sc = 0.0
+        h follows g
+
+这些不是 calibration sweep。
+
+不得根据结果选择“最好看”的 sc。
+
+============================================================
+14. 核心历史状态假设检验
+============================================================
+
+使用上一轮保存的：
+
+results/streaming_erosion_equilibrium_v1/
+
+35 个 historical fixed-x damage jumps。
+
+只读。
+
+不要重新生成轨迹。
+
+当前 old/new D 只作为：
+
+    prescribed spatial pattern proxy
+
+不要称它为真实 PFPD phase-field history。
+
+对每个 fixed x 状态至少比较：
+
+MODEL A — CURRENT PRODUCTION
+
+    existing formulation
+    current g = 1-D
+    current K/F degradation
+
+必须 reproduce 旧 audit。
+
+------------------------------------------------------------
+
+MODEL B — SEPARATED ENERGETIC ONLY DIAGNOSTIC
+
+用：
+
+    s_proxy = D
+
+    g(s_proxy) = (1-s_proxy)^2
+
+但：
+
+    h = 1
+
+保持 kinematic reconstruction intact。
+
+重要：
+
+这是：
+    PFPD-PRINCIPLE DIAGNOSTIC
+
+不是：
+    FULL PFPD
+
+------------------------------------------------------------
+
+MODEL C — PAPER-LIKE DELAYED KINEMATIC DIAGNOSTIC
+
+    g(s_proxy) = (1-s_proxy)^2
+    h(s_proxy; sc=0.95)
+
+因为所有当前 D << 0.95：
+
+预期：
+    h = 1
+
+因此 MODEL B 和 C 在 kinematics 上应一致。
+
+若不一致：
+    implementation bug
+    stop.
+
+------------------------------------------------------------
+
+MODEL D — h = g diagnostic
+
+    sc = 0
+
+只作为说明：
+
+如果 energetic 和 kinematic degradation
+再次同步发生，
+reconstruction anomaly 是否重新出现。
+
+明确：
+
+    DIAGNOSTIC ONLY
+
+============================================================
+15. 历史状态比较指标
+============================================================
+
+35 jumps 每一跳输出：
+
+current production:
+
+    delta K
+    delta F
+    delta elastic stored energy
+    reconstruction contribution
+
+MODEL B/C/D:
+
+    delta K
+    delta F
+    elastic energy change
+
+核心问题：
+
+Q1.
+在 B/C 下：
+
+    max ||delta K||
+    max ||delta F||
+
+是否降到 numerical roundoff？
+
+Q2.
+current reconstruction anomaly
+是否消失？
+
+Q3.
+energetic degradation alone
+是否使 elastic energy 单调下降？
+
+Q4.
+当 sc=0 / h=g 时，
+是否重新出现与 current formulation
+类似的 reconstruction sensitivity？
+
+不要从一次结果直接称因果。
+但这是一个很强的 controlled mechanism test。
+
+============================================================
+16. 非常重要：不要错误比较 total fracture energy
+============================================================
+
+对于人为指定的：
+
+    s_proxy = current D
+
+不要要求 PFPD 的：
+
+    total energy =
+        degraded elastic energy
+        +
+        crack surface energy
+
+必须自动下降。
+
+因为 PFPD thermodynamic claim
+依赖于其自己的 variational damage evolution，
+而不是任意外部强制 s pattern。
+
+历史状态 compatibility test
+主要检查：
+
+    kinematic reconstruction
+    elastic degradation
+
+不要把 arbitrary s_proxy
+当作合法 fracture evolution。
+
+============================================================
+17. Phase-field evolution gate
+============================================================
+
+只有：
+
+    FORMULA_CONSISTENCY_GATE
+    != UNRESOLVED_IN_V1
+
+时，
+
+才允许实现 canonical phase-field evolution。
+
+如果从作者公开代码/新版论文解决了：
+
+实现并注明来源。
+
+如果没有解决：
+
+允许实现两个
+“paper-equation comparison diagnostics”：
+
+BRANCH AT1-STATIONARY:
+
+    gamma=s
+    g=(1-s)^2
+
+根据 constrained minimization
+研究：
+
+    s_AT1(Y)
+
+BRANCH EQ3.25:
+
+    s_EQ325 =
+        Y_history/(Y_history+Yc)
+
+但两个都必须标：
+
+    FORMULA COMPARISON ONLY
+    NOT VERIFIED PFPD EVOLUTION
+
+生成图展示二者差异。
+
+不得在 clot production 中使用任何一个。
+
+============================================================
+18. 如果 canonical evolution 已解决
+============================================================
+
+只有此时才继续：
+
+实现：
+
+Y
+history variable
+s evolution
+
+并验证：
+
+- irreversibility
+- 0 <= s <= 1
+- below-threshold behavior
+- crack dissipation >= 0
+- damage history independent of unloading
+- fixed-x update behavior
+- energy accounting
+
+必须明确区分：
+
+elastic stored energy
+
+和：
+
+crack surface/dissipation energy。
+
+不能把 crack energy 当 elastic energy。
+
+============================================================
+19. 不要直接接回 STREAMING_EROSION
+============================================================
+
+这一轮禁止：
+
+    replacing D with s
+    replacing erosion rate
+    combining C_t with PFPD
+    combined erosion + PFPD
+    fatigue + PFPD
+
+原因：
+
+PFPD 是 rate-independent fracture framework；
+当前 STREAMING_EROSION 是 dD/dt development law。
+
+二者关系尚未定义。
+
+本轮只做：
+    fracture mechanics candidate
+    compatibility study
+
+============================================================
+20. 对开源工具的使用原则
+============================================================
+
+优先：
+
+1. official Peridynamics.jl code
+
+2. official docs
+
+3. paper source / DOI
+
+不要：
+
+- 从博客抄公式；
+- 使用不明 fork 作为权威；
+- 重写已有 BAC implementation 后
+  却不做 comparison。
+
+如果发现 PFPD 已正式公开：
+
+优先运行作者 implementation。
+
+把它当：
+    external reference oracle
+
+不要马上变成 production dependency。
+
+记录：
+
+repo URL
+commit SHA
+tag
+LICENSE
+exact commands
+Julia version
+Manifest.toml hash
+
+============================================================
+21. 测试要求
+============================================================
+
+现有 130 tests 必须全部保留。
+
+新增独立文件，例如：
+
+tests/test_baqp_kinematics.py
+tests/test_baqp_energy_force.py
+tests/test_pfpd_degradation.py
+tests/test_pfpd_normalization.py
+tests/test_pfpd_historical_diagnostics.py
+
+至少新增：
+
+TEST 1
+kernel omega0 positivity
+
+TEST 2
+wbar symmetry
+
+TEST 3
+rigid translation
+
+TEST 4
+rigid rotation/objectivity
+
+TEST 5
+affine reproduction bulk
+
+TEST 6
+affine reproduction boundary
+
+TEST 7
+bond Ftilde reproduces bond direction
+
+TEST 8
+internal force global balance
+
+TEST 9
+finite-difference energy-force consistency
+
+TEST 10
+g(0)=1
+g(1)=0
+
+TEST 11
+h(s<=sc)=1
+
+TEST 12
+h(1)=0
+
+TEST 13
+sc=0 -> h=g
+
+TEST 14
+c0 quadratic kernel = 0.25
+
+TEST 15
+constant kernel = 3/8
+
+TEST 16
+discrete crack-energy normalization
+
+TEST 17
+historical Model B/C:
+K/F unchanged for s_proxy < sc
+
+TEST 18
+historical old/current audit reproduction
+
+TEST 19
+input arrays read-only
+
+TEST 20
+production solver outputs unchanged
+
+如果 canonical evolution 已解决，
+再增加 evolution tests。
+
+============================================================
+22. 强制 preservation
+============================================================
+
+开始前创建：
+
+verification/pfpd_candidate_v1/
+    provenance/PRE_RUN_MANIFEST.json
+
+记录：
+
+所有现有：
+    source files
+    tests
+    configs
+    prior verification reports
+
+SHA256。
+
+结束后：
+
+    POST_RUN_MANIFEST.json
+    PRESERVATION_CHECK.json
+
+明确：
+
+production modified files
+historical modified files
+
+理想目标：
+
+    production modified files = 0
+    historical modified files = 0
+
+============================================================
+23. 服务器计算资源
+============================================================
+
+记录：
+
+CPU
+physical cores
+logical cores
+RAM
+free RAM
+disk
+Julia version
+Python
+NumPy
+SciPy
+Numba
+
+写：
+
+provenance/HARDWARE.json
+
+独立 cases 并行：
+
+- c0 kernel checks
+- spacing/horizon normalization tests
+- affine fixtures
+- historical 35 jumps
+- sc diagnostics
+
+使用：
+    ProcessPoolExecutor
+或现有 scheduler。
+
+worker:
+
+OPENBLAS_NUM_THREADS=1
+OMP_NUM_THREADS=1
+MKL_NUM_THREADS=1
+
+根据 RAM 自动限制进程数。
+
+保留至少20%内存 headroom。
+
+如果 Peridynamics.jl 使用 Julia threads：
+避免 Julia threading 与 Python multiprocessing
+同时 oversubscribe。
+
+不要为了“利用GPU”重写 solver。
+
+============================================================
+24. 输出目录
+============================================================
+
+只写：
+
+verification/pfpd_candidate_v1/
+
+建议：
+
+resources/
+external/
+paper_audit/
+baqp_verification/
+normalization/
+historical_compatibility/
+formula_consistency/
+tests/
+comparisons/
+figures/
+provenance/
+
+如果运行独立 candidate states：
+
+results/pfpd_candidate_v1/
+
+禁止覆盖任何历史 results。
+
+============================================================
+25. 可视化要求
+============================================================
+
+所有图：
+
+PNG + PDF
+
+图必须简单、可读。
+不要只给专家看的复杂 notation。
+
+至少生成：
+
+------------------------------------------------------------
+FIGURE 1
+energetic_vs_kinematic_degradation
+
+横轴：
+s
+
+纵轴：
+degradation factor
+
+显示：
+
+g(s)
+
+h(s, sc=0.95)
+
+h(s, sc=1)
+
+h(s, sc=0)
+
+明确阴影或文字指出：
+
+CURRENT HISTORICAL s_proxy RANGE
+约 <= 0.0033
+
+人工问题：
+
+“为什么 early damage 不应该改变 kinematics？”
+
+------------------------------------------------------------
+FIGURE 2
+normalization_constant
+
+显示：
+
+kernel
+c0 analytic/numerical
+
+至少：
+constant
+linear
+current quadratic
+
+人工问题：
+
+“Gc normalization 是否正确？”
+
+------------------------------------------------------------
+FIGURE 3
+baqp_affine_reproduction
+
+比较：
+
+prescribed F
+reconstructed Fbar
+bond Ftilde errors
+
+bulk / boundary。
+
+人工问题：
+
+“新 candidate 是否先把 intact mechanics 算对？”
+
+------------------------------------------------------------
+FIGURE 4
+historical_KF_change
+
+比较：
+
+Current
+Separated g + h=1
+PFPD-like sc=0.95
+h=g
+
+纵轴至少：
+
+max relative delta F
+max relative delta K
+
+人工问题：
+
+“分离 kinematic degradation
+是否真的消除了当前 anomaly 的来源？”
+
+------------------------------------------------------------
+FIGURE 5
+historical_elastic_energy_change
+
+35 jumps。
+
+显示：
+
+current production
+g energetic only / h=1
+sc=0.95
+sc=0
+
+signed elastic-energy change。
+
+注意：
+
+这不是 full PFPD total energy，
+因为历史 s_proxy 不是 variational evolution。
+
+图中必须写：
+
+KINEMATIC / ELASTIC COMPATIBILITY TEST ONLY
+
+------------------------------------------------------------
+FIGURE 6
+griffith_normalization_convergence
+
+如果 normalization study 完成：
+
+横轴：
+spacing 或 horizon ratio
+
+纵轴：
+measured crack energy / (Gc*A)
+
+目标线：
+1
+
+人工问题：
+
+“离散 fracture-energy normalization 是否工作？”
+
+------------------------------------------------------------
+FIGURE 7
+formula_consistency
+
+如果 Eq.3.25 ambiguity 未解决：
+
+横轴：
+Y/Yc
+
+纵轴：
+s
+
+比较：
+
+AT1 stationary constrained solution
+
+Eq. 3.25 relation
+
+明确写：
+
+PAPER v1 FORMULA CONSISTENCY CHECK
+NOT A MODEL SELECTION
+
+============================================================
+26. 人工审核报告
+============================================================
+
+生成：
+
+verification/pfpd_candidate_v1/
+    REVIEW_PFPD_CANDIDATE_V1.md
+
+要求：
+
+门外汉也能看懂。
+
+结构：
+
+1. 为什么做这一轮
+
+2. 当前旧模型哪里有问题
+
+3. PFPD 用什么思路解决
+
+用通俗语言解释：
+
+    g(s)
+    h(s)
+    sc
+    BAQP
+
+4. 论文有没有公式歧义
+
+必须直接回答。
+
+5. 有没有找到作者公开 PFPD implementation
+
+如果有：
+    commit/version
+
+如果没有：
+    明确写 private/not found
+
+6. BAQP intact mechanics verification
+
+7. c0 verification
+
+8. Griffith discrete normalization
+
+9. historical 35-state compatibility
+
+10. 是否消除了 reconstruction anomaly
+
+11. 是否已经证明 thermodynamic PFPD
+
+不要把 compatibility test
+冒充完整 thermodynamic proof。
+
+12. 与 current production solver 的区别
+
+13. 测试结果
+
+old
+new
+total
+
+14. 图怎么看
+
+每图2–3句话。
+
+15. 当前状态标签
+
+16. 下一步建议
+只给一个最小下一步。
+
+============================================================
+27. 验收标准
+============================================================
+
+本轮只有满足以下条件才能标：
+
+PFPD_CANDIDATE_V1:
+    DEVELOPMENT VERIFICATION PASSED
+
+A.
+原 130 tests 全通过。
+
+B.
+BAQP affine reproduction 通过。
+
+C.
+energy-force finite-difference test 通过。
+
+D.
+global internal-force balance 通过。
+
+E.
+current kernel：
+
+    c0 = 0.25
+
+解析与数值一致。
+
+F.
+discrete Griffith normalization
+有明确 convergence / error report。
+
+G.
+historical 35-state current model
+完整再现旧 energy audit。
+
+H.
+对于 s_proxy < sc：
+
+    h=1
+
+且 Model B/C 的 kinematic reconstruction
+不会因为 early damage 改变。
+
+I.
+production solver 没有被替换。
+
+J.
+论文公式歧义如果未解决，
+完整 phase-field evolution 不得标 verified。
+
+============================================================
+28. 状态标签
+============================================================
+
+最终至少输出：
+
+PFPD PAPER AUDIT:
+    COMPLETE / INCOMPLETE
+
+PFPD FORMULA CONSISTENCY:
+    RESOLVED_BY_AUTHOR_CODE
+    RESOLVED_BY_NEWER_MANUSCRIPT
+    或
+    UNRESOLVED_IN_V1
+
+PUBLIC AUTHOR PFPD CODE:
+    FOUND / NOT_FOUND
+
+BAQP INTACT MECHANICS:
+    VERIFIED / NOT_VERIFIED
+
+CURRENT KERNEL c0:
+    VERIFIED_0.25 / NOT_VERIFIED
+
+GRIFFITH NORMALIZATION:
+    VERIFIED / NOT_VERIFIED / INCONCLUSIVE
+
+ENERGETIC-KINEMATIC SEPARATION:
+    TESTED / NOT_TESTED
+
+CURRENT RECONSTRUCTION ANOMALY UNDER h=1:
+    REMOVED_FOR_AUDITED_STATES
+    / PERSISTS
+    / INCONCLUSIVE
+
+FULL PFPD DAMAGE EVOLUTION:
+    VERIFIED
+    / NOT_IMPLEMENTED_DUE_TO_FORMULA_AMBIGUITY
+    / DEVELOPMENT_ONLY
+
+PRODUCTION MODEL:
+    UNCHANGED
+
+PHYSICAL CLOT CALIBRATION:
+    NOT PERFORMED
+
+REAL MICROBUBBLE CFD:
+    NOT USED
+
+============================================================
+29. 严禁事项
+============================================================
+
+禁止：
+
+- 直接替换 production NOSB；
+- 把 current D 叫 PFPD s；
+- 把 historical compatibility test
+  叫完整 thermodynamic validation；
+- 为了得到好结果调 sc；
+- 默认 Eq.3.25 一定正确；
+- 默认 Eq.3.17 一定正确；
+- 隐藏论文内部公式歧义；
+- 因为作者说 thermodynamic consistent
+  就跳过自己的 energy audit；
+- 删除原有 stabilization；
+- 引入 Ogden；
+- 引入真实 clot Gc；
+- 加 fatigue；
+- 加 erosion/PFPD combined model；
+- 加 real CFD；
+- 调参数制造 fracture；
+- 覆盖旧结果；
+- 删除旧测试。
+
+============================================================
+30. 如果需要额外论文
+============================================================
+
+若 BAQP implementation 的具体公式
+仅凭 PFPD 原文和官方代码仍不够：
+
+优先通过 DOI / open repository 获取：
+
+Behzadinasab et al. Part I
+DOI:
+10.1007/s42102-020-00040-z
+
+Chen 2018
+DOI:
+10.1016/j.mechrescom.2018.04.004
+
+Chen & Spencer 2019
+DOI:
+10.1002/nme.5973
+
+如果全文无法合法获得：
+
+输出：
+
+    NEED_PAPER_INPUT
+
+并明确向用户询问：
+    论文标题
+    DOI
+    所需章节
+
+不要凭模型记忆补公式。
+
+但其他已经能够完成的 candidate 验证继续执行。
+
+============================================================
+31. 最终终端摘要
+============================================================
+
+最后只输出：
+
+- paper SHA256
+- official external repos actually used
+- exact commits
+- public PFPD implementation found? yes/no
+- formula-consistency status
+- files added
+- production files modified
+- old tests
+- new tests
+- total tests
+- BAQP affine max error
+- force-energy max error
+- c0 current kernel
+- Griffith normalization max error
+- historical 35-state replay status
+- current-model max deltaF from damage
+- h=1 candidate max deltaF
+- energy anomaly under separated kinematics status
+- REVIEW_PFPD_CANDIDATE_V1.md
+- figures directory
+- final scientific labels
+
+不要只输出：
+
+    implementation complete
+
+============================================================
+32. 完成后停止
+============================================================
+
+不要自动进入：
+
+production replacement
+clot calibration
+Ogden
+wall cohesive law
+fatigue
+erosion + PFPD coupling
+real CFD
+
+等待人工审核。

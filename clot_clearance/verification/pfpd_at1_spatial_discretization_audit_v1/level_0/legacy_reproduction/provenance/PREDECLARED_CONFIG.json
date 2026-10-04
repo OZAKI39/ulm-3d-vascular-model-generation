@@ -1,0 +1,129 @@
+{
+  "task": "PFPD_AT1_BRANCH_STABILITY_TRACKING_V1",
+  "created_utc": "2026-10-02T15:25:32.185761+00:00",
+  "physics_config_source": "verification/pfpd_at1_evolution_v1/provenance/PREDECLARED_CONFIG.json",
+  "physics_config_sha256": "071f1c0f250092dd0ae6d3b2c1e9c7e7995e81a99463934396bed48761d852b4",
+  "previous_audit_config_sha256": "887184d55d4f4caedae05bd3bda058e19a303d7463878ea0433910c820337d29",
+  "reuse": "AuditProblem objective_gradient/metrics/classify, projected_kkt, full_hessian and hessian_audit imported unchanged; hessian output routed to new directory only",
+  "schedules": {
+    "A": [
+      0.009,
+      0.0095,
+      0.00975,
+      0.009875,
+      0.0099375,
+      0.00996875,
+      0.009984375,
+      0.0099921875,
+      0.01,
+      0.010125,
+      0.01025
+    ],
+    "B": [
+      0.009,
+      0.00925,
+      0.0095,
+      0.00975,
+      0.01,
+      0.01025,
+      0.0105,
+      0.01075,
+      0.011,
+      0.01125,
+      0.0115,
+      0.01175,
+      0.012,
+      0.01225,
+      0.0125,
+      0.01275,
+      0.013
+    ]
+  },
+  "refinement_width": 1e-05,
+  "refinement_max_levels": 12,
+  "refinement_method": "interval bisection; no brentq unless all smoothness conditions proved; this implementation always retains interval",
+  "least_squares": {
+    "method": "dogbox",
+    "ftol": 1e-13,
+    "xtol": 1e-13,
+    "gtol": 1e-13,
+    "max_nfev": 300,
+    "x_scale": 1.0,
+    "tr_solver": "exact",
+    "loss": "linear"
+  },
+  "jacobian": "chain rule of projected residual using unchanged full_hessian, central/one-sided epsilon=3e-6; derivative probes are algebraic only",
+  "residual_jacobian_epsilon": 3e-06,
+  "force_tolerance": 1e-09,
+  "phase_KKT_tolerance": 1e-08,
+  "bounds_tolerance": 1e-12,
+  "fixed_boundary_tolerance": 0.0,
+  "domain_policy": "Stop on any least_squares trial outside original pure-tension/sc domain; Hessian derivative probes use algebraic extension and are never branch states",
+  "reproduction_tolerances": {
+    "x_absolute_m": 1e-12,
+    "s_absolute": 1e-08,
+    "energy_relative": 1e-09,
+    "force_absolute": 1e-09,
+    "KKT_absolute": 1e-08,
+    "lambda_absolute": 1e-06
+  },
+  "hessian_epsilon": [
+    1e-05,
+    3e-06,
+    1e-06
+  ],
+  "curvature_relative_tolerance": 1e-07,
+  "active_s_tolerance": 1e-08,
+  "active_q_scaled_tolerance": 1e-07,
+  "hessian_epsilon_relative_tolerance": 0.02,
+  "critical_cone_authorization": "User explicitly selected critical-cone classification; keep all auxiliary one-sided probes. Strong-bound opening directions with positive first-order energy are not instability evidence.",
+  "critical_linear_tolerance": 1e-08,
+  "cone_seed": 84621,
+  "random_directions_per_category": 12,
+  "feasibility_amplitudes": [
+    1e-08,
+    1e-07,
+    1e-06
+  ],
+  "include_projected_negative_modes": true,
+  "projected_negative_mode_limit": 12,
+  "weak_bound_rule": "Strong lower components fixed to zero in critical cone; weak lower components nonnegative; interior free; one-sided cone negative direction can prove instability, positive random probes cannot certify weak-bound stability",
+  "continuity": {
+    "maximum_x_predictor_error_scaled_L2": 0.1,
+    "phase_jump_allowance": "500*strain_increment+0.01",
+    "mass_switch_fraction": 0.25,
+    "mode_cosine_threshold": 0.95
+  },
+  "damage_phase_tolerance": 1e-08,
+  "schedule_consistency": {
+    "critical_interval_tolerance": 1e-05,
+    "same_load_max_s_tolerance": 1e-06,
+    "same_load_reaction_relative_tolerance": 1e-05,
+    "same_load_lambda_absolute_tolerance": 1e-05
+  },
+  "landscape_alpha": [
+    -3e-05,
+    -1e-05,
+    -3e-06,
+    -1e-06,
+    0.0,
+    1e-06,
+    3e-06,
+    1e-05,
+    3e-05
+  ],
+  "landscape_smaller_alpha_if_domain_needed": [
+    -3e-07,
+    -1e-07,
+    1e-07,
+    3e-07
+  ],
+  "landscape_policy": "Save every requested probe and rejection; do not plot invalid phase/domain points as valid energies. If critical mode is one-sided, retain one-sided curve and separately use nearest interior unstable state for the requested symmetric check.",
+  "resource_limits": {
+    "reserve_total_RAM_fraction": 0.2,
+    "parent_bytes": 536870912,
+    "worker_bytes": 1073741824,
+    "worker_cap": 3
+  },
+  "scope": "Exact old geometry/volume; new requested strain schedule; no refined geometry"
+}

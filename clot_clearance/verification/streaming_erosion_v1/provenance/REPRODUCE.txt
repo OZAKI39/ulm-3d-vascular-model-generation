@@ -1,0 +1,8 @@
+Run from the clot_clearance repository directory. Use the recorded Python environment.
+export PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$PWD" NUMBA_CACHE_DIR="$PWD/build_streaming_erosion_v1/numba_cache" MPLCONFIGDIR="$PWD/build_streaming_erosion_v1/matplotlib" OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1
+python -B -m pytest tests -q -p no:cacheprovider --basetemp build_streaming_erosion_v1/reproduce_tests
+python -B scripts/verify_streaming_erosion.py --run --analyze
+python -B scripts/review_streaming_erosion.py
+The two scripts refuse existing results/artifacts. For recomputation use a fresh checkout plus these added source/config/test files, or the runner CLI with a new output directory; never delete or overwrite delivered results.
+One case in a new directory: python -B -m pd_clot.regularization.erosion_runner --config configs/streaming_erosion_demo_coarse.json --output results/streaming_erosion_reproduction/new_case
+Each dataset source_snapshot and SHA256.json retain its exact source. First-attempt test rejection files predate the erosion signed-energy ledger and are intentionally preserved.

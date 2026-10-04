@@ -1,0 +1,75 @@
+                                                   C. Miehe et al. / Computer Methods in Applied Mechanics and Engineering 199 (2010) 2765–2778                               2769
+
+
+Box 1
+Staggered Scheme for Phase Field Fracture in [tn, tn + 1].
+
+   1. Initialization. The displacement, fracture phase and history fields un, dn and Hn at time tn are known. Update prescribed loads γ̄, ū, t̄ at
+      current time tn + 1.
+   2. Compute History. Determine maximum reference energy obtained in history
+
+       (
+           ψþ0 ð∇sunÞ  for ψþ0 ð∇sunÞ N Hn
+    H =
+          Hn        otherwise
+
+       in the domain B and store it as a history variable field.
+   3. Compute Fracture Phase Field. Determine the current fracture phase field d from the minimization problem of crack topology
+
+             n   h                                   i  o                                η
+     d = Arg inf                   d  ∫B gcγðd; ∇dÞ + 2τ ðd−dnÞ2−ð1−dÞ2H dV
+
+      with the crack surface density function
+
+               1            l
+      γðd; ∇dÞ =   d2 +   j∇dj2:
+                    2l     2
+
+   4. Compute Displacement Field. Determine the current displacement u at frozen fracture phase field d from the minimization problem of
+        elasticity
+
+             n                       o
+     u = Arg inf                 u  ∫B ½ ψð∇su; dÞ−γ·u dV−∫∂Bt t⋅udA
+
+      with the free energy density function
+
+      ψðε; dÞ = ½ð1−dÞ2 + k ψþ0 ðεÞ + ψ−0 ðεÞ
+
+      with ψ0±(ε)=λ〈tr[ε]〉±2 /2+μtr[ε±2 ] for the Dirichlet-type boundary condition u=ū on ∂Bu.
+
+
+
+
+contribution is chosen either positive or negative according to the sign     at given state {u, d}. Here, we introduced per deﬁnition the stress
+of the volume dilatation e=tr[ε], which cannot be expressed in terms    tensor
+of the positive and negative strain tensors ε+ and ε−. The
+monotonically decreasing degradation function g(d) describes the   σ := ∂εψðε; dÞ = ½ð1−dÞ2 + k ½λ〈tr½ε 〉þ1 + 2μεþ + ½λ〈tr½ε 〉−1 + 2με−
+degradation of the positive (tensile) part of the stored energy with                                                                  ð23Þ
+evolving damage. It is assumed to have the properties
+                                                           and the energetic force
+
+gð0Þ = 1    ;  gð1Þ = 0    ;  g′ð1Þ = 0:                          ð20Þ
+                                                                                                                    f := −∂dψðε; dÞ = 2ð1−dÞψþ0 ðεÞ:                              ð24Þ
+
+The ﬁrst two conditions include the limits for the unbroken and the    Note that the energetic force f is positive and bounded by a ﬁnite value
+fully-broken case. As shown below, the latter constraint ensures that     for the limit ψ0+(ε)→∞. As shown below this property ensures that
+the energetic fracture force converges to a ﬁnite value if the damage    the phase ﬁeld variable is bounded by its maximum value d=1. The
+converges to the fully-broken state d=1. A simple function that has    key term that drives the crack evolution is the positive part ψ0+(ε) of
+the above properties is                                               the reference energy, that may be considered to describe locally the
+                                                                           intensity of the tensile part of the deformation.
+gðdÞ = ð1−dÞ2:                                               ð21Þ
+                                                                                       3.2. Dissipation functional due to fracture
+
+The small positive parameter k≈0 in Eq. (16) circumvents the full
+degradation of the energy by leaving the artiﬁcial elastic rest energy      3.2.1. Dissipation due to crack propagation
+density kψ0(ε) at a fully-broken state d=1. It is chosen as small as       For a given fracture surface functional Γ(d) introduced in Eq. (6),
+possible such that the algebraic conditioning number of the applied   we deﬁne the work needed to create a diffusive fracture topology by
+numerical discretization method remains well-posed for partly-
+broken systems.                                                 WcðdÞ : = ∫B gcγðd; ∇dÞdV;                                   ð25Þ
+
+3.1.3. Rate of energy functional
+                                                          where gc is the Grifﬁth-type critical energy release rate and γ(d, ∇d)   Taking the time derivative of Eq. (15), we obtain the rate of energy
+                                                                    the crack surface density function deﬁned in Eq. (7). The rate of thewhich we consider to be a functional of the rates {u˙ , ḋ}
+                                                         work functional Wc deﬁnes the crack dissipation
+
+˙Eð ˙u; ˙d; u; dÞ = ∫B ½σ : ∇s ˙u−f ˙d dV                             ð22Þ     ˙Wcð ˙d; dÞ = ∫B ðgcδdγÞ ˙ddV;                                     ð26Þ

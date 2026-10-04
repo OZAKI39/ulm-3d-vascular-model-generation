@@ -1,0 +1,1615 @@
+你正在继续开发 clot CFD–PD 项目。
+
+============================================================
+0. 本轮项目与当前基线
+============================================================
+
+首先自动定位真实仓库：
+
+    git rev-parse --show-toplevel
+    git status --short
+    git rev-parse HEAD
+
+不要假设 Git HEAD 等于完整开发状态。
+前几轮有必须保护的新增验证文件和未提交成果。
+
+当前最新已验证开发状态：
+
+PFPD_CANDIDATE_V1:
+    DEVELOPMENT VERIFICATION PASSED
+
+PFPD PAPER AUDIT:
+    COMPLETE
+
+PFPD FORMULA CONSISTENCY:
+    UNRESOLVED_IN_V1
+
+PUBLIC AUTHOR PFPD CODE:
+    NOT_FOUND at previous audit
+
+BAQP INTACT MECHANICS:
+    VERIFIED
+
+CURRENT KERNEL c0:
+    VERIFIED_0.25
+
+GRIFFITH NORMALIZATION:
+    VERIFIED within documented numerical-normalization scope
+
+ENERGETIC-KINEMATIC SEPARATION:
+    TESTED
+
+CURRENT RECONSTRUCTION ANOMALY UNDER h=1:
+    REMOVED_FOR_AUDITED_STATES
+
+FULL PFPD DAMAGE EVOLUTION:
+    NOT IMPLEMENTED
+
+PRODUCTION MODEL:
+    UNCHANGED
+
+当前测试基线：
+
+    169 passed
+    0 failed
+    0 skipped
+
+本轮名称：
+
+    PFPD_AT1_EVOLUTION_V1
+
+本轮仍然是：
+
+    ISOLATED DEVELOPMENT CANDIDATE
+
+不是：
+
+    PRODUCTION REPLACEMENT
+
+============================================================
+1. 权威资源
+============================================================
+
+主要原始论文：
+
+    /home/lzy/projects/2604.09215v1.pdf
+
+Phase-Field Peridynamics:
+https://arxiv.org/abs/2604.09215
+
+作者官方 Peridynamics.jl：
+https://github.com/kaipartmann/Peridynamics.jl
+
+官方文档：
+https://kaipartmann.github.io/Peridynamics.jl/stable/
+
+PFPD 中使用的 phase-field 基础文献：
+
+Miehe, Hofacker, Welschinger (2010)
+"A phase field model for rate-independent crack propagation:
+Robust algorithmic implementation based on operator splits"
+DOI:
+https://doi.org/10.1016/j.cma.2010.04.011
+
+PhaseFieldX：
+https://github.com/CastillonMiguel/phasefieldx
+https://phasefieldx.readthedocs.io/
+
+PhaseFieldX 只作为独立开源 phase-field implementation/reference；
+不要复制其 FEM solver 到 PD 项目中。
+
+优先级：
+
+1. 用户本地 PFPD PDF
+2. 作者官方最新论文/代码
+3. peer-reviewed phase-field fracture literature
+4. mature open-source reference implementations
+
+不要从博客或二手推导补核心公式。
+
+============================================================
+2. 开发前必须重新检查公开资源
+============================================================
+
+由于作者代码可能已经更新，正式编码前重新检查：
+
+A.
+arXiv 是否已有：
+    v2
+    v3
+    revised manuscript
+
+B.
+Peridynamics.jl 当前：
+    main
+    branches
+    tags
+    releases
+    PRs
+
+搜索：
+
+    PFPD
+    phase field
+    phase_field
+    kinematic degradation
+    crack driving
+    Yc
+    critical phase
+    sc
+
+C.
+检查作者其它公开 repository / Zenodo release。
+
+如果发现作者正式发布 PFPD implementation：
+
+不要立即替换我们的候选。
+
+先：
+
+- 固定 commit SHA
+- 保存 LICENSE
+- 找出 phase evolution 源文件
+- 核对 gamma(s)
+- 核对 g(s)
+- 核对 Yc
+- 核对 s evolution
+- 核对 irreversibility
+- 核对 h(s)
+
+生成：
+
+verification/pfpd_at1_evolution_v1/
+    resources/AUTHOR_UPDATE_CHECK.json
+
+若作者新版明确修正 v1 公式：
+
+将其作为最高优先级方法依据，
+同时保留下面 AT1 derivation 作为独立交叉检查。
+
+如果仍无新版：
+
+按本任务定义的
+"AT1-CONSISTENT CANDIDATE"
+继续。
+
+============================================================
+3. 这一轮明确采用什么，不采用什么
+============================================================
+
+采用：
+
+PFPD v1 声明的：
+
+    gamma_c(s) = s
+    g(s) = (1-s)^2
+
+以及：
+
+    Yc = Gc / (2*c0*delta)
+
+采用 AT1 constrained minimization。
+
+不采用 PFPD v1 Eq. 3.25：
+
+    s = Y/(Y+Yc)
+
+作为规范演化。
+
+除非作者新版或正式代码明确解释并修改了
+energy functional 使其与 Eq. 3.25 一致。
+
+当前候选名称必须明确：
+
+    PFPD_AT1_CONSISTENT_CANDIDATE
+
+不要称：
+
+    exact reproduction of PFPD Eq. 3.25
+
+============================================================
+4. 本轮严格限制在 early-damage 区域
+============================================================
+
+本轮只允许：
+
+    0 <= s <= s_c
+
+默认 development value：
+
+    s_c = 0.95
+
+并且在本轮：
+
+    h(s) = 1
+
+也就是说：
+
+phase evolution 可以降低 energetic contribution，
+
+但是：
+
+    shape tensor
+    moment matrix
+    shape derivatives
+    Fbar
+    Ftilde
+
+不得因为 s 的变化而变化。
+
+如果任一 bond 的 candidate update 要求：
+
+    s > s_c
+
+不要 clamp 后继续冒充完整 PFPD。
+
+必须：
+
+    save state
+    emit HIGH_DAMAGE_KINEMATIC_COUPLING_NOT_IMPLEMENTED
+    stop that coupled run
+
+解析 unit test 可以研究理论 s 接近 1，
+但 coupled mechanical candidate 必须在 s_c gate 停止。
+
+============================================================
+5. 三个状态变量必须完全分开
+============================================================
+
+禁止把现有：
+
+    STREAMING_EROSION D
+
+当作 PFPD s。
+
+新增名称清楚的变量：
+
+    s_pf_bond
+
+表示：
+    fracture phase variable
+
+可选：
+
+    D_pf_particle
+
+仅用于 visualization/post-processing，
+由 bond s 做加权聚合。
+
+原来的：
+
+    D_erosion
+
+保持原定义。
+
+本轮二者完全不耦合。
+
+禁止：
+
+    s_pf = D_erosion
+
+历史 s_proxy 诊断不再作为本轮演化初值。
+
+============================================================
+6. AT1 bond energy
+============================================================
+
+在 h=1、固定 BAQP kinematics 下：
+
+定义：
+
+    Y = Psi0_plus
+
+本轮第一阶段只使用纯 tensile benchmark，
+使：
+
+    Psi0_plus = Psi0
+
+避免自行发明 finite-strain tension/compression split。
+
+定义：
+
+    g(s) = (1-s)^2
+
+    E_elastic_bond =
+        g(s) * Y
+
+    E_crack_bond =
+        Gc/(c0*delta) * s
+        = 2*Yc*s
+
+    E_total_bond =
+        E_elastic_bond
+        + E_crack_bond
+
+其中：
+
+    Yc = Gc/(2*c0*delta)
+
+当前 quadratic kernel：
+
+    c0 = 0.25
+
+必须从已有 normalization module 读取，
+不要硬编码多个副本。
+
+============================================================
+7. AT1 constrained minimizer
+============================================================
+
+对于固定 Y：
+
+未约束 stationary relation：
+
+    -2(1-s)Y + 2Yc = 0
+
+得到：
+
+    s = 1 - Yc/Y
+
+考虑：
+
+    0 <= s <= 1
+
+得到 trial state：
+
+    if Y <= Yc:
+        s_trial = 0
+    else:
+        s_trial = 1 - Yc/Y
+
+施加 irreversibility：
+
+    s_new = max(s_old, s_trial)
+
+然后：
+
+    s_new <= 1
+
+在 coupled candidate 中额外要求：
+
+    s_new <= s_c
+
+否则触发 high-damage gate。
+
+============================================================
+8. 不要只相信解析公式：建立独立数值 oracle
+============================================================
+
+使用：
+
+    scipy.optimize.minimize_scalar
+
+或其它 SciPy bounded scalar minimizer，
+对每根独立 bond energy：
+
+    E_b(s)
+
+在：
+
+    s in [s_old, 1]
+
+做独立 numerical minimization。
+
+不要自己写通用 optimizer。
+
+比较：
+
+    analytic constrained update
+vs
+    SciPy bounded minimization
+
+driver ratios 至少：
+
+    Y/Yc =
+    0
+    0.01
+    0.1
+    0.25
+    0.5
+    0.9
+    0.99
+    1.0
+    1.0001
+    1.01
+    1.1
+    1.5
+    2
+    5
+    10
+    100
+
+不同：
+
+    s_old =
+    0
+    0.1
+    0.5
+    0.9
+
+要求解析与 SciPy 在预声明 tolerance 内一致。
+
+============================================================
+9. KKT / bound-optimality audit
+============================================================
+
+定义：
+
+    q(s) = dE_b/ds
+         = -2(1-s)Y + 2Yc
+
+每次 update 保存：
+
+    s_old
+    s_trial
+    s_new
+    q(s_new)
+
+验证：
+
+A. interior active update：
+
+    s_new > s_old
+    and s_new < 1
+
+要求：
+
+    |q(s_new)| <= tolerance
+
+B. irreversibility lower-bound active：
+
+    s_new == s_old
+
+要求：
+
+    q(s_new) >= -tolerance
+
+C. bounds：
+
+    0 <= s_new <= 1
+
+D.
+fixed-Y phase update：
+
+    E_total(s_new)
+    <=
+    E_total(s_old) + tolerance
+
+这是本轮最重要的 thermodynamic/software gate。
+
+============================================================
+10. 单 bond loading–unloading test
+============================================================
+
+不要立即跑 3D clot。
+
+先使用规定 driver path：
+
+例如：
+
+    Y/Yc:
+    0
+    0.25
+    0.5
+    0.9
+    1.0
+    1.1
+    1.5
+    2.0
+    3.0
+    2.0
+    1.0
+    0.5
+    0
+    1.0
+    2.5
+
+验证：
+
+- below threshold:
+      s = 0
+
+- above threshold:
+      s increases
+
+- unloading:
+      s does not decrease
+
+- reload below historical maximum:
+      no healing
+
+- reload beyond previous driver:
+      s may increase further
+
+分别记录：
+
+    elastic energy
+    crack energy
+    total bond energy
+    s
+    q(s)
+
+============================================================
+11. fixed-x multi-bond BAQP test
+============================================================
+
+建立一个已经验证的 small BAQP tensile state。
+
+固定：
+
+    x
+
+初始化：
+
+    s = 0
+
+根据每条 bond 的：
+
+    Y_bond
+
+执行 AT1 phase update。
+
+由于本轮：
+
+    h = 1
+
+要求严格验证：
+
+    K_new == K_old
+    Fbar_new == Fbar_old
+    Ftilde_new == Ftilde_old
+
+数值上应该 bitwise identical
+或达到 machine-level equality。
+
+然后：
+
+    elastic energy decreases or stays equal
+
+    crack energy increases or stays equal
+
+而：
+
+    elastic + crack total
+    must not increase
+    during a phase minimization step at fixed x.
+
+这一步直接验证：
+旧 reconstruction anomaly
+不会重新进入 AT1 evolution。
+
+============================================================
+12. 新建独立 phase evolution 模块
+============================================================
+
+建议新增：
+
+pd_clot/pfpd_candidate/
+    at1_evolution.py
+
+不要修改 production erosion.py。
+
+建议 API：
+
+    at1_trial_state(Y, Yc)
+
+    at1_constrained_update(
+        s_old,
+        Y,
+        Yc,
+        s_cap=None
+    )
+
+返回：
+
+    s_new
+    s_trial
+    active_set_status
+    derivative_at_solution
+    elastic_before
+    elastic_after
+    crack_before
+    crack_after
+    total_before
+    total_after
+
+支持 vectorized arrays。
+
+不允许 silent NaN / Inf。
+
+============================================================
+13. coupled quasi-static tensile development case
+============================================================
+
+只有前面 unit gates 全通过后才执行。
+
+新建：
+
+results/pfpd_at1_evolution_v1/
+    tensile_cube/
+
+使用：
+
+    BAQP candidate
+    Saint-Venant–Kirchhoff
+
+优先与 PFPD 论文方法一致。
+
+暂不使用：
+    clot Neo-Hookean
+    Ogden
+    streaming
+    fluid traction
+
+geometry：
+小 3D cube / rectangular bar。
+
+boundary：
+bottom prescribed/fixed
+top displacement controlled
+
+不要使用 fluid forces。
+
+使用一系列逐渐增加的 prescribed tensile displacement。
+
+参数必须在运行前写入 config，
+不得看结果后调参。
+
+Gc 使用：
+
+    Gc_demo
+
+只用于 algorithmic verification。
+
+选择 Gc_demo 时可以根据解析 Yc
+让预先声明的 load schedule
+在中间附近跨越 threshold，
+
+这是 benchmark design，
+不是 physical fitting。
+
+必须在报告中写：
+
+    DEMONSTRATION FRACTURE ENERGY
+    NOT CLOT CALIBRATION
+
+============================================================
+14. mechanical equilibrium reuse
+============================================================
+
+不要重新发明 quasi-static solver。
+
+尽量复用现有已经验证的：
+
+    ADR equilibrium framework
+
+通过 generic force callback
+驱动 BAQP candidate。
+
+如果现有 ADR API 无法直接复用：
+
+优先新增 wrapper/adapter，
+不要复制 ADR 算法。
+
+phase 固定时：
+    solve x equilibrium
+
+然后固定 x：
+    update s
+
+形成 staggered iteration：
+
+    x-equilibrium
+       ->
+    phase minimization
+       ->
+    x-equilibrium
+       ->
+    phase minimization
+       ...
+
+直到同时满足：
+
+MECHANICAL:
+    relative force residual <= existing/predeclared tolerance
+
+PHASE:
+    max |s_new-s_old_iter| <= phase tolerance
+
+ENERGY:
+    total candidate energy change
+    within convergence tolerance
+
+============================================================
+15. staggered solver 必须有 fail-loudly 行为
+============================================================
+
+新增例如：
+
+pd_clot/pfpd_candidate/
+    staggered_at1.py
+
+每个 load step：
+
+1. prescribed boundary increment
+
+2. equilibrate mechanics with fixed s
+
+3. save Y
+
+4. constrained AT1 update at fixed x
+
+5. audit phase-energy change
+
+6. if max(s) > s_c:
+       save state
+       stop:
+       HIGH_DAMAGE_KINEMATIC_COUPLING_NOT_IMPLEMENTED
+
+7. if phase changed:
+       re-equilibrate mechanics
+
+8. repeat until:
+       mechanical + phase convergence
+
+9. save accepted load step
+
+如果：
+
+    max iterations exceeded
+    NaN
+    rank loss
+    energy audit violation
+    force residual not converged
+
+必须：
+
+    save FAILED.json
+    save state
+    stop
+
+不要继续得到漂亮曲线。
+
+============================================================
+16. 本轮 energy accounting
+============================================================
+
+必须明确区分：
+
+A.
+undamaged elastic density:
+    Psi0
+
+B.
+degraded elastic energy:
+    g(s) Psi0
+
+C.
+crack energy:
+    Gc/(c0 delta) s
+
+D.
+candidate internal energy:
+    elastic + crack
+
+不要把 crack energy叫 stored elastic energy。
+
+phase update fixed x：
+
+要求：
+
+    E_candidate_after
+    <=
+    E_candidate_before + tolerance
+
+mechanical equilibrium step：
+
+能量可以随外部 displacement input 增加，
+不能用同一个下降判据。
+
+============================================================
+17. external work 只作为诊断
+============================================================
+
+对于 displacement-controlled tensile cube：
+
+记录：
+
+    reaction force
+    imposed displacement
+
+计算 incremental external work，
+例如梯形积分：
+
+    W_ext
+
+输出：
+
+    U_elastic
+    E_crack
+    U_elastic + E_crack
+    W_ext
+
+本轮允许 energy balance 有 numerical residual，
+但必须报告。
+
+不要为了闭合手调数据。
+
+============================================================
+18. 不可逆性测试
+============================================================
+
+coupled cube 必须有：
+
+LOAD:
+    ramp up
+
+UNLOAD:
+    partial unloading
+
+RELOAD:
+    reload beyond previous peak
+
+验证：
+
+    s never decreases
+
+并比较：
+
+    reaction force during reload
+
+目的：
+人工确认 residual stiffness / damage history。
+
+不要把 hysteresis 称为 physical clot hysteresis；
+这里是 fracture irreversibility，
+不是 viscoelasticity。
+
+============================================================
+19. threshold test
+============================================================
+
+生成独立 threshold benchmark。
+
+横轴：
+
+    Y/Yc
+
+纵轴：
+
+    s
+
+同时显示：
+
+    AT1 analytic
+    SciPy minimizer
+
+必须清楚显示：
+
+    s=0 for Y<=Yc
+
+在：
+
+    Y/Yc=1
+
+标 threshold。
+
+Eq.3.25 只允许作为灰色 comparison curve，
+标注：
+
+    PFPD v1 Eq.3.25
+    NOT USED
+
+不能让它进入 solver。
+
+============================================================
+20. 暂时不要处理 Psi+ 的一般定义
+============================================================
+
+本轮只对 pure tensile benchmark 使用：
+
+    Psi0_plus = Psi0
+
+禁止自行实现：
+
+- spectral tension/compression split
+- volumetric/deviatoric split
+- principal stress driver
+
+这些需要单独文献审查。
+
+如果任何 benchmark 包含压缩/混合载荷：
+
+不能用本轮 phase evolution。
+
+============================================================
+21. 暂时不要做 full fracture
+============================================================
+
+本轮不是 crack-propagation release。
+
+只验证：
+
+    early AT1 evolution
+
+如果：
+
+    max(s) reaches s_c
+
+run stops successfully with status：
+
+    HIGH_DAMAGE_GATE_REACHED
+
+这是预期结果，
+不是 failure。
+
+不要让 s 穿过 s_c。
+
+不要删 bond。
+
+不要做 fragment。
+
+============================================================
+22. 保留已有 Griffith normalization
+============================================================
+
+不要重复花大量计算重新证明上一轮已经验证的：
+
+    c0=0.25
+    prescribed planar crack normalization
+
+做一个 lightweight regression 即可。
+
+新增本轮仅需验证：
+
+    Yc =
+      Gc/(2*c0*delta)
+
+使用的 c0 确实来自同一个 kernel implementation。
+
+禁止另写 magic 0.25。
+
+============================================================
+23. 独立 open-source cross-check
+============================================================
+
+尽量不要重复造 AT1 bound solver。
+
+检查：
+
+PhaseFieldX:
+https://github.com/CastillonMiguel/phasefieldx
+
+以及其它清晰开源 AT1 reference。
+
+目的只包括：
+
+- AT1 crack-density convention
+- bound / irreversibility treatment
+- threshold behavior
+- staggered-solver practices
+
+不要引入 FEM mesh solver 作为项目 dependency。
+
+如果能够构造一个完全等价的
+zero-gradient/local AT1 energy test：
+
+可以让开源 implementation
+作为 independent oracle。
+
+如果模型 normalization convention 不同：
+
+先换算，
+不要直接比数字。
+
+保存：
+
+resources/AT1_OPEN_SOURCE_REVIEW.md
+
+包含：
+repo
+commit
+license
+relevant file
+what was reused
+what was not reused
+
+============================================================
+24. 测试要求
+============================================================
+
+现有：
+
+    169 tests
+
+必须全部保留通过。
+
+新增测试建议：
+
+tests/test_pfpd_at1_analytic.py
+tests/test_pfpd_at1_minimization.py
+tests/test_pfpd_at1_irreversibility.py
+tests/test_pfpd_at1_fixed_x.py
+tests/test_pfpd_at1_staggered.py
+
+至少覆盖：
+
+TEST 1
+Y=0 -> s=0
+
+TEST 2
+Y<Yc -> s=0
+
+TEST 3
+Y=Yc -> s=0
+within declared convention/tolerance
+
+TEST 4
+Y>Yc analytic solution
+
+TEST 5
+analytic vs scipy minimization
+
+TEST 6
+0<=s<=1
+
+TEST 7
+irreversibility
+
+TEST 8
+unloading no healing
+
+TEST 9
+reloading beyond peak increases s
+
+TEST 10
+fixed-x total AT1 bond energy non-increase
+
+TEST 11
+fixed-x K/F unchanged when h=1
+
+TEST 12
+multi-bond phase update energy non-increase
+
+TEST 13
+phase update input arrays read-only except intended s output
+
+TEST 14
+existing BAQP mechanics unchanged
+
+TEST 15
+production solver unchanged
+
+TEST 16
+high-damage gate triggers before h-coupling regime
+
+TEST 17
+failure to reach mechanical equilibrium prevents phase update
+
+TEST 18
+staggered solver converges on small tensile case
+
+TEST 19
+staggered extra iterations do not change accepted state materially
+
+TEST 20
+Eq.3.25 not used by solver
+
+============================================================
+25. 历史 preservation
+============================================================
+
+开始前：
+
+verification/pfpd_at1_evolution_v1/
+    provenance/PRE_RUN_MANIFEST.json
+
+SHA256 保护所有已有文件。
+
+尤其保护：
+
+verification/pfpd_candidate_v1/
+verification/damage_energy_audit_v1/
+verification/mechanical_equilibrium_v1/
+results/streaming_erosion_equilibrium_v1/
+
+结束后：
+
+    POST_RUN_MANIFEST.json
+    PRESERVATION_CHECK.json
+
+要求理想状态：
+
+production modified files = 0
+historical modified files = 0
+
+本轮只允许新增 candidate code/tests/results。
+
+============================================================
+26. 服务器资源
+============================================================
+
+记录：
+
+CPU
+physical/logical cores
+RAM
+disk
+Python
+NumPy
+SciPy
+Numba
+Julia if present
+
+保存：
+
+provenance/HARDWARE.json
+
+独立 sweep 可以并行：
+
+- Y/Yc analytic/minimization cases
+- s_old cases
+- load-path variants
+- finite-difference checks
+- Gc_demo benchmark cases
+
+BLAS worker：
+
+OPENBLAS_NUM_THREADS=1
+OMP_NUM_THREADS=1
+MKL_NUM_THREADS=1
+
+根据实际 RAM 自动设置：
+
+    max_workers
+
+保留至少：
+
+    20% RAM
+
+不要为了用 GPU 重写候选模型。
+
+============================================================
+27. 输出目录
+============================================================
+
+只新增：
+
+verification/pfpd_at1_evolution_v1/
+
+results/pfpd_at1_evolution_v1/
+
+建议：
+
+verification/pfpd_at1_evolution_v1/
+    resources/
+    analytic/
+    minimization/
+    fixed_x/
+    staggered/
+    energy/
+    tests/
+    figures/
+    comparisons/
+    provenance/
+    REVIEW_PFPD_AT1_EVOLUTION_V1.md
+
+results/pfpd_at1_evolution_v1/
+    tensile_cube/
+    loading_unloading/
+
+============================================================
+28. 强制可视化
+============================================================
+
+所有图：
+
+PNG + PDF
+
+要求：
+简单、清晰、非本领域读者也能理解。
+
+FIGURE 1
+at1_energy_landscape
+
+横轴：
+s
+
+纵轴：
+bond candidate energy
+
+至少显示：
+
+Y/Yc =
+    0.5
+    1.0
+    1.5
+    3.0
+
+标出：
+constrained minimum
+
+人工问题：
+“为什么 threshold 以下不损伤？”
+
+------------------------------------------------------------
+
+FIGURE 2
+at1_analytic_vs_numeric
+
+横轴：
+Y/Yc
+
+纵轴：
+s
+
+显示：
+AT1 analytic
+SciPy bounded minimizer
+
+可灰色显示：
+Eq.3.25 — NOT USED
+
+人工问题：
+“解析 update 是否真的是 energy minimum？”
+
+------------------------------------------------------------
+
+FIGURE 3
+loading_unloading_irreversibility
+
+横轴：
+load-step / Y/Yc
+
+左轴：
+s
+
+另单独图或合理布局显示：
+
+elastic energy
+crack energy
+total candidate energy
+
+不要双 y 轴堆很多不同量。
+
+人工问题：
+“卸载后裂纹变量会不会愈合？”
+
+------------------------------------------------------------
+
+FIGURE 4
+fixed_x_energy_audit
+
+对 multi-bond phase update：
+
+显示：
+
+elastic energy change
+crack energy change
+total candidate energy change
+
+同时标：
+
+max ΔK
+max ΔF
+
+应看到：
+
+ΔK = 0
+ΔF = 0
+
+人工问题：
+“新的 phase update 是否又改变了 deformation measurement？”
+
+------------------------------------------------------------
+
+FIGURE 5
+staggered_convergence
+
+每个 stagger iteration 显示：
+
+relative force residual
+max delta s
+
+分成两幅图，
+不要放双轴。
+
+人工问题：
+“mechanics 和 phase 是否真正共同收敛？”
+
+------------------------------------------------------------
+
+FIGURE 6
+tensile_force_displacement
+
+横轴：
+prescribed displacement
+
+纵轴：
+reaction force
+
+并另图显示：
+
+maximum s
+mean s
+
+标：
+damage initiation point
+
+人工问题：
+“什么时候开始损伤，结构响应如何变化？”
+
+------------------------------------------------------------
+
+FIGURE 7
+phase_map_before_high_damage_gate
+
+3D 或切片显示 s_pf。
+
+actual displacement scale = 1×
+
+明确：
+
+DEMONSTRATION FRACTURE PARAMETER
+NOT CLOT CALIBRATION
+
+============================================================
+29. REVIEW 报告
+============================================================
+
+生成：
+
+verification/pfpd_at1_evolution_v1/
+    REVIEW_PFPD_AT1_EVOLUTION_V1.md
+
+必须用普通人能理解的语言。
+
+结构：
+
+1. 这一轮做什么
+
+2. 为什么不用 Eq.3.25
+
+区分：
+- PFPD v1 原文
+- AT1 能量推导
+- 外部 phase-field 文献
+- 我们的 candidate choice
+
+3. 什么是 s、Y、Yc、g、h、sc
+
+4. analytic AT1 是否和数值最小化一致
+
+5. threshold 是否存在
+
+6. irreversible loading/unloading 是否通过
+
+7. fixed-x energy 是否通过
+
+8. K/F 是否仍保持不变
+
+9. staggered mechanics-phase 是否收敛
+
+10. 是否触及 sc gate
+
+11. energy accounting
+
+12. 测试结果
+
+old
+new
+total
+
+13. 图怎么看
+
+14. 当前科学状态
+
+15. 唯一下一步
+
+不要一次建议很多方向。
+
+============================================================
+30. 验收标准
+============================================================
+
+只有同时满足：
+
+A.
+原 169 tests 全部通过。
+
+B.
+新 AT1 analytic tests 全部通过。
+
+C.
+analytic minimizer 与 SciPy bounded minimizer
+满足预声明 tolerance。
+
+D.
+Y <= Yc 时：
+    s = 0
+for virgin bond.
+
+E.
+irreversibility:
+    s_new >= s_old always.
+
+F.
+fixed-x candidate total energy：
+    after <= before + tolerance.
+
+G.
+h=1 下：
+    ΔK = 0
+    ΔF = 0
+到 machine precision。
+
+H.
+loading-unloading:
+    no healing.
+
+I.
+mechanical-phase staggered convergence
+通过当前 development tensile case。
+
+J.
+没有 bond 超过 sc 后仍继续计算。
+
+K.
+production solver 未修改。
+
+才允许标：
+
+PFPD_AT1_EVOLUTION_V1:
+    VERIFIED_FOR_EARLY_DAMAGE_H_EQUALS_1_REGIME
+
+============================================================
+31. 最终状态标签
+============================================================
+
+最终必须输出：
+
+AT1 PAPER / LITERATURE REVIEW:
+    COMPLETE / INCOMPLETE
+
+AUTHOR PFPD UPDATE FOUND:
+    YES / NO
+
+PFPD_AT1_EVOLUTION_V1:
+    VERIFIED_FOR_EARLY_DAMAGE_H_EQUALS_1_REGIME
+    或
+    NOT_VERIFIED
+
+ANALYTIC VS NUMERIC MINIMIZATION:
+    PASSED / FAILED
+
+DAMAGE INITIATION THRESHOLD:
+    VERIFIED / NOT_VERIFIED
+
+IRREVERSIBILITY:
+    VERIFIED / NOT_VERIFIED
+
+FIXED-X TOTAL ENERGY MINIMIZATION:
+    VERIFIED / NOT_VERIFIED
+
+EARLY-DAMAGE KINEMATICS:
+    UNCHANGED / NOT_UNCHANGED
+
+STAGGERED MECHANICS-PHASE:
+    VERIFIED_FOR_TENSILE_DEVELOPMENT_CASE
+    / NOT_VERIFIED
+
+HIGH-DAMAGE h(s) COUPLING:
+    NOT_IMPLEMENTED
+
+FULL PFPD FRACTURE:
+    NOT YET VERIFIED
+
+STREAMING_EROSION COUPLING:
+    NOT IMPLEMENTED
+
+PRODUCTION MODEL:
+    UNCHANGED
+
+PHYSICAL CLOT CALIBRATION:
+    NOT PERFORMED
+
+REAL MICROBUBBLE CFD:
+    NOT USED
+
+============================================================
+32. 禁止事项
+============================================================
+
+禁止：
+
+- 使用 Eq.3.25 作为 solver 默认 law；
+- 隐藏 Eq.3.25 与 AT1 的差异；
+- 把 D_erosion 直接映射为 s_pf；
+- 为了看到 damage 调 Gc；
+- 看结果后改 load schedule；
+- 允许 s 穿过 sc；
+- 在本轮实现 h<1；
+- bond deletion；
+- fragment tracking；
+- streaming；
+- fatigue；
+- wall adhesion；
+- Ogden；
+- real clot Gc；
+- real microbubble CFD；
+- 修改 production solver；
+- 删除旧测试；
+- 覆盖旧结果。
+
+============================================================
+33. 如果文献出现新信息
+============================================================
+
+如果开发前发现：
+
+作者 v2 / 官方 PFPD code
+已经明确解决 Eq.3.25 问题，
+
+不要无视新证据。
+
+执行：
+
+1. 保存来源和 commit/version；
+2. 单独说明新公式；
+3. 比较新公式与本任务 AT1 constrained candidate；
+4. 如果作者新版本与 AT1 能量一致：
+       可将其作为主要依据；
+5. 如果作者选择了不同 energy functional：
+       不自动替换；
+       停止完整 evolution 开发，
+       输出 NEED_METHOD_DECISION，
+       向用户说明两种模型差异。
+
+============================================================
+34. 最终终端输出
+============================================================
+
+最终只输出人工审核摘要：
+
+- repository / HEAD
+- paper SHA
+- external resources actually used
+- author update found yes/no
+- files added
+- production files modified
+- historical files modified
+- old tests passed
+- new tests passed
+- total tests
+- max analytic-vs-SciPy s error
+- threshold test status
+- irreversibility status
+- maximum fixed-x candidate energy increase
+- maximum fixed-x deltaK
+- maximum fixed-x deltaF
+- staggered convergence status
+- maximum s reached
+- whether sc gate triggered
+- REVIEW_PFPD_AT1_EVOLUTION_V1.md path
+- figures directory
+- final status labels
+
+不要只输出：
+    implementation complete
+
+============================================================
+35. 完成后停止
+============================================================
+
+完成本轮后不要自动进入：
+
+h(s)<1
+full fracture
+wall model
+Ogden
+clot calibration
+erosion coupling
+fatigue coupling
+real CFD
+
+等待人工审核。

@@ -1,0 +1,742 @@
+
+=== PDF PAGE 1 ===
+SANDIA REPORT
+SAND2016-6710
+Unlimited Release
+Printed July 2016
+Stability of Peridynamic
+Correspondence Material Models and
+Their Particle Discretizations
+Stewart A. Silling
+Prepared by
+Sandia National Laboratories
+Albuquerque, New Mexico 87185 and Livermore, California 94550
+Sandia National Laboratories is a multi-program laboratory managed and operated by Sandia Corporation,
+a wholly owned subsidiary of Lockheed Martin Corporation, for the U.S. Department of Energy's
+National Nuclear Security Administration under contract DE-AC04-94AL85000.
+Approved for public release; further dissemination unlimited.
+Sandia National Laboratories
+
+
+=== PDF PAGE 2 ===
+Issued by Sandia National Laboratories, operated for the United States Department of Energy
+by Sandia Corporation.
+NOTICE: This report was prepared as an account of work sponsored by an agency of the United
+States Government. Neither the United States Government, nor any agency thereof, nor any
+of their employees, nor any of their contractors, subcontractors, or their employees, make any
+warranty, express or implied, or assume any legal liability or responsibility for the accuracy,
+completeness, or usefulness of any information, apparatus, product, or process disclosed, or rep-
+resent that its use would not infringe privately owned rights. Reference herein to any specific
+commercial product, process, or service by trade name, trademark, manufacturer, or otherwise,
+does not necessarily constitute or imply its endorsement, recommendation, or favoring by the
+United States Government, any agency thereof, or any of their contractors or subcontractors.
+The views and opinions expressed herein do not necessarily state or reflect those of the United
+States Government, any agency thereof, or any of their contractors.
+Printed in the United States of America. This report has been reproduced directly from the best
+available copy.
+Available to DOE and DOE contractors from
+U.S. Department of Energy
+Office of Scientific and Technical Information
+P.O. Box 62
+Oak Ridge, TN 37831
+Telephone:
+Facsimile:
+E-Mail:
+Online ordering:
+(865) 576-8401
+(865) 576-5728
+reports@adonis.osti.gov
+http://www.osti.gov/bridge
+Available to the public from
+U.S. Department of Commerce
+National Technical Information Service
+5285 Port Royal Rd
+Springfield, VA 22161
+Telephone:
+Facsimile:
+E-Mail:
+Online ordering:
+(800) 553-6847
+(703) 605-6900
+orders@ntis.fedworld.gov
+http://www.ntis.gov/help/ordermethods.asp?loc=7-4-0#online
+2
+
+
+=== PDF PAGE 3 ===
+SAND2016-6710
+Unlimited Release
+Printed July 2016
+Stability of Peridynamic Correspondence Material
+Models and Their Particle Discretizations
+Stewart A. Silling
+Multiscale Science Department
+Sandia National Laboratories
+P.0 Box 5800
+Albuquerque, NM 87185-1322
+Abstract
+Peridynamic correspondence material models provide a way to combine a material model
+from the local theory with the inherent capabilities of peridynamics to model long-range forces
+and fracture. However, correspondence models in a typical particle discretization suffer from
+zero-energy mode instability. These instabilities are shown here to be an aspect of material
+stability. A stability condition is derived for state-based materials starting from the requirement
+of potential energy minimization. It is shown that all correspondence materials fail this stability
+condition due to zero-energy deformation modes of the family. To eliminate these modes, a term
+is added to the correspondence strain energy density that resists deviations from a uniform
+deformation. The resulting material model satisfies the stability condition while effectively
+leaving the stress tensor unchanged. Computational examples demonstrate the effectiveness of
+the modified material model in avoiding zero-energy mode instability in a peridynamic particle
+code.
+3
+
+
+=== PDF PAGE 4 ===
+Acknowledgments
+The author benefited greatly from discussions with and reviews by Dr. Richard B. Lehoucq and
+Dr. David J. Littlewood.
+4
+
+
+=== PDF PAGE 5 ===
+Contents
+1 Introduction 7
+2 Peridynamics background 8
+3 Particle discretizations as peridynamic bodies 11
+4 Correspondence material models 12
+5 Material stability and energy minimization 14
+6 Stabilized correspondence material models 17
+7 Examples 22
+8 Conclusions 23
+5
+
+
+=== PDF PAGE 6 ===
+6
+
+
+=== PDF PAGE 7 ===
+1 Introduction
+Peridynamics is a nonlocal theory of mechanics in which material points in a continuum or in a
+group of discrete particles interact with each other through forces. The exchange of forces between
+any pair of material points is called a bond interaction. These forces are determined by the material
+model according to the current deformation.
+Material models in peridynamics explicitly determine the force in each bond. Many material
+models have been investigated as the peridynamic theory has been developed. A particularly
+useful class of material models is called the correspondence models. These models use a stress-
+strain relation from the local theory as a means to determine the bond forces. In principle, any
+material model from a finite element code can be applied directly in a peridynamic computational
+simulation when formulated as a correspondence model.
+Correspondence material models have been used successfully in the modeling of a wide variety of
+material response, including elastic-plastic and viscoplastic materials with large strains and fracture,
+for example [6, 5, 21]. However, the usefulness of peridynamic correspondence models has been
+impeded by some practical issues in their implementation in meshless peridynamic codes. One such
+issue is the difficulty that is sometimes encountered when evaluating the shape tensor defined in
+equation (15) below, particularly when very large deformations or extensive damage are present. A
+more troublesome issue with correspondence models is their tendency to exhibit zero-energy mode
+oscillations in meshless simulations. These oscillations typically build up gradually during a long
+simulation, but they can eventually ruin the results. They can occur even when the appropriate
+version [16] of the Courant-Friedrichs-Levy time step restriction is applied. Zero-energy mode
+instabilities can occur in a variety of particle methods as well as finite elements, motivating the
+development of corrective techniques [4, 20, 9]. The purpose of the present paper is to investigate
+the root cause of this type of instability as a manifestation of a material instability, rather than
+merely an artifact of the meshless discretization. A stabilized correspondence material model is
+proposed that is stable in both the continuum and discretized equations.
+7
+
+
+=== PDF PAGE 8 ===
+2 Peridynamics background
+Peridynamics is a generalization of the standard theory of solid mechanics. It treats the mechanics
+of continuous bodies and discrete particles, including long-range forces and fracture, within the
+same basic field equations. A typical material point x in a body 8 interacts with other material
+points q within a neighborhood called the family of x, denoted H. The radius of the neighborhood
+is called the horizon, S. The vector in the undeformed configuration from x to any of its neighbors
+q E 7-t is called a bond, generically given the symbol = q — x. The vector = 0 is excluded from
+the family.
+The equation of motion in peridynamics is given by
+p(x)Sr(x, t) = f f(q, x, t) dyei + b(x, t) Vx E 8 , t > 0, (1)7-1
+where p is the density, y is the deformation, and b is the prescribed body force density field. The
+equation of equilibrium (see equation (24) below for the derivation) is written
+.1,f(q, x) dVci + b(x) = 0 Vx E B . (2)
+The vector-valued function f(q, x, t) is the pairwise bond force density (with units of force per
+volume squared) that q exerts on x. The material model determines the values of f according to
+the deformations of the families of x and of q.
+The simplest class of material model [14] is called bond-based, in which f(q, x, t) depends only
+on the deformation of the bond q — x. More general material response can be incorporated using
+the state-based class of models [17], in which f(q, x, t) depends not only on q — x, but also on
+the deformation of all the other bonds in H. State-based material models are expressed using
+mathematical objects called states, which are mappings from H to some other quantity, either
+vector- or scalar-valued. By convention, the bond that a state A operates on is written in angle
+brackets, A(). Dependence of the state on position and time is written in square brackets, A[x, t].
+The deformation state Y maps bonds onto their deformed images:
+Y[x, t]() = y(x + t) — y(x, t). (3)
+The bond force density t(q, x, t) that q exerts on x due to the material model at x is expressed in
+the force state T,
+T[x, t] (q — x) = t (q, x, t). (4)
+Due to the requirement for balance of linear momentum, the pairwise bond force density contains
+contributions from the material models at both x and q:
+f(q, x, t) = t(q, x, t) — t(x, q, t)
+= T[x, t] (q — x) — T[q, t] (x — q) . (5)
+A material model T is a function that maps a deformation state onto a force state:
+T[x, t] = T(Y[x, t]).
+8
+
+
+=== PDF PAGE 9 ===
+For example, a bond-based material model might have the form
+rii() 
+2
+1 ct()A4 (4) 1Y(4 ') 14'1 1\4()
+11 IY() I
+(6)
+where C is the symmetric micromodulus function, which is calibrated from the measured mechanical
+properties of the material, and M is the deformed bond direction state.
+The dot product of two vector states A and B is defined by
+A • B = f A() • B() &I/6
+where the small dot (.) signifies the usual inner product of two vectors in R3. Also define the norm
+of a vector state by
+IIAII=N/A•A.
+If A is a vector state and v is a scalar state, the product vA is a vector state defined by
+(vA)() = v()A.().
+A notion of differentiation with respect to states will now be defined. Let ‘If be a scalar-valued
+function of a vector state A. Let dA be a small increment in A. Suppose there is a vector state
+denoted TA such that
+kIf(A dA) = ‘If(A) + WA • dA VdA. (7)
+Then WA is called the Frechet derivative of kIf with respect to the state A.
+Fréchet derivatives are an essential tool in peridynamic material modeling because of their role
+in elastic materials. In an elastic material, there is a strain energy density function W(Y) that
+has the same mechanical meaning (reversibly stored energy per unit volume) as in the local theory.
+The force state in a peridynamic elastic material is found from
+T(Y) = lky(Y). (8)
+From (7), this means that the increment in strain energy density due to an incremental change in
+the deformation state dY is given by
+dW = T • dY = f T() • dY() (9)
+Mechanically, this integral sums up the incremental work done on all the bonds in the family as
+they deform, acting against the individual bond forces.
+Given a force state, it is often useful to define a stress tensor that represents an approximate
+way of characterizing the internal forces in the local theory. One way to define this approximate
+stress tensor is called the partial stress tensor, denoted v:
+v = f 1:11/i. (10)
+The partial stress tensor has the same properties, in terms of symmetries and invariances, as the
+first Piola stress. The properties of the partial stress tensor are described in [13].
+9
+
+
+=== PDF PAGE 10 ===
+A double state C is a tensor-valued function that operates on two bonds , C E 1-1:
+A•C•B = f f A() • (C(, C)B(C)) dVc di/..
+71 71
+The second Fréchet derivative of the function W, denoted WAA, is an example of a double state.
+Further information on the properties of states and operations on them can be found in [17]. Double
+states are discussed further in [15]. Extensive accounts of peridynamics are available in the review
+article [18] and the book by Madenci and Oterkus [12].
+Because equations (1) and (2) do not involve partial derivatives of the deformation with re-
+spect to the spatial coordinates, they apply to continuous media, continuous media with evolving
+discontinuities (cracks), and discrete particles. Damage is usually modeled by allowing bonds to
+"breale irreversibly according to some failure criterion, after which the bond no longer sustains
+force. Discrete particles are usually treated using generalized functions in the material model, as
+indicated in equation (12) below.
+10
+
+
+=== PDF PAGE 11 ===
+3 Particle discretizations as peridynamic bodies
+A particle discretization of the peridynamic equations was proposed in [16]. A body is discretized
+into nodes with undeformed positions {x} and undeformed volumes MI. The equilibrium equation
+(2) is approximated by
+E f(xj, xi)V7 + b(x„) = 0 (11)
+joit
+for each node i. The f in (11) is identical to the one in the original continuum equation (2). This
+discretization has been the workhorse in many applications of peridynamic mechanics, although
+others are possible and have certain advantages.
+A unique property of the discretized peridynamic equation (11), unlike other discretizations of
+peridynamics and all discretizations of the local equations, is that it is, in a certain sense, exact.
+It is not an exact approximation to the continuum equations. However, it is an exact model of a
+different peridynamic body consisting of a set of discrete points. To see this, define the following
+body and material model:
+= {xj,
+f(q, x) = E E f(xj, xi)A(q — xj)A(x —
+13(X) = E b(xi)A(x — xi)Vi,
+(12)
+where A is the Dirac delta function. (Note that the dimensions of A are 1/volume.) It may be
+confirmed by substituting (12) into the original equilibrium equation (2) that it is equivalent to the
+discretized continuum model in (11).
+The significance of this observation is that a particle discretization is in itself a legitimate
+peridynamic body, namely B, with pairwise force density given by f. This means that any results
+about peridynamic bodies immediately apply to the numerical model without further analysis or
+adaptation. This fact will be used later in this paper to show that zero-energy modes in a discretized
+model can be understood as an aspect of material stability. In particular, if a material model is
+shown to be stable, this guarantees that the discretized model will also be stable. (This applies only
+to the spatial discretization. Time discretization of the dynamic equations still involves restrictions
+on the time step size if a conditionally stable time integration method is used. It is also assumed
+that the discretized model has a sufficient number of points and that they are arranged such that
+the shape tensor K is nonsingular.)
+11
+
+
+=== PDF PAGE 12 ===
+4 Correspondence material models
+Correspondence materials [17] use a stress tensor as an intermediate step in determining the bond
+forces. Suppose a local material model is given of the form
+a (x) = ei(F(x)), F(x) = —0y
+0x (x)' (13)
+where a is the first Piola stress and F is the deformation gradient tensor. In peridynamic corre-
+spondence material models, F is found from an approximate expression:
+F = (/cv()Y(4.) 0 dVi) K -1, (14)
+n
+where w is a positive-valued weighting function called the influence state, and K is the symmetric
+positive definite shape tensor defined by
+K = Ir.,.)( 0 c117. (15)
+7-i
+The approximate deformation gradient is exact if the deformation is uniform (linear): if there is a
+tensor Fo such that Y(E) = Fc4 for all E li, then
+F = (fcA)F () 0 cN)  K -1
+1-t
+= Fo (f Ci.)( 0 di/i) K -1
+)-(
+= Fo.
+The local material model er can include other dependences such as time, rate, and history.
+The force state in a correspondence material [17] is given by
+TC(e) = co()6-(F)K-1E.
+(16)
+(17)
+It is easily confirmed from (10) and (17) that the partial stress tensor for a peridynamic correspon-
+dence material reproduces the underlying local material model:
+vc = ii(F)K-1 f c,.)( 0 cl-V- = â(F), (18)
+7-t
+where (15) has been used. (Unlike (16), the identity (18) holds regardless of whether the deforma-
+tion is uniform.)
+Suppose the underlying local material model is elastic, and let the local strain energy density
+function be W:
+ativa = .aF
+Then the peridynamic correspondence material derived from this local material model is also elastic
+[17]:
+tc = 4, Tkc(Y) = 1117(F(y)), (19)
+12
+
+
+=== PDF PAGE 13 ===
+where now the Frechet derivative is used rather than the tensor gradient.
+As mentioned in the Introduction, computational simulations using correspondence material
+models are susceptible to weak instabilities due to zero-energy ocsillatory modes. These have been
+reported in several publications and are commonly seen in practice. Ganzenmfiller, Hiermaier, and
+May [7] interpret the zero-energy modes in meshless simulations as an aspect of the numerical
+discretization, drawing on similarities with rank deficiency effects in Smoothed-Particle Hydrody-
+namics (SPH). Closely related results are discussed by Bessa, Foster, Belytschko, and Liu [1].
+Numerical stabilization techniques are commonly used with correspondence material models
+to suppress the zero-energy modes. Littlewood [10, 11] introduced corrective forces on the bonds
+that tend to drive nodes in a meshless model toward smooth deformations. Breitenfeld, Geubelle,
+Weckner, and Silling [2] proposed stabilizing forces that push a material particle closer to the
+geometrical center of its deformed family. Damping forces and artificial viscosity are also somewhat
+effective in reducing zero-energy modes [13]. Tupek and Radovitzky [19] investigated the use of
+alternative strain measures to help avoid the closely related phenomenon of interpenetration in
+meshless peridynamic grids.
+Up to now, the phenomenon of zero-energy modes in correspondence materials has generally
+been viewed as a consequence of meshless discretization. Instead, the purpose of the present work
+is to study the root cause of this phenomenon as a material instability rather than a numerical
+instability [8]. To pursue this, a general criterion for material stability in peridynamics will first be
+discussed.
+13
+
+
+=== PDF PAGE 14 ===
+5 Material stability and energy minimization
+One concept of material stability is to require that in equilibrium, total potential energy of a
+bounded elastic body must, in addition to being stationary with respect to the first variation of
+the deformation, also be a local minimum. To investigate the implications of this requirement for
+material models, define the total potential energy of a bounded elastic peridynamic body by
+H(y) = /8(1;17 (Yr[x]) — b • y) dVx. (20)
+Here, y E 5(13), where S(8) is the set of deformations of satisfying any essential (prescribed dis-
+placement) boundary conditions, and excluding rigid deformations. Define the Gâteaux derivative
+of 1-1(y) in the direction of a given displacement field u by
+Dull(3r) =
+dII(y + eu)
+dE , y + Eu E E(B). (21)
+Let U denote the displacement state corresponding to u,
+U[ (q — x) = u(q) — u(x). (22)
+If II is stationary at y, then
+Dull(y) = 0 (23)
+for all admissible displacement fields u. Then from (8), (20), (22), and (23), for any u,
+Dull(3r)= fB(Wy(Y) • U — b • u) dVx
+= L(T(Y) • U — b • u) dVx
+= (f 8 T[x](q — x) • (u(q) — u(x)) dVq — b(x) • u(x)) dV„
+= (f 8(T[q](x — q) — T[x](q — x)) dVq — b(x)) • u(x) dVx,
+(24)
+where the change of variables x H q is used in the last step. Localization leads to the conclusion
+that D ull(y) = 0 implies
+(T[x](q — — T[q](x — q)) dV,4 + b(x) = 0 Vx E 8, (25)
+which is the peridynamic equation of equilibrium (2). (25) is a condition on the deformation y,
+since T = T(Y). Working backwards shows that (25) is sufficient as well as necessary for stationary
+Define the second Gateaux derivative by
+d2H(y + €u)= d€2
+14
+(26)
+
+
+=== PDF PAGE 15 ===
+for admissible displacement fields u. Returning to (24), one finds that
+= U • Km • u dVx,
+where K is the micromodulus double state [15] defined by
+K = = Wyy.
+Suppose II is stationary at a deformation y; therefore (23) and (25) hold. If, additionally, y is a
+local minimizer of n, then for any admissible u,
+Du2II(y) > 0. (28)
+Then from (27) and (28),
+LU • K • U dVx > 0.
+(27)
+(29)
+To avoid the need to evaluate K explicitly, it is convenient to rewrite this expression in the more
+suggestive notation
+dT • dY d17,, > 0, (30)
+for any admissible dy, where dT is the change in force state resulting from an incremental change
+in the deformation state dY:
+dT = K(Y) • dY.
+A sufficient condition for (30) to hold is clearly that
+dT • dY > 0 for all admissible dY. (31)
+To investigate the status of correspondence materials with respect to the stability condition (31),
+it is helpful to establish the following connection between the stability of the peridynamic and
+underlying local material models.
+Proposition 1. Let a correspondence material model te(Y) be given, with underlying local
+material model er(F). Let dY be any admissible increment in Y. Then
+di' • dY = da • dF. (32)
+Proof. Write (17) in component form (the underscores are omitted from symbols with indices to
+improve readability):
+Ttc() = L)()?fia (F)-K3-k1 k, (33)
+thus
+dTic() = w()(cijmndFmn)Kikl-k, (34)
+where the cumn are the components of the fourth order elasticity tensor. From (14), for a given
+incremental deformation state dY,
+dFmn = (C)diTm(C)O-KE-7,1 dI7c. (35)
+rt
+15
+
+
+=== PDF PAGE 16 ===
+Combining (34) and (35),
+dTc • dY dTi()(117i() clvc
+= Jx  dvc)
+Cijmn (1 i cAC)dYm(00-Kin1 dVc) cdiri(ICii,1 cic)
+cijmndFmndFij
+do-iidFii,
+which proves (32). El
+For the remainder of this discussion, it will be assumed that the underlying local material model
+is stable:
+do- • dF > 0 (36)
+for all dF other than rigid rotations. This assumption excludes softening types of physical material
+response. The following result shows that all correspondence materials fail the stability condition
+derived above.
+Proposition 2. Let a correspondence material model T = ric(Y) be given, with underlying local
+material model 6-(F). Then the stability condition (31) fails to hold.
+Proof. Consider an incremental deformation state dY such that
+w( — )dY( — = (..o()dY () \V E
+Then from (14), dF = O. Therefore, by Proposition 1, dT • dY = 0, proving the result. D.
+Proposition 2 shows that F is invariant under a large class of deformations of H. Similar conclusions
+have been obtained by Lehoucq [8] by investigating the null space of the operator in (14), using
+the formalism of nonlocal vector calculus [3]. Such cases of admissible dY such that dF = 0 can
+reasonably called zero-energy modes of deformation of the family, because they fail to change the
+potential energy. In discretized models, zero-energy modes of deformation are bad news because
+they manifest themselves as numerical instabilities. This type of instability is a source of practical
+difficulty in finite elements and particle discretizations of both the local PDEs and the peridynamic
+equations when using correspondence material models.
+16
+
+
+=== PDF PAGE 17 ===
+6 Stabilized correspondence material models
+In the previous section, it was shown that there are increments dY that have no effect on the
+approximate deformation gradient F, leading to zero-energy models of deformation. Here, we
+propose to add a term to the strain energy density that resists these modes of deformation.
+Define the nonuniform part of the deformation state z by
+g() = Y7() (37)
+where F is given by (14). Observe from (14) and (37) that the approximate deformation gradient
+operator applied to the nonuniform part of the deformation state vanishes:
+c.o(e)z() E dVi) K -1
+= (fc4.)()(Y-() - 11) cli/i) K -1
+7-1
+= (ft 
+Ci.)()Y () dl/i) K -1 - F (f dI/i) K -1
+7-
+= F - FKK -1
+= O. (38)
+The nonuniform part of the deformation state contains that portion of the deformation state that
+deviates from a uniform deformation of the family.
+Consider an elastic material with strain energy density given by
+1A7 _
+where Ike is the energy from the correspondence model (19) and
+lks(Y) = 2(0g) • z, (40)
+where is a prescribed positive-valued scalar state.
+(39)
+Now we evaluate the force state corresponding to Iks. For any small dY, it follows from (14),
+(37), and (40) that
+dWC = (13z) • dz
+0()zi()(dYi() - dFigi) dVErc—
+Lo(e),(e)dyi() f OWzi(n)dFiini dVn
+— f 0(n)z2(n)ni dVn) (f co()difi()G4117) Kpjl
+=fx [0(E)z2()— 13(n)zi(n)ni di/7i) dYi() c117.7-t
+17
+
+
+=== PDF PAGE 18 ===
+Comparing the last expression with (7) and (8), evidently
+or
+T S(~) = — c) (Li 377)zi(n)nj KpilG
+T's() =13()g() — c,A) (f 13(n)g(n) n c1147)7-t
+(41)
+(42)
+Proposition 3. Let Ts be given by (41) or equivalently by (42). Let vs be the partial stress for
+Ts. Then
+vs = O. (43)
+Proof. By (10) and (41),
+= [0(,)zi(,)_.() (I 13(n) zi(n)rik dv;,) Ick1G] .;
+= LN),(,), dV — (I cA)Vi (117) Ki;k (n)zi(n)77k dVn)
+7-t-
+= — (f 0(n)zi(n)rik dvn)
+= — (5jk (f )3(n)zi(n)lik avn)H -
+O .
+❑
+Proposition 4. Let T3 be given by (41) or equivalently by (42). Let dY be an admissible nonzero
+increment in the deformation state. Then
+dTs • dY > 0. (44)
+Moreover, strict inequality holds if the nonuniform part of the deformation state is non-zero:
+dz 0  > dT8 • dY > 0. (45)
+18
+
+
+=== PDF PAGE 19 ===
+Proof. By (41),
+dTS • dY = (f 13(n)dzi(n)iii dvn) Icj 1G]
+,3()c117,;(dzi()
+— (f co()dYi()ei:, dVi) (I 0(q)dzi(n)% (1147)
+13()dYi(e)dz2() dVg — (I o(n)dzi(n)% dV,i)
+dFi,,) dVg
+= fxaodZo2,
+proving (44) and, since > 0, also (45). LI
+(46)
+So far we have shown that the new strain energy density term defined by (40) is does not alter the
+stress tensor, is stable in the sense of (45), and generates a force state through its Frechet derivative
+given by (41) or (42). The non-polarity of T5 follows from the fact that is elastic and objective
+(because it has no preferred directions) [15].
+Now we return to the full material model whose strain energy density is given by (39). Since
+(47)
+it follows from Proposition 3 that
+v = vc + vs = er, (48)
+in other words the partial stress is left unchanged by the new term Ws. The only remaining question
+is whether the combined material model (40) is stable.
+Proposition 5. Let T be given by (47), and let dY be any admissible nonzero increment in the
+deformation state. Then the stability condition (31) holds.
+Proof. By (47) and Proposition 1,
+dT • dY = dTc • dY + dT s • dY
+= do- • dF di" • dY . (49)
+There are only two possibilities:
+• dF O. In this case, (36) and (44) imply that
+do- • dF > 0 and dTs • dY > 0.
+19
+
+
+=== PDF PAGE 20 ===
+• dF = O. In this case, it follows from (37) that z O. Therefore, from (45),
+do- • dF = 0 and dT8 • dY > O.
+In either case, (49) proves that
+dT • dY > O. (50)
+D
+From (17), (42) and (47), the stabilized material model (39) has a force state given by
+i () = ric+ i s
+= w()13-(F)K-1
+-F0()Z() — c•;() (f 0(n)07) 0 n cin) K -1 ,1-t—
+where z is given by (37). A slightly more suggestive form of (51) is given by
+i'() = )()(61-(F) — as)/(-1- + )3()C),
+where 178 is defined by
+as = f 001)07) 0 71 &tin.
+i-i
+In view of (38), the particular choice of 0 given by
+0 = '1(c),
+where ry is a positive constant, results in a further simplification of (52):
+'i'() = wW(6-(F)K-1E + ryz()).
+(51)
+(52)
+(53)
+(54)
+(55)
+The assumption (54) may or may not be the best choice for an application, particularly when
+extensive damage in a material is anticipated. Typically, in practice, damage in a bond is
+modeled by setting coW = 0 ("bond breakage"). Under the assumption (54), such bond breakage
+would also be applied to the stabilization term Ts W. This would remove any interaction between
+the material points x and x + (except possibly from the material model at x + and therefore
+tend to promote the "dust" effect that is often seen in computational simulations.
+The appropriate value of 7 can be estimated from the elastic material properties. Observing
+that the stabilization term in (55) resembles a bond-based material response, -y can be chosen so
+that this term contains some fraction a of the strain energy density in a simple deformation such
+as isotropic expansion with linear strain E. The energy contribution from the stabilization term is
+estimated from
+W s •"---"' 4 — f 'YcA)(610 2(47112)H 
+d-17 = ak(302,
+where k is the bulk modulus. In three dimensions, assuming that w depends only on 11, the
+resulting estimate for -y is found to be
+9ka
+7 =  6
+71 fo w(r)r4 dr
+20
+(56)
+
+
+=== PDF PAGE 21 ===
+The stabilization method proposed above is conceptually similar to the method proposed by Lit-
+tlewood [10], which also applies forces that tend to reduce deviations of Y from F. Littlewood's
+method, in the present notation, introduces statilization forces of the form
+lY(V — WEI TS(') = AM()
+ii
+where A is a constant and M() is the deformed bond direction. Littlewood also introduced a
+modified but essentially similar form of the above [11]. Neither method has not been analyzed with
+respect to its effect on material stability or the partial stress tensor as described above.
+21
+
+
+=== PDF PAGE 22 ===
+7 Examples
+Three examples are presented here. All three model an aluminum coupon with dimensions 150mm
+x 50mm x 5mm that contains a hole with diameter 20mm. It is modeled using a peridynamic
+correspondence material model. The grid spacing is lmm. Other than the modification to the
+material model described in the previous sections, these calculations did not use damping or other
+stabilization forces. The particle discretization and explicit time integration method are described
+in [16].
+In the first example, the plate is modeled as linear elastic. Figure 1 compares the velocity
+contours on the midplane of the coupon after being stretched at constant rate to a nominal tensile
+strain of 0.02%. The velocity fields with and without stabilization of the correspondence material
+model are shown. The zero-energy mode oscillations are evident in the left plot, without the
+stabilization. The stabilization term is obtained from (55) with a = 1. The zero-energy mode
+oscillations are apparently eliminated when the stabilized material model is used, as shown in the
+right plot.
+In the second example, the plate is modeled as a brittle linear elastic material with a bond
+failure strain of 0.2%. Bond breakage is implemented by setting the influence function c.0() to zero
+when the bond breaks. Cracks nucleate at the stress concentrations near the hole and immediately
+grow toward the free edges of the specimen. The calculation uses the stabilized correspondence
+material model with a = 1. Figure 2 shows the deformed grid and contours of damage after failure
+of the coupon. There is no evidence of instability in the result, and apparently the stabilization
+forces do not interfere with the progression of damage.
+In the third example, the same coupon is modeled as elastic-plastic using the peridynamic
+implementation of plasticity described in [21]. The flow stress includes the effect of strain hardening
+using the Johnson-Cook plasticity model. Stabilization is used as described above. Necking occurs
+near the hole in the coupon. This simulation demonstrates that physically reasonable results
+without zero-energy mode instability are obtained using the stabilization method, even with fairly
+large plastic strain. The results are shown in Figure 3.
+22
+
+
+=== PDF PAGE 23 ===
+8 Conclusions
+It was shown in this paper that any correspondence material model i c is always unstable in
+the sense of (31). The instability manifests itself as zero-energy mode oscillations in a particle
+discretization.
+However, the modified material model in T given by (47) is stable. From the discussion in
+Section 3, this result applies equally to continuum and discrete models. The stabilized correspon-
+dence material model satisfies the requirements of peridynamic material models (objectivity and
+non-polarity) and is elastic. The stabilization forces do not change the partial stress tensor. The
+new terms require negligible computer resources. The numerical examples suggest that this ap-
+proach to stabilization is compatible with elastic and inelastic correspondence models and with
+bond breakage as a means to incorporate damage.
+23
+
+
+=== PDF PAGE 24 ===
+Velocity
+Figure 1. Contours of velocity in simulations of a linear elastic
+coupon under tension. Left: without stabilization, showing zero-
+energy mode instability. Right: with stabilization.
+24
+
+
+=== PDF PAGE 25 ===
+Damage
+Figure 2. Simulation of a brittle linear elastic coupon under
+tension with stabilization forces. Left: grid configuration after
+failure. Right: contours of damage.
+25
+
+
+=== PDF PAGE 26 ===
+Figure 3. Simulation of a ductile coupon under tension with
+stabilization forces illustrating necking. Left: grid configuration at
+a global strain of 9%. Right: contours of equivalent plastic strain
+EP.
+26
+
+
+=== PDF PAGE 27 ===
+[1]
+References
+M. Bessa, J. Foster, T. Belytschko, and W. K. Liu. A meshfree unification: reproducing kernel
+peridynamics. Computational Mechanics, 53(6):1251-1264, 2014.
+[2] M. Breitenfeld, P. Geubelle, O. Weckner, and S. Silling. Non-ordinary state-based peridy-
+namic analysis of stationary crack problems. Computer Methods in Applied Mechanics and
+Engineering, 272:233-250, 2014.
+[3]Q. Du, M. Gunzburger, R. B. Lehoucq, and K. Zhou. A nonlocal vector calculus, nonlocal
+volume-constrained problems, and nonlocal balance laws. Mathematical Models and Methods
+in Applied Sciences, 23(03):493-540, 2013.
+[4] D. Flanagan and T. Belytschko. A uniform strain hexahedron and quadrilateral with orthogo-
+nal hourglass control. International journal for numerical methods in engineering, 17(5):679-
+706, 1981.
+[5]J. T. Foster. Dynamic crack initiation toughness: experiments and peridynamic modeling.
+Technical Report Ph.D. dissertation, Purdue University, reprinted in SAND2009-7217, Sandia
+National Laboratories, Albuquerque, New Mexico, 2009.
+[6] J. T. Foster, S. A. Silling, and W. W. Chen. Viscoplasticity using peridynamics. International
+Journal for Numerical Methods In Engineering, 81:1242-1258, 2010.
+[7]
+[8]
+[9]
+G. C. Ganzenmuller, S. Hiermaier, and M. May. On the similarity of meshless discretizations of
+peridynamics and smooth-particle hydrodynamics. Computers Structures, 150:71-78, 2015.
+R. B. Lehoucq. Nonlocal constitutive relations, SAND2015-9271C. presentation at the USACM
+Workshop on Nonlocal Models in Mathematics, Computation, Science, and Engineering, Oak
+Ridge, TN (2014), 2014.
+S. Li and W. K. Liu. Meshfree and particle methods and their applications. Applied Mechanics
+Reviews, 55(1):1-34, 2002.
+[10] D. J. Littlewood. Simulation of dynamic fracture using peridynamics, finite element model-
+ing, and contact, IMECE2010-40621. In ASME 2010 International Mechanical Engineering
+Congress and Exposition, pages 209-217. American Society of Mechanical Engineers, 2010.
+[11] D. J. Littlewood. A nonlocal approach to modeling crack nucleation in AA 7075-T651,
+IMECE2011-64236. In ASME 2011 International Mechanical Engineering Congress and Ex-
+position, pages 567-576. American Society of Mechanical Engineers, 2011.
+[12] E. Madenci and E. Oterkus. Peridynamic Theory and Its Applications. Springer, New York,
+2013.
+[13] S. Silling, D. Littlewood, and P. Seleson. Variable horizon in a peridynamic medium. Journal
+of Mechanics of Materials and Structures, 10(5):591-612, 2015.
+[14] S. A. Silling. Reformulation of elasticity theory for discontinuities and long-range forces.
+Journal of the Mechanics and Physics of Solids, 48:175-209, 2000.
+[15] S. A. Silling. Linearized theory of peridynamic states. Journal of Elasticity, 99:85-111, 2010.
+27
+
+
+=== PDF PAGE 28 ===
+[16] S. A. Silling and E. Askari. A meshfree method based on the peridynamic model of solid
+mechanics. Computers and Structures, 83:1526-1535, 2005.
+[17] S. A. Silling, M. Epton, O. Weckner, J. Xu, and E. Askari. Peridynamic states and constitutive
+modeling. Journal of Elasticity, 88:151-184, 2007.
+[18] S. A. Silling and R. B. Lehoucq. The peridynamic theory of solid mechanics. Advances in
+Applied Mechanics, 44:73-166, 2010.
+[19] M. Tupek and R. Radovitzky. An extended constitutive correspondence formulation of peri-
+dynamics based on nonlinear bond-strain measures. Journal of the Mechanics and Physics of
+Solids, 65:82-92, 2014.
+[20] R. Vignjevic, J. Campbell, and L. Libersky. A treatment of zero-energy modes in the smoothed
+particle hydrodynamics method. Computer Methods in Applied Mechanics and Engineering,
+184(1):67-85, 2000.
+[21] T. L. Warren, S. A. Silling, A. Askari, O. Weckner, M. A. Epton, and J. Xu. A non-ordinary
+state-based peridynamic method to model solid material deformation and fracture. Interna-
+tional Journal of Solids and Structures, 46:1186-1195, 2009.
+28
+
+
+=== PDF PAGE 29 ===
+DISTRIBUTION:
+1 MS 0899 Technical Library, 9536 (electronic copy)
+
+
+=== PDF PAGE 30 ===
+30
+
+
+=== PDF PAGE 31 ===
+v1.38
+
+
+=== PDF PAGE 32 ===
+Sandia National Laboratories

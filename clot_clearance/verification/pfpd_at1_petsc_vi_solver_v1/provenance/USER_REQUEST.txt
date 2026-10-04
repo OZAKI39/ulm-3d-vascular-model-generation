@@ -1,0 +1,1546 @@
+你正在继续开发 clot CFD–PD 项目。
+
+本轮任务名称：
+
+    PFPD_AT1_PETSC_VI_SOLVER_V1
+
+============================================================
+0. 当前科学基线
+============================================================
+
+首先记录：
+
+    git rev-parse --show-toplevel
+    git rev-parse HEAD
+    git status --short
+
+当前已确认：
+
+SVK_SPECTRAL_SPLIT:
+    VERIFIED
+
+MIXED_STRAIN_MECHANICS:
+    VERIFIED
+
+C5 S0 KKT ACTIVATION:
+    BRACKETED
+
+activation bracket:
+    [0.004497343750,
+     0.004497421875]
+
+diagnostic weak point:
+    epsilon ≈ 0.004497390736
+
+FIRST C5 ACTIVATION SET:
+    2 / 5392 bonds
+
+activation bond IDs:
+    4488
+    5059
+
+ACTIVATION:
+    LOCALIZED
+    CLAMP-ASSOCIATED
+    NOT CRACK PREDICTION
+
+ORIGINAL PROJECTED SOLVER:
+    STAGNATES AT ACTIVE-SET TRANSITION
+
+RESIDUAL JACOBIAN:
+    NO RANK DEFICIENCY DETECTED
+    CONDITION ~ 7e3 NEAR ACTIVATION
+    SCALE SENSITIVE BUT NOT SINGULAR
+
+EXPLICIT DIAGNOSTIC ACTIVE-SET ROOT:
+    FOUND
+
+C5 COUPLED STATIONARITY:
+    RESOLVED AS ROOT-EXISTENCE QUESTION
+
+C5 STABILITY:
+    NOT YET ASSESSED
+
+C7 COUPLED:
+    NOT RUN
+
+PRODUCTION:
+    UNCHANGED
+
+当前测试基线：
+
+    350 passed
+    3 known failed
+    0 skipped
+
+原3个 known failures 必须原样保留。
+
+============================================================
+1. 本轮唯一目标
+============================================================
+
+建立并验证一个正式、成熟的
+variational-inequality stationary solver candidate。
+
+主方法：
+
+    PETSc SNESVINEWTONRSLS
+
+即：
+
+    reduced-space Newton
+    active-set solver
+    for box-constrained variational inequalities.
+
+目标不是：
+
+    修改 fracture model
+
+不是：
+
+    改善物理结果
+
+而是回答：
+
+    PETSc RSLS 是否能够自动识别 phase bounds /
+    active set，并恢复已知高精度 C5 stationary roots？
+
+特别重要：
+
+正式 solver 不允许预先知道：
+
+    active bonds = [4488, 5059]
+
+这些 ID 只能作为事后验证 oracle。
+
+============================================================
+2. 权威公开资源
+============================================================
+
+优先使用官方资料：
+
+------------------------------------------------------------
+PETSc SNES VI
+------------------------------------------------------------
+
+Main SNES manual:
+
+https://petsc.org/main/manual/snes/
+
+RSLS:
+
+https://petsc.org/main/manualpages/SNES/SNESVINEWTONRSLS/
+
+SSLS:
+
+https://petsc.org/main/manualpages/SNES/SNESVINEWTONSSLS/
+
+petsc4py SNES:
+
+https://petsc.org/release/petsc4py/reference/petsc4py.PETSc.SNES.html
+
+RSLS 官方算法核心：
+
+- variables on bounds with correct residual sign
+  are treated as inactive/fixed;
+- their Jacobian rows/columns are removed;
+- Newton is solved on the remaining reduced space;
+- a line search updates the active/free variables.
+
+不要重新实现这个基础算法。
+
+------------------------------------------------------------
+pfm-cracks
+------------------------------------------------------------
+
+https://github.com/tjhei/cracks
+
+重点检查：
+
+    paper-2015 branch
+
+对应：
+
+Heister, Wheeler, Wick (2015)
+"A primal-dual active set method and
+ predictor-corrector mesh adaptivity for
+ computing fracture propagation using
+ a phase-field approach"
+
+DOI:
+https://doi.org/10.1016/j.cma.2015.03.009
+
+只借鉴：
+
+- active-set definition
+- irreversibility handling
+- Newton / active-set iteration structure
+- stopping criteria
+- active-set monitoring
+
+不要 vendor 整个 deal.II FEM framework。
+
+记录：
+
+repo
+branch
+commit SHA
+license
+relevant source files / line ranges
+
+------------------------------------------------------------
+Kolditz–Mang–Wick 2023
+------------------------------------------------------------
+
+https://arxiv.org/abs/2306.03501
+
+只作为：
+
+    modern efficiency / active-set cycling reference
+
+本轮不实现其所有优化技巧。
+
+============================================================
+3. 软件策略：先找现成 PETSc
+============================================================
+
+开始前检测：
+
+    which mpiexec
+    which mpirun
+    which petsc
+    python -c "import petsc4py"
+    python -c "import mpi4py"
+
+并检查：
+
+    conda
+    mamba
+    micromamba
+
+保存：
+
+    provenance/PETSC_ENVIRONMENT.json
+
+如果已有 petsc4py：
+
+直接记录：
+
+    PETSc version
+    petsc4py version
+    MPI implementation
+    scalar type
+    integer type
+    configured packages
+    CUDA support yes/no
+
+============================================================
+4. 如果 PETSc / petsc4py 不存在
+============================================================
+
+不要修改 system Python。
+
+安装优先级：
+
+A.
+已有 conda/mamba/micromamba 时：
+
+创建隔离环境：
+
+verification/pfpd_at1_petsc_vi_solver_v1/external/petsc_env/
+
+优先使用 conda-forge：
+
+    petsc
+    petsc4py
+    mpi4py
+    openmpi 或 mpich
+
+固定实际版本。
+
+B.
+如果没有 conda/mamba：
+
+创建 local venv。
+
+仅当 pip 可获得无需长期源码编译的
+PETSc/petsc4py 安装时继续。
+
+C.
+如果安装开始进入大型 PETSc 源码构建，
+不要默默耗费数小时。
+
+记录：
+
+    PETSC_RUNTIME_UNAVAILABLE
+
+并停止本轮正式 PETSc solver 验证，
+只完成 adapter / residual/Jacobian tests。
+
+此时向用户明确说明：
+需要允许本地 PETSc build
+或提供 PETSc environment。
+
+不要因此自己重新写完整 VI solver。
+
+============================================================
+5. 不改物理模型
+============================================================
+
+保持：
+
+geometry
+particle volumes
+delta
+SVK spectral split
+Psi+/Psi-
+AT1
+Gc_demo
+Yc
+g(s)
+h=1
+sc=0.95
+irreversibility
+force tolerance
+KKT tolerance
+所有 safety criteria
+
+全部不变。
+
+禁止：
+
+- 改 Gc
+- 改 Yc
+- 调 activation loads
+- 放宽 residual tolerance
+- 加 viscosity
+- 加 residual stiffness
+- 改 spectral split
+- 换 AT2
+- 改 active bonds
+- 改 geometry
+- 改 horizon
+
+============================================================
+6. PETSc unknown vector
+============================================================
+
+定义：
+
+    z =
+      [ x_free,
+        s_all ]
+
+C5：
+
+mechanical free DOF:
+    225
+
+phase DOF:
+    5392
+
+total:
+    5617
+
+variable bounds：
+
+mechanical:
+
+    lower = -inf
+    upper = +inf
+
+phase:
+
+    lower =
+      s_previous_accepted_load
+
+    upper =
+      sc
+
+fixed geometric boundary DOF
+不要进入 unknown vector，
+沿用当前 reduced mechanical coordinate mapping。
+
+============================================================
+7. PETSc VI residual
+============================================================
+
+定义 PETSc F(z)：
+
+mechanical part：
+
+    current normalized free-particle
+    force residual
+
+保持现有 sign convention。
+
+phase part：
+
+优先直接使用当前正式：
+
+    q_scaled =
+      q / max(Psi_plus, Yc)
+
+因为：
+
+lower-bound KKT 要求：
+
+    s = lower
+    q_scaled >= 0
+
+interior：
+
+    q_scaled = 0
+
+upper：
+
+    q_scaled <= 0
+
+这与 PETSc VI lower/upper sign convention
+必须逐项核对。
+
+新增 scalar tests 明确验证：
+
+PETSc lower-bound semantics
+与当前 AT1 KKT semantics 一致。
+
+禁止通过改变 q 符号
+“试到能收敛为止”。
+
+============================================================
+8. 不再把 projected residual 作为 PETSc F
+============================================================
+
+非常重要：
+
+PETSc VI solver 自己处理 bounds / active set。
+
+因此 PETSc residual 不应再写：
+
+    s - clip(...)
+
+phase residual直接给：
+
+    q_scaled
+
+让：
+
+    SNESVINEWTONRSLS
+
+自己执行 bound-active-set 逻辑。
+
+否则会：
+
+    projection on top of VI projection
+
+重新引入旧 non-smooth map。
+
+============================================================
+9. Jacobian：严格复用已有验证内容
+============================================================
+
+不要重新推导第二套 Jacobian。
+
+复用上一轮已验证：
+
+- mechanical residual derivatives
+- spectral Psi+ derivatives
+- phase q derivatives
+- x-s cross derivatives
+- phase diagonal
+- current scaling
+
+上一轮 residual-Jacobian：
+finite-difference relative error ~ 1e-6 level or better
+且 adjoint consistency 已通过。
+
+============================================================
+10. C5 Jacobian 用 PETSc sparse AIJ
+============================================================
+
+C5 只有 5617 total DOF。
+
+不要用 dense 5617×5617。
+
+把现有 block structure转换为：
+
+    PETSc AIJ sparse matrix
+
+优先预分配 nonzeros。
+
+结构：
+
+    Jxx
+    Jxs
+    Jsx
+    Jss
+
+其中：
+
+Jss 在当前 h=1 / local AT1 phase law
+应具有已知局部结构。
+
+不要创建无必要的 5392×5392 dense matrix。
+
+保存：
+
+    JACOBIAN_SPARSITY.json
+
+包括：
+
+shape
+nnz
+memory
+block nnz
+
+============================================================
+11. PETSc Jacobian gate
+============================================================
+
+在正式 solve 前至少检查三个状态：
+
+A.
+last s=0 accepted
+
+B.
+first weak activation state
+
+C.
+known positive-phase root
+
+对：
+
+10 deterministic random vectors v
+
+比较：
+
+    J @ v
+
+vs
+
+finite difference：
+
+    [F(z+eps v)-F(z-eps v)]/(2eps)
+
+三档 eps。
+
+要求达到与旧 Jacobian audit
+同数量级的一致性。
+
+若不通过：
+
+STOP。
+
+不要把 PETSc convergence
+用于掩盖 Jacobian adapter bug。
+
+============================================================
+12. ground-truth C5 oracle states
+============================================================
+
+以下状态是本轮正式 regression oracle：
+
+ROOT 1
+epsilon = 0.004498390736
+max s ≈ 0.000585374863
+
+ROOT 2
+epsilon = 0.004499390736
+max s ≈ 0.001170079
+
+ROOT 3
+epsilon = 0.004502390736
+max s ≈ 0.002920178
+
+ROOT 4
+epsilon = 0.004507390736
+max s ≈ 0.005823718
+
+ROOT 5
+epsilon = 0.004517390736
+max s ≈ 0.01158155
+
+ROOT 6
+epsilon = 0.004547390736
+max s ≈ 0.02847272
+
+ORIGINAL FAILURE LOAD
+epsilon = 0.004514117556
+max s ≈ 0.009704082
+
+这些数值只用于：
+
+    post-solve comparison
+
+禁止把 oracle s
+作为 PETSc phase initial guess。
+
+============================================================
+13. 初值必须公平
+============================================================
+
+第一 activation load：
+
+初值：
+
+    previous accepted s=0 state
+
+phase：
+
+    previous accepted s
+
+也就是全部 0。
+
+不得给 PETSc：
+
+    known active IDs
+    known positive root
+    oracle phase vector
+
+后续 continuation：
+
+初值只能是：
+
+    previous PETSc accepted state
+
+和当前 load boundary increment。
+
+这样才能证明：
+
+    solver truly tracks active set automatically.
+
+============================================================
+14. Primary solver configuration
+============================================================
+
+主 solver：
+
+    SNESVINEWTONRSLS
+
+运行时打开：
+
+    -snes_vi_monitor
+    -snes_vi_monitor_residual
+    -snes_vi_monitor_active
+    -snes_converged_reason
+
+line search 初始使用 PETSc 默认：
+
+    backtracking
+
+不要一开始 sweep 多种 solver 参数。
+
+保存：
+
+每 iteration：
+
+active count
+inactive/free count
+residual norm
+line-search lambda
+linear iterations
+SNES convergence reason
+
+============================================================
+15. scientific acceptance independent of PETSc success
+============================================================
+
+PETSc 返回 converged
+不能直接接受。
+
+每个 state 最终仍使用项目自己的：
+
+force residual <= 1e-9
+
+full projected KKT <= 1e-8
+
+inactive inequalities
+
+phase bounds
+
+irreversibility
+
+fixed boundary
+
+finite positive J
+
+existing safety
+
+只有全部通过：
+
+    SCIENTIFICALLY_ACCEPTED
+
+============================================================
+16. RSLS 必须自动发现 active set
+============================================================
+
+在第一 positive root：
+
+事后比较：
+
+PETSc free/interior phase IDs
+
+与 diagnostic oracle：
+
+    [4488, 5059]
+
+目标不是强制 exact active size=2 forever。
+
+但第一 activation 处应检查：
+
+precision/recall
+
+如果 PETSc 得到不同 active set
+但完整 KKT 仍满足：
+
+不要直接判错。
+
+比较：
+
+state
+energy
+force
+KKT
+phase distribution
+
+然后调查是否存在多个等价 root。
+
+============================================================
+17. Root regression criteria
+============================================================
+
+对于7个 oracle loads：
+
+PETSc candidate 至少：
+
+force <= 1e-9
+KKT <= 1e-8
+
+并比较：
+
+max |s_petsc - s_oracle|
+
+scaled ||x_petsc-x_oracle||
+
+energy difference
+reaction difference
+
+建议 development agreement：
+
+phase Linf <= 1e-8
+
+scaled state L2 <= 1e-8
+
+relative energy <= 1e-9
+
+relative reaction <= 1e-8
+
+如果 physical stationary criteria通过，
+但 state 与 oracle 略不同：
+
+先检查是否多个 roots，
+不要为了 matching oracle
+强制修改 PETSc。
+
+============================================================
+18. Continuation benchmark
+============================================================
+
+正式测试 sequence：
+
+从：
+
+last accepted s=0 state
+
+开始，
+
+依次经过本轮7个 target loads。
+
+不得独立给每一点 oracle initial state。
+
+保存：
+
+continuation/PETSC_RSLS/
+
+每一点：
+
+SNES iterations
+linear iterations
+active-set changes
+wall time
+accepted state
+
+============================================================
+19. current diagnostic active-set solver
+============================================================
+
+保留它作为：
+
+    ORACLE ONLY
+
+不要提升为正式 solver。
+
+同一7个 load
+不需要全部重算。
+
+直接读取现有保存结果。
+
+只在缺失数据时才补算。
+
+============================================================
+20. SSLS 只做两个代表 case
+============================================================
+
+第二独立 PETSc oracle：
+
+    SNESVINEWTONSSLS
+
+不要完整跑7点。
+
+只测试：
+
+CASE A:
+    first positive root
+
+CASE B:
+    original failure load
+
+使用与 RSLS 相同：
+
+bounds
+residual
+Jacobian
+initial state
+scientific tolerance
+
+目的：
+
+确认另一个成熟 VI formulation
+是否得到同一 root。
+
+如果 SSLS linear systems
+明显更病态或难收敛：
+
+记录即可。
+
+不要花大量时间调 SSLS。
+
+============================================================
+21. pfm-cracks 源码审计
+============================================================
+
+固定：
+
+    tjhei/cracks
+    paper-2015
+
+记录 commit SHA。
+
+只寻找：
+
+- active set classification
+- irreversibility bounds
+- combined Newton logic
+- convergence tests
+- active-set update/cycling logic
+
+生成：
+
+references/PFM_CRACKS_PDAS_NOTES.md
+
+回答：
+
+1. 我们的 bounds/KKT 与其方法结构上哪些相同？
+2. 哪些是 FE-specific 不能照搬？
+3. PETSc RSLS 已经提供哪些基础功能，
+   所以无需自己复制？
+
+不要编译整个 deal.II project，
+除非服务器本来已经配置 deal.II。
+
+============================================================
+22. Kolditz 2023 只研究必要效率点
+============================================================
+
+阅读：
+
+https://arxiv.org/abs/2306.03501
+
+只抽取：
+
+active-set cycling
+combined Newton
+cost reductions
+
+本轮不实现其 modified algorithm。
+
+在报告中说明：
+
+什么时候未来需要它？
+
+只有如果 PETSc RSLS 出现：
+
+    many active-set iterations
+    cycling
+    excessive Newton work
+
+才作为下一优化候选。
+
+============================================================
+23. CPU 资源利用
+============================================================
+
+服务器已知大致：
+
+12 physical / 24 logical cores
+
+但重新检测真实环境。
+
+本轮 C5 七个 oracle load
+存在两类计算：
+
+A.
+continuation path：
+    必须串行，因为有历史依赖。
+
+B.
+独立 regression /
+    Jacobian checks /
+    SSLS comparison：
+    可以并行。
+
+不要让多个 NumPy/BLAS worker
+各自开全部线程。
+
+设置：
+
+OPENBLAS_NUM_THREADS=1
+OMP_NUM_THREADS=1
+MKL_NUM_THREADS=1
+
+并行独立 jobs：
+
+ProcessPoolExecutor
+
+max workers：
+
+    min(
+      physical_cores - 2,
+      memory_safe_worker_count
+    )
+
+至少保留：
+
+2 physical cores
+20% RAM
+
+============================================================
+24. PETSc MPI benchmark
+============================================================
+
+只有当 PETSc/petsc4py build
+支持 MPI 时进行一个小 benchmark。
+
+注意：
+
+当前 Python BAQP residual
+如果还是单进程 NumPy evaluation，
+增加 MPI ranks 不会自动加速 physics callback。
+
+因此不要盲目：
+
+mpirun -n 24.
+
+只 benchmark：
+
+1 rank
+2 ranks
+4 ranks
+
+在同一个 C5 root。
+
+如果 residual assembly 没有 distributed implementation，
+应预期 1 rank 可能最快。
+
+记录真实 wall time，
+选择最快模式。
+
+不要把 MPI 核数
+当成“充分利用 CPU”的形式主义。
+
+============================================================
+25. CPU 并行优化重点
+============================================================
+
+真正值得并行的是：
+
+- finite-difference Jacobian columns
+- independent Jv checks
+- independent SSLS cases
+- sparse block construction
+  where deterministic parallel assembly is safe
+
+如果现有 Jacobian construction
+能按 displacement columns 独立计算：
+
+使用进程并行。
+
+phase diagonal
+不需要大规模进程开销。
+
+============================================================
+26. GPU 检测
+============================================================
+
+记录：
+
+nvidia-smi
+
+检查 PETSc：
+
+是否配置：
+
+CUDA
+Kokkos
+HIP
+
+以及能否使用：
+
+    Vec CUDA
+    AIJCUSPARSE
+
+只有：
+
+PETSc 本身已有 CUDA support
+
+才考虑 GPU solver benchmark。
+
+不要为本轮从源码重编
+一个 CUDA PETSc stack，
+除非用户环境已经提供。
+
+============================================================
+27. GPU benchmark gate
+============================================================
+
+若 CUDA PETSc 已存在：
+
+只对一个 C5 root 比较：
+
+CPU:
+    normal PETSc Vec/AIJ
+
+GPU:
+    CUDA Vec
+    AIJCUSPARSE
+
+必须满足：
+
+scientific state agreement
+
+以及：
+
+wall-time speedup >= 1.3×
+
+才允许后续 GPU。
+
+C5 规模只有 ~5600 DOF，
+GPU 不一定更快。
+
+如果没达到：
+
+    GPU_AVAILABLE_NOT_BENEFICIAL_FOR_C5
+
+不要继续 GPU 调优。
+
+============================================================
+28. C7：本轮只允许 solver scalability smoke
+============================================================
+
+只有在：
+
+RSLS C5 7/7 roots
+全部 scientifically accepted
+
+之后，
+
+允许 C7 做一个 cheap smoke test。
+
+不要做 C7 stability。
+
+选择：
+
+一个低于预计 activation 的 state
++
+一个 activation-neighborhood state
+由已有 spectral driver cheap scan 决定。
+
+目的仅：
+
+PETSc residual/Jacobian memory
+solver initialization
+one or few Newton iterations
+
+若能得到 stationary root可保存。
+
+但不能继续：
+
+Hessian
+critical cone
+mode
+spatial stability audit
+
+============================================================
+29. 不要重复运行的验证
+============================================================
+
+禁止重复：
+
+- spectral split tensor campaign
+- PhaseFieldX oracle
+- 128 random F
+- C3 Hessian campaign
+- C5 activation bracket scan
+- C5 activation spatial mapping
+- old explicit active-set root campaign
+- old damage-energy audit
+- Griffith/c0 calibration
+- C7 intact 4-state campaign
+- Peridynamics.jl mechanics campaign
+
+全部直接读取历史结果。
+
+============================================================
+30. 新测试
+============================================================
+
+开始：
+
+只运行一次：
+
+    pytest tests -q
+
+结束：
+
+再运行一次 full suite。
+
+开发中只运行 targeted tests。
+
+建议新增：
+
+tests/test_petsc_vi_mapping.py
+tests/test_petsc_vi_jacobian.py
+tests/test_petsc_rsls_c5.py
+tests/test_petsc_rsls_continuation.py
+
+至少：
+
+TEST 1
+mechanical bounds are +/- inf
+
+TEST 2
+phase bounds =
+previous s / sc
+
+TEST 3
+lower-bound q sign
+matches PETSc VI convention
+
+TEST 4
+upper-bound q sign
+matches PETSc VI convention
+
+TEST 5
+PETSc residual contains q,
+not projected clip residual
+
+TEST 6
+NumPy <-> PETSc vector mapping roundtrip
+
+TEST 7
+sparse Jacobian Jv
+matches FD
+
+TEST 8
+inactive phase remains at lower bound
+
+TEST 9
+first activation active-set discovered
+without oracle IDs
+
+TEST 10
+same-load original failure root recovered
+
+TEST 11
+all inactive inequalities pass
+
+TEST 12
+continuation preserves irreversibility
+
+TEST 13
+scientific acceptance independent
+from PETSc reason code
+
+TEST 14
+legacy projected solver unchanged
+
+TEST 15
+production unchanged
+
+如果 PETSc runtime 不可安装，
+PETSc-dependent tests
+只能使用明确：
+
+    skip reason = PETSC_RUNTIME_UNAVAILABLE
+
+但不要 skip 普通 adapter/unit tests。
+
+在报告中不能称 solver VERIFIED。
+
+============================================================
+31. 可视化：只做有决策价值的图
+============================================================
+
+最多6组。
+
+------------------------------------------------------------
+FIGURE 1
+rsls_convergence
+
+选：
+
+first positive root
+original failure load
+
+每 iteration：
+
+force residual
+phase/KKT residual
+
+两张图。
+
+叠加 scientific tolerance。
+
+人工问题：
+
+“RSLS 是否真正把残差降到科学门槛？”
+
+------------------------------------------------------------
+FIGURE 2
+active_set_evolution
+
+横轴：
+RSLS Newton iteration
+
+显示：
+
+number phase at lower bound
+number free/interior
+number upper bound
+
+对 first activation
+标 oracle expected 2
+只作 reference。
+
+------------------------------------------------------------
+FIGURE 3
+solver_root_comparison
+
+7 loads：
+
+显示：
+
+max phase difference
+reaction difference
+energy difference
+
+PETSc RSLS vs
+diagnostic oracle
+
+人工问题：
+
+“正式 solver 是否找回同一分支？”
+
+------------------------------------------------------------
+FIGURE 4
+solver_cost
+
+每 load：
+
+SNES nonlinear iterations
+linear iterations
+wall time
+
+不要多 y 轴。
+
+------------------------------------------------------------
+FIGURE 5
+rsls_vs_ssls
+
+仅两个 representative loads：
+
+force residual
+KKT residual
+iterations
+wall time
+
+简单 bar/table style。
+
+------------------------------------------------------------
+FIGURE 6
+c5_phase_branch_rsls
+
+横轴：
+engineering strain
+
+显示：
+
+max s
+weighted mean s
+reaction stress
+
+使用 PETSc accepted roots。
+
+标：
+
+FORMAL VI SOLVER CANDIDATE
+NO STABILITY CLASSIFICATION
+
+============================================================
+32. REVIEW 报告
+============================================================
+
+生成：
+
+verification/pfpd_at1_petsc_vi_solver_v1/
+    REVIEW_PETSC_VI_SOLVER_V1.md
+
+结构：
+
+1. 为什么换 solver 而不换 physics
+
+2. 什么是 variational inequality
+
+3. RSLS 做了什么
+
+4. 与上一轮 explicit active-set
+   为什么本质相似
+
+5. PETSc/petsc4py 安装与版本
+
+6. residual / bounds 映射
+
+7. Jacobian 验证
+
+8. first activation result
+
+9. original failure load result
+
+10. 七个 oracle roots regression
+
+11. continuation 是否自动维护 active set
+
+12. RSLS vs SSLS
+
+13. pfm-cracks / 2015 PDAS 对照
+
+14. CPU / MPI / GPU 实际效率
+
+15. tests
+
+16. 当前 scientific status
+
+17. 唯一下一步
+
+============================================================
+33. 验收标准
+============================================================
+
+只有同时满足：
+
+A.
+PETSc RSLS runtime 正常工作。
+
+B.
+Residual/Jacobian adapter
+通过 finite-difference gate。
+
+C.
+first positive root
+从 s=0 initial phase 自动得到。
+
+D.
+original failed load
+自动得到合法 stationary root。
+
+E.
+7 个 oracle loads
+全部：
+
+force <= 1e-9
+KKT <= 1e-8
+bounds / inactive inequality / irreversibility pass
+
+F.
+至少 continuation sequence
+不是逐点喂 oracle state。
+
+G.
+phase/state 与 diagnostic oracle
+在预声明 agreement tolerance 内，
+或证明存在另一个等价合法 root。
+
+H.
+生产模型未修改。
+
+才可：
+
+    PETSC_RSLS_C5:
+        VERIFIED
+
+============================================================
+34. 最终状态标签
+============================================================
+
+最终必须输出：
+
+PETSC_RUNTIME:
+    AVAILABLE
+    / UNAVAILABLE
+
+PETSC_RSLS_ADAPTER:
+    VERIFIED
+    / NOT_VERIFIED
+
+PETSC_RSLS_C5:
+    VERIFIED
+    / NOT_VERIFIED
+
+FIRST_ACTIVATION_ROOT:
+    RECOVERED_AUTOMATICALLY
+    / FAILED
+
+ORIGINAL_FAILURE_LOAD:
+    RECOVERED
+    / FAILED
+
+C5_ORACLE_ROOTS:
+    N / 7 PASSED
+
+ACTIVE_SET_DISCOVERY:
+    AUTOMATIC
+    / REQUIRED_ORACLE_HINT
+    / FAILED
+
+RSLS_VS_DIAGNOSTIC_ORACLE:
+    AGREES
+    / MULTIPLE_VALID_ROOTS
+    / DISAGREES
+    / INCONCLUSIVE
+
+PETSC_SSLS:
+    AGREES
+    / DIFFICULT
+    / FAILED
+    / NOT_RUN
+
+PFM_CRACKS_PDAS_REVIEW:
+    COMPLETE
+    / INCOMPLETE
+
+MPI_BENCHMARK:
+    [result]
+
+GPU_BACKEND:
+    USED
+    / AVAILABLE_NOT_BENEFICIAL
+    / UNAVAILABLE
+
+FORMAL_C5_STATIONARY_SOLVER:
+    VERIFIED_CANDIDATE
+    / NOT_VERIFIED
+
+C5_STABILITY:
+    NOT ASSESSED THIS ROUND
+
+C7_STABILITY:
+    NOT RUN
+
+PRODUCTION:
+    UNCHANGED
+
+============================================================
+35. 什么时候可以进入下一阶段
+============================================================
+
+只有：
+
+    FORMAL_C5_STATIONARY_SOLVER
+      = VERIFIED_CANDIDATE
+
+才允许下一轮回到：
+
+    C5 stability
+    C7 coupled branch
+    spatial discretization audit
+
+本轮不要自动做这些事情。
+
+============================================================
+36. 最终终端摘要
+============================================================
+
+最终只输出：
+
+- repository / HEAD
+- PETSc version
+- petsc4py version
+- PETSc MPI implementation
+- PETSc CUDA support
+- pfm-cracks commit reviewed
+- production files modified
+- historical files modified
+- baseline tests
+- final tests
+- Jacobian adapter max error
+- first root status
+- original failure root status
+- C5 roots passed / 7
+- max phase difference vs oracle
+- max state difference vs oracle
+- max energy difference
+- max reaction difference
+- average RSLS SNES iterations
+- average linear iterations
+- total RSLS C5 continuation wall time
+- RSLS vs SSLS result
+- MPI fastest rank count
+- GPU result
+- FORMAL_C5_STATIONARY_SOLVER label
+- REVIEW_PETSC_VI_SOLVER_V1.md
+- figures directory
+
+不要只输出：
+    solver implemented
+
+============================================================
+37. 完成后停止
+============================================================
+
+不要自动开始：
+
+C5 Hessian stability
+C7 full branch
+C7 Hessian
+post-instability continuation
+arc-length
+h(s)<1
+Ogden
+viscoelasticity
+wall adhesion
+clot calibration
+erosion coupling
+fatigue
+real CFD
+
+等待人工审核。

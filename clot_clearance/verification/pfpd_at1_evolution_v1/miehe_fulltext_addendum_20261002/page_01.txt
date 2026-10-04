@@ -1,0 +1,78 @@
+                                       Computer Methods in Applied Mechanics and Engineering 199 (2010) 2765– 2778
+
+
+                                             Contents lists available at ScienceDirect
+
+         Computer Methods in Applied Mechanics and Engineering
+
+
+                                   journal homepage: www.elsevier.com/locate/cma
+
+
+
+A phase ﬁeld model for rate-independent crack propagation: Robust algorithmic
+implementation based on operator splits
+
+Christian Miehe ⁎, Martina Hofacker, Fabian Welschinger
+
+Institute of Applied Mechanics (CE) Chair I, University of Stuttgart, Pfaffenwaldring 7, 70550 Stuttgart, Germany
+
+
+
+a r t i c l e    i n f o              a b s t r a c t
+
+
+Article history:                               The computational modeling of  failure mechanisms in solids due to fracture based on sharp crack
+Received 4 January 2010                             discontinuities suffers in situations with complex crack topologies. This can be overcome by a diffusive crack
+Received in revised form 14 April 2010             modeling based on the introduction of a crack phase ﬁeld. Following our recent work [C. Miehe,  F.
+Accepted 15 April 2010
+                                              Welschinger, M. Hofacker, Thermodynamically-consistent phase ﬁeld models  of  fracture: Variational
+Available online 7 May 2010
+                                                   principles and multi-ﬁeld fe implementations, International Journal for Numerical Methods in Engineering
+                                            DOI:10.1002/nme.2861] on phase-ﬁeld-type fracture, we propose in this paper a new variational framework
+Keywords:
+Fracture                                              for rate-independent diffusive fracture that bases on the introduction of a local history ﬁeld. It contains a
+Crack propagation                       maximum reference energy obtained in the deformation history, which may be considered as a measure for
+Phase ﬁelds                                    the maximum tensile strain obtained in history. It is shown that this local variable drives the evolution of the
+Gradient-type damage                             crack phase ﬁeld. The introduction of the history ﬁeld provides a very transparent representation of the
+Incremental variational principles                  balance equation that governs the diffusive crack topology. In particular, it allows for the construction of a
+Finite elements                         new algorithmic treatment of diffusive fracture. Here, we propose an extremely robust operator split scheme
+Coupled multi-ﬁeld problem
+                                                  that successively updates in a typical time step the history ﬁeld, the crack phase ﬁeld and ﬁnally the
+                                             displacement ﬁeld. A regularization based on a viscous crack resistance that even enhances the robustness of
+                                              the algorithm may easily be added. The proposed algorithm is considered to be the canonically simple
+                                        scheme for the treatment of diffusive fracture in elastic solids. We demonstrate the performance of the phase
+                                             ﬁeld formulation of fracture by means of representative numerical examples.
+                                                                     © 2010 Elsevier B.V. All rights reserved.
+
+
+
+
+1. Introduction                                                         surface topology in the solid by diffusive crack zones governed by a
+                                                                             scalar auxiliary variable. This variable can be considered as a phase
+   The prediction of failure mechanisms due to crack initiation and    ﬁeld which interpolates between the unbroken and the broken state
+propagation in solids is of great importance for engineering applica-     of the material. Conceptually similar are recently outlined phase ﬁeld
+tions. Following the classical treatments of Grifﬁth [2] and Irwin [3],    approaches to brittle fracture based on the classical Ginzburg-Landau
+cracks propagate if the energy release rate reaches a critical value. The    type evolution equation as reviewed in Hakim & Karma [14], see also
+Grifﬁth theory provides a criterion for crack propagation but  is    Karma, Kessler & Levine [15] and Eastgate et al. [16]. In contrast to the
+insufﬁcient to determine curvilinear crack paths, crack kinking and    above mentioned rate-independent approach, these models are fully
+branching angles. In particular, such a theory is unable to predict crack    viscous in nature and mostly applied to dynamic fracture. The phase
+initiation. These defects of the classical Grifﬁth-type theory of brittle    ﬁeld approaches to fracture offer important new perspectives towards
+fracture can be overcome by variational methods based on energy    the theoretical and computational modeling of complex crack
+minimization as suggested by Francfort & Marigo [4], see also Bourdin,     topologies. Recall that ﬁnite-element-based numerical implementa-
+Francfort & Marigo [5], Dal Maso & Toader [6] and Buliga [7]. The     tions of sharp crack discontinuities, such as interface element
+regularized setting of  their framework, considered in Bourdin,     formulations, element and nodal enrichment strategies suffer in the
+Francfort & Marigo [8,5], is obtained by Γ-convergence inspired by    case of three-dimensional applications with crack branching. Ad-
+the work on image segmentation by Mumford & Shah [9]. We refer to    vanced XFEM-based methods for sharp crack propagation are outlined
+Ambrosio & Tortorelli [10] and the reviews of Dal Maso [11] and     in Belytschko et al. [17,18] We also refer to the adaptive interface
+Braides [12,13] for details on Γ-convergent approximations of free    methods by Gürses & Miehe [19] and Miehe & Gürses [20,21] for the
+discontinuity problems. The approximation regularizes a sharp crack    modeling of conﬁgurational-force-driven sharp crack propagation. In
+                                                                          contrast, phase-ﬁeld-type  diffusive crack approaches avoid the
+                                                              modeling of discontinuities and can be implemented in a straightfor-
+  ⁎ Corresponding author. Tel.: +49 711 685 66379.
+    E-mail address: christian.miehe@mechbau.uni-stuttgart.de (C. Miehe).           ward manner by coupled multi-ﬁeld ﬁnite element solvers. In the
+    URL: http://www.mechbau.uni-stuttgart.de/ls1/ (C. Miehe).                      recent work Miehe, Welschinger & Hofacker [1], we outlined a general
+
+
+0045-7825/$ – see front matter © 2010 Elsevier B.V. All rights reserved.
+doi:10.1016/j.cma.2010.04.011

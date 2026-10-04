@@ -1,0 +1,46 @@
+Working directory:
+/home/lzy/projects/temp_storage/clot_clearance_github_sync_20260930/clot_clearance
+
+Interpreter:
+/home/lzy/projects/computation_examples/_shared/python_environment/bin/python
+
+Environment used for audit/tests:
+PYTHONDONTWRITEBYTECODE=1
+PYTHONPATH=.
+OPENBLAS_NUM_THREADS=1
+OMP_NUM_THREADS=1
+MKL_NUM_THREADS=1
+NUMBA_CACHE_DIR=verification/damage_energy_audit_v1/provenance/runtime_cache/<stage>
+MPLCONFIGDIR=verification/damage_energy_audit_v1/provenance/runtime_cache/matplotlib
+
+Executed stages (python means the interpreter above with -B):
+python scripts/run_damage_energy_audit.py replay
+python scripts/run_damage_energy_audit.py mechanism
+python scripts/analyze_damage_energy_audit.py
+python -m pytest tests/test_damage_energy_audit.py tests/test_damage_energy_decomposition.py tests/test_damage_thermodynamic_force.py -q -p no:cacheprovider --basetemp=verification/damage_energy_audit_v1/tests/new
+python -m pytest tests -q -p no:cacheprovider --basetemp=verification/damage_energy_audit_v1/tests/full
+python scripts/visualize_damage_energy_audit.py
+python scripts/check_damage_reconstruction_identity.py
+
+The state evaluations use production code unchanged. The reconstruction-identity
+check uses saved states only and was added after the main audit.
+The runner deliberately refuses to overwrite completed cases. Do not re-run it
+in this completed directory. Use a separate project copy with the same historical
+inputs, source hashes, and provenance/PREDECLARED_PLAN.json plus HARDWARE.json.
+When reproducing on different hardware, record that hardware separately.
+
+Analysis caveat:
+The first summary retains uniform_monotonic_with_roundoff=false for three
+undeformed roundoff values. Read comparisons/UNIFORM_SCALING_INTERPRETATION.json
+together with MECHANISM_SUMMARY.json; no original tolerance or value was changed.
+
+Visualization development:
+VISUALIZATION.log retains an initial directory-selection KeyError before plots
+were created. VISUALIZATION_RETRY.log records unavailable superscript-minus
+glyphs in Arial. Those draft figures are preserved in visualization_drafts/.
+The delivery renderer uses supported unit labels, moves annotations off data,
+and VISUALIZATION_DELIVERY.log has no warnings. No mechanics data were altered.
+
+Literature source files, retrieval failures, hashes, and limitations are retained
+under literature/. The failed direct publisher HTML download is not the article;
+the paper was read through the browser. See literature/LITERATURE_REVIEW.md.

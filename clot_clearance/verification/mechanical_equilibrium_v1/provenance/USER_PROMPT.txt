@@ -1,0 +1,1160 @@
+你正在继续开发：
+
+Repository:
+OZAKI39/ulm-3d-vascular-model-generation
+
+Branch baseline:
+clot-clearance/energy-regularization-20260930
+
+主要工程：
+clot_clearance/
+
+上一轮已经实现：
+STREAMING_EROSION v1
+
+当前已确认状态：
+
+STREAMING_EROSION v1
+    SOFTWARE VERIFIED
+
+EROSION RATE LAW
+    NUMERICALLY VERIFIED FOR PRESCRIBED DRIVER
+
+MECHANICAL DRIVER
+    NOT YET VERIFIED AS SETTLED
+    first macro-step drift ≈ 8.48% > 5%
+
+EROSION TIME-STEP STUDY
+    ENCOURAGING BUT INCONCLUSIVE
+
+EROSION ENERGY DISSIPATION
+    NOT ESTABLISHED
+
+FAILURE / DETACHMENT
+    NOT OBSERVED
+
+MESH OBJECTIVITY
+    NOT ASSESSED
+
+PHYSICAL CALIBRATION
+    NOT PERFORMED
+
+REAL MICROBUBBLE CFD
+    NOT USED
+
+上一轮测试：
+48 old tests + 30 new tests = 78 passed.
+
+============================================================
+0. 本轮总目标
+============================================================
+
+本轮只解决一个问题：
+
+    mean-flow STREAMING_EROSION 的 mechanical driver
+    在 damage update 前是否真正达到可靠的机械平衡。
+
+不要增加新的 clot physics。
+
+不要在本轮加入：
+- Ogden
+- viscoelastic clot material
+- poroelasticity
+- spatial corrosion
+- biochemical thrombolysis
+- cyclic fatigue modifications
+- cohesive wall
+- real microbubble CFD
+- composition field
+- new fracture parameters
+
+这些后续再做。
+
+本轮目标是把：
+
+    fixed 2 ms mechanical window
+
+升级为一个有文献和独立数值基准支持的：
+
+    quasi-static mechanical equilibration procedure
+
+并彻底把：
+
+    mechanical equilibration time
+
+和：
+
+    erosion exposure time
+
+分开。
+
+============================================================
+1. 不要重新造轮子：先调查已有方法
+============================================================
+
+优先研究并复用已有公开方法，而不是自行发明 quasi-static solver。
+
+首先检查以下资源。
+
+RESOURCE A — Peridigm
+Open-source peridynamics code:
+GitHub repository:
+    peridigm/peridigm
+
+Relevant publication:
+    Littlewood, Parks, Foster, Mitchell, Diehl,
+    "The Peridigm Meshfree Peridynamics Code"
+    Journal of Peridynamics and Nonlocal Modeling, 2023
+    DOI:
+    10.1007/s42102-023-00100-0
+
+重点检查：
+- quasi-static solver design
+- explicit dynamic relaxation
+- convergence criteria
+- residual norms
+- examples using correspondence materials
+
+不要直接复制大量 Peridigm source。
+如需要借鉴代码：
+- 先检查 license；
+- 在报告里注明文件和算法来源；
+- 尽量只实现算法思想；
+- 不 vendor 整个 Peridigm/Trilinos stack。
+
+------------------------------------------------------------
+
+RESOURCE B — Adaptive Dynamic Relaxation for PD
+
+Kilic, B.; Madenci, E.
+"An adaptive dynamic relaxation method for quasi-static simulations
+ using the peridynamic theory"
+
+Theoretical and Applied Fracture Mechanics
+53 (2010), 194–204
+
+DOI:
+    10.1016/j.tafmec.2010.08.001
+
+这是本轮 ADR 的首选理论来源。
+
+必须获取全文或足够完整的方法部分后才能实现。
+
+如果服务器可以联网：
+    自行通过 DOI、作者主页、机构仓储或合法开放资源查找。
+
+如果服务器不能联网：
+    先搜索项目 references/、用户目录和已有 PDF。
+
+如果仍找不到完整公式：
+    STOP ADR IMPLEMENTATION
+
+并向用户明确询问：
+    “请提供 Kilic & Madenci (2010) PDF 的本地路径或上传论文。”
+
+禁止只根据摘要、二手博客或模型自己的记忆重写 ADR 公式。
+
+------------------------------------------------------------
+
+RESOURCE C — independent small-case equilibrium oracle
+
+优先使用项目已有依赖：
+
+    scipy.optimize.least_squares
+
+文档关键词：
+    scipy.optimize.least_squares
+
+目的：
+不是替换正式 PD solver。
+
+只用于小型、无 damage、mean-only case，
+求解：
+
+    R_free(x) = 0
+
+其中：
+R_free 为所有非固定自由粒子的 mechanical + fluid force residual。
+
+不要自己重新实现：
+- Levenberg-Marquardt
+- trust-region reflective
+- generic nonlinear least-squares solver
+
+使用 SciPy 已有实现。
+
+============================================================
+2. 开发前必须做源码审计
+============================================================
+
+先阅读：
+
+pd_clot/regularization/erosion_runner.py
+pd_clot/regularization/erosion.py
+pd_clot/regularization/flow.py
+pd_clot/regularization/fast_mechanics.py
+pd_clot/fragment_mechanics.py
+pd_clot/mechanics.py
+
+以及上一轮：
+
+verification/streaming_erosion_v1/REVIEW_STREAMING_EROSION.md
+
+确认并记录：
+
+1. 当前 force evaluation API；
+2. fixed particles 如何处理；
+3. surface force 是否依赖当前位置；
+4. mean-only provider 的时间依赖；
+5. 当前 damping 具体在哪里使用；
+6. 当前 2 ms window 如何定义；
+7. damage 在 mechanical window 中是否冻结；
+8. mechanical_time_s 与 erosion_exposure_time_s 如何保存。
+
+在真正写代码前生成：
+
+verification/mechanical_equilibrium_v1/
+    PRE_IMPLEMENTATION_AUDIT.md
+
+用简单语言说明现有流程。
+
+============================================================
+3. 本轮架构
+============================================================
+
+不要删除 legacy fixed-window method。
+
+新增一个独立 mechanical equilibration abstraction。
+
+建议：
+
+pd_clot/regularization/equilibrium.py
+
+包含统一接口，例如：
+
+    equilibrate(
+        cloud,
+        x0,
+        v0,
+        integrity,
+        config,
+        force_callback,
+        method=...
+    )
+
+至少支持：
+
+METHOD A:
+    legacy_fixed_damping
+
+METHOD B:
+    adaptive_dynamic_relaxation
+
+另外提供：
+
+METHOD C:
+    scipy_reference
+
+但 METHOD C 只能用于小算例 verification，
+不能自动用于 production large runs。
+
+erosion_runner 应调用统一 equilibrium interface，
+不要复制 mechanics kernel。
+
+============================================================
+4. ADR 实现原则
+============================================================
+
+ADR 必须严格依据：
+
+Kilic & Madenci 2010
+
+的公式和算法顺序。
+
+报告中写出：
+- fictitious density / mass 如何处理；
+- adaptive damping coefficient 如何计算；
+- velocity/displacement update；
+- convergence condition；
+- 与原物理 mass/damping 的区别。
+
+必须把 ADR 标记成：
+
+    NUMERICAL EQUILIBRATION DEVICE
+
+不能解释成：
+    physical clot viscosity
+
+ADR 阶段：
+- D 固定；
+- integrity 固定；
+- topology 固定；
+- erosion exposure time 不推进；
+- represented ultrasound cycles 不推进。
+
+ADR 的 fictitious time：
+不能写入：
+    erosion_exposure_time_s
+
+可以单独记录：
+
+    equilibrium_iteration
+    equilibrium_pseudo_time
+    mechanical_equilibration_iterations
+
+如果论文算法使用 fictitious density：
+不要把 fictitious density 覆盖 clot physical density。
+
+============================================================
+5. 初始 pre-relaxation
+============================================================
+
+当前最大问题是：
+
+第一次从 undeformed clot 突然施加 mean flow 后，
+2 ms 内 driver drift = 8.48%。
+
+因此新增：
+
+    pre_erosion_equilibration
+
+流程：
+
+initial undamaged clot
+    ->
+apply mean-only flow
+    ->
+mechanically equilibrate
+    ->
+verify equilibrium
+    ->
+set:
+    erosion_exposure_time_s = 0
+    ->
+begin STREAMING_EROSION
+
+重要：
+
+pre-relaxation 可以消耗：
+    pseudo time / computational time
+
+但：
+
+D 必须保持 0
+erosion_exposure_time_s 必须保持 0
+
+直到 equilibrium criterion 通过。
+
+输出中必须明确区分：
+
+PRE_RELAXATION
+EROSION_STEP
+
+============================================================
+6. equilibrium convergence criteria
+============================================================
+
+不要只使用一个“driver drift < 5%”。
+
+至少同时记录：
+
+A. force residual
+
+定义：
+
+    R = mechanical_force + surface_fluid_force
+
+只统计 free particles。
+
+建议输出：
+
+    force_residual_L2_N
+    force_residual_RMS_N
+    force_residual_max_N
+
+以及无量纲形式，例如：
+
+    relative_force_residual =
+        ||R_free|| /
+        max(||F_external_free||, force_floor)
+
+force_floor 必须显式定义并记录。
+
+------------------------------------------------------------
+
+B. kinetic / pseudo-kinetic energy
+
+记录：
+
+    kinetic_energy_J
+
+如果 ADR 使用 fictitious mass，
+不要把 pseudo kinetic energy 写成 physical kinetic energy。
+
+分别记录：
+    physical_kinetic_energy_J
+或
+    adr_pseudo_kinetic_measure
+
+根据实际算法。
+
+------------------------------------------------------------
+
+C. erosion driver stability
+
+继续记录：
+
+    maximum_epsilon_plus
+    mean_epsilon_plus
+    driver_drift
+
+但 driver drift 只是第三个 criterion，
+不能单独定义 equilibrium。
+
+------------------------------------------------------------
+
+预先在 config 中声明 tolerance。
+
+不要跑完后为了 PASS 改 tolerance。
+
+建议 development config：
+
+"mechanical_equilibrium": {
+    "method": "adaptive_dynamic_relaxation",
+    "maximum_iterations": 50000,
+    "relative_force_residual_tolerance": 1.0e-4,
+    "driver_drift_tolerance": 0.01,
+    "minimum_consecutive_converged_checks": 5,
+    "check_interval": 50,
+    "development_parameters": true
+}
+
+具体 ADR 专用参数：
+必须根据 Kilic & Madenci 论文定义，
+不要自行杜撰。
+
+如果论文需要的量当前 NOSB implementation 没有，
+明确说明并最小化增加。
+
+============================================================
+7. 必须首先做无 damage 小算例验证
+============================================================
+
+在 production clot 之前创建小 clot equilibrium fixture。
+
+要求：
+- mean-only field；
+- D = 0；
+- damage disabled；
+- fixed topology；
+- no detachment；
+- problem size 足够小，使 SciPy reference 可运行。
+
+运行：
+
+A. current fixed-damping method
+B. ADR
+C. scipy.optimize.least_squares reference
+
+SciPy reference：
+
+unknowns:
+    only free-particle coordinates
+
+residual:
+    flattened free-particle total force vector
+
+固定粒子不进入 unknown vector。
+
+初值：
+    undeformed / or common prescribed x0
+
+必须设置合理：
+    xtol
+    ftol
+    gtol
+    max_nfev
+
+并保存 scipy termination reason。
+
+不要为了让 SciPy 成功而改变 material / load。
+
+============================================================
+8. ADR 与 SciPy reference 的验收
+============================================================
+
+比较：
+
+maximum displacement
+RMS displacement difference
+maximum displacement difference
+maximum epsilon_plus
+mean epsilon_plus
+force residual norm
+stored mechanical energy
+surface traction statistics
+
+建议计算：
+
+relative_L2_displacement_difference
+
+和：
+
+relative_max_driver_difference
+
+目标不是强制机器精度一致，
+而是确定是否到同一个机械平衡分支。
+
+预先声明 acceptance，例如：
+
+relative force residual:
+    <= 1e-4
+
+ADR vs SciPy:
+    max epsilon_plus relative difference <= 1%
+
+    RMS displacement difference /
+    max reference displacement <= 1%
+
+如果 SciPy 因 ill-conditioning 无法求解：
+不要隐藏。
+
+标记：
+    SCIPY_REFERENCE_NOT_AVAILABLE
+
+然后仍可继续 window sensitivity，
+但不能宣称 independent equilibrium verification passed。
+
+============================================================
+9. fixed-window sensitivity 必须重跑
+============================================================
+
+冻结：
+
+- same clot
+- same material
+- same mean flow
+- D = 0
+- same initial condition
+- same dt
+- same damping
+- no erosion update
+
+只比较：
+
+2 ms
+4 ms
+8 ms
+16 ms
+
+如服务器资源允许，可增加：
+32 ms
+
+但不要默认无限延长。
+
+每个 case 记录完整 time history：
+
+mechanical_time
+kinetic energy
+force residual
+maximum epsilon_plus
+mean epsilon_plus
+maximum displacement
+
+目标：
+看固定-window solution 是否趋向 ADR / SciPy equilibrium。
+
+============================================================
+10. STREAMING_EROSION rerun
+============================================================
+
+只有在 mechanical equilibrium solver verification 完成后，
+再重新运行：
+
+streaming_erosion_demo_v1-equilibrated
+
+所有 erosion 参数保持原值：
+
+C_t_s_inv = 0.01
+m_t = 1
+epsilon_ref = 1e-4
+threshold_ratio = 0
+D_break = 1
+
+mean-only flow 不变。
+
+重要：
+
+原上一轮 results 完全保留。
+
+写入新目录：
+
+results/streaming_erosion_equilibrium_v1/
+
+不要覆盖：
+
+results/streaming_erosion_demo_v1/
+
+新的流程：
+
+initial pre-relax
+    ->
+equilibrium passed
+    ->
+erosion time = 0
+    ->
+erosion step
+    ->
+mechanical re-equilibration
+    ->
+read equilibrium epsilon_plus
+    ->
+update D
+    ->
+repeat
+
+若某一 slow step equilibrium 不通过：
+
+不要继续默默计算。
+
+默认行为：
+
+    mark run INCOMPLETE_MECHANICAL_EQUILIBRIUM
+    save state
+    stop damage advancement
+
+可以继续保存 diagnostics，
+但不能继续累计 erosion damage。
+
+============================================================
+11. 再做 erosion slow-step study
+============================================================
+
+重新比较：
+
+0.02 s
+0.01 s
+0.005 s
+
+总 erosion exposure：
+
+0.1 s
+
+这次每个 slow step 必须先达到同一 equilibrium criterion。
+
+重要：
+
+不同 slow-step case
+虽然 equilibrium iterations 可能不同，
+
+但它们的：
+
+    erosion_exposure_time_s
+
+必须完全一致地定义。
+
+ADR pseudo time /
+mechanical equilibration iteration count
+
+不能进入 erosion time。
+
+============================================================
+12. 能量问题
+============================================================
+
+上一轮已有：
+
+ENERGY_DISSIPATION_NOT_ESTABLISHED
+
+本轮不要顺便修改 damage energy formulation。
+
+保留 signed energy audit。
+
+但新的 equilibrium procedure 应帮助区分：
+
+A.
+startup transient造成的 energy contamination
+
+和
+
+B.
+真正由 NOSB integrity update 引起的
+stored-energy increase
+
+输出每个 damage update：
+
+U_before_damage
+U_after_damage
+
+fixed coordinates at damage jump
+
+delta_U_damage =
+    U_before - U_after
+
+如果仍出现 negative delta_U_damage：
+
+保持：
+
+ENERGY_DISSIPATION_NOT_ESTABLISHED
+
+本轮不要尝试修复它。
+
+下一轮再单独研究 thermodynamic damage。
+
+============================================================
+13. 测试文件必须保留并增加
+============================================================
+
+所有原有 78 tests 必须继续存在。
+
+不要删除、改弱或跳过旧测试。
+
+新增例如：
+
+tests/test_equilibrium_adr.py
+tests/test_equilibrium_reference.py
+tests/test_erosion_pre_relaxation.py
+
+至少覆盖：
+
+TEST 1
+zero external load:
+undeformed state equilibrium residual ≈ 0
+
+TEST 2
+fixed particles remain exact
+
+TEST 3
+ADR converges on small affine / simple load fixture
+
+TEST 4
+ADR force residual decreases substantially
+
+TEST 5
+ADR result agrees with SciPy small-case reference
+
+TEST 6
+pre-relaxation does not change D
+
+TEST 7
+pre-relaxation leaves erosion_exposure_time_s = 0
+
+TEST 8
+changing ADR iteration count after convergence
+does not materially change driver
+
+TEST 9
+legacy fixed-damping path still reproduces existing fixture
+
+TEST 10
+static resolved-field provider works with equilibrium mode
+
+TEST 11
+DeltaN and ultrasound frequency metadata
+still do not affect STREAMING_EROSION
+
+TEST 12
+failure to converge prevents erosion damage advancement
+
+所有测试输出日志保留。
+
+============================================================
+14. 充分利用服务器资源
+============================================================
+
+在运行 sweep 前先记录：
+
+- CPU model
+- logical CPU count
+- physical core count if available
+- RAM
+- available disk space
+- GPU information if available
+- Python / NumPy / SciPy / Numba versions
+
+保存：
+
+verification/mechanical_equilibrium_v1/
+    HARDWARE.json
+
+本工程当前主要是 CPU / NumPy / Numba。
+
+不要为了“使用 GPU”重写 solver。
+
+只有已有 kernel 原生支持 GPU 时才使用 GPU。
+
+------------------------------------------------------------
+
+独立 case 必须并行运行：
+
+fixed windows:
+    2 / 4 / 8 / 16 [ /32 ] ms
+
+erosion slow steps:
+    0.02 / 0.01 / 0.005 s
+
+small benchmark variations
+
+使用：
+
+Python multiprocessing /
+concurrent.futures.ProcessPoolExecutor /
+现有 scheduler
+
+任选项目环境最合适的方法。
+
+避免 BLAS oversubscription。
+
+每个 worker 默认：
+
+OPENBLAS_NUM_THREADS=1
+OMP_NUM_THREADS=1
+MKL_NUM_THREADS=1
+
+并发数量根据：
+
+min(
+    available physical cores,
+    memory-safe job count
+)
+
+自动计算。
+
+不要把服务器所有 RAM 吃满。
+
+建议保留至少：
+20% RAM headroom。
+
+每个 job：
+- 独立 output directory
+- 独立 log
+- deterministic seed if any randomness
+- no shared mutable result file
+
+记录：
+wall time
+CPU time if practical
+peak memory if practical
+
+============================================================
+15. 必须输出人工可读可视化
+============================================================
+
+所有图：
+PNG + PDF
+
+语言：
+简单英文标签
+
+不要堆砌公式或术语。
+
+至少输出：
+
+FIGURE 1
+fixed_window_convergence
+
+横轴：
+mechanical time / window length
+
+纵轴：
+maximum epsilon_plus
+
+显示：
+2 / 4 / 8 / 16 ms
+
+并画出：
+ADR equilibrium value
+SciPy reference value（若可用）
+
+人工问题：
+“等更久以后，这个数到底稳定到哪里？”
+
+------------------------------------------------------------
+
+FIGURE 2
+force_residual_history
+
+横轴：
+ADR iteration 或 pseudo time
+
+纵轴：
+relative force residual
+
+使用 log scale。
+
+画 acceptance threshold。
+
+人工问题：
+“系统里的未平衡力是否真的趋近 0？”
+
+------------------------------------------------------------
+
+FIGURE 3
+adr_vs_reference
+
+简单 bar / scatter：
+
+ADR
+SciPy
+2 ms legacy
+4 ms
+8 ms
+16 ms
+
+比较：
+maximum displacement
+maximum epsilon_plus
+
+不要把多个不同单位塞进同一 y-axis；
+必要时拆图。
+
+人工问题：
+“不同方法是不是找到同一个平衡状态？”
+
+------------------------------------------------------------
+
+FIGURE 4
+pre_relaxation_driver
+
+显示从开流到 equilibrium 的：
+
+kinetic/pseudo-kinetic diagnostic
+force residual
+maximum epsilon_plus
+
+清楚标出：
+
+EROSION CLOCK STARTS HERE
+
+人工问题：
+“damage 是不是在启动晃动结束以后才开始？”
+
+------------------------------------------------------------
+
+FIGURE 5
+erosion_time_step_consistency_equilibrated
+
+重新画：
+
+0.02
+0.01
+0.005 s
+
+横轴：
+erosion exposure time
+
+纵轴：
+mean damage
+
+明确注明：
+all mechanical states equilibrated before update
+
+人工问题：
+“去掉启动瞬态以后，慢时间步长是否一致？”
+
+------------------------------------------------------------
+
+FIGURE 6
+final_driver_and_damage_maps
+
+至少分别输出：
+driver map
+damage map
+
+保持：
+actual displacement scale = 1×
+
+必须标：
+actual min/max
+
+颜色亮不等于 D=1。
+
+============================================================
+16. 人工审核报告
+============================================================
+
+生成：
+
+verification/mechanical_equilibrium_v1/
+    REVIEW_MECHANICAL_EQUILIBRIUM.md
+
+要求：
+门外汉也能看懂。
+
+按以下结构：
+
+1. 这一轮为什么做
+解释：
+之前第一步还在晃动，所以不能马上开始记 damage。
+
+2. 我们采用什么已有方法
+说明：
+- Kilic & Madenci ADR
+- Peridigm 作为成熟 PD 软件参考
+- SciPy least_squares 作为小问题独立裁判
+
+注明：
+哪些算法是直接参考，
+哪些只是借鉴设计，
+没有复制什么。
+
+3. 什么叫“平衡”
+用简单语言解释：
+- 残余力
+- 运动量/动能
+- erosion driver 是否还在变化
+
+4. 代码改了什么
+
+5. 测试
+old tests
+new tests
+total tests
+failures
+
+6. 小算例独立验证
+ADR vs SciPy
+
+7. fixed-window sensitivity
+
+8. pre-relaxation 结果
+
+9. equilibrated erosion rerun
+
+10. 时间步比较
+
+11. energy warning 是否仍存在
+
+12. 当前状态标签
+
+============================================================
+17. 当前状态标签规则
+============================================================
+
+只有满足：
+
+- ADR/reference verification pass
+- pre-relaxation pass
+- erosion update only after equilibrium
+- slow-step comparison acceptable
+
+才允许：
+
+MECHANICAL_EQUILIBRIUM:
+    VERIFIED_FOR_CURRENT DEVELOPMENT_CASE
+
+否则：
+
+MECHANICAL_EQUILIBRIUM:
+    NOT VERIFIED
+
+无论本轮结果怎样：
+
+PHYSICAL CALIBRATION:
+    NOT PERFORMED
+
+MESH OBJECTIVITY:
+    NOT ASSESSED / STILL OPEN
+
+WALL ATTACHMENT:
+    STILL OPEN
+
+REAL MICROBUBBLE CFD:
+    NOT USED
+
+EROSION ENERGY:
+    ENERGY_DISSIPATION_NOT_ESTABLISHED
+unless no longer applicable for a clearly demonstrated reason,
+但本轮禁止修改 damage law 来使它消失。
+
+============================================================
+18. 不能做的事情
+============================================================
+
+严禁：
+
+- 为了 convergence 调小 load；
+- 为了 convergence 改 clot stiffness；
+- 为了得到 damage 改 C_t；
+- 为了通过测试放宽 tolerance；
+- 删除首步失败数据；
+- 只报告后续稳定 step；
+- 把 ADR pseudo time 当 physical time；
+- 把 numerical damping 当 clot viscosity；
+- 把 manufactured flow 称为 microbubble CFD；
+- 把 no failure 叫“模型失败”；
+- 覆盖旧 results；
+- 删除旧 tests；
+- 手动编辑结果 CSV 让曲线更平滑。
+
+============================================================
+19. 如果论文或网络资源拿不到
+============================================================
+
+不要凭记忆实现 ADR。
+
+执行：
+
+1. 搜索服务器已有：
+   references/
+   ~/papers
+   project tree
+   uploaded files
+   DOI cache if any
+
+2. 如果找不到 Kilic & Madenci 2010 全文：
+   保留 fixed-window sensitivity 和 SciPy reference 工作；
+   暂停 ADR implementation。
+
+3. 给用户输出：
+   NEED_PAPER_INPUT
+
+并明确询问：
+
+“请提供 Kilic & Madenci (2010),
+ DOI 10.1016/j.tafmec.2010.08.001
+ 的 PDF 本地路径或上传论文。”
+
+不要用未经核对的公式代替。
+
+============================================================
+20. 最后终端总结
+============================================================
+
+最终只给出一个清晰摘要：
+
+- source/resources actually used
+- files added
+- files modified
+- old tests passed
+- new tests passed
+- total tests
+- ADR status
+- SciPy reference status
+- 2/4/8/16 ms driver values
+- final force residual
+- pre-relaxation duration / iterations
+- erosion clock start condition
+- equilibrated erosion final mean/max D
+- erosion slow-step maximum relative difference
+- energy warning status
+- REVIEW_MECHANICAL_EQUILIBRIUM.md path
+- figures directory
+- final scientific status labels
+
+不要只输出：
+“implementation complete”。
+
+============================================================
+21. 本轮完成后不要自动进入下一轮
+============================================================
+
+不要继续实现：
+- Ogden
+- cohesive wall
+- viscoelasticity
+- new damage law
+
+运行完、生成审核材料后停止。
+
+等待人工审核。

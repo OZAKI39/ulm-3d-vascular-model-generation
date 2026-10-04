@@ -1,0 +1,169 @@
+{
+  "task": "PFPD_AT1_COUPLING_STABILITY_AUDIT_V1",
+  "created_utc": "2026-10-02T14:13:01.899974+00:00",
+  "physics_config_source": "verification/pfpd_at1_evolution_v1/provenance/PREDECLARED_CONFIG.json",
+  "physics_config_sha256": "071f1c0f250092dd0ae6d3b2c1e9c7e7995e81a99463934396bed48761d852b4",
+  "states": {
+    "A": {
+      "name": "stable_control",
+      "run": "loading_unloading",
+      "load_step": 4,
+      "strain": 0.009,
+      "kind": "accepted"
+    },
+    "B": {
+      "name": "pre_failure_accepted",
+      "run": "loading_unloading",
+      "load_step": 9,
+      "strain": 0.013,
+      "kind": "accepted"
+    },
+    "C": {
+      "name": "early_amplifying_iterate",
+      "run": "loading_unloading",
+      "load_step": 10,
+      "strain": 0.014,
+      "kind": "iteration_input",
+      "iteration": 6
+    }
+  },
+  "map_reproduction_cases": [
+    [
+      "loading_unloading",
+      10,
+      0
+    ],
+    [
+      "loading_unloading",
+      10,
+      1
+    ],
+    [
+      "loading_unloading",
+      10,
+      6
+    ],
+    [
+      "loading_unloading",
+      10,
+      12
+    ],
+    [
+      "loading_unloading",
+      10,
+      23
+    ],
+    [
+      "loading_unloading_extra_iterations",
+      8,
+      0
+    ],
+    [
+      "loading_unloading_extra_iterations",
+      8,
+      6
+    ],
+    [
+      "loading_unloading_extra_iterations",
+      8,
+      20
+    ],
+    [
+      "loading_unloading_extra_iterations",
+      8,
+      26
+    ]
+  ],
+  "map_reproduction_s_atol": 5e-10,
+  "map_reproduction_x_atol_m": 1e-12,
+  "active_s_tolerance": 1e-08,
+  "active_q_scaled_tolerance": 1e-07,
+  "near_threshold_relative_tolerance": 1e-06,
+  "near_sc_tolerance": 1e-06,
+  "map_branch_tolerance_s": 1e-10,
+  "jacobian_relative_epsilon": [
+    1e-06,
+    3e-06,
+    1e-05
+  ],
+  "jacobian_phase_scale": "max(0.1, abs(s_b))",
+  "jacobian_full_columns": true,
+  "switch_rule": "Compare actual max(s_input, trial) branch; any clear plus/minus switch or marginal selector disqualifies ordinary Jacobian. Store candidate branch derivatives only as conditional one-sided/frozen information, never silently claim differentiability.",
+  "spectral_epsilon_relative_tolerance": 0.02,
+  "rho_margin": 0.02,
+  "mode_alignment_threshold": 0.95,
+  "observed_eigen_relative_tolerance": 0.05,
+  "hessian_epsilon": [
+    1e-05,
+    3e-06,
+    1e-06
+  ],
+  "hessian_symmetry_relative_tolerance": 1e-05,
+  "hss_relative_tolerance": 1e-06,
+  "hxx_condition_limit": 10000000000.0,
+  "curvature_relative_tolerance": 1e-07,
+  "coordinates": "q_x=(x_free-X_free)/(spacing * threshold_strain); s unscaled; energy normalized by total_volume*Yc",
+  "gradient_seed": 24680,
+  "gradient_directions": 12,
+  "gradient_epsilon": [
+    1e-05,
+    3e-06,
+    1e-06
+  ],
+  "gradient_relative_tolerance": 5e-05,
+  "gradient_scale_floor": 0.0001,
+  "gradient_domain_rule": "Finite-difference derivatives may sample the algebraic SVK extension; record domain flags, never accept such probes as physical solutions. Optimizers stop on any trial outside the original domain.",
+  "phase_KKT_tolerance": 1e-08,
+  "optimizer_bounds_tolerance": 1e-12,
+  "optimizer_methods": {
+    "L-BFGS-B": {
+      "ftol": 1e-15,
+      "gtol": 1e-11,
+      "maxiter": 5000,
+      "maxfun": 30000,
+      "maxls": 40,
+      "maxcor": 30
+    },
+    "SLSQP": {
+      "ftol": 1e-12,
+      "maxiter": 1500
+    }
+  },
+  "monolithic_starts": [
+    "previous_accepted_with_affine_boundary_lift",
+    "failed_iteration_000_phase_after",
+    "failed_iteration_023_phase_after",
+    "previous_accepted_affine_lift_plus_positive_phase_perturbation"
+  ],
+  "monolithic_perturbation_seed": 97531,
+  "monolithic_perturbation_phase_amplitude": 1e-05,
+  "monolithic_displacement_perturbation": 0.0,
+  "monolithic_lower_bound": "previous accepted load step 009 ONLY, never failed inner phase",
+  "relaxation_omega_diagnostic": [
+    0.1,
+    0.25,
+    0.5,
+    0.75,
+    1.0
+  ],
+  "subdivisions": [
+    2,
+    4,
+    8
+  ],
+  "subdivision_endpoint": 0.014,
+  "subdivision_start": 0.013,
+  "subdivision_use_original_staggered_limit_and_tolerances": true,
+  "negative_mode_probe_amplitudes": [
+    1e-08,
+    1e-07,
+    1e-06
+  ],
+  "resource_limits": {
+    "reserve_total_RAM_fraction": 0.2,
+    "parent_bytes": 536870912,
+    "worker_bytes": 1073741824,
+    "worker_cap": 3
+  },
+  "no_solver_repair": true
+}

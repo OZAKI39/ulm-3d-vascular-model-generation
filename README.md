@@ -1,5 +1,11 @@
 # ULM 3-D vascular lumen model generation
 
+This branch also archives the clot CFD–PD / PFPD project through 2026-10-05.
+Start with [the current project context](PROJECT_ACTIVE_CONTEXT.md),
+[the workflow, formulas and sources](clot_clearance/CLOT_PROJECT_WORKFLOW_STATUS_FORMULAS_ZH.md),
+and [the synchronization scope and validation](CLOT_SYNC_20261005.md).
+The original vascular-generator description below refers to the initial release.
+
 This private repository contains the current `model_generate.py` implementation and the
 minimal code/data closure needed to reproduce the active v8 ROI test. It reconstructs a
 CFD-ready lumen surface from saved representative-ROI centerlines and SWC radii.

@@ -1,0 +1,1500 @@
+你正在继续开发 clot CFD–PD 项目。
+
+本轮任务名称：
+
+    PFPD_AT1_BRANCH_STABILITY_TRACKING_V1
+
+============================================================
+0. 当前开发基线
+============================================================
+
+首先自动确认：
+
+    git rev-parse --show-toplevel
+    git rev-parse HEAD
+    git status --short
+
+不要假设 Git HEAD 包含全部开发成果。
+
+当前已确认状态：
+
+BAQP INTACT MECHANICS:
+    VERIFIED
+
+AT1 LOCAL PHASE MODEL:
+    VERIFIED
+
+AT1 DAMAGE THRESHOLD:
+    VERIFIED
+
+FIXED-X PHASE ENERGY:
+    VERIFIED
+
+EARLY h=1 KINEMATIC SEPARATION:
+    VERIFIED
+
+COUPLING_STABILITY_AUDIT:
+    COMPLETE
+
+ROOT_CAUSE:
+    COUPLED_BRANCH_LOSS_OR_LOCALIZATION_INSTABILITY
+
+FIXED_POINT ORDINARY SPECTRUM:
+    UNRESOLVED DUE TO NONSMOOTH ACTIVE-SET SWITCHING
+
+MONOLITHIC STABLE LOCAL MINIMUM AT FAILED LOAD:
+    NOT FOUND WITHIN CURRENT MODEL DOMAIN
+
+PFPD_AT1_EVOLUTION_V1:
+    NOT VERIFIED
+
+PRODUCTION MODEL:
+    UNCHANGED
+
+当前测试：
+
+    231 passed
+    3 known failed
+    0 skipped
+
+已知3个失败测试必须继续原样保留：
+
+tests/test_pfpd_at1_staggered.py
+
+1.
+test_saved_coupled_mechanics_phase_and_energy_all_converged
+
+2.
+test_coupled_no_bond_heals_on_unload_and_reload
+
+3.
+test_extra_stagger_iterations_change_no_accepted_state_materially
+
+禁止 xfail / skip / weaken assertions。
+
+============================================================
+1. 本轮唯一核心问题
+============================================================
+
+目前已知：
+
+stable control A:
+    engineering strain = 0.009
+    minimum feasible/reduced Hessian eigenvalue > 0
+
+last previously accepted state B:
+    engineering strain = 0.013
+    minimum feasible/reduced Hessian eigenvalue < 0
+
+因此：
+
+    0.009 < epsilon_critical < 0.013
+
+本轮目标：
+
+定位当前加载分支上：
+
+    lambda_min_feasible(epsilon) = 0
+
+第一次发生的位置。
+
+定义：
+
+    epsilon_c
+
+它是：
+
+    CURRENT CANDIDATE BRANCH
+    LOCAL STABILITY LOSS
+
+不是：
+
+    physical clot fracture strain
+
+不是：
+
+    experimental failure strain
+
+不是：
+
+    final crack initiation prediction
+
+============================================================
+2. 本轮明确不做什么
+============================================================
+
+禁止：
+
+- 修改 Gc_demo；
+- 修改 sc；
+- 修改 AT1 energy；
+- 修改 g(s)；
+- 实现 h(s)<1；
+- 加 viscosity；
+- 加 residual stiffness；
+- 改 pure-tension gate；
+- 改 ADR；
+- under-relaxation 修 solver；
+- Newton solver replacement；
+- arc-length；
+- pseudo-arclength branch switching；
+- notch；
+- heterogeneity；
+- wall model；
+- Ogden；
+- clot calibration；
+- erosion coupling；
+- fatigue；
+- real CFD；
+- bond deletion；
+- fragment tracking。
+
+本轮：
+
+    TRACK BRANCH
+    MEASURE STABILITY
+    LOCATE ONSET
+
+不修复 onset 之后的 branch。
+
+============================================================
+3. 保护全部历史成果
+============================================================
+
+保护：
+
+verification/pfpd_candidate_v1/
+verification/pfpd_at1_evolution_v1/
+verification/pfpd_at1_coupling_stability_audit_v1/
+verification/damage_energy_audit_v1/
+verification/mechanical_equilibrium_v1/
+
+results/pfpd_at1_evolution_v1/
+
+开始生成：
+
+verification/pfpd_at1_branch_stability_tracking_v1/
+    provenance/PRE_RUN_MANIFEST.json
+
+记录所有既有文件 SHA256。
+
+结束：
+
+    POST_RUN_MANIFEST.json
+    PRESERVATION_CHECK.json
+
+目标：
+
+production modified files = 0
+historical result files modified = 0
+existing tests modified = 0
+
+============================================================
+4. 不要复制已有代码
+============================================================
+
+必须复用上一轮已经验证的：
+
+- BAQP candidate energy
+- BAQP force
+- AT1 phase gradient
+- projected KKT residual
+- monolithic objective
+- Hessian assembly/audit
+- ADR
+- pure-tension check
+- phase bounds
+- energy weights
+
+如需抽公共 helper：
+
+可以小规模 refactor，
+但必须：
+
+- 保持行为数值等价；
+- 添加 regression test；
+- 保留旧 API。
+
+禁止重新写第二套：
+energy
+force
+KKT
+Hessian。
+
+============================================================
+5. 使用成熟数值工具
+============================================================
+
+优先使用：
+
+scipy.optimize.least_squares
+https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.least_squares.html
+
+scipy.linalg.eigh
+https://docs.scipy.org/doc/scipy/reference/generated/scipy.linalg.eigh.html
+
+scipy.optimize.brentq
+https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.brentq.html
+
+但是：
+
+brentq 只有在：
+
+- same branch verified
+- active set unchanged
+- lambda_min sufficiently continuous
+
+时才允许使用。
+
+否则使用：
+
+    bracketed bisection / interval refinement
+
+并报告：
+
+    NONSMOOTH_STABILITY_BRACKET
+
+不要强行给单一 root。
+
+============================================================
+6. 定义 stationary branch state
+============================================================
+
+对于每个 prescribed engineering strain epsilon：
+
+求状态：
+
+    z(epsilon) =
+        [x_free, s]
+
+满足：
+
+A. mechanical equilibrium
+
+    force_free ≈ 0
+
+B. phase KKT
+
+定义与上一轮完全一致的 projected residual：
+
+    r_s =
+      s - clip(
+            s - q_scaled,
+            s_lower,
+            sc
+          )
+
+其中：
+
+    q =
+      dPi/ds
+
+且：
+
+    s_lower
+
+必须来自：
+
+    previous accepted continuation load state
+
+不是：
+
+    同一 load 内部 stagger iteration
+    已经增长后的 phase。
+
+============================================================
+7. Stationary branch solver
+============================================================
+
+本轮不要使用“energy minimum solver”
+作为 branch tracker。
+
+原因：
+
+失稳后 stationary saddle 仍可能存在，
+minimizer 会主动离开它。
+
+建立诊断 branch solver：
+
+    solve_stationary_branch_state(...)
+
+使用：
+
+    scipy.optimize.least_squares
+
+求：
+
+    R(z) =
+      [
+        scaled force residual,
+        scaled projected phase KKT residual
+      ] = 0
+
+初始值：
+
+    previous load branch state
+    +
+    simple displacement predictor
+
+phase predictor 默认：
+
+    previous s
+
+禁止提前增加 phase。
+
+如果需要更好 predictor：
+
+只允许 secant predictor based on
+two previous stationary states。
+
+不要实现 branch switching。
+
+============================================================
+8. Residual scaling
+============================================================
+
+必须显式、固定地定义：
+
+mechanical residual scale
+phase residual scale
+
+复用上一轮已有尺度，
+如必须调整，仅根据单位/数值量级
+在计算前声明。
+
+禁止根据结果动态调权重
+让 least_squares 更容易成功。
+
+保存：
+
+    RESIDUAL_SCALING.json
+
+============================================================
+9. Branch solve acceptance
+============================================================
+
+branch state 只有同时满足：
+
+- least_squares converged
+- finite values
+- force residual <= predeclared tolerance
+- projected phase KKT <= predeclared tolerance
+- phase bounds satisfied
+- irreversibility satisfied
+- max(s) < sc
+- pure-tension domain valid
+- fixed boundary exact
+
+才可接受。
+
+注意：
+
+Hessian negative
+不影响“stationary branch state”
+的接受。
+
+这是本轮重点：
+
+    stationary state
+    != stable state
+
+因此允许保存：
+
+    STATIONARY_UNSTABLE
+
+============================================================
+10. 首先复现已知 A/B 状态
+============================================================
+
+用新的 stationary branch API：
+
+A:
+    epsilon = 0.009
+
+B:
+    epsilon = 0.013
+
+分别从已保存状态/continuation predictor 求解。
+
+要求：
+
+与旧保存状态比较：
+
+x
+s
+Pi
+force residual
+phase KKT
+minimum Hessian eigenvalue
+
+在预声明 tolerance 内一致。
+
+如果 A/B 不能复现：
+
+STOP
+
+状态：
+
+    BRANCH_TRACKER_REPRODUCTION_FAILED
+
+禁止继续定位 epsilon_c。
+
+============================================================
+11. 第一轮固定 coarse continuation
+============================================================
+
+从：
+
+    epsilon = 0.009
+
+开始向上追踪。
+
+预声明 coarse grid：
+
+    0.0090
+    0.0095
+    0.0100
+    0.0105
+    0.0110
+    0.0115
+    0.0120
+    0.0125
+    0.0130
+
+不得看结果后删除点。
+
+每一点：
+
+1. solve stationary branch
+2. verify KKT / force
+3. classify active set
+4. assemble feasible reduced Hessian
+5. compute lambda_min
+6. save eigenmode
+7. continue from this state
+
+如果某一点：
+    stationary solve fails
+
+不要跳过。
+
+标记：
+    BRANCH_TRACK_INTERRUPTED
+
+保留所有结果。
+
+============================================================
+12. Active-set classification
+============================================================
+
+每条 phase bond 分类：
+
+LOWER_STRONG_ACTIVE
+
+    s ≈ s_lower
+    且 phase gradient 明确指向保持下界
+
+INTERIOR
+
+    s > s_lower + tolerance
+    s < sc - tolerance
+
+LOWER_WEAK / NEAR_SWITCH
+
+    s ≈ s_lower
+    且 projected gradient 接近 0
+
+NEAR_SC
+
+    s 接近 sc
+
+必须保存：
+
+count per category
+bond IDs
+switch events
+
+绘制：
+
+active-set count vs strain
+
+如果 instability bracket 中出现 active-set change：
+
+不能直接假设 lambda_min(epsilon)
+是一条光滑函数。
+
+============================================================
+13. Feasible reduced Hessian
+============================================================
+
+严格沿用上一轮审计定义。
+
+变量：
+
+x_free
++
+phase INTERIOR variables
+
+LOWER_STRONG_ACTIVE
+不作为双侧自由变量。
+
+对于：
+
+LOWER_WEAK / NEAR_SWITCH
+
+除常规 reduced Hessian 外，
+额外做 feasible one-sided curvature probes。
+
+不要把它们简单删除或全部释放。
+
+============================================================
+14. Hessian verification
+============================================================
+
+每个 strain 至少使用三档差分尺度：
+
+沿用上一轮已经通过的：
+
+    1e-5
+    3e-6
+    1e-6
+
+或其明确记录的同一无量纲 convention。
+
+记录：
+
+raw symmetry error
+symmetrized matrix
+minimum eigenvalue
+second eigenvalue
+Hxx minimum eigenvalue
+Schur minimum eigenvalue
+Hxx condition number
+
+要求：
+
+lambda_min 的符号
+在三档 epsilon 中一致，
+
+否则：
+
+    CURVATURE_SIGN_UNRESOLVED
+
+该 load 不能用来做临界 bracket。
+
+============================================================
+15. Supplementary feasible-cone curvature
+============================================================
+
+为防止 active-bound phase DOF
+隐藏一侧不稳定方向：
+
+对每个 coarse strain
+生成 deterministic feasible directions：
+
+- current minimum eigenvector if feasible
+- displacement-only random directions
+- phase-interior random directions
+- mixed x+s directions
+- one-sided lower-bound phase directions
+
+固定 random seed。
+
+计算：
+
+    v^T H v
+
+只作辅助。
+
+若 reduced Hessian 正
+但某个明确可行的一侧方向
+稳定得到负曲率：
+
+该状态不能标稳定。
+
+标：
+
+    FEASIBLE_CONE_NEGATIVE_CURVATURE
+
+============================================================
+16. 定义 stability classification
+============================================================
+
+每个 branch state：
+
+STABLE_SAMPLED_STATE：
+
+    all required first-order gates pass
+    AND
+    curvature sign resolved
+    AND
+    minimum feasible curvature > curvature_tol
+
+UNSTABLE_SAMPLED_STATE：
+
+    first-order gates pass
+    AND
+    resolved feasible negative curvature < -curvature_tol
+
+MARGINAL：
+
+    |lambda_min| <= curvature_tol
+
+UNRESOLVED：
+
+    finite difference scales disagree
+    OR active-set nonsmoothness prevents classification
+
+不要用：
+    solver convergence
+代替 stability。
+
+============================================================
+17. 自动寻找第一个 sign-change bracket
+============================================================
+
+在 coarse continuation 中：
+
+找到第一个相邻 pair：
+
+    lower state:
+        stable
+
+    upper state:
+        unstable
+
+记：
+
+    [epsilon_L, epsilon_U]
+
+如果没有这种 pair：
+
+不要硬构造 root。
+
+状态：
+
+    NO_STABILITY_SIGN_CHANGE_IN_COARSE_RANGE
+
+============================================================
+18. Critical bracket refinement
+============================================================
+
+如果有：
+
+    epsilon_L stable
+    epsilon_U unstable
+
+使用 bracket refinement。
+
+目标预声明：
+
+    epsilon_U - epsilon_L
+      <= 1e-5 engineering strain
+
+或者达到：
+
+    maximum 12 refinement levels
+
+哪个先到。
+
+每次 midpoint：
+
+    epsilon_M =
+      0.5*(epsilon_L+epsilon_U)
+
+stationary state 必须从
+lower branch state predictor
+向上 continuation 得到。
+
+不要从 unstable upper state
+反向“愈合” phase。
+
+如果需要中间 continuation
+才能保持路径一致：
+
+允许自动插入 intermediate loads，
+但必须记录。
+
+============================================================
+19. Step-size consistency study
+============================================================
+
+critical strain 不能只依赖一条 continuation schedule。
+
+运行至少两种预声明 tracking resolution：
+
+SCHEDULE A:
+    coarse Δepsilon = 5e-4
+    + adaptive bracket refinement
+
+SCHEDULE B:
+    fine forward tracking Δepsilon = 2.5e-4
+    from epsilon=0.009
+    + bracket refinement
+
+如果资源允许，可增加：
+
+SCHEDULE C:
+    Δepsilon = 1e-4
+    only around final bracket neighborhood
+
+比较：
+
+critical bracket
+phase state
+reaction
+active set
+lambda_min
+
+如果不同 schedule
+给出明显不同的 onset：
+
+状态：
+
+    LOAD_DISCRETIZATION_DEPENDENT_ONSET
+
+不能报告唯一 epsilon_c。
+
+============================================================
+20. Branch continuity checks
+============================================================
+
+相邻 stationary states 记录：
+
+||x_{n+1}-x_n||
+||s_{n+1}-s_n||
+energy difference
+reaction difference
+active-set changes
+
+如果突然发生：
+state jump
+active-set mass switching
+large branch distance
+
+标：
+
+    BRANCH_CONTINUITY_EVENT
+
+不能把跨 jump 的两个点
+直接拿来做光滑 root interpolation。
+
+============================================================
+21. 什么时候允许使用 brentq
+============================================================
+
+只有同时满足：
+
+- same branch continuity
+- active set unchanged in bracket
+- both endpoint curvature signs resolved
+- midpoint checks suggest continuity
+- lambda finite
+
+才允许用：
+
+    scipy.optimize.brentq
+
+但每次函数评估仍需要：
+    stationary branch solve
+    Hessian evaluation
+
+如果这些条件不满足：
+
+坚持 interval bisection。
+
+最终报告：
+
+    CRITICAL_LOAD_INTERVAL
+
+而不是虚假高精度 root。
+
+============================================================
+22. Critical strain 表达方式
+============================================================
+
+优先报告：
+
+    epsilon_c in [epsilon_L, epsilon_U]
+
+并给：
+
+    midpoint estimate
+
+例如：
+
+    epsilon_c ≈ ...
+    bracket width = ...
+
+不要报告超过 bracket
+所支持的有效数字。
+
+============================================================
+23. Critical mode continuity
+============================================================
+
+对：
+
+last stable
+first unstable
+refined near-critical states
+
+保存 minimum-curvature eigenvector。
+
+因为 eigenvector 符号任意，
+比较时先做 sign alignment。
+
+计算：
+
+cosine similarity
+
+对：
+
+displacement component
+phase component
+full coupled mode
+
+如果 mode 在 onset 附近连续：
+
+报告：
+
+    CRITICAL_MODE_CONTINUOUS_ACROSS_BRACKET
+
+如果 mode 突然变化：
+
+    MODE_SWITCH_NEAR_ONSET
+
+============================================================
+24. Energy landscape along critical mode
+============================================================
+
+选：
+
+A.
+一个稳定点 just below onset
+
+B.
+一个不稳定点 just above onset
+
+沿各自 normalized feasible critical mode v：
+
+    z(alpha) = z0 + alpha v
+
+使用对称小 alpha：
+
+至少：
+    ±1e-6
+    ±3e-6
+    ±1e-5
+    ±3e-5
+
+按无量纲变量 convention。
+
+要求保持：
+phase bounds
+pure-tension domain
+fixed boundaries
+
+绘制：
+
+    Pi(alpha) - Pi(0)
+
+稳定点应该局部向上，
+失稳点若负曲率成立应出现向下二次趋势。
+
+这是 curvature 的直观验证，
+不是新的 branch solve。
+
+============================================================
+25. Reaction-force / phase branch tracking
+============================================================
+
+每个 stationary branch state 输出：
+
+engineering strain
+prescribed displacement
+reaction force
+max s
+weighted mean s
+elastic energy
+crack energy
+total internal energy
+lambda_min
+
+这会形成真正的 branch diagram。
+
+不要在失稳以后自动延伸到别的 branch。
+
+============================================================
+26. Stability onset 与 AT1 damage onset 的关系
+============================================================
+
+记录：
+
+epsilon_damage_onset
+
+即当前 branch 上：
+
+first strain where max s
+超过预声明 phase tolerance。
+
+然后比较：
+
+epsilon_damage_onset
+vs
+epsilon_stability_loss bracket
+
+只报告：
+
+before / after / approximately coincident
+
+不要自动宣称：
+damage causes instability。
+
+============================================================
+27. Stability onset 与 sc 的关系
+============================================================
+
+记录临界附近：
+
+max s
+
+如果：
+
+max s << sc
+
+则说明当前 instability
+发生在 h=1 early-damage regime。
+
+这非常重要。
+
+如果接近 sc：
+
+则当前 onset 会受到
+尚未实现 h(s)<1 的影响。
+
+不要改变 sc。
+
+============================================================
+28. 不要重新研究 fixed-point 1.93
+============================================================
+
+上一轮已经完成：
+
+conditional frozen-branch amplification
+≈ observed 1.93
+
+本轮仅作 regression。
+
+不要再次投入大量计算
+去“证明 ordinary spectral radius”。
+
+当前状态继续：
+
+    FIXED_POINT_SPECTRAL_RADIUS:
+        UNRESOLVED
+
+除非新的 branch tracking
+意外提供严格光滑区间，
+也不能自动改标签。
+
+============================================================
+29. 新测试要求
+============================================================
+
+原：
+
+    231 passed
+    3 known failed
+
+必须保持。
+
+新增例如：
+
+tests/test_pfpd_branch_stationarity.py
+tests/test_pfpd_branch_hessian.py
+tests/test_pfpd_branch_tracking.py
+tests/test_pfpd_stability_bracket.py
+
+至少：
+
+TEST 1
+new branch solver reproduces A
+
+TEST 2
+new branch solver reproduces B
+
+TEST 3
+stationary force residual gate
+
+TEST 4
+projected KKT gate
+
+TEST 5
+phase lower bound comes from previous load state
+
+TEST 6
+Hessian finite-difference scale consistency
+
+TEST 7
+stable classification reproducible
+
+TEST 8
+unstable classification reproducible
+
+TEST 9
+critical bracket refinement shrinks interval
+
+TEST 10
+branch tracker never decreases phase
+
+TEST 11
+branch tracker stops at model-domain violation
+
+TEST 12
+branch tracker stops at sc gate
+
+TEST 13
+active-set events recorded
+
+TEST 14
+eigenvector sign alignment works
+
+TEST 15
+critical-mode curvature directional check
+
+TEST 16
+diagnostic does not modify production state
+
+TEST 17
+historical results unchanged
+
+不要改变原三个失败测试。
+
+最终可能：
+
+    old/new diagnostics pass
+    same 3 known failures remain
+
+这是允许的。
+
+============================================================
+30. 服务器资源
+============================================================
+
+记录：
+
+CPU
+physical cores
+logical cores
+RAM
+free disk
+Python
+NumPy
+SciPy
+Numba
+
+写：
+
+provenance/HARDWARE.json
+
+独立 Hessian columns、
+multiple continuation schedules、
+curvature probes
+可并行。
+
+ProcessPoolExecutor。
+
+每 worker：
+
+OPENBLAS_NUM_THREADS=1
+OMP_NUM_THREADS=1
+MKL_NUM_THREADS=1
+
+保留至少：
+
+20% total RAM headroom。
+
+不要 GPU rewrite。
+
+============================================================
+31. 输出目录
+============================================================
+
+新增：
+
+verification/pfpd_at1_branch_stability_tracking_v1/
+
+建议：
+
+branch_states/
+coarse_tracking/
+fine_tracking/
+critical_bracket/
+active_sets/
+hessian/
+critical_mode/
+energy_landscape/
+tests/
+figures/
+comparisons/
+provenance/
+
+如果需要保存 candidate states：
+
+results/pfpd_at1_branch_stability_tracking_v1/
+
+禁止覆盖历史状态。
+
+============================================================
+32. 必须生成可视化
+============================================================
+
+全部：
+
+PNG + PDF
+
+简单、清晰、非专家可读。
+
+------------------------------------------------------------
+FIGURE 1
+stability_eigenvalue_vs_strain
+
+横轴：
+engineering strain (%)
+
+纵轴：
+minimum feasible reduced-Hessian eigenvalue
+
+画：
+zero line
+
+区分：
+stable
+unstable
+unresolved
+
+显示 critical bracket 阴影。
+
+人工问题：
+
+“稳定性在哪里第一次从正变负？”
+
+------------------------------------------------------------
+FIGURE 2
+critical_bracket_zoom
+
+放大最终 bracket。
+
+显示：
+Schedule A
+Schedule B
+如有 Schedule C
+
+不要画虚假平滑 spline。
+
+人工问题：
+
+“临界载荷对 tracking step 是否稳定？”
+
+------------------------------------------------------------
+FIGURE 3
+branch_force_phase
+
+上：
+reaction force vs strain
+
+下：
+max s / weighted mean s vs strain
+
+标：
+damage onset
+stability-loss bracket
+
+人工问题：
+
+“损伤什么时候开始，稳定性什么时候丢失？”
+
+------------------------------------------------------------
+FIGURE 4
+active_set_evolution
+
+横轴：
+strain
+
+显示：
+lower-strong count
+interior count
+near-switch count
+
+人工问题：
+
+“临界点是否恰好伴随 phase active-set 大规模切换？”
+
+------------------------------------------------------------
+FIGURE 5
+curvature_along_critical_mode
+
+左：
+just below onset
+
+右：
+just above onset
+
+横轴：
+mode amplitude alpha
+
+纵轴：
+Pi(alpha)-Pi(0)
+
+人工问题：
+
+“谷底是怎样变成向下方向的？”
+
+------------------------------------------------------------
+FIGURE 6
+critical_mode_map
+
+使用 near-critical unstable mode。
+
+左：
+phase-mode aggregated to particles
+
+右：
+displacement-mode magnitude
+
+醒目标：
+
+NUMERICAL / VARIATIONAL CRITICAL MODE
+NOT PHYSICAL CRACK PREDICTION
+
+------------------------------------------------------------
+FIGURE 7
+stationarity_quality
+
+横轴：
+strain
+
+分别画：
+
+force residual
+projected KKT residual
+
+两张图。
+
+人工问题：
+
+“我们追踪的是不稳定平衡，
+还是根本没求平衡？”
+
+------------------------------------------------------------
+FIGURE 8
+schedule_consistency
+
+比较：
+A / B / C schedules
+
+临界 bracket
+max s at bracket
+reaction at bracket
+
+避免把不同单位放同一轴。
+
+============================================================
+33. 人工审核报告
+============================================================
+
+生成：
+
+verification/pfpd_at1_branch_stability_tracking_v1/
+    REVIEW_BRANCH_STABILITY_TRACKING.md
+
+要求普通人能理解。
+
+结构：
+
+1. 为什么做这一轮
+
+2. “平衡”与“稳定”有什么区别
+
+3. 怎么追踪同一分支
+
+4. coarse tracking 结果
+
+5. stability eigenvalue 怎样变化
+
+6. 临界 bracket 是多少
+
+7. 两种 load schedule 是否一致
+
+8. active set 是否在临界附近改变
+
+9. 临界模态是什么
+
+10. energy landscape 如何从谷底变成不稳定方向
+
+11. damage onset 与 stability onset 的先后
+
+12. onset 时离 sc 还有多远
+
+13. 当前能否叫 fracture initiation
+
+答案原则：
+除非证据非常充分，
+不要称 physical fracture initiation。
+
+14. tests
+
+15. 当前科学状态
+
+16. 唯一下一步建议
+
+============================================================
+34. 最终验收标签
+============================================================
+
+最终必须输出：
+
+BRANCH_TRACKER:
+    VERIFIED / NOT_VERIFIED
+
+STATIONARY_BRANCH:
+    TRACKED / INTERRUPTED / INCONCLUSIVE
+
+STABILITY_CLASSIFICATION:
+    RESOLVED / PARTIALLY_RESOLVED / UNRESOLVED
+
+FIRST_STABILITY_LOSS:
+    BRACKETED / NOT_BRACKETED
+
+CRITICAL_STRAIN_INTERVAL:
+    [value, value]
+    或 NOT_AVAILABLE
+
+LOAD_RESOLUTION_CONSISTENCY:
+    PASSED / FAILED / INCONCLUSIVE
+
+ACTIVE_SET_AT_ONSET:
+    UNCHANGED
+    / SWITCH_EVENT
+    / NONSMOOTH
+    / INCONCLUSIVE
+
+CRITICAL_MODE:
+    RESOLVED / UNRESOLVED
+
+DAMAGE_ONSET_RELATIVE_TO_STABILITY_LOSS:
+    BEFORE / AFTER / COINCIDENT_WITHIN_RESOLUTION / INCONCLUSIVE
+
+HIGH_DAMAGE_GATE:
+    NOT_REACHED_AT_ONSET
+    / NEAR_ONSET
+    / INCONCLUSIVE
+
+FIXED_POINT_ORDINARY_SPECTRUM:
+    REMAINS_UNRESOLVED
+
+PFPD_AT1_EVOLUTION_V1:
+    REMAINS_NOT_VERIFIED
+
+PRODUCTION MODEL:
+    UNCHANGED
+
+============================================================
+35. 禁止过度结论
+============================================================
+
+禁止写：
+
+    physical crack starts at epsilon_c
+
+正确写法：
+
+    current candidate branch
+    first loses local variational stability
+    in the reported interval
+
+禁止：
+
+    instability proven for real clot
+
+禁止：
+
+    negative Hessian mode = crack shape
+
+禁止：
+
+    once epsilon_c found,
+    solver problem is solved
+
+禁止：
+
+    critical strain is material property
+
+因为当前：
+
+geometry
+boundary condition
+Gc_demo
+SVK material
+small cube
+
+都是 development setup。
+
+============================================================
+36. 最终终端摘要
+============================================================
+
+最终只输出：
+
+- repository / HEAD
+- production files modified
+- historical files modified
+- baseline passed / known failed
+- new tests passed
+- branch reproduction A/B
+- coarse stationary states count
+- stable states count
+- unstable states count
+- unresolved states count
+- first sign-change bracket
+- refined critical interval
+- bracket width
+- schedule A result
+- schedule B result
+- schedule C result if used
+- load-resolution consistency
+- lambda_min just below
+- lambda_min just above
+- active-set status around onset
+- critical-mode continuity
+- damage onset strain
+- max s at stability loss
+- sc distance
+- REVIEW_BRANCH_STABILITY_TRACKING.md
+- figures directory
+- final status labels
+
+不要只输出：
+
+    development complete
+
+============================================================
+37. 完成后停止
+============================================================
+
+不要自动开始：
+
+branch switching
+arc-length
+continuation past instability
+h(s)<1
+full fracture propagation
+wall attachment
+Ogden
+clot Gc calibration
+erosion coupling
+fatigue
+real CFD
+
+等待人工审核。

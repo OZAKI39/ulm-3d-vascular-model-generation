@@ -1,0 +1,55 @@
+{
+  "passed": true,
+  "checks": [
+    {
+      "check": "compileall",
+      "command": [
+        "/home/lzy/projects/computation_examples/_shared/python_environment/bin/python",
+        "-X",
+        "pycache_prefix=/tmp/clot_repository_cleanup_v1_fnxy7lzr/compileall",
+        "-m",
+        "compileall",
+        "-q",
+        "pd_clot",
+        "scripts",
+        "tests"
+      ],
+      "returncode": 0,
+      "log": "COMPILEALL.log"
+    },
+    {
+      "check": "python_imports",
+      "command": [
+        "/home/lzy/projects/computation_examples/_shared/python_environment/bin/python",
+        "-B",
+        "-c",
+        "import importlib,json; names=['pd_clot.mechanics', 'pd_clot.streaming', 'pd_clot.regularization.equilibrium_adr', 'pd_clot.pfpd_candidate.baqp', 'pd_clot.pfpd_candidate.kernel', 'pd_clot.pfpd_candidate.normalization', 'pd_clot.pfpd_candidate.svk_spectral_split', 'pd_clot.pfpd_candidate.at1_evolution', 'pd_clot.pfpd_candidate.petsc_vi_candidate']; [importlib.import_module(n) for n in names]; print(json.dumps(names))"
+      ],
+      "returncode": 0,
+      "log": "PYTHON_IMPORTS.log"
+    },
+    {
+      "check": "petsc_runtime",
+      "command": [
+        "/home/lzy/.cache/codex-dolfinx-env/bin/python",
+        "-B",
+        "-c",
+        "from petsc4py import PETSc; import pd_clot.pfpd_candidate.petsc_vi_candidate; import numba, vtk; print(PETSc.Sys.getVersion()); print(numba.__version__); print(vtk.vtkVersion.GetVTKVersion())"
+      ],
+      "returncode": 0,
+      "log": "PETSC_RUNTIME.log"
+    },
+    {
+      "check": "julia_runtime",
+      "command": [
+        "/home/lzy/projects/temp_storage/clot_clearance_github_sync_20260930/clot_clearance/verification/pfpd_candidate_v1/external/julia-1.10.12/bin/julia",
+        "--startup-file=no",
+        "--compiled-modules=no",
+        "-e",
+        "print(VERSION)"
+      ],
+      "returncode": 0,
+      "log": "JULIA_RUNTIME.log"
+    }
+  ]
+}

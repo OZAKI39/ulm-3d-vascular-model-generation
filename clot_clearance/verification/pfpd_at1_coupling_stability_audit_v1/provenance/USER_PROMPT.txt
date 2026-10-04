@@ -1,0 +1,1555 @@
+你正在继续开发 clot CFD–PD 项目。
+
+本轮任务名称：
+
+    PFPD_AT1_COUPLING_STABILITY_AUDIT_V1
+
+============================================================
+0. 当前开发状态
+============================================================
+
+首先自动定位真实仓库和工作区：
+
+    git rev-parse --show-toplevel
+    git rev-parse HEAD
+    git status --short
+
+不要假设 Git HEAD 包含所有开发成果。
+
+当前上一轮状态：
+
+AT1 SCALAR EVOLUTION:
+    VERIFIED
+
+AT1 DAMAGE INITIATION THRESHOLD:
+    VERIFIED
+
+ANALYTIC VS SCIPY MINIMIZATION:
+    PASSED
+
+SINGLE-BOND IRREVERSIBILITY:
+    VERIFIED
+
+FIXED-X PHASE ENERGY MINIMIZATION:
+    VERIFIED
+
+EARLY-DAMAGE KINEMATICS h=1:
+    VERIFIED UNCHANGED
+
+HIGH-DAMAGE GATE:
+    VERIFIED
+
+COUPLED MECHANICS-PHASE:
+    NOT VERIFIED
+
+COUPLED LOAD-UNLOAD-RELOAD:
+    NOT VERIFIED
+
+ITERATION-COUNT ROBUSTNESS:
+    FAILED
+
+GLOBAL ENERGY BALANCE:
+    NOT VERIFIED
+
+PFPD_AT1_EVOLUTION_V1:
+    NOT VERIFIED
+
+PRODUCTION MODEL:
+    UNCHANGED
+
+上一轮测试：
+
+    208 passed
+    3 failed
+    0 skipped
+
+这 3 个失败是当前已知科学/数值失败，
+不是需要偷偷“修绿”的测试。
+
+本轮必须保留相同三个已知失败，
+除非诊断代码本身改变了它们的行为；
+若行为改变，必须首先调查原因。
+
+============================================================
+1. 本轮唯一科学问题
+============================================================
+
+当前 small 3x3x3 tensile cube 中：
+
+给定 phase s
+    ->
+ADR mechanical equilibrium
+    ->
+AT1 phase minimization
+    ->
+new s
+    ->
+再次 mechanical equilibrium
+
+形成 fixed-point mapping：
+
+    s_(k+1) = Phi(s_k)
+
+稳定 case 能收敛。
+
+失败 case 中：
+
+    max phase increment
+
+随 staggered iteration 放大，
+中段观测 amplification ratio 约 1.93。
+
+需要区分：
+
+HYPOTHESIS A:
+    coupled local minimum 存在，
+    但 simple staggered fixed-point iteration 不稳定。
+
+HYPOTHESIS B:
+    当前 loading state 下，
+    原 equilibrium branch 已失去局部能量稳定性，
+    即没有附近的稳定 coupled local minimum，
+    或最低能量状态发生 localization / branch change。
+
+HYPOTHESIS C:
+    phase active-set / threshold switching
+    造成 non-smooth fixed-point map，
+    目前的“1.93”不能解释为普通线性谱半径。
+
+HYPOTHESIS D:
+    当前数据不足以区分。
+
+本轮只做定位。
+
+禁止自动实现新 solver 修复。
+
+============================================================
+2. 明确禁止事项
+============================================================
+
+本轮禁止：
+
+- 修改 Gc_demo；
+- 修改 load schedule 原始数据；
+- 修改 s_c；
+- 放宽 pure-tension tolerance；
+- 修改 ADR tolerance；
+- 修改 AT1 energy；
+- 修改 g(s)；
+- 实现 h(s)<1；
+- 加 phase viscosity；
+- 加 residual stiffness；
+- 加 under-relaxation 作为正式修复；
+- 加 line search 作为正式修复；
+- 改成 Miehe AT2；
+- 加 history-field shortcut；
+- 加 notch；
+- 加 heterogeneity；
+- 加 wall model；
+- 加 Ogden；
+- 加 streaming；
+- 加 fatigue；
+- 加 real CFD；
+- 允许 bond deletion；
+- 让已知失败测试 xfail/skip；
+- 为得到 PASS 而减小 load step 后宣称模型已验证。
+
+允许 load-step subdivision，
+但只能作为诊断，
+不能作为“修复成功”的验收依据。
+
+============================================================
+3. 必须保护历史文件
+============================================================
+
+重点保护：
+
+verification/pfpd_candidate_v1/
+verification/pfpd_at1_evolution_v1/
+verification/damage_energy_audit_v1/
+verification/mechanical_equilibrium_v1/
+
+results/pfpd_at1_evolution_v1/
+
+开始前生成：
+
+verification/pfpd_at1_coupling_stability_audit_v1/
+    provenance/PRE_RUN_MANIFEST.json
+
+记录所有已有文件 SHA256。
+
+结束后：
+
+    POST_RUN_MANIFEST.json
+    PRESERVATION_CHECK.json
+
+要求：
+
+production modified files = 0
+historical result files modified = 0
+
+============================================================
+4. 读取上一轮失败状态，不要先重新制造新状态
+============================================================
+
+优先使用已经保存的：
+
+- 最后稳定 accepted state；
+- loading-unloading path 的上一 accepted state；
+- 第一个 failed load step；
+- failed step 的逐 stagger iteration states；
+- extra-iterations path 的失败状态。
+
+读取：
+
+FAILED.json
+state npz
+iteration history
+energy history
+phase history
+force residual history
+
+不要先重跑然后覆盖它们。
+
+生成：
+
+    FAILURE_STATE_INDEX.json
+
+列清楚：
+
+state name
+load/displacement
+previous accepted phase
+iteration number
+force residual
+phase increment
+minimum Green strain
+candidate energy
+maximum s
+
+============================================================
+5. 定义 fixed-point map Phi
+============================================================
+
+建立纯诊断 API，例如：
+
+pd_clot/pfpd_candidate/
+    coupling_stability_audit.py
+
+定义：
+
+    Phi(s_input; load_state)
+
+流程必须严格等于当前 candidate solver 的一次完整 stagger map：
+
+1. 使用当前 s_input；
+2. h=1；
+3. 用已有 ADR 求 fixed-s mechanical equilibrium；
+4. 计算当前 Y；
+5. 执行当前已经验证的 AT1 constrained phase minimization；
+6. 返回 s_output。
+
+不要改变现有 mechanics 或 phase law。
+
+同时返回：
+
+x_equilibrium
+force residual
+Y
+phase active set
+candidate internal energy
+minimum Green strain
+ADR iterations
+
+此函数必须是 read-only diagnostic。
+
+============================================================
+6. 首先验证 Phi 能精确复现已保存迭代
+============================================================
+
+在失败 path 保存的若干 iteration 上：
+
+给定：
+
+    s_k
+
+重新调用：
+
+    Phi(s_k)
+
+比较保存的：
+
+    s_(k+1)
+
+要求：
+
+max absolute phase difference
+在预声明 numerical tolerance 内。
+
+如果不能复现：
+
+STOP spectral analysis
+
+状态：
+
+    FIXED_POINT_MAP_REPRODUCTION_FAILED
+
+先解决 diagnostic API 与原 solver 不一致。
+
+============================================================
+7. 直接测量实际 amplification
+============================================================
+
+对失败 iteration 保存：
+
+    delta_s_k =
+        s_k - s_(k-1)
+
+计算：
+
+    norm(delta_s_(k+1))
+    /
+    norm(delta_s_k)
+
+至少使用：
+
+L2 norm
+Linf norm
+
+另外计算方向一致性：
+
+    cosine(
+      delta_s_(k+1),
+      delta_s_k
+    )
+
+目的：
+
+判断观测的约 1.93 是否：
+
+- 幅值稳定；
+- 方向趋向固定；
+- 类似 dominant eigenmode。
+
+如果：
+
+ratio -> constant
+且 cosine -> ±1，
+
+说明线性 dominant mode 解释更可信。
+
+不要预设符号。
+
+============================================================
+8. frozen-active-set Jacobian of Phi
+============================================================
+
+这是本轮关键任务。
+
+对于以下至少三个状态：
+
+STATE A:
+    明确稳定的 accepted control state
+
+STATE B:
+    failure 前最后一个 accepted state
+
+STATE C:
+    failed load step 中 phase increment
+    已进入明显放大但仍未越过 pure-tension gate 的早期 iterate
+
+构造：
+
+    J_Phi = d Phi / d s
+
+优先对当前 phase active set 做分析。
+
+必须记录 phase bonds 分类：
+
+LOWER_BOUND_ACTIVE:
+    s == previous-load-step lower bound
+    且 KKT gradient 明确指向不更新
+
+INTERIOR_ACTIVE:
+    s > lower bound + tolerance
+    且 s < sc - tolerance
+
+NEAR_THRESHOLD:
+    Y approximately Yc
+
+NEAR_SC:
+    s approximately sc
+
+如果 perturbation 导致 active-set switching：
+
+该方向标：
+
+    NONSMOOTH_ACTIVE_SET_SWITCH
+
+不要把它强行塞进普通 Jacobian。
+
+============================================================
+9. Jacobian 计算策略
+============================================================
+
+small cube 优先完整 finite-difference Jacobian，
+若 phase DOF 数量和 wall time 可接受。
+
+对每个 perturbation epsilon
+至少测试三档：
+
+例如相对 phase scale：
+
+    1e-6
+    3e-6
+    1e-5
+    3e-5
+
+实际 epsilon 必须结合 s 和 bounds，
+避免越过 [lower_bound, sc]。
+
+对于 interior active bonds：
+可用 central difference。
+
+靠 bound：
+使用 one-sided difference，
+并明确标记。
+
+如果 full Jacobian 太昂贵：
+
+使用：
+
+    scipy.sparse.linalg.LinearOperator
+
+实现 Jacobian-vector product，
+再使用：
+
+    eigs
+
+或 power iteration。
+
+不要自己重写 eigen solver。
+
+============================================================
+10. spectral analysis
+============================================================
+
+计算：
+
+    dominant eigenvalue(s)
+    spectral radius rho(J_Phi)
+
+保存：
+
+real part
+imag part
+magnitude
+eigenvector
+
+至少比较：
+
+stable state
+pre-failure state
+failed state
+
+预声明解释：
+
+rho < 1:
+    locally contractive fixed-point map
+
+rho > 1:
+    simple fixed-point map locally unstable
+
+rho approximately 1:
+    marginal / inconclusive
+
+如果 eigenvalue 对 epsilon
+不稳定：
+
+    SPECTRAL_ESTIMATE_UNRESOLVED
+
+不要挑最方便的 epsilon。
+
+============================================================
+11. 将观测 failure mode 与 dominant eigenmode 对比
+============================================================
+
+如果 dominant eigenvector v1 已分辨：
+
+计算实际：
+
+    delta_s_k
+
+与：
+
+    v1
+
+的 cosine similarity。
+
+如果：
+
+|cosine| 接近 1
+
+且：
+
+observed amplification
+接近：
+    |lambda_1|
+
+这将形成很强的 fixed-point-instability 证据。
+
+保存：
+
+    MODE_ALIGNMENT.json
+
+但不要将 association 说成严格数学证明。
+
+============================================================
+12. 不要先试 under-relaxation
+============================================================
+
+本轮可以计算理论 relaxed-map eigenvalue：
+
+    lambda_relaxed
+      = (1-omega) + omega*lambda
+
+对：
+
+    omega in
+    0.1, 0.25, 0.5, 0.75, 1
+
+仅做诊断表。
+
+不要实际把 relaxation
+加入 candidate solver。
+
+特别报告：
+
+如果 dominant lambda > 1 且为正实数，
+
+普通 convex under-relaxation：
+
+    0 < omega <= 1
+
+理论上仍可能：
+
+    lambda_relaxed > 1
+
+这种情况下不要建议
+“简单减小 relaxation factor”作为修复。
+
+============================================================
+13. 建立 monolithic total-energy reference
+============================================================
+
+这是本轮第二个核心任务。
+
+当前 h=1 early-damage candidate 中，
+定义 displacement-controlled load step 的总候选内部能量：
+
+    Pi(x_free, s)
+      =
+      U_elastic_BAQP(x_free, s)
+      +
+      E_crack(s)
+
+boundary coordinates：
+    prescribed and not optimization variables
+
+phase bounds：
+
+    s >= s_previous_accepted_load_step
+    s <= sc
+
+注意：
+
+lower bound 应来自：
+    previous accepted load step
+
+不是失败 inner iteration
+人为增长后的 s。
+
+不要把失败 iteration 的不可逆累积
+误当作 load-step physical lower bound。
+
+============================================================
+14. monolithic gradient
+============================================================
+
+优先实现 analytic/semi-analytic gradient：
+
+with respect to x_free:
+
+    grad_x Pi =
+        - internal_force_free
+
+符号必须用现有
+energy-force finite-difference test 再核对。
+
+with respect to s:
+
+因为本轮 h=1：
+
+    dPi/ds_b
+      =
+      bond integration weight
+      *
+      [-2(1-s_b)Y_b + 2Yc]
+
+必须严格复用当前 BAQP energy weights。
+
+不要手工写一个
+与 energy routine 不同的 double-counting convention。
+
+============================================================
+15. monolithic gradient 必须先通过 finite-difference gate
+============================================================
+
+在：
+
+stable state
+pre-failure state
+failed-load initial state
+
+检查：
+
+    directional derivative
+
+至少 10 个 deterministic random directions。
+
+epsilon sweep 多档。
+
+比较：
+
+    analytic gradient dot direction
+
+vs
+
+    finite-difference Pi
+
+如果 relative gradient check
+不能达到预声明 tolerance：
+
+禁止运行 monolithic optimizer。
+
+状态：
+
+    MONOLITHIC_GRADIENT_NOT_VERIFIED
+
+============================================================
+16. 使用成熟 SciPy optimizer，不自己写 monolithic solver
+============================================================
+
+优先：
+
+    scipy.optimize.minimize
+
+至少运行：
+
+METHOD A:
+    L-BFGS-B
+
+因为只有 bound constraints。
+
+并对关键 failure state
+增加独立参考：
+
+METHOD B:
+    trust-constr
+或
+    SLSQP
+
+选择当前 SciPy
+最稳定且可记录 KKT 的一个。
+
+不要实现自写 Newton optimizer。
+
+初值至少：
+
+START 1:
+    previous accepted state
+
+START 2:
+    first failed stagger iterate
+
+START 3:
+    later failed stagger iterate
+
+START 4:
+    small deterministic perturbation
+    around previous accepted state
+
+所有 start 使用相同：
+    load
+    energy
+    bounds
+    tolerances
+
+不要根据结果改变物理参数。
+
+============================================================
+17. monolithic solution acceptance
+============================================================
+
+一个 monolithic candidate 至少要求：
+
+- optimizer success
+- finite objective
+- phase bounds satisfied
+- irreversibility bounds satisfied
+- force residual on free x small
+- projected phase KKT residual small
+- s < sc
+- pure-tension domain still valid
+
+若 optimizer 离开 pure-tension domain：
+
+标：
+
+    MONOLITHIC_SOLUTION_LEFT_CURRENT_MODEL_DOMAIN
+
+不能把它当作有效 candidate。
+
+============================================================
+18. 比较 monolithic 与 staggered
+============================================================
+
+对相同 load step 比较：
+
+previous accepted state
+stagger failed iterates
+monolithic candidate
+
+指标：
+
+Pi total
+U elastic
+E crack
+force residual
+phase KKT residual
+maximum s
+mean s
+distance in x
+distance in s
+
+如果 monolithic 找到
+比 failed staggered state 更低能、
+且满足 KKT 的稳定 candidate：
+
+这是 solver-instability 的重要证据。
+
+如果 monolithic 反复：
+
+- 走向 sc gate
+- 离开 pure-tension domain
+- 找不到局部 KKT minimum
+- 或只得到 saddle-like state
+
+则支持 branch instability / localization
+或当前模型域不足。
+
+============================================================
+19. reduced Hessian / stability audit
+============================================================
+
+对于：
+
+stable control
+pre-failure accepted
+monolithic candidate if valid
+
+计算耦合能量局部曲率。
+
+变量：
+
+x_free
++
+phase INTERIOR_ACTIVE variables
+
+对强 lower-bound active phase DOF
+不直接当作自由变量。
+
+至少形成：
+
+H_xx
+H_xs
+H_sx
+H_ss
+
+small cube 规模允许时
+直接 dense finite difference。
+
+否则 matrix-free。
+
+使用：
+
+    scipy.linalg.eigh
+或
+    scipy.sparse.linalg.eigsh
+
+不要自写 eigensolver。
+
+============================================================
+20. Hessian block consistency
+============================================================
+
+h=1 时：
+
+phase fixed-x Hessian
+理论上对每个 interior bond为正：
+
+    d2E/ds2 = 2Y * weight
+
+先验证 H_ss
+与这一解析结构一致。
+
+再检查：
+
+H_xx：
+    mechanical local curvature
+
+以及 coupled reduced Hessian：
+
+    H_reduced
+
+如果 H_xx 可逆且数值稳定，
+额外计算 Schur complement：
+
+    S =
+      H_ss
+      -
+      H_sx H_xx^{-1} H_xs
+
+这可以直接帮助判断：
+
+phase-alone convex
+但 coupled problem 是否出现负曲率。
+
+不要在 H_xx 病态时硬求逆；
+使用 solve / factorization，
+并报告 condition number。
+
+============================================================
+21. 预声明 stability interpretation
+============================================================
+
+如果：
+
+A.
+monolithic KKT local minimum exists
+AND
+feasible reduced Hessian minimum eigenvalue > tolerance
+AND
+rho(J_Phi) > 1
+
+则：
+
+    ROOT_CAUSE =
+    FIXED_POINT_ALGORITHM_UNSTABLE
+    WHILE_COUPLED_LOCAL_MINIMUM_EXISTS
+
+------------------------------------------------------------
+
+如果：
+
+B.
+monolithic stationary state
+具有明确负 feasible curvature
+
+或：
+
+所有合理 starts
+向更低能 localization/sc gate 方向离开，
+
+则：
+
+    ROOT_CAUSE =
+    COUPLED_BRANCH_LOSS_OR_LOCALIZATION_INSTABILITY
+
+------------------------------------------------------------
+
+如果：
+
+C.
+Jacobian 对 active-set perturbation
+明显不光滑，
+结果由大量 threshold/bound switching 控制，
+而 monolithic minimum 存在：
+
+    ROOT_CAUSE =
+    ACTIVE_SET_NONSMOOTHNESS_DOMINANT
+
+------------------------------------------------------------
+
+其它：
+
+    ROOT_CAUSE =
+    INCONCLUSIVE
+
+不要为了得到明确标签
+放宽数值证据门槛。
+
+============================================================
+22. 检查 observed 1.93 是否能由谱解释
+============================================================
+
+报告：
+
+observed amplification ≈ 1.93
+
+需要比较：
+
+    |lambda_dominant|
+
+如果：
+
+relative difference
+在合理误差内，
+且 mode alignment 高，
+
+可写：
+
+    OBSERVED_DIVERGENCE_IS_CONSISTENT_WITH_DOMINANT_FIXED_POINT_MODE
+
+不能写：
+
+    PROVED
+
+如果不匹配，
+明确说明。
+
+============================================================
+23. load-step subdivision 只做诊断
+============================================================
+
+从同一个 previous accepted state
+到同一个 failed endpoint displacement。
+
+只把这一段细分为：
+
+    2
+    4
+    8
+
+个 substeps。
+
+不改变总 endpoint。
+
+不改变：
+    Gc
+    s_c
+    tolerance
+
+目的只回答：
+
+“failure 是否主要是 coarse continuation step 导致？”
+
+比较 endpoint：
+
+x
+s
+Pi
+
+与 monolithic reference。
+
+禁止因为细分后能跑通
+就把主模型状态改成 VERIFIED。
+
+输出状态：
+
+STEP_SUBDIVISION_DIAGNOSTIC_ONLY
+
+============================================================
+24. pure-tension gate 的因果顺序
+============================================================
+
+当前 failure 最终伴随：
+
+minimum Green strain
+略低于 -1e-9。
+
+需要从保存 iteration 中确定：
+
+A.
+phase amplification 是先出现，
+还是
+
+B.
+pure-tension violation 先出现。
+
+输出每 iteration：
+
+max delta s
+force residual
+minimum Green strain
+
+如果 phase increment
+在 Green strain 越界之前
+已经明显指数放大，
+
+则 pure-tension violation
+更可能是后果/伴随现象，
+不是最初触发点。
+
+只能写：
+    temporal ordering supports ...
+
+不能写：
+    caused by ...
+
+============================================================
+25. unstable mode visualization
+============================================================
+
+如果得到：
+
+dominant fixed-point eigenmode
+或
+negative Hessian eigenmode，
+
+生成空间图。
+
+phase component：
+    bonds -> particle aggregated diagnostic
+
+displacement component：
+    particle vectors / magnitude
+
+图必须写：
+
+    NUMERICAL STABILITY MODE
+    NOT PHYSICAL CRACK PREDICTION
+
+目的：
+
+看 mode 是否：
+
+- homogeneous
+- localized
+- boundary-associated
+- symmetry-breaking
+
+不据图直接声称物理裂纹位置。
+
+============================================================
+26. energy-path diagnostic
+============================================================
+
+对：
+
+previous accepted
+failed stagger iterations
+monolithic candidate
+
+绘制：
+
+    Pi - Pi_previous_accepted
+
+如果 staggered iteration
+沿某个方向能量反复降低但不收敛，
+说明可能向其它 branch/localization 移动。
+
+如果能量上升/振荡，
+更像算法 fixed-point 问题。
+
+必须分别记录：
+
+mechanical substep energy change
+phase substep energy change
+
+因为：
+
+phase substep 在 fixed x
+应该不增加 candidate energy。
+
+mechanical ADR
+只是求 stationary equilibrium，
+不能默认每次都找到 local minimum。
+
+============================================================
+27. 当前已知测试必须保持
+============================================================
+
+原 baseline：
+
+    208 passed
+    3 failed
+
+先保存：
+
+tests/BASELINE_CURRENT.log
+
+记录 exact 3 failing test IDs
+及 failure messages。
+
+新增诊断测试必须独立通过。
+
+建议：
+
+tests/test_pfpd_coupling_map.py
+tests/test_pfpd_coupling_spectrum.py
+tests/test_pfpd_monolithic_gradient.py
+tests/test_pfpd_monolithic_reference.py
+tests/test_pfpd_stability_hessian.py
+
+至少覆盖：
+
+TEST 1
+Phi reproduces saved next iterate
+
+TEST 2
+Jacobian finite-difference epsilon stability
+on stable state
+
+TEST 3
+stable state rho(J)<1
+if data actually support it;
+不要硬编码期望，先预声明 threshold based classification.
+
+更稳妥：
+测试 eigen computation reproducibility，
+不是预先要求物理结果。
+
+TEST 4
+monolithic objective finite
+
+TEST 5
+monolithic gradient finite-difference consistency
+
+TEST 6
+phase bounds respected
+
+TEST 7
+previous-load lower bound used correctly
+
+TEST 8
+projected KKT residual calculation
+
+TEST 9
+Hessian symmetry within tolerance
+
+TEST 10
+H_ss analytic consistency for h=1
+
+TEST 11
+diagnostics do not modify saved states
+
+TEST 12
+production solver unchanged
+
+不要修改原有3个失败测试。
+
+最终完整 pytest
+仍可能：
+
+    N passed
+    3 failed
+
+这是允许且预期的，
+只要失败 ID 与原来完全相同。
+
+============================================================
+28. 充分利用服务器
+============================================================
+
+记录：
+
+CPU
+physical/logical cores
+RAM
+disk
+Python
+NumPy
+SciPy
+Numba
+
+写：
+
+provenance/HARDWARE.json
+
+Jacobian columns、
+finite-difference Hessian columns、
+multi-start optimizers
+可以并行。
+
+使用：
+
+ProcessPoolExecutor
+
+但避免 oversubscription：
+
+OPENBLAS_NUM_THREADS=1
+OMP_NUM_THREADS=1
+MKL_NUM_THREADS=1
+
+根据实际 RAM 自动选择 worker。
+
+保留至少：
+
+20% RAM headroom。
+
+当前 small cube 很小，
+优先获得高质量完整诊断，
+不要为了省几分钟降低检查质量。
+
+============================================================
+29. 输出目录
+============================================================
+
+新增：
+
+verification/pfpd_at1_coupling_stability_audit_v1/
+
+建议：
+
+state_index/
+fixed_point/
+spectrum/
+monolithic/
+hessian/
+continuation/
+energy_path/
+tests/
+figures/
+comparisons/
+provenance/
+
+不要覆盖旧目录。
+
+============================================================
+30. 强制可视化
+============================================================
+
+全部：
+PNG + PDF
+
+简单英文标签，
+每张图回答一个问题。
+
+------------------------------------------------------------
+FIGURE 1
+iteration_amplification
+
+横轴：
+stagger iteration
+
+上图：
+||delta s||
+
+下图：
+ratio ||delta s_(k+1)|| / ||delta s_k||
+
+显示 stable 与 failed case。
+
+人工问题：
+
+“phase update 是衰减还是放大？”
+
+------------------------------------------------------------
+FIGURE 2
+fixed_point_spectrum
+
+complex plane：
+
+画单位圆。
+
+显示：
+
+stable state eigenvalues
+pre-failure eigenvalues
+failed-state eigenvalues
+
+人工问题：
+
+“fixed-point map 的 eigenvalue 是否跑出单位圆？”
+
+------------------------------------------------------------
+FIGURE 3
+observed_vs_eigenmode
+
+显示：
+
+observed amplification
+
+vs
+
+dominant |lambda|
+
+以及 mode cosine similarity。
+
+人工问题：
+
+“实际发散是否与谱预测一致？”
+
+------------------------------------------------------------
+FIGURE 4
+monolithic_vs_staggered_energy
+
+比较：
+
+previous accepted
+stagger iterations
+monolithic solution(s)
+
+纵轴：
+Pi relative to previous accepted
+
+人工问题：
+
+“是否存在 staggered 没找到的更低能稳定状态？”
+
+------------------------------------------------------------
+FIGURE 5
+smallest_hessian_eigenvalue
+
+横轴：
+load/displacement
+
+纵轴：
+minimum feasible/reduced Hessian eigenvalue
+
+画：
+0 line
+
+人工问题：
+
+“什么时候局部能量曲率开始失去正性？”
+
+------------------------------------------------------------
+FIGURE 6
+unstable_mode_map
+
+如果 mode 已分辨：
+
+左：
+phase-mode spatial aggregation
+
+右：
+displacement-mode magnitude
+
+标：
+
+NUMERICAL STABILITY MODE
+NOT PHYSICAL CRACK PREDICTION
+
+------------------------------------------------------------
+FIGURE 7
+substep_diagnostic
+
+同一 endpoint 比较：
+
+1 original step
+2 substeps
+4 substeps
+8 substeps
+monolithic reference
+
+比较：
+max s
+energy
+state distance
+
+明确：
+
+DIAGNOSTIC ONLY
+
+------------------------------------------------------------
+FIGURE 8
+tension_gate_ordering
+
+横轴：
+stagger iteration
+
+显示：
+
+max delta s
+
+minimum Green strain
+
+用两幅图，
+标 pure-tension threshold。
+
+人工问题：
+
+“发散和张拉域越界，谁先发生？”
+
+============================================================
+31. REVIEW 报告
+============================================================
+
+生成：
+
+verification/pfpd_at1_coupling_stability_audit_v1/
+    REVIEW_COUPLING_STABILITY_AUDIT.md
+
+要求门外汉也能读懂。
+
+结构：
+
+1. 上一轮到底哪里失败
+
+2. 这一轮想区分哪两类问题
+
+用简单比喻解释：
+
+- solver 找不到已有谷底
+vs
+- 谷底本身消失了
+
+3. fixed-point map 是什么
+
+4. 实际 amplification 是否稳定
+
+5. spectral radius 结果
+
+6. dominant mode 是否解释实际发散
+
+7. monolithic minimization 是否找到稳定解
+
+8. KKT 是否满足
+
+9. Hessian / Schur complement 说明什么
+
+10. load-step subdivision 说明什么
+
+11. pure-tension gate 是原因还是伴随现象
+
+12. energy path 说明什么
+
+13. 当前根因分类
+
+14. 测试：
+    original passed
+    known failed
+    new diagnostic passed
+    any regressions
+
+15. 图怎么看
+
+16. 唯一下一步建议
+
+不要提前实现该下一步。
+
+============================================================
+32. 根因状态标签
+============================================================
+
+最终必须给一个：
+
+COUPLING_STABILITY_AUDIT:
+    COMPLETE / INCOMPLETE
+
+FIXED_POINT_MAP:
+    VERIFIED_REPRODUCTION / NOT_VERIFIED
+
+FIXED_POINT_SPECTRAL_RADIUS:
+    RESOLVED / UNRESOLVED
+
+MONOLITHIC_REFERENCE:
+    LOCAL_MINIMUM_FOUND
+    / NO_VALID_LOCAL_MINIMUM_FOUND
+    / MODEL_DOMAIN_EXIT
+    / INCONCLUSIVE
+
+REDUCED_HESSIAN:
+    LOCALLY_POSITIVE
+    / NEGATIVE_CURVATURE_FOUND
+    / INCONCLUSIVE
+
+ROOT_CAUSE:
+    FIXED_POINT_ALGORITHM_UNSTABLE_WHILE_LOCAL_MINIMUM_EXISTS
+    / COUPLED_BRANCH_LOSS_OR_LOCALIZATION_INSTABILITY
+    / ACTIVE_SET_NONSMOOTHNESS_DOMINANT
+    / INCONCLUSIVE
+
+PURE_TENSION_GATE:
+    PRECEDES_DIVERGENCE
+    / FOLLOWS_DIVERGENCE
+    / INCONCLUSIVE
+
+STEP_SUBDIVISION:
+    DIAGNOSTIC_ONLY
+
+PFPD_AT1_EVOLUTION_V1:
+    REMAINS_NOT_VERIFIED
+
+PRODUCTION MODEL:
+    UNCHANGED
+
+============================================================
+33. 本轮绝对不能输出的结论
+============================================================
+
+禁止写：
+
+    solver fixed
+
+因为本轮不修 solver。
+
+禁止写：
+
+    physical crack instability proven
+
+除非：
+monolithic + Hessian + domain checks
+全部形成充分证据。
+
+禁止写：
+
+    smaller load steps solve the problem
+
+最多写：
+    smaller substeps alter / do not alter diagnostic behavior.
+
+禁止把 numerical eigenmode
+称为真实 fracture path。
+
+============================================================
+34. 最终终端摘要
+============================================================
+
+最终只输出：
+
+- repository / HEAD
+- existing files modified
+- production files modified
+- historical files modified
+- baseline passed / known failed
+- new diagnostic tests passed
+- fixed-point reproduction status
+- observed amplification range
+- dominant eigenvalue(s)
+- spectral radius stable/pre-failure/failed
+- mode alignment
+- monolithic optimizer status
+- monolithic objective relative to staggered
+- projected KKT residual
+- minimum reduced-Hessian eigenvalue
+- pure-tension ordering result
+- subdivision diagnostic result
+- ROOT_CAUSE label
+- REVIEW_COUPLING_STABILITY_AUDIT.md
+- figures directory
+
+不要只输出：
+    audit complete
+
+============================================================
+35. 完成后停止
+============================================================
+
+不要自动实现：
+
+under-relaxation
+Newton
+arc-length
+viscosity
+AT2
+high-damage h(s)
+fracture propagation
+streaming coupling
+wall model
+Ogden
+real CFD
+
+先等待人工审核。

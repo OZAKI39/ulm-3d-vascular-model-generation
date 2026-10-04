@@ -1,0 +1,1516 @@
+你正在继续开发 clot CFD–PD 项目。
+
+本轮任务名称：
+
+    PFPD_AT1_C5_ACTIVATION_STATIONARITY_AUDIT_V1
+
+============================================================
+0. 当前已确认状态
+============================================================
+
+首先记录：
+
+    git rev-parse --show-toplevel
+    git rev-parse HEAD
+    git status --short
+
+当前已经确认：
+
+SVK_SPECTRAL_SPLIT:
+    VERIFIED
+
+INTACT_S0_EQUIVALENCE:
+    VERIFIED
+
+MIXED_STRAIN_STATES:
+    ADMITTED
+
+PURE_TENSION_HARD_GATE:
+    REMOVED FOR NEW CANDIDATE ONLY
+
+C3 INTACT EQUILIBRIUM:
+    VERIFIED
+
+C5 INTACT EQUILIBRIUM:
+    VERIFIED
+
+C7 INTACT EQUILIBRIUM:
+    VERIFIED
+
+AT1 DRIVER:
+    Y = Psi_plus
+
+C3 STABILITY REGRESSION:
+    PASSED
+
+C5 COUPLED ACTIVATION:
+    STATIONARY SOLVE UNRESOLVED
+
+C5 STABILITY:
+    UNRESOLVED
+
+C7 STABILITY:
+    NOT RUN
+
+SPATIAL DISCRETIZATION AUDIT:
+    RESUMED BUT INCOMPLETE
+
+PRODUCTION:
+    UNCHANGED
+
+当前测试基线：
+
+    331 passed
+    3 known failed
+    0 skipped
+
+原3个 known failures 必须继续保留，
+不得 xfail / skip / weaken。
+
+============================================================
+1. 本轮唯一科学问题
+============================================================
+
+只回答：
+
+    C5 第一次 AT1 phase activation 附近，
+    是否存在满足原 force + KKT 门槛的
+    coupled stationary state？
+
+需要区分：
+
+HYPOTHESIS A
+
+    合法 stationary root 存在，
+    但当前 projected-KKT + dogbox
+    在 active-set kink 附近停滞。
+
+HYPOTHESIS B
+
+    root 存在，
+    但 residual scaling / Jacobian conditioning
+    使现有求解器无法找到。
+
+HYPOTHESIS C
+
+    s=0 branch 到 s>0 branch
+    在第一次 activation 处发生
+    nonsmooth branch event，
+    当前附近不存在连续 stationary continuation。
+
+HYPOTHESIS D
+
+    current projected-KKT residual
+    在大规模 simultaneous / near-simultaneous
+    activation 时出现 rank deficiency
+    或 complementarity degeneracy。
+
+HYPOTHESIS E
+
+    当前证据不足。
+
+本轮只定位。
+
+禁止直接修 production solver。
+
+============================================================
+2. 本轮禁止事项
+============================================================
+
+禁止：
+
+- 修改 Gc_demo
+- 修改 Yc
+- 修改 spectral split
+- 修改 Psi_plus
+- 修改 Psi_minus
+- 修改 g(s)
+- 修改 h(s)
+- 修改 sc
+- 修改 geometry
+- 修改 delta
+- 修改 particle volume
+- 放宽 force tolerance
+- 放宽 KKT tolerance
+- 加 phase viscosity
+- 加 residual stiffness
+- under-relaxation 作为正式修复
+- arc-length
+- branch switching
+- 换成 AT2
+- 改 irreversibility
+- 调 load step 后宣布成功
+- 直接跑 C7 coupled stability
+- 修改 production
+- 把 SciPy xtol/ftol success
+  当 scientific convergence
+
+============================================================
+3. 历史保护
+============================================================
+
+保护：
+
+verification/pfpd_at1_spectral_split_v1/
+verification/pfpd_at1_spatial_discretization_audit_v2/
+verification/pfpd_at1_branch_stability_tracking_v1/
+verification/pfpd_at1_coupling_stability_audit_v1/
+
+以及所有历史 results。
+
+新建：
+
+verification/pfpd_at1_c5_activation_stationarity_audit_v1/
+
+results/pfpd_at1_c5_activation_stationarity_audit_v1/
+
+开始：
+
+    PRE_RUN_MANIFEST.json
+
+结束：
+
+    POST_RUN_MANIFEST.json
+    PRESERVATION_CHECK.json
+
+要求：
+
+production modified files = 0
+historical modified files = 0
+existing tests modified = 0
+
+============================================================
+4. 不要先跑 coupled solve
+先精确定位 s=0 分支失去 KKT 可行的位置
+============================================================
+
+这是本轮第一优先级，
+也是最便宜、信息量最大的诊断。
+
+固定：
+
+    C5 corrected boundary-node mesh
+
+phase：
+
+    s = 0
+
+phase update：
+
+    disabled
+
+对于每个 prescribed strain：
+
+先求完整 mechanical equilibrium。
+
+然后使用正式 spectral split：
+
+    Y_b = Psi_plus_b
+
+计算：
+
+    q_b =
+      -2*(1-s_b)*Y_b
+      + 2*Yc
+
+在 s=0：
+
+    q_b =
+      2*(Yc - Y_b)
+
+KKT：
+
+    q_b > 0
+        strong lower
+
+    q_b approximately 0
+        weak lower / activation candidate
+
+    q_b < 0
+        s=0 已不满足 lower-bound KKT
+
+============================================================
+5. cheap activation scan
+============================================================
+
+不要在整个 0~1% 做高密 sweep。
+
+已有信息：
+
+last accepted coupled:
+    epsilon = 0.004378694029
+
+failed activation neighborhood:
+    epsilon ≈ 0.004514117556
+
+首先采样：
+
+    0.00430
+    0.00435
+    0.00438
+    0.00440
+    0.00442
+    0.00444
+    0.00446
+    0.00448
+    0.00450
+    0.00452
+    0.00455
+
+全部只跑：
+
+    s=0 intact mechanical equilibrium
+    + q evaluation
+
+如果 min(q) crossing
+不在范围：
+
+再有限扩展。
+
+============================================================
+6. activation bracket
+============================================================
+
+找到：
+
+epsilon_L:
+
+    all q_b >= 0
+
+epsilon_U:
+
+    at least one q_b < 0
+
+然后二分：
+
+目标：
+
+    epsilon_U - epsilon_L <= 1e-7
+
+或者最多 12 层。
+
+这不是 fracture stability bracket。
+
+它只是：
+
+    LOWER-BOUND KKT ACTIVATION BRACKET
+
+保存：
+
+    epsilon
+    min q
+    q percentiles
+    count(q<0)
+    count(|q|<weak_tol)
+    max Y/Yc
+    bond IDs
+
+============================================================
+7. activation spatial structure
+============================================================
+
+在：
+
+last strong-lower state
+
+activation point
+
+first q<0 state
+
+分别记录：
+
+candidate bond IDs
+bond midpoint
+bond orientation
+Psi_plus
+q
+
+分析：
+
+- 是 1 根先激活？
+- 少数局部 bonds？
+- 一整个 layer？
+- 大量 bonds 同时？
+
+计算：
+
+activation fraction =
+    candidate bonds / total bonds
+
+不要把它叫 crack。
+
+只称：
+
+    AT1 activation set
+
+============================================================
+8. active-set 分类
+============================================================
+
+使用预声明容差：
+
+STRONG_LOWER:
+
+    s=s_lower
+    q > q_active_tol
+
+WEAK_LOWER:
+
+    s=s_lower
+    |q| <= q_active_tol
+
+VIOLATED_LOWER:
+
+    s=s_lower
+    q < -q_active_tol
+
+INTERIOR:
+
+    s > s_lower + s_tol
+    s < sc - s_tol
+
+q_active_tol 不要根据结果调。
+
+优先沿用之前
+critical-cone / KKT audit
+已经使用的容差 convention。
+
+============================================================
+9. 必须首先复现旧 C5 数据
+============================================================
+
+重新读取而不是覆盖：
+
+last accepted:
+
+    epsilon = 0.004378694029
+    force ≈ 1.679399e-15
+    KKT = 0
+    max(s)=0
+
+failed neighborhood:
+
+    epsilon ≈ 0.004514117556
+
+以及三组失败初值结果。
+
+新代码必须复现：
+
+energy
+force
+KKT
+q distribution
+Psi_plus
+
+如果不能复现：
+
+STOP
+
+    ACTIVATION_AUDIT_REPRODUCTION_FAILED
+
+============================================================
+10. projected-KKT residual kink audit
+============================================================
+
+当前 phase residual 类似：
+
+    r_s =
+      s -
+      clip(
+        s - q_scaled,
+        s_lower,
+        sc
+      )
+
+明确写出每个 active branch 的
+piecewise derivative。
+
+对 activation vicinity：
+
+记录每个 bond：
+
+which clip branch
+distance to switching surface
+local derivative branch
+
+统计：
+
+number lower-clipped
+number interior-map
+number upper-clipped
+number exactly/near kink
+
+目的：
+
+确定 solver 是否面对
+大规模同步 residual kink。
+
+============================================================
+11. original residual solver termination audit
+============================================================
+
+在当前失败 case 上重新运行一次
+原 branch solver。
+
+只运行一次，
+不要重复 sweep。
+
+保存 SciPy 的：
+
+status
+message
+nfev
+njev
+cost
+optimality
+step norm if available
+x norm
+residual block norms
+
+分别记录：
+
+mechanical residual L2/Linf
+phase residual L2/Linf
+
+以及：
+
+    J^T r norm
+
+如果 SciPy API 不直接给所有数据，
+从 returned Jacobian/residual 计算。
+
+目的：
+
+回答：
+
+“为什么 xtol/ftol 触发，
+虽然 scientific residual 仍然很大？”
+
+============================================================
+12. Jacobian block audit
+============================================================
+
+在：
+
+A. last accepted s=0 state
+B. first weak-lower state
+C. failed coupled iterate
+
+分析 residual Jacobian：
+
+    J =
+    [ J_xx   J_xs
+      J_sx   J_ss ]
+
+不要形成不必要的完整 dense 5392-phase matrix
+如果内存不划算。
+
+优先：
+
+matrix-free Jv / J^T v
+
+使用：
+
+    scipy.sparse.linalg.LinearOperator
+
+============================================================
+13. conditioning diagnostics
+============================================================
+
+重点计算：
+
+mechanical block conditioning
+phase block diagonal / branch structure
+cross coupling norms
+
+以及 residual Jacobian：
+
+largest singular value
+smallest resolved singular value
+condition estimate
+
+优先：
+
+    scipy.sparse.linalg.svds
+
+或成熟 iterative method。
+
+不要自己实现 SVD。
+
+如果 smallest singular value
+难以可靠求得：
+
+报告：
+
+    CONDITION_ESTIMATE_UNRESOLVED
+
+不要伪造 condition number。
+
+============================================================
+14. residual scaling audit
+============================================================
+
+保持正式 residual scaling 不变。
+
+但诊断：
+
+- mechanical block norm
+- phase block norm
+- Jacobian row norms
+- Jacobian column norms
+- gradient contribution from each block
+
+目的：
+
+检查 trust region
+是否被一个 block 主导。
+
+允许构造：
+
+    diagnostic equilibration scaling
+
+例如：
+
+row-normalized residual
+
+只用于重新求同一个数学 root
+作为 diagnostic。
+
+不得进入 production。
+
+若 scaled/unscaled
+找到同一个 physical root：
+
+支持：
+
+    NUMERICAL_SCALING_LIMITATION
+
+若结果不同：
+
+进一步调查，
+不要自动采用新 scaling。
+
+============================================================
+15. 关键诊断：
+explicit active-set reduced KKT solve
+============================================================
+
+这是本轮核心。
+
+不要在 projected residual 的 kink 上
+直接要求一个通用 solver 自己猜 active set。
+
+在 epsilon 略高于 activation bracket：
+
+根据 s=0 equilibrium 的 q：
+
+定义 candidate active set A：
+
+    q_b < q_select
+
+初始至少测试三种 selection：
+
+A1:
+    q < 0
+
+A2:
+    q <= q_active_tol
+
+A3:
+    spatial union of bonds
+    selected by A1/A2 plus directly adjacent
+    near-threshold bonds
+
+不要调物理参数。
+
+============================================================
+16. reduced active-set system
+============================================================
+
+固定 inactive bonds：
+
+    s_I = s_lower = 0
+
+未知量：
+
+    x_free
+    s_A
+
+求：
+
+    F_free(x,s_A) = 0
+
+    q_A(x,s_A) = 0
+
+使用：
+
+    scipy.optimize.least_squares
+
+如系统方阵且 Jacobian 已验证，
+可增加：
+
+    scipy.optimize.root
+
+作为第二 oracle。
+
+不要自己写 Newton solver。
+
+============================================================
+17. reduced-root acceptance
+============================================================
+
+找到 candidate 后必须检查完整 KKT：
+
+mechanical:
+
+    force residual <= 1e-9
+
+active bonds:
+
+    |q_A| <= phase tolerance
+
+inactive bonds:
+
+    q_I >= -phase tolerance
+
+bounds:
+
+    0 <= s_A < sc
+
+irreversibility:
+
+    s >= previous accepted s
+
+finite J
+fixed boundary
+existing safety
+
+只有全部通过：
+
+    VALID_COUPLED_STATIONARY_ROOT_FOUND
+
+否则不能接受。
+
+============================================================
+18. active-set consistency iteration
+============================================================
+
+如果 reduced solve 后：
+
+某些 inactive bonds：
+
+    q_I < -tol
+
+则将它们加入 active set。
+
+如果某些 active bonds：
+
+    s_A 返回 lower bound
+    且 q_A > tol
+
+则移回 inactive。
+
+重复：
+
+    classify
+    reduced solve
+    check KKT
+
+最多：
+
+    10 active-set updates
+
+这只是：
+
+    DIAGNOSTIC PRIMAL-DUAL ACTIVE-SET PROCEDURE
+
+不是 production solver。
+
+所有 active-set changes 必须保存。
+
+============================================================
+19. 不重复造轮子
+============================================================
+
+active-set iteration 只负责：
+
+    选择 variables
+
+真正 nonlinear root solve
+仍使用 SciPy。
+
+不要自行实现：
+
+trust-region
+line search
+Newton factorization
+
+如果环境已经安装 PETSc/petsc4py：
+
+可以检查是否存在可直接复用的
+bound-constrained / variational-inequality
+nonlinear solver。
+
+仅作为 optional independent oracle。
+
+不要安装大型 PETSc stack
+只为了这一轮。
+
+============================================================
+20. complementarity formulation：仅 fallback
+============================================================
+
+只有 explicit active-set reduced solve
+无法决定 root 是否存在时，
+
+允许建立一个成熟 NCP residual
+作为独立 diagnostic：
+
+例如 Fischer-Burmeister：
+
+    phi(a,b)
+      =
+      sqrt(a^2+b^2) - a - b
+
+用于 lower-bound complementarity：
+
+    a = s - s_lower
+    b = q
+
+满足：
+
+    a >= 0
+    b >= 0
+    a*b = 0
+
+注意 sign convention
+必须与当前 q/KKT 一致。
+
+使用 SciPy root / least_squares。
+
+这只是：
+
+    COMPLEMENTARITY ORACLE
+
+不是 production replacement。
+
+必须先用 scalar/unit tests
+验证符号和 complementarity。
+
+============================================================
+21. root-existence scan
+============================================================
+
+只在 activation bracket 附近运行。
+
+建议：
+
+epsilon_activation
++
+    1e-6
+    2e-6
+    5e-6
+    1e-5
+    2e-5
+    5e-5
+
+engineering strain。
+
+每个点：
+
+1. s=0 equilibrium
+2. q active set
+3. reduced KKT solve
+4. full KKT validation
+
+不要直接跑到 0.009。
+
+目标不是建立完整 branch，
+只回答 root 是否跨 activation 存在。
+
+============================================================
+22. 若 root 存在，做最小 continuation
+============================================================
+
+只有：
+
+VALID_COUPLED_STATIONARY_ROOT_FOUND
+
+后，
+
+从第一个正 phase root
+向上追踪少数点：
+
+最多：
+
+    5 additional load states
+
+step：
+
+根据 activation bracket
+选择固定小步长。
+
+目的：
+
+确认：
+
+    positive-s stationary branch
+    能持续存在
+
+而不是完整 stability audit。
+
+不要组 Hessian。
+不要 critical-cone。
+不要 C7。
+
+============================================================
+23. 若 root 不存在
+============================================================
+
+如果：
+
+- multiple active-set choices
+- multiple initial guesses
+- complementarity oracle
+
+均无法找到满足完整 KKT 的 root，
+
+且 Jacobian/conditioning
+没有明显实现或数值 pathology，
+
+状态：
+
+    NO_STATIONARY_ROOT_FOUND_NEAR_ACTIVATION
+
+但措辞必须是：
+
+    not found within audited neighborhood/methods
+
+不能写：
+    mathematical proof of nonexistence
+
+============================================================
+24. monolithic energy minimization：只有必要时使用
+============================================================
+
+如果 reduced KKT root 与
+projected solver 结论冲突，
+
+再使用：
+
+    scipy.optimize.minimize
+
+对：
+
+    Pi(x,s)
+
+做一次 constrained monolithic reference。
+
+推荐：
+
+    L-BFGS-B
+或
+    trust-constr
+
+根据已有代码兼容性。
+
+只运行：
+    1~2 个 activation-adjacent loads
+
+不要大 sweep。
+
+检查：
+
+energy
+force
+KKT
+bounds
+local curvature if cheap
+
+目的：
+
+判断是否存在
+projected solver 漏掉的 local minimum。
+
+============================================================
+25. 当前 stationary solver 不要修改
+============================================================
+
+本轮只能新增：
+
+audit modules
+diagnostic active-set wrapper
+analysis scripts
+tests
+figures
+
+不要修改：
+
+original branch solver
+KKT implementation
+mechanics
+spectral split
+AT1 law
+
+这样才能判断：
+
+问题来自 solver
+还是问题本身。
+
+============================================================
+26. CPU / GPU 资源策略
+============================================================
+
+先记录：
+
+lscpu
+free -h
+nvidia-smi
+
+当前已知：
+
+CPU:
+    i7-13700HX
+
+GPU:
+    RTX 4060 Laptop 8 GB
+
+------------------------------------------------------------
+CPU
+------------------------------------------------------------
+
+本轮主要工作：
+
+mechanical solves
+Jv/JTv
+small active-set root solves
+
+优先 CPU。
+
+对：
+
+multiple epsilon points
+multiple active-set hypotheses
+multiple initial guesses
+
+可使用：
+
+ProcessPoolExecutor
+
+但每个大 C5 solve
+内存/CPU 较重。
+
+建议：
+
+max_workers
+根据：
+physical cores
+RAM
+自动决定。
+
+至少保留：
+20% RAM
+2 physical cores
+
+BLAS：
+
+OPENBLAS_NUM_THREADS=1
+OMP_NUM_THREADS=1
+MKL_NUM_THREADS=1
+
+------------------------------------------------------------
+GPU
+------------------------------------------------------------
+
+不要为了本轮
+重新实现 nonlinear solver。
+
+如果现有环境无 CuPy/JAX/Torch，
+继续不使用 GPU。
+
+仅当已有验证过的 GPU backend
+可以直接批量执行：
+
+Psi split
+bond response
+Jv batch
+
+才 benchmark。
+
+本轮 focus 是 root structure，
+不是 throughput。
+
+============================================================
+27. 测试策略
+============================================================
+
+开始只跑一次：
+
+    pytest tests -q
+
+记录 baseline。
+
+开发中：
+
+只运行新 targeted tests。
+
+结束再跑一次 full suite。
+
+不要重复 full suite。
+
+新增建议：
+
+tests/test_c5_activation_scan.py
+tests/test_c5_active_set_kkt.py
+tests/test_c5_reduced_stationarity.py
+tests/test_c5_complementarity_oracle.py
+
+至少：
+
+TEST 1
+q=2(Yc-Psi+) at s=0
+
+TEST 2
+strong/weak/violated classification
+
+TEST 3
+activation bracket contracts
+
+TEST 4
+active-set residual assembly
+
+TEST 5
+inactive phase stays exactly lower bound
+
+TEST 6
+active q equations correct
+
+TEST 7
+full-KKT validation catches
+missing active bonds
+
+TEST 8
+active-set update deterministic
+
+TEST 9
+reduced Jacobian finite-difference consistency
+
+TEST 10
+Fischer-Burmeister scalar convention
+if fallback implemented
+
+TEST 11
+diagnostic code does not alter
+original branch solver
+
+TEST 12
+historical files unchanged
+
+原3 known failures
+必须完全相同。
+
+============================================================
+28. 不需要重复运行的验证
+============================================================
+
+禁止重复大规模运行：
+
+- spectral tensor verification
+- PhaseFieldX oracle campaign
+- 128 random F invariance
+- pure compression fixture
+- shear fixture
+- C3 stability Hessian campaign
+- old 35-state energy audit
+- BAQP rigid motions
+- Peridynamics.jl all-mesh reference
+- C7 intact 4-state campaign
+- Griffith normalization
+- c0 normalization
+
+这些只靠 final regression 保留。
+
+============================================================
+29. 强制可视化
+============================================================
+
+只生成有决策价值的 7 张图。
+
+------------------------------------------------------------
+FIGURE 1
+activation_gradient_vs_strain
+
+横轴：
+engineering strain
+
+纵轴：
+min q
+
+画：
+q=0
+
+另显示：
+5th percentile
+median
+
+人工问题：
+
+“s=0 branch 在哪里第一次失去 phase KKT 可行性？”
+
+------------------------------------------------------------
+FIGURE 2
+activation_set_size
+
+横轴：
+strain
+
+纵轴：
+number / fraction of bonds
+
+显示：
+
+strong
+weak
+violated
+
+人工问题：
+
+“第一次 activation 是局部还是大量 bonds 同时发生？”
+
+------------------------------------------------------------
+FIGURE 3
+activation_spatial_map
+
+显示：
+
+first candidate active bonds
+bond midpoints / particle aggregation
+
+标 clamp。
+
+人工问题：
+
+“phase 最先想在哪里开启？”
+
+醒目标：
+
+ACTIVATION SET
+NOT CRACK PREDICTION
+
+------------------------------------------------------------
+FIGURE 4
+solver_stagnation
+
+横轴：
+solver iteration/evaluation
+
+两图：
+
+mechanical residual
+phase residual
+
+标 SciPy termination point。
+
+人工问题：
+
+“为什么 optimizer 说停，但 scientific residual 还很大？”
+
+------------------------------------------------------------
+FIGURE 5
+jacobian_conditioning
+
+activation neighborhood：
+
+显示：
+
+largest singular estimate
+smallest singular estimate
+condition estimate
+
+如果 unresolved：
+明确 UNRESOLVED。
+
+人工问题：
+
+“stationary equations 是否接近奇异？”
+
+------------------------------------------------------------
+FIGURE 6
+projected_vs_active_set_solver
+
+同一 strain：
+
+比较：
+
+original projected-KKT solve
+
+explicit active-set solve
+
+complementarity oracle
+if used
+
+指标：
+
+force residual
+KKT residual
+
+不要双轴。
+
+人工问题：
+
+“换成显式 KKT 分支后，合法 root 是否出现？”
+
+------------------------------------------------------------
+FIGURE 7
+positive_phase_branch_prefix
+
+仅当合法 roots 存在：
+
+横轴：
+strain
+
+显示：
+
+max s
+mean s
+reaction stress
+
+只画最多5个 continuation points。
+
+若 root 不存在：
+
+改成一张清楚的：
+NO VALID STATIONARY ROOT FOUND
+并显示审计过的 strains。
+
+============================================================
+30. REVIEW 报告
+============================================================
+
+生成：
+
+verification/pfpd_at1_c5_activation_stationarity_audit_v1/
+    REVIEW_C5_ACTIVATION_STATIONARITY.md
+
+必须让非专业读者能看懂。
+
+结构：
+
+1. 上一轮到底卡在哪里
+
+2. 什么是 phase activation
+
+3. 什么是 q
+
+4. 为什么先检查 s=0 branch
+
+5. activation bracket
+
+6. 多少 bonds 首先激活
+
+7. activation 在哪里
+
+8. projected KKT 为什么可能难解
+
+9. Jacobian conditioning
+
+10. explicit active-set reduced solve
+
+11. 是否找到合法 stationary root
+
+12. independent complementarity/energy oracle
+    if actually needed
+
+13. 当前 root cause 分类
+
+14. tests
+
+15. CPU/GPU 使用
+
+16. 唯一下一步
+
+============================================================
+31. 根因分类
+============================================================
+
+最终必须给：
+
+C5_ACTIVATION_AUDIT:
+    COMPLETE / INCOMPLETE
+
+S0_KKT_ACTIVATION:
+    BRACKETED / NOT_BRACKETED
+
+ACTIVATION_SET:
+    LOCALIZED
+    / PARTIAL
+    / DIFFUSE
+    / INCONCLUSIVE
+
+PROJECTED_KKT_MAP:
+    SMOOTH_ENOUGH
+    / NONSMOOTH_ACTIVE_SET_TRANSITION
+    / INCONCLUSIVE
+
+RESIDUAL_JACOBIAN:
+    WELL_CONDITIONED
+    / ILL_CONDITIONED
+    / RANK_DEFICIENT
+    / UNRESOLVED
+
+EXPLICIT_ACTIVE_SET_ROOT:
+    FOUND
+    / NOT_FOUND
+    / INCONCLUSIVE
+
+COMPLEMENTARITY_ORACLE:
+    FOUND_SAME_ROOT
+    / NO_ROOT_FOUND
+    / NOT_NEEDED
+    / INCONCLUSIVE
+
+ROOT_CAUSE:
+    PROJECTED_SOLVER_ACTIVE_SET_STAGNATION
+    / RESIDUAL_SCALING_CONDITIONING
+    / NONSMOOTH_BRANCH_EVENT
+    / JACOBIAN_RANK_DEFICIENCY
+    / NO_VALID_ROOT_FOUND_IN_AUDITED_NEIGHBORHOOD
+    / INCONCLUSIVE
+
+C5_COUPLED_STATIONARITY:
+    RESOLVED
+    / UNRESOLVED
+
+C5_STABILITY:
+    NOT ASSESSED THIS ROUND
+
+C7_COUPLED:
+    NOT RUN
+
+PRODUCTION:
+    UNCHANGED
+
+============================================================
+32. 什么时候才算真正解决当前 blocker
+============================================================
+
+只有如果：
+
+- activation bracket 已找到
+- active-set classification 明确
+- 一个合法 positive-s root
+  通过：
+      force <= 1e-9
+      KKT <= 1e-8
+      full inactive inequality
+      bounds
+      irreversibility
+      safety
+- 至少一个独立 formulation
+  或相邻 continuation state
+  支持该 root
+
+才能：
+
+    C5_COUPLED_STATIONARITY = RESOLVED
+
+否则继续：
+
+    UNRESOLVED
+
+绝不能因为 SciPy success=True
+就 RESOLVED。
+
+============================================================
+33. 如果显式 active-set 方法成功
+============================================================
+
+不要本轮就替换 production solver。
+
+只得出：
+
+    ROOT EXISTS
+
+和：
+
+    ORIGINAL PROJECTED SOLVER
+    HAS AN ACTIVE-SET / NUMERICAL ISSUE
+
+下一轮再单独研究：
+
+- semismooth Newton
+- primal-dual active set
+- variational inequality solver
+
+哪一种适合作为正式方法。
+
+============================================================
+34. 如果显式 active-set 也失败
+============================================================
+
+不要开始调参数。
+
+下一步应根据证据决定：
+
+- complementarity branch event
+- rank deficiency
+- monolithic instability
+- continuation requirement
+
+本轮停止。
+
+============================================================
+35. 最终终端摘要
+============================================================
+
+最终只输出：
+
+- repository / HEAD
+- production files modified
+- historical files modified
+- baseline tests
+- final tests
+- activation bracket
+- min q lower endpoint
+- min q upper endpoint
+- number of first active bonds
+- activation spatial classification
+- original solver termination reason
+- original force residual
+- original KKT residual
+- Jacobian condition estimate
+- explicit active-set root status
+- active set size at valid root
+- valid root force residual
+- valid root KKT residual
+- complementarity oracle status
+- continuation prefix status
+- CPU usage
+- GPU usage
+- ROOT_CAUSE
+- REVIEW_C5_ACTIVATION_STATIONARITY.md
+- figures directory
+
+不要只输出：
+    audit complete
+
+============================================================
+36. 完成后停止
+============================================================
+
+不要自动进入：
+
+C5 stability Hessian
+C7 coupled branch
+C7 stability
+semismooth Newton production solver
+arc-length
+h(s)<1
+Ogden
+wall adhesion
+clot calibration
+erosion coupling
+fatigue
+real CFD
+
+等待人工审核。

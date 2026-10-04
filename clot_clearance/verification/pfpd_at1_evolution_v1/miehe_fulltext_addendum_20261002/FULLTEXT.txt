@@ -1,0 +1,839 @@
+
+===== PDF PAGE 1 =====
+                                       Computer Methods in Applied Mechanics and Engineering 199 (2010) 2765– 2778
+
+
+                                             Contents lists available at ScienceDirect
+
+         Computer Methods in Applied Mechanics and Engineering
+
+
+                                   journal homepage: www.elsevier.com/locate/cma
+
+
+
+A phase ﬁeld model for rate-independent crack propagation: Robust algorithmic
+implementation based on operator splits
+
+Christian Miehe ⁎, Martina Hofacker, Fabian Welschinger
+
+Institute of Applied Mechanics (CE) Chair I, University of Stuttgart, Pfaffenwaldring 7, 70550 Stuttgart, Germany
+
+
+
+a r t i c l e    i n f o              a b s t r a c t
+
+
+Article history:                               The computational modeling of  failure mechanisms in solids due to fracture based on sharp crack
+Received 4 January 2010                             discontinuities suffers in situations with complex crack topologies. This can be overcome by a diffusive crack
+Received in revised form 14 April 2010             modeling based on the introduction of a crack phase ﬁeld. Following our recent work [C. Miehe,  F.
+Accepted 15 April 2010
+                                              Welschinger, M. Hofacker, Thermodynamically-consistent phase ﬁeld models  of  fracture: Variational
+Available online 7 May 2010
+                                                   principles and multi-ﬁeld fe implementations, International Journal for Numerical Methods in Engineering
+                                            DOI:10.1002/nme.2861] on phase-ﬁeld-type fracture, we propose in this paper a new variational framework
+Keywords:
+Fracture                                              for rate-independent diffusive fracture that bases on the introduction of a local history ﬁeld. It contains a
+Crack propagation                       maximum reference energy obtained in the deformation history, which may be considered as a measure for
+Phase ﬁelds                                    the maximum tensile strain obtained in history. It is shown that this local variable drives the evolution of the
+Gradient-type damage                             crack phase ﬁeld. The introduction of the history ﬁeld provides a very transparent representation of the
+Incremental variational principles                  balance equation that governs the diffusive crack topology. In particular, it allows for the construction of a
+Finite elements                         new algorithmic treatment of diffusive fracture. Here, we propose an extremely robust operator split scheme
+Coupled multi-ﬁeld problem
+                                                  that successively updates in a typical time step the history ﬁeld, the crack phase ﬁeld and ﬁnally the
+                                             displacement ﬁeld. A regularization based on a viscous crack resistance that even enhances the robustness of
+                                              the algorithm may easily be added. The proposed algorithm is considered to be the canonically simple
+                                        scheme for the treatment of diffusive fracture in elastic solids. We demonstrate the performance of the phase
+                                             ﬁeld formulation of fracture by means of representative numerical examples.
+                                                                     © 2010 Elsevier B.V. All rights reserved.
+
+
+
+
+1. Introduction                                                         surface topology in the solid by diffusive crack zones governed by a
+                                                                             scalar auxiliary variable. This variable can be considered as a phase
+   The prediction of failure mechanisms due to crack initiation and    ﬁeld which interpolates between the unbroken and the broken state
+propagation in solids is of great importance for engineering applica-     of the material. Conceptually similar are recently outlined phase ﬁeld
+tions. Following the classical treatments of Grifﬁth [2] and Irwin [3],    approaches to brittle fracture based on the classical Ginzburg-Landau
+cracks propagate if the energy release rate reaches a critical value. The    type evolution equation as reviewed in Hakim & Karma [14], see also
+Grifﬁth theory provides a criterion for crack propagation but  is    Karma, Kessler & Levine [15] and Eastgate et al. [16]. In contrast to the
+insufﬁcient to determine curvilinear crack paths, crack kinking and    above mentioned rate-independent approach, these models are fully
+branching angles. In particular, such a theory is unable to predict crack    viscous in nature and mostly applied to dynamic fracture. The phase
+initiation. These defects of the classical Grifﬁth-type theory of brittle    ﬁeld approaches to fracture offer important new perspectives towards
+fracture can be overcome by variational methods based on energy    the theoretical and computational modeling of complex crack
+minimization as suggested by Francfort & Marigo [4], see also Bourdin,     topologies. Recall that ﬁnite-element-based numerical implementa-
+Francfort & Marigo [5], Dal Maso & Toader [6] and Buliga [7]. The     tions of sharp crack discontinuities, such as interface element
+regularized setting of  their framework, considered in Bourdin,     formulations, element and nodal enrichment strategies suffer in the
+Francfort & Marigo [8,5], is obtained by Γ-convergence inspired by    case of three-dimensional applications with crack branching. Ad-
+the work on image segmentation by Mumford & Shah [9]. We refer to    vanced XFEM-based methods for sharp crack propagation are outlined
+Ambrosio & Tortorelli [10] and the reviews of Dal Maso [11] and     in Belytschko et al. [17,18] We also refer to the adaptive interface
+Braides [12,13] for details on Γ-convergent approximations of free    methods by Gürses & Miehe [19] and Miehe & Gürses [20,21] for the
+discontinuity problems. The approximation regularizes a sharp crack    modeling of conﬁgurational-force-driven sharp crack propagation. In
+                                                                          contrast, phase-ﬁeld-type  diffusive crack approaches avoid the
+                                                              modeling of discontinuities and can be implemented in a straightfor-
+  ⁎ Corresponding author. Tel.: +49 711 685 66379.
+    E-mail address: christian.miehe@mechbau.uni-stuttgart.de (C. Miehe).           ward manner by coupled multi-ﬁeld ﬁnite element solvers. In the
+    URL: http://www.mechbau.uni-stuttgart.de/ls1/ (C. Miehe).                      recent work Miehe, Welschinger & Hofacker [1], we outlined a general
+
+
+0045-7825/$ – see front matter © 2010 Elsevier B.V. All rights reserved.
+doi:10.1016/j.cma.2010.04.011
+===== PDF PAGE 2 =====
+2766                                             C. Miehe et al. / Computer Methods in Applied Mechanics and Engineering 199 (2010) 2765–2778
+
+
+
+
+
+          Fig. 1. Sharp and diffusive crack topology. a) Sharp crack at x=0. b) Diffusive crack at x=0 modeled with the length scale l in terms of the crack phase ﬁeld d.
+
+
+
+
+thermodynamically-consistent framework of phase ﬁeld modeling in     surface itself and postulate that it should stay constant or grow for
+fracture mechanics and considered aspects of its numerical imple-     arbitrary loading processes. The next modeling step, discussed in
+mentation. It overcomes some of the difﬁculties inherent in the above     Section 3,  is concerned with the deﬁnition of energy storage and
+mentioned phase ﬁeld approaches, by deﬁnition of fracture only in     dissipation functionals which depend on the fracture phase ﬁeld. Here,
+tension, precise characterization of the dissipation and introduction of   we consider stored energy functions where the degradation due to the
+the viscosity as a regularization of the rate-independent formulation.    growing phase ﬁeld acts only on a properly deﬁned positive (tensile)
+The numerical treatment was based on a monolithic three-ﬁeld saddle     part of the stored energy. The dissipation functional is directly related to
+point principle, that includes beside the displacement and fracture    the evolution of the crack surface functional via a material parameter
+phase ﬁeld a particular crack driving force ﬁeld.                          that represents the critical energy release. With the dissipation and
+   In this work, we develop a new model of phase-ﬁeld-type fracture    energy functionals at hand, we derive the governing balance equations
+that substantially enhances our formulations in Miehe, Welschinger &    from an incremental variational principle. For the quasi-static processes
+Hofacker [1]. The key novel aspects are the formulation of the balance    under consideration, the coupled system of equations consists of the
+equation for the evolution of the phase ﬁeld in terms of a strain-      static equilibrium condition for the degraded stresses and the balance
+history source term, which allows an extremely simple and robust     equation for the phase ﬁeld. It characterizes a two-ﬁeld problem with the
+staggered solution of the two-ﬁeld problem in terms of the algorithm    displacement ﬁeld and the phase-ﬁeld as the primary variables. For this
+summarized in Box  1. On the theoretical  side, we outline an    coupled ﬁeld problem, we develop in Section 4 the new staggered
+incremental variational formulation for a rate-independent evolution     solution scheme which contains minimizers for each partial problem.
+of the crack phase model. The important characteristic  is the    The discrete counterparts of the continuous variational principles
+introduction of a crack surface density function that governs the     results in two linear algebraic Euler equations for the algorithmically
+dissipation in the diffusive fracture theory. The key observation then    decoupled incremental problem. Finally, Section 5 outlines representa-
+is that the possible discontinuous evolution of the phase ﬁeld in time     tive numerical examples which demonstrate the features and algorith-
+is driven by a local history ﬁeld. It contains a maximum reference    mic robustness of the proposed phase ﬁeld models of fracture.
+energy obtained in the deformation history, which may be considered
+as a measure for the maximum tensile strain obtained in history. It is     2. Crack phase ﬁeld and crack surface density function
+shown that this local variable drives the evolution of the crack phase
+ﬁeld. The introduction of the history ﬁeld provides a very transparent      2.1. Phase ﬁeld approximation of crack topology
+representation of the balance equation that governs the evolution of
+the diffusive crack topology. It represents a source term in the balance     We motivate the construction of a variational principle of diffusive
+equation for the phase-ﬁeld. In order to stabilize post-critical solution     crack topology by a simple model problem. Following our work Miehe,
+paths, we may add a viscous regularization. This consists of the    Welschinger & Hofacker [1], we consider an inﬁnitely expanded bar of
+introduction of a viscous term that supplements the crack surface     cross-section Γ occupying the domain B=Γ×L with L=[−∞, +∞] and
+resistance. A particular ingredient is that the rate-independent limit is     position x∈L of its axis. Assume a crack of the bar at the axial position
+recovered by simply setting the viscosity to zero. This feature of the   x=0, where Γ represents the fully-broken crack surface. This sharp crack
+proposed theory is a very important element of a robust numerical     topology may be described by an auxiliary ﬁeld variable d(x)∈[0, 1],
+implementation. The proposed approach is embedded in the theory of     characterizing for d=0 the unbroken state and for d=1 the fully-
+gradient-type materials with a characteristic length scale, such as    broken state of the material. Fig. 1a gives a visualization. We denote
+outlined in the general context by Capriz [22], Mariano [23] and    the auxiliary variable d(x) as the crack phase ﬁeld. Clearly, such an
+Fremond [24]. On the numerical side, we develop a robust scheme for    approach is related to the continuum theory of damage, where the
+the incremental update of the fracture phase ﬁeld and the displace-     scalar damage ﬁeld d describes in a homogenized macroscopic sense
+ment ﬁeld. It represents an operator split algorithm within a typical    the development of micro-cracks and micro-voids. With this
+time step that allows a staggered update of the phase ﬁeld and the    viewpoint in mind, we approximate the non-smooth phase ﬁeld by
+displacement ﬁeld. The central idea for the algorithmic decoupling of    the exponential function
+the coupled equations is an approximation of the current history
+ﬁeld that provides the crack source term in the diffusive crack
+                                                                          dðxÞ = e−jxj =l:                                                     ð1Þ
+topology equation. The formulation results in two linear problems
+for the successive update of the phase ﬁeld and the displacement
+ﬁeld within a typical time step. The proposed staggered scheme is      It smears out the crack over the axial domain L of the bar, representing
+extremely robust. The formulation may be considered as a canonical    a regularized or diffusive crack topology as depicted in Fig. 1b. The
+framework for the implementation of phase-ﬁeld-type fracture in the     regularization is governed by the length scale parameter l and gives
+rate-independent setting.                                                   for l→0 the sharp crack topology. The exponential function (1) has
+  We start our investigation in Section 2 with a descriptive motivation    the property d(0)=1 and d(±∞)=0. Now observe that Eq. (1) is the
+of a regularized crack topology based on a phase ﬁeld. This treatment     solution of the homogeneous differential equation
+results in the deﬁnition of a crack surface functional, depending on the
+crack phase ﬁeld, that Γ-converges for vanishing length-scale parameter
+to a sharp crack topology. We consider this crack functional as the crack     dðxÞ−l2d″ðxÞ = 0  in  B                                          ð2Þ
+===== PDF PAGE 3 =====
+                                                   C. Miehe et al. / Computer Methods in Applied Mechanics and Engineering 199 (2010) 2765–2778                               2767
+
+
+
+
+
+  Fig. 2. Sharp and diffusive crack topology. a) Sharp crack surface Γ embedded into the solid B. b) The regularized crack surface Γl(d) is a functional of the crack phase ﬁeld d.
+
+subject to the above Dirichlet-type boundary conditions. This    Γ(t)⊂Rδ−1 inside the solid B at time t, as depicted in Fig. 2a, we
+differential equation is the Euler equation of the variational principle    obtain in analogy to Eq. (3) the regularized crack phase ﬁeld d(x, t) on
+                                                                            B, visualized in Fig. 2b, from the minimization principle
+                             n       o                              1
+                                                 (      )d = Argfinfd ∈WIðdÞg  with  IðdÞ =                              2 ∫B  d2 + l2d′2 dV         ð3Þ
+                                                                              dðx; tÞ = Arg    inf  ΓlðdÞ                                         ð8Þ
+and W={d|d(0)=1, d(±∞)=0}. The functional I(d) can easily be                       d ∈WΓðtÞ
+constructed by integrating a Galerkin-type weak form of the differential
+Eq. (2). Now observe, that the evaluation of the functional for the     subject to theDirichlet-type constraints WΓ(t)={d|d(x, t)=1 at x∈Γ(t)}.
+solution (1) gives with dV=Γdx the identiﬁcation I(d=e−|x|/l)=lΓ,    The Euler equations of the above variational principle are
+which relates the functional I to the crack surface Γ. As a consequence,
+we may introduce the functional
+                                                          d−l2Δd = 0 in B  and  ∇d·n = 0 on ∂B;                         ð9Þ
+                 n       o        1      1
+             IðdÞ =ΓlðdÞ : =
+                  l                     2l ∫B  d2 + l2d′2 dV                           ð4Þ    where Δd is the Laplacian of thephase ﬁeld and n theoutward normal on
+                                                                       ∂B. Fig. 3 depicts a numerical solution of the variational problem (8) of
+alternatively to Eq. (3)2. Clearly, the minimization of this scaled
+                                                                                     diffusive crack topology and demonstrates the inﬂuence of the length
+functional also gives the regularized crack topology (1) depicted in
+                                                                             scale l. We refer to the recent work Miehe, Welschinger & Hofacker [12],
+Fig. 1b. However, the scaling by the length-scale parameter l has the
+                                                                                for a more detailed derivation.1
+consequence that the functional Γl(d) may be considered as the crack
+surface itself. In the one-dimensional problem under consideration, the
+                                                                                  3. A framework of rate-independent diffusive fracture
+evaluation of Γl(d) at the solution point gives for arbitrary length scales
+l the crack surface Γ. This property characterizes the functional Γl as an
+                                                             With the idea of a diffusive crack topology at hand, we develop
+important ingredient of the subsequent constitutive modeling of
+                                                                           in this section a constitutive framework of phase-ﬁeld-type fracture
+diffusive crack propagation.
+                                                                              for the rate-independent setting. The subsequent formulation in
+                                                                terms of a history ﬁeld is motivated in Appendix A by a simple one-
+2.2. Introduction of a crack surface density function
+                                                                  dimensional structure of local damage mechanics. Fig. 4 provides a
+                                                                            visual guide to the subsequent developments.
+   The one-dimensional description of a diffusive crack topology can
+be extended to multi-dimensional solids in a straightforward manner.
+                                                                                       3.1. Degrading strain energy functional due to fracture
+Let B⊂Rδ, be the reference conﬁguration of a material body with
+dimension δ∈[1–3] in space and ∂B⊂Rδ−1 its surface as depicted in
+                                                                                       3.1.1. Displacement and strain ﬁelds
+Fig. 2. In the subsequent treatment, we intend to study cracks in the
+                                                                              In the small-strain context, we describe the response of the
+solid evolving in the range T ⊂R of time. To this end, we introduce
+                                                                           fracturing solid by the displacement ﬁeld
+the time-dependent crack phase ﬁeld
+
+
+    B × T →½0; 1
+d :                                                                    ð5Þ   u :  B × T →Rδ                                              ð10Þ      ðx; tÞ↦dðx; tÞ                                                                       ðx; tÞ↦uðx; tÞ
+
+deﬁned on the solid B. Then, a multi-dimensional extension of the
+one-dimensional regularized crack functional Eq. (4), derived in     in addition to the phase ﬁeld d introduced in Eq. (5). u(x, t)∈Rδ is the
+Appendix A, reads                                                  displacement of the material point x∈B at time t∈T . The strains are
+                                                           assumed to be small. Thus, the norm of the macroscopic displacement
+
+ΓlðdÞ = ∫B γðd; ∇dÞdV;                                             ð6Þ
+
+where we have introduced the crack surface density function per unit
+volume of the solid
+
+          11          l l                                                                      1 Convergence to Sharp Crack Discontinuities. The Γ–limit Γl→Γ of the functional
+γγððd;d;∇d∇dÞÞ==              d2d2 ++                      j∇dj2j∇dj2                                       ð7Þ      Eq. (6) for vanishing length scale l→0 to the sharp crack surface Γ:=∫ΓdA is considered              2l2l                22
+                                                                                              in Braides [12], see Fig. 3 for a visualization. The functional Eq. (4) provides the basis
+                                                                                                  for an elliptic regularization of the free discontinuity problem of brittle fracture. It has
+This function, which depends on the crack phase ﬁeld d and its spatial
+                                                                                       already been used in Bourdin, Francfort and Marigo [8] for the deﬁnition of a
+gradient ∇d, plays a critical role in the subsequent modeling of      regularized surface energy. In contrast, we introduce the functional in the purely
+crack propagation. Assuming a given sharp crack surface topology     geometric context with regard to the subsequent deﬁnition of a dissipation potential.
+===== PDF PAGE 4 =====
+2768                                             C. Miehe et al. / Computer Methods in Applied Mechanics and Engineering 199 (2010) 2765–2778
+
+
+
+
+
+Fig. 3. Solutions of the variational problem (8) of diffusive crack topology for a quadratic specimen with a horizontal sharp crack Γ, taken from [1]. Regularized crack surfaces Γl(d)
+governed by the crack phase ﬁeld d for different length scales laNlbNlcNld. The sequence of pictures visualizes the Γ-limit Γl→Γ of the crack surface functional Eq. (6).
+
+
+gradient ||∇u||b  is bounded by a small number   . The displacement      3.1.2. Constitutive free energy functional
+gradient deﬁnes the small strain tensor                      We focus on the standard linear theory of elasticity for isotropic
+                                                                             solids by considering the global energy storage functional
+             1
+εðuÞ = ∇su :=  ½∇u + ∇Tu :                                 ð11Þ
+             2                                                         Eðu; dÞ = ∫B ψðεðuÞ; dÞdV                                      ð15Þ
+
+In order to account for a stress degradation only in tension, we                                                                         that depends on the displacement u and the fracture phase ﬁeld d. The
+decompose the strain tensor into positive and negative parts                                                                    energy storage function ψ describes the energy stored in the bulk of the
+                                                                             solid per unit volume. A fully isotropic constitutive assumption for the
+ε = εþ + ε−                                                 ð12Þ    degradation of energy due to fracture may have the form
+
+describing tensile and compressive modes. These contributions are   ψψððε;ε;ddÞÞ==½g½gððddÞÞ++kkψþψþ00ððεεÞÞ++ψ−ψ−00ððεεÞ:Þ:                           ð16Þ
+deﬁned based on the spectral decomposition of the strain tensor
+ε=∑iδ= 1 εini⊗ni, where  {εi}i = 1...δ are the principal strains and
+                                                                          In this multiplicative ansatz, ψ0 is an isotropic reference energy function
+{ni}i = 1...δ the principal strain directions. We set                                                                        associated with the undamaged elastic solid, i.e.
+
+εþ := ∑δi = 1 〈εi〉+ ni⊗ni  and ε−:= ∑δi = 1 〈εi〉−ni⊗ni    ð13Þ    ψ0ðεÞ = λtr2½ε = 2 + μtr½ε2                                    ð17Þ
+
+                                                                with elastic constants λN0 and μN0, which we additively decompose
+in terms of the bracket operators 〈x〉+:=(x+|x|)/2 and 〈x〉−:= (x−|
+x|)/2, respectively. The derivative of Eq. (12) with respect to the total    ψðεÞ = ψþ0 ðεÞ + ψ−0 ðεÞ                                        ð18Þ
+strains deﬁnes the two projection tensors
+                                                                          into a positive part ψ0+ due to tension and a negative part ψ0−due to
+                                                                   compression. Here, we assume the deﬁnitions
+ℙþ : = ∂ε½εþðεÞ  and ℙ−:= I−ℙþ;                         ð14Þ
+                                                        ψþ0 ðεÞ = λ〈tr½ε 〉2þ = 2 + μtr½ε2þ  and ψ−0 ðεÞ = λ〈tr½ε 〉2−= 2 + μtr½ε2−
+which are isotropic tensor functions of ε. These fourth-order tensors                                                                  ð19Þ
+project the total strains onto its positive and negative parts, i.e. ε+=
+P+:ε and ε−=P−:ε. The computation of these objects is performed    with the above deﬁnitions of the brackets 〈x〉+ and 〈x〉_ and the
+by the algorithms outlined in Miehe [25] and Miehe & Lambrecht     positive and negative strain tensors ε+ and ε−, respectively. Note that
+[26].                                                            both terms are positive. Furthermore, observe that the volumetric
+
+
+
+
+
+Fig. 4. A multi-ﬁeld approach of phase-ﬁeld-type crack propagation in deformable solids. The displacement ﬁeld u, the fracture phase ﬁeld d and the history ﬁeld H are deﬁned on the
+solid domain B. a) The displacement ﬁeld is constrained by the Dirichlet- and Neumann-type boundary conditions u=uD on ∂Bu and σ⋅n=tN on ∂Bt with ∂B=∂Bu∪∂Bt. b) The
+fracture phase ﬁeld is constrained by the possible Dirichlet-type boundary condition d=1 on Γ and the Neumann condition ∇d⋅n=0 on the full surface ∂B. c) The history ﬁeld H
+deﬁned in Eq. (40) contains a maximum local strain energy obtained within the fracture process. It drives the evolution of the fracture phase ﬁeld d via Eq. (41).
+===== PDF PAGE 5 =====
+                                                   C. Miehe et al. / Computer Methods in Applied Mechanics and Engineering 199 (2010) 2765–2778                               2769
+
+
+Box 1
+Staggered Scheme for Phase Field Fracture in [tn, tn + 1].
+
+   1. Initialization. The displacement, fracture phase and history fields un, dn and Hn at time tn are known. Update prescribed loads γ̄, ū, t̄ at
+      current time tn + 1.
+   2. Compute History. Determine maximum reference energy obtained in history
+
+       (
+           ψþ0 ð∇sunÞ  for ψþ0 ð∇sunÞ N Hn
+    H =
+          Hn        otherwise
+
+       in the domain B and store it as a history variable field.
+   3. Compute Fracture Phase Field. Determine the current fracture phase field d from the minimization problem of crack topology
+
+             n   h                                   i  o                                η
+     d = Arg inf                   d  ∫B gcγðd; ∇dÞ + 2τ ðd−dnÞ2−ð1−dÞ2H dV
+
+      with the crack surface density function
+
+               1            l
+      γðd; ∇dÞ =   d2 +   j∇dj2:
+                    2l     2
+
+   4. Compute Displacement Field. Determine the current displacement u at frozen fracture phase field d from the minimization problem of
+        elasticity
+
+             n                       o
+     u = Arg inf                 u  ∫B ½ ψð∇su; dÞ−γ·u dV−∫∂Bt t⋅udA
+
+      with the free energy density function
+
+      ψðε; dÞ = ½ð1−dÞ2 + k ψþ0 ðεÞ + ψ−0 ðεÞ
+
+      with ψ0±(ε)=λ〈tr[ε]〉±2 /2+μtr[ε±2 ] for the Dirichlet-type boundary condition u=ū on ∂Bu.
+
+
+
+
+contribution is chosen either positive or negative according to the sign     at given state {u, d}. Here, we introduced per deﬁnition the stress
+of the volume dilatation e=tr[ε], which cannot be expressed in terms    tensor
+of the positive and negative strain tensors ε+ and ε−. The
+monotonically decreasing degradation function g(d) describes the   σ := ∂εψðε; dÞ = ½ð1−dÞ2 + k ½λ〈tr½ε 〉þ1 + 2μεþ + ½λ〈tr½ε 〉−1 + 2με−
+degradation of the positive (tensile) part of the stored energy with                                                                  ð23Þ
+evolving damage. It is assumed to have the properties
+                                                           and the energetic force
+
+gð0Þ = 1    ;  gð1Þ = 0    ;  g′ð1Þ = 0:                          ð20Þ
+                                                                                                                    f := −∂dψðε; dÞ = 2ð1−dÞψþ0 ðεÞ:                              ð24Þ
+
+The ﬁrst two conditions include the limits for the unbroken and the    Note that the energetic force f is positive and bounded by a ﬁnite value
+fully-broken case. As shown below, the latter constraint ensures that     for the limit ψ0+(ε)→∞. As shown below this property ensures that
+the energetic fracture force converges to a ﬁnite value if the damage    the phase ﬁeld variable is bounded by its maximum value d=1. The
+converges to the fully-broken state d=1. A simple function that has    key term that drives the crack evolution is the positive part ψ0+(ε) of
+the above properties is                                               the reference energy, that may be considered to describe locally the
+                                                                           intensity of the tensile part of the deformation.
+gðdÞ = ð1−dÞ2:                                               ð21Þ
+                                                                                       3.2. Dissipation functional due to fracture
+
+The small positive parameter k≈0 in Eq. (16) circumvents the full
+degradation of the energy by leaving the artiﬁcial elastic rest energy      3.2.1. Dissipation due to crack propagation
+density kψ0(ε) at a fully-broken state d=1. It is chosen as small as       For a given fracture surface functional Γ(d) introduced in Eq. (6),
+possible such that the algebraic conditioning number of the applied   we deﬁne the work needed to create a diffusive fracture topology by
+numerical discretization method remains well-posed for partly-
+broken systems.                                                 WcðdÞ : = ∫B gcγðd; ∇dÞdV;                                   ð25Þ
+
+3.1.3. Rate of energy functional
+                                                          where gc is the Grifﬁth-type critical energy release rate and γ(d, ∇d)   Taking the time derivative of Eq. (15), we obtain the rate of energy
+                                                                    the crack surface density function deﬁned in Eq. (7). The rate of thewhich we consider to be a functional of the rates {u˙ , ḋ}
+                                                         work functional Wc deﬁnes the crack dissipation
+
+˙Eð ˙u; ˙d; u; dÞ = ∫B ½σ : ∇s ˙u−f ˙d dV                             ð22Þ     ˙Wcð ˙d; dÞ = ∫B ðgcδdγÞ ˙ddV;                                     ð26Þ
+===== PDF PAGE 6 =====
+2770                                             C. Miehe et al. / Computer Methods in Applied Mechanics and Engineering 199 (2010) 2765–2778
+
+which is considered to be a functional of the rate {ḋ} of the crack phase    The variation of the functional with respect to the four ﬁeld variables,
+ﬁeld at given state  {d}. Here, we introduced the variational or     taking into account δu̇=0 on ∂Bu, yields the coupled ﬁeld equations
+functional derivative
+                                                                           ð1Þ :  Div½σ +  Pγ = 0;                        1
+δdγðdÞ := ∂dγ−Div½∂∇dγ =  ½d−l2Δd                        ð27Þ     ð2Þ :      β−f  = 0;                                                   l
+                                                                           ð3Þ :       ˙d−λ  = 0;                                                                                                                                     ð36Þ
+of the crack density function. Based on thermodynamical arguments,     ð4Þ :         λ   ≥0;
+                                                                           ð5Þ :    β−gcδdγ  ≤0;we demand
+                                                                           ð6Þ :  λðβ−gcδdγÞ = 0
+˙Wcð ˙d; dÞ≥0                                                   ð28Þ
+                                                                            in the domain B along with the boundary conditions
+as the basic ingredient of our framework, enforcing a growth of the
+fracture work Wc deﬁned in Eq. (25). Observe that we may satisfy this   σ·n = t on ∂Bt  and  ∇d·n = 0 on ∂B:                      ð37Þ
+global irreversibility constraint of crack evolution by ensuring locally a
+positive variational derivative of the crack surface function and a
+positive evolution of the crack phase ﬁeld                             Note that we have introduced per deﬁnition the stress tensor σ
+                                                           and the energetic force  f deﬁned in Eqs. (23) and (24). The last
+δdγ ≥0  and    ˙d ≥0:                                         ð29Þ    three equations in Eq. (36) are the Kuhn-Tucker-type equations
+                                                                      associated with the optimization problem with inequality con-
+                                                                                 straints. From Eq. (36)2,3, elimination of β=f and λ=ḋyields theThe former condition is ensured in the subsequent treatment by a
+                                                               reduced systemconstitutive assumption that relates the functional derivative to a
+positive energetic driving force. The latter constraint is a natural                                                                           ð1Þ :  Div½σ +  Pγ = 0;
+assumption that relates the fracture phase ﬁeld for the non-reversible
+                                                                           ð2Þ :                     ˙d  ≥0;
+evolution of micro-cracks and micro-voids.                                                                                           ð38Þ
+                                                                           ð3Þ :        f −gcδdγ   ≤0;
+                                                                           ð4Þ :  ˙dðf−gcδdγÞ  = 0:3.2.2. Rate-independent evolution of the phase ﬁeld
+   In order to satisfy the local constraints Eq. (29) within a possibly
+                                                                 Note that Eq. (38)2 satisﬁes explicitly the desired thermodynamicdiscontinuous, rate-independent evolution, we introduce the local
+                                                                      consistency condition (29)2. The ﬁrst condition gcδdγ≥0 in (29)1 isthreshold function
+                                                                           also satisﬁed. This may be seen if the damage ﬁeld is computed in the
+                                                                      case of loading from Eq. (38)3, which results into
+tcðβ; dÞ = β−gcδdγðdÞ ≤0                                    ð30Þ
+                                                                                              gc                                                                     gcδdγ :=   ½d−l2Δd = 2ð1−dÞψþ0 ðεÞ  for    ˙d N 0:             ð39Þ                                                                                                                                               lformulated in terms of the variable β dual to d, in what follows
+denoted as the driving force ﬁeld. Then, as shown below, the above       Note that the right hand side  is positive which proves the
+local constraints Eq. (29) can be satisﬁed by the deﬁnition              condition (29)1. Thus the proposed model of rate-independent
+˙Wcð ˙d; dÞ = sup Dλð ˙d; β; λ; dÞ                                  ð31Þ     diffusive crack evolution  is consistent with the thermodynamic
+              β;λ≥0                                              axiom of positive dissipation. Note furthermore, that Eq. (39) has
+                                                                    the desired property d→1 for ψ0+(ε)→∞.
+in terms of the extended dissipation functional
+
+                                                                                       3.3.2. Compact history-ﬁeld-based formulation
+Dλð ˙d; β; λ; dÞ = ∫B ½β ˙d−λtcðβ; dÞ dV                            ð32Þ           It is clear that the ‘load term’ ψ0+(ε) in Eq. (39) determines the
+                                                         amount of the phase ﬁeld variable d. Hence, motivated by Eq. (A.7) of
+that includes the threshold function (30). λ is a Lagrange multiplier                                                                    the local damage model outlined in Appendix A, we may introduce the
+ﬁeld.                                                                                  local history ﬁeld of maximum positive reference energy
+
+3.3. Incremental variational principle and governing equations            Hðx; tÞ := max ψþ0 ðεðx; sÞÞ                                     ð40Þ
+                                                                                                                             s∈½0;t
+
+3.3.1. An incremental variational principle
+                                                                   obtained in a typical, possibly cyclical loading process. Replacing ψ0+ in   With the rate of the energy functional Eq. (22) and the extended
+                                                                         Eq. (39) by this ﬁeld, we obtain the equationdissipation functional Eq. (32) at hand, we introduce the incremental
+potential
+                                                                          h h      i i                                                                                   gcgc                                                             d−l2Δdd−l2Δd ==2ð21−dð1−dÞHÞH                                    ð41ÞΠλð ˙u; ˙d; β; λ; u; dÞ = ˙Eð˙u; ˙d; u; dÞ + Dλð ˙d; β; λ; dÞ−Pð˙uÞ;         ð33Þ          l l
+
+that balances the internal power Ė+Dλ with the power due to    which determines the phase ﬁeld in the case of loading and unloading.
+external loading
+                                                              Note that this equation equips the crack topology Eq. (9)1 by the local
+                                                                        crack source on the right hand side. With this notion at hand, the
+Pð˙uÞ = ∫B ¯γ· ˙udV + ∫∂Bt t· ˙udA:                                ð34Þ    proposed fracture phase ﬁeld model may be reduced to the compact
+                                                               system of only two equationsHere, γ̄is a prescribed volume force in B and t̄ a surface traction on ∂Bt.
+We then obtain the basic ﬁeld equations of the problem from the                                                                           ð1Þ :   Div½σðu; dÞ +  Pγ  = 0;
+argument of virtual power that we base on the variational statement                                                                    ð42Þ                                                                           ð2Þ :  gcδdγðdÞ−2ð1−dÞH = 0;
+
+f ˙u; ˙d; β; λg = Argf  stat  Πλð ˙u; ˙d; β; λ; u; dÞg:                  ð35Þ    which determine the current displacement and phase ﬁelds u and d in
+                                      ˙u; ˙d;β;λ≥0                                         terms of the deﬁnitions (23), (40), (19) and (27) for the stresses σ,
+===== PDF PAGE 7 =====
+                                                   C. Miehe et al. / Computer Methods in Applied Mechanics and Engineering 199 (2010) 2765–2778                               2771
+
+the history ﬁeld H of maximum reference energy ψ0+ and the      4.1. Staggered update scheme of time-discrete ﬁelds
+variational derivative δdγ of the crack density function. This  is
+considered to be the most simple representation of rate-independent      4.1.1. Time-discrete ﬁelds
+diffusive fracture, associated with the multi-ﬁeld scenario visualized     We now consider ﬁeld variables at the discrete times 0, t1, t2, …, tn,
+in Fig. 4.                                                                             tn + 1, …, T of the process interval [0, T]. In order to advance the
+                                                                         solution within a typical time step, we focus on the ﬁnite time
+3.4. Viscous regularization of the rate-independent problem              increment [tn, tn + 1], where
+
+   As commented on in Section 5, a viscous regularization of the    τn+1 := tn+1−tn N 0                                         ð50Þ
+above rate-independent formulation may stabilize the numerical
+treatment. It can be formulated in terms of a variational principle    denotes the step length. In the subsequent treatment,  all ﬁeld
+based on the potential                                                    variables at time tn are assumed to be known. The goal then is to
+                                                                determine the ﬁelds at time tn + 1 based on variational principles valid
+Πηð ˙u; ˙d; β; u; dÞ = ˙Eð ˙u; ˙d; u; dÞ + Dηð ˙d; β; dÞ−Pð˙uÞ;             ð43Þ     for the time increment under consideration. In order to obtain a
+                                                             compact notation, we drop in what follows the subscript n+1 and
+                                                                     consider all variables without subscript to be evaluated at time tn + 1.
+that includes a modiﬁed extended dissipation functional
+                                                                          In particular, we write
+
+                                                  := uðx; tn+1Þ  and  dðxÞ := dðx; tn+1Þ                    ð51ÞDηð ˙d; β; dÞ = ∫B ½β ˙d−1 〈tcðβ; dÞ〉2þ dV;                          ð44Þ    uðxÞ                  η
+
+                                                                              for the displacement and fracture phase ﬁeld at the current time tn + 1
+where η≥0  is a viscosity parameter. The modiﬁed variational    and
+principle
+                                                                       unðxÞ := uðx; tnÞ  and  dnðxÞ := dðx; tnÞ                       ð52Þ
+f˙u; ˙d; βg = Argf stat Πηð˙u; ˙d; β; u; dÞg                          ð45Þ     for the ﬁelds at time  tn. As a consequence, the rates of the
+                                 ˙u; ˙d; β
+                                                                  displacement and the fracture phase ﬁeld are considered to be
+                                                                        constant in the time increment Eq. (50) under consideration, deﬁned
+then results in the coupled set of local equations                    by u̇=(u−un)/τ and ḋ:=(d−dn)/τ. Note that, due to the given
+                                                                     ﬁelds at time tn, the above rates associated with the time increment
+ð1Þ :       Div½σ +  Pγ = 0;                                          Eq. (50) are linear functions of the variables (Eq. (51)) at the current
+                                                              ð46Þ    time tn+1.
+ð2Þ :  ˙d−1 〈f −gcδdγ〉þ  = 0;         η
+                                                                                       4.1.2. Update of history ﬁeld
+                                             We consider an operator split algorithm within the typical time step
+where the ﬁeld β has been eliminated. Note that the evolution ḋof the      [tn, tn+ 1] that allows a staggered update of the fracture phase ﬁeld and
+phase ﬁeld is now governed by a viscous equation governed by the    the displacement ﬁeld. The central idea for an algorithmic decoupling of
+‘over-force’ 〈f−gcδdγ〉+. As a consequence, Eq. (41) may be recast into    the coupled equations is an approximated formulation of the current
+the viscous regularized format                                            history ﬁeld H:=H(x, tn + 1) in terms of the displacement ﬁeld un at
+   hh       ii                                                      time tn deﬁned in Eq. (52). Starting from the initial conditiongcgc   d−l2Δdd−l2Δd ++ηη˙d˙d==22ðð1−d1−dÞHÞH                               ð47Þ                                                      H0 := Hðx; t = t0Þ = 0;                                       ð53Þ  l l
+
+                                                 we assume the current value of maximum reference energy obtained
+again driven by the local history ﬁeld H of maximum positive
+                                                                           in history to be determined by
+reference energy deﬁned in Eq. (40). This equation equips the crack
+topology Eq. (9)1 by the viscous resistance term on the left hand side      (                                                             ψþ0 ð∇sunÞ  for ψþ0 ð∇sunÞ N Hn;
+and the crack source term on the right hand side. Thus the viscous   H =                                                         ð54Þ
+regularization of the system (42) reads                               Hn         otherwise:
+
+                                                              As a consequence of this simple deﬁnition, the energy H that drives
+ð1Þ :           Div½σðu; dÞ +  Pγ = 0;
+                                                              ð48Þ    the current fracture phase ﬁeld d at time tn + 1 is in the case of damage
+ð2Þ :  gcδdγðdÞ + η ˙d−2ð1−dÞH = 0:                               loading dependent on the displacement un at time  tn. With this
+                                                                    algorithmic definition at hand, we may deﬁne two decoupled
+The model  is thermodynamically consistent by satisfying the     variational problems which deﬁne the phase ﬁeld d and the
+constraints                                                                  displacement u at the current time tn + 1.
+
+δdγ + η ˙d ≥0  and    ˙d ≥0;                                   ð49Þ      4.1.3. Update of phase ﬁeld
+                                                                         Considering the energetic history H deﬁned in Eq. (54) to be constant
+which contain in addition to Eq. (29) a contribution to the dissipation due     in the time interval [tn, tn + 1], we introduce the algorithmic functional
+to the viscous resistance of the phase ﬁeld evolution. Observe that the
+                                                                                     ηrate-independent                 case                            is recovered                            by simply                                              setting                                    η=0. This feature is   ΠτdðdÞ =  ∫B ½gcγðd; ∇dÞ + 2τ ðd−dnÞ2−ð1−dÞ2H dV          ð55Þa very convenient                  ingredient                              of a robust                                    numerical                                              implementation.
+
+                                                           where γ is the crack surface density function introduced in Eq. (7). The
+4. Staggered solution of incremental multi-ﬁeld problem
+                                                                        current fracture phase ﬁeld is then computed from the algorithmic
+                                                                              variational problem
+  We construct in this section a robust solution procedure of the
+multi-ﬁeld problem visualized in  Fig. 4 based on convenient
+                                                             d = Argfinf ΠτdðdÞg:                                           ð56Þ
+algorithmic operator splits of the evolution equations.                                   d
+===== PDF PAGE 8 =====
+2772                                             C. Miehe et al. / Computer Methods in Applied Mechanics and Engineering 199 (2010) 2765–2778
+
+
+
+
+
+      Fig. 5. Rate-independent local constitutive behavior. a) Cyclic driver in positive and negative range and b) stress response without damage evolution in compression.
+
+The ﬁrst two terms in the variational functional describe the crack     in terms of the nodal phase ﬁeld vector dd∈RNh. Bd is a symbolic
+surface resistance and the viscous resistance, respectively. The last term     representation of a global interpolation matrix, containing the shape
+represents the source term governed by the energetic history ﬁeld H.     functions and their derivatives.2 Introducing the potential density
+Note that Πdτ is quadratic. Hence, the necessary condition of Eq. (56) is a     function
+simple linear problem for the determination of the current phase ﬁeld.
+The Euler equation represents a discretized version of Eq. (47). Observe    πτdðd; ∇dÞ = gcγðd; ∇dÞ + η ðd−dnÞ2−ð1−dÞ2H;                ð60Þ
+that the rate-independent case is recovered by simply setting the                         2
+viscosity η=0. This  is considered as an important feature of our
+formulation. No ill-conditioning occurs for the limit η=0. The viscosity     in Eq. (55), the spatial discretization of the variational principle (56) reads
+is used as an artiﬁcial feature that stabilizes the simulation. It will be
+chosen as small as possible.                                            dd = Arg  inf ∫Bh πτdðBdddÞdV   :                                 ð61Þ                                                                                                                  dd
+4.1.4. Update of displacement ﬁeld
+                                                              The associated Euler equation is linear and can be solved in closed form   For a known fracture phase ﬁeld d at time tn + 1, we compute the
+current displacement ﬁeld u from the variational principle of linear                                                                               h
+elasticity. Let                                                         dd = −∫Bh BTd½∂2cdcdπτd BddV i−1∫Bh                                                                                                   BTd½∂cdπτd dV                  ð62Þ
+ΠτuðuÞ = ∫B ½ψð∇su; dÞ−γ·u dV−∫∂Bt t·udA                    ð57Þ     for the current nodal values of the phase ﬁeld at time tn+1.
+
+be the elastic potential energy at given phase ﬁeld d, we get the
+                                                                                       4.2.2. Update of displacement ﬁeld
+displacement ﬁeld from the minimization problem
+                                                                         Associated with Th, we write the ﬁnite element interpolations of
+u = Argfinf          ΠτuðuÞg                                          ð58Þ    the displacement ﬁeld and its symmetric gradient by           u
+                                                                               chu := fu; ∇sugh = BuðxÞduðtÞ                                  ð63Þ
+of elasticity. Note that ψ is quadratic. Thus the necessary condition of
+Eq. (58) gives a linear system.                                                                           in terms of the nodal displacement vector du∈RδNh. The symbolic
+                                                                         global interpolation matrix Bu contains the shape functions and its
+4.1.5. Staggered update scheme                                                                             derivatives. Introducing the potential density function
+   The staggered algorithm in the time interval [tn, tn + 1] is summarized
+in Box 1. It represents a sequence of two linear subproblems for the    πτuðu; ∇suÞ = ψð∇su; dÞ−γ·u;                                  ð64Þ
+successive update of the fracture phase ﬁeld and the displacement ﬁeld.
+Such an algorithm  is extremely robust. Clearly,  it may slightly
+underestimate the speed of the crack evolution when compared with     in Eq. (57), the spatial discretization of the variational principle (58)
+a fully monolithic solution of the coupled problem as considered in    reads for a zero traction problem
+Miehe, Welschinger & Hofacker [1]. However, this can be controlled by
+making use of an adaptive time stepping rule.
+                                                                    du = Arg  inf ∫Bh πτuðBuduÞdV   :                                ð65Þ                                                                                                                du
+4.2. Spatial discretization of the staggered problem
+
+   Let Th denote a ﬁnite element triangulation of the solid domain B.        2
+                                                                                Shapes of FE Discretization. For two-dimensional plane strain problems δ=2, the
+The index h indicates a typical mesh size based on Eh ﬁnite element
+                                                                                             constitutive state vector of the phase ﬁeld discretization Eq. (59) reads cd=[d, d,1, d,2].
+domains Beh∈Th and Nh global nodal points. We use the same     Then, associated with node  I of a standard ﬁnite element  e, the ﬁnite element
+triangulation for spatial discretization of both the phase ﬁeld as well      interpolation matrix has the form
+as the displacement ﬁeld.
+                                                                                                 ½Bd eI = N     N;1     N;2  TI
+4.2.1. Update of phase ﬁeld
+   Associated with Th, we write the ﬁnite element interpolations of     displacementin terms of thediscretizationshape functionreadsNI atcu=[u1,note I andu2, theiru1,1, u2,2,derivatives.u1,2+u2,1]Theandstatethevectorassociatedof the
+the phase ﬁeld and its gradient by                                               ﬁnite element interpolation matrix has the form
+
+
+                                                                                                                                                               T                                                                   N                                                                                    0   N;1                                                                                            0   N;2                                                                                                                                                                                                                    :                                                                                                                                                                                                                      I =                                                                                 0  N                                                                                        0   N;2                                                                                                                               N;1                                                                                                                                                                                                                                                                                      Ichd : = fd; ∇dgh = BdðxÞddðtÞ                                  ð59Þ      ½Bu e
+===== PDF PAGE 9 =====
+                                                   C. Miehe et al. / Computer Methods in Applied Mechanics and Engineering 199 (2010) 2765–2778                               2773
+
+
+                                                                                  5. Representative numerical examples
+
+
+                                             We now demonstrate the modeling capability of the proposed
+                                                               approach to diffusive fracture by means of numerical model problems.
+                                                            The proposed staggered scheme outlined in Box 1 based on the local
+                                                                         history ﬁeld is much faster than the monolithic three-ﬁeld formula-
+                                                                          tion outlined in Miehe, Welschinger & Hofacker [1]. As shown below,
+                                                                                                       it allows performing rate-independent problems in a straightforward
+                                                              manner. We demonstrate this for a spectrum of standard benchmark
+                                                               problems such as a single edge notched specimen subjected to tensile
+                                                           and pure shear loadings, a symmetric and an asymmetric notched
+                                                                      three point bending test. The characteristic of the local material
+                                                                      response for a cyclic loading process is demonstrated in Fig. 5. The
+                                                                             result is obtained by a local driving of the constitutive model. It shows
+Fig. 6. Single edge notched specimen. Geometry and boundary conditions. a) Tension    the basic properties of a rate-independent hysteresis due to local
+test treated in Section 5.1 and b) shear test treated in Section 5.2.                damage mechanisms which occur only in the tensile range. There is no
+                                                                             diffusive fracture evolution in the compressive range.
+   The associated Euler equation of linear elasticity yields the closed
+form solution
+                                                                                       5.1. Single edge notched tension test
+        h
+du = −∫Bh BTu½∂2cucuπτu BudV i−1∫Bh                                BTu½∂cuπτu dV                  ð66Þ       Consider a squared plate with horizontal notch which is placed at
+                                                               middle height from the  left outer surface to the center of the
+for the current nodal values of the phase ﬁeld at time tn + 1.             specimen. The geometric setup is depicted in Fig. 6. In order to capture
+
+
+
+
+
+    Fig. 7. Single edge notched tension test. Load-deﬂection curves for a length scale a) l1=0.0150 mm and b) l2=0.0075 mm obtained for η=1×10−6 kN s/mm2 and η=0 kN s/mm2.
+
+
+
+
+
+Fig. 8. Single edge notched tension test. Crack pattern for η=1×10−6 kN s/mm2 at a displacement of a) u=5.7×10−3 mm, b) u=5.9×10−3 mm, c) u=6.1×10−3 mm for a length
+scale of l1=0.0150 mm and d) u=5.7×10−3 mm, e) u=5.9×10−3 mm, and f) u=6.3×10−3 mm for a length scale of l2=0.0075 mm.
+===== PDF PAGE 10 =====
+2774                                             C. Miehe et al. / Computer Methods in Applied Mechanics and Engineering 199 (2010) 2765–2778
+
+
+
+
+
+Fig. 9. Single edge notched pure shear test. Load-deﬂection curves for a length scale a) l1=0.0150 mm and b) l2=0.0075 mm obtained for η=1×10−6 kN s/mm2 and η=0 kN s/
+mm2.
+
+
+
+
+
+the crack pattern properly, the mesh is reﬁned in areas where the    crack propagation in the post critical regime. The results are in
+crack  is expected to propagate,  i.e. in the centered strip of the    agreement with a monolithic solution, see  Fig. 12 in Miehe,
+specimen. For a discretization with 20,000 elements an effective    Welschinger & Hofacker [1]. As expected, the sharpest crack pattern
+element size of h≈0.001 mm in the  critical zone  is obtained.      is obtained for the smallest length scale parameter l2=0.0075 mm.
+Following [1], we choose the maximum element size in this zone to    The resulting crack patterns at different stages of the deformation for
+be one half of the length scale. The elastic bulk modulus is chosen to    the length scales l1=0.0150 mm and l2=0.0075 mm are illustrated
+λ=121.15 kN/mm2, the shear modulus to μ=80.77 kN/mm2 and the     in Fig. 8. The illustration uses the viscous model with η=1×10−6 kN
+critical energy release rate to gc=2.7×10−3 kN/mm. The computa-    s/mm2, which does not show the brutal crack evolution of the rate-
+tion is performed in a monotonic displacement driven context with    independent problem. The viscosity has a stabilizing effect. However,
+constant displacement increments of Δu=1×10−5 mm in the ﬁrst   we are able to compute the rate-independent limit without problems.
+500 time steps and needs to be adjusted to Δu=1×10−6 mm in the
+remaining time steps due to the brutal character of the crack      5.2. Single edge notched pure shear test
+propagation. In order to point out the effects which arise due to the
+length scale parameter l and a viscosity η, different simulations are     We now investigate the same squared plate with horizontal notch as
+performed. For ﬁxed length scale parameters l1=0.0150 mm and     in the previous example for a shear loading mode. The geometric setup
+l2=0.0075 mm, the inﬂuence of the viscosity is analyzed. The load-    and the applied deformation are depicted in Fig. 6. In order to capture
+deﬂection curves obtained are depicted in Fig. 7. One observes that for    the crack pattern properly, the mesh is again reﬁned in areas where the
+the rate-independent case η=0 the structural response shows a     crack is expected to propagate, i.e. in the lower right diagonal strip of the
+steeper descent whereas the viscous model smoothes out the brutal    specimen. An effective element size of approximately h≈0.002 mm
+
+
+
+
+
+Fig. 10. Single edge notched pure shear test. Crack pattern for η=1×10−6 kN s/mm2 at a displacement of a) u=9.0×10−3 mm, b) u=11.0×10−3 mm, c) u=13.4×10−3 mm for a
+length scale of l1=0.0150 mm and d) u=9.0×10−3 mm, e) u=11.0×10−3 mm, and f) u=14.8×10−3 mm for a length scale of l2=0.0075 mm.
+===== PDF PAGE 11 =====
+                                                   C. Miehe et al. / Computer Methods in Applied Mechanics and Engineering 199 (2010) 2765–2778                               2775
+
+
+                                                                                       5.3. Symmetric three point bending test
+
+
+                                                                           This test is a classical benchmark problem which has often been
+                                                                  analyzed in literature, for example in the recent work Miehe & Gürses
+                                                                         [20] in the context of conﬁgurational-force-driven crack propagation:
+                                                                  a simply supported notched beam. The geometric setup as well as
+                                                                    the loading conditions are illustrated in Fig. 11. The discretization is
+                                                              reﬁned in the expected crack propagation zone, yielding a discretiza-
+                                                                       tion with 20,000 elements and an  effective element  size  of
+                                                        h≈0.0008 mm in the critical zone. The bulk modulus is chosen to
+                                                      λ=12.00 kN/mm2, the shear modulus to μ=8.0 kN/mm2 and the
+   Fig. 11. Symmetric three point bending test. Geometry and boundary conditions.        critical energy release rate to gc=5.0×10−4 kN/mm. The computa-
+                                                                          tion is performed in a monotonic displacement driven context with
+based on a mesh with 30,000 elements is used. The elastic bulk modulus    constant displacement increments Δu=1×10−4 mm in the ﬁrst 360
+is chosen to λ=121.15 kN/mm2, the shear modulus to μ=80.77 kN/    loading steps. Continuing crack propagation then demands for an
+mm2 and the critical energy release rate to gc=2.7×10−3 kN/mm. The    adjustment of the displacement increment to Δu=1×10−6 mm for
+computation is performed in a monotonic displacement driven context    the subsequent loading steps. Fig. 12 illustrates the global response for
+with constant displacement increments of Δu=1×10−5 mm. Again,    two different length scales in combination with different viscosities.
+we perform different simulations in order to point out the effects due to     In Fig. 12a results for a length scale l1=0.06 mm and in Fig. 12b for a
+different length scale parameters l and viscosity η. For ﬁxed length scale    length scale l2=0.03 mm are compared to a simulation obtained from
+parameters l1=0.0150 mm and l2=0.0075 mm, the inﬂuence of the    a fracture model based on conﬁgurational-force-driven crack propa-
+viscosity is analyzed. The load–deﬂection curves obtained are depicted    gation introduced by Miehe & Gürses [20] for a simulation with 10,360
+in Fig. 9. For the rate-independent case η=0 the structural response    elements. The proposed new phase ﬁeld model shows a very good
+shows a steeper descent whereas the viscous model smoothes out the    agreement even for the use of larger length scales. The resulting
+brutal crack propagation in the post critical range. As expected, the    contour plots of the crack topology, again for the two different length
+sharpest crack pattern  is obtained for the smallest length scale     scale parameters under focus, are given in Fig. 13. Blue and red colors
+parameter l2=0.0075 mm. The resulting crack patterns at different    correspond to the undamaged and the  fully cracked material,
+stages of the deformation for the length scales l1=0.0150 mm and     respectively. In summary, we emphasis that the proposed phase
+l2=0.0075 mm are illustrated in Fig. 10.                               ﬁeld model of fracture yields a very good agreement with results
+
+
+
+
+
+Fig. 12. Symmetric three point bending test. Load-deﬂection curves for a length scale a) l1=0.06 mm and b) l2=0.03 mm obtained for η=1×10−6 kN s/mm2 and η=0 kN s/mm2.
+Structural response is compared to the material force based algorithm, see Miehe et al. [24].
+
+
+
+
+
+Fig. 13. Symmetric three point bending test. Crack pattern for η=0 kN s/mm2 at a displacement of a) u=4.0×10−2 mm, b) u=4.1×10−2 mm, c) u=1.0×10−1 mm for a length
+scale of l1=0.06 mm and d) u=3.8×10−2 mm, e) u=4.1×10−2 mm, and f) u=1.0×10−1 mm for a length scale of l2=0.03 mm.
+===== PDF PAGE 12 =====
+2776                                             C. Miehe et al. / Computer Methods in Applied Mechanics and Engineering 199 (2010) 2765–2778
+
+
+                                                                          triangular elements and  is reﬁned in areas where the crack  is
+                                                                 expected to propagate. The length scale parameter  is chosen to
+                                                          l=0.025 mm which is twice the element size. Fig. 15 illustrates the
+                                                                      crack path obtained by different numerical models in comparison
+                                                                         to the experimental result. The ﬁrst two pictures show the crack
+                                                                 path based on the rate-independent fracture model. In Fig. 15a and b
+                                                                    the results are obtained for η=1.0×10−6 kN s/mm2 and η=0.0 kN s/
+                                                    mm2, respectively.  Fig. 15c visualizes the crack path of the
+                                                                   conﬁgurational force model analyzed in Miehe & Gürses  [20].
+                                                                                      Fig. 15d ﬁnally shows the experimental result of Bittencourt et al.
+                                                                                 [27]. Taking a closer look at the ﬁrst two pictures, one can observe a
+                                                                                slight difference regarding the width of the crack paths, although an
+                                                                   equal length scale parameter was used for the simulation. This effect
+                                                                can be related to the brutal character of the crack propagation for
+Fig. 14. Asymmetric notched three point bending test. Geometry, loading and boundary
+conditions from Bittencourt et al. [27]. The three holes have a diameter of 0.5.          zero viscosity. Adding a very small amount of viscosity improves the
+                                                                        robustness. A comparison of the results obtained by the phase ﬁeld
+                                                                 model, the conﬁgurational force model and the experimental analysis
+obtained by alternative computational methods of rate-independent    shows that both strategies capture the experimentally observed
+brittle fracture.                                                   curved crack pattern very well. The conﬁgurational force model with
+                                                                    the adaptive reorientation of the segments at the crack tip yields crack
+                                                                               trajectories for quite rough meshes. However, such a formulation is of
+5.4. Asymmetric notched three point bending test                         limited applicability, because it cannot be applied to the modeling of
+                                                                      crack initiation in solids free of defects and does not allow for crack
+   Next, we apply the rate-independent fracture model to a more    branching. These problems are overcome by the proposed phase ﬁeld
+complex boundary value problem with an evolving curvilinear crack    model for fracture. The strong inﬂuence of the viscosity on curvilinear
+trajectory.                                                            crack patterns in the phase ﬁeld modeling of fracture has already been
+   The asymmetric three point bending test was analyzed experi-    discussed in Miehe, Welschinger & Hofacker  [1]. Hence, a key
+mentally and numerically in Bittencourt et al. [27]. It concerns an    advantage of the algorithmic formulation proposed in this work is
+asymmetrically-notched beam with three holes. The setup of the     that robust computations can be performed for the  full  rate-
+problem is shown in Fig. 14. The material parameters are the elastic    independent response without any viscosity. Finally, Fig. 16 shows
+constants λ=12.00 kN/mm2, μ=8.0 kN/mm2 and the critical energy    the evolution of the contour  plots, again blue and red colors
+release rate gc=1×10−3 kN/mm. The mesh consists of 58,000    correspond to the undamaged and fully cracked states, respectively.
+
+
+
+
+
+Fig. 15. Asymmetric notched three point bending test. Crack topology of the rate-independent formulation with 58,000 elements and a) a viscosity η=1.0×10−6 kN s/mm2 and b) a
+zero viscosity. c) Crack trajectories of Miehe & Guerses [20] and d) experimentally-obtained crack patterns by Bittencourt et al. [27].
+
+
+
+
+
+ Fig. 16. Asymmetric notched three point bending test. a)–d) Crack pattern for η=1×10−6 kN s/mm2 at different stages of the deformation for a length scale of l=0.025 mm.
+===== PDF PAGE 13 =====
+                                                   C. Miehe et al. / Computer Methods in Applied Mechanics and Engineering 199 (2010) 2765–2778                               2777
+
+
+6. Conclusion                                               where the function h(ε) is directly related to the reference energy
+                                                                            ψ0(ε). As outlined in Eq. (A.6)3, the convex reference free energy is a
+  We outlined a thermodynamically consistent framework for rate-    quadratic function of the norm |ε|E of the strain ε with regard to a
+independent diffusive crack propagation in elastic solids. To this end,    metric provided by the elasticity modulus E. It obviously drives the
+we proposed a new incremental variational framework for rate-    accumulation of the damage variable d. Note that Eq. (A.6)1 provides
+independent diffusive fracture that bases on the introduction of a local    the desired property d→1 for h(ε)→∞or |ε|E→∞. Furthermore,
+history ﬁeld. It contains a maximum reference energy obtained in the    observe that damage accumulation ḋN0 takes place only if the function
+deformation history, which may be considered as a measure for the    h(ε) deﬁned in Eq. (A.6)3 grows. Deﬁning H(t) as the maximum value
+maximum tensile strain obtained in history. It was shown that this     of h(ε(t)) obtained in time history, we may replace system (A.5) for the
+local variable drives the evolution of the fracture phase ﬁeld.  It    rate-independent evolution of the damage variable d by the simple
+allowed the construction of an extremely robust operator  split    closed-form equation
+scheme that successively updates in a typical time step the history
+                                                                            HðtÞ
+ﬁeld, the crack phase ﬁeld and ﬁnally the displacement ﬁeld. An     dðtÞ =          with  HðtÞ := maxs∈½0;t fhðεðsÞÞ g:            ðA:7Þ
+artiﬁcial viscous regularization stabilizes the overall performance. The            c + HðtÞ
+proposed algorithm is considered to be the canonically simple scheme
+for the treatment of diffusive  fracture. We demonstrated the       See for example Miehe [28] for an analogous deﬁnition of a history
+performance of the proposed phase ﬁeld formulations of fracture by    ﬁeld in rate-independent, discontinuous damage mechanics. The two
+means of representative numerical examples.                            Eqs. (A.2) and (A.7) then govern exclusively a damage-type degrading
+                                                                              stress response in an elastic solid. Note that in this model due to EN0
+Acknowledgment                                                   the current damage variable d is in a one-to-one relationship to the
+                                                     maximum strain norm obtained in time history
+
+   Support for this research was provided by the German Research               pﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+Foundation (DFG) under grant Mi 295/11-2.                               εmaxðtÞ :=  s∈½0;tmax f jεðsÞjg =  HðtÞ= E :                          ðA:8Þ
+
+Appendix A. Introduction of a damage-driving history ﬁeld
+                                                                 References
+
+   In order to motivate the structure of the diffusive fracture model        [1]  C. Miehe, F. Welschinger, M. Hofacker, Thermodynamically-consistent phase ﬁeld
+outlined in Section 3, we consider a local damage model in a one-         models of fracture: Variational principles and multi-ﬁeld fe implementations,
+dimensional setting. It is governed by a free energy function                      International Journal for NumericalMethodsinEngineeringDOI:10.1002/nme.2861.
+                                                                                                   [2] A.A. Grifﬁth, The phenomena of rupture and ﬂow in  solids, Philosophical
+                                                                                             Transactions of the Royal Society London A 221 (1921) 163–198.
+ψðε; dÞ = gðdÞψ0ðεÞ  with  gðdÞ = ð1−dÞ2  and  ψ0ðεÞ = 12Eε2              [3] G.R. Irwin, Fracture, in: S. Flügge (Ed.), Elasticity and Plasticity, Encyclopedia of
+                                                                                                    Physics, Vol. 6, Springer, 1958, pp. 551–590.
+                                                                 ðA:1Þ        [4] G.A. Francfort, J.J. Marigo, Revisiting brittle fracture as an energy minimization
+                                                                                       problem, Journal of the Mechanics and Physics of Solids 46 (1998) 1319–1342.
+in terms of the convex reference energy function ψ0(ε)=ψ(ε, 0) and        [5]  B. Bourdin, G.A. Francfort,  J.J. Marigo, The Variational Approach to Fracture,
+the degrading function g(d), which depend on the strain ε and the           Springer Verlag, Berlin, 2008.
+                                                                                                    [6] G. Dal Maso, R. Toader, A model for the quasistatic growth of brittle fractures:
+internal damage variable d. E is the elastic stiffness. The degrading           Existence and approximation results, Archive for Rational Mechanics and Analysis
+function is positive g≥0, monotonic decreasing g′≤0 and has the         162 (2002) 101–135.
+properties g(0)=1, g(1)=0 and g′(1)=0. From Eq. (A.1), we obtain        [7] M. Buliga, Energy minimizing brittle crack propagation, Journal of Elasticity 52
+                                                                                    (1999) 201–238.
+by a standard exploitation method of the second axiom of thermo-        [8]  B. Bourdin, G.A. Francfort, J.J. Marigo, Numerical experiments in revisited brittle
+dynamics, often referred to as Coleman's method, the constitutive            fracture, Journal of the Mechanics and Physics of Solids 48 (2000) 797–826.
+expression for the stresses                                                                [9] D. Mumford, J. Shah, Optimal approximations by piecewise smooth functions and
+                                                                                               associated variational problems, Communications on Pure and Applied Mathe-
+                                                                                         matics 42 (1989) 577–685.
+σðε; dÞ := ∂εψðε; dÞ = ð1−dÞ2Eε                                ðA:2Þ      [10]  L. Ambrosio, V.M. Tortorelli, Approximation of functionals depending on jumps by
+                                                                                                                   elliptic functionals via γ-convergence, Communications on Pure and Applied
+                                                                                   Mathematics 43 (1990) 999–1036.
+and the reduced dissipation inequality                                           [11] G. Dal Maso, An Introduction to Γ-Convergence, Birkhäuser, Boston, 1993.
+                                                                                           [12] D.P. Braides, Approximation of Free Discontinuity Problems, Springer Verlag,
+D = f ˙d ≥0  with   f ðε; dÞ := −∂dψðε; dÞ = 2ð1−dÞψ0ðεÞ:     ðA:3Þ      [13]  Berlin,D.P. Braides,1998. Γ-Convergence for Beginners, Oxford University Press, New York,
+                                                                                        2002.
+  A rate-independent, discontinuous evolution of the internal      [14] V. Hakim, A. Karma, Laws of crack motion and phase-ﬁeld models of fracture,
+                                                                                               Journal of the Mechanics and Physics of Solids 57 (2009) 342–368.
+variable can be based on the threshold function                                                                                           [15] A. Karma, D.A. Kessler, H. Levine, Phase-ﬁeld model of mode iii dynamic fracture,
+                                                                                                Physical Review Letters 92 (2001) 8704.045501.
+tð f ; dÞ = f −cd:                                                 ðA:4Þ      [16]  L.O. Eastgate, J.P. Sethna, M. Rauscher, T. Cretegny, C.-S. Chen, C.R. Myers, Fracture
+                                                                                                   in mode  i using a conserved phase-ﬁeld model, Physical Review E 65 (2002)
+                                                                                      036117-1-10.
+   Here, the constant c=1 N/m2 has the value one and the unit of an      [17]  T. Belytschko, H. Chen, J. Xu, G. Zi, Dynamic crack propagation based on loss of
+energy density. With this function at hand, a rate-independent           hyperbolicity and a new discontinuous enrichment, International Journal for
+                                                                                     Numerical Methods in Engineering 58 (2003) 1873–1905.
+evolution of damage is deﬁned by the equations                               [18]  J.-H. Song, T. Belytschko, Cracking node method for dynamic fracture with ﬁnite
+                                                                                           elements, International Journal for Numerical Methods in Engineering 77 (2009)
+˙d ≥0;   tð f ; dÞ ≤0;   ˙dtð f ; dÞ = 0:                             ðA:5Þ          360–385.
+                                                                                           [19]  E. Gürses, C. Miehe, A computational framework of three-dimensional conﬁgu-
+                                                                                                  rational-force-driven brittle crack propagation, Computer Methods in Applied
+   Considering damage loading, ḋN0, we may compute the current          Mechanics and Engineering 198 (2009) 1413–1428.
+damage variable d from the condition t(f; d)=0 in Eq. (71)2, yielding      [20]  C. Miehe, E. Gürses, A robust algorithm for conﬁgurational-force-driven brittle
+                                                                                             crack propagation with r-adaptive mesh alignment, International Journal for
+the closed form solution                                                          Numerical Methods in Engineering 72 (2007) 127–155.
+                                                                                           [21]  C. Miehe, E. Gürses, M. Birkle, A computational framework of conﬁgurational-
+        hðεÞ                                                   2                         force-driven brittle fracture based on incremental energy minimization, Interna-
+d =             for    ˙d N 0  with  hðεÞ = 2ψ0ðεÞ = jεj E;      ðA:6Þ            tional Journal of Fracture 145 (2007) 245–259.
+      c + hðεÞ                                                                          [22] G. Capriz, Continua with Microstructure, Springer Verlag, 1989.
+===== PDF PAGE 14 =====
+2778                                             C. Miehe et al. / Computer Methods in Applied Mechanics and Engineering 199 (2010) 2765–2778
+
+
+[23] P.M. Mariano, Multiﬁeld theories in mechanics of solids, Advances in Applied      [27] T.N. Bittencourt, P.A. Wawrzynek, A.R. Ingraffea,  J.L. Sousa, Quasi-automatic
+     Mechanics 38 (2001) 1–93.                                                             simulation of crack propagation for 2d lefm problems, Engineering Fracture
+[24] M. Frémond, Non-Smooth Thermomechanics, Springer Verlag, 2002.                    Mechanics 55 (1996) 321–334.
+[25]  C. Miehe, Comparison of two algorithms for the computation of fourth-order      [28]  C. Miehe, Discontinuous and continuous damage evolution in Ogden-type large-
+      isotropic tensor functions, Computers & Structures 66 (1998) 37–43.                        strain elastic materials, European Journal of Mechanics A / Solids 14 (1995)
+[26]  C. Miehe, M. Lambrecht, Algorithms for computation of stresses and elasticity          697–720.
+     moduli in terms of Seth–Hill's family of generalized strain tensors, Communica-
+     tions in Numerical Methods in Engineering 17 (2001) 337–353.

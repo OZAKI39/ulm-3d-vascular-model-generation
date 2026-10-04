@@ -1,0 +1,1882 @@
+你正在继续开发 clot CFD–PD 项目。
+
+本轮任务名称：
+
+    PFPD_AT1_ACTIVATION_MESH_DEPENDENCE_AUDIT_V1
+
+============================================================
+0. 当前科学基线
+============================================================
+
+首先记录：
+
+    git rev-parse --show-toplevel
+    git rev-parse HEAD
+    git status --short
+
+当前已经确认：
+
+GEOMETRY:
+    corrected 0.25 mm boundary-node cube
+
+PHYSICAL HORIZON:
+    delta = 0.25125 mm fixed
+
+SVK_SPECTRAL_SPLIT:
+    VERIFIED
+
+PETSC RSLS:
+    VERIFIED C5
+    VERIFIED C7 EARLY BRANCH
+
+C5 ACTIVATION:
+    epsilon ≈ 0.004497390736
+    2 / 5392 bonds
+
+C7 ACTIVATION:
+    bracket =
+    [0.0031375732421875,
+     0.00313763427734375]
+
+    diagnostic location ≈
+    0.003137607455254
+
+    2 / 46059 bonds
+
+C5 ACTIVATION PATTERN:
+    LOCALIZED / BOUNDARY-ASSOCIATED
+
+C7 ACTIVATION PATTERN:
+    BOUNDARY_ASSOCIATED
+
+C5 -> C7 ACTIVATION STRAIN:
+    SHIFTING
+    approximately -30.2%
+
+C5 activation nominal stress:
+    ~5.638 Pa
+
+C7 activation nominal stress:
+    ~2.947 Pa
+
+C5 early active bonds:
+    remain 2
+
+C7 early active bonds:
+    remain 2 through 20 accepted
+    positive-phase states
+
+C5 STABILITY:
+    early positive branch stable
+    through max(s) > 0.10
+
+C7 STABILITY:
+    NOT ASSESSED
+
+SPATIAL CONVERGENCE:
+    NOT ESTABLISHED
+
+当前测试基线：
+
+    412 passed
+    3 known failed
+    0 skipped
+
+原三个 known failures 必须保持：
+
+same IDs
+same messages
+same tracebacks
+
+不得 xfail / skip / weaken。
+
+============================================================
+1. 本轮唯一问题
+============================================================
+
+回答：
+
+    为什么 C5 -> C7 refinement 后：
+
+    activation location / pattern
+    看起来相似，
+
+但是：
+
+    activation strain
+    reaction stress
+    activated-bond fraction
+
+明显改变？
+
+特别判断：
+
+HYPOTHESIS A
+
+    activation 跟踪的是
+    第一层离散 bond，
+    即 grid-layer / clamp boundary effect。
+
+HYPOTHESIS B
+
+    activation 位于具有固定
+    physical / horizon-scaled thickness
+    的 nonlocal boundary layer。
+
+HYPOTHESIS C
+
+    BAQP / support truncation /
+    reconstruction near boundary
+    导致局部 Psi_plus amplification
+    随 h 改变。
+
+HYPOTHESIS D
+
+    当前 phase formulation
+    缺少论文中应有的
+    phase regularization / nonlocal coupling /
+    normalization term。
+
+HYPOTHESIS E
+
+    当前 formulation 本身没有
+    finite-width phase coupling，
+    因而 damage naturally collapses
+    to a vanishing discrete support。
+
+HYPOTHESIS F
+
+    当前证据不足。
+
+本轮只诊断和定位。
+
+不要直接“修模型”。
+
+============================================================
+2. 关键代数事实
+============================================================
+
+当前 s=0：
+
+    q_b =
+      2 * (Yc - Psi_plus_b)
+
+因此：
+
+    sign(q_b)
+
+不由 PETSc solver 决定。
+
+Yc 在 corrected C3/C5/C7：
+    fixed
+
+所以 activation strain 变化
+必然对应：
+
+    local Psi_plus field
+    under true mechanical equilibrium
+
+随 spatial sampling 变化。
+
+本轮必须围绕：
+
+    mechanical equilibrium
+      ->
+    local Psi_plus concentration
+      ->
+    q crossing
+
+展开。
+
+============================================================
+3. 禁止事项
+============================================================
+
+本轮禁止：
+
+- C7 stability Hessian
+- C7 Schur complement
+- C7 critical cone
+- C9 full branch
+- C9 stability
+- 改 Gc
+- 改 Yc
+- 改 delta
+- 改 SVK
+- 改 spectral split
+- 改 AT1
+- 加 viscosity
+- 加 residual stiffness
+- 加 h(s)<1
+- 改 PETSc tolerance
+- 引入 surface correction
+- 修改 clamp
+  除非进入明确标记的
+  DIAGNOSTIC-ONLY CONTROL TEST
+- 调参直到 C5/C7 activation match
+
+============================================================
+4. 历史文件保护
+============================================================
+
+保护至少：
+
+verification/pfpd_at1_c7_early_branch_v1/
+verification/pfpd_at1_c5_stability_v1/
+verification/pfpd_at1_petsc_vi_solver_v1/
+verification/pfpd_at1_spatial_discretization_audit_v2/
+verification/pfpd_at1_spectral_split_v1/
+verification/pfpd_candidate_v1/
+
+以及所有历史 results。
+
+新建：
+
+verification/pfpd_at1_activation_mesh_dependence_audit_v1/
+
+results/pfpd_at1_activation_mesh_dependence_audit_v1/
+
+开始：
+
+    PRE_RUN_MANIFEST.json
+
+结束：
+
+    POST_RUN_MANIFEST.json
+    PRESERVATION_CHECK.json
+
+要求：
+
+production modified files = 0
+historical modified files = 0
+existing tests modified = 0
+
+============================================================
+5. 第一项 HARD GATE：
+重新核对 Phase-Field Peridynamics 2026 原文
+============================================================
+
+原论文路径：
+
+    /home/lzy/projects/2604.09215v1.pdf
+
+这是本轮非常重要的步骤。
+
+不要依赖以前摘要记忆。
+
+直接阅读论文中与下列内容有关的：
+
+- total energy
+- phase variable definition
+- fracture / crack energy
+- AT1 / phase equation
+- nonlocal phase interaction
+- kernel
+- horizon
+- gradient / regularization analogue
+- bond phase or particle phase
+- normalization
+- surface treatment
+- irreversibility
+
+生成：
+
+references/PFPD_PHASE_FORMULATION_MAPPING.md
+
+逐项列：
+
+PAPER:
+    equation number
+    symbol
+    formula
+    physical meaning
+
+CURRENT CODE:
+    file
+    function
+    code line / implementation expression
+
+STATUS:
+    EXACT
+    EQUIVALENT
+    APPROXIMATION
+    MISSING
+    AMBIGUOUS
+
+============================================================
+6. 特别检查 phase spatial coupling
+============================================================
+
+必须明确回答：
+
+Q1.
+论文中的 phase/crack energy
+是否包含：
+
+    phase gradient
+
+或
+
+    nonlocal phase difference
+
+或
+
+    neighboring-phase coupling
+
+或其它产生有限损伤带宽度的项？
+
+Q2.
+当前代码的 fixed-x phase Hessian：
+
+    Hss
+
+为什么是 diagonal？
+
+这是：
+
+    论文理论本身如此
+
+还是：
+
+    candidate implementation
+    做了简化 / 遗漏？
+
+Q3.
+论文中 c0 / delta / kernel
+如何控制 fracture-process-zone
+或 phase regularization length？
+
+Q4.
+当前代码是否完整实现？
+
+============================================================
+7. 如果发现论文关键项缺失
+============================================================
+
+如果发现：
+
+    MISSING_REQUIRED_PHASE_TERM
+
+例如论文明确包含
+当前代码没有实现的：
+
+- phase nonlocal coupling
+- gradient-like regularization
+- normalization
+- kernel term
+
+则：
+
+STOP 本轮“原因归因”。
+
+生成：
+
+    PHASE_FORMULATION_INCOMPLETE
+
+不要在本轮自动实现。
+
+只输出：
+
+缺哪一项
+在哪个 equation
+当前代码为什么不等价
+预计它与 mesh localization
+有什么关系
+
+等待人工审核。
+
+============================================================
+8. 如果当前 implementation 与论文一致
+============================================================
+
+只有：
+
+    PFPD_PHASE_FORMULATION_MAPPING
+        = VERIFIED / EQUIVALENT
+
+后，
+
+继续下面的
+mechanical/boundary scaling audit。
+
+============================================================
+9. 不用 active-bond fraction 作为主要物理指标
+============================================================
+
+禁止将：
+
+    2/5392
+    2/46059
+
+直接解释成：
+
+    physical crack fraction
+
+因为 bond denominator
+随 h 快速增加。
+
+保留该数字，
+但主要比较：
+
+- physical position
+- physical support
+- weighted phase integral
+- crack energy
+- local process-zone measures
+
+============================================================
+10. 共用 strain 诊断
+============================================================
+
+为了判断 mesh dependence，
+必须在相同 global strain
+比较 corrected：
+
+C3
+C5
+C7
+
+使用：
+
+    epsilon = 0.0020
+    epsilon = 0.0025
+    epsilon = 0.0030
+
+这三点全部低于
+C7 activation。
+
+如已有 saved
+s=0 equilibrium state：
+
+直接复用。
+
+只求缺失状态。
+
+所有 states：
+
+    s=0 fixed
+    phase disabled
+
+必须：
+
+force <= 1e-9
+
+negative Green strain:
+    diagnostic only
+
+============================================================
+11. 可选 activation-adjacent comparison
+============================================================
+
+另外使用每级已经保存的：
+
+    last s=0 state below activation
+
+和：
+
+    weak/activation diagnostic state
+
+但不要为了匹配比例
+额外重解大量 loads。
+
+============================================================
+12. Exact affine oracle
+============================================================
+
+对 C3/C5/C7
+在相同：
+
+    epsilon = 0.0020
+    0.0025
+    0.0030
+
+构造：
+
+    exact affine displacement field
+
+注意：
+
+这不是 equilibrium solve。
+
+只作为：
+
+    constitutive / reconstruction oracle。
+
+计算每根 bond：
+
+F
+Green strain
+Psi_plus
+Psi_minus
+q
+
+目标：
+
+检查在理想 affine field 下：
+
+local Psi_plus
+是否 mesh- / boundary-dependent。
+
+============================================================
+13. Affine oracle 判据
+============================================================
+
+对每个 mesh / strain：
+
+记录：
+
+mean Psi+
+std Psi+
+coefficient of variation
+min/max Psi+
+q min/max
+
+如果 exact affine field
+本身已经出现 boundary hotspot：
+
+说明：
+
+    BAQP / quadrature /
+    reconstruction / support treatment
+
+可能直接产生 mesh-dependent driver。
+
+状态：
+
+    AFFINE_RECONSTRUCTION_HOTSPOT_PRESENT
+
+如果 affine field基本均匀：
+
+而 equilibrium 才出现 hotspot：
+
+状态：
+
+    HOTSPOT_CREATED_BY_EQUILIBRIUM_RELAXATION
+
+============================================================
+14. driver amplification factor
+============================================================
+
+对每根 bond定义：
+
+    A_psi =
+      Psi_plus_equilibrium
+      /
+      Psi_plus_affine_same_strain
+
+仅在 denominator
+大于安全阈值时计算。
+
+每 mesh / strain输出：
+
+max A_psi
+95th percentile
+median
+location of max
+
+这是当前最重要的
+mesh-concentration metric之一。
+
+============================================================
+15. strain amplification factor
+============================================================
+
+同样记录：
+
+maximum positive principal Green strain
+
+与：
+
+exact affine positive principal strain
+
+形成：
+
+    A_E
+
+并检查：
+
+A_E 与 A_psi
+是否在同一 spatial region
+同时增大。
+
+============================================================
+16. displacement non-affinity
+============================================================
+
+对 equilibrium displacement：
+
+    u_nonaffine =
+      u_equilibrium - u_affine
+
+保存：
+
+max norm
+RMS norm
+
+以及按 z 层：
+
+mean u_z difference
+mean lateral displacement
+
+特别检查：
+
+first interior layer
+near top/bottom clamp。
+
+============================================================
+17. boundary distance
+============================================================
+
+对每根 bond定义：
+
+midpoint distance：
+
+    d_top
+    d_bottom
+    d_clamp =
+      min(d_top,d_bottom)
+
+    d_side
+
+以及：
+
+    d_min_boundary
+
+保存物理单位：
+
+    metre / micrometre
+
+============================================================
+18. 两种关键归一化坐标
+============================================================
+
+对同一数据同时使用：
+
+GRID-SCALED:
+
+    xi_h =
+      d_clamp / h
+
+PHYSICAL-NONLOCAL-SCALED:
+
+    xi_delta =
+      d_clamp / delta
+
+本轮必须比较：
+
+Psi_plus / affine Psi_plus
+
+q / Yc
+
+A_psi
+
+随：
+
+    xi_h
+
+和：
+
+    xi_delta
+
+的 profile。
+
+============================================================
+19. Profile binning
+============================================================
+
+分别对：
+
+A.
+all bonds
+
+B.
+loading-axis bonds：
+
+    |n_z| >= 0.95
+
+做 profile。
+
+不要将不同 orientation
+直接平均后掩盖 axial hotspot。
+
+使用固定 physical /
+dimensionless bins。
+
+同一套 bin edges
+用于 C3/C5/C7
+对应 comparison。
+
+============================================================
+20. profile-collapse metric
+============================================================
+
+分别计算：
+
+PROFILE_H:
+
+    normalized profile
+    in d/h coordinate
+
+PROFILE_DELTA:
+
+    normalized profile
+    in d/delta coordinate
+
+插值到固定 common grid，
+只在各 mesh
+共同有数据范围比较。
+
+计算 pairwise RMSE：
+
+C5 vs C7
+必要时 C3 reference。
+
+============================================================
+21. scaling classification
+============================================================
+
+只有如果至少：
+
+2 common strains
+
+均表现为：
+
+RMSE(d/h)
+<
+0.5 * RMSE(d/delta)
+
+才允许：
+
+    GRID_LAYER_SCALING_SUPPORTED
+
+反之如果：
+
+RMSE(d/delta)
+<
+0.5 * RMSE(d/h)
+
+则：
+
+    PHYSICAL_HORIZON_SCALING_SUPPORTED
+
+否则：
+
+    MIXED_OR_INCONCLUSIVE
+
+这是 diagnostic classification，
+不是理论证明。
+
+============================================================
+22. activation distance scaling
+============================================================
+
+明确计算：
+
+C5:
+
+    d_act
+    d_act/h
+    d_act/delta
+
+C7:
+
+    d_act
+    d_act/h
+    d_act/delta
+
+如果 corrected C3
+存在有意义的 local hotspot，
+也记录。
+
+重点检验：
+
+    d_act ≈ h/2
+
+是否成立。
+
+不要只画 absolute distance。
+
+============================================================
+23. layer index
+============================================================
+
+对 axial bonds定义：
+
+    clamp-layer index
+
+基于 midpoint distance / h。
+
+记录 activation bond
+属于第几离散层。
+
+如果 C5/C7 都稳定属于：
+
+    first interior bond layer
+
+必须明确写：
+
+    ACTIVATION_TRACKS_FIRST_GRID_LAYER
+
+但不要直接叫 artifact，
+除非其它控制测试也支持。
+
+============================================================
+24. family/support diagnostics
+============================================================
+
+对每个 particle计算：
+
+neighbor count
+family volume sum
+shape tensor condition number
+available BAQP correction metrics
+distance to boundary
+
+不要新增新的 correction。
+
+对 activation bond两个端点：
+
+与：
+
+same z-layer peers
+bulk-most-interior available particles
+
+比较：
+
+family support
+condition number
+reconstruction metrics。
+
+============================================================
+25. support fraction
+============================================================
+
+若当前代码可可靠计算：
+
+定义：
+
+    support_volume_fraction =
+      sampled family volume
+      /
+      theoretical full horizon volume
+
+只作 diagnostic。
+
+因为当前：
+
+    delta ≈ L
+
+预计没有真正 full-support bulk region。
+
+必须在报告中说明这一点。
+
+============================================================
+26. support-driver association
+============================================================
+
+对每个 mesh / common strain：
+
+绘制 / 统计：
+
+A_psi
+
+vs
+
+family volume fraction
+
+A_psi
+
+vs
+
+shape condition number
+
+A_psi
+
+vs
+
+d_clamp/h
+
+重点：
+
+activation candidates。
+
+可使用：
+
+Spearman correlation
+
+但明确：
+
+association != causation。
+
+============================================================
+27. exact clamp DOF audit
+============================================================
+
+读取真实代码，
+不要猜。
+
+生成：
+
+    CLAMP_DOF_AUDIT.json
+
+明确：
+
+top/bottom clamp
+到底约束：
+
+- z only
+- x/y/z
+- 或其它组合
+
+以及：
+
+固定哪些 particle layers /
+physical surfaces。
+
+============================================================
+28. 条件式 clamp diagnostic
+============================================================
+
+只有如果：
+
+A.
+affine oracle 无 hotspot
+
+AND
+
+B.
+equilibrium hotspot
+强烈集中第一 clamp layer
+
+才运行一个：
+
+    DIAGNOSTIC_ONLY
+    CLAMP_KINEMATIC_CONTROL
+
+如果当前 clamp
+固定了 lateral x/y：
+
+建立：
+
+    axial-displacement-only
+    clamp diagnostic
+
+保持：
+
+z displacement identical
+
+允许 lateral clamp motion
+
+同时加最小约束
+消除 rigid-body modes。
+
+只运行：
+
+C5 / C7
+
+epsilon = 0.0030
+
+s=0
+
+mechanical equilibrium。
+
+============================================================
+29. clamp control 的目的
+============================================================
+
+只回答：
+
+current full clamp
+是否显著放大：
+
+max Psi_plus
+A_psi
+first-layer strain concentration。
+
+禁止：
+
+用这个新 boundary condition
+生成新的 fracture branch。
+
+禁止：
+
+把它当 production replacement。
+
+如果当前 clamp
+本来已经是 axial-only：
+
+跳过这一控制试验。
+
+============================================================
+30. phase regularization / coupling structure
+============================================================
+
+即使 paper mapping 通过，
+
+仍生成：
+
+    PHASE_COUPLING_STRUCTURE.json
+
+记录：
+
+number phase DOF
+
+fixed-x Hss:
+    diagonal nnz
+    off-diagonal nnz
+
+是否存在：
+
+direct phase-phase coupling
+
+neighbor phase coupling
+
+kernel-based regularization coupling
+
+仅描述当前实现。
+
+============================================================
+31. 重要解释
+============================================================
+
+如果：
+
+Hss fixed-x
+严格 diagonal
+
+且论文确认这就是模型本意，
+
+报告必须明确：
+
+    current fracture regularization
+    does not arise from an explicit
+    neighboring-phase gradient block
+
+而只能来自：
+
+    peridynamic mechanics /
+    nonlocal energy structure /
+    coupling through x
+
+不要擅自说这是错误。
+
+============================================================
+32. C5/C7 physical damage measures
+============================================================
+
+读取已有 positive branches。
+
+不重求。
+
+选择尽可能接近：
+
+    max(s) ≈ 0.01
+    max(s) ≈ 0.02
+    max(s) ≈ 0.04
+
+的 C5 / C7
+已保存 states。
+
+不插值 phase state。
+
+如果相差太大：
+
+标记：
+
+    NO_MATCHED_STATE
+
+不要补算除非非常便宜。
+
+============================================================
+33. weighted damage measure
+============================================================
+
+对 matched early states计算：
+
+    D_weighted =
+      sum(W_b * s_b)
+      /
+      sum(W_b)
+
+并记录：
+
+    E_crack / Gc_demo
+
+后者称：
+
+    equivalent crack-energy area diagnostic
+
+禁止称：
+
+    physical crack area
+
+除非理论明确支持。
+
+============================================================
+34. top / bottom hotspot 分开
+============================================================
+
+不要再用：
+
+两个上下 hotspot一起的
+global RMS radius
+
+解释单个 damage-zone width。
+
+按：
+
+    z > 0
+    z < 0
+
+分别计算：
+
+weighted centroid
+RMS radius
+x/y spread
+z thickness
+bounding box
+
+C5/C7 使用相同定义。
+
+============================================================
+35. spatial-support comparison
+============================================================
+
+在相近 max(s) 下比较：
+
+C5 vs C7：
+
+weighted damage
+E_crack/Gc
+top hotspot radius
+bottom hotspot radius
+z thickness
+number active bonds
+physical support volume proxy
+
+结果分类：
+
+PHYSICAL_DAMAGE_SUPPORT:
+    CONSISTENT
+    SHRINKING
+    BROADENING
+    INCONCLUSIVE
+
+============================================================
+36. 不新增 C9
+============================================================
+
+本轮默认：
+
+    DO NOT RUN C9
+
+原因：
+
+先充分利用已有 C5/C7
+定位根因。
+
+如果最终：
+
+ROOT_CAUSE = INCONCLUSIVE
+
+报告下一步再建议：
+
+    C9 activation-only
+
+或其它 controlled specimen study。
+
+不要本轮自动开始。
+
+============================================================
+37. 服务器 CPU 使用
+============================================================
+
+重新检测：
+
+physical cores
+logical cores
+RAM
+
+历史：
+
+12 physical / 24 logical。
+
+主要昂贵任务只是：
+
+缺失的 s=0 equilibrium states。
+
+可以并行：
+
+C3 pipeline
+C5 pipeline
+C7 pipeline
+
+但每个 mesh内部 strain continuation
+必须按加载顺序串行。
+
+不要三个 pipeline
+各自开6 workers造成 oversubscription。
+
+建立：
+
+    RESOURCE_PLAN.json
+
+推荐总活跃 CPU：
+
+<= physical_cores - 2
+
+例如：
+
+C7:
+    5 workers
+
+C5:
+    3 workers
+
+C3:
+    1 worker
+
+parent / OS:
+    >=2 cores
+
+实际根据 RAM调整。
+
+============================================================
+38. 后处理向量化
+============================================================
+
+46059 bonds 的：
+
+Psi+
+q
+distance
+family statistics
+profile bins
+
+全部：
+
+NumPy vectorized
+
+或现有 Numba。
+
+禁止 Python per-bond loops
+成为主路径。
+
+============================================================
+39. GPU：本轮不要再次浪费时间安装
+============================================================
+
+上一轮：
+
+RTX 4060 可见
+
+但：
+
+PETSc 无 CUDA
+
+CuPy wheel 下载失败
+
+CPU full-bond batch：
+约63 ms
+
+真正昂贵的是
+mechanical equilibrium，
+不是 bond post-processing。
+
+因此本轮：
+
+GPU installation:
+    DO NOT RETRY
+
+如果环境启动时
+已经存在可用：
+
+CuPy / JAX / Torch CUDA
+
+可以做一次10秒内 preflight。
+
+否则：
+
+    GPU_NOT_USED_BY_DESIGN
+
+报告原因：
+
+    no useful validated backend
+    and post-processing is not bottleneck.
+
+这符合“充分利用资源”：
+不把时间浪费在
+对总 wall time无意义的GPU迁移。
+
+============================================================
+40. cache / resume
+============================================================
+
+所有已有：
+
+C5/C7 activation states
+positive branch states
+
+优先读取。
+
+缺失 common-strain equilibrium
+计算后立即 checkpoint。
+
+cache key必须包含：
+
+mesh hash
+physics hash
+strain
+s=0
+BC hash
+
+============================================================
+41. 测试策略
+============================================================
+
+开始：
+
+一次 full suite。
+
+开发中：
+
+targeted only。
+
+结束：
+
+一次 full suite。
+
+新增建议：
+
+tests/test_activation_profile_scaling.py
+tests/test_affine_driver_oracle.py
+tests/test_boundary_layer_metrics.py
+tests/test_phase_formulation_mapping.py
+tests/test_physical_damage_measure.py
+
+至少：
+
+TEST 1
+q sign at s=0
+independent of positive scaling weights
+
+TEST 2
+affine Psi+ oracle
+is reproduced across corrected meshes
+
+TEST 3
+distance-to-clamp metrics
+
+TEST 4
+d/h and d/delta normalization
+
+TEST 5
+profile binning deterministic
+
+TEST 6
+activation layer index
+
+TEST 7
+support metric deterministic
+
+TEST 8
+top/bottom hotspot split
+
+TEST 9
+weighted damage measure
+
+TEST 10
+Ecrack/Gc diagnostic units
+
+TEST 11
+conditional clamp-control
+does not affect baseline state files
+
+TEST 12
+production unchanged
+
+原3 known failures
+保持完全一致。
+
+============================================================
+42. 不重复运行
+============================================================
+
+禁止重跑：
+
+C5 activation search
+C7 activation search
+C5 PETSc branch
+C7 20-state branch
+C5 stability
+C3 stability
+SSLS comparison
+PhaseFieldX oracle
+Peridynamics.jl campaign
+old 35-state audit
+C7 Jacobian full campaign
+GPU installation attempts
+
+全部读取已有结果。
+
+============================================================
+43. 必须生成的图
+============================================================
+
+只生成真正回答 root-cause 的图。
+
+全部：
+
+PNG + PDF。
+
+------------------------------------------------------------
+FIGURE 1
+psi_driver_same_strain
+
+C3 / C5 / C7
+
+epsilon = 0.0030
+
+显示 equilibrium：
+
+Psi_plus / Psi_plus_affine
+
+统一 physical coordinates。
+
+人工问题：
+
+“同一个全局 strain 下，
+细网格为什么更早出现 hotspot？”
+
+------------------------------------------------------------
+FIGURE 2
+affine_vs_equilibrium_profile
+
+每个 mesh：
+
+exact affine
+
+vs
+
+true mechanical equilibrium
+
+画：
+
+Psi_plus / affine mean
+
+沿：
+
+d_clamp。
+
+人工问题：
+
+“hotspot 是 reconstruction 自己产生的，
+还是 equilibrium relaxation 后才产生？”
+
+------------------------------------------------------------
+FIGURE 3
+profile_scaling_d_over_h
+
+C5/C7
+必要时C3
+
+横轴：
+
+d_clamp/h
+
+纵轴：
+
+A_psi
+
+分别：
+
+epsilon=0.0025
+epsilon=0.0030
+
+人工问题：
+
+“profile 是否跟着网格层数缩放？”
+
+------------------------------------------------------------
+FIGURE 4
+profile_scaling_d_over_delta
+
+同上，
+
+横轴：
+
+d_clamp/delta
+
+人工问题：
+
+“profile 是否对应固定 nonlocal physical length？”
+
+------------------------------------------------------------
+FIGURE 5
+activation_distance_scaling
+
+显示：
+
+d_activation
+
+d_activation/h
+
+d_activation/delta
+
+分图。
+
+人工问题：
+
+“first activation 是否始终在第一网格层？”
+
+------------------------------------------------------------
+FIGURE 6
+support_vs_driver
+
+散点：
+
+A_psi
+vs
+family/support metric
+
+按：
+
+boundary distance
+或 layer分类。
+
+高亮：
+
+activation bonds。
+
+人工问题：
+
+“support truncation 是否与 energy hotspot 同时发生？”
+
+------------------------------------------------------------
+FIGURE 7
+phase_coupling_structure
+
+如果 Hss diagonal：
+
+显示小型 sparsity visualization
+和文字：
+
+DIRECT PHASE-PHASE COUPLING:
+NONE / PRESENT
+
+同时引用论文公式 mapping。
+
+不能单独根据图
+宣布模型错误。
+
+------------------------------------------------------------
+FIGURE 8
+c5_c7_physical_damage_measure
+
+在相近 max(s)
+的 early states：
+
+D_weighted
+
+Ecrack/Gc_demo
+
+top hotspot radius
+
+bottom hotspot radius
+
+分别画图，
+不要混单位。
+
+------------------------------------------------------------
+FIGURE 9
+clamp_control
+
+只有条件式 control 实际运行时生成。
+
+current clamp
+
+vs
+
+axial-only diagnostic
+
+比较：
+
+max A_psi
+first-layer Psi+
+non-affine displacement
+
+醒目标：
+
+DIAGNOSTIC ONLY
+NOT MODEL REPLACEMENT
+
+============================================================
+44. REVIEW 报告
+============================================================
+
+生成：
+
+verification/
+pfpd_at1_activation_mesh_dependence_audit_v1/
+REVIEW_ACTIVATION_MESH_DEPENDENCE_V1.md
+
+要求非专业读者也能理解。
+
+结构：
+
+1. 为什么现在不做 C7 stability
+
+2. “2/5392 与 2/46059”
+   为什么不能直接叫开裂比例
+
+3. q=2(Yc-Psi+) 告诉了我们什么
+
+4. 原 PFPD 论文的 phase spatial regularization
+   到底是什么
+
+5. 当前代码与论文是否一致
+
+6. exact affine field 是否有 hotspot
+
+7. true equilibrium 为什么产生/不产生 hotspot
+
+8. hotspot 是否跟 d/h 缩放
+
+9. hotspot 是否跟 d/delta 缩放
+
+10. first activation 是否一直位于第一网格层
+
+11. family/support truncation 的关联
+
+12. clamp DOF 是否贡献集中
+
+13. C5/C7 真实物理 damage measure
+    是否比 bond fraction 更一致
+
+14. 当前 root cause
+
+15. 对最终 clot simulation 的影响
+
+16. tests
+
+17. CPU/GPU 使用
+
+18. 唯一下一步
+
+============================================================
+45. 最终分类标签
+============================================================
+
+最终必须输出：
+
+PFPD_PAPER_PHASE_MAPPING:
+    VERIFIED
+    / MISSING_TERM
+    / AMBIGUOUS
+
+DIRECT_PHASE_REGULARIZATION:
+    PRESENT
+    / ABSENT_BY_THEORY
+    / ABSENT_IN_IMPLEMENTATION
+    / INCONCLUSIVE
+
+AFFINE_ORACLE:
+    UNIFORM
+    / BOUNDARY_BIASED
+    / INCONCLUSIVE
+
+EQUILIBRIUM_DRIVER_HOTSPOT:
+    PRESENT
+    / ABSENT
+    / INCONCLUSIVE
+
+ACTIVATION_LAYER:
+    FIRST_GRID_LAYER
+    / MULTI_LAYER
+    / PHYSICAL_DISTANCE_CONTROLLED
+    / INCONCLUSIVE
+
+PROFILE_SCALING:
+    GRID_LAYER_SUPPORTED
+    / PHYSICAL_HORIZON_SUPPORTED
+    / MIXED
+    / INCONCLUSIVE
+
+SUPPORT_TRUNCATION_ASSOCIATION:
+    STRONG
+    / WEAK
+    / INCONCLUSIVE
+
+CLAMP_KINEMATIC_ASSOCIATION:
+    STRONG
+    / WEAK
+    / NOT_TESTED
+    / INCONCLUSIVE
+
+PHYSICAL_DAMAGE_SUPPORT_C5_C7:
+    CONSISTENT
+    / SHRINKING
+    / BROADENING
+    / INCONCLUSIVE
+
+ACTIVATION_THRESHOLD_OBJECTIVITY:
+    NOT_ESTABLISHED
+
+ROOT_CAUSE_PRIMARY:
+    PHASE_FORMULATION_INCOMPLETE
+    / GRID_LAYER_BOUNDARY_CONCENTRATION
+    / NONLOCAL_SUPPORT_TRUNCATION
+    / CLAMP_KINEMATIC_BOUNDARY_LAYER
+    / COMBINED_BOUNDARY_EFFECT
+    / PHASE_LOCALIZATION_WITHOUT_FINITE_WIDTH
+    / INCONCLUSIVE
+
+C7_STABILITY:
+    NOT_RUN
+
+C9:
+    NOT_RUN
+
+PRODUCTION:
+    UNCHANGED
+
+============================================================
+46. HARD STOP 情况
+============================================================
+
+立即停止进一步数值 diagnosis 如果：
+
+A.
+论文 phase energy
+与当前实现不一致。
+
+B.
+发现 missing required
+regularization term。
+
+C.
+affine oracle 本身
+无法重现原验证的
+uniform affine mechanics。
+
+D.
+历史 C5/C7 state
+checksum 不一致。
+
+这些情况下：
+
+不要继续 boundary-control
+或更多 mesh实验。
+
+============================================================
+47. 本轮成功的最低标准
+============================================================
+
+要宣布：
+
+AUDIT COMPLETE
+
+至少：
+
+- paper/code phase mapping完成
+- C5/C7 activation distances完成
+- common-strain equilibrium comparison完成
+- affine oracle完成
+- d/h与d/delta profiles完成
+- support metrics完成
+- physical damage measure完成
+- no baseline physics modified
+
+不要求：
+
+一定找到单一 root cause。
+
+如果证据不足：
+
+    ROOT_CAUSE_PRIMARY = INCONCLUSIVE
+
+这是允许的。
+
+============================================================
+48. 最终终端摘要
+============================================================
+
+最终只输出：
+
+- repository / HEAD
+- production modified files
+- historical modified files
+- baseline tests
+- final tests
+
+- paper phase mapping status
+- direct phase coupling status
+
+- C5 activation strain
+- C7 activation strain
+
+- C5 d_act
+- C7 d_act
+
+- C5 d_act/h
+- C7 d_act/h
+
+- C5 d_act/delta
+- C7 d_act/delta
+
+- affine Psi+ CV:
+    C3/C5/C7
+
+- equilibrium max A_psi:
+    C3/C5/C7
+    at each common strain
+
+- RMSE profile collapse:
+    d/h
+    d/delta
+
+- support-driver association
+
+- clamp DOF definition
+- clamp-control result if run
+
+- C5/C7 D_weighted
+  at matched early damage levels
+
+- C5/C7 Ecrack/Gc diagnostic
+
+- top/bottom hotspot physical sizes
+
+- ROOT_CAUSE_PRIMARY
+
+- GPU status
+- CPU workers
+- total wall time
+- peak RAM
+
+- REVIEW_ACTIVATION_MESH_DEPENDENCE_V1.md
+- figures directory
+
+不要只输出：
+
+    audit complete
+
+============================================================
+49. 完成后停止
+============================================================
+
+不要自动：
+
+- implement surface correction
+- modify phase regularization
+- change clamp
+- run C7 stability
+- run C9
+- change delta
+- change specimen size
+- introduce Ogden
+- calibrate real clot Gc
+- couple erosion
+- run CFD
+
+先等待人工审核 root-cause evidence。

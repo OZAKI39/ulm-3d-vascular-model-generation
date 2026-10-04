@@ -1,0 +1,90 @@
+# clot 项目当前上下文
+
+更新：2026-10-04。后续 Codex **优先读取本文件**，再按当前任务打开具体源码和证据；不默认递归读取历史审计目录。
+
+**当前科学任务已完成 Phase A，等待人工审核。** 用户在 `PFPD_AT1_ACTIVATION_ROOT_CAUSE_AND_FIX_V1` 明确取消旧 cleanup byte-hash 与论文逐式等价的科学开发硬门。6 次新平衡求解、2 个复用 C7 状态证明：affine 无热点，真实平衡出现端面第一层应变集中；axial-only 控制不能降低热点。PROFILE_SCALING=PHYSICAL_HORIZON_SUPPORTED（公共区间不含 C7 最近一层），SUPPORT_ASSOCIATION=MIXED，CLAMP_ASSOCIATION=WEAK，ROOT_CAUSE_PRIMARY=INCONCLUSIVE。没有选定 Phase B 修正、没有重定位候选激活。优先读[本轮科学报告](clot_clearance/verification/pfpd_at1_activation_root_cause_and_fix_v1/REVIEW_ACTIVATION_ROOT_CAUSE_AND_FIX_V1.md)。
+
+历史恢复仍有 72 项旧字节依赖未恢复、用户没有备份；[恢复报告](clot_clearance/verification/cleanup_recovery_audit_v1/REVIEW_CLEANUP_RECOVERY.md)原样保留。这不再是本轮科学开发 gate，也不授权继续清理或改旧测试/manifest。
+
+## CURRENT MODEL IDENTITY
+
+**MODEL: `PFPD_AT1_SPECTRAL_CANDIDATE_V1`**。
+
+当前是 BAQP mechanics + AT1 + Green 应变/SVK spectral split + PETSc RSLS、`h_kin(s)=1` early regime 的已验证候选组合。它不是 **exact PFPD 2026 reproduction**：论文打印的完整能量退化、拉伸驱动与演化公式之间仍有映射歧义。
+
+工作区：`/home/lzy/projects/temp_storage/clot_clearance_github_sync_20260930`；Python 子项目为 `clot_clearance/`。2026-10-05 同步分支：`clot-clearance/pfpd-progress-20261005`，基于原归档提交 `f0e891686b9b107510ab3292aa27ce83638b3339`。当前源码、关键日志和科学数据已纳入本次同步；具体范围见 [CLOT_SYNC_20261005.md](CLOT_SYNC_20261005.md)。Git 未纳入的本地文件不等于可删除文件；不以 `??` 或 ignore 状态作为清理依据。
+
+当前数值试件：corrected boundary-node cube，L=0.25 mm，δ=0.25125 mm，μ=1000 Pa，ν=0，Gc_demo=1.26884390625×10⁻⁵ J/m²，quadratic kernel，c0=1/4，Yc=0.1010025 Pa，g(s)=(1−s)²，sc=0.95。材料参数是数值演示值。当前候选未接回真实 BraVa 流场、侵蚀或碎片清除。
+
+## CURRENT ACTIVE SOURCE MODULES
+
+以下路径均相对于 `clot_clearance/`：
+
+| 入口 | 职责 |
+|---|---|
+| `pd_clot/pfpd_candidate/baqp.py`、`kernel.py`、`normalization.py` | BAQP 重构、核／能量权重及 c0 |
+| `pd_clot/pfpd_candidate/svk_spectral_split.py` | SVK/Green 应变正负谱分裂 |
+| `pd_clot/pfpd_candidate/at1_evolution.py`、`adr_adapter_at1.py` | AT1 能量、固定 x 更新及力学接口 |
+| `pd_clot/pfpd_candidate/petsc_vi_candidate.py` | 已验证的 PETSc VI 候选 |
+| `scripts/spatial_audit_v2.py`、`spectral_split_audit.py` | corrected C3/C5/C7 几何和谱分裂试件 |
+| `scripts/c5_activation_audit.py`、`c7_early_branch.py` | 真实完整态平衡、激活 bracket 和已存分支 |
+| `scripts/c7_reduced_vi.py`、`c7_spatial_evidence.py` | 自动 reduced pool、全键验收及空间指标 |
+
+冻结物理来源：[AT1 配置](clot_clearance/verification/pfpd_at1_evolution_v1/provenance/PREDECLARED_CONFIG.json)、[C7 PHYSICS_FROZEN](clot_clearance/verification/pfpd_at1_c7_early_branch_v1/provenance/PHYSICS_FROZEN.json)。读取配置不代表可以修改它。
+
+## CURRENT SCIENTIFIC STATUS
+
+| 项目 | C5 | C7 |
+|---|---:|---:|
+| 粒子／自由机械 DOF／键数 | 125 / 225 / 5392 | 343 / 735 / 46059 |
+| 完整态激活诊断应变 | 0.004497390736212 | 约 0.003137607455254 |
+| 首激活位置 | 上下夹持关联 | 上下夹持关联 |
+| 首激活键数 | 2 | 2 |
+| 激活距离 | d/h≈0.5 | d/h≈0.5 |
+| 正相场分支 | 已有审计窗口 | 连续 20 个接受态 |
+| 最后 max(s) | 0.105282593434 | 0.044188650755 |
+| 稳定性 | 15 个审计态稳定，窗口内未找到首次失稳 | `NOT_ASSESSED` |
+
+C5/C7 activation location：**qualitatively consistent**；activation strain：**SHIFTING**，相对变化约 −30.2%；mesh objectivity：**NOT ESTABLISHED**。
+
+当前科学问题仍为 **activation mesh dependence**。共同应变、affine、support 和 axial-only 控制现已完成；热点的直接机制是近似有限的第一层位移增量在 h 缩小时放大局部应变，但有限域支持、BAQP 力分配及轴向边界施加方式尚未因果区分。论文 mapping=`AMBIGUOUS` 仍是模型身份限制，已不作为硬门。不能仅凭 fixed-x Hss 对角宣布缺少相场梯度项。
+
+## CURRENT VALIDATED MILESTONES
+
+1. corrected C3/C5/C7 几何、体积和表面权重守恒，以及 BAQP 固定状态力学核对。
+2. SVK 谱分裂核对；s=0 恢复完整 SVK，允许混合拉压状态。
+3. C5 激活及同载荷正根复核：旧 projected solver 的障碍是活动集停滞。
+4. PETSc RSLS 自动恢复 7 个 C5 根；C7 reduced pool 的两点 C5 回归通过。
+5. C5 物理 Hessian／Schur／临界锥窗口审计；C7 20 点早期驻定分支。
+
+优先读小型报告：[C7 REVIEW](clot_clearance/verification/pfpd_at1_c7_early_branch_v1/REVIEW_C7_EARLY_BRANCH_V1.md)、[最新停止报告](clot_clearance/verification/pfpd_at1_activation_mesh_dependence_audit_v1/REVIEW_ACTIVATION_MESH_DEPENDENCE_V1.md)、[论文映射](clot_clearance/verification/pfpd_at1_activation_mesh_dependence_audit_v1/references/PFPD_PHASE_FORMULATION_MAPPING.md)。C7 `SUMMARY.json` 很大，按字段读取，避免整份输出。
+
+下一轮必须保留并按需读取：C5/C7 `intact/`、`activation/`、C5 `states/`、C7 `branch/`、空间指标、physics/config、输入和源码哈希。C5 `results/pfpd_at1_c5_stability_v1/cache/` 是测试与报告依赖，**不能当临时缓存删除**。
+
+## CURRENT KNOWN FAILURES
+
+清理前全量记录为 **412 passed / 3 known failed / 0 skipped**（当时 415 项）。上次恢复审计的全量结果为 **407 passed / 8 failed / 0 skipped**；清理遗留 5 个缺文件失败仍未修复。当前科学任务仅新增并通过 5 个直接相关测试，没有重跑全量套件；旧字节失败不再阻塞科学开发。详见[测试对照](clot_clearance/verification/cleanup_recovery_audit_v1/TEST_COMPARISON.json)。原三项均在 `tests/test_pfpd_at1_staggered.py`：
+
+- `test_saved_coupled_mechanics_phase_and_energy_all_converged`
+- `test_coupled_no_bond_heals_on_unload_and_reload`
+- `test_extra_stagger_iterations_change_no_accepted_state_materially`
+
+原始 staggered 路线未完成加载—卸载—重载及额外迭代验证。不能删除、xfail 或放宽这些测试来消除失败。PETSc 驻定成功不代表稳定性或空间收敛。
+
+## CURRENT NEXT TASK
+
+**等待人工审核 `REVIEW_ACTIVATION_ROOT_CAUSE_AND_FIX_V1.md`。** 唯一建议下一步为：有限域 BAQP 轴向边界载荷一致性审计，核对 affine 内力的层分布、端面反力与连续表面牵引虚功，并寻求有原始理论/成熟实现支持的最小边界处理。尚未启动。
+
+不自动继续 C7 stability、C9、larger specimen、δ sweep、phase-gradient、材料扩展、侵蚀或 CFD。
+
+## DO NOT SEARCH BY DEFAULT
+
+以下内容保留用于回溯；没有明确问题时不递归展开：
+
+- `clot_clearance/verification/` 下旧直管、fragmentation、regularization、streaming_erosion、mechanical_equilibrium、damage_energy 历史实验。
+- 早期 `pfpd_candidate_v1/`、`pfpd_at1_evolution_v1/`、C3 coupling/branch、spatial V1/V2 的完整历史树；只按需打开冻结配置或具体公式证据。
+- `external/`、第三方源码、Julia/PETSc runtime/depot、`build_*`，以及任何嵌套 `.git/`。
+- PRE/POST 大型 manifest、全量数组、历史 test 临时输出、`results/` 全树和动画逐帧目录。
+- 本轮 `verification/repository_cleanup_v1/` 的逐文件清单；默认只读 REVIEW 和摘要，争议路径再查 CSV。
+
+历史导航：[HISTORICAL_INDEX.md](HISTORICAL_INDEX.md)。完整公式／来源：[项目总览](clot_clearance/CLOT_PROJECT_WORKFLOW_STATUS_FORMULAS_ZH.md)。原始删除记录：[DELETE_MANIFEST.csv](clot_clearance/verification/repository_cleanup_v1/DELETE_MANIFEST.csv)，须结合恢复日志及最终 disposition 读取。历史 PRE/POST manifest 原样保留；若测试将其逐文件读取，其中的缓存与临时副本就是实际测试依赖，不能因其可再生而删除或改写旧哈希。

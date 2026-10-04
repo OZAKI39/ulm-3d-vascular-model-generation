@@ -1,0 +1,232 @@
+..................EEEEE.....                                             [100%]
+==================================== ERRORS ====================================
+_ ERROR at setup of test_small_mean_flow_safety_monotonicity_and_no_particle_deletion _
+
+tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/lzy/projects/temp_storage/clot_clearance_github_sync_20260930/clot_cl...sync_20260930/clot_clearance/build_streaming_erosion_v1/new_tests_first'), _retention_count=3, _retention_policy='all')
+
+    @pytest.fixture(scope='module')
+    def coupled(tmp_path_factory):
+        root=tmp_path_factory.mktemp('erosion_coupled');outputs={}
+        for name in ['baseline','legacy_steps','carrier','exposure']:
+            c=small_config()
+            if name=='legacy_steps':
+                c['damage'].update(DeltaN=987654,cycles_per_update=123456)
+                c['simulation']['represented_cycles']=999999
+            if name=='carrier':
+                c['streaming']['ultrasound_frequency_Hz']=7.3e6
+                c['simulation']['representative_frequency_Hz']=1234.
+            if name=='exposure':c['streaming_erosion']['erosion_exposure_step_s']=.02
+>           summary=run(c,root/name,quiet=True)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_streaming_erosion_runner.py:30: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+pd_clot/regularization/erosion_runner.py:189: in run
+    bond_dissipation+=ledger.damage_drop(before,sum(potential(cloud,new_mech)),increment)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = EnergyLedger(initial_energy_J=2.168404344978276e-25, external_work_J=1.573963842744542e-14, damping_dissipation_J=7.82553162009349e-15, damage_dissipation_J=0.0, transport_work_J=0.0, negative_damage_roundoff_J=0.0)
+before_J = 7.903681313979238e-15, after_J = 7.904899782020127e-15
+allocation_weights = array([0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 2.97253274e-05,
+       1.40899351e-04, 6.76350095e-06, 1.332686...364e-05,
+       0.00000000e+00, 4.40495136e-05, 6.06068315e-05, 0.00000000e+00,
+       3.88631939e-06, 6.13037382e-05])
+
+    def damage_drop(self, before_J, after_J, allocation_weights):
+        drop = float(before_J-after_J)
+        tolerance = 1e-12*max(abs(before_J), abs(after_J), 1e-16)+1e-20
+        if drop < -tolerance:
+>           raise FloatingPointError(f'Damage increased stored energy by {-drop:.9g} J; energy admissibility failed')
+E           FloatingPointError: Damage increased stored energy by 1.21846804e-18 J; energy admissibility failed
+
+pd_clot/regularization/energy.py:50: FloatingPointError
+__ ERROR at setup of test_legacy_deltaN_and_represented_cycles_have_no_effect __
+
+tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/lzy/projects/temp_storage/clot_clearance_github_sync_20260930/clot_cl...sync_20260930/clot_clearance/build_streaming_erosion_v1/new_tests_first'), _retention_count=3, _retention_policy='all')
+
+    @pytest.fixture(scope='module')
+    def coupled(tmp_path_factory):
+        root=tmp_path_factory.mktemp('erosion_coupled');outputs={}
+        for name in ['baseline','legacy_steps','carrier','exposure']:
+            c=small_config()
+            if name=='legacy_steps':
+                c['damage'].update(DeltaN=987654,cycles_per_update=123456)
+                c['simulation']['represented_cycles']=999999
+            if name=='carrier':
+                c['streaming']['ultrasound_frequency_Hz']=7.3e6
+                c['simulation']['representative_frequency_Hz']=1234.
+            if name=='exposure':c['streaming_erosion']['erosion_exposure_step_s']=.02
+>           summary=run(c,root/name,quiet=True)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_streaming_erosion_runner.py:30: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+pd_clot/regularization/erosion_runner.py:189: in run
+    bond_dissipation+=ledger.damage_drop(before,sum(potential(cloud,new_mech)),increment)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = EnergyLedger(initial_energy_J=2.168404344978276e-25, external_work_J=1.573963842744542e-14, damping_dissipation_J=7.82553162009349e-15, damage_dissipation_J=0.0, transport_work_J=0.0, negative_damage_roundoff_J=0.0)
+before_J = 7.903681313979238e-15, after_J = 7.904899782020127e-15
+allocation_weights = array([0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 2.97253274e-05,
+       1.40899351e-04, 6.76350095e-06, 1.332686...364e-05,
+       0.00000000e+00, 4.40495136e-05, 6.06068315e-05, 0.00000000e+00,
+       3.88631939e-06, 6.13037382e-05])
+
+    def damage_drop(self, before_J, after_J, allocation_weights):
+        drop = float(before_J-after_J)
+        tolerance = 1e-12*max(abs(before_J), abs(after_J), 1e-16)+1e-20
+        if drop < -tolerance:
+>           raise FloatingPointError(f'Damage increased stored energy by {-drop:.9g} J; energy admissibility failed')
+E           FloatingPointError: Damage increased stored energy by 1.21846804e-18 J; energy admissibility failed
+
+pd_clot/regularization/energy.py:50: FloatingPointError
+_ ERROR at setup of test_carrier_and_representative_frequency_metadata_have_no_effect _
+
+tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/lzy/projects/temp_storage/clot_clearance_github_sync_20260930/clot_cl...sync_20260930/clot_clearance/build_streaming_erosion_v1/new_tests_first'), _retention_count=3, _retention_policy='all')
+
+    @pytest.fixture(scope='module')
+    def coupled(tmp_path_factory):
+        root=tmp_path_factory.mktemp('erosion_coupled');outputs={}
+        for name in ['baseline','legacy_steps','carrier','exposure']:
+            c=small_config()
+            if name=='legacy_steps':
+                c['damage'].update(DeltaN=987654,cycles_per_update=123456)
+                c['simulation']['represented_cycles']=999999
+            if name=='carrier':
+                c['streaming']['ultrasound_frequency_Hz']=7.3e6
+                c['simulation']['representative_frequency_Hz']=1234.
+            if name=='exposure':c['streaming_erosion']['erosion_exposure_step_s']=.02
+>           summary=run(c,root/name,quiet=True)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_streaming_erosion_runner.py:30: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+pd_clot/regularization/erosion_runner.py:189: in run
+    bond_dissipation+=ledger.damage_drop(before,sum(potential(cloud,new_mech)),increment)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = EnergyLedger(initial_energy_J=2.168404344978276e-25, external_work_J=1.573963842744542e-14, damping_dissipation_J=7.82553162009349e-15, damage_dissipation_J=0.0, transport_work_J=0.0, negative_damage_roundoff_J=0.0)
+before_J = 7.903681313979238e-15, after_J = 7.904899782020127e-15
+allocation_weights = array([0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 2.97253274e-05,
+       1.40899351e-04, 6.76350095e-06, 1.332686...364e-05,
+       0.00000000e+00, 4.40495136e-05, 6.06068315e-05, 0.00000000e+00,
+       3.88631939e-06, 6.13037382e-05])
+
+    def damage_drop(self, before_J, after_J, allocation_weights):
+        drop = float(before_J-after_J)
+        tolerance = 1e-12*max(abs(before_J), abs(after_J), 1e-16)+1e-20
+        if drop < -tolerance:
+>           raise FloatingPointError(f'Damage increased stored energy by {-drop:.9g} J; energy admissibility failed')
+E           FloatingPointError: Damage increased stored energy by 1.21846804e-18 J; energy admissibility failed
+
+pd_clot/regularization/energy.py:50: FloatingPointError
+_ ERROR at setup of test_exposure_clock_never_changes_fixed_mechanical_window __
+
+tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/lzy/projects/temp_storage/clot_clearance_github_sync_20260930/clot_cl...sync_20260930/clot_clearance/build_streaming_erosion_v1/new_tests_first'), _retention_count=3, _retention_policy='all')
+
+    @pytest.fixture(scope='module')
+    def coupled(tmp_path_factory):
+        root=tmp_path_factory.mktemp('erosion_coupled');outputs={}
+        for name in ['baseline','legacy_steps','carrier','exposure']:
+            c=small_config()
+            if name=='legacy_steps':
+                c['damage'].update(DeltaN=987654,cycles_per_update=123456)
+                c['simulation']['represented_cycles']=999999
+            if name=='carrier':
+                c['streaming']['ultrasound_frequency_Hz']=7.3e6
+                c['simulation']['representative_frequency_Hz']=1234.
+            if name=='exposure':c['streaming_erosion']['erosion_exposure_step_s']=.02
+>           summary=run(c,root/name,quiet=True)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_streaming_erosion_runner.py:30: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+pd_clot/regularization/erosion_runner.py:189: in run
+    bond_dissipation+=ledger.damage_drop(before,sum(potential(cloud,new_mech)),increment)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = EnergyLedger(initial_energy_J=2.168404344978276e-25, external_work_J=1.573963842744542e-14, damping_dissipation_J=7.82553162009349e-15, damage_dissipation_J=0.0, transport_work_J=0.0, negative_damage_roundoff_J=0.0)
+before_J = 7.903681313979238e-15, after_J = 7.904899782020127e-15
+allocation_weights = array([0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 2.97253274e-05,
+       1.40899351e-04, 6.76350095e-06, 1.332686...364e-05,
+       0.00000000e+00, 4.40495136e-05, 6.06068315e-05, 0.00000000e+00,
+       3.88631939e-06, 6.13037382e-05])
+
+    def damage_drop(self, before_J, after_J, allocation_weights):
+        drop = float(before_J-after_J)
+        tolerance = 1e-12*max(abs(before_J), abs(after_J), 1e-16)+1e-20
+        if drop < -tolerance:
+>           raise FloatingPointError(f'Damage increased stored energy by {-drop:.9g} J; energy admissibility failed')
+E           FloatingPointError: Damage increased stored energy by 1.21846804e-18 J; energy admissibility failed
+
+pd_clot/regularization/energy.py:50: FloatingPointError
+_ ERROR at setup of test_every_update_uses_endpoint_strain_and_explicit_exposure _
+
+tmp_path_factory = TempPathFactory(_given_basetemp=PosixPath('/home/lzy/projects/temp_storage/clot_clearance_github_sync_20260930/clot_cl...sync_20260930/clot_clearance/build_streaming_erosion_v1/new_tests_first'), _retention_count=3, _retention_policy='all')
+
+    @pytest.fixture(scope='module')
+    def coupled(tmp_path_factory):
+        root=tmp_path_factory.mktemp('erosion_coupled');outputs={}
+        for name in ['baseline','legacy_steps','carrier','exposure']:
+            c=small_config()
+            if name=='legacy_steps':
+                c['damage'].update(DeltaN=987654,cycles_per_update=123456)
+                c['simulation']['represented_cycles']=999999
+            if name=='carrier':
+                c['streaming']['ultrasound_frequency_Hz']=7.3e6
+                c['simulation']['representative_frequency_Hz']=1234.
+            if name=='exposure':c['streaming_erosion']['erosion_exposure_step_s']=.02
+>           summary=run(c,root/name,quiet=True)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_streaming_erosion_runner.py:30: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+pd_clot/regularization/erosion_runner.py:189: in run
+    bond_dissipation+=ledger.damage_drop(before,sum(potential(cloud,new_mech)),increment)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = EnergyLedger(initial_energy_J=2.168404344978276e-25, external_work_J=1.573963842744542e-14, damping_dissipation_J=7.82553162009349e-15, damage_dissipation_J=0.0, transport_work_J=0.0, negative_damage_roundoff_J=0.0)
+before_J = 7.903681313979238e-15, after_J = 7.904899782020127e-15
+allocation_weights = array([0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 2.97253274e-05,
+       1.40899351e-04, 6.76350095e-06, 1.332686...364e-05,
+       0.00000000e+00, 4.40495136e-05, 6.06068315e-05, 0.00000000e+00,
+       3.88631939e-06, 6.13037382e-05])
+
+    def damage_drop(self, before_J, after_J, allocation_weights):
+        drop = float(before_J-after_J)
+        tolerance = 1e-12*max(abs(before_J), abs(after_J), 1e-16)+1e-20
+        if drop < -tolerance:
+>           raise FloatingPointError(f'Damage increased stored energy by {-drop:.9g} J; energy admissibility failed')
+E           FloatingPointError: Damage increased stored energy by 1.21846804e-18 J; energy admissibility failed
+
+pd_clot/regularization/energy.py:50: FloatingPointError
+=============================== warnings summary ===============================
+tests/test_streaming_erosion_runner.py::test_small_mean_flow_safety_monotonicity_and_no_particle_deletion
+tests/test_streaming_erosion_runner.py::test_static_resolved_field_uses_strain_not_transient_amplitude
+  /home/lzy/projects/temp_storage/clot_clearance_github_sync_20260930/clot_clearance/pd_clot/regularization/erosion_runner.py:184: RuntimeWarning: MECHANICAL_STEADY_STATE_NOT_ESTABLISHED: retaining endpoint strain with explicit diagnostic flag
+    warnings.warn('MECHANICAL_STEADY_STATE_NOT_ESTABLISHED: retaining endpoint strain with explicit diagnostic flag',RuntimeWarning)
+
+tests/test_streaming_erosion_runner.py::test_static_resolved_field_uses_strain_not_transient_amplitude
+tests/test_streaming_erosion_runner.py::test_static_resolved_field_uses_strain_not_transient_amplitude
+tests/test_streaming_erosion_runner.py::test_static_resolved_field_uses_strain_not_transient_amplitude
+tests/test_streaming_erosion_runner.py::test_static_resolved_field_uses_strain_not_transient_amplitude
+tests/test_streaming_erosion_runner.py::test_static_resolved_field_uses_strain_not_transient_amplitude
+tests/test_streaming_erosion_runner.py::test_static_resolved_field_uses_strain_not_transient_amplitude
+tests/test_streaming_erosion_runner.py::test_static_resolved_field_uses_strain_not_transient_amplitude
+  /home/lzy/projects/computation_examples/_shared/python_environment/lib/python3.13/site-packages/vtkmodules/util/numpy_support.py:244: DeprecationWarning: Setting the shape on a NumPy array has been deprecated in NumPy 2.5.
+  As an alternative, you can create a new view using np.reshape (with copy=False if needed).
+    result.shape = shape
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+ERROR tests/test_streaming_erosion_runner.py::test_small_mean_flow_safety_monotonicity_and_no_particle_deletion
+ERROR tests/test_streaming_erosion_runner.py::test_legacy_deltaN_and_represented_cycles_have_no_effect
+ERROR tests/test_streaming_erosion_runner.py::test_carrier_and_representative_frequency_metadata_have_no_effect
+ERROR tests/test_streaming_erosion_runner.py::test_exposure_clock_never_changes_fixed_mechanical_window
+ERROR tests/test_streaming_erosion_runner.py::test_every_update_uses_endpoint_strain_and_explicit_exposure
+23 passed, 9 warnings, 5 errors in 2.26s

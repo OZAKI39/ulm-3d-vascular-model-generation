@@ -1,0 +1,174 @@
+{
+  "name": "streaming_erosion_equilibrium_v1",
+  "simulation": {
+    "dt_s": 1e-06,
+    "output_interval": 1,
+    "representative_frequency_Hz": 500.0,
+    "damping_s_inv": 3500.0,
+    "detached_damping_s_inv": 0.0
+  },
+  "pipe": {
+    "radius_m": 0.00125,
+    "length_m": 0.006,
+    "flow_rate_m3_s": 3e-07,
+    "viscosity_Pa_s": 0.00345312,
+    "density_kg_m3": 1056.0
+  },
+  "clot": {
+    "geometry": "rectangular_wall_patch",
+    "cells": [
+      4,
+      3,
+      3
+    ],
+    "origin_m": [
+      -0.000625,
+      -0.000375,
+      -0.0011
+    ],
+    "particle_spacing_m": 0.000125,
+    "horizon_ratio": 3.01,
+    "density_kg_m3": 1056.0,
+    "fixed_base_thickness_m": 0.000125
+  },
+  "material": {
+    "model": "neo_hookean",
+    "shear_modulus_Pa": 1000.0,
+    "bulk_modulus_Pa": 50000.0,
+    "stabilization_alpha": 3.0
+  },
+  "streaming": {
+    "provider": "manufactured",
+    "bubble_center_m": [
+      -0.000825,
+      0.0,
+      -0.000725
+    ],
+    "bubble_radius_m": 2e-06,
+    "ultrasound_frequency_Hz": 1000000.0,
+    "streaming_velocity_scale_m_s": 0.01,
+    "streaming_length_scale_m": 0.00035,
+    "oscillatory_amplitude": 0.0,
+    "mean_fraction": 1.0,
+    "phase_rad": 0.0,
+    "include_pipe_traction": true,
+    "uniform": false,
+    "pressure_amplitude_Pa": 0.0
+  },
+  "damage": {
+    "enabled": false,
+    "mode": "STREAMING_EROSION",
+    "D_break": 1.0
+  },
+  "safety": {
+    "minimum_neighbors": 4,
+    "maximum_shape_condition": 100000000.0,
+    "minimum_J": 0.2,
+    "dt_safety_factor": 0.2,
+    "maximum_acceleration_m_s2": 10000000.0,
+    "maximum_displacement_m": 0.004,
+    "rank_deficient_policy": "intrinsic_correspondence",
+    "support_rank_relative_tolerance": 1e-12,
+    "maximum_radius_ratio": 1.0
+  },
+  "verification_label": "STREAMING_EROSION v1: SOFTWARE / NUMERICAL DEVELOPMENT; DEVELOPMENT / UNCALIBRATED PLACEHOLDERS",
+  "surface": {
+    "weighted_bulk_fraction": 0.8,
+    "normal_moment_tolerance": 1e-12,
+    "area_factor": 1.0
+  },
+  "transport": {
+    "enabled": true,
+    "tau_h_s": 0.0002,
+    "background_velocity_multiplier": 1.0,
+    "x_clearance_m": 0.001,
+    "mode": "relaxation"
+  },
+  "fragment_resolution": {
+    "minimum_particles": 8,
+    "minimum_volume_m3": 1.5625e-11,
+    "minimum_internal_bonds": 12,
+    "minimum_supported_fraction": 0.8,
+    "minimum_support_rank": 2,
+    "singleton_flag_threshold": 0.2,
+    "lowrank_flag_threshold": 0.3
+  },
+  "localization": {
+    "influence_radius_m": 0.000525,
+    "coordinate_convention": "Reference particle positions; bond reference midpoints"
+  },
+  "energy_audit": {
+    "maximum_relative_residual": 0.05,
+    "minimum_absolute_tolerance_J": 1e-15
+  },
+  "source_position_description": "0.2 mm upstream of clot left face, centered in y and z",
+  "streaming_erosion": {
+    "C_t_s_inv": 0.01,
+    "m_t": 1.0,
+    "epsilon_ref": 0.0001,
+    "threshold_ratio": 0.0,
+    "erosion_exposure_step_s": 0.01,
+    "number_of_erosion_steps": 10,
+    "D_break": 1.0,
+    "tension_only": true,
+    "spatial_feedback": false,
+    "demonstration_parameter": true
+  },
+  "erosion_mechanics": {
+    "relaxation_time_s": 0.002,
+    "settling_check_fraction": 0.2,
+    "maximum_relative_driver_drift": 0.05,
+    "driver_absolute_floor": 1e-12
+  },
+  "mechanical_equilibrium": {
+    "method": "adaptive_dynamic_relaxation",
+    "maximum_iterations": 50000,
+    "relative_force_residual_tolerance": 0.0001,
+    "force_floor_N": 1e-12,
+    "driver_drift_tolerance": 0.01,
+    "driver_absolute_floor": 1e-12,
+    "kinetic_to_stored_energy_tolerance": 1e-06,
+    "energy_floor_J": 1e-24,
+    "minimum_consecutive_converged_checks": 5,
+    "check_interval": 50,
+    "development_parameters": true,
+    "legacy_window_s": 0.002,
+    "scipy_reference_max_free_dofs": 180,
+    "scipy": {
+      "method": "trf",
+      "jac": "3-point",
+      "xtol": 1e-12,
+      "ftol": 1e-12,
+      "gtol": 1e-12,
+      "max_nfev": 500,
+      "x_scale": 1.0,
+      "loss": "linear"
+    },
+    "small_fixture_cells": [
+      4,
+      3,
+      3
+    ],
+    "fixed_windows_s": [
+      0.002,
+      0.004,
+      0.008,
+      0.016
+    ],
+    "reference_acceptance": {
+      "relative_force_residual": 0.0001,
+      "relative_max_driver_difference": 0.01,
+      "rms_displacement_difference_over_reference_max": 0.01
+    },
+    "adr": {
+      "pseudo_time_step": 1.0,
+      "mass_row_sum_factor": 1.1,
+      "finite_difference_step_over_spacing": 1e-05,
+      "pseudo_kinetic_to_stored_tolerance": 1e-06,
+      "final_mass_bound_audit": true,
+      "additional_iterations_after_convergence": 0,
+      "damping_guards": "Madenci_Oterkus_2014_author_supplement"
+    },
+    "slow_step_relative_acceptance": 0.05
+  }
+}

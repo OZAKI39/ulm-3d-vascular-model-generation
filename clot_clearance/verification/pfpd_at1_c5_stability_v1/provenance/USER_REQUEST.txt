@@ -1,0 +1,2048 @@
+你正在继续开发 clot CFD–PD 项目。
+
+本轮任务名称：
+
+    PFPD_AT1_C5_STABILITY_V1
+
+============================================================
+0. 当前开发基线
+============================================================
+
+首先记录：
+
+    git rev-parse --show-toplevel
+    git rev-parse HEAD
+    git status --short
+
+当前已经确认：
+
+SVK_SPECTRAL_SPLIT:
+    VERIFIED
+
+MIXED_STRAIN_MECHANICS:
+    VERIFIED
+
+AT1 DRIVER:
+    Y = Psi_plus
+
+C5 S0 KKT ACTIVATION:
+    BRACKETED
+
+activation bracket:
+    [0.004497343750,
+     0.004497421875]
+
+diagnostic weak point:
+    epsilon ≈ 0.004497390736212
+
+FIRST C5 ACTIVATION:
+    2 / 5392 bonds
+
+activation bond IDs:
+    4488
+    5059
+
+PETSC RSLS ADAPTER:
+    VERIFIED
+
+PETSC RSLS C5:
+    VERIFIED
+
+FIRST POSITIVE ROOT:
+    RECOVERED AUTOMATICALLY
+
+ORIGINAL OLD FAILURE LOAD:
+    RECOVERED
+
+C5 ORACLE ROOTS:
+    7 / 7 PASSED
+
+ACTIVE SET DISCOVERY:
+    AUTOMATIC
+
+FORMAL C5 STATIONARY SOLVER:
+    VERIFIED_CANDIDATE
+
+PETSC SSLS:
+    DIFFICULT
+
+C5 STABILITY:
+    NOT YET ASSESSED
+
+C7 STABILITY:
+    NOT RUN
+
+PRODUCTION:
+    UNCHANGED
+
+当前测试基线：
+
+    368 passed
+    3 known failed
+    0 skipped
+
+原3个 known failures
+必须保持：
+
+- same IDs
+- same messages
+- same tracebacks
+- no xfail
+- no skip
+- no weakened assertion
+
+============================================================
+1. 本轮唯一科学问题
+============================================================
+
+回答：
+
+    C5 positive-phase stationary branch
+    第一次何时失去局部变分稳定性？
+
+必须明确区分：
+
+1. lower-bound AT1 activation
+2. stationary equilibrium
+3. local variational stability
+4. nonlinear solver convergence
+
+它们不是同一个事件。
+
+本轮特别回答：
+
+    C5 在约 0.449739% strain
+    phase 首次局部开启以后，
+
+是：
+
+A.
+    immediately unstable
+
+还是：
+
+B.
+    stable positive-phase branch exists
+    before a later stability loss
+
+还是：
+
+C.
+    remains stable throughout
+    the audited load window
+
+还是：
+
+D.
+    stability cannot be resolved
+    because of nonsmoothness /
+    numerical uncertainty.
+
+============================================================
+2. 不改变任何 physics
+============================================================
+
+保持：
+
+physical cube:
+    0.25 mm
+
+boundary-node conservative quadrature
+
+physical horizon:
+    delta = 0.25125 mm
+
+SVK
+
+spectral Psi+/Psi-
+
+Gc_demo
+
+Yc
+
+AT1
+
+g(s)=(1-s)^2
+
+h(s)=1
+
+sc=0.95
+
+irreversibility
+
+PETSc RSLS stationary solver
+
+force tolerance:
+    1e-9
+
+projected KKT tolerance:
+    1e-8
+
+所有原 safety checks。
+
+禁止：
+
+- 改 Gc
+- 改 Yc
+- 改 spectral split
+- 改 phase law
+- 改 g
+- 改 h
+- 改 sc
+- 加 viscosity
+- 加 residual stiffness
+- 改 geometry
+- 改 horizon
+- 改 PETSc tolerance
+- 换 stationary solver
+- 用 SSLS 替代 RSLS
+- 为得到稳定结果调 load step
+
+============================================================
+3. 保护历史成果
+============================================================
+
+保护至少：
+
+verification/pfpd_at1_petsc_vi_solver_v1/
+verification/pfpd_at1_c5_activation_stationarity_audit_v1/
+verification/pfpd_at1_spectral_split_v1/
+verification/pfpd_at1_branch_stability_tracking_v1/
+verification/pfpd_at1_coupling_stability_audit_v1/
+
+及全部历史 results。
+
+新建：
+
+verification/pfpd_at1_c5_stability_v1/
+
+results/pfpd_at1_c5_stability_v1/
+
+开始：
+
+    PRE_RUN_MANIFEST.json
+
+结束：
+
+    POST_RUN_MANIFEST.json
+    PRESERVATION_CHECK.json
+
+要求：
+
+production modified files = 0
+historical modified files = 0
+existing tests modified = 0
+
+============================================================
+4. 不重复求已有 C5 stationary roots
+============================================================
+
+优先直接读取：
+
+results/pfpd_at1_petsc_vi_solver_v1/
+
+已有 PETSc accepted roots。
+
+必须使用这些状态：
+
+S0_LAST:
+    last intact / strong-lower state
+    just below activation bracket
+
+S_WEAK:
+    diagnostic weak point
+    epsilon ≈ 0.004497390736212
+    s=0
+
+S1:
+    epsilon = 0.004498390736
+
+S2:
+    epsilon = 0.004499390736
+
+S3:
+    epsilon = 0.004502390736
+
+S4:
+    epsilon = 0.004507390736
+
+S5:
+    epsilon = 0.004514117556
+
+S6:
+    epsilon = 0.004517390736
+
+S7:
+    epsilon = 0.004547390736
+
+读取后先检查：
+
+force
+KKT
+bounds
+irreversibility
+energy
+reaction
+max phase
+
+与上一轮 summary 一致。
+
+如果 checksum / state mismatch：
+
+STOP。
+
+    SAVED_STATIONARY_STATE_MISMATCH
+
+不要静默重算替代。
+
+============================================================
+5. 稳定性使用物理总能量
+============================================================
+
+不要使用：
+
+PETSc VI residual Jacobian
+
+作为 stability Hessian。
+
+定义固定 prescribed displacement 下：
+
+    Pi(x,s)
+      =
+      U_elastic(x,s)
+      +
+      E_crack(s)
+
+其中：
+
+U_elastic:
+    sum BAQP weights *
+    [
+      g(s_b) Psi_plus(F_b)
+      +
+      Psi_minus(F_b)
+    ]
+
+E_crack:
+    sum BAQP weights *
+    [
+      Gc/(c0*delta) * s_b
+    ]
+
+必须复用当前正式：
+
+- BAQP weights
+- orientation convention
+- energy double-counting convention
+- spectral split
+- boundary mapping
+
+不要复制第二套能量实现。
+
+============================================================
+6. displacement-controlled stability
+============================================================
+
+当前 top/bottom displacement prescribed。
+
+因此对 local stability：
+
+prescribed boundary DOF
+不进入 variation。
+
+无需额外加入：
+
+    - external force potential
+
+因为 displacement boundary
+保持固定。
+
+自由变量：
+
+    x_free
+    s_admissible
+
+============================================================
+7. 统一无量纲 scaling
+============================================================
+
+优先读取前一 stability audit
+已经使用的 scaling。
+
+如不存在可复用配置：
+
+定义一次：
+
+length scale:
+
+    Ls = physical cube length * 0.01
+
+phase scale:
+
+    Ss = 1
+
+energy scale:
+
+    Es = Gc_demo * L^2
+
+所有 C5 states
+使用同一个 scale。
+
+保存：
+
+    SCALING.json
+
+禁止逐 state 调 scale。
+
+============================================================
+8. 每个状态重新分类 phase 约束
+============================================================
+
+phase lower bound：
+
+    s_lower =
+      previous accepted load state's s
+
+对于 activation weak point：
+
+    lower = 0
+
+对于正式 PETSc branch：
+
+    使用真实前一个 accepted
+    continuation state。
+
+分类：
+
+STRONG_LOWER
+
+    |s-lower| <= s_tol
+    AND
+    q_scaled > q_tol
+
+WEAK_LOWER
+
+    |s-lower| <= s_tol
+    AND
+    |q_scaled| <= q_tol
+
+INTERIOR
+
+    s > lower+s_tol
+    AND
+    s < sc-s_tol
+
+WEAK_UPPER
+
+    |s-sc| <= s_tol
+    AND
+    |q_scaled| <= q_tol
+
+STRONG_UPPER
+
+    |s-sc| <= s_tol
+    AND
+    q_scaled < -q_tol
+
+使用之前 KKT audit
+已经确定的：
+
+s_tol
+q_tol
+
+不要重新调。
+
+============================================================
+9. Critical cone
+============================================================
+
+允许 variation：
+
+mechanical free DOF:
+
+    dx arbitrary
+
+STRONG_LOWER:
+
+    ds = 0
+
+WEAK_LOWER:
+
+    ds >= 0
+
+INTERIOR:
+
+    ds arbitrary
+
+WEAK_UPPER:
+
+    ds <= 0
+
+STRONG_UPPER:
+
+    ds = 0
+
+记录每个 state：
+
+N strong lower
+N weak lower
+N interior
+N weak upper
+N strong upper
+
+============================================================
+10. 只在 critical phase subset 建二阶系统
+============================================================
+
+定义：
+
+    Pcrit =
+        WEAK_LOWER
+        + INTERIOR
+        + WEAK_UPPER
+
+m = len(Pcrit)
+
+强 bound phase variables
+不进入 reduced Hessian。
+
+记录：
+
+    m
+
+预计 early C5
+远小于5392。
+
+禁止：
+
+构造5392×5392
+dense phase Hessian。
+
+============================================================
+11. Hxx mechanical block
+============================================================
+
+自由机械 DOF：
+
+    225
+
+构造物理能量 Hessian：
+
+    Hxx =
+      d²Pi/dx²
+
+225×225 dense 可以接受。
+
+优先复用：
+
+前一 coupling-stability audit
+中的 physical-energy Hessian machinery，
+
+适配 spectral split。
+
+不要使用 PETSc stationary
+scaled Jacobian替代。
+
+============================================================
+12. Hxx 计算方法
+============================================================
+
+优先使用：
+
+    finite difference of physical
+    mechanical energy gradient
+
+即：
+
+    grad_x Pi =
+      - physical internal force
+      on free coordinates
+
+不要对 total scalar energy
+做225²次直接二阶差分。
+
+每一个 displacement column
+可独立：
+
+    [grad_x(x+eps e_j)
+     -
+     grad_x(x-eps e_j)]
+    /(2eps)
+
+三档 epsilon：
+
+沿用 previous validated
+dimensionless values。
+
+============================================================
+13. Hxx CPU 并行
+============================================================
+
+225 independent columns
+是本轮最适合利用 CPU 的部分。
+
+使用：
+
+    ProcessPoolExecutor
+
+动态选择：
+
+max_workers =
+    min(
+      physical_cores - 2,
+      memory_safe_workers
+    )
+
+当前服务器历史上：
+
+12 physical / 24 logical
+
+预计使用：
+
+8~10 workers
+
+但必须重新检测。
+
+每 worker：
+
+OPENBLAS_NUM_THREADS=1
+OMP_NUM_THREADS=1
+MKL_NUM_THREADS=1
+
+保留：
+
+>=2 physical cores
+>=20% RAM
+
+不要同时开：
+PETSc MPI ranks × process workers。
+
+Hessian assembly：
+
+    single PETSc rank
+    multiple independent Python workers
+
+优先。
+
+============================================================
+14. Hxx symmetry / FD scale gate
+============================================================
+
+每 state：
+
+记录：
+
+raw asymmetry:
+
+    ||H-H.T|| / ||H||
+
+symmetrize only after
+raw error documented：
+
+    Hsym =
+      0.5*(H+H.T)
+
+三档 FD epsilon
+分别得到：
+
+lambda_min(Hxx)
+
+要求：
+
+- sign 一致
+- relative magnitude reasonably converged
+- raw asymmetry below declared tolerance
+
+否则：
+
+    HXX_UNRESOLVED
+
+该 state 不做最终 stability classification。
+
+============================================================
+15. Hxx direct curvature oracle
+============================================================
+
+至少：
+
+10 deterministic random
+mechanical directions v
+
+比较：
+
+    v.T @ Hxx @ v
+
+与：
+
+    [
+      Pi(x+eps v)
+      -2Pi(x)
+      +Pi(x-eps v)
+    ] / eps²
+
+三档 eps。
+
+主要检查：
+
+sign consistency
+
+和前一 Hessian audit
+相同数量级误差。
+
+============================================================
+16. mechanical subsystem 先判断
+============================================================
+
+使用：
+
+    scipy.linalg.eigh
+
+得到：
+
+lambda_x_min
+
+若：
+
+    lambda_x_min < -curvature_tol
+
+则 full coupled system
+已经存在机械负曲率。
+
+状态：
+
+    UNSTABLE_MECHANICAL_MODE
+
+无需 Schur complement
+就可判 unstable。
+
+保存 mechanical mode。
+
+如果：
+
+    lambda_x_min > mechanical_positive_tol
+
+则 Hxx SPD，
+进入 mechanical condensation。
+
+若接近0：
+
+    MECHANICAL_MARGINAL
+    stability = UNRESOLVED
+
+============================================================
+17. Hss analytic phase block
+============================================================
+
+当前 h=1，
+固定 x 时：
+
+elastic phase energy：
+
+    g(s) Psi_plus
+
+其中：
+
+    g(s)=(1-s)^2
+
+所以：
+
+    d²Pi/ds_b²
+      =
+      2 * W_b * Psi_plus_b
+
+AT1 crack term：
+
+    linear in s
+
+二阶贡献：
+
+    0
+
+因此 Pcrit 上：
+
+    Hss
+
+为当前 energy convention下
+对应的局部 diagonal block。
+
+必须从正式 integration weights
+生成。
+
+禁止另写经验系数。
+
+============================================================
+18. Hss verification
+============================================================
+
+选择：
+
+- first positive root
+- old failure root
+- last existing root
+
+对 Pcrit phase variables
+做：
+
+analytic Hss diagonal
+
+vs
+
+physical-energy phase gradient
+finite difference。
+
+三档 epsilon。
+
+若不一致：
+
+STOP。
+
+    HSS_ANALYTIC_GATE_FAILED
+
+============================================================
+19. Cross block Hxs / Hsx
+============================================================
+
+仅对：
+
+m critical phase variables
+
+计算：
+
+    Hxs:
+      225 × m
+
+    Hsx:
+      m × 225
+
+优先用：
+
+physical-gradient FD。
+
+例如：
+
+对每个 critical phase j：
+
+    Hxs[:,j]
+      =
+      d(grad_x Pi)/ds_j
+
+对 displacement columns
+可复用已计算的：
+
+    d(grad_s Pi)/dx
+
+若已有验证实现。
+
+记录：
+
+    ||Hxs-Hsx.T|| / norm
+
+达到 symmetry tolerance。
+
+============================================================
+20. 不对5392 phase columns并行
+============================================================
+
+只计算 Pcrit。
+
+如果某 state：
+
+m unexpectedly large
+
+例如：
+
+m > 512
+
+不要自动开巨大 Hessian campaign。
+
+记录：
+
+    LARGE_CRITICAL_PHASE_SET
+
+并切换 matrix-free phase condensation
+或停止等待人工审核。
+
+early C5 不预计发生。
+
+============================================================
+21. Mechanical condensation
+============================================================
+
+如果 Hxx SPD：
+
+一次：
+
+    scipy.linalg.cho_factor(Hxx)
+
+随后：
+
+    X =
+      solve(Hxx, Hxs)
+
+用：
+
+    cho_solve
+
+形成：
+
+    S =
+      Hss
+      -
+      Hsx @ X
+
+不要：
+
+    inv(Hxx)
+
+记录：
+
+Cholesky time
+m
+S memory
+cond(Hxx)
+
+============================================================
+22. 为什么 Schur complement 有物理意义
+============================================================
+
+对于给定 phase variation p，
+
+mechanics 会选择最有利的松弛：
+
+    u*
+      =
+      -Hxx^{-1} Hxs p
+
+代回后最小二阶变化：
+
+    p.T S p
+
+因此 S 判断的是：
+
+    phase opening
+    + 最优 mechanical relaxation
+
+的 coupled stability。
+
+报告中必须用普通语言解释这一点。
+
+============================================================
+23. Interior-only state
+============================================================
+
+若 Pcrit 全部为 INTERIOR：
+
+普通对称 eigenproblem：
+
+    scipy.linalg.eigh(S)
+
+若：
+
+lambda_S_min < -tol:
+
+    unstable
+
+> +tol:
+
+    stable
+
+near zero:
+
+    marginal / unresolved
+
+恢复 coupled mode：
+
+    p = eigenvector
+    u =
+      -Hxx^{-1} Hxs p
+
+============================================================
+24. Weak lower critical cone
+============================================================
+
+若存在 WEAK_LOWER：
+
+必须满足：
+
+    p_i >= 0
+
+对于 WEAK_UPPER：
+
+    p_i <= 0
+
+INTERIOR：
+
+    free
+
+因此普通 minimum eigenvector
+只有在满足 sign constraints
+时才可直接用。
+
+============================================================
+25. 快速稳定证明
+============================================================
+
+如果完整 unconstrained：
+
+    lambda_min(S) > +tol
+
+那么所有子锥方向
+也为正。
+
+可直接：
+
+    STABLE
+
+无需 constrained optimizer。
+
+这是最便宜、
+最强的 stable certificate。
+
+============================================================
+26. 快速不稳定证明
+============================================================
+
+如果 unconstrained minimum mode
+经全局 sign flip 后
+满足所有 cone sign constraints：
+
+并且：
+
+    p.T S p < -tol
+
+则：
+
+    VERIFIED_NEGATIVE_CONE_MODE
+
+直接 UNSTABLE。
+
+============================================================
+27. constrained witness search
+============================================================
+
+只有上一快捷方式
+无法决定时运行。
+
+目标：
+
+    minimize
+      p.T S p
+
+subject to：
+
+    ||p||² = 1
+
+    p_i >= 0
+        for weak lower
+
+    p_i <= 0
+        for weak upper
+
+interior free。
+
+使用成熟：
+
+    scipy.optimize.minimize
+
+优先：
+
+    SLSQP
+
+最多：
+
+    16 deterministic starts
+
+初值：
+
+- projected lowest eigenvector
+- global sign flip
+- uniform weak opening
+- each weak unit basis if m small
+- deterministic feasible random
+- current phase-growth direction
+
+只需要找到：
+
+    objective < -tol
+
+就足以证明 unstable。
+
+没找到不能自动证明 stable。
+
+============================================================
+28. full mode recovery
+============================================================
+
+每个 negative phase witness p：
+
+恢复：
+
+    u =
+      -Hxx^{-1}Hxs p
+
+形成：
+
+    v = [u,p]
+
+按统一无量纲 norm
+归一化。
+
+检查：
+
+- phase cone feasible
+- fixed boundary respected
+- no strong-bound phase motion
+
+============================================================
+29. 物理能量 directional verification
+============================================================
+
+任何用于最终分类的 mode：
+
+直接重新评价正式物理能量。
+
+使用 amplitude：
+
+    1e-6
+    3e-6
+    1e-5
+
+基于无量纲 variable scale。
+
+若双向 admissible：
+
+    ±alpha
+
+若 one-sided：
+
+    only admissible alpha
+
+比较：
+
+    Delta Pi
+
+与：
+
+    0.5 alpha² v.T H v
+
+至少要求：
+
+curvature sign
+across valid amplitudes
+consistent。
+
+否则：
+
+    DIRECTIONAL_CURVATURE_UNRESOLVED
+
+不能判 unstable。
+
+============================================================
+30. spectral-split nonsmooth audit
+============================================================
+
+由于 Psi+ 使用 principal Green strain signs，
+
+每个 state 先记录：
+
+minimum absolute principal Green strain
+number of BAQP states with
+    |principal Green strain| < spectral_tol
+
+每个 curvature probe：
+
+比较 perturbation 前后
+principal-sign pattern。
+
+如果 alpha perturbation
+跨越 spectral split switching：
+
+标记：
+
+    SPECTRAL_SWITCH_DURING_PROBE
+
+该 amplitude 不用于
+普通 centered Hessian validation。
+
+使用更小 alpha
+或 one-sided directional energy。
+
+禁止引入平滑正负函数。
+
+============================================================
+31. 第一轮只分析现有 states
+============================================================
+
+严格先完成：
+
+S0_LAST
+S_WEAK
+S1
+S2
+S3
+S4
+S5
+S6
+S7
+
+不要在已有 states
+全部分类前扩展 branch。
+
+这是本轮避免冗余计算的重点。
+
+============================================================
+32. 预声明结果分类
+============================================================
+
+每个 state：
+
+STATIONARY_STABLE
+
+STATIONARY_UNSTABLE
+
+STATIONARY_MARGINAL
+
+STABILITY_UNRESOLVED
+
+并保存：
+
+force residual
+KKT
+active counts
+lambda_x_min
+m
+lambda_S_min if defined
+best feasible Rayleigh
+curvature FD status
+spectral nonsmooth status
+
+============================================================
+33. Activation 和 stability 的关系
+============================================================
+
+定义：
+
+activation bracket:
+
+    [0.004497343750,
+     0.004497421875]
+
+如果：
+
+S0_LAST stable
+
+AND
+
+S_WEAK unstable
+
+则：
+
+    STABILITY_LOSS_COINCIDENT_WITH_ACTIVATION
+    WITHIN_CURRENT_RESOLUTION
+
+如果：
+
+S_WEAK stable
+AND
+one or more positive roots stable
+
+则：
+
+    STABLE_POSITIVE_PHASE_BRANCH_EXISTS
+
+继续向上寻找 first instability。
+
+============================================================
+34. 若已有7 roots 内出现 stable -> unstable
+============================================================
+
+立即找到最邻近：
+
+lower verified stable
+
+upper verified unstable
+
+不要再扩展 branch。
+
+进入 bracket refinement。
+
+============================================================
+35. 若现有7 roots 全部 stable
+============================================================
+
+才允许继续 PETSc RSLS branch。
+
+从：
+
+epsilon =
+    0.004547390736
+
+开始。
+
+coarse continuation：
+
+    Delta epsilon = 2.5e-5
+
+最多到：
+
+    epsilon = 0.0060
+
+或：
+
+    max(s) >= 0.10
+
+或：
+
+    first verified unstable state
+
+三者哪个先发生就停止。
+
+不要跑到0.009或0.01。
+
+============================================================
+36. 新 branch states 的 stationarity
+============================================================
+
+只能使用：
+
+    PETSc SNESVINEWTONRSLS
+
+1 MPI rank
+因为上一轮 benchmark
+证明本机1 rank最快。
+
+每个新 state：
+
+initial x,s =
+    previous accepted PETSc state
+
+lower phase =
+    previous accepted s
+
+只有：
+
+force <= 1e-9
+KKT <= 1e-8
+bounds
+inactive inequalities
+irreversibility
+finite positive J
+safety
+
+全部通过才做 Hessian。
+
+============================================================
+37. stability bracket refinement
+============================================================
+
+一旦有：
+
+epsilon_L:
+    verified stable
+
+epsilon_U:
+    verified unstable
+
+使用 midpoint：
+
+    epsilon_M =
+      (epsilon_L+epsilon_U)/2
+
+每个 midpoint：
+
+从 lower stable branch state
+PETSc RSLS continuation得到。
+
+不要从 upper unstable
+反向加载 phase。
+
+目标：
+
+    bracket width <= 1e-6
+    engineering strain
+
+或：
+
+    maximum 10 refinements
+
+哪个先到。
+
+============================================================
+38. non-smooth bracket
+============================================================
+
+如果 stable/unstable切换同时伴随：
+
+- active set change
+- spectral split switch
+- unilateral cone change
+
+不要使用 brentq
+假设 smooth lambda(epsilon)。
+
+输出：
+
+    NONSMOOTH_STABILITY_BRACKET
+
+以及：
+
+    [epsilon_L,epsilon_U]
+
+============================================================
+39. 结果必须与 C3 分开解释
+============================================================
+
+历史 C3：
+
+activation ~1%
+all 185 bonds switch
+stability loss ≈ activation
+
+本轮只引用历史数据。
+
+不要重新跑 C3。
+
+最终比较：
+
+C3 activation pattern
+
+vs
+
+C5 activation pattern
+
+以及：
+
+C3 activation-to-instability relation
+
+vs
+
+C5 relation
+
+但禁止：
+
+    infer continuum convergence
+
+因为 C7 还没完成。
+
+============================================================
+40. mode spatial map
+============================================================
+
+若 C5 找到 verified unstable mode：
+
+bond phase component
+聚合到 particles。
+
+显示：
+
+phase-opening amplitude
+
+和：
+
+mechanical displacement-mode magnitude
+
+相同 physical cube coordinates。
+
+醒目标：
+
+    NUMERICAL / VARIATIONAL
+    STABILITY MODE
+
+    NOT PHYSICAL CRACK PREDICTION
+
+标：
+top / bottom clamp
+
+============================================================
+41. localization metric
+============================================================
+
+如果有 unstable phase mode：
+
+计算：
+
+participation ratio
+
+    PR =
+      (sum a_i²)²
+      /
+      (N sum a_i⁴)
+
+以及：
+
+top10 amplitude fraction
+
+center of amplitude
+
+distance to clamp
+
+只作为：
+
+mode localization diagnostic。
+
+不要叫 crack width。
+
+============================================================
+42. CPU 资源
+============================================================
+
+本轮真正昂贵的是：
+
+Hxx / cross-column finite differences。
+
+PETSc continuation 是串行。
+
+Hessian column evaluations
+可充分利用 CPU。
+
+开始检测：
+
+physical cores
+logical cores
+available RAM
+
+默认：
+
+BLAS/OMP/MKL = 1
+
+Hessian pool：
+
+建议：
+
+8~10 workers
+
+动态由内存决定。
+
+至少：
+
+2 physical cores free
+20% RAM free
+
+每 state 完成后：
+
+立即保存 Hxx/Hxs/cache。
+
+如果 crash：
+可 resume，
+不要重算已完成 states。
+
+============================================================
+43. GPU
+============================================================
+
+上一轮：
+
+PETSc build 无 CUDA/Kokkos/HIP。
+
+本轮不重新编 GPU PETSc。
+
+如果当前环境仍无
+已验证 CuPy/JAX/Torch backend：
+
+    GPU = NOT USED
+
+不要花时间
+为了本轮 Hessian 加速
+安装新 CUDA stack。
+
+C5机械 DOF只有225，
+CPU列并行足够。
+
+============================================================
+44. 缓存策略
+============================================================
+
+为每个 state 使用 hash：
+
+coordinates
+phase
+load
+physics config
+scaling
+
+缓存：
+
+energy
+gradient
+Hxx columns
+Hxs columns
+Hss
+factorization metadata
+
+路径：
+
+results/pfpd_at1_c5_stability_v1/cache/
+
+若 hash 一致：
+复用。
+
+禁止根据 filename alone复用。
+
+============================================================
+45. 不需要重复的验证
+============================================================
+
+本轮禁止重跑：
+
+- PETSc RSLS 7-root regression
+- SSLS comparison
+- MPI benchmark
+- pfm-cracks review
+- spectral split tensor verification
+- PhaseFieldX oracle
+- C5 activation bracket
+- C5 activation spatial map
+- legacy 35-state audit
+- C3 Hessian campaign
+- C7 intact campaign
+- C7 smoke
+- Griffith normalization
+- c0 normalization
+
+全部读取历史结果。
+
+============================================================
+46. 新增测试
+============================================================
+
+开始一次：
+
+    pytest tests -q
+
+开发中只 targeted。
+
+结束一次 full suite。
+
+新增建议：
+
+tests/test_c5_physical_hessian.py
+tests/test_c5_schur_stability.py
+tests/test_c5_critical_cone.py
+tests/test_c5_stability_bracket.py
+
+至少：
+
+TEST 1
+physical energy gradient matches
+mechanical force convention
+
+TEST 2
+Hxx symmetry
+
+TEST 3
+Hxx directional curvature
+
+TEST 4
+analytic Hss diagonal
+vs FD
+
+TEST 5
+Hxs/Hsx reciprocity
+
+TEST 6
+Schur complement equals
+direct coupled curvature
+on small deterministic vectors
+
+TEST 7
+strong lower excluded
+
+TEST 8
+weak lower nonnegative cone
+
+TEST 9
+interior phase unrestricted
+
+TEST 10
+negative witness feasibility
+
+TEST 11
+negative witness direct-energy confirmation
+
+TEST 12
+unconstrained-positive S
+certifies stable cone
+
+TEST 13
+spectral switching detector
+
+TEST 14
+bracket refinement preserves irreversibility
+
+TEST 15
+saved PETSc roots remain unchanged
+
+TEST 16
+production unchanged
+
+原3 known failures
+保持不变。
+
+============================================================
+47. 只生成有决策价值的图
+============================================================
+
+最多6组。
+
+------------------------------------------------------------
+FIGURE 1
+c5_stability_vs_strain
+
+横轴：
+engineering strain
+
+纵轴：
+minimum coupled curvature
+
+显示：
+
+- Hxx minimum if mechanical instability
+- Schur / feasible cone witness
+
+标：
+
+activation bracket
+
+stable / unstable / unresolved
+
+不要 spline。
+
+人工问题：
+
+“activation 后何时第一次失稳？”
+
+------------------------------------------------------------
+FIGURE 2
+phase_activation_vs_stability
+
+上：
+max s
+
+下：
+number of interior/weak phase bonds
+
+标：
+
+activation interval
+stability-loss interval
+
+人工问题：
+
+“phase 开始增长和 instability 是同一个事件吗？”
+
+------------------------------------------------------------
+FIGURE 3
+energy_along_mode
+
+如果找到 bracket：
+
+左：
+last stable state
+
+右：
+first unstable state
+
+横轴：
+mode amplitude
+
+纵轴：
+Delta Pi
+
+显示 quadratic reference。
+
+人工问题：
+
+“局部谷底什么时候变成向下方向？”
+
+------------------------------------------------------------
+FIGURE 4
+critical_mode_map
+
+如果有 verified unstable mode：
+
+phase aggregation
+mechanical magnitude
+
+明确：
+
+NOT PHYSICAL CRACK PREDICTION
+
+------------------------------------------------------------
+FIGURE 5
+stationarity_quality
+
+只画实际做 stability 的 states：
+
+force residual
+KKT residual
+
+证明：
+
+稳定分类不是
+stationary error造成。
+
+------------------------------------------------------------
+FIGURE 6
+c3_vs_c5_summary
+
+只使用历史 C3 data + 本轮 C5。
+
+简单比较：
+
+activation strain
+activation fraction
+stability-loss strain
+
+明确：
+
+NO C7 / NO CONVERGENCE CLAIM
+
+============================================================
+48. REVIEW 报告
+============================================================
+
+生成：
+
+verification/pfpd_at1_c5_stability_v1/
+    REVIEW_C5_STABILITY_V1.md
+
+要求普通人可读。
+
+结构：
+
+1. 为什么现在终于可以研究 stability
+
+2. stationary 与 stable 的区别
+
+3. 什么是 Hessian / curvature
+
+4. 为什么只分析真正可动的 phase directions
+
+5. 为什么 mechanical condensation 能省很多计算
+
+6. activation point 是否稳定
+
+7. first positive root 是否稳定
+
+8. positive-phase branch 能稳定多久
+
+9. 第一次 instability interval
+
+10. unstable mode 在哪里
+
+11. 是否靠近 clamp
+
+12. C3 vs C5 有什么本质变化
+
+13. tests
+
+14. CPU/GPU/计算时间
+
+15. 当前 scientific status
+
+16. 唯一下一步
+
+============================================================
+49. 最终状态标签
+============================================================
+
+最终必须：
+
+C5_STABILITY_AUDIT:
+    COMPLETE / INCOMPLETE
+
+PHYSICAL_HESSIAN:
+    VERIFIED / NOT_VERIFIED
+
+MECHANICAL_SUBSYSTEM:
+    STABLE
+    / UNSTABLE
+    / MARGINAL
+    / UNRESOLVED
+
+ACTIVATION_POINT_STABILITY:
+    STABLE
+    / UNSTABLE
+    / UNRESOLVED
+
+FIRST_POSITIVE_ROOT_STABILITY:
+    STABLE
+    / UNSTABLE
+    / UNRESOLVED
+
+STABLE_POSITIVE_PHASE_BRANCH:
+    EXISTS
+    / NOT_DETECTED
+    / INCONCLUSIVE
+
+FIRST_STABILITY_LOSS:
+    BRACKETED
+    / NOT_FOUND_IN_WINDOW
+    / UNRESOLVED
+
+STABILITY_LOSS_INTERVAL:
+    [value,value]
+    / NOT_AVAILABLE
+
+STABILITY_LOSS_RELATIVE_TO_ACTIVATION:
+    COINCIDENT_WITHIN_RESOLUTION
+    / AFTER_ACTIVATION
+    / BEFORE_DETECTABLE_POSITIVE_PHASE
+    / INCONCLUSIVE
+
+CRITICAL_MODE:
+    RESOLVED
+    / UNRESOLVED
+    / NOT_AVAILABLE
+
+MODE_LOCALIZATION:
+    DIFFUSE
+    / LOCALIZED
+    / BOUNDARY_ASSOCIATED
+    / INCONCLUSIVE
+
+PETSC_RSLS:
+    UNCHANGED_VERIFIED_CANDIDATE
+
+C7:
+    NOT RUN
+
+SPATIAL_CONVERGENCE:
+    NOT YET ASSESSED
+
+PRODUCTION:
+    UNCHANGED
+
+============================================================
+50. 最低验收标准
+============================================================
+
+要宣布：
+
+C5_STABILITY_AUDIT:
+    COMPLETE
+
+至少：
+
+- existing PETSc states loaded and verified
+- physical-energy Hxx passes FD gate
+- Hss analytic gate passes
+- cross-block symmetry acceptable
+- every final stable/unstable claim
+  has physical-energy directional verification
+- no classification based solely on solver residual
+- all historical states preserved
+- full tests retain same3 known failures
+
+要宣布：
+
+FIRST_STABILITY_LOSS:
+    BRACKETED
+
+必须：
+
+lower = verified stable
+upper = verified unstable
+
+且：
+
+width <= 1e-6
+
+或若 nonsmooth event：
+
+明确记录无法继续缩窄的
+constraint/spectral switch。
+
+============================================================
+51. 禁止过度结论
+============================================================
+
+禁止：
+
+    critical mode = crack
+
+禁止：
+
+    C5 instability = real clot failure
+
+禁止：
+
+    C5 result proves mesh convergence
+
+禁止：
+
+    activation = instability
+    除非本轮证据支持
+
+禁止：
+
+    no negative witness = stable
+
+禁止：
+
+    PETSc stationary convergence = stability
+
+============================================================
+52. 最终终端摘要
+============================================================
+
+最终只输出：
+
+- repository / HEAD
+- production files modified
+- historical files modified
+- baseline tests
+- final tests
+- states analyzed
+- activation bracket
+- per-state:
+    strain
+    force
+    KKT
+    strong/weak/interior count
+    lambda_min Hxx
+    critical phase dimension m
+    lambda_min unconstrained S
+    best feasible Rayleigh
+    stability classification
+- first stable positive root
+- first unstable root
+- stability bracket
+- bracket width
+- max s at stability loss
+- active bond count at stability loss
+- critical mode PR
+- critical mode top10 fraction
+- distance of mode center to clamp
+- total Hessian assembly wall time
+- peak RAM
+- GPU used yes/no
+- C5_STABILITY_AUDIT
+- REVIEW_C5_STABILITY_V1.md
+- figures directory
+
+不要只输出：
+
+    audit complete
+
+============================================================
+53. 完成后停止
+============================================================
+
+不要自动进入：
+
+C7 coupled branch
+C7 stability
+C5 post-instability continuation
+arc-length
+branch switching
+h(s)<1
+Ogden
+viscoelasticity
+wall adhesion
+real clot Gc
+erosion coupling
+fatigue
+real CFD
+
+等待人工审核。

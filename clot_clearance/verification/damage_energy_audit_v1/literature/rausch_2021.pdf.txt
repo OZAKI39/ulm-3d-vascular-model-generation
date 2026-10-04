@@ -1,0 +1,1285 @@
+
+=== PDF PAGE 1 ===
+Vol.:(0123456789)1 3
+Biomechanics and Modeling in Mechanobiology (2021) 20:1645–1657 
+https://doi.org/10.1007/s10237-021-01467-z
+ORIGINAL PAPER
+Hyper‑viscoelastic damage modeling of whole blood clot under large 
+deformation
+Manuel K. Rausch2  · Gabriella P . Sugerman2 · Sotirios Kakaletsis1 · Berkin Dortdivanlioglu3,4
+Received: 2 February 2021 / Accepted: 15 May 2021 / Published online: 2 June 2021 
+© The Author(s), under exclusive licence to Springer-Verlag GmbH Germany, part of Springer Nature 2021
+Abstract
+Blood clots play a diametric role in our bodies as they are both vital as a wound sealant, as well as the source for many dev-
+astating diseases. In blood clots’ physiological and pathological roles, their mechanics play a critical part. These mechanics 
+are non-trivial owing to blood clots’ complex nonlinear, viscoelastic behavior. Casting this behavior into mathematical form 
+is a fundamental step toward a better basic scientific understanding of blood clots, as well as toward diagnostic and prognostic 
+computational models. Here, we identify a hyper-viscoelastic damage model that we fit to original data on the nonlinear, 
+viscoelastic behavior of blood clots. Our model combines the classic Ogden hyperelastic constitutive law, a finite viscoe -
+lastic model for large deformations, and a non-local, gradient-enhanced damage formulation. By fitting our model to cyclic 
+tensile test data and extension-to-failure data, we inform the model’s nine unknown material parameters. We demonstrate 
+the predictability of our model by validating it against unseen cyclic tensile test and stress-relaxation data. Our original data, 
+model formulation, and the identified constitutive parameters of this model are openly available for others to use, which will 
+aid in developing accurate, quantitative simulations of blood clot mechanics.
+Keywords Nonlocal damage · Finite viscoelasticity · Thrombus · Finite element
+1 Introduction
+Blood clots play a diametric role in our bodies. On one 
+hand, blood clots form at the site of vascular injury to pre-
+vent hemorrhage (Esmon 2009 ). On the other hand, blood 
+clots may also form within our vasculature where they can 
+emobolize and occlude blood flow to vital organs causing 
+devastating diseases such as heart attacks, strokes, and pul-
+monary embolisms (Wendelboe and Raskob 2016). Under -
+standing blood clots’ mechanical properties is critical to 
+understanding both of these roles. For instance, the ability of 
+a clot to undergo very large deformations and resist fracture 
+is important to its role as a wound sealant (Sugerman et al. 
+2020a). Similarly, blood clots’ ability (or inability) to resist 
+hemodynamic forces critically determines whether throm-
+bus embolizes and causes aforementioned deadly diseases 
+(Tutwiler et al. 2020).
+Because of the physiological and pathological importance 
+of blood clots, numerous studies have investigated blood clot 
+mechanics, which have been excellently reviewed by oth -
+ers (Johnson et al. 2017). To provide context for this work, 
+we provide a brief overview below. Blood clots are highly 
+hydrated, composite biomaterials comprised of formed ele-
+ments, red blood cells and platelets, within a fibrin biopoly-
+mer network (Cines et al. 2014; Gersh et al. 2009). This 
+composition leads to a highly deformable, soft, initially 
+isotropic material that exhibits a negative Poynting effect, 
+i.e., contraction under shear (Di Martino et al. 1998; Suger-
+man et al. 2020a). Additionally, the material is viscoelastic 
+such that its mechanics are strain-rate dependent, exhibit 
+hysteresis, Mullin’s-like damage, nonlinear stress relaxation, 
+and set (van Kempen et al. 2016; van Dam et al. 2008; Lee 
+et al. 2015; Malone et al. 2018; Sugerman et al. 2020a). In 
+ * Manuel K. Rausch 
+ manuel.rausch@utexas.edu
+1 Department of Aerospace Engineering and Engineering 
+Mechanics, University of Texas at Austin, 2617 Wichita 
+Street, Austin, TX 78712, USA
+2 Department of Biomedical Engineering, University of Texas 
+at Austin, Austin, TX 78712, USA
+3 Department of Civil,Architectural and Environmental 
+Engineering, The University of Texas at Austin, Austin, 
+TX 78712, USA
+4 Oden Institute for Computational Engineering and Sciences, 
+The University of Texas at Austin, Austin, TX 78712, USA
+
+=== PDF PAGE 2 ===
+1646 M. K. Rausch et al.
+1 3
+summary, blood clots are mechanically complex materials. 
+Numerous previous efforts have attempted to cast this behav-
+ior into constitutive models (Geest et al. 2006; Rausch and 
+Humphrey 2016, 2017; Sugerman et al. 2020a; van Kempen 
+et al. 2016). While many models have successfully captured 
+limited aspects of this complex behavior into mathematical 
+form, none have so far included blood clots’ viscoelastic 
+behavior, damage behavior, and large deformation behavior 
+into a single, comprehensive model.
+Our failure to develop a comprehensive, quantitatively 
+accurate model of blood clots’ mechanics has been a stum-
+bling block to a more fundamental understanding of blood 
+clots’ physiology and pathology (Reeps et al. 2013; Sen-
+gupta et al. 2014; Khodaee et al. 2016). For instance, under-
+standing blood clots’ role in stroke, heart attack, and pul-
+monary embolism requires quantification of their fracture 
+properties (Gasser et al. 2008; Tutwiler et al. 2020). In turn, 
+this requires detailed fracture studies that enable differen-
+tiation between intrinsic toughness from other dissipative 
+mechanisms. To do so in a complex material such as blood 
+clot, it requires detailed, comprehensive models that include 
+viscoelasticity and damage behavior (Zhang et al. 2015).
+The objective of this work is to develop and fit a viscoe-
+lastic damage model for blood clots under large deforma-
+tion as step toward establishing a quantitative and predic-
+tive model of blood clots’ mechanics. To this end, we first 
+combine a hyper-viscoelastic framework with a gradient-
+enhanced damage modeling approach. We then collect a 
+comprehensive set of mechanical data on blood clots’ vis -
+coelastic-damage behavior under large deformation. We use 
+a subset of these data to train our model before validating its 
+suitability against left-out test data.
+2  Methods
+2.1  Non‑local damage formulation coupled 
+with finite viscoelasticity
+Modeling the structural behavior of large viscoelastic defor-
+mations and damage to the material is formulated as a cou-
+pled two-field problem, characterized by the deformation 
+field φ and the non-local damage field /u1D719 . In this section, we 
+first briefly review the constitutive relations for the finite 
+viscoelasticity model of Reese and Govindjee that considers 
+large deformations and large deviations away from thermo-
+dynamic equilibrium (Reese and Govindjee 1998). Then, we 
+subsequently incorporate damage-induced softening of the 
+constitutive behavior through a non-local damage formula-
+tion, detailed in Ostwald et al. (2019), Waffenschmidt et al. 
+(2014), Schulte et al. (2020). Please note, in our effort to 
+describe the macromechanics of blood clots, we treat it in 
+subsequent derivations as a single-phase continuum. This 
+choice is motivated by our analysis being conducted on the 
+centimeter scale, thus, exceeding the size of any microstruc-
+tural constituents by at least three orders of magnitude. As 
+a consequence, we are also ignoring potential intra- and 
+inter-porous fluid flow. Additionally note that our framework 
+lends itself conveniently to including prestrain. However, in 
+the absence of direct evidence of the importance of prestrain 
+on the observed experiments, we chose to assume that our 
+material is stress-free in its reference configuration.
+2.1.1  Finite viscoelasticity
+Consider a continuum body that occupies the reference con-
+figuration B at time t=0 . The nonlinear deformation field /u1D74B 
+relates reference positions X to current positions x = /u1D74B(X, t) 
+at any time t>0 , whereas its material gradient defines the 
+deformation gradient F = Grad /u1D74B . To account for the ine-
+lastic (viscous) effects, a multiplicative decomposition of 
+the deformation into elastic and viscous parts F = Fe ⋅ Fv 
+is adopted. Accordingly, the local free energy density per 
+unit volume in the material configuration is additively split 
+into two parts1
+where ΨEQ and ΨNEQ correspond to purely elastic (equilib-
+rium) and viscous (non-equilibrium) response, respectively. 
+The non-equilibrium part leads to creep and relaxation 
+behavior of the material, and it depends on the elastic coun-
+terpart of the right Cauchy–Green tensor Ce=Fv
+-T ⋅ C ⋅ Fv
+-1  . 
+The second Piola–Kirchhoff stress tensor can be calculated 
+as
+Assuming an isotropic material response, we can then 
+represent the free energy (1 ) in terms of principal values 
+(Sugerman et al. 2020a). Similarly, the Kirchhoff stress 
+/u1D749= F ⋅ S ⋅ F T reads
+where ni are the principal normalized eigenvectors. The 
+eigenvalues [/u1D70FEQ]i and [/u1D70FNEQ]i are expressed using the 
+principal stretches /u1D706i and [/u1D706e]i of F and its elastic part Fe , 
+respectively,
+(1)Ψ=Ψ ( C, Fv)=Ψ EQ(C)+Ψ NEQ(Fv
+-T ⋅ C ⋅ Fv
+-1 ),
+(2)S = 2 /u1D715Ψ
+/u1D715C = 2
+/u1D715ΨEQ
+/u1D715C + 2 [Fv] -1 ⋅
+/u1D715ΨNEQ
+/u1D715Ce
+⋅ [Fv]-T .
+(3)/u1D749=
+3/uni2211.s1
+i=1
+[𝜏EQ]i ni ⊗ ni+
+3/uni2211.s1
+i=1
+[𝜏NEQ]i ni ⊗ ni
+1 To account for multiple relaxation mechanisms 
+( k=1, … , n ), one can modify the local free energy as 
+Ψ=Ψ(C, F1
+v , … , Fn
+v )=Ψ EQ(C)+ ∑n
+k=1 Ψk
+NEQ([Fk
+v ]-T ⋅ C ⋅ [Fk
+v ] -1 ) . In 
+the numerical calculations, we adopt n=2 considering both short-term 
+and long-term behaviors of the material.
+
+=== PDF PAGE 3 ===
+1647Hyper-viscoelastic damage modeling of whole blood clot under large deformation  
+1 3
+In what follows, we assume an isotropic compressible N=1
+-Ogden material model for both the equilibrium and the non-
+equilibrium states (Ogden 1973). For extensions to aniso-
+tropic finite strain viscoelasticity suitable for fibrous soft 
+tissues, see (Latorre and Montáns 2015; Liu et al. 2019). 
+For the sake of brevity, we report the derivations only for the 
+non-equilibrium part. For more details and additional infor-
+mation, we refer the interested reader to Holzapfel (2000 ). 
+We further decompose the deformation gradient Fe into vol-
+umetric F vol
+e  and volume-preserving (isochoric) F iso
+e  parts,
+with the determinant Je=[/u1D706e]1 [/u1D706e]2 [/u1D706e]3 . Thus, the Ogden-
+type free energy splits into isochoric and volumetric parts 
+(Ogden 1973; Reese and Govindjee 1998; Nedjar 2016)
+where the [b iso
+e ]i = J−2∕3
+e [be]i and [be]i =[ /u1D706e]2
+i .
+Using (6), the principal Kirchhoff overstresses are given 
+by
+The overstresses [/u1D70FNEQ]i vanish at the thermodynamic 
+equilibrium. This viscous effect in the structural behav -
+ior is linked to the internal strain variable, i.e., the 
+inverse of the viscous part of the Cauchy–Green ten-
+sor Cv
+-1 = F -1 ⋅ be ⋅ F-T  . Using the Lie derivative 
+Lvbe = F ⋅ ̇Cv -1 ⋅ F T , the evolution equation can be defined
+and the fourth-order tensor /u1D567-1  is isotropic and positive-
+definite (Reese and Govindjee 1998)
+(4)[/u1D70FEQ]i = /u1D706i
+/u1D715ΨEQ
+/u1D715/u1D706i
+and [/u1D70FNEQ]i =[ /u1D706e]i
+/u1D715ΨNEQ
+/u1D715[/u1D706e]i
+.
+(5)
+F = F vol
+e ⋅ F iso
+e
+where F iso
+e = J−1∕3
+e Fe and F vol
+e = J1∕3
+e I,
+(6)
+ΨNEQ =Ψ iso
+NEQ +Ψ vol
+NEQ
+with Ψ iso
+NEQ =
+3/uni2211.s1
+i=1
+/u1D707v
+/u1D6FCv
+/bracketleft.s1[b iso
+e ]/u1D6FCv∕2
+i − 1/bracketright.s1
+and Ψ vol
+NEQ = 3
+8 /u1D705v
+/bracketleft.s1J4∕3
+e + 2Je
+- 2/3 − 3/bracketright.s1,
+(7)
+[/u1D70FNEQ]i =[ /u1D70Fiso
+NEQ]i + /u1D70Fvol
+NEQ where
+[/u1D70Fiso
+NEQ]i =
+3/uni2211.s1
+j=1
+/u1D715Ψ iso
+NEQ
+/u1D715[b iso
+e ]j
+/u1D715[b iso
+e ]j
+/u1D715[/u1D706e]i
+[/u1D706e]i
+and /u1D70Fvol
+NEQ =
+/u1D715Ψ vol
+NEQ
+/u1D715Je
+Je .
+(8)− 1
+2 (Lvbe) ⋅ be
+-1 = /u1D567-1 ∶ /u1D749NEQ ,
+(9)/u1D567-1 = 1
+2𝜂 dev
+(/u1D540− 1
+3 I ⊗ I)+ 1
+6𝜂 vol
+(I ⊗ I) ,
+with volumetric and shear viscosities /u1D702vol and /u1D702dev , respec-
+tively, and the associated relaxation time(s)
+The details on the finite element implementation and the 
+solution of the evolution equation can be found in Reese 
+and Govindjee (1998). One contribution of this paper is to 
+formulate finite viscoelasticity integrated with non-local 
+damage, detailed in the next section.
+2.1.2  Non‑local damage formulation
+Considering the damage to the material, we define the local 
+free energy function accounting for the nonlinear viscoelas-
+tic material response as
+where fd(/u1D705)∈( 0, 1] is the scalar damage function and 
+/u1D705∈[ 0, ∞) is the non-decreasing local damage (internal) 
+variable, i.e., fd(0)=1 (no damage) and lim/u1D705→∞ fd(/u1D705)=0  
+(fully damaged). For the damage function, we consider an 
+exponential form fd(/u1D705)= exp(/u1D702d[/u1D705d − /u1D705]) among other alter-
+natives (Waffenschmidt et al. 2014). The damage initiation 
+threshold /u1D705d should be exceeded to activate the damage evo-
+lution, which is further defined using the damage saturation 
+rate /u1D702d , see (Waffenschmidt et al. 2014) for further detail. 
+The evolution Eq. (8) is extended to account for the damage 
+function as
+Introduction of the non-local free energy /u1D713nloc regularizes 
+the damage over the volume through a non-local gradient 
+term and a penalty term
+where cd is the gradient regularization (length scale) parame-
+ter and /u1D719 is the non-local damage field that is directly linked 
+to the local damage /u1D705 using the penalty parameter /u1D6FDd = 200 
+kPa−1 . Overall, the resulting gradient-enhanced free energy 
+potential becomes Ψ=Ψ loc +Ψ nloc . For the given form of 
+(10)/u1D70F= /u1D702vol
+Kv
+= /u1D702dev
+(/u1D707v/u1D6FCv) .
+(11)
+Ψ=Ψ loc(C, Fv, /u1D705)=f d(/u1D705)ΨEQ(C)
++ fd(/u1D705)ΨNEQ(Fv
+-T ⋅ C ⋅ Fv
+-1 ),
+(12)− 1
+2 (Lvbe) ⋅ be
+-1 = /u1D567-1 ∶ fd(/u1D705)/u1D749NEQ .
+(13)
+Ψnloc =Ψ nloc(C, /u1D719,∇X/u1D719,/u1D705)= cd
+2 ∇X/u1D719⋅ C -1 ⋅ ∇X/u1D719
+/uni23DF.l /uni23DE.x/uni23DE.x/uni23DE.x/uni23DE.x/uni23DE.x/uni23DE.x/uni23DE.x/uni23DE.x/uni23DE.x/uni23DE.x/uni23DE.x /uni23DF.m /uni23DE.x/uni23DE.x/uni23DE.x/uni23DE.x/uni23DE.x/uni23DE.x/uni23DE.x/uni23DE.x/uni23DE.x/uni23DE.x/uni23DE.x /uni23DF.r
+Ψgrad
+nloc
++ /u1D6FDd
+2
+/bracketleft.s1/u1D719− /u1D705/bracketright.s12
+/uni23DF.l /uni23DE.x/uni23DE.x/uni23DE.x/uni23DE.x /uni23DF.m /uni23DE.x/uni23DE.x/uni23DE.x/uni23DE.x /uni23DF.r
+Ψpenalty
+nloc
+,
+
+=== PDF PAGE 4 ===
+1648 M. K. Rausch et al.
+1 3
+the free energy contributions (6) and (13), the coupled gov-
+erning equations are given in the following section.
+2.1.3  Coupled governing equations
+The coupled Euler–Lagrange equations can be derived from 
+the stationary conditions of a minimization principle. Here, 
+again, we point the interested reader to excellent work for 
+more details, see (Ostwald et al. 2019) for example. The 
+resulting weak forms of the balance of linear momentum and 
+the governing equation for the non-local damage field are
+respectively, in the absence of body forces in the volume and 
+traction forces on the surface. We further assume zero-flux 
+conditions for the damage field on the entire boundary.
+2.2  Mixed isogeometric discretization
+The weak forms of the coupled governing equations (14) are 
+discretized using B-splines in the context of isogeometric 
+analysis (Hughes et al. 2005; Cottrell et al. 2009; Bazilevs 
+et al. 2006). Consider a knot vector Ξ={ /u1D7091, /u1D7092, … , /u1D709n+p+1} , 
+a sequence of n + p + 1 non-decreasing (sorted) numbers, 
+where p is the degree of polynomial and n  is the number 
+of basis functions. Given the knot vector Ξ , B-spline basis 
+functions are defined starting with piecewise constants 
+( p = 0)
+and recursively calculated for higher orders ( p ≥ 1 ) using
+A B-spline curve of degree p can be represented in ℝd as the 
+linear combinations of the basis functions Ni,p
+using the control points Bi , i=1, 2, … , n . B-spline geometries 
+in higher dimensions can be formed using tensor products of 
+univariate B-spline basis functions. For example, a B-spline 
+surface /u1D6AA(/u1D709, /u1D702) is obtained
+(14)
+∫Bt
+/u1D749∶∇ x/u1D6FF/u1D74Bd V=0
+∫Bt
+cd∇x ⋅ /parenleft.s1∇x/u1D719/parenright.s1/u1D6FF/u1D719d V + ∫Bt
+/u1D6FDd(/u1D719− /u1D705)/u1D6FF/u1D719d V=0
+(15)Ni,0(𝜉)=
+/braceleft.s31 if 𝜉i ≤ 𝜉<𝜉 i+1
+0 otherwise
+(16)Ni,p(/u1D709)=
+(/u1D709− /u1D709i)Ni,p−1(/u1D709)
+/u1D709i+p − /u1D709i
++
+(/u1D709i+p+1 − /u1D709)Ni+1,p−1(/u1D709)
+/u1D709i+p+1 − /u1D709i+1
+.
+(17)C(/u1D709)=
+n/uni2211.s1
+i=1
+Ni,p(/u1D709)Bi ,
+(18)/u1D6AA(/u1D709, /u1D702)=
+m/uni2211.s1
+j=1
+n/uni2211.s1
+i=1
+Ni,p(/u1D709)Nj,q(/u1D702)Bi,j
+using the knot vectors Ξ={ /u1D7091, /u1D7092, … , /u1D709n+p+1} and 
+H ={ /u1D7021, /u1D7022, … , /u1D702m+q+1} and the bidirectional net of control 
+points Bi,j . Using a third knot vector Z ={ /u1D7011, /u1D7012, … , /u1D701l+r+1} 
+of the polynomial order r, we form a B-spline volume
+with a 3D grid of control points Bi,j,k.
+For our numerical calculations the computational domain 
+is discretized by C1-continuous B-spline volume elements, 
+where solid deformations and the non-local damage variable 
+are independently approximated
+using the same B-spline basis functions, i.e., N/u1D74B=N/u1D719 . The 
+choice of the same basis functions is due to its computa-
+tional efficiency and the mixed interpolation spaces do not 
+have to coincide, e.g., see (Waffenschmidt et al. 2014).
+2.3  Specimen preparation
+We created blood clots from bovine blood that we obtained 
+from a commercial service (Lampire Biological Laborato-
+ries, PA, USA). The blood was collected by directly bleeding 
+into anticoagulant (CPDA-1 anticoagulant at 14% volume/
+volume) before it was shipped overnight and stored for less 
+than 48 hours in our laboratory at 4 ◦ C. To coagulate, i.e., 
+polymerize, blood we added calcium chloride to a final 
+concentration of 20 mM to reverse the anticoagulant (Sug-
+erman et al. 2020a, b). Immediately after adding calcium 
+chloride, we injected the coagulating blood into a 2-piece 
+mold that was lined with hook-and-loop fabric on two sides, 
+see Fig. 1a. In turn, the mold had two sliding attachments so 
+it could be easily attached to our table top Instron uniaxial 
+tensile testing machine (Instron 5942, 10N capacity, 20mN 
+accuracy, Norwood, MA, USA). This technique requires no 
+clamping or gluing of the sample and thus avoids unneces-
+sary damage or altering the material through exposure to the 
+glue. As previously described, the samples were given 60 
+minutes to fully coagulate before experiments were quickly 
+commenced. Note, in our previous work, we found no signif-
+icant effect of coagulation time between 60 and 120 minutes 
+on the mechanics of blood clots (Sugerman et al. 2020a).
+2.4  Mechanical testing
+Once we mounted the samples to our tensile testing machine 
+we conducted one of three protocols: (i) cyclic loading to 
+successively increasing strain (by increments of 10% clamp-
+to-clamp strain) until failure at a rate of 0.01 mm/s, (ii) 
+(19)/u1D6C0(/u1D709, /u1D702, /u1D701)=
+l/uni2211.s1
+k=1
+m/uni2211.s1
+j=1
+n/uni2211.s1
+i=1
+Ni,p(/u1D709)Nj,q(/u1D702)Nk,r(/u1D701)Bi,j,k
+(20)/u1D74B≈ /u1D74Bh = N/u1D74B(/u1D743)/u1D74Band /u1D719≈ /u1D719h = N/u1D719(/u1D743)/u1D753
+
+=== PDF PAGE 5 ===
+1649Hyper-viscoelastic damage modeling of whole blood clot under large deformation  
+1 3
+A
+B
+40mm
+m
+m01
+Extension-to-failure
+Time
+Displacement
+Cyclic Tensile Stress Relaxation
+Time
+Displacement
+Time
+Displacement
+....
+Sample Dimensions:
+Hook-and-Loop Fabric
+Fig. 1  Sample dimensions and loading protocols. a We coagulated samples between two mold pieces that we separated during testing. b Three 
+mechanical loading protocols used for parameter identification and model validation
+Time
+Strain
+30%
+Step 1 : Cyclic Tensile
+Time
+Strain
+Step 2 : Extension-to-failure
+Initial Guess
+& Settings
+Step 1
+Reaction
+Force
+Step 1
+FEM
+Solution
++
+-
+Hyper-
+Viscoelastic
+Parameters
+Iterative
+Minimization
+Step 2
+Reaction
+Force
++
+-
+Iterative
+Minimization
+Inform
+FE Model
+Damage
+Parameter
+Inform
+FE Model
+Validation 1 : Cyclic Tensile 
+Time
+Strain
+70%
+Validation 2 : Stress Relaxation 
+Time
+Strain
+Parameter Identification Data
+Validation Data
+Least Squares Optimization
+Validation 1/2
+Reaction
+Force
+Validation 1/2
+FEM
+Solution
++
+-
+Validation
+Validation
+Step 2
+FEM
+Solution
+For Validation 
+1 and 2
+Fig. 2  Inverse finite element algorithm and validation steps. For the 
+parameter identification, we identified the hyper-viscoelastic param-
+eters in Step 1, for which we used the cyclic tensile tests up to 30% 
+strain. Note, we assumed that no damage had been accrued up to this 
+strain. In Step 2, we used the extension-to-failure data to inform the 
+damage parameter, while keeping the hyper-viscoelastic parameters 
+from the previous step fixed. Upon informing all model parameters, 
+we conducted validation experiments in which we predicted the 
+response to unseen cyclic tensile tests data at strains larger than 30% 
+(Validation 1). Additionally, we compared our predicted response to 
+stress relaxation experiments to four different strain levels (Validation 
+2)
+
+=== PDF PAGE 6 ===
+1650 M. K. Rausch et al.
+1 3
+uniaxial extension-to-failure tests at 0.01 mm/s, and (iii) 
+stress-relaxation tests during which we displaced the sam -
+ples at a rate of 0.01 mm/s to either 10%, 20%, 30%, or 40% 
+clamp-to-clamp strain followed by a 300 s hold, see Fig. 1b. 
+Before each experiments, we displaced the samples by 0.5 
+mm to separate the clamps and all experiments were con-
+ducted in physiological solution at 37 ◦ C. Note, we chose the 
+displacement rate of 0.01 mm/s as the fastest displacement 
+rate that did not result in visible inertial effects and device 
+backlash.
+2.5  Inverse finite element parameter identification
+We used an inverse finite element approach to identify 
+the nine parameters to our proposed hyper-viscoelastic 
+damage model of blood clots, see Fig.  2. Specifically, we 
+identified the two parameters governing the hyperelastic 
+Ogden model, ̄𝜇e and ̄𝛼e , six parameters governing the vis-
+coelastic response of the material, the viscoelastic param-
+eters ̄𝜇v,k , ̄𝛼v,k , and the relaxation times /u1D70Fk for k ={ 1, 2} , 
+and one of the three damage parameters, the saturation rate 
+/u1D702d . In contrast, we fixed the damage initiation threshold /u1D705d 
+to 0.28 kPa (corresponding to approximately 30% over -
+all strain) and regularization parameter cd to 500 kPa −1⋅
+mm2 in the absence of experimental data relating to these 
+parameters (discussion to follow). Note, we assumed a 
+nearly incompressible material behavior for blood clots 
+and adopted the relation between the Láme parameters as 
+/u1D706= 50/u1D707 . Please note, blood clots’ highly hydrated nature 
+could allow for significant volume changes as extreme 
+deformations may lead to fluid expulsion. However, under 
+visual inspection, we did not see such affects in our experi-
+ments and thus adhere to the convention of modeling blood 
+clots as incompressible. During the inverse identification, 
+we used a heuristic optimization technique that calls for -
+ward finite element solutions of the uniaxial tensile experi-
+ments and iteratively minimizes following objective func -
+tion, which represents the difference between measured 
+and calculated reaction force:
+where X is the vector of unknown parameters and t  is the 
+discrete time points at which we sampled our data and evalu-
+ated our model. To decouple the hyper-viscoelastic response 
+from the damage response, we conducted this inverse iden-
+tification in two steps. In the first step, we identified the 
+hyper-viscoelastic parameters using the cyclic tensile tests 
+up to 30% strain only. Note, here, we assumed that no or lit-
+tle damage occurs below 30% strain. Once those parameters 
+were identified, in a second step, we kept those parameters 
+(21)fobj =
+/uni2211.s1
+t
+/uni007C.varFexp − Fsim(X)/uni007C.var2 ,
+fixed and identified the damage parameters against the exten-
+sion-to-failure data.
+Taking advantage of the symmetry of our specimen 
+geometry and of the loading conditions, we only simu-
+lated an eighth of the specimen. We discretized this geom -
+etry and the coupled governing Eq. (14) using quadratic 
+C1-continuous B-spline elements and solved the ensuing 
+boundary value problem using a custom, implicit nonlinear 
+isogeometric finite element software in which we solved 
+the coupled nonlinear system incrementally using the 
+iterative Newton–Raphson method with the direct sparse 
+solver Pardiso (Alappat et al. 2020; Bollhöfer et al. 2019).
+3  Results
+3.1  Local versus non‑local damage modeling
+In our current work, we chose to implement a gradient-
+enhanced, non-local damage formulation (Ostwald et al. 
+2019; Waffenschmidt et al. 2014). Figure 3a, b illustrates a 
+key feature of this implementation: Once converged, this for-
+mulation is mesh-independent. In other words, the accrued 
+damage is not a function of the chosen spatial discretization. 
+Specifically, in Fig.  3a, we compare both h- and p-refined 
+discretizations. That is, we increase the total number of ele-
+ments ranging from ‘coarse’ (200 elements) to ‘finer’ (3600 
+elements). Additionally, we increase the order of the inter -
+polation scheme from linear (Q1Q1) to quadratic (Q2Q2). 
+Clearly, both refinements lead to a converged solution. Simi-
+larly, Fig. 3b shows that the damage variable, fd , also con-
+verges with both refinements. In contrast, Fig.  3c, d shows 
+the identical convergence analysis for a local formulation. 
+While the solution with the local damage implementation 
+appears to converge, i.e., the curves for h- and p-refined 
+meshes appear to collapse, the simulations fail prematurely 
+(indicated by blue ‘x’), Fig.  3c. Additionally, Fig. 3d illus-
+trates non-convergence of the damage variable, fd.
+3.2  Hyper‑viscoelastic parameter identification
+In a first step, we identified the hyper-viscoelastic material 
+parameters against cyclic tensile tests up to 30% clamp-to-
+clamp strain. See Fig.  4 for photographs of a representa-
+tive test sample in the reference configuration (a) and the 
+deformed configuration at 6 mm clamp displacement (b). 
+The experimental data and our optimal fit are shown in 
+Fig. 5. Experimentally, we see that the material shows neg-
+ligible nonlinearity as well as set after the first and second 
+loading to 10% and 20% clamp-to-clamp strain, respectively. 
+This behavior is consistent with our previous reports on the 
+nonlinear mechanics of blood clots (Sugerman et al. 2020a). 
+
+=== PDF PAGE 7 ===
+1651Hyper-viscoelastic damage modeling of whole blood clot under large deformation  
+1 3
+Our model fit reflects this behavior accurately with the only 
+discrepancy stemming from our model exhibiting higher 
+nonlinearity than our experimental findings. We report the 
+identified hyperelastic Ogden parameters, ̄𝜇e and ̄𝛼e , and vis-
+coelastic parameters, ̄𝜇v,k , ̄𝛼v,k , /u1D70Fk for k ={ 1, 2} in Table 1.
+3.2.1  Damage parameter identification
+In a second step, we identified the damage parameters 
+against uniaxial extension-to-failure tests. Note, for these 
+fits, the hyper-viscoelastic parameters identified in the 
+previous step remained unchanged. The experimental data 
+0 2 4 6
+End displacement[ mm]
+0
+100
+200
+300
+400
+500ReactionF orce [mN]
+Q1Q1 coarse
+Q1Q1 ﬁne
+Q1Q1 ﬁner
+Q2Q2 coarse
+Q2Q2 ﬁne
+Q2Q2 ﬁner
+4.40 4.45 4.50
+405
+410
+415
+0 2 4 6
+End displacement[ mm]
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+Minimum fd value
+Q1Q1c oarse
+Q1Q1ﬁ ne
+Q1Q1ﬁ ner
+Q2Q2c oarse
+Q2Q2ﬁ ne
+Q2Q2ﬁ ner
+0 1 2 3 4 5 6
+End displacement[ mm]
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+Minimum fd value
+Q1Q1c oarse
+Q1Q1ﬁ ne
+Q1Q1ﬁ ner
+Q2Q2c oarse
+Q2Q2ﬁ ne
+Q2Q2ﬁ ner
+0 1 2 3 4 5 6
+End displacement[ mm]
+0
+100
+200
+300
+400
+500ReactionF orce [mN]
+Q1Q1 coarse
+Q1Q1 ﬁne
+Q1Q1 ﬁner
+Q2Q2 coarse
+Q2Q2 ﬁne
+Q2Q2 ﬁner
+0.28 0.32
+A
+CD
+B
+E
+cd = 1 cd = 2 cd = 5 cd = 50 cd = 500
+fd 
+Fig. 3  Non-local damage formulation converges for both h- and 
+p-refinement, while a local damage formation does not. a With 
+increasing element number (h-refinement) and with increasing inter -
+polation order (p-refinement), the predicted solutions begin to over -
+lap. Note, the ‘coarse’ mesh has 200 elements, the ‘fine’ mesh has 
+1200 elements, and the ‘finer’ mesh has 3600 elements. b The dam-
+age variable fd also converges for both types of refinement. c The 
+solution fails prematurely and does not converge for either increas-
+ing element number (h-refinement) or increasing interpolation order 
+(p-refinement). d Non-convergence of the local damage approach is 
+even more evident for the damage variable fd which varies widely 
+between h- and p-refinement levels. e Example of a representative 
+simulation (‘finer’ mesh and Q2Q2 formulation) with a comparison 
+of different cd values which serves as a length-scale, where a lower 
+value corresponds to a more localized damage zone. Note, we fixed 
+/u1D705d to 0.28 kPa and cd to 500 kPa−1⋅mm2 during our simulations
+
+=== PDF PAGE 8 ===
+1652 M. K. Rausch et al.
+1 3
+and our optimal fit are shown in Fig.  6. Experimentally, 
+we see that the material, again, shows negligible nonline -
+arity until failure which appears abruptly at approximately 
+70% clamp-to-clamp strain. This behavior is consistent 
+with our previous reports and our cyclic tensile test data 
+(Sugerman et al. 2020a). Our model fit (with damage) 
+reflects the extension-to-failure data accurately with the 
+only discrepancy stemming from our model, again, exhib-
+iting higher nonlinearity than our experimental findings. 
+This discrepancy does not stem from our model’s general 
+inability to fit these data, but from a competition between 
+two independently collected data sets with global param-
+eters. We illustrate this assertion by fitting our full model 
+to the extension-to-failure test data independently. These 
+independent fits are almost perfect, see Supplementary 
+Figure & Table 1 (see Online Resource 1). Additionally, 
+to compare fitting with and without damage in Fig.  6a, we 
+also super-imposed our model fit without damage based 
+on the parameters identified in the previous step (light 
+gray). This superposition demonstrates that both fits show 
+excellent agreement up to 30% clamp-to-clamp strain sup-
+porting our assumption that no (or little) damage occurs 
+prior but deviate significantly beyond 30%. Figure  6b 
+illustrates the damage variable, fd , corresponding to the 
+simulation with damage in Fig.  6a.
+3.3  Validation 1—cyclic tensile tests
+In a first test of our model’s ability to predict, we compared 
+our predictions to cyclic tensile tests with increasing mag-
+nitude up to 70% clamp-to-clamp strain (see Fig.  7a, b). 
+Fig. 4  Photographs of representative sample during tensile testing. a 
+Sample in the undeformed configuration. b Sample in the deformed 
+configuration at 6mm clamp displacement. Note, for visualization, 
+these images were taken without the fluid bath
+0 20 40 60 80 100
+Time [s]
+0
+50
+100
+150
+200
+250
+Reaction Force [mN]
+Experiment
+Simulation
+0.0 0.5 1.0 1.5 2.0 2.5 3.0
+End displacement[ mm]
+0
+50
+100
+150
+200
+250
+ReactionF orce [mN]
+Experiment
+Simulation
+AB
+Fig. 5  Blood clots’ mechanics show viscoelastic behavior up to 30% 
+clamp-to-clamp strain, which is well captured by our hyper-viscoe-
+lastic framework without inclusion of damage. a Force-time evolu-
+tion of our tensile cyclic test with increasing magnitude. Our hyper-
+viscoelastic model fits our experimental data both qualitatively and 
+quantitatively. b Force–displacement evolution of the same experi-
+mental data as in a demonstrate set and hysteresis, which are both 
+captured well by our hyper-viscoelastic framework without inclusion 
+of damage. Note, for these simulations, we used the ‘finer’ mesh with 
+quadratic shape functions. The parameters of this fit are reported in 
+Table 1
+Table 1  Optimal parameters of 
+our hyper-viscoelastic model 
+without inclusion of damage.
+̄𝜇e and ̄𝛼e are the Ogden parameters of the hyperelastic model, while all other parameters belong to the vis-
+coelastic terms in our model
+̄𝜇e [kPa] ̄𝛼e [−] ̄𝜇v,1 [kPa] ̄𝛼v,1 [−] /u1D70F1 [s] ̄𝜇v,2 [kPa] ̄𝛼v,2 [−] /u1D70F2 [s]
+0.22468 8.59846 0.18373 18.06303 6.76230 0.70799 0.84515 168.44204
+
+=== PDF PAGE 9 ===
+1653Hyper-viscoelastic damage modeling of whole blood clot under large deformation  
+1 3
+Note, we used a subset of these data (up to 30% clamp-
+to-clamp strain) to fit our hyper-viscoelastic parameters in 
+Sect.  3.2. The corresponding strain-time evolution of the 
+damage variable, fd , is shown in Fig. 7c, d. Figure 7a dem-
+onstrates excellent agreement between our experiments and 
+our predictions of the force-time behavior. When displaying 
+the same data as force-displacement, some discrepancies are 
+notable. Specifically, at larger clamp-to-clamp strain, our 
+model overestimates the total force. However, the average 
+prediction error of approximately 18% falls well within the 
+0 2 4 6
+End displacement [mm]
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+Minimumf d value
+0 2 4 6
+End displacement [mm]
+0
+500
+1000
+1500
+ReactionF orce [mN]
+Experiment [0.1 mm /s]
+Simulationw ith Damage
+Simulationw ithout Damage
+AB
+Fig. 6  Blood clots’ mechanics show mostly linear behavior until fail-
+ure at approximately 70% clamp-to-clamp strain, which is captured 
+well by our hyper-viscoelastic damage model. a Our simulations with 
+damage are well-aligned with our experimental data. Additionally, we 
+superimposed our hyper-viscoelastic model without damage for refer-
+ence. b Shows the damage variable fd , which does not begin accruing 
+up to a clamp-to-clamp strain of approximately 30%. We identified 
+the optimal damage parameter /u1D702d = 0.46720
+0 2 4 6
+End displacement [mm]
+0.4
+0.6
+0.8
+1.0
+Minimum fd value
+0 100 200 300 400 500
+Time [s]
+0
+200
+400
+600
+ReactionF orce [mN]
+Experiment
+Simulation
+0 2 4 6 8
+End displacement [mm]
+0
+200
+400
+600
+ReactionF orce [mN]
+Experiment
+Simulation
+0 100 200 300 400 500
+Time [s]
+0.4
+0.6
+0.8
+1.0
+Minimumf d value
+AB
+CD
+Fig. 7  Our hyper-viscoelastic damage model accurately predicts pre-
+viously left out cyclic tensile data up to 70% clamp-to-clamp strain. 
+a Our model fits the force-time data both qualitatively and quantita-
+tively very accurately. b The force-displacement data highlight some 
+deviations between our predicted response and the experimental find-
+ing by overestimating the force magnitude with increasing strain. c 
+The evolution of fd corresponding to (a). d The evolution of fd cor-
+responding to (b)
+
+=== PDF PAGE 10 ===
+1654 M. K. Rausch et al.
+1 3
+measurement error of these type of experiments, see our 
+previous work for comparison (Sugerman et al. 2020a, b). 
+Additionally, the predicted failure is less abrupt, i.e., more 
+ductile, than our experimental findings. This difference is 
+likely due to singular nature of the fracture nucleation, which 
+we do not capture with our continuum model.
+3.4  Validation 2—stress relaxation tests
+In a second test of our model’s ability to predict, we com-
+pared our predictions to entirely ‘unseen’ stress-relaxation 
+tests. In other words, these data were not used at all during 
+the fitting procedure (see Fig.  8). Figure  8a demonstrates 
+good agreement between our experiments and our predic-
+tions of the force-time behavior. The corresponding evolu-
+tion of the damage variable, fd , is shown in Fig.  8b. While 
+there are clear discrepancies between the predictions and 
+the experiments, we note that the average error between 
+predicted and measured forces is only 13.6%, which is com-
+parable to between-sample variations previously reported 
+(Sugerman et al. 2020a, b). Again, we note that discrepan-
+cies between experiments and model predictions do not stem 
+from our model’s inability to capture the stress-relaxation 
+behavior, in general, but from a global fit of four independ-
+ent stress-relaxation tests that suffer from between-specimen 
+variability. To support this assertion, we also fit our model to 
+each stress-relaxation data independently as shown in Sup-
+plementary Figure & Table 2 (see Online Resource 1).
+4  Discussion
+We have previously reported on the mechanics of blood 
+clots and demonstrated that blood clots exhibit strain-rate 
+dependence, hysteresis, a Mullin’s-like damage, nonlinear 
+stress-relaxation, and set (Sugerman et al. 2020a, b). In 
+other words, blood clots are classic viscoelastic materials. 
+Acknowledging and understanding its viscoelasticity are not 
+only important to our basic understanding of blood clots, but 
+also critical to the development of computational methods 
+for diagnosis, prognosis, and therapy of thrombotic diseases.
+Our experimental findings in this current work reflect 
+those of previous investigations including our own (John-
+son et al. 2017). Specifically, we found that blood clots show 
+all signs of a nonlinear, viscoelastic material. In our first 
+set of experiments, cyclic loading with increasing magni-
+tude, blood clots showed hysteresis, a Mullin’s-like damage 
+phenomenon, and set (Rausch and Humphrey 2016, 2017). 
+Note that, “set” likely includes a temporary, i.e., viscoelas-
+tic, and permanent, i.e., plastic, contribution. The extent to 
+which blood clots are therefore a viscoplastic rather than 
+viscoelastic material will have to be studied in more detail. 
+Additionally, we showed that blood clots undergo very large 
+deformation before failure (up to 70%) in our extension-to-
+failure experiments, and nonlinear stress-relaxation in our 
+stress-relaxation experiments (Tutwiler et al. 2020; Ferei-
+doonnezhad et al. 2020).
+To cast above experimental findings into a comprehensive 
+constitutive framework, we brought together a hyperelastic 
+constitutive law that has previously been demonstrated to 
+excellently represent blood clots of various origin (Ogden 
+1973; Sugerman et al. 2020a), a well-established viscoelastic 
+model (Reese and Govindjee 1998), and a gradient-enhanced 
+damage formulation (Waffenschmidt et al. 2014 ; Ostwald 
+et al. 2019). We first illustrated the importance of a non-
+local damage approach by contrasting it to a local approach, 
+before fitting our hyper-viscoelastic damage model to 
+original data on blood clots’ mechanics. Our comparison 
+between the two formulations confirmed that only a non-
+local damage approach ensures mesh-independence, while 
+the local approach was (i) unstable in that simulations failed 
+prematurely, and (ii) showed mesh-dependence. While this 
+0 100 200 300
+0.90
+0.92
+0.94
+0.96
+0.98
+Minimumf d
+1.00
+value
+AB
+Time [s]
+0 100 200 300 400
+Time [s]
+0
+100
+200
+300
+400
+ReactionF orce [mN]
+Experiment
+Simulation
+Fig. 8  Our hyper-viscoelastic damage model generally predicts 
+unseen stress-relaxation data. a Our model fits our experimental 
+measurements fairly well. That is, significant deviations between the 
+measured and predicted equilibrium forces can be observed. b The 
+corresponding evolution of fd
+
+=== PDF PAGE 11 ===
+1655Hyper-viscoelastic damage modeling of whole blood clot under large deformation  
+1 3
+is a known phenomenon that has been investigated by the 
+mechanics community (De Vree et al. 1995), the wider bio-
+mechanics community continues to use local approach likely 
+owing to its simple implementation and wide availability in 
+open- and commercial finite element software. We hope that 
+our findings provide additional impetus to leave local dam-
+age approaches behind and focus on non-local approaches.
+When fit to our experimental data, our constitutive frame-
+work fit our data well, albeit not perfect. Specifically, our 
+fits to extension-to-failure data deviated in that they demon-
+strated a higher degree of nonlinearity when compared to the 
+experiments. It is important to keep in mind that deviations 
+are not inherent to the framework, but due to simultane-
+ous fits to both cyclic tensile data and extension-to-failure 
+data. We demonstrated this assertion in our supplementary 
+materials. Finally, we validated our fits against two sets of 
+unseen data: (i) cyclic tensile test data at larger strains than 
+used during the parameter identification, (ii) and entirely 
+unseen stress-relaxation data. Here again, we achieved good, 
+but imperfect fits. Naturally, we would have liked to see bet-
+ter fits, which would likely be possible with more complex 
+models, accounting for plastic deformations and poroelastic 
+behaviors. However, we must keep in mind that the observed 
+errors fell well within our measurement uncertainty. Addi-
+tionally, our goal was to introduce a comprehensive, yet 
+practical, i.e., computationally tangible, model, which we 
+believe we achieved. Please see Supplementary Table 3 
+(Online Resource 1) for a summary of all fit and validation 
+errors. As to the interpretation of our model parameters: 
+While we chose a mostly phenomenological approach, each 
+parameter class has a clear physical meaning. That is, the 
+hyperelastic Ogden parameters are associated with the mate-
+rial’s equilibrated response, i.e., after all viscous effects have 
+dissipated. Consequently, the non-equilibrium parameters 
+are associated with those phenomena that are temporary, 
+likely driven by solid-viscoelastic effects and poroelastic 
+effects due to intra- and inter-porous fluid flow. Finally, the 
+damage parameters are associated with the accumulation of 
+macro- and/or microscopic flaws in the material that reduce 
+the ability of the material to store strain-energy.
+Also note, while fibrin is a constituent of blood clots 
+and undoubtedly plays an important role in determining its 
+mechanical behavior, fibrin and blood clots are vastly differ-
+ent materials. In contrast to pure fibrin, blood clots contain 
+active and passive formed elements, platelets and red blood 
+cells, and a myriad of other plasma-borne factors. The addi-
+tion of these formed elements alters the mechanics of blood 
+clots significantly (Gersh et al. 2009; Lam et al. 2011; Kim 
+et al. 2017; van Oosten et al. 2019). For this reason, we 
+have specifically abstained from including and discussing 
+the important and excellent previous work on multi-scale 
+fibrin mechanics (Münster et al. 2013; Janmey et al. 1983; 
+Brown et al. 2009; Piechocka et al. 2010; Weisel 2004; Liu 
+et al. 2006; Kim et al. 2016; Wang et al. 2020).
+Finally, our work was and is subject to limitations. For 
+example, our fits and validation are limited to measurements 
+of clamp-to-clamp displacement/strain and reaction force. 
+Ideally, we would have included some experimental quan-
+tification to validate our ability to predict damage. Unfor -
+tunately, to the best of our knowledge, there are no reliable 
+means to visualize and/or quantify mechanical damage in 
+blood clots. While there have been recent developments of 
+collagen-specific mechanical damage visualization probes 
+(Zitnay et al. 2017 ), none are available for fibrin. Thus, 
+including quantification of mechanical damage in blood 
+clots remains subject to future studies. As a consequence of 
+this limitation, we did not have means to determine at what 
+strain mechanical damage began to accrue. For our fitting 
+of the damage-independent, hyper-viscoelastic parameters, 
+we chose cyclic loading data at less than 30%, assuming 
+that no or little damage accrues before then. This decision 
+was based on pilot experiments in which repeated loading 
+to 10, 20, and 30% strain did not appear to yield significant 
+changes to the constitutive behavior of blood clots. Simi-
+larly, we had no means to inform/fit cd . Instead, we chose cd 
+to yield homogeneous damage fields, an assumption which 
+will have to be tested in the future. Yet another limitation is 
+the age of our blood. While we test blood within 72 hours of 
+receipt and have shown that mechanical properties of blood 
+clots do not significantly change during this time (Suger -
+man et al. 2020a, b), we suspect that platelet activity may be 
+reduced at the time of testing. Future work on human blood 
+that can be tested immediately after being drawn may enable 
+controlled studies in which platelets could be deactivated 
+via addition of blebbistatin—a myosin-II inhibitor—for 
+example. Finally, we treat our material as isotropic. While 
+we are confident that stress-free blood clots are isotropic, 
+we have not tested whether blood clots exhibit deformation-
+induced anisotropy. In our future work, we will make use of 
+our recently introduced in situ imaging protocols to quantify 
+deformation-induced anisotropy and will thus overcome this 
+current limitation (Wang et al. 2020).
+In conclusion, we introduced original data on blood clots’ 
+mechanics and a comprehensive hyper-viscoelastic damage 
+model to cast the complex, nonlinear, viscoelastic behav -
+ior of blood clots into a constitutive form. We found good 
+agreement between our model predictions and unseen, test 
+data. Our model and model data will be useful for basic 
+understanding of blood clots’ physiology and for predictive 
+modeling of thromboembolic disease.
+Supplementary Information The online version contains supplemen-
+tary material available at https:// doi. org/ 10. 1007/ s10237- 021- 01467-z.
+
+=== PDF PAGE 12 ===
+1656 M. K. Rausch et al.
+1 3
+Acknowledgements This work was supported by the University of 
+Texas at Austin William’s Excellence Award and by the National Sci-
+ence Foundation under Award BMMB-2046148. Dr. Rausch also dis-
+closes a financial relationship to Edwards Lifesciences. We also thank 
+our colleague Dr. Sapun Parekh for his editorial help.
+Data Availability Statement Data are made available on the Texas Data 
+Repository under https:// datav erse. tdl. org/ datav erse/ Cloth yperv iscod 
+amage data.
+References
+Alappat C, Basermann A, Bishop AR, Fehske H, Hager G, Schenk 
+O, Thies J, Wellein G (2020) A recursive algebraic coloring 
+technique for hardware-efficient symmetric sparse matrix-vector 
+multiplication. ACM Trans Parallel Comput (TOPC) 7(3):1–37
+Bazilevs Y, Beirao da Veiga L, Cottrell J.A, Hughes T.J, Sangalli G 
+(2006) Isogeometric analysis: approximation, stability and error 
+estimates for h-refined meshes. Math Models Methods Appl Sci 
+16(07):1031–1090
+Bollhöfer M, Eftekhari A, Scheidegger S, Schenk O (2019) Large-scale 
+sparse inverse covariance matrix estimation. SIAM J Sci Comput 
+41(1):A380–A401
+Brown AEX, Litvinov RI, Discher DE, Purohit PK, Weisel JW (2009) 
+Multiscale mechanics of fibrin polymer: gel stretching with pro-
+tein unfolding and loss of water. Science 325(5941):741–4
+Cines DB, Lebedeva T, Nagaswami C, Hayes V, Massefski W, Litvinov 
+RI, Rauova L, Lowery TJ, Weisel JW (2014) Clot contraction: 
+compression of erythrocytes into tightly packed polyhedra and 
+redistribution of platelets and fibrin. Blood 123(10):1596–603
+Cottrell JA, Hughes TJ, Bazilevs Y (2009) Isogeometric analysis: 
+toward integration of CAD and FEA. Wiley, Hoboken
+De Vree J, Brekelmans W, Van Gils M (1995) Comparison of nonlo-
+cal approaches in continuum damage mechanics. Comput Struct 
+55(4):581–588
+Di Martino E, Mantero S, Inzoli F, Melissano G, Astore D, Chiesa R, 
+Fumero R (1998) Biomechanics of abdominal aortic aneurysm 
+in the presence of endoluminal thrombus: experimental charac-
+terisation and structural static computational analysis. Eur J Vasc 
+Endovasc Surg 15(4):290–299
+Esmon CT (2009) Basic mechanisms and pathogenesis of venous 
+thrombosis. Blood Rev 23:225–9
+Fereidoonnezhad B, Dwivedi A, Johnson S, McCarthy R, McGarry P 
+(2021) Blood clot fracture properties are dependent on red blood 
+cell and fibrin content. Acta Biomaterialia 127:213–228
+Gasser TC, Görgülü G, Folkesson M, Swedenborg J (2008) Failure 
+properties of intraluminal thrombus in abdominal aortic aneu-
+rysm under static and pulsating mechanical loads. J Vasc Surg 
+48(1):179–188
+Geest JPV, Sacks MS, Vorp DA (2006) A planar biaxial constitutive 
+relation for the luminal layer of intra-luminal thrombus in abdomi-
+nal aortic aneurysms. J Biomech 39(13):2347–2354
+Gersh KC, Nagaswami C, Weisel JW (2009) Fibrin network structure 
+and clot mechanical properties are altered by incorporation of 
+erythrocytes. Thromb Haemost 102(6):1169–75
+Holzapfel GA (2000) Nonlinear solid mechanics: a continuum 
+approach for engineering. Wiley, Chichester
+Hughes TJR, Cottrell JA, Bazilevs Y (2005) Isogeometric analysis: 
+CAD, finite elements, NURBS, exact geometry and mesh refine-
+ment. Comput Methods Appl Mech Eng 194:4135–4195
+Janmey P.A, Amis E.J, Ferry J.D (1983) Rheology of fibrin clots. VI. 
+Stress relaxation, creep, and differential dynamic modulus of fine 
+clots in large shearing deformations. J Rheol 27(2):135–153
+Johnson S, Duffy S, Gunning G, Gilvarry M, McGarry JP, McHugh PE 
+(2017) Review of mechanical testing and modelling of thrombus 
+material for vascular implant and device design. Ann Biomed Eng 
+45(11):2494–2508
+Khodaee F, Vahidi B, Fatouraee N (2016) Analysis of mechanical 
+parameters on the thromboembolism using a patient-specific com-
+putational model. Biomech Model Mechanobiol 15(5):1295–1305
+Kim OV, Liang X, Litvinov RI, Weisel JW, Alber MS, Purohit PK 
+(2016) Foam-like compression behavior of fibrin networks. Bio-
+mech Model Mechanobiol 15(1):213–228
+Kim OV, Litvinov RI, Alber MS, Weisel JW (2017) Quantitative struc-
+tural mechanobiology of platelet-driven blood clot contraction. 
+Nature Commun 8:1–10
+Lam WA, Chaudhuri O, Crow A, Webster KD, Kita A, Huang J, 
+Fletcher DA et al (2011) Mechanics and contraction dynamics 
+of single platelets and implications for clot stiffening. Nat Mater 
+10(1):61–66
+Latorre M, Montáns FJ (2015) Anisotropic finite strain viscoelasticity 
+based on the Sidoroff multiplicative decomposition and logarith-
+mic strains. Comput Mech 56:503–531
+Lee YU, Lee A, Humphrey J, Rausch M (2015) Histological and bio-
+mechanical changes in a mouse model of venous thrombus remod-
+eling. Biorheology 52:235–245
+Liu H, Holzapfel GA, Skallerud BH, Prot V (2019) Anisotropic finite 
+strain viscoelasticity: constitutive modeling and finite element 
+implementation. J Mech Phys Solids 124:172–188
+Liu W, Jawerth L, Sparks E, Falvo M, Hantgan R, Superfine R, Lord S, 
+Guthold M (2006) Fibrin fibers have extraordinary extensibility 
+and elasticity. Science 313(5787):634–634
+Malone F, McCarthy E, Delassus P, Fahy P, Kennedy J, Fagan A, Mor-
+ris L (2018) The mechanical characterisation of bovine embo-
+lus analogues under various loading conditions. Cardiovasc Eng 
+Technol 9(3):489–502
+Münster S, Jawerth LM, Leslie BA, Weitz JI, Fabry B, Weitz DA 
+(2013) Strain history dependence of the nonlinear stress 
+response of fibrin and collagen networks. Proc Natl Acad Sci 
+110(30):12197–12202
+Nedjar B (2016) On constitutive models of finite elasticity with pos-
+sible zero apparent Poisson’s ratio. Int J Solids Struct 91:72–77
+Ogden R (1973) Large deformation isotropic elasticity-on the correla-
+tion of theory and experiment for incompressible rubberlike sol-
+ids. Rubber Chem Technol 46:398–416
+Ostwald R, Kuhl E, Menzel A (2019) On the implementation of finite 
+deformation gradient-enhanced damage models. Comput Mech 
+64(3):847–877
+Piechocka IK, Bacabac RG, Potters M, MacKintosh FC, Koenderink 
+GH (2010) Structural hierarchy governs fibrin gel mechanics. Bio-
+phys J 98(10):2281–2289
+Rausch MK, Humphrey JD (2016) A microstructurally inspired damage 
+model for early venous thrombus. J Mech Behav Biomed Mater 
+55:12–20
+Rausch MK, Humphrey JD (2017) A computational model of the 
+biochemomechanics of an evolving occlusive thrombus. J Elast 
+129:125–144
+Reeps C, Maier A, Pelisek J, Härtl F, Grabher-Meier V, Wall W, Essler 
+M, Eckstein HH, Gee M (2013) Measuring and modeling patient-
+specific distributions of material properties in abdominal aortic 
+aneurysm wall. Biomech Model Mechanobiol 12(4):717–733
+Reese S, Govindjee S (1998) A theory of finite viscoelasticity and 
+numerical aspects. Int J Solids Struct 35:3455–3482
+Schulte R, Ostwald R, Menzel A (2020) Gradient-enhanced modelling 
+of damage for rate-dependent material behaviour—a parameter 
+identification framework. Materials 13:3156
+
+=== PDF PAGE 13 ===
+1657Hyper-viscoelastic damage modeling of whole blood clot under large deformation  
+1 3
+Sengupta D, Kahn AM, Kung E, Moghadam ME, Shirinsky O, Lyskina 
+GA, Burns JC, Marsden AL (2014) Thrombotic risk stratification 
+using computational modeling in patients with coronary artery 
+aneurysms following Kawasaki disease. Biomech Model Mecha-
+nobiol 13(6):1261–1276
+Sugerman GP, Kakaletsis S, Thakkar P, Chokshi A, Parekh SH, Rausch 
+MK (2021) A whole blood thrombus mimic. Constitutive behavior 
+under simple shear. J Mech Behav Biomed Mater 115:104216
+Sugerman GP, Parekh SH, Rausch MK (2020b) Nonlinear, dissipa-
+tive phenomena in whole blood clot mechanics. Soft Matter 
+16(43):9908–9916
+Tutwiler V, Singh J, Litvinov R.I, Bassani J.L, Purohit P.K, Weisel J.W 
+(2020) Rupture of blood clots: mechanics and pathophysiology. 
+Sci Adv 6(35):eabc0496
+van Dam EA, Dams SD, Peters GW, Rutten MC, Schurink GWH, Buth 
+J, van de Vosse FN (2008) Non-linear viscoelastic behavior of 
+abdominal aortic aneurysm thrombus. Biomech Model Mecha-
+nobiol 7(2):127
+van Kempen TH, Donders WP, van de Vosse FN, Peters GW (2016) A 
+constitutive model for developing blood clots with various compo-
+sitions and their nonlinear viscoelastic behavior. Biomech Model 
+Mechanobiol 15:279–291
+van Oosten AS, Chen X, Chin L, Cruz K, Patteson AE, Pogoda K, 
+Shenoy VB, Janmey PA (2019) Emergence of tissue-like mechan-
+ics from fibrous networks confined by close-packed cells. Nature 
+573:96–101
+Waffenschmidt T, Polindara C, Menzel A, Blanco S (2014) A gra -
+dient-enhanced large-deformation continuum damage model for 
+fibre-reinforced materials. Comput Methods Appl Mech Eng 
+268:801–842
+Wang Y, Kumar S, Nisar A, Bonn M, Rausch MK, Parekh SH (2021) 
+Probing fibrin’s molecular response to shear and tensile defor -
+mation with coherent Raman microscopy. Acta Biomaterialia 
+121:383–392
+Weisel JW (2004) The mechanical properties of fibrin for basic scien-
+tists and clinicians. Biophys Chem 112(2–3):267–276
+Wendelboe AM, Raskob GE (2016) Global burden of thrombosis: epi-
+demiologic aspects. Circ Res 118:1340–1347
+Zhang T, Lin S, Yuk H, Zhao X (2015) Predicting fracture energies and 
+crack-tip fields of soft tough materials. Extreme Mech Lett 4:1–8
+Zitnay JL, Li Y, Qin Z, San BH, Depalle B, Reese SP, Buehler MJ, Yu 
+SM, Weiss JA (2017) Molecular level detection and localization 
+of mechanical damage in collagen enabled by collagen hybridizing 
+peptides. Nat Commun 8(1):1–12
+Publisher’s Note Springer Nature remains neutral with regard to 
+jurisdictional claims in published maps and institutional affiliations.

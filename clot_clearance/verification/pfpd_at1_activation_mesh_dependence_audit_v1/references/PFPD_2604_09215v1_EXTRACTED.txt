@@ -1,0 +1,1733 @@
+
+===== PDF PAGE 1 =====
+                               Phase-Field Peridynamics
+
+     Kai Partmann1∗, Christian Wieners2, Michael Ortiz3, and Kerstin Weinberg1
+
+                                             1 University of Siegen, Germany
+                                2 Karlsruhe Institute of Technology (KIT), Germany
+                                 3 California Institute of Technology (Caltech), USA
+
+                                                        April 13, 2026
+
+
+
+         Peridynamicsformulatesthebalanceoflinearmomentumasanintegro-differentialequation,
+         making it naturally suited for fracture modeling without special treatment of discontinu-
+         ities. The bond-associated correspondence formulation provides a highly accurate peridy-
+         namicframeworkbycomputingbond-wisedeformationgradientsthatarefreeofzero-energy
+         modes and yield accurate results even near boundaries. However, the traditional fracture
+         approach based on irreversible bond deletion can compromise this formulation, as the pro-
+         gressive removal of bonds degrades the nonlocal approximation of the deformation gradient
+         and can lead to numerical instabilities. In this work, a novel phase-field peridynamics ap-
+         proach is introduced that avoids these instabilities. Instead of deleting bonds, the energetic
+         contribution of each bond is continuously degraded through a bond phase-field parameter,
+         while a separate kinematic degradation function preserves the accuracy of the nonlocal de-
+         formation gradient approximation. The normalization constant ensuring thermodynamic
+         consistency with Griffith’s fracture theory is derived analytically for general spherical ker-
+         nel functions as a ratio of two one-dimensional integrals. Numerical examples including
+         mode I and mode II fracture, the boundary tension test with different kernel functions and
+         horizon ratios, and the Kalthoff-Winkler experiment demonstrate the stability, accuracy,
+         and consistency of the proposed approach.
+         Keywords:Peridynamics, Phase-Field, Dynamic Fracture
+
+
+1 Introduction
+
+Predicting how cracks initiate and propagate through load-bearing structures is one of the central challenges
+in computational mechanics. Whether fracture is to be prevented in safety-critical applications or deliber-
+ately induced in manufacturing processes, its accurate computational prediction at realistic loading rates
+and deformation levels is of fundamental importance. The foundations for fracture prediction were estab-
+lished by the pioneering work of Griffith [29], who proposed that a crack grows when the energy released
+by the advancing crack exceeds the energy required to create new crack surfaces. Irwin [32] extended this
+framework by introducing the stress intensity factor, making fracture mechanics applicable to a broader
+class of materials. These energy-based approaches remain at the core of modern fracture theory.
+    Numerous computational approaches have been developed to address the challenges of fracture modeling,
+each with distinct strengths and limitations. In the standard finite element method (FEM), cracks represent
+discontinuities in the displacement field that must be explicitly resolved by the mesh, requiring costly
+remeshing procedures as cracks propagate [7,12].  The extended finite element method (XFEM) [6,43]
+alleviates this by enriching the approximation with discontinuous functions, though it becomes increasingly
+complex for crack branching and three-dimensional problems. Cohesive zone models [23,2,17,44] describe
+fracture through traction-separation laws governing the progressive decohesion of material surfaces, but
+distributing cohesive elements throughout the mesh introduces mesh sensitivity in the crack trajectory. The
+
+
+
+ ∗Corresponding author:  kai.partmann@uni-siegen.de
+
+
+                                                                                                                          1 /30
+
+===== PDF PAGE 2 =====
+Phase-Field Peridynamics                                                                                                 2 /30
+
+
+phase-field approach to fracture [24,1,14,42] regularizes the sharp crack topology with a continuous damage
+field, enabling the natural modeling of crack initiation, propagation, and branching without explicit crack
+tracking.  Extensions to dynamic fracture have been developed by Borden et al. [13] and Weinberg and
+Wieners [58], including approaches combining phase-field methods with peridynamics [27,28]. However,
+the phase-field method requires a fine mesh resolution around the crack to resolve the diffuse damage
+band, particularly in three-dimensional dynamic settings. Further comparisons of computational fracture
+approaches have been provided by Rabczuk [52], Pandolfi et al. [45], and Diehl et al. [22].
+    All of the above approaches are based on classical continuum mechanics, where the governing equations
+are formulated as partial differential equations that require spatial derivatives of the displacement field. At
+a crack, the displacement field is discontinuous and these derivatives are undefined, therefore all classical
+methodsrequirespecialtechniquestohandlethepresenceofcracks. Peridynamics, introducedbySilling[53],
+takes a fundamentally different approach by formulating the balance of linear momentum as an integro-
+differential equation. Internal forces at a material point are computed by integrating the interactions with
+all neighboring points within a finite distance, called the horizon. While the spherical neighborhood is the
+standard choice, alternative neighborhood shapes such as cube-shaped horizons have also been explored [50].
+Since no spatial derivatives of the displacement field are required, the governing equations remain valid at
+discontinuities such as cracks, making peridynamics naturally suited for fracture modeling [56,41].  A
+rigorous variational theory for integral functionals based on finite-horizon nonlocal gradients, including
+Γ-convergence results that recover classical local models, has been developed by Cueto et al. [21, 20].
+Energy-based peridynamic fracture models with continuous damage that converge to Griffith fracture in the
+vanishing-horizon limit have been proposed by Lipton [38,37,39].
+    The original bond-based (BB) formulation [53] is simple and robust but restricts the Poisson’s ratio.
+The ordinary state-based (OSB) formulation [54] overcomes this restriction but still suffers from the surface
+effect, asystematicerrornearboundariescausedbythetruncationoftheneighborhood. Thecorrespondence
+formulation [54] approximates the deformation gradient through nonlocal weighted averaging, enabling the
+direct use of classical constitutive models and eliminating the surface effect. However, it introduces stability
+issues due to zero-energy modes [55,16].  The bond-associated approach [18,19,5,49] addresses this
+instability by computing bond-wise deformation gradients that are inherently free of zero-energy modes.
+This makes the bond-associated correspondence formulation the most accurate peridynamic formulation
+that consistently reproduces the elastic behavior of the classical continuum.
+    Fracture in peridynamics is traditionally modeled by irreversible bond deletion, where a bond is perma-
+nently removed when its deformation exceeds a critical threshold derived from Griffith’s energy criterion [56].
+This approach has been successfully used to simulate dynamic crack propagation and branching with the
+standard formulations [30,57,25,26,34]. However, in correspondence-based formulations, the progressive
+deletion of bonds degrades the shape tensor required for approximating the deformation gradient. As more
+bonds are removed in the vicinity of a propagating crack, the shape tensor can become ill-conditioned or
+singular, potentially causing a breakdown of the kinematic approximation and numerical instabilities. These
+stability issues can limit the reliable application of the most accurate peridynamic formulation to fracture
+problems.
+    In this work, a novel phase-field peridynamics (PFPD) approach is introduced that avoids these stability
+issues.  Instead of deleting bonds instantaneously when a critical deformation is reached, the energetic
+contribution of each bond is degraded continuously through a bond phase-field parameter. The damage
+evolution follows from an energy-based variational principle and ensures thermodynamic consistency with
+Griffith’s fracture theory. A separate kinematic degradation function is introduced to maintain the accuracy
+of the shape tensor even under significant damage, preventing the numerical instabilities that can arise from
+bond deletion. The normalization of the damage model is derived analytically for general spherical kernel
+functions by requiring that the total crack dissipation equals the Griffith energy release rate per unit crack
+area.
+    The paper is organized as follows.Section 2provides a brief introduction to the bond-associated cor-
+respondence formulation.  InSection 3, the phase-field peridynamics framework is developed, including
+the bond-associated phase-field approximation, the damage evolution law, and the analytical derivation of
+the normalization constant.Section 4presents the discretization and algorithmic implementation, with
+
+===== PDF PAGE 3 =====
+Phase-Field Peridynamics                                                                                                 3 /30
+
+
+a detailed comparison to the standard bond-associated approach.  Numerical examples are presented in
+Section 5, including mode I and mode II fracture, the verification of the normalization constant, and the
+Kalthoff-Winkler experiment. The paper concludes with a summary and discussion of the results inSec-
+tion 6.
+
+2 Peridynamics Theory
+
+This section provides a brief introduction to the peridynamic framework in a continuous setting, focusing
+on the bond-associated quadrature point (BAQP) correspondence formulation that forms the basis for the
+phase-field peridynamics model developed in the subsequent sections.
+
+2.1 Nonlocal kinematics and balance of linear momentum
+Consider a bodyBoccupying the reference configurationB                                   0⊂R    3 and the current configurationB           t⊂R    3.
+In peridynamics, the body is represented as a continuum of material pointsB    0⊂R    3, interacting with each
+other through nonlocal forces [53]. The interaction between a pointXand its neighborX     ′ is characterized
+by abond∆X=X      ′−Xin the reference configuration and by∆x=x      ′−xin the current configuration.
+Each pointXinteracts only with points inside a specifiedneighborhoodorpoint family
+       H(X) =   {X′∈B0          ⏐⏐0<|∆X|≤δ      },                                                   (2.1)
+
+
+defined as all points within thehorizonδ∈R                           +. Thebond displacementis defined as∆U=U(t,X             ′)−
+U(t,X), with the relation∆x=∆X+∆U. The peridynamic kinematics are illustrated inFig. 1.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Figure 1:DeformationofaperidynamicbodyBfromreferenceconfigurationB                                       0 tocurrentconfigurationB           t.
+              The neighborhoodH(X)defines the nonlocal interaction domain around each material pointX.
+
+    The balance of linear momentum in peridynamics reads
+
+       ϱ0(X)      ¨U(t,X) =          ¯Bint(t,X) +        ¯Bext(t,X)  ∀(t,X)∈[0,∞)×B                                      0,                        (2.2)
+
+where  ¯Bint denotes the internal body force density and  ¯Bext the external body force density. The initial con-
+ditionsU(0,X) =U                               0(X)and         ˙U(0,X) =             ˙U0(X)specify the displacement and velocity att= 0. Boundary
+conditions are imposed by prescribing either displacement (Dirichlet) or external force density (Neumann)
+on a boundary layer of material points with finite thickness, since the integro-differential equationEq. (2.2)
+requires a volumetric treatment rather than classical surface boundary conditions [53].
+    The internal force density approximates the divergence of the first Piola-Kirchhoff stress tensor with
+
+        ¯Bint(t,X) =∇·P(t,X) +O(δ                                    2).                                                      (2.3)
+
+Since the governing equationEq. (2.2)is an integro-differential equation that does not involve spatial
+derivatives of the displacement field, it remains valid at discontinuities such as cracks, making peridynamics
+naturally suited for fracture modeling.
+
+===== PDF PAGE 4 =====
+Phase-Field Peridynamics                                                                                                 4 /30
+
+2.2 The correspondence formulation
+The correspondence formulation [54] approximates the deformation gradient through nonlocal weighted
+averaging over the neighborhood, enabling the direct use of classical constitutive models. An approximated
+deformation gradient  ¯Fis defined as
+                     (∫                                     )
+       ¯F(t,X) =                                               K−1  (X),                                    (2.4)
+                        H(X)   ω(∆X)∆x⊗∆XdV           ′
+
+whereω:{R                  3\0}→[0,∞)withω(∆X) = 0for|∆X|>δis a kernel (or influence) function and theshape
+tensorKis defined as
+                   ∫
+       K(X) =
+                    H(X)   ω(∆X)∆X⊗∆XdV           ′.                                                (2.5)
+The shape tensor is a symmetric and positive definite matrix for bulk points with full neighborhoods.
+Due to the multiplication withK   −1 , the deformation gradient is exactly reproduced for all homogeneous
+deformations, independent of the neighborhood geometry. This means that the correspondence formulation
+does not suffer from the surface effect, a shortcoming of the standard bond-based and ordinary state-based
+formulations [35,41].
+    Withthedeformationgradient, thestresstensorofeachpointcanbeevaluatedfromclassicalconstitutive
+laws. Abond shape vectorB:B                 0×B0→R     3 is defined as
+
+       B(X,X   ′) =ω(∆X)K     −1  (X)∆X.                                                    (2.6)
+
+With this, the deformation gradient and theforce vector statetcan be compactly expressed as
+                     ∫
+       ¯F(t,X) =
+                      H(X)      ∆x⊗B(X,X      ′) dV ′,                                                  (2.7)
+
+and, depending on the first Piola-Kirchhoff stress tensorP(t,X) =P(                      ¯F(t,X)),
+
+       t(t,X,X    ′) =P(t,X)B(X,X        ′).                                                      (2.8)
+
+The divergence of the first Piola-Kirchhoff stress tensor is then approximated as
+                        ∫       (t(t,X,X    ′)−t(t,X   ′,X)  )dV ′.                                       (2.9)
+        ¯Bint(t,X) =
+                         H(X)
+While the correspondence formulation overcomes the limitations of the bond-based and ordinary state-based
+models, it introduces stability issues from zero-energy modes [55,16], which are oscillatory displacement
+patterns that produce a vanishing deformation gradient and therefore vanishing internal forces [40]. The
+bond-associated approach addresses this shortcoming by computing bond-wise deformation gradients that
+capture local deformation variations.
+
+2.3 Bond-associated quadrature points
+The bond-associated quadrature point (BAQP) approach, introduced by Behzadinasab et al. [5,4,3], ad-
+dresses the zero-energy mode instability by computing deformation gradients at bond-associated quadrature
+points located at the center of each bond. This is conceptually similar to higher-order quadrature in the
+finite element method, where additional integration points suppress hourglass modes.
+    Abond-associated deformation gradient    ˜Fis defined for each bond as
+       ˜F(t,X,X    ′) =  ˜F avg(t,X,X   ′) +    (                                  )
+                                                  ∆x−      ˜F avg(t,X,X   ′)∆X       ⊗   ∆X|∆X|          2 ,                    (2.10)
+
+where the average deformation gradient of a bond is
+       ˜F avg(t,X,X   ′) = 1    (¯F(t,X) +          ¯F(t,X  ′))
+                              2                              .                                             (2.11)
+
+===== PDF PAGE 5 =====
+Phase-Field Peridynamics                                                                                                 5 /30
+
+
+The correction term inEq. (2.10)ensures that the bond deformation gradient exactly reproduces the actual
+bond deformation in the bond direction, while the average provides the transverse deformation components.
+This construction eliminates zero-energy modes, since oscillatory displacement patterns that would cancel
+in the point-wise average are captured by the bond-wise correction [5].
+    The strain energy density of a point is approximated by averaging the bond-wise strain energy densities
+over the neighborhood with
+                     ∫
+       ¯Ψ(t,X) =
+                       H(X)       ¯ω b(X,X  ′) Ψ( ˜F(t,X,X    ′)) dV ′,                                        (2.12)
+
+where theaveraged bond kernel function¯ω          b :B 0×B0→R     + is defined as
+                           (ω(∆X)                        )
+       ¯ω b(X,X  ′) = 12      ω0(X)       + ω(−∆X)ω0(X ′)   ,                                               (2.13)
+
+with thekernel integralω          0 :B 0→R     + defined as
+                    ∫
+       ω0(X) =
+                     H(X)   ω(∆X) dV     ′.                                                          (2.14)
+The kernel integral satisfies the normalization condition for all interior points as
+
+       ω0(X) = 1  ∀X∈{X∈B                      0|H(X)⊂B            0}.                                          (2.15)
+
+This normalization condition is just a statement about internal points, sinceω        0 appears in the denominator
+of the averaged bond kernel function (2.13) so boundary truncation is correctly accounted for. A commonly
+used kernel [5] satisfying this condition is the cubic spline kernel
+                                (|∆X|   )2 + 6   (|∆X|   )3    if |∆X|
+                               1−6         δ               δ                  δ ≤  12 ,
+       ω(∆X) =              8    (            )3               if   1                                                               (2.16)
+                      πδ3·   21− |∆X| δ                                2 < |∆X|δ ≤1,
+
+                               0                         if  |∆X|             δ  >1.
+
+    The bond-wise first Piola-Kirchhoff stress tensor is evaluated from the constitutive model as
+        ˜P(t,X,X    ′) =P(     ˜F(t,X,X    ′)).                                                       (2.17)
+
+Introducing thenon-uniform stress tensorZ: [0,∞)×B                                 0→R     3×3   as
+                     ∫                                      (                       )
+       Z(t,X) =                                               I−   ∆X⊗∆X              dV ′,                          (2.18)
+                       H(X)       ¯ω b(X,X  ′) ˜P(t,X,X    ′)          |∆X|          2
+
+the force state can be written compactly as
+
+       t(t,X,X    ′) = ¯ω b(X,X  ′) ˜P(t,X,X    ′)  ∆X|∆X|         +Z(t,X)B(X,X        ′).                         (2.19)
+
+The first term projects the bond stress along the bond direction, while the second term distributes the
+non-uniform stress correction via the bond shape vector. This formulation is inherently free of zero-energy
+modes and provides a stable correspondence framework for large deformation problems [5,3].
+
+3 Phase-Field Peridynamics
+
+Following the brittle fracture approaches of Griffith and Irwin [29,32], a material fails when a critical energy
+releaserateisreached. Thisassumptionprovidesacriterionforcrackgrowthbasedonenergyconsiderations,
+which has to be embedded into an energy minimization setting for the entire structure to determine crack
+initiation and propagation [42,58,48,27]. Consequently, the total energy of a body is composed of its
+
+===== PDF PAGE 6 =====
+Phase-Field Peridynamics                                                                                                 6 /30
+
+
+kinetic energy, the potential energy with the strain energy density of the undamaged materialΨ                 0, and
+the surface energy contributions from evolving crack boundaries with the critical energy release rateG   c.
+Here,Ψ           0 denotes the strain energy densityΨfromSection 2, now carrying a subscript0to distinguish the
+undamaged material response from the degraded one in the phase-field setting. With this assumption, the
+total energy functional reads
+                ∫          (1     ⏐⏐⏐˙U⏐⏐⏐2 + Ψ0)         ∫
+       E(t) =                2ϱ0                  dV+
+                  B0\Γ  c(t)                               Γc(t) Gc  dA,                                      (3.1)
+whereΓ     c(t)is the crack surface at timet. An important assumption for thermodynamic consistency is that
+the crack evolution is irreversible, i.e.,Γ   c(t  1)⊂Γ  c(t  2)fort       1<t2.
+    In theclassical phase-field approach[1,14,42], the sharp crack topology is regularized via a diffusive
+crack approximation. To characterize the state of the material, a phase-field parametersis introduced. For
+the approximation, the discontinuous set of evolving crack surfacesΓ  c(t)is replaced by a continuous surface
+energy density function, approximating the surface integral via a volumetric integral over the entire bodyB     0.
+This leads to the objective functional for the total energy as
+                ∫    (1     ⏐⏐⏐˙U⏐⏐⏐2 +g(s) Ψ          0 + Gc(γc(s)
+       E(t) =          2ϱ0                         c0      ℓc    +ℓ  c|∇s|       2))dV                              (3.2)
+                  B0
+             →stationary.
+
+Thedegradation functiongquantifies the degradation of the material response due to damage.  Also,
+thecrack surface density functionγ          c approximates the crack surface energy contribution based on the
+phase-field parameter. The regularization term with thelength scale parameterℓ         c ensures a diffusive crack
+approximation over a finite width.  Thenormalization constantc                       0 ∈R   + ensures that the total crack
+dissipation corresponds to Griffith’s assumption of energy release rate per unit crack area and can be
+calculated analytically for a given choice ofγ  c, as known from the literature [51,36]. For the commonly
+used AT1 model withγ    c(s)  =s, the normalization constant isc            0  =   83, while for the AT2 model with
+γc(s) =s        2, one obtainsc               0 = 2[42,51,36].
+    In the following, the classical phase-field approach to fracture is adapted to the bond-associated corre-
+spondence framework described inSection 2. The length scale parameterℓ           c is defined as
+
+       ℓc :=δ,                                                                                (3.3)
+
+to maintain consistency with the nonlocal interaction radius in peridynamics. Since the nonlocal averaging
+over the horizon inherently provides a regularization of the crack approximation, the regularization term
+ℓc|∇s|       2 vanishes in the bond-associated formulation.
+
+3.1 A bond-associated phase-field approximation
+To embed the phase-field fracture approach into the bond-associated correspondence framework, the total
+energy functional is expressed in terms of bond contributions. Thebond phase-field parameters: [0,∞)×
+B0×B0→[0,1]is introduced as a bond-wise variable, defining the state of damage of the bond between
+two material pointsXandX    ′ at timet. Following the definition of the point-wise strain energy of the
+BAQP formulation inEq. (2.12), the total energy functional fromEq. (3.2)can be expressed in terms of
+bond contributions in a peridynamic setting as
+                ∫    1    ⏐⏐⏐˙U(t,X)  ⏐⏐⏐2 dV
+       E(t) =        2ϱ0
+                ∫B0 ∫                     (                                                   )
+             +                              g(s(t,X,X     ′)) Ψ0 + Gcγc(s(t,X,X    ′))c0δ        dV ′ dV
+                 B0   H(X)       ¯ω b(X,X  ′)
+             →stationary.                                                                               (3.4)
+
+To keep the notation consistent with the classical peridynamics approach, a fully damaged bond has the
+value ofs= 1, while an undamaged bond has the value ofs= 0. The usage of the BAQP framework and
+
+===== PDF PAGE 7 =====
+Phase-Field Peridynamics                                                                                                 7 /30
+
+
+the additional integral over the horizon inherently provides a regularization of the crack approximation over
+the horizon length scale.
+    Thetotal crack dissipationE                   Γ : [0,∞)→Raccountsforthetotalenergydissipatedduetocrackformation
+and growth in the body with
+                  ∫    ∫
+       EΓ(t) =                                         c0δ             dV ′ dV
+                   B0  ∫H(X)       ¯ω b(X,X  ′)Gcγc(s(t,X,X    ′))∫
+               = Gcc0δ
+                         B0   H(X)       ¯ω b(X,X  ′)γ c(s(t,X,X    ′)) dV ′ dV ,                                  (3.5)
+
+whereG     c,c 0,andδareconstantforeachpointinthebody. Abond crack dissipationE                        Γb : [0,∞)×B          0×B0→R
+can be introduced as
+
+       EΓb (t,X,X   ′) = Gcγc(s(t,X,X    ′))c0δ     ,                                                     (3.6)
+
+denoting the energetic contribution of a single bond to the total crack dissipation. WithEq. (3.6), the total
+crack dissipation can be expressed as the integral of the bond crack dissipation over the body and its horizon
+as
+                  ∫    ∫
+       EΓ(t) =
+                   B0   H(X)       ¯ω b(X,X  ′)E  Γb (t,X,X   ′) dV ′ dV .                                        (3.7)
+
+Here,E           Γb is bond-wise local and does not depend on the neighboring bonds. For the remainder of this work,
+the crack surface density functionγ       c is chosen as
+
+       γc(s) :=s(t,X,X      ′),                                                                   (3.8)
+
+consistent with the AT1 model in the literature [1,51,36]. This leads to a linear increase of the crack
+surface energy with increasing damage.
+    The degradation of the material response due to damage is modeled via thebond degradation func-
+tiong: [0,1]→[0,1]. A common choice for the degradation function is the quadratic form
+
+       g(s) = (1−s(t,X,X       ′))2,                                                             (3.9)
+
+leading to a smooth degradation of the material response with increasing damage.  The bond-wise first
+Piola-Kirchhoff stress tensor  ˜PfromEq. (2.17)is modified to account for the degradation due to damage
+as
+        ˜P(t,X,X    ′) =g(s(t,X,X      ′))P    0( ˜F(t,X,X    ′)),                                          (3.10)
+
+with the undamaged first Piola-Kirchhoff stress tensorP             0, here denoted with a subscript0in contrast to
+the previous section. This ensures that the force density contribution of a bond vanishes smoothly as the
+bond becomes fully damaged withs→1.
+    However, in peridynamics, the kinematic approximation via the shape tensorKand the associated bond
+shape vectorsBplays a crucial role in ensuring accurate deformation measures that have to be considered
+when degrading bonds. To maintain numerical stability and the accuracy of the kinematic approximation,
+abond kinematic degradation functionh: [0,1]→[0,1]is introduced. It is defined as
+                
+                   1            ifs(t,X,X     ′)≤s  c,
+       h(s) =   (1−s(t,X,X             ′))2  ifs(t,X,X    ′)>s c,                                            (3.11)
+                         1−s     c
+wheres     c∈[0,1]is a parameter defining a threshold for the degradation of the kinematic approximation,
+as displayed inFig. 2. Fors    c = 1, the kinematic degradation is disabled, while fors   c = 0, the kinematic
+approximation degrades similarly to the energetic contribution with
+
+       h(s(t,X,X     ′))⏐⏐sc=0 =g(s(t,X,X      ′)).                                                  (3.12)
+
+===== PDF PAGE 8 =====
+Phase-Field Peridynamics                                                                                                 8 /30
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Figure 2:The bond and kinematic degradation functionsgandhover the bond phase-field parameters.
+
+
+The shape tensor and bond shape vector are modified to account for the kinematic degradation as
+                      ∫
+       K(t,X) =
+                       H(X)   ω(∆X)h(s(t,X,X         ′))∆X⊗∆XdV        ′,                                 (3.13)
+and
+
+       B(t,X,X    ′) =ω(∆X)h(s(t,X,X          ′))K −1  (X)∆X.                                     (3.14)
+
+Note that both the shape tensor and the bond shape vector are now time-dependent due to the time
+dependence of the phase-field. Without the kinematic degradation, damage under large deformations can
+lead to unphysical deformation gradients, and fully broken fragments are incorrectly still connected to the
+intact material via the kinematic approximation.
+
+3.2 Damage evolution and crack criteria
+The evolution of the damage state in classical phase-field fracture is derived from a variational principle
+minimizing the total energy functional with respect to the phase-field parameters[14,42]. Similarly, here
+a bond-wise local energy minimization principle is employed to derive the evolution of the bond phase-field
+parameters. Considering a static situation and a single bond between two material pointsXandX           ′, the
+energy contribution of a bondE   b : [0,∞)×B          0×B0→Ris defined as
+
+       Eb(t,X,X   ′) =g(s(t,X,X      ′)) Ψ0( ˜F(t,X,X    ′)) +E    Γb (t,X,X   ′).                            (3.15)
+
+The bond phase-field parameter evolves by minimizing the bond mechanical energy as
+
+       δEb                                       dγ c(s(t,X,X    ′))
+        δs   = dg(s(t,X,X     ′))ds             Ψ0 + Gcc0δds              = 0,                                   (3.16)
+
+leading withEq. (3.8)andEq. (3.9)to                                      dγ  c(s(t,X,X          ′))ds           = 1and the relation
+
+       −2(1−s(t,X,X       ′)) Ψ0 + Gcc0δ  = 0.                                                    (3.17)
+
+Substituting a phase-field value ofs(t,X,X     ′) = 0yields thecritical crack driving forceY     c as
+
+       Yc := Gc2c  0δ ,                                                                        (3.18)
+
+defining an elastic strain energy density threshold for damage initiation. Deformations below this threshold
+do not lead to damage growth, and the bond remains intact withs= 0. Only the tensile (positive) part of
+the undamaged strain energy density, denotedΨ                +0 , contributes to damage growth, therefore the bond-wise
+crack driving forceY: [0,∞)×B               0×B0→Ris defined as
+
+       Y(t,X,X    ′) = Ψ+0 ( ˜F(t,X,X    ′)).                                                      (3.19)
+
+===== PDF PAGE 9 =====
+Phase-Field Peridynamics                                                                                                 9 /30
+
+
+This approach is consistent with well-established phase-field fracture models in the literature [51,36].
+    In the work of Bilgen et al. [9,10], a physically motivated definition of the crack driving force based on
+the maximum principal stressσ           1 is proposed. The maximum principal stress is computed as the maximum
+eigenvalueofthebond-wiseCauchystresstensor. Thisleadstothedefinitionofacriticalstressσ     c fordamage
+initiation, ensuring that damage only occurs when the maximum principal stress exceeds this critical value.
+Defining stress as a driving force for damage is particularly appealing for engineering applications, as design
+criteria often rely on stress-based failure theories. The strain energy density of a bond for a linear elastic
+material is given as
+
+       Ψ0 = σ22E ,                                                                          (3.20)
+
+with the Cauchy stressσand Young’s modulusE. The critical stressσ                 c is derived from the critical strain
+energy density inEq. (3.18)as
+              √
+       σc :=     EGc
+                  c0δ .                                                                       (3.21)
+
+Analogously, the critical crack driving force is expressed in terms of the critical stress as
+
+       Yc := σc22E .                                                                          (3.22)
+
+The crack driving force is then defined based on the maximum principal stress as
+                          ⟨σ1( ˜F(t,X,X    ′))⟩2
+       Y(t,X,X    ′) =                          +
+                                    2E       ,                                                   (3.23)
+with the Macaulay bracket⟨•⟩    + = max(0,•)extracting only tensile contributions.
+    To ensure the irreversibility of damage, ahistory variableY: [0,∞)×B                               0×B0→Ris introduced, tracking
+the maximum crack driving force experienced by the bond up to timetas
+
+       Y(t,X,X    ′) = maxt′≤t  Y(t ′,X,X  ′).                                                      (3.24)
+
+The evolution of the bond phase-field parameter is finally defined as
+                             (                          )
+       s(t,X,X    ′) = min     1,  Y(t,X,X    ′)Y(t,X,X    ′) +Y  c,                                              (3.25)
+
+ensuring that damage can only grow and remains bounded within the interval[0,1].  This closed-form
+evolution law provides a smooth damage transition governed by the critical crack driving forceY    c and
+guarantees thermodynamic consistency with non-negative crack dissipation.
+    To connect the bond-wise defined phase-field parametersto a point-wise damage variable similar to the
+classical peridynamics approach, the bond phase-field parameter is averaged over the family of a material
+pointXas
+                   ∫
+       ¯s(t,X) =
+                     H(X)       ¯ω b(X,X  ′)s(t,X,X    ′) dV ′.                                             (3.26)
+
+This is identical to the classical definition of a point-wise damage variable in peridynamics, therefore yielding
+
+
+       D(t,X) = ¯s(t,X).                                                                               (3.27)
+
+With this definition, the bond-associated phase-field peridynamics framework seamlessly integrates with
+existing peridynamic damage modeling approaches and the point-wise damage variable can be used for
+visualization and post-processing purposes.
+
+===== PDF PAGE 10 =====
+Phase-Field Peridynamics                                                                                               10 /30
+
+3.3 Determination of the normalization constant
+A critical remaining aspect of the bond-associated phase-field peridynamics framework is the determination
+of the normalization constantc  0. The normalization constant must be chosen such that the total crack
+dissipation corresponds to Griffith’s assumption of energy release rate per unit crack area.
+    In classical phase-field fracture mechanics, the normalization constant is derived through a rigorous
+mathematical procedure involvingΓ-convergence arguments. The approach considers an infinite domain
+with a one-dimensional damage profile, solves an Euler–Lagrange equation for the optimal damage distri-
+bution, and demonstrates convergence to a sharp crack formulation in the limit of vanishing length scale
+parameter [14,15].
+    In bond-associated phase-field peridynamics, a planar crack in an infinite domain is considered, and the
+normalization constant is determined by requiring that the total crack dissipation equals the Griffith energy
+release. However, the nonlocal nature of the bond-associated peridynamics framework introduces additional
+geometric considerations, as the crack dissipation depends on the volume of bonds crossing the crack plane
+weighted by the kernel function. Therefore, the normalization constant depends on the choice of the kernel
+functionω.
+    Griffith’s assumption states that the energy required to create new crack surface is proportional to the
+crack area. For a crack growth of areaA         Γ, the required total crack dissipation is
+
+       EΓ =G  cAΓ.                                                                        (3.28)
+
+In the following, the normalization constant is derived for general spherical kernel functions, usingEq. (3.28)
+as the defining condition forc      0.
+
+3.3.1 Setting and assumptions
+Consider an infinite material domainΩ⊂R                      3 with a planar crack surfaceΓ      c at positionz= 0, where the
+crack coordinatez:B                0→Ris defined as the signed perpendicular distance from a material pointXto the
+crack plane as
+
+       z(X) =X·n                  Γ,                                                                     (3.29)
+
+with the unit crack normal vectorn          Γ. Points withz(X)>0are located above the crack plane, while points
+withz(X)<0are located below. Only points within distanceδof the crack plane have bonds that cross
+the crack and contribute to the total crack dissipation.
+    For the derivation, the kernel function is assumed to be spherical, depending only on the bond lengthr:=
+|∆X|, i.e.,ω(∆X) =ω               s(r)withthescalarkernelfunctionω        s :R +→R     +. Additionally, thematerialdomain
+is assumed to be infinite, such that all points involved in the derivation are bulk points with complete
+spherical neighborhoods.  This implies that the kernel integralsω              0(X)fromEq. (2.14)are equal for all
+material points, i.e.,ω       0(X)  =ω          0(X ′)for allX,X    ′ ∈Ω.  Due to the equality, the simplified notation
+ω0 :=ω     0(X)is used in the following. Note that the normalization condition fromEq. (2.15)yieldsω                                         0 = 1.
+However,ω 0 iskeptexplicitlyinthefollowingderivationtomaintaingeneralityforarbitrarykernelfunctions.
+Under these assumptions, the averaged bond kernel function fromEq. (2.13)simplifies to
+
+       ¯ω b(X,X  ′) = ω(∆X) ω0  .                                                               (3.30)
+
+3.3.2 Crack dissipation energy density of a material point
+Thepoint-wise crack dissipation energy densityE                       ΓX : [0,∞)×B          0→Rfor a material pointXis defined as
+the weighted integral of the bond crack dissipationE                      Γb fromEq. (3.6)over all neighbors as
+                       ∫
+       EΓX(t,X) =
+                         H(X)       ¯ω b(X,X  ′)E  Γb (t,X,X   ′) dV ′.                                         (3.31)
+The total crack dissipation can be obtained by integratingE   ΓX over the material domain.  For a fully
+propagated sharp crack, all bonds crossing the crack haves= 1, and all bonds not crossing the crack have
+
+===== PDF PAGE 11 =====
+Phase-Field Peridynamics                                                                                               11 /30
+
+
+s=  0.  Consequently, the crack surface density function evaluates toγ    c(s)  =  1for crossing bonds and
+γc(s) = 0for non-crossing bonds.
+    A bond betweenXat heightz(X)andX       ′ at heightz(X  ′)crosses the crack if and only if the endpoints
+are on opposite sides of the crack plane, i.e.,z(X)·z(X      ′)<0. For a pointXat crack coordinatez=
+z(X)>0(above the crack), all neighborsX      ′ withz(X    ′)<0(below the crack) form the set of crossing
+bonds. This set of neighbors constitutes aspherical capC(X), defined as
+       C(X) =   {X′∈H(X)   ⏐⏐z(X)·z(X    ′)<0  }.                                             (3.32)
+The point-wise crack dissipation then reduces to an integral over the spherical cap as
+                     ∫       ωs(r)    Gc                     ∫
+       EΓX(X) =                ω0    c0δ dV ′ =  Gcc0δω0
+                       C(X)                                   C(X)  ωs(r) dV  ′.                                 (3.33)
+Since the crack is planar, for any two material pointsX    1 andX       2 with equal crack coordinatesz(X                       1) =
+z(X    2), the spherical capsC(X               1)andC(X              2)are geometrically congruent.  Combined with the fact that
+the spherical kernel functionω       s depends only on the bond lengthr, the kernel-weighted cap integrals are
+identical, i.e.,∫               ∫
+
+
+
+         C(X    1)ωs(r) dV  ′ =   C(X    2)ωs(r) dV  ′.                                                   (3.34)
+This motivates the definition of the general spherical capC   z(z) :=C(X)for any pointX∈Ωat a given
+crack coordinatez=z(X). Consequently, the point-wise crack dissipation of all points with equal crack
+coordinateisidentical, i.e.,E        ΓX(X  1) =E    ΓX(X  2). Therefore, thepoint-wisecrackdissipationcanbeexpressed
+as a function of the crack coordinate alone, i.e.,
+                            ∫
+       EΓz (z) =   Gcc0δω0
+                              Cz(z) ωs(r) dV  ′.                                                      (3.35)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Figure 3:Spherical cap geometry for the derivation of the normalization constant. A material pointXat
+              crack coordinatez=z(X)>0has its spherical neighborhoodH(X)intersected by the crack
+              plane atz=  0. The spherical capC(X)contains all neighbors below the crack plane whose
+              bonds cross the crack.
+
+
+3.3.3 Volume of the spherical cap
+The volume of the spherical cap depends mainly on the crack coordinatez(X)of the material point, as
+illustrated inFig. 3. Since the crack is considered planar and the neighborhood a sphere of radiusδcentered
+at heightzabove the crack plane, the cap volume is given by the standard equation
+
+       VC(z) =  π3 (δ−|z|)         2(2δ+|z|).                                                        (3.36)
+
+===== PDF PAGE 12 =====
+Phase-Field Peridynamics                                                                                               12 /30
+
+
+The absolute value ensures that the symmetry of the cap volume is captured for points below the crack plane
+with−δ <z <0, enforcingV           C(z) =V  C(−z). The total volume of the neighborhood sphere isV    H =  43πδ3.
+Thegeometric volume fraction functionf          V : [−δ,δ]→[0,                 12]is defined as the ratio of the cap volume to the
+sphere volume, yielding
+
+       fV (z) =  VC(z)VH    = (δ−|z|)         2(2δ+|z|)4δ  3      .                                                 (3.37)
+
+Thisfunctionsatisfiesf V (0) =  12,meaningthatapointonthecrackplanehasexactlyhalfofitsneighborhood
+volume on each side. Additionally,f V (±δ) = 0, indicating that a point at distanceδfrom the crack has no
+neighborhood volume on the other side.
+    Introducing thenormalized crack coordinateξ:=|z|/δ∈[0,1], the volume fraction can be expressed as
+
+       fV (ξ) =  VC(ξδ)VH    = (δ−ξδ)          2(2δ+ξδ)4δ  3             = (1−ξ)          2(2 +ξ)4     ∀ξ∈[0,1].                     (3.38)
+
+Expanding the numerator leads to the explicit polynomial form
+
+       fV (ξ) =    12− 3ξ4  + ξ34  ∀ξ∈[0,1].                                                   (3.39)
+
+Similarly, the normalized form satisfiesf       V (0) =  12 andf   V (1) = 0. This normalized form will be used in the
+subsequent derivation of the normalization constant.
+
+3.3.4 Integration over the crack band
+The total crack dissipation is obtained by integrating the point-wise crack dissipation energy density over
+the material domain. Only points within distanceδof the crack contribute, forming a band of thickness2δ
+centered on the crack plane. Due to the symmetry of the spherical cap geometry, points at heightzabove
+the crack and at height−zbelow the crack contribute equally to the total crack dissipation. The total
+dissipated energy therefore consists of equal contributions from both sides of the crack.
+    For the upper block with0<z<δ, the crack dissipation is integrated as follows. Consider a thin layer
+of material at heightzwith infinitesimal thicknessdzand crack areaA                            Γ. The volume of this layer isA   Γ dz.
+SinceE           ΓX is an energy density (energy per unit volume), the contribution to the total crack dissipation from
+this layer is
+
+       dE   Γ+ =E    Γz (z)A      Γ dz.                                                                   (3.40)
+
+The total contribution from the upper block is obtained by integration as
+                   ∫δ
+       EΓ+ =A    Γ
+                    0 EΓz (z) dz.                                                               (3.41)
+Utilizing the normalized crack coordinateξ, akernel-weighted volume fraction functionf                ω : [0,1]→[0,               12]
+can be defined as
+                      ∫
+       fω(ξ) =     1ω0
+                        Cz(ξδ) ωs(r) dV  ′.                                                          (3.42)
+This function gives the fraction of the total kernel weight contained in the spherical cap at heightz=ξδ.
+It satisfies the same boundary conditions as the geometric volume fraction function, i.e.,f  ω(0)  =  12 and
+fω(1) = 0.
+    With this definition, the point-wise crack dissipation fromEq. (3.33)becomes
+
+       EΓz (z) =  Gcc0δfω(z/δ).                                                               (3.43)
+
+===== PDF PAGE 13 =====
+Phase-Field Peridynamics                                                                                               13 /30
+
+
+Inserting this expression intoEq. (3.41)and changing to the normalized coordinateξ=z/δwithdz=δdξ,
+the contribution from the upper block yields
+                        ∫δ                             ∫1
+       EΓ+ =A    Γ Gcc0δ                         c0
+                          0 fω(z/δ) dz=    GcAΓ          0 fω(ξ) dξ.                                       (3.44)
+Due to the symmetry of the spherical cap geometry, the contribution from the lower block is equal to the
+upper block contribution. The total crack dissipation is therefore
+                                   ∫1
+       EΓ = 2E   Γ+ = 2GcAΓc0
+                                    0 fω(ξ) dξ.                                                     (3.45)
+
+3.3.5 Derivation of the normalization constant
+Applying the Griffith condition fromEq. (3.28), the total crack dissipation must equalG              cAΓ. Substituting
+this intoEq. (3.45)results in the relation
+                              ∫1
+       GcAΓ = 2GcAΓc0
+                               0 fω(ξ) dξ.                                                        (3.46)
+This simplifies to the general expression for the normalization constant as
+                ∫1
+       c0 = 2
+                 0 fω(ξ) dξ.                                                                     (3.47)
+The factor of2arises from the geometric symmetry of the crack band, since the total fracture energy includes
+contributions from both the upper part withz∈(0,δ)and the lower part withz∈(−δ,0).
+
+3.3.6 Exact evaluation of the normalization constant
+In the following, the general expression for the normalization constant fromEq. (3.47)is evaluated exactly.
+This requires the exact computation of the kernel-weighted cap fractionf       ω(ξ)fromEq. (3.42)and sub-
+sequently of the integral inEq. (3.47)by reducing the problem to one-dimensional integrals that can be
+computed analytically or via Gaussian quadrature.
+    Consider a material pointXat crack coordinatez=ξδ >0above the crack plane. Using spherical
+coordinates(r,φ,ϕ)centeredatXwiththepolaraxisalignedwiththecracknormaln                                                Γ, aneighborpointX ′
+at distancerand polar angleφ(measured from the positive crack normal direction) has crack coordinate
+
+       z(X ′) =ξδ+rcos(φ).                                                               (3.48)
+
+The neighbor lies below the crack plane, and thus the bond crosses the crack, if and only ifz(X  ′)<0,
+which requires
+
+       cos(φ)<−      ξδr .                                                                      (3.49)
+
+This condition can only be satisfied for bond lengthsr≥ξδ, sincecos(φ)≥−1. Forr∈[ξδ,δ], the polar
+angleφrangesfromφ                       0 = arccos(−ξδ/r)toπ, whiletheazimuthalangleϕrangesoverthefullinterval[0,2π).
+    The angular part of the volume integral evaluates to
+       ∫π
+
+        φ0 sin(φ) dφ=    [−cos(φ)    ]πφ0 = 1− ξδr .                                                (3.50)
+
+Combining with the radial and azimuthal integrals, the kernel-weighted cap integral fromEq. (3.42)becomes
+
+       ∫                           ∫δ                        )            ∫δ
+                                                    1− ξδr      dr= 2π
+        Cz(ξδ) ωs(r) dV  ′ = 2π      ξδωs(r)r      2(                       ξδωs(r)r(r−ξδ) dr.                  (3.51)
+
+===== PDF PAGE 14 =====
+Phase-Field Peridynamics                                                                                               14 /30
+
+
+Similarly, the full kernel integralω            0 fromEq. (2.14)for a bulk point with a complete spherical neighborhood
+evaluates in spherical coordinates to
+                  ∫δ
+       ω0 = 4π
+                    0 ωs(r)r      2 dr.                                                              (3.52)
+Introducing thenormalized radial coordinateρ:=r/δ∈[0,1]withdr=δdρin both integrals, the factors
+ofπand powers ofδcancel, and the kernel-weighted cap fraction simplifies to the exact expression
+                                                         ∫1
+       fω(ξ) =    2πδ  3∫1ξ ωs(ρδ)ρ(ρ−ξ) dρ               ξ ωs(ρδ)ρ(ρ−ξ) dρ
+                      4πδ  3∫10 ωs(ρδ)ρ        2 dρ        =2∫10 ωs(ρδ)ρ        2 dρ   .                               (3.53)
+This expression is exact for any spherical kernel function. It can be verified thatf    ω(0) = 1/2andf      ω(1) = 0,
+consistent with the boundary conditions stated in the previous subsubsection. Moreover, for a constant
+kernelω    s(r) = const., evaluating the integrals yields
+                  ∫1                      1
+       fω(ξ) =      ξ (ρ  2−ξρ) dρ        3− ξ2 + ξ36    = 1
+                      2∫1                        2           2− 3ξ4  + ξ34  =f  V (ξ),                            (3.54)
+                         0 ρ2 dρ       =         3
+which recovers the geometric volume fraction fromEq. (3.39), as expected.
+    Inserting the exact expression forf  ω fromEq. (3.53)into the general formula for the normalization
+constant fromEq. (3.47)yields
+                ∫1                 ∫1  ∫1
+       c0 = 2                        0  ξ ωs(ρδ)ρ(ρ−ξ) dρdξ∫1
+                 0 fω(ξ) dξ=                0 ωs(ρδ)ρ        2 dρ     .                                        (3.55)
+The double integral in the numerator can be simplified by exchanging the order of integration. The inte-
+gration domain{(ξ,ρ)|0≤ξ≤1, ξ≤ρ≤1}is equivalently described as{(ξ,ρ)|0≤ρ≤1, 0≤ξ≤ρ},
+allowing the order of integration to be switched as
+       ∫1   ∫1                                  ∫1             ∫ρ
+
+         0   ξ ωs(ρδ)ρ(ρ−ξ) dρdξ=                0 ωs(ρδ)ρ       0  (ρ−ξ) dξdρ.                               (3.56)
+The inner integral evaluates analytically to[]ρ
+       ∫ρ
+                              ρξ−  ξ22      =ρ    2− ρ22  = ρ22 .                                            (3.57)
+         0  (ρ−ξ) dξ=                     0
+Therefore, the numerator reduces to a single integral as
+       ∫1                              ∫1
+
+         0 ωs(ρδ)ρ·    ρ22  dρ=     12  0 ωs(ρδ)ρ        3 dρ.                                                (3.58)
+Substituting back intoEq. (3.55), the normalization constant is obtained as the exact closed-form expression
+
+               ∫1
+       c0 =     0 ωs(ρδ)ρ        3 dρ
+              2∫10 ωs(ρδ)ρ        2 dρ ,                                                               (3.59)
+in terms of a ratio of two one-dimensional integrals over the unit interval. Both integrals involve smooth
+integrands and can be evaluated analytically for polynomial kernels or with high accuracy using Gaussian
+quadrature. This result is exact for any spherical kernel function and does not involve any approximations
+beyond the setting assumptions of an infinite domain with a planar crack.
+    For the constant kernelω    s(r) = 1, the integrals evaluate to  ∫10 ρ3 dρ= 1/4and    ∫10 ρ2 dρ= 1/3, yielding
+the normalization constant
+       c0 = 1/42/3     = 38 .                                                                      (3.60)
+
+This coincides with the value obtained from integrating the geometric volume fraction function as
+          ⏐⏐⏐ωs(r)=1    = 2∫1
+       c0
+                           0 fV (ξ) dξ= 3/8,                                                     (3.61)
+confirming the consistency of the derivation. The numerical verification of this exact expression for the
+normalization constant is presented inSection 5.2.
+
+===== PDF PAGE 15 =====
+Phase-Field Peridynamics                                                                                               15 /30
+
+4 Discretization and algorithmic implementation
+
+This section presents the spatial discretization of the peridynamic equations introduced inSection 2, the
+connection to reproducing kernel methods, and the algorithmic implementation of the PFPD model.
+
+4.1 Spatial discretization
+To solve the previously described equations numerically, the continuous body is represented as a discrete
+set of material points. A discretized peridynamic bodyB  N0  ={X   k∈B0|k= 1, ..., N}is defined as a set
+ofNpoints in the reference domainB                      0. Each pointX k occupies a finite volumeV     k >0in the reference
+configuration. In a uniform discretization, the points are arranged in a regular grid with a characteristic
+point spacing△x, withV           k =△x       3 in three-dimensional space. Thehorizon ratiom       δ relates the horizon to
+the point spacing as
+
+       δ= (m  δ +ϵ  δ)△x,                                                                       (4.1)
+
+with the numerical parameterϵ         δ, usually chosen asϵ  δ = 0.015, ensuring that the horizon is strictly larger
+than the point spacing. Thediscrete neighborhoodof a pointX     k is defined as
+       HNk  :=H  N(X k) ={Xn∈BN0             ⏐⏐0<|∆X     kn|≤δ },                                        (4.2)
+
+
+with the discrete bond∆X     kn =X  n−X  k and neighbor volumeV     n >0. In the discrete setting, integrals
+over the neighborhood are approximated by sums over all neighbors as
+       ∫
+                                                ω(∆X    kn) (•)V   n.                                        (4.3)
+        H(X     k)ω(∆X) (•) dV      ′≈  ∑Xn∈HNk
+
+This quadrature rule is applied to all neighborhood integrals, including the shape tensor inEq. (2.5), the
+deformation gradient inEq. (2.4), the internal force density inEq. (2.9), as well as the strain energy density
+and force state of the BAQP formulation inEq. (2.12)andEq. (2.19).
+
+4.2 Reproducing kernel peridynamics notation
+The BAQP correspondence formulation can be equivalently expressed in the framework of reproducing
+kernel (RK) methods [8,18,31]. This connection arises from the fact that the shape tensor and bond shape
+vector of the correspondence formulation are special cases of the RK moment matrix and shape function
+derivatives, respectively [8].
+    In the RK framework, the moment matrix is defined as
+
+       M[n]   (X k) =  ∑        ω(∆X    kn)Q  [n]   (∆X   kn)⊗Q     [n]   (∆X   kn)V n,                              (4.4)
+                       Xn∈HNk
+
+with the monomial basis vectorQ          [n] ∈R m containingmmonomial terms up to ordern. The RK shape
+function derivatives are given by
+
+       dϕ n(X k)
+          dX k     =ω(∆X     kn)Q ∇[n]   M−1[n]   (X k)Q  [n]   (∆X   kn)V n,                                    (4.5)
+
+whereQ   ∇[n]  denotes thetarget derivative matrixthat selects the desired derivative order and direction. In
+three-dimensional space, this matrix is defined as
+                 [∂Q  [n]   (0)  ∂Q  [n]   (0) ∂Q  [n]   (0)]⊤
+       Q∇[n]    :=   ∂X1           ∂X2            ∂X3          ,                                             (4.6)
+
+and contains the partial derivatives of the monomial basis vector evaluated at the zero vector, with each
+row corresponding to a Cartesian derivative direction.
+
+===== PDF PAGE 16 =====
+Phase-Field Peridynamics                                                                                               16 /30
+
+
+    Choosing the linear monomial basisQ          [1](∆X) =∆X(abbreviated as C1), the target derivative matrix
+reduces toQ ∇[n]    =I, and the moment matrix reduces exactly to the shape tensor
+
+       M[1](X k) =K(X    k),                                                                   (4.7)
+and the shape function derivatives become
+       dϕ n(X k)
+          dX k     =B(X    k,X n)V n.                                                           (4.8)
+This reveals that the correspondence formulation is inherently a first-order accurate reproducing kernel
+approximation. Higher-order accuracy can be achieved by enriching the monomial basis, for instance with
+the RK1 basisQ          [1](∆X) = [1,∆X                  1,∆X     2,∆X     3]⊤ that includes a constant term to enforce partition of unity.
+With the RK1 basis, the target derivative matrix in three-dimensional space becomes
+                              
+                0   1   0   0 .                                                                (4.9)
+       Q∇[n]    = 0   0   1   0
+                  0   0   0   1
+Using an enriched basis improves the approximation quality, especially near boundaries where the neighbor-
+hood is truncated [31,11].
+    In the RK notation, the deformation gradient fromEq. (2.7)is expressed as
+
+       ¯F(t,X   k) =I+   ∑          ∆U  kn⊗ dϕ n(X k)dX k     =  ∑      ∆x⊗       dϕ n(X k)dX k  ,                       (4.10)
+
+                           Xn∈HNk                              Xn∈HNk
+where∆U       kn =U(t,X     n)−U(t,X      k)is the bond displacement. The algorithms below use this notation, since
+it naturally accommodates the kinematic degradation required for the phase-field approach and generalizes
+to higher-order bases.
+
+4.3 Discrete PFPD formulation and algorithms
+To write the equations in a discretized form, thediscrete bond phase-field parameteris introduced as
+
+       skn :=s(t,X     k,X n),                                                                 (4.11)
+
+with the discrete material pointsX  k andX   n∈HNk in a discretized bodyB  N0 . Analogously, thediscrete
+history variableand thediscrete crack driving forceare defined as bond-wise quantities for each pair of
+discrete material points as
+       Ykn :=Y(t,X     k,X n),   Y kn :=Y(t,X     k,X n).                                         (4.12)
+
+Thediscrete point damageis the point-wise damage variable obtained from averaging the bond phase-field
+parameters over the family ofX  k, as defined inEq. (3.27), yielding
+
+       Dk :=D(t,X      k).                                                                      (4.13)
+    Analogously to the degradation of the shape tensor and bond shape vector inEq. (3.13)andEq. (3.14),
+thePFPDframeworkcanbeexpressedusingareproducingkernelperidynamics(RKPD)notation, cf.[8,18].
+The shape tensor and bond shape vector are replaced by the moment matrix and shape function derivatives
+in the reproducing kernel setting. The moment matrix is degraded by the bond phase-field parameter as
+       M[n]   (t,X  k) =  ∑       ω(∆X    kn)h(s   kn)Q  [n]   (∆X   kn)⊗Q     [n]   (∆X   kn)V n,                     (4.14)
+                         Xn∈HNk
+where the kinematic degradation functionhuses the discrete bond phase-field parameters                 kn and the critical
+phase-field values    c, as defined inEq. (3.11). The shape function derivatives are then degraded similarly as
+       dϕ n(t,X  k)
+           dX k       =ω(∆X     kn)h(s   kn)Q ∇[n]   M−1[n]   (t,X  k)Q  [n]   (∆X   kn)V n.                          (4.15)
+
+===== PDF PAGE 17 =====
+Phase-Field Peridynamics                                                                                               17 /30
+
+
+This kinematic degradation ensures that the inversion of the moment matrix remains stable even for finite
+deformations and largely damaged bonds, while maintaining the capability for full removal of the energetic
+contribution of fully damaged bonds withs    kn = 1. Due to the delayed application of the kinematic degrada-
+tion withs    c, the provided scheme is numerically much more stable than a direct degradation of the moment
+matrix with the same degradation function as the energetic contribution.
+    TohighlightthedifferencesbetweenthestandardBAQPmodelwithcriticalstretchdamageandthenovel
+phase-field peridynamics (PFPD) model, both approaches are presented as algorithms for the evaluation of
+the internal force density  ¯Bint within a single time step. The time integration is handled by a standard
+explicittimeintegrationschemesuchasVelocityVerlet[56],andisidenticalforbothmodels. Thealgorithmic
+differences are entirely contained in the force evaluation procedure.
+    In the standardBAQP model, fracture is modeled by deleting bonds whose bond strain exceeds a
+critical valueε    c. A deleted bond carries no force and is excluded from the kinematic approximation. The
+evaluation of  ¯Bint proceeds in four steps, as described inAlgorithm 1. In Step 0, the bond strainε        b is evalu-
+ated for each bond and compared against the critical value. Bonds exceeding the threshold are deactivated
+by setting the failure flagd   kn to zero, and the point damageD       k is updated as the volume-weighted fraction
+of failed bonds. In Step 1, the moment matrixM              [n]  and the shape function derivatives are reassembled for
+all points where the damage state changed, using only the remaining active bonds withd    kn  = 1. Step 2
+assembles the nonlocal deformation gradient  ¯Ffor all points. In Step 3, the bond-associated deformation
+gradient  ˜Fis computed for each active bond as the average of the nonlocal deformation gradients at both
+endpoints, corrected to reproduce the actual bond deformation exactly. The first Piola-Kirchhoff stress ten-
+sor  ˜Pis then evaluated from the constitutive law. The force statetis assembled from two contributions: the
+direct bond stress projection along the bond direction and the non-uniform stress correctionZdistributed
+via the shape function derivatives. The internal force density  ¯Bint is accumulated by summing the force
+state contributions over all active bonds.
+    In thePFPD model, bonds are not deleted when the critical crack driving force is exceeded. Instead,
+all bonds remain part of the kinematic approximation, and the stress response is continuously degraded via
+the degradation functiong(s). The evaluation of                   ¯Bint follows the same four-step structure, as described
+inAlgorithm 2, but differs in several key aspects. In Step 0, the point damageD         k is computed from the
+bond phase-field parameters of the previous time step using the kernel-weighted averaging fromEq. (3.27),
+replacing the volume-weighted failure fraction of the BAQP model. In Step 1, the moment matrix is updated
+for all points where any bond phase-field parameter exceeds the critical values    c. Notably, the binary failure
+flagd   kn of the BAQP model is replaced by the continuous kinematic degradation functionh(s    kn), which
+ensures a gradual reduction of the kinematic contribution for highly damaged bonds while preserving the
+stability of the moment matrix. Step 2 is identical to the BAQP model. The main difference lies in Step 3:
+the bond-associated deformation gradient is computed forallbonds, regardless of their damage state. The
+undamaged first Piola-Kirchhoff stress tensorP            0 is evaluated first from the constitutive law. Subsequently,
+the crack driving forceY kn is determined from the tensile strain energy density or the maximum principal
+stress, as introduced inEq. (3.19)andEq. (3.23), respectively. The history variableY                     kn is updated by
+taking the maximum of its previous value and the current crack driving force, and the bond phase-field
+parameters         kn is evolved accordingly. The degraded stress tensor  ˜P=g(s     kn)P  0 is then used to assemble
+the non-uniform stress correction and the internal force density, following the same procedure as in the
+BAQP model.
+    The key differences between both algorithms are summarized as follows.  In the BAQP model (Al-
+gorithm 1), bonds are abruptly deleted when the critical strain is exceeded, and the moment matrix is
+reassembled using only the remaining active bonds. This binary bond deletion progressively degrades the
+kinematic approximation and can lead to numerical instabilities, especially in regions with many deleted
+bonds. Moreover, thestressresponseofabondtransitionsinstantaneouslyfromundamagedtofullyinactive,
+which does not allow for a smooth dissipation of energy during crack propagation. In contrast, the PFPD
+model (Algorithm 2) retains all bonds and continuously degrades the stress contribution of damaged bonds
+via the degradation functiong(s). The kinematic approximation is only gradually affected throughh(s),
+preserving the stability of the moment matrix even under large-scale fracture. The phase-field evolution via
+the history variableYensures irreversibility and thermodynamic consistency of the damage process. An-
+
+===== PDF PAGE 18 =====
+ Phase-Field Peridynamics                                                                                               18 /30
+
+
+ other notable difference concerns the input and output quantities of the algorithms: while the BAQP model
+ operates on binary bond failure flagsd    kn, the PFPD model requires the continuous history variableY      kn and
+ the bond phase-field parameters         kn to be stored and updated for each bond at every time step.
+
+  Algorithm 1:BAQP with critical stretch, evaluation of     ¯Bint
+    Input:PositionsX             k,x k; bond failured     kn from previous time step
+    Output:Force density              ¯Bint(X k); updated bond failured      kn
+    #Step  0:    Bond  failure
+ 1foreachpointX      k∈BN do
+ 2   foreachbond∆X       kn withX    n∈HNk do
+
+ 3     ε b(X k,X n)← |∆x  kn|−|∆X  kn|
+                                       |∆X  kn|
+ 4     ifε  b(X k,X n)>ε c and failure is permittedthen
+ 5         Deactivate bond:d     kn←0
+
+    #Step  1:    Moment  matrix  and  shape  function  derivatives
+ 6foreachpointX      k∈BN where damage changeddo
+ 7    M  [n]   (X k)←  ∑           ω(∆X    kn)d kn Q[n]   (∆X   kn)⊗Q     [n]   (∆X   kn)V n
+                         Xn∈HNk
+ 8   foreachbond∆X       kn withX    n∈HNk do
+
+ 9             dϕ n(X k)                                [n]   (X k)Q  [n]   (∆X   kn)V n.
+                dX k ←ω(∆X      kn)d kn Q∇[n]   M−1
+
+    #Step  2:    Nonlocal  deformation  gradient
+10foreachpointX      k∈BN do
+
+11       ¯F(X  k)←I+    ∑           ∆U  kn⊗ dϕ n(X k)
+                           Xn∈HNk                  dX k
+
+    #Step  3:    Bond  stress  and  force  density
+12foreachpointX      k∈BN do
+13  InitializeZ(X            k)←0
+14  Initialize     ¯Bint(X k)←0
+15  foreachactive bond∆X        kn withX    n∈HNk andd   kn = 1do(¯F(X  k) + ¯F(X  n))
+
+16            ˜F av(X k,X n)←    12
+                                                     (                                     )
+17            ˜F(X  k,X n)←   ˜F av(X k,X n) +        ∆x  kn− ˜F av(X k,X n)∆X   kn          ⊗   ∆X  kn
+                                                                                                 |∆X  kn|2
+18            ˜P(X  k,X n)←P(       ˜F(X  k,X n))                     (                           )
+
+19       Z(X    k)←Z(X     k) + ¯ω b(X k,X n) ˜P(X  k,X n)              I−   ∆X  kn⊗∆X   kn          Vn
+                                                                                  |∆X  kn|2
+
+20  foreachactive bond∆X        kn withX    n∈HNk andd   kn = 1do
+21       t(X   k,X n)←¯ω    b(X k,X n) ˜P(X  k,X n) ∆X  kn                                       1
+                                                             |∆X  kn| +Z(X    k)dϕ n(X k)dX k   Vn
+22            ¯Bint(X k)←   ¯Bint(X k) +t(X   k,X n)V n
+23            ¯Bint(X n)←   ¯Bint(X n)−t(X    k,X n)V k
+
+===== PDF PAGE 19 =====
+ Phase-Field Peridynamics                                                                                               19 /30
+
+
+  Algorithm 2:PFPD with phase-field damage, evaluation of     ¯Bint
+   Input:PositionsX             k,x k; historyY      kn; phase-fields         kn from previous time step
+   Output:Force density              ¯Bint(X k); updated historyY       kn and phase-fields kn
+   #Step  1:    Moment  matrix  and  shape  function  derivatives
+ 1foreachpointX      k∈BN wheres kn>sc do
+ 2    M  [n]   (X k)←  ∑          ω(∆X    kn)h(s   kn)Q  [n]   (∆X   kn)⊗Q     [n]   (∆X   kn)V n
+                         Xn∈HNk
+ 3   foreachbond∆X       kn withX    n∈HNk do
+
+ 4             dϕ n(X k)                                    [n]   (X k)Q  [n]   (∆X   kn)V n.
+                dX k ←ω(∆X      kn)h(s   kn)Q ∇[n]   M−1
+
+   #Step  2:    Nonlocal  deformation  gradient
+ 5foreachpointX      k∈BN do
+
+ 6       ¯F(X  k)←I+    ∑           ∆U  kn⊗ dϕ n(X k)
+                           Xn∈HNk                  dX k
+
+   #Step  3:    Bond  stress,  damage  update,  and  force  density
+ 7foreachpointX      k∈BN do
+ 8   InitializeZ(X           k)←0
+ 9   Initialize   ¯Bint(X k)←0
+10  foreachbond∆X        kn withX    n∈HNk do(¯F(X  k) + ¯F(X  n))
+
+11            ˜F av(X k,X n)←    12
+                                                    (                                      )
+12            ˜F(X  k,X n)←   ˜F av(X k,X n) +        ∆x  kn− ˜F av(X k,X n)∆X   kn          ⊗   ∆X  kn
+                                                                                                |∆X  kn|2
+13       P    0(X k,X n)←P(       ˜F(X  k,X n))
+
+14    Y  kn←Ψ     +0 ( ˜F(X  k,X n))or ⟨σ  1( ˜F(X  k,X n))⟩    2+2E
+
+15   Y  kn←max(Y   kn, Ykn)
+16    s  kn←min(1,Y    kn/(Y  kn +Y  c))
+17            ˜P(X  k,X n)←g(s    kn)P  0(X k,X n)                   (                           )
+
+18       Z(X    k)←Z(X     k) + ¯ω b(X k,X n) ˜P(X  k,X n)             I−   ∆X  kn⊗∆X   kn          Vn
+                                                                                 |∆X  kn|2
+
+19  foreachbond∆X        kn withX    n∈HNk do
+20       t(X   k,X n)←¯ω    b(X k,X n) ˜P(X  k,X n) ∆X  kn                                       1
+                                                             |∆X  kn| +Z(X    k)dϕ n(X k)dX k   Vn
+21            ¯Bint(X k)←   ¯Bint(X k) +t(X   k,X n)V n
+22            ¯Bint(X n)←   ¯Bint(X n)−t(X    k,X n)V k
+
+
+ 5 Numerical Examples
+
+ The capabilities of the PFPD model are demonstrated through a series of numerical examples. First, mode I
+ and mode II crack propagation in a notched plate are investigated to verify the correct crack path prediction.
+ Then, the boundary tension test (BTT) is used to verify the normalization constant derived inSection 3.3
+ and to demonstrate the ability of the PFPD model to capture crack branching. Finally, the Kalthoff-Winkler
+ experiment is simulated to assess the performance of the model under impact-induced fracture conditions.
+ The simulations are performed in three dimensions using Velocity Verlet time integration [56]. If not stated
+ otherwise, a critical phase-field value ofs  c = 0.95, and the Saint Venant-Kirchhoff constitutive model with
+ linear elastic material parameters are employed. The open-source Julia packagePeridynamics.jl[47,46]
+ is used for all simulations. The PFPD formulation presented in this work is currently implemented in a
+
+===== PDF PAGE 20 =====
+Phase-Field Peridynamics                                                                                               20 /30
+
+
+private development branch of the package and will be released in a future version.
+
+5.1 Mode I and mode II crack propagation
+As a first verification of the PFPD model, mode I and mode II crack propagation in a notched plate are
+investigated.  A rectangular plate with dimensionsL         xy×L  xy×   110Lxy withL    xy  =  100 mmand a pre-
+defined central notch of length  12Lxy is considered. The plate is uniformly discretized with point spacing
+△x=L    xy/120, yielding a120×120×12point cloud withN= 172 800material points. The pre-notch is
+introduced by breaking all bonds crossing the notch surface before the simulation. One layer of boundary
+points at the top and bottom surfaces is defined as a no-failure zone. The material parameters are density
+ϱ0 = 2500 kg/m       3, Young’s modulusE= 32 000 MPa, Poisson’s ratioν= 0.25, and critical energy release
+rateG   c = 100 J/m     2.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            Figure 4:Setup for the mode I (left) and mode II (right) crack propagation examples
+
+
+                         PFPD mode I                                                           PFPD mode II
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      Figure 5:Mode I and mode II crack propagation in 3D at timet= 171µsfor the PFPD model
+
+    The loading is imposed via a Dirichlet boundary condition   ˙UD on the upper and lower boundaries as
+        ˙U(t,X) =            ˙UD(t,X)  ∀X∈B                  0∩∂   DB0,                                              (5.1)
+
+where∂            DB0 denotes the set of points on the upper and lower boundaries, and the prescribed boundary
+velocity is constant with  ˙UD(t,X) =         ˙U0. For mode I, a Dirichlet boundary condition with  ˙U0 =±    ˙U0 e2 and
+
+===== PDF PAGE 21 =====
+Phase-Field Peridynamics                                                                                               21 /30
+
+˙U0 = 0.2 m/sis applied at the upper and lower boundaries, pulling the plate apart symmetrically, as shown
+inFig. 4(left). For mode II, the loading is changed to shear: the upper and lower halves are displaced in
+opposite horizontal directions with   ˙U0 =±    ˙U0 e1 and  ˙U0 = 0.1 m/s, as depicted inFig. 4(right). All other
+geometric and material parameters remain identical.
+    InFig. 5, the crack patterns obtained with the PFPD model are shown. For mode I, the crack propagates
+as a straight horizontal line from the initial notch tip, which is the expected behavior for symmetric tensile
+loading. For mode II, the crack deviates from the initial notch direction and follows a curved path, consistent
+with the expected behavior for shear-dominated fracture. Both results are in agreement with results from
+standardbond-basedandothercorrespondenceperidynamicsformulations, confirmingthatthePFPDmodel
+correctly reproduces the expected crack paths for both loading modes. Notably, the standard BAQP model
+with critical stretch damage becomes unstable in this mode II case due to shape tensor degradation: the
+asymmetric bond deletion under shear loading leads to an ill-conditioned shape tensor and eventually to
+numerical failure. The PFPD model, in contrast, remains stable throughout the simulation, since bonds are
+not deleted but continuously degraded via the degradation function.
+
+5.2 Verification of the normalization constant
+To verify the correctness of the normalization constantc  0 derived inSection 3.3, the boundary tension test
+(BTT) is employed. The BTT, originally introduced by Bourdin et al. [15] for phase-field fracture models, is
+a standard benchmark for dynamic crack branching. A rectangular plate with dimensionsL          x× 25Lx×  125Lx
+andL   x  = 100 mmis considered. The plate is uniformly discretized withN       x×N  y×N  z points and point
+spacing△x=                       25Lx/Ny. Apre-definedcrackextendsfromtheleftsideto thecenteroftheplate. Thematerial
+parameters are densityϱ  0 = 2450 kg/m       3, Young’s modulusE= 32 000 MPa, Poisson’s ratioν= 0.25, and
+critical energy release rateG   c = 3 J/m     2. The setup is shown inFig. 6.
+    The loading is applied through Neumann boundary conditions  ¯BN(t,X)at the upper and lower bound-
+aries with
+        ¯Bext(t,X) =        ¯BN(t,X)  ∀X∈B                  0∩∂   NB0,                                            (5.2)
+
+where∂            NB0 denotes one layer of points on the upper and lower boundaries. A constant dynamic stress of
+σ= 1 MPais applied as body force with
+
+        ¯BN(t,X) =  ±σ△x   e2,                                                                   (5.3)
+
+at the upper and lower boundaries, respectively.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                 Figure 6:Setup of the boundary tension test (BTT)
+
+    Ifthenormalizationconstantiscorrect, thecriticalcrackdrivingforceY    c fromEq.(3.18)yieldsconsistent
+fracture behavior regardless of the choice of kernel function and horizon ratio.  To this end, the BTT
+is simulated with different horizon ratiosm     δ∈{3,4,5,6}for two different kernel functions, each with a
+discretization ofN  y = 100.
+
+===== PDF PAGE 22 =====
+Phase-Field Peridynamics                                                                                               22 /30
+
+
+5.2.1 Results with the cubic B-spline kernel
+Fig. 7shows the crack branching patterns obtained with the cubic B-spline kernel fromEq. (2.16). All four
+simulations produce very similar crack paths, with the same branching point and comparable branching
+angles. As expected, higher horizon ratios lead to a thicker damage zone, which is a direct consequence of
+the increased nonlocal interaction radius. The same results are obtained for different discretization values
+Ny, confirming the consistency of the results and the correctness of the normalization constant for this kernel
+function.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Figure 7:Crack branching patterns for different horizon ratios in the BTT for the PFPD model with the
+              cubic B-spline kernel fromEq. (2.16)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Figure 8:Crack branching patterns for different horizon ratios in the BTT for the PFPD model with the
+              linear kernel fromEq. (5.4)
+
+===== PDF PAGE 23 =====
+Phase-Field Peridynamics                                                                                               23 /30
+
+
+5.2.2 Results with the linear kernel
+To ensure that the normalization constant is also correct for other kernel functions, the simulations are
+repeated with the linear kernel
+                           (              )
+       ω(∆X) =              3πδ31− |∆X|δ      ,                                                         (5.4)
+
+which fulfills the normalization condition fromEq. (2.15)withω                              0(X) = 1. The results for this kernel are
+shown inFig. 8. Again, all simulations produce very similar crack paths, and the results are also comparable
+to those obtained with the cubic B-spline kernel inFig. 7. The branching angles and branching points are
+consistent across both kernels and all horizon ratios, confirming that the normalization constant is correct
+for different kernel functions. The obtained crack patterns are in good agreement with the experimental
+observations reported in the literature [15,30].
+
+5.2.3 Crack tip velocity
+The crack tip velocity over the crack propagation time frame is shown inFig. 9for the PFPD model with
+Ny  = 100, together with results from the bond-based (BB) model for reference. The crack tip velocity of
+the PFPD model does not significantly exceed the half Rayleigh wave speed  12cR, which is the theoretically
+expected limiting velocity for crack branching in brittle materials. The Rayleigh wave speed is approximated
+as
+
+       cR =c  s 0.862 + 1.14ν1 +ν     ,                                                                (5.5)
+
+with the shear wave speedc s  = √G/ϱ0 and the shear modulusG=E/(2(1 +ν)).  The velocity curve
+of the PFPD model is smoother compared to the BB results, without the strong peaks observed for the
+standard formulations. This observation is attributed to the improved kinematic approximation provided
+by the correspondence-based framework.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Figure 9:Crack tip velocity over the propagation time in the BTT for the PFPD model compared to the
+              bond-based (BB) model, normalized by the half Rayleigh wave speed  12cR
+
+
+5.2.4 Discretization convergence
+To verify that the results are consistent across different spatial discretizations, the BTT is simulated with
+different grid resolutionsN y∈{60,80,100,120}, corresponding to point spacings△x=                                                        25Lx/Ny of approx-
+imately0.67 mm,0.50 mm,0.40 mm, and0.33 mm, respectively. All other parameters remain identical to
+the setup described above, with the cubic B-spline kernel fromEq. (2.16)and a horizon ratio ofm           δ = 3.
+
+===== PDF PAGE 24 =====
+Phase-Field Peridynamics                                                                                               24 /30
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Figure 10:Crack branching patterns in the BTT for different discretizationsN           y∈{60,80,100,120}with
+                the PFPD model
+
+
+    InFig. 10, the damage fields for the different grid resolutions are shown. The crack branching pattern
+is captured for all resolutions, with similar branching angles and branching points across the different
+discretizations.  As expected, finer discretizations produce narrower damage bands while preserving the
+same crack topology. The crack paths are consistent with the results obtained for different horizon ratios
+inFig. 7and with phase-field fracture simulations in the literature [15], confirming that the PFPD model
+correctly reproduces the expected fracture behavior under mesh refinement.
+
+5.3 Kalthoff-Winkler experiment
+As a final benchmark, the Kalthoff-Winkler experiment [33] is simulated.  This experiment is a well-
+established test for dynamic fracture under impact loading, where a projectile impacts a pre-notched steel
+plate, leading to mode II dominated crack initiation and propagation. The plate has a width of100 mm,
+a height of200 mm, and a thickness of9 mm, featuring two parallel pre-notches with a length of50 mm
+and a cylindrical section diameter of50 mm. The projectile impact is modeled using a Dirichlet boundary
+condition as inEq. (5.1), with             ˙UD(t,X)  =−v(t)e                        2 applied to the first five point layers.  The velocity
+function follows a linear ramp to the impact velocityv   0 over a ramp timet         1, defined as
+                {v0 t
+       v(t) =         t1  ift≤t        1,
+                  v0    ift>t   1,                                                               (5.6)
+
+with impact velocityv  0  =  16.5 m/sand ramp timet                       1  =  10µs. Three layers of boundary points on the
+opposite side of the impact are defined as no-failure zones. The plate is discretized with111×222×10
+material points and a point spacing of△x= 0.9 mm. The material parameters are densityϱ                        0 = 8000 kg/m       3,
+Young’s modulusE= 190 000 MPa, Poisson’s ratioν= 0.3, and critical energy release rateG               c = 34 kJ/m       2.
+The experimental setup is illustrated inFig. 11.
+    InFig. 12, the damage field of the PFPD model at timet= 0.2 msis shown. The cracks initiate at both
+notch tips and propagate at approximately70     ◦ to the original notch direction, which is in good agreement
+with the experimentally observed crack angle [33].
+    The crack tip trajectory is shown inFig. 13, compared to results obtained with the ordinary-state-based
+(OSB) peridynamics model. The PFPD model yields a crack angle closer to the characteristic70    ◦ observed
+in experiments, particularly in the initial phase of crack propagation. This improved agreement is attributed
+
+===== PDF PAGE 25 =====
+Phase-Field Peridynamics                                                                                               25 /30
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                Figure 11:Setup of the Kalthoff-Winkler experiment
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+          Figure 12:Results of the Kalthoff-Winkler experiment att= 0.2 msfor the PFPD model
+
+
+to the continuous damage evolution in the PFPD framework, which allows for a more gradual and physically
+consistent crack initiation compared to the abrupt bond deletion in the standard models.
+    The crack tip velocity over the propagation time frame is shown inFig. 14. The PFPD model yields
+a smooth velocity profile, with the crack tip velocity remaining below the half Rayleigh wave speed   12cR
+throughout the simulation. This is consistent with the expected behavior for the Kalthoff-Winkler exper-
+iment, where the fracture is dominated by mode II loading conditions.  In comparison, the OSB model
+reaches velocities above  12cR and exhibits a slightly earlier onset of crack propagation (seeFig. 14). The
+crack initiation time of the PFPD model is comparable to that of the BAQP model, further confirming the
+consistency of the correspondence-based kinematic approximation.
+
+===== PDF PAGE 26 =====
+Phase-Field Peridynamics                                                                                               26 /30
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Figure 13:Crack tip trajectory in the Kalthoff-Winkler experiment for the PFPD model compared to the
+               ordinary state-based (OSB) model, with the characteristic70       ◦ angle from experiments indicated
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Figure 14:Crack tip velocity in the Kalthoff-Winkler experiment for the PFPD model compared to the
+               ordinary state-based (OSB) model
+
+6 Conclusion
+
+A phase-field peridynamics (PFPD) approach has been developed that embeds a phase-field fracture model
+into the bond-associated correspondence framework. Instead of abruptly removing bonds when a critical
+deformation is exceeded, the approach continuously degrades their energetic contribution through a bond
+phase-field parameter, thereby avoiding the numerical instabilities inherent to bond deletion in the corre-
+spondence formulation. Additionally, a kinematic degradation function has been introduced to gradually
+reduce the kinematic contribution of highly damaged bonds, preserving the stability of the shape tensor and
+the accuracy of the deformation gradient approximation even under large-scale fracture.
+    An analytical expression for the normalization constant of the damage model has been derived for general
+spherical kernel functions by requiring that the total crack dissipation equals the Griffith energy release rate
+per unit crack area.  By reducing the problem to a ratio of two one-dimensional integrals over the unit
+interval, an exact closed-form expression is obtained that can be evaluated analytically for polynomial
+kernels.
+    Numerical examples confirm the capabilities of the PFPD model.  Mode I and mode II simulations
+yield the expected crack paths, with the PFPD model remaining stable in the mode II case where the
+standard BAQP model with bond deletion becomes unstable due to shape tensor degradation. Consistent
+crack branching patterns in the boundary tension test verify the correctness of the normalization constant
+across different horizon ratios and kernel functions, with branching angles and branching points in good
+
+===== PDF PAGE 27 =====
+Phase-Field Peridynamics                                                                                               27 /30
+
+
+agreement with experimental observations. Crack tip velocities do not significantly exceed the half Rayleigh
+wave speed, consistent with the theoretically expected limiting velocity for crack branching. In the Kalthoff-
+Winkler experiment, crack angles of approximately70     ◦ are obtained, matching the experimentally observed
+values, and smoother velocity profiles are achieved compared to standard formulations.
+    Overall, the proposed framework retains the full accuracy of the bond-associated correspondence for-
+mulation while providing a thermodynamically consistent description of fracture that avoids the numerical
+instabilities associated with bond deletion approaches. Since bonds are never removed but only degraded,
+the kinematic approximation remains well-conditioned throughout the simulation, making the PFPD model
+a robust and versatile tool for dynamic fracture problems.
+
+Acknowledgments
+
+The authors gratefully acknowledge the support of the Deutsche Forschungsgemeinschaft (DFG) in the
+projects WE 2525/15-1 and WE 2525/15-2 within the Special Priority Program 2256 "Variational Methods
+for Predicting Complex Phenomena in Engineering Structures and Materials" #422730790.
+
+References
+
+ [1]L. Ambrosio and V. M. Tortorelli. “Approximation of functional depending on jumps by elliptic
+       functional via t-convergence”.Communications on Pure and Applied Mathematics43.8 (Dec. 1990),
+       pp. 999–1036.doi:10.1002/cpa.3160430805.
+ [2]G. I. Barenblatt. “The Mathematical Theory of Equilibrium Cracks in Brittle Fracture”.Advances in
+       Applied Mechanics. Vol. 7. 1962, pp. 55–129.doi:10.1016/S0065-2156(08)70121-2.
+ [3]Y.Bazilevs,M.Behzadinasab,andJ.T.Foster.“SimulatingconcretefailureusingtheMicroplane(M7)
+       constitutive model in correspondence-based peridynamics: Validation for classical fracture tests and
+       extension to discrete fracture”.Journal of the Mechanics and Physics of Solids166 (2022), p. 104947.
+       doi:10.1016/j.jmps.2022.104947.
+ [4]M. Behzadinasab, J. T. Foster, and Y. Bazilevs. “A Unified, Stable and Accurate Meshfree Framework
+       for Peridynamic Correspondence Modeling—Part II: Wave Propagation and Enforcement of Stress
+       Boundary Conditions”.Journal of Peridynamics and Nonlocal Modeling3.1 (Mar. 1, 2021), pp. 46–
+       66.doi:10.1007/s42102-020-00039-6.
+ [5]M. Behzadinasab, N. Trask, and Y. Bazilevs. “A Unified, Stable and Accurate Meshfree Framework
+       for Peridynamic Correspondence Modeling—Part I: Core Methods”.Journal of Peridynamics and
+       Nonlocal Modeling3 (Mar. 2021), pp. 1–22.doi:10.1007/s42102-020-00040-z.
+ [6]T. Belytschko and T. Black. “Elastic crack growth in finite elements with minimal remeshing”.Inter-
+       national Journal for Numerical Methods in Engineering45.5 (June 1999), pp. 601–620.doi:10.1002/
+       (SICI)1097-0207(19990620)45:5<601::AID-NME598>3.0.CO;2-S.
+ [7]T. Belytschko, T. J. R. Hughes, and P. Burgers. “Computational Methods for Transient Analysis”.
+       Journal of Applied Mechanics52.4 (Dec. 1985), pp. 984–984.doi:10.1115/1.3169187.
+ [8]M. A. Bessa et al. “A meshfree unification: reproducing kernel peridynamics”.Computational Mechan-
+       ics53.6 (Jan. 2014), pp. 1251–1264.doi:10.1007/s00466-013-0969-x.
+ [9]C. Bilgen and K. Weinberg. “On the crack-driving force of phase-field models in linearized and finite
+       elasticity”.Computer Methods in Applied Mechanics and Engineering353 (Aug. 2019), pp. 348–372.
+       doi:10.1016/j.cma.2019.05.009.
+[10]C.Bilgenetal.“Adetailedinvestigationofthemodelinfluencingparametersofthephase-fieldfracture
+       approach”.GAMM-Mitteilungen43.2 (Aug. 2019).doi:10.1002/gamm.202000005.
+[11]T. Bode, C. Weißenfels, and P. Wriggers. “Peridynamic Petrov–Galerkin method: A generalization of
+       the peridynamic theory of correspondence materials”.Computer Methods in Applied Mechanics and
+       Engineering358 (Jan. 2020), p. 112636.doi:10.1016/j.cma.2019.112636.
+
+===== PDF PAGE 28 =====
+Phase-Field Peridynamics                                                                                               28 /30
+
+
+[12]J. Bonet and R. D. Wood.Nonlinear Continuum Mechanics for Finite Element Analysis. Mar. 2008.
+       doi:10.1017/cbo9780511755446.
+[13]M. J. Borden et al. “A phase-field description of dynamic brittle fracture”.Computer Methods in
+       Applied Mechanics and Engineering217–220 (Apr. 2012), pp. 77–95.doi:10.1016/j.cma.2012.01.
+       008.
+[14]B. Bourdin, G. Francfort, and J.-J. Marigo. “Numerical experiments in revisited brittle fracture”.
+       Journal of the Mechanics and Physics of Solids48.4 (Apr. 2000), pp. 797–826.doi:10.1016/s0022-
+       5096(99)00028-9.
+[15]B. Bourdin, G. A. Francfort, and J.-J. Marigo. “The Variational Approach to Fracture”.Journal of
+       Elasticity91.1–3 (Mar. 2008), pp. 5–148.doi:10.1007/s10659-007-9107-3.
+[16]M. Breitenfeld et al. “Non-ordinary state-based peridynamic analysis of stationary crack problems”.
+       en.Computer Methods in Applied Mechanics and Engineering272 (Apr. 2014), pp. 233–250.doi:
+       10.1016/j.cma.2014.01.002.
+[17]G. T. Camacho and M. Ortiz. “Computational modelling of impact damage in brittle materials”.
+       International Journal of Solids and Structures33.20–26 (Aug. 1996), pp. 2899–2938.doi:10.1016/
+       0020-7683(95)00255-3.
+[18]H. Chen. “Bond-associated deformation gradients for peridynamic correspondence model”.Mechanics
+       Research Communications90 (June 2018), pp. 34–41.doi:10.1016/j.mechrescom.2018.04.004.
+[19]H. Chen and B. W. Spencer. “Peridynamic bond-associated correspondence model: Stability and
+       convergence properties”.International Journal for Numerical Methods in Engineering117.6 (2019),
+       pp. 713–727.doi:10.1002/nme.5973.
+[20]J. Cueto, C. Kreisbeck, and H. Schönberger. “Γ-convergence involving nonlocal gradients with varying
+       horizon: Recovery of local and fractional models”.Nonlinear Analysis: Real World Applications85
+       (Oct. 2025), p. 104371.doi:10.1016/j.nonrwa.2025.104371.
+[21]J. Cueto, C. Kreisbeck, and H. Schönberger. “A variational theory for integral functionals involv-
+       ing finite-horizon fractional gradients”.Fractional Calculus and Applied Analysis26.5 (Aug. 2023),
+       pp. 2001–2056.doi:10.1007/s13540-023-00196-7.
+[22]P. Diehl et al. “A comparative review of peridynamics and phase-field models for engineering fracture
+       mechanics”.Computational Mechanics69.6 (Feb. 2022), pp. 1259–1293.doi:10.1007/s00466-022-
+       02147-0.
+[23]D. S. Dugdale. “Yielding of steel sheets containing slits”.Journal of the Mechanics and Physics of
+       Solids8.2 (May 1960), pp. 100–104.doi:10.1016/0022-5096(60)90013-2.
+[24]G.FrancfortandJ.-J.Marigo.“Revisitingbrittlefractureasanenergyminimizationproblem”.Journal
+       of the Mechanics and Physics of Solids46.8 (Aug. 1998), pp. 1319–1342.doi: 10 . 1016 / s0022 -
+       5096(98)00034-9.
+[25]K. Friebertshäuser (Partmann), M. Werner, and K. Weinberg. “Pneumatic Fracture Computations
+       with Peridynamics”.Procedia Structural Integrity35 (2022). 2nd International Workshop on Plasticity,
+       Damage and Fracture of Engineering Materials (IWPDF 2021), 18-20 August 2021, Ankara, Turkey.,
+       pp. 159–167.doi:10.1016/j.prostr.2021.12.060.
+[26]K. Friebertshäuser (Partmann), C. Wieners, and K. Weinberg. “Dynamic fracture with continuum-
+       kinematics-based peridynamics”.AIMS Materials Science9.6 (2022), pp. 791–807.doi: 10.3934/
+       matersci.2022049.
+[27]K. Friebertshäuser (Partmann) et al. “Dynamic fracture with a continuum-kinematics-based peridy-
+       namic and a phase-field approach”.PAMM22.1 (Mar. 2023).doi:10.1002/pamm.202200217.
+[28]K. Friebertshäuser (Partmann) et al. “Dynamic Phase-Field Fracture in Viscoelastic Materials using
+       a First-Order Formulation”.PAMM22.1 (Mar. 2023).doi:10.1002/pamm.202200249.
+
+===== PDF PAGE 29 =====
+Phase-Field Peridynamics                                                                                               29 /30
+
+
+[29]A. A. Griffith. “VI. The phenomena of rupture and flow in solids”.Philosophical Transactions of
+       the Royal Society of London. Series A, Containing Papers of a Mathematical or Physical Character
+       221.582–593 (Jan. 1921), pp. 163–198.doi:10.1098/rsta.1921.0006.
+[30]Y. D. Ha and F. Bobaru. “Studies of dynamic crack propagation and crack branching with peridy-
+       namics”.International Journal of Fracture162.1–2 (Jan. 2010), pp. 229–244.doi:10.1007/s10704-
+       010-9442-4.
+[31]M. Hillman, M. Pasetto, and G. Zhou. “Generalized reproducing kernel peridynamics: unification of
+       local and non-local meshfree methods, non-local derivative operations, and an arbitrary-order state-
+       based peridynamic formulation”.Computational Particle Mechanics7.2 (Mar. 1, 2020), pp. 435–469.
+       doi:10.1007/s40571-019-00266-9.
+[32]G. R. Irwin. “Fracture”.Elasticity and Plasticity / Elastizität und Plastizität. 1958, pp. 551–590.doi:
+       10.1007/978-3-642-45887-3_5.
+[33]J. F. Kalthoff. “Modes of dynamic shear failure in solids”.International Journal of Fracture101.1-2
+       (Jan. 2000), pp. 1–31.doi:10.1023/A:1007647800529.
+[34]M. R. Khosravani, K. Friebertshäuser (Partmann), and K. Weinberg. “On the use of peridynamics in
+       fracture of ultra-high performance concrete”.Mechanics Research Communications123 (July 2022),
+       p. 103899.doi:10.1016/j.mechrescom.2022.103899.
+[35]Q. V. Le and F. Bobaru. “Surface corrections for peridynamic models in elasticity and fracture”.
+       Computational Mechanics61.4 (Apr. 1, 2018), pp. 499–518.doi:10.1007/s00466-017-1469-1.
+[36]P. Li et al. “A review on phase field models for fracture and fatigue”.Engineering Fracture Mechanics
+       289 (Sept. 2023), p. 109419.doi:10.1016/j.engfracmech.2023.109419.
+[37]R.Lipton.“CohesiveDynamicsandBrittleFracture”.Journal of Elasticity124.2(Dec.2015),pp.143–
+       191.doi:10.1007/s10659-015-9564-z.
+[38]R. Lipton. “Dynamic Brittle Fracture as a Small Horizon Limit of Peridynamics”.Journal of Elasticity
+       117.1 (Jan. 2014), pp. 21–50.doi:10.1007/s10659-013-9463-0.
+[39]R. P. Lipton and D. Bhattacharya. “Energy Balance and Damage for Dynamic Fast Crack Growth
+       from a Nonlocal Formulation”.Journal of Elasticity157.1 (Nov. 2024).doi:10.1007/s10659-024-
+       10098-1.
+[40]D. J. Littlewood. “Simulation of Dynamic Fracture Using Peridynamics, Finite Element Modeling,
+       and Contact”.Volume 9: Mechanics of Solids, Structures and Fluids. IMECE2010. 2010.doi: 10.
+       1115/imece2010-40621.
+[41]E. Madenci and E. Oterkus.Peridynamic Theory and Its Applications. en. New York, 2014.doi:
+       10.1007/978-1-4614-8465-3.
+[42]C. Miehe, M. Hofacker, and F. Welschinger. “A phase field model for rate-independent crack propa-
+       gation: Robust algorithmic implementation based on operator splits”.Computer Methods in Applied
+       Mechanics and Engineering199.45–48(Nov.2010),pp.2765–2778.doi:10.1016/j.cma.2010.04.011.
+[43]N.Moës,J.Dolbow,andT.Belytschko.“Afiniteelementmethodforcrackgrowthwithoutremeshing”.
+       International Journal for Numerical Methods in Engineering46.1 (Sept. 1999), pp. 131–150.doi:
+       10.1002/(sici)1097-0207(19990910)46:1<131::aid-nme726>3.0.co;2-j.
+[44]M. Ortiz and A. Pandolfi. “Finite-deformation irreversible cohesive elements for three-dimensional
+       crack-propagation analysis”.International Journal for Numerical Methods in Engineering44.9 (Mar.
+       1999), pp. 1267–1282.doi:10.1002/(SICI)1097-0207(19990330)44:9<1267::AID-NME486>3.0.
+       CO;2-7.
+[45]A. Pandolfi, K. Weinberg, and M. Ortiz. “A comparative accuracy and convergence study of eigen-
+       erosion and phase-field models of fracture”.Computer Methods in Applied Mechanics and Engineering
+       386 (Dec. 2021), p. 114078.doi:10.1016/j.cma.2021.114078.
+[46]K. Partmann, M. Dienst, and K. Weinberg.Peridynamics.jl. Dec. 2025.doi: 10 . 5281 / zenodo .
+       8187477.
+
+===== PDF PAGE 30 =====
+Phase-Field Peridynamics                                                                                               30 /30
+
+
+[47]K. Partmann, M. Dienst, and K. Weinberg. “Simulation of fracture and damage with Peridynamics.jl”.
+       Proceedings of the JuliaCon Conferences6 (2024), p. 165.doi:10.21105/jcon.00165.
+[48]K. Partmann, C. Wieners, and K. Weinberg. “Continuum-kinematics-based peridynamics and phase-
+       field approximation of non-local dynamic fracture”.International Journal of Fracture244.1–2 (July
+       2023), pp. 187–200.doi:10.1007/s10704-023-00726-7.
+[49]K. Partmann et al. “Local continuum consistent peridynamics with bond-associated modeling and
+       dynamic fracture”.submitted to GAMM-Mitteilungen(2025).
+[50]K. Partmann et al. “Peridynamics with a Cube-Shaped Neighborhood”.PAMM26.1 (Jan. 2026).doi:
+       10.1002/pamm.70064.
+[51]K. Pham et al. “Gradient Damage Models and Their Use to Approximate Brittle Fracture”.Interna-
+       tional Journal of Damage Mechanics20.4(Nov.2010),pp.618–652.doi:10.1177/1056789510386852.
+[52]T. Rabczuk. “Computational Methods for Fracture in Brittle and Quasi-Brittle Solids: State-of-the-
+       Art Review and Future Perspectives”.ISRN Applied Mathematics2013 (Mar. 2013), p. 849231.doi:
+       10.1155/2013/849231.
+[53]S. A. Silling. “Reformulation of elasticity theory for discontinuities and long-range forces”.Journal of
+       the Mechanics and Physics of Solids48.1(2000),pp.175–209.doi:10.1016/S0022-5096(99)00029-0.
+[54]S. A. Silling et al. “Peridynamic States and Constitutive Modeling”. en.Journal of Elasticity88.2
+       (Aug. 2007), pp. 151–184.doi:10.1007/s10659-007-9125-1.
+[55]S. Silling. “Stability of peridynamic correspondence material models andtheir particle discretizations”.
+       Computer Methods in Applied Mechanics and Engineering322 (Apr. 2017).doi: 10.1016/j.cma.
+       2017.03.043.
+[56]S. Silling and E. Askari. “A meshfree method based on the peridynamic model of solid mechanics”.
+       Computers & Structures83.17–18 (June 2005), pp. 1526–1535.doi:10.1016/j.compstruc.2004.11.
+       026.
+[57]S. A. Silling. “Peridynamic Modeling of the Kalthoff-Winkler Experiment”. en.Submission for the
+       2001 Sandia Prize in Computational Science(2002).
+[58]K. Weinberg and C. Wieners. “Dynamic phase-field fracture with a first-order discontinuous Galerkin
+       method for elastic waves”.Computer Methods in Applied Mechanics and Engineering389 (2022),
+       p. 114330.doi:10.1016/j.cma.2021.114330.

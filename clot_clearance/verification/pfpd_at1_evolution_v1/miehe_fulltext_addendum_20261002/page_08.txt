@@ -1,0 +1,60 @@
+2772                                             C. Miehe et al. / Computer Methods in Applied Mechanics and Engineering 199 (2010) 2765–2778
+
+
+
+
+
+      Fig. 5. Rate-independent local constitutive behavior. a) Cyclic driver in positive and negative range and b) stress response without damage evolution in compression.
+
+The ﬁrst two terms in the variational functional describe the crack     in terms of the nodal phase ﬁeld vector dd∈RNh. Bd is a symbolic
+surface resistance and the viscous resistance, respectively. The last term     representation of a global interpolation matrix, containing the shape
+represents the source term governed by the energetic history ﬁeld H.     functions and their derivatives.2 Introducing the potential density
+Note that Πdτ is quadratic. Hence, the necessary condition of Eq. (56) is a     function
+simple linear problem for the determination of the current phase ﬁeld.
+The Euler equation represents a discretized version of Eq. (47). Observe    πτdðd; ∇dÞ = gcγðd; ∇dÞ + η ðd−dnÞ2−ð1−dÞ2H;                ð60Þ
+that the rate-independent case is recovered by simply setting the                         2
+viscosity η=0. This  is considered as an important feature of our
+formulation. No ill-conditioning occurs for the limit η=0. The viscosity     in Eq. (55), the spatial discretization of the variational principle (56) reads
+is used as an artiﬁcial feature that stabilizes the simulation. It will be
+chosen as small as possible.                                            dd = Arg  inf ∫Bh πτdðBdddÞdV   :                                 ð61Þ                                                                                                                  dd
+4.1.4. Update of displacement ﬁeld
+                                                              The associated Euler equation is linear and can be solved in closed form   For a known fracture phase ﬁeld d at time tn + 1, we compute the
+current displacement ﬁeld u from the variational principle of linear                                                                               h
+elasticity. Let                                                         dd = −∫Bh BTd½∂2cdcdπτd BddV i−1∫Bh                                                                                                   BTd½∂cdπτd dV                  ð62Þ
+ΠτuðuÞ = ∫B ½ψð∇su; dÞ−γ·u dV−∫∂Bt t·udA                    ð57Þ     for the current nodal values of the phase ﬁeld at time tn+1.
+
+be the elastic potential energy at given phase ﬁeld d, we get the
+                                                                                       4.2.2. Update of displacement ﬁeld
+displacement ﬁeld from the minimization problem
+                                                                         Associated with Th, we write the ﬁnite element interpolations of
+u = Argfinf          ΠτuðuÞg                                          ð58Þ    the displacement ﬁeld and its symmetric gradient by           u
+                                                                               chu := fu; ∇sugh = BuðxÞduðtÞ                                  ð63Þ
+of elasticity. Note that ψ is quadratic. Thus the necessary condition of
+Eq. (58) gives a linear system.                                                                           in terms of the nodal displacement vector du∈RδNh. The symbolic
+                                                                         global interpolation matrix Bu contains the shape functions and its
+4.1.5. Staggered update scheme                                                                             derivatives. Introducing the potential density function
+   The staggered algorithm in the time interval [tn, tn + 1] is summarized
+in Box 1. It represents a sequence of two linear subproblems for the    πτuðu; ∇suÞ = ψð∇su; dÞ−γ·u;                                  ð64Þ
+successive update of the fracture phase ﬁeld and the displacement ﬁeld.
+Such an algorithm  is extremely robust. Clearly,  it may slightly
+underestimate the speed of the crack evolution when compared with     in Eq. (57), the spatial discretization of the variational principle (58)
+a fully monolithic solution of the coupled problem as considered in    reads for a zero traction problem
+Miehe, Welschinger & Hofacker [1]. However, this can be controlled by
+making use of an adaptive time stepping rule.
+                                                                    du = Arg  inf ∫Bh πτuðBuduÞdV   :                                ð65Þ                                                                                                                du
+4.2. Spatial discretization of the staggered problem
+
+   Let Th denote a ﬁnite element triangulation of the solid domain B.        2
+                                                                                Shapes of FE Discretization. For two-dimensional plane strain problems δ=2, the
+The index h indicates a typical mesh size based on Eh ﬁnite element
+                                                                                             constitutive state vector of the phase ﬁeld discretization Eq. (59) reads cd=[d, d,1, d,2].
+domains Beh∈Th and Nh global nodal points. We use the same     Then, associated with node  I of a standard ﬁnite element  e, the ﬁnite element
+triangulation for spatial discretization of both the phase ﬁeld as well      interpolation matrix has the form
+as the displacement ﬁeld.
+                                                                                                 ½Bd eI = N     N;1     N;2  TI
+4.2.1. Update of phase ﬁeld
+   Associated with Th, we write the ﬁnite element interpolations of     displacementin terms of thediscretizationshape functionreadsNI atcu=[u1,note I andu2, theiru1,1, u2,2,derivatives.u1,2+u2,1]Theandstatethevectorassociatedof the
+the phase ﬁeld and its gradient by                                               ﬁnite element interpolation matrix has the form
+
+
+                                                                                                                                                               T                                                                   N                                                                                    0   N;1                                                                                            0   N;2                                                                                                                                                                                                                    :                                                                                                                                                                                                                      I =                                                                                 0  N                                                                                        0   N;2                                                                                                                               N;1                                                                                                                                                                                                                                                                                      Ichd : = fd; ∇dgh = BdðxÞddðtÞ                                  ð59Þ      ½Bu e

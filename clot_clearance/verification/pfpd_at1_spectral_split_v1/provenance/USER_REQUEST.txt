@@ -1,0 +1,1424 @@
+你正在继续开发 clot CFD–PD 项目。
+
+本轮任务名称：
+
+    PFPD_AT1_SPECTRAL_SPLIT_V1
+
+============================================================
+0. 当前 blocker
+============================================================
+
+首先确认：
+
+    git rev-parse --show-toplevel
+    git rev-parse HEAD
+    git status --short
+
+当前已经确认：
+
+GEOMETRY:
+    0.25 mm boundary-node cube VERIFIED
+
+VOLUME CONSERVATION:
+    VERIFIED
+
+SURFACE CONSERVATION:
+    VERIFIED
+
+PHYSICAL HORIZON:
+    delta = 0.25125 mm FIXED
+
+CORRECTED C3/C5/C7:
+    GENERATED
+
+BAQP INTACT FORMULATION:
+    VERIFIED ACROSS C3/C5/C7
+
+PERIDYNAMICS.JL CROSS-CHECK:
+    PASSED
+
+AT1 ANALYTIC THRESHOLD:
+    mesh independent at epsilon = 0.01
+
+CORRECTED C3 STABILITY:
+    VERIFIED
+
+C5/C7 STATIONARY BRANCH:
+    NOT ESTABLISHED
+
+当前 C5/C7 blocker：
+
+    PURE_TENSION_DOMAIN_VIOLATION
+
+即：
+
+当前候选只允许：
+
+    minimum principal Green strain >= -1e-9
+
+否则直接拒绝 solver trial。
+
+C5/C7 即使在非常小载荷：
+    engineering strain = 0.00025
+
+也可能在达到 stationarity 前出现
+局部 negative principal Green strain。
+
+因此当前 blocker 不应通过：
+    放宽 -1e-9
+    调 solver
+    调 Gc
+    改 geometry
+来解决。
+
+============================================================
+1. 本轮目标
+============================================================
+
+本轮只完成：
+
+    PUBLISHED TENSION-COMPRESSION ENERGY SPLIT
+
+并回答两个问题：
+
+Q1.
+允许 mixed local tension/compression 后，
+C5/C7 intact mechanics 是否能够达到 stationary equilibrium？
+
+Q2.
+将 AT1 crack driver 从：
+
+    Y = Psi0
+
+改成文献支持的：
+
+    Y = Psi_plus
+
+以后，
+C3/C5/C7 是否能够重新进入
+合法的 branch/stability analysis？
+
+这不是：
+
+    new clot material calibration
+
+不是：
+
+    full fracture propagation
+
+不是：
+
+    Ogden implementation
+
+不是：
+
+    production replacement
+
+============================================================
+2. 文献与开源实现：禁止重新造轮子
+============================================================
+
+优先资源：
+
+------------------------------------------------------------
+A. PhaseFieldX
+------------------------------------------------------------
+
+Theory:
+https://phasefieldx.readthedocs.io/en/stable/theory/phase_field_fracture/main.html
+
+Energy splitting:
+https://phasefieldx.readthedocs.io/en/stable/auto_examples/Elasticity/plot_theory_anisotropic.html
+
+GitHub:
+https://github.com/CastillonMiguel/phasefieldx
+
+重点：
+
+Miehe spectral split
+Amor volumetric-deviatoric split
+
+PhaseFieldX 作为：
+    formula/reference oracle
+
+不要 vendor 其 FEM solver。
+
+------------------------------------------------------------
+B. Miehe et al. 2010
+------------------------------------------------------------
+
+"A phase field model for rate-independent crack propagation:
+ robust algorithmic implementation based on operator splits"
+
+DOI:
+https://doi.org/10.1016/j.cma.2010.04.011
+
+只借鉴：
+
+    tensile/compressive energy split concept
+
+不要改成其 AT2 model。
+不要采用 history field 替换当前 AT1 irreversibility。
+
+------------------------------------------------------------
+C. Rahimi & Moutsanidis 2022
+------------------------------------------------------------
+
+"A smoothed particle hydrodynamics approach
+ for phase field modeling of brittle fracture"
+
+DOI:
+https://doi.org/10.1016/j.cma.2022.115191
+
+这是 total-Lagrangian meshfree fracture reference。
+
+如果可获得全文：
+核对其 Green-Lagrange / SVK energy split
+和 stress expression。
+
+如果全文不可获得：
+不要凭摘要补公式；
+PhaseFieldX/Miehe 和下面明确写出的公式
+足以完成当前 candidate。
+
+------------------------------------------------------------
+D. Nardi et al. invariant spectral split
+------------------------------------------------------------
+
+GitHub:
+https://github.com/deborahnardi/phase-field-invariant-split
+
+MIT license。
+
+用途：
+
+    independent implementation reference
+    repeated/principal eigenvalue handling
+    future consistent tangent reference
+
+本轮禁止把整个 C++ implementation
+直接移植进 production。
+
+固定实际查看的 commit SHA。
+
+============================================================
+3. 本轮选定模型
+============================================================
+
+当前仍使用：
+
+    Saint-Venant–Kirchhoff
+
+Green-Lagrange strain：
+
+    E = 0.5 * (F.T @ F - I)
+
+对称 eigen-decomposition：
+
+    E = Q diag(e_a) Q.T
+
+Macaulay brackets：
+
+    <x>_+ = max(x,0)
+    <x>_- = min(x,0)
+
+定义：
+
+    E_plus =
+        Q diag(<e_a>_+) Q.T
+
+    E_minus =
+        Q diag(<e_a>_-) Q.T
+
+并定义：
+
+    trE_plus  = max(tr(E),0)
+    trE_minus = min(tr(E),0)
+
+SVK energy split：
+
+    Psi_plus =
+        0.5 * lambda * trE_plus**2
+        + mu * trace(E_plus @ E_plus)
+
+    Psi_minus =
+        0.5 * lambda * trE_minus**2
+        + mu * trace(E_minus @ E_minus)
+
+必须满足：
+
+    Psi_plus + Psi_minus
+        = Psi0_SVK
+
+到 numerical tolerance。
+
+Second PK split：
+
+    S_plus =
+        lambda * trE_plus * I
+        + 2*mu*E_plus
+
+    S_minus =
+        lambda * trE_minus * I
+        + 2*mu*E_minus
+
+必须满足：
+
+    S_plus + S_minus
+        = S0_SVK
+
+intact state s=0：
+
+    g(0)=1
+
+所以：
+
+    Psi(s=0)
+      =
+      Psi_plus + Psi_minus
+      =
+      Psi0
+
+    S(s=0)
+      =
+      S_plus + S_minus
+      =
+      S0
+
+因此 intact mechanics 理论上必须保持不变。
+
+============================================================
+4. fracture candidate
+============================================================
+
+继续使用：
+
+    g(s) = (1-s)^2
+
+early regime：
+
+    h(s) = 1
+
+新的 degraded energy：
+
+    Psi(F,s)
+      =
+      g(s)*Psi_plus(F)
+      +
+      Psi_minus(F)
+
+新的 second PK：
+
+    S(F,s)
+      =
+      g(s)*S_plus(F)
+      +
+      S_minus(F)
+
+First PK：
+
+    P = F @ S
+
+新的 AT1 crack driver：
+
+    Y =
+      Psi_plus(F)
+
+AT1 phase derivative：
+
+    q =
+      -2*(1-s)*Psi_plus
+      + 2*Yc
+
+其中：
+
+    Yc =
+      Gc_demo/(2*c0*delta)
+
+其余：
+
+irreversibility
+sc
+h=1
+c0
+delta
+Gc_demo
+
+全部保持原值。
+
+============================================================
+5. 当前 pure-tension hard gate 怎么处理
+============================================================
+
+不要删除 diagnostic。
+
+保留：
+
+    minimum principal Green strain
+
+但将：
+
+    minimum Green strain >= -1e-9
+
+从：
+
+    HARD PHYSICS REJECTION
+
+改为：
+
+    DIAGNOSTIC ONLY
+
+仅适用于：
+
+    PFPD_AT1_SPECTRAL_SPLIT_V1 candidate
+
+旧 candidate / legacy behavior
+必须保留原 hard gate，
+确保历史测试不变。
+
+新增字段：
+
+    min_principal_green_strain
+    negative_principal_fraction
+    Psi_plus_fraction
+    Psi_minus_fraction
+
+禁止通过修改 tolerance
+让旧测试通过。
+
+============================================================
+6. 模块隔离
+============================================================
+
+建议新增：
+
+pd_clot/pfpd_candidate/
+    svk_spectral_split.py
+
+API 至少：
+
+    green_lagrange(F)
+
+    spectral_green_split(E)
+
+    svk_split_energy(E, lame_lambda, mu)
+
+    svk_split_second_pk(E, lame_lambda, mu)
+
+    svk_split_response(F, material)
+
+返回：
+
+    E
+    eigenvalues
+    E_plus
+    E_minus
+    Psi_plus
+    Psi_minus
+    Psi_total
+    S_plus
+    S_minus
+    S_total
+    P_total
+
+candidate damage response：
+
+    degraded_svk_split_response(F,s,...)
+
+不要修改 production material implementation。
+
+============================================================
+7. 只做必要的 constitutive verification
+============================================================
+
+不要重新跑完整旧 BAQP verification suite。
+
+只新增以下必要测试。
+
+------------------------------------------------------------
+TEST A: exact decomposition identity
+------------------------------------------------------------
+
+至少这些 prescribed Green strains：
+
+1. pure tension
+2. pure compression
+3. mixed tension/compression
+4. pure/simple shear-type mixed state
+5. hydrostatic tension
+6. hydrostatic compression
+7. repeated eigenvalues
+8. near-zero eigenvalue
+
+验证：
+
+Psi+ + Psi- = Psi0
+
+S+ + S- = S0
+
+------------------------------------------------------------
+TEST B: energy derivative
+------------------------------------------------------------
+
+对不位于 spectral switching surface 的状态：
+
+finite difference：
+
+    dPsi/dE
+
+vs
+
+    S
+
+至少三档 epsilon。
+
+不要在 eigenvalue = 0
+的不可微点要求双侧机器精度。
+
+对 switching state：
+
+使用 one-sided diagnostic，
+不把非光滑性叫 bug。
+
+------------------------------------------------------------
+TEST C: intact invariance
+------------------------------------------------------------
+
+s=0：
+
+split response
+与现有 SVK response 比较：
+
+energy
+S
+P
+
+至少 100 deterministic random
+admissible F states。
+
+要求 numerical agreement。
+
+------------------------------------------------------------
+TEST D: compression does not drive damage
+------------------------------------------------------------
+
+纯压缩：
+
+    Psi_plus ≈ 0
+
+AT1 driver：
+
+    Y ≈ 0
+
+------------------------------------------------------------
+TEST E: mixed/shear state
+------------------------------------------------------------
+
+mixed state：
+
+    Psi_plus > 0
+    Psi_minus > 0
+
+证明 mixed strain
+不再整个被拒绝。
+
+============================================================
+8. open-source oracle 只做最小必要对照
+============================================================
+
+不要重复跑整个 PhaseFieldX benchmark suite。
+
+只做一个小 tensor-level comparison：
+
+PhaseFieldX/Miehe spectral formulas：
+
+    prescribed symmetric strain tensors
+
+比较：
+
+Psi+
+Psi-
+stress+
+
+由于 PhaseFieldX 是 small-strain，
+只比较：
+
+    Green strain E
+作为其 strain tensor input
+时的 algebraic split
+
+不要把它称为 finite-strain solver equivalence。
+
+Nardi repo：
+
+如果能轻松构建 standalone routine，
+只使用少数 tensor cases
+检查 spectral/invariant decomposition。
+
+如果集成成本高：
+不强制编译整个项目。
+
+记录：
+
+    ORACLE_USED / ORACLE_NOT_NEEDED
+
+不要为 reference integration
+花比科学计算更多的时间。
+
+============================================================
+9. GPU / CPU 使用策略
+============================================================
+
+开始前检测：
+
+    lscpu
+    free -h
+    nvidia-smi
+    CUDA version
+    python packages:
+        cupy
+        jax
+        torch
+        numba.cuda
+
+保存：
+
+provenance/HARDWARE.json
+
+------------------------------------------------------------
+9.1 CPU canonical path
+------------------------------------------------------------
+
+CPU 结果是 scientific canonical reference。
+
+充分使用：
+
+NumPy vectorization
+Numba njit(parallel=True)
+
+如果现有 BAQP kernel 已 Numba：
+优先扩展同一 kernel，
+不要另写慢 Python loop。
+
+Numba threads：
+
+    min(physical_cores, memory_safe_threads)
+
+保留至少：
+    2 physical cores
+给 OS / parent process，
+除非服务器明确空闲。
+
+BLAS 避免 oversubscription。
+
+------------------------------------------------------------
+9.2 GPU optional acceleration
+------------------------------------------------------------
+
+如果存在 CUDA GPU：
+
+允许 GPU 加速：
+
+- batch 3×3 symmetric eigendecomposition
+- Psi+/Psi- evaluation
+- batch bond constitutive response
+- matrix-free gradient/HVP evaluations
+  if implementation naturally supports it
+
+不要为了“使用GPU”
+重写 ADR 或 branch solver。
+
+GPU backend 只有在：
+
+1. C7-size benchmark
+   wall-time speedup >= 1.3×
+
+AND
+
+2. CPU/GPU：
+   energy relative difference <= 1e-10
+   stress relative difference <= 1e-9
+
+才成为 heavy-run backend。
+
+否则：
+
+    GPU_AVAILABLE_BUT_NOT_BENEFICIAL
+
+继续使用 CPU。
+
+不要安装庞大 CUDA stack
+只为了这轮。
+
+如果已有 CuPy/JAX/torch：
+优先复用。
+
+============================================================
+10. 计算执行原则：避免冗余
+============================================================
+
+不要：
+
+- 重跑 legacy damage-energy 35-state audit
+- 重跑旧 coupon calibration
+- 重跑完整 Peridynamics.jl BAQP campaign
+- 重跑 rigid-body 全矩阵测试多遍
+- 重跑旧 255/291 tests 每个开发步骤
+- 在 C5 fail 后继续浪费小时跑 C7 stability
+- 在 intact equilibrium 未过前组 Hessian
+
+执行顺序必须严格 gate-driven：
+
+GATE 1:
+    spectral constitutive tests
+
+GATE 2:
+    intact s=0 invariance
+
+GATE 3:
+    C3/C5/C7 intact equilibrium compatibility
+
+GATE 4:
+    spectral AT1 coupled branch
+
+GATE 5:
+    spatial stability restart
+
+前一个不通过：
+后面重任务停止。
+
+============================================================
+11. 第一个真正的科学实验：
+intact equilibrium compatibility
+============================================================
+
+关闭 fracture：
+
+    s = 0 fixed
+    phase updates disabled
+
+对于 corrected：
+
+    C3
+    C5
+    C7
+
+只运行以下 strains：
+
+    0.00025
+    0.005
+    0.009
+    0.010
+
+不要做更多 sweep。
+
+求 mechanical equilibrium。
+
+此次：
+
+    negative principal Green strain
+    does NOT reject state
+
+但仍记录它。
+
+每个 equilibrium 输出：
+
+force residual
+reaction
+nominal stress
+total elastic energy
+minimum principal Green strain
+negative-principal particle fraction
+negative-principal bond/BAQP fraction
+max displacement
+deviation from affine field
+distance of most-compressive point
+to clamp / side surface
+
+============================================================
+12. intact-equilibrium acceptance
+============================================================
+
+每个状态至少：
+
+force residual <= existing mechanical tolerance
+fixed boundary exact
+finite J
+existing inversion/safety checks pass
+
+不要求：
+
+all principal Green strains >= 0
+
+如果 C5/C7 能达到 equilibrium：
+
+    MIXED_STRAIN_EQUILIBRIUM_CONFIRMED
+
+如果仍不能达到 equilibrium：
+
+STOP。
+
+这说明 blocker
+不是 pure-tension fracture gate alone。
+
+不要继续 phase/stability。
+
+============================================================
+13. mixed strain spatial diagnostics
+============================================================
+
+对于 C5/C7 equilibrium：
+
+只生成必要的统计：
+
+histogram / percentile：
+
+minimum principal Green strain
+
+并按位置分组：
+
+near top clamp
+near bottom clamp
+lateral surface
+interior-like nodes
+
+只回答：
+
+“负主应变在哪里、量级多大？”
+
+不要把负应变称为 damage。
+
+============================================================
+14. C3 regression gate
+============================================================
+
+C3 的原 homogeneous tensile branch
+应几乎保持 pure tension。
+
+使用 split 后：
+
+在原 corrected C3
+threshold/stability states 比较：
+
+energy
+reaction
+phase driver
+critical bracket
+
+要求：
+
+pure-tension states 中：
+
+    Psi_plus ≈ Psi0
+    Psi_minus ≈ 0
+
+并尽量复现：
+
+    [0.0099921875, 0.01]
+
+如果 C3 大幅变化：
+
+STOP。
+
+说明 split implementation
+破坏了原 pure-tension limit。
+
+============================================================
+15. 只有 intact equilibrium 通过后
+才启用 phase evolution
+============================================================
+
+使用：
+
+    Y = Psi_plus
+
+而不是：
+
+    Y = Psi_total
+
+重新运行 corrected C3/C5/C7
+AT1 stationary branch。
+
+不要一开始追到 1.3%。
+
+高效 window：
+
+    0.0090
+    0.0095
+    0.00975
+    0.009875
+    0.0099375
+    0.00996875
+    0.009984375
+    0.0099921875
+    0.0100
+    0.010125
+    0.01025
+    0.0105
+
+如果 phase onset
+明显不在该区间，
+再动态扩展。
+
+============================================================
+16. branch/stability 复用已有实现
+============================================================
+
+不要新写：
+
+branch solver
+KKT
+critical cone
+matrix-free Hessian
+mode localization
+
+全部复用 V1/V2 已有模块。
+
+唯一改变应该是：
+
+constitutive energy/stress split
+和：
+    Y = Psi_plus
+
+============================================================
+17. stable/unstable 判据不变
+============================================================
+
+继续：
+
+STATIONARY:
+    force + KKT pass
+
+STABLE:
+    critical-cone permitted curvature positive
+
+UNSTABLE:
+    verified feasible negative-curvature witness
+
+UNRESOLVED:
+    weak cone exists but classification unavailable
+
+不要因为新 split
+修改 curvature tolerance。
+
+============================================================
+18. C5 是 heavy-compute gate
+============================================================
+
+顺序：
+
+1. C3
+2. C5
+3. C7
+
+只有：
+
+C5 intact equilibrium passes
+
+AND
+
+C5 branch reaches
+at least threshold neighborhood
+
+才运行 C7 full stability work。
+
+否则 C7 只保留
+cheap intact diagnostics。
+
+这是为了避免无意义 C7 重计算。
+
+============================================================
+19. C7 heavy runs 优先使用最优 backend
+============================================================
+
+根据第9节 benchmark：
+
+CPU 或 GPU 选快且验证过的 backend。
+
+C7 matrix-free HVP：
+
+只在存在合法 stationary
+weak/interior phase state后运行。
+
+不要预生成 dense Hessian。
+
+============================================================
+20. stress / energy auditing
+============================================================
+
+对每个 accepted state
+额外记录：
+
+total Psi+
+total Psi-
+fraction:
+
+    Psi_plus /
+    (Psi_plus + Psi_minus)
+
+和：
+
+    Psi_minus fraction
+
+这是理解 mixed strain 的核心量。
+
+不要把：
+    negative strain fraction
+直接等同于：
+    compression energy fraction。
+
+============================================================
+21. 重要 regression：
+no damage under pure compression
+============================================================
+
+建立一个很小的 BAQP fixture：
+
+pure compression
+s=0
+
+应：
+
+Y = Psi_plus ≈ 0
+
+AT1：
+no phase increase.
+
+不要跑大型 cube compression campaign。
+
+一个 fixture 足够。
+
+============================================================
+22. shear sanity check
+============================================================
+
+建立一个小 simple shear fixture。
+
+要求：
+
+Psi_plus > 0
+Psi_minus > 0
+
+因此：
+
+shear may drive fracture partially
+
+这符合 spectral split
+而不是 pure-tension gate。
+
+仅做一次。
+
+============================================================
+23. 不实现 Amor split production candidate
+============================================================
+
+PhaseFieldX 同时有 Amor split，
+但本轮不把两个 split 都跑完整 campaign。
+
+允许：
+
+一个 tensor-level comparison table：
+
+Miehe spectral
+Amor vol-dev
+
+只说明差异。
+
+生产 candidate 只选择：
+
+    spectral Green-Lagrange split
+
+否则这轮会再次变成模型 sweep。
+
+============================================================
+24. 不实现 invariant-based finite-strain split
+============================================================
+
+Nardi/Hesch/Swamynathan
+保留为下一阶段参考。
+
+本轮目标是：
+
+解除 current blocker
+并重新完成 spatial audit。
+
+不要同时重构为 Ogden/invariant hyperelasticity。
+
+============================================================
+25. 测试策略
+============================================================
+
+不要反复跑 full pytest。
+
+开始：
+
+运行一次基线：
+
+    pytest tests -q -p no:cacheprovider
+
+保存 baseline。
+
+开发中只运行 targeted tests。
+
+结束再运行一次 full suite。
+
+当前基线应保护：
+
+    291 passed
+    3 known failed
+
+或以实际当前 workspace
+第一次测试为准，
+但 known failure IDs 必须一致。
+
+新增测试建议：
+
+tests/test_svk_spectral_split.py
+tests/test_svk_split_energy_derivative.py
+tests/test_svk_split_intact_equivalence.py
+tests/test_pfpd_mixed_strain_equilibrium.py
+tests/test_pfpd_spectral_driver.py
+
+必要测试：
+
+1.
+Psi+ + Psi- = Psi0
+
+2.
+S+ + S- = S0
+
+3.
+finite-difference energy/stress
+
+4.
+s=0 exact intact equivalence
+
+5.
+pure compression Psi+=0
+
+6.
+mixed state both components nonzero
+
+7.
+shear active energy nonzero
+
+8.
+C3 pure-tension regression
+
+9.
+negative Green strain no longer causes
+candidate hard rejection
+
+10.
+old candidate still preserves
+old hard-gate behavior
+
+11.
+production solver unchanged
+
+============================================================
+26. 不需要重复的测试
+============================================================
+
+不要新增重复测试验证：
+
+- BAQP rigid translation
+- BAQP rigid rotation
+- c0 normalization
+- Griffith normalization
+- old g/h separation
+- historical 35-state energy anomaly
+- ADR vs SciPy
+- old branch tracker A/B
+- legacy geometry
+
+这些已有 verified tests
+只通过 final regression 保留即可。
+
+============================================================
+27. 可视化：只生成有决策价值的图
+============================================================
+
+不要生成十几张重复图片。
+
+只要求 6 组。
+
+------------------------------------------------------------
+FIGURE 1
+spectral_split_energy
+
+几个代表 tensor：
+
+pure tension
+pure compression
+mixed
+shear
+
+bar：
+
+Psi+
+Psi-
+
+人工问题：
+“新模型怎样区分拉伸和压缩？”
+
+------------------------------------------------------------
+FIGURE 2
+mixed_strain_equilibrium
+
+C3/C5/C7：
+
+横轴：
+strain
+
+纵轴：
+minimum principal Green strain
+
+同时标：
+old -1e-9 gate
+
+注意：
+新 candidate 不用该线拒绝状态。
+
+人工问题：
+“细网格真实 equilibrium
+到底包含多少局部 compression？”
+
+------------------------------------------------------------
+FIGURE 3
+compression_location
+
+C5/C7 在 0.009 或最相关 equilibrium：
+
+3D / slice 显示：
+
+minimum principal Green strain
+
+标 clamp 和 free surfaces。
+
+人工问题：
+“压缩发生在哪里？”
+
+------------------------------------------------------------
+FIGURE 4
+active_energy_fraction
+
+C3/C5/C7 branch：
+
+横轴：
+strain
+
+纵轴：
+
+Psi_plus / Psi_total
+
+另图可显示 Psi_minus fraction。
+
+人工问题：
+“fracture driver 占总能量多少？”
+
+------------------------------------------------------------
+FIGURE 5
+critical_interval_after_split
+
+如果 C3/C5/C7 均得到合法区间：
+
+显示：
+
+critical intervals vs h
+
+否则：
+明确：
+UNRESOLVED
+
+不要插值不存在结果。
+
+------------------------------------------------------------
+FIGURE 6
+reaction_stress_after_equilibrium
+
+只使用真正 stationary states。
+
+禁止再把 affine
+non-equilibrium reaction
+混进去。
+
+比较：
+C3/C5/C7 nominal stress。
+
+============================================================
+28. REVIEW 报告
+============================================================
+
+生成：
+
+verification/pfpd_at1_spectral_split_v1/
+    REVIEW_SPECTRAL_SPLIT_V1.md
+
+结构：
+
+1. 为什么 old pure-tension gate 不再合适
+
+2. 使用了哪篇论文/开源实现
+
+3. spectral split 是什么
+
+4. 为什么 s=0 时 intact mechanics 不变
+
+5. constitutive verification
+
+6. C3/C5/C7 intact mixed-strain equilibrium
+
+7. C5/C7 原 blocker 是否解除
+
+8. 负 principal strain 在哪里、多大
+
+9. Psi+ / Psi- 如何分布
+
+10. C3 old stability 是否复现
+
+11. C5/C7 branch/stability 是否建立
+
+12. spatial consistency 是否终于可判断
+
+13. CPU/GPU 使用情况和实际加速
+
+14. tests
+
+15. scientific status
+
+16. 唯一下一步
+
+============================================================
+29. 状态标签
+============================================================
+
+最终至少：
+
+SVK_SPECTRAL_SPLIT:
+    VERIFIED / NOT_VERIFIED
+
+OPEN_SOURCE_REFERENCE:
+    USED / PARTIALLY_USED / NOT_NEEDED
+
+INTACT_S0_EQUIVALENCE:
+    VERIFIED / FAILED
+
+PURE_TENSION_HARD_GATE:
+    REMOVED_FOR_NEW_CANDIDATE_ONLY
+    / STILL_REQUIRED
+
+C5_INTACT_EQUILIBRIUM:
+    VERIFIED / NOT_VERIFIED
+
+C7_INTACT_EQUILIBRIUM:
+    VERIFIED / NOT_VERIFIED
+
+MIXED_STRAIN_STATES:
+    ADMITTED / NOT_ADMITTED
+
+AT1_DRIVER:
+    PSI_PLUS
+    / NOT_ACTIVATED
+
+C3_STABILITY_REGRESSION:
+    PASSED / FAILED / NOT_RUN
+
+C5_STABILITY:
+    RESOLVED / UNRESOLVED / NOT_RUN
+
+C7_STABILITY:
+    RESOLVED / UNRESOLVED / NOT_RUN
+
+SPATIAL_DISCRETIZATION_AUDIT:
+    RESUMED_AND_COMPLETE
+    / RESUMED_BUT_INCOMPLETE
+    / BLOCKED
+
+PRODUCTION MODEL:
+    UNCHANGED
+
+PHYSICAL_CLOT_CALIBRATION:
+    NOT PERFORMED
+
+============================================================
+30. STOP conditions
+============================================================
+
+立即停止 heavy calculations 如果：
+
+A.
+Psi+ + Psi- != Psi0
+
+B.
+S+ + S- != S0
+
+C.
+s=0 split mechanics
+不等于原 SVK
+
+D.
+C5 intact equilibrium
+仍不能达到 force tolerance
+即使不再使用 pure-tension reject
+
+E.
+C3 pure-tension branch
+因 split 出现意外大变化
+
+这些情况下：
+不要继续 C7 stability。
+
+============================================================
+31. 最终终端摘要
+============================================================
+
+最终只输出：
+
+- repository / HEAD
+- external references / commits used
+- production files modified
+- historical files modified
+- baseline tests
+- final tests
+- CPU
+- GPU
+- GPU backend used yes/no
+- measured CPU/GPU speedup if benchmarked
+- max Psi decomposition error
+- max stress decomposition error
+- max energy derivative error
+- C3/C5/C7 intact equilibrium status
+- per level min principal Green strain
+- per level negative-strain fraction
+- per level Psi+ fraction
+- C3 stability regression
+- C5 critical interval if available
+- C7 critical interval if available
+- spatial audit status
+- REVIEW_SPECTRAL_SPLIT_V1.md
+- figures directory
+- final scientific labels
+
+不要只输出：
+    implementation complete
+
+============================================================
+32. 完成后停止
+============================================================
+
+不要自动进入：
+
+Ogden
+viscoelasticity
+poroelasticity
+wall adhesion
+h(s)<1
+post-instability branch switching
+arc-length
+real clot Gc
+erosion coupling
+fatigue
+real CFD
+
+等待人工审核。

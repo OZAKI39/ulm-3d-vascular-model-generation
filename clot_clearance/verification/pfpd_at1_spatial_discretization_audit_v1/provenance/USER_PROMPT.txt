@@ -1,0 +1,1746 @@
+你正在继续开发 clot CFD–PD 项目。
+
+本轮任务名称：
+
+    PFPD_AT1_SPATIAL_DISCRETIZATION_AUDIT_V1
+
+============================================================
+0. 当前科学基线
+============================================================
+
+首先确认：
+
+    git rev-parse --show-toplevel
+    git rev-parse HEAD
+    git status --short
+
+当前已经确认：
+
+BAQP INTACT MECHANICS:
+    VERIFIED
+
+AT1 LOCAL PHASE MODEL:
+    VERIFIED
+
+EARLY h=1 KINEMATIC SEPARATION:
+    VERIFIED
+
+BRANCH_TRACKER:
+    VERIFIED
+
+STATIONARY_BRANCH:
+    TRACKED
+
+STABILITY_CLASSIFICATION:
+    RESOLVED
+
+FIRST_STABILITY_LOSS:
+    BRACKETED
+
+CURRENT COARSE CRITICAL INTERVAL:
+    [0.0099921875, 0.0100000000]
+    engineering strain
+
+STABILITY LOSS TYPE:
+    NONSMOOTH ACTIVE-SET / CRITICAL-CONE EVENT
+
+LOAD RESOLUTION CONSISTENCY:
+    PASSED
+
+ACTIVE SET AT ONSET:
+    185 strong lower
+        ->
+    185 weak lower
+
+HIGH-DAMAGE h(s):
+    NOT INVOLVED
+
+PFPD_AT1_EVOLUTION_V1:
+    REMAINS NOT VERIFIED
+
+PRODUCTION MODEL:
+    UNCHANGED
+
+当前测试基线：
+
+    255 passed
+    3 known failed
+    0 skipped
+
+原3个失败测试必须原样保留，
+不得 xfail / skip / weaken。
+
+============================================================
+1. 本轮唯一问题
+============================================================
+
+回答：
+
+    当前约 1% strain 的局部变分稳定性丧失，
+    是否在固定物理问题、仅细化粒子离散后仍然存在并趋于一致？
+
+本轮是：
+
+    SPATIAL DISCRETIZATION CONSISTENCY AUDIT
+
+不是：
+
+    FRACTURE PROPAGATION DEVELOPMENT
+
+不是：
+
+    MESH OBJECTIVITY CLAIM
+
+不是：
+
+    PHYSICAL CLOT VALIDATION
+
+============================================================
+2. 最重要的原则：固定 physical horizon
+============================================================
+
+主研究必须固定：
+
+    physical cube dimensions
+    physical boundary conditions
+    material parameters
+    Gc_demo
+    c0 / radial kernel
+    physical horizon delta
+    AT1 energy
+    g(s)
+    h = 1
+    sc
+    pure-tension domain
+    stability definitions
+
+只改变：
+
+    particle spacing h
+
+因此：
+
+    delta / h
+
+必须随着 refinement 增大。
+
+严禁在主 refinement study 中：
+
+    delta = constant_ratio * h
+
+因为这会同时改变：
+    numerical discretization
+和
+    nonlocal physical length scale
+
+无法解释结果。
+
+============================================================
+3. 开始前必须审计当前 geometry / volume convention
+============================================================
+
+这是 HARD GATE。
+
+读取当前 3×3×3 benchmark 的所有相关代码和配置。
+
+生成：
+
+verification/pfpd_at1_spatial_discretization_audit_v1/
+    preaudit/GEOMETRY_AND_QUADRATURE_AUDIT.md
+
+必须明确写出：
+
+- reference physical dimensions
+- point-coordinate convention
+- spacing
+- physical horizon
+- particle volume convention
+- total represented volume
+- target physical volume
+- top prescribed boundary definition
+- bottom prescribed boundary definition
+- physical clamp separation
+- physical cross-sectional area
+- number of points
+- number of bonds
+- average / min / max family size
+- boundary family truncation
+
+特别检查：
+
+    sum_i V_i
+
+是否与 intended physical volume 一致。
+
+检查 particle-volume rule
+是否在 refinement 后保持同一个物理域。
+
+如果当前 benchmark 的 physical domain
+或 volume convention 无法从代码明确确定：
+
+    STOP refinement generation
+
+输出：
+
+    NEED_GEOMETRY_DECISION
+
+向用户说明具体歧义。
+
+禁止自行猜一个新 domain。
+
+============================================================
+4. 边界条件必须保持物理一致
+============================================================
+
+本 benchmark 的 top / bottom clamp
+必须按相同物理边界定义。
+
+不要使用：
+
+    fixed number of particle layers
+
+如果这会让 clamp physical thickness
+随 h 改变。
+
+优先：
+
+    exact physical boundary surfaces
+或
+    当前源码已经明确且 refinement-consistent 的物理定义。
+
+记录每档：
+
+- prescribed boundary physical location
+- number of constrained particles
+- constrained physical area
+- free physical length
+
+验证：
+
+    physical clamp-to-clamp distance
+
+各 resolution 相同。
+
+============================================================
+5. refinement levels
+============================================================
+
+根据 preaudit 确认后的固定物理 cube 构建至少：
+
+LEVEL 0:
+    current exact 3×3×3 benchmark
+
+LEVEL 1:
+    next nested refinement
+    expected 5×5×5 if current geometry permits
+
+LEVEL 2:
+    next nested refinement
+    expected 7×7×7 if current geometry permits
+
+如果物理尺寸为当前报告中的 0.25 mm，
+预期：
+
+    h0 = 0.125 mm
+    h1 = 0.0625 mm
+    h2 = 0.041666... mm
+
+但必须从真实 source geometry 推导，
+不要直接相信本提示中的 expected values。
+
+固定：
+
+    delta = current physical delta
+
+预计若上述 geometry 成立：
+
+    delta/h ≈
+    2.01
+    4.02
+    6.03
+
+如果硬件预算允许：
+
+OPTIONAL LEVEL 3:
+    9×9×9
+
+但是：
+
+LEVEL 0/1/2 为必需。
+
+不能为了运行更快删除中间 resolution。
+
+============================================================
+6. 不要让 particle quadrature 改变物理问题
+============================================================
+
+如果当前 particle volume convention
+在 refinement 中不能保持：
+
+    same physical volume
+    same boundary area
+    same affine energy density
+
+不要静默修改。
+
+建立：
+
+    QUADRATURE_CONSISTENCY_GATE.json
+
+状态：
+
+    CURRENT_RULE_REFINEMENT_CONSISTENT
+
+或：
+
+    CURRENT_RULE_NOT_PHYSICALLY_CONSISTENT
+
+如果后者：
+
+先建立一个 isolated quadrature comparison，
+比较 coarse current rule 与一个
+physically conservative volume rule。
+
+不得覆盖旧 benchmark。
+
+如果采用新的 refinement-consistent quadrature，
+必须：
+
+1. 保留原 coarse benchmark；
+2. 新 coarse case 单独命名；
+3. 重新通过 BAQP mechanics / threshold checks；
+4. 明确说明它不是旧结果的 bitwise continuation。
+
+禁止把 quadrature correction
+隐藏成普通 mesh refinement。
+
+============================================================
+7. intact mechanics gate 每档都必须重新通过
+============================================================
+
+每个 resolution：
+
+rigid translation
+rigid rotation
+affine tension
+affine compression
+affine shear
+isotropic deformation
+
+验证：
+
+Fbar
+Ftilde
+energy
+global force balance
+global moment balance
+
+至少检查：
+
+interior
+boundary-truncated families
+
+不要因为上一轮 BAQP 已验证
+就假设 refined lattice 自动正确。
+
+输出：
+
+    mechanics_gate_<level>.json
+
+============================================================
+8. 独立 open-source reference
+============================================================
+
+继续优先利用：
+
+Peridynamics.jl
+https://github.com/kaipartmann/Peridynamics.jl
+
+固定当前实际使用 commit。
+
+至少对：
+
+LEVEL 0
+LEVEL 1
+
+运行无损 affine BAQP/RKC reference，
+比较：
+
+global energy
+force
+Fbar/Ftilde
+
+若 Level 2 成本低，也比较。
+
+不要重新 vendor 作者代码。
+
+记录：
+
+repo
+commit
+Julia version
+Manifest hash
+license
+
+如果公开 upstream 在本轮开始前有更新：
+先检查，但不要自动升级版本。
+
+如果升级：
+旧固定 commit 和新 commit
+必须分别记录并说明原因。
+
+============================================================
+9. physical fracture threshold 必须保持相同
+============================================================
+
+固定：
+
+    Gc_demo
+    c0
+    delta
+
+因此：
+
+    Yc = Gc/(2*c0*delta)
+
+必须在所有 resolution 完全相同。
+
+自动测试：
+
+    Yc_level0
+    Yc_level1
+    Yc_level2
+
+应 bitwise 或 machine-level identical。
+
+禁止按 mesh 重新 calibration Gc_demo。
+
+这是本轮与旧 coupon mesh calibration
+不同的研究问题。
+
+============================================================
+10. analytic affine AT1 threshold
+============================================================
+
+当前 development benchmark
+原本被设计成约 1% strain
+达到 local AT1 threshold。
+
+对每个 mesh：
+
+计算 affine undamaged energy density Y(epsilon)
+
+独立求：
+
+    Y(epsilon_threshold) = Yc
+
+得到：
+
+    epsilon_AT1_analytic
+
+它理论上不应依赖 h，
+因为：
+
+material
+delta
+Gc
+constitutive law
+
+均固定。
+
+如果 analytic threshold 随 mesh 变化：
+
+说明 implementation / quadrature / normalization
+存在问题。
+
+STOP stability interpretation。
+
+============================================================
+11. branch tracking strain window
+============================================================
+
+每个 resolution 使用相同物理 strain schedule。
+
+不需要重新追到 1.3% 全区间。
+
+主窗口：
+
+    0.0090
+    0.0095
+    0.00975
+    0.009875
+    0.0099375
+    0.00996875
+    0.009984375
+    0.0099921875
+    0.0100000000
+    0.010125
+    0.01025
+
+如 refinement 结果显示 onset
+不在这个窗口：
+
+允许扩展，
+但必须记录原因。
+
+使用上一轮已验证：
+
+    stationary branch solver
+
+不要修改：
+residual scaling logic
+KKT definition
+pure-tension gate
+phase lower-bound semantics。
+
+============================================================
+12. 每个 resolution 重新建立 stability bracket
+============================================================
+
+对每个 mesh independently：
+
+找到：
+
+last stable stationary state
+
+和：
+
+first unstable stationary state
+
+然后前向 bracket refinement。
+
+目标：
+
+    bracket width <= 1e-5 strain
+
+若 active-set nonsmooth event
+决定 onset：
+
+继续使用：
+
+    NONSMOOTH_STABILITY_BRACKET
+
+不要使用 brentq。
+
+只有满足：
+
+same active set
+same smooth branch
+resolved sign change
+
+才允许 smooth root finder。
+
+============================================================
+13. strong / weak / interior active-set tracking
+============================================================
+
+每档记录：
+
+strong lower count
+weak lower count
+interior count
+near-sc count
+
+同时输出 fractions：
+
+N_strong / N_bonds
+N_weak / N_bonds
+N_interior / N_bonds
+
+这是跨网格比较的主要量。
+
+特别回答：
+
+    coarse mesh 是否仍是 100% bonds
+    同时 strong -> weak？
+
+refinement 后如果：
+
+只有局部 bond subset 先 weak，
+
+必须保存空间位置。
+
+不要解释成物理 crack，
+只称：
+
+    localization of the active-set transition
+
+============================================================
+14. Hessian：coarse 用 dense，fine 必须避免内存爆炸
+============================================================
+
+LEVEL 0：
+继续使用现有 dense Hessian
+作为 reference。
+
+LEVEL 1/2：
+
+在生成 full dense coupled Hessian 前
+必须估计：
+
+number of x DOF
+number of phase DOF
+dense matrix bytes
+
+保存：
+
+    HESSIAN_MEMORY_ESTIMATE.json
+
+如果 dense matrix
+会使用超过可用 RAM 的 40%：
+
+禁止形成 dense matrix。
+
+使用 matrix-free Hessian-vector product。
+
+============================================================
+15. matrix-free Hessian-vector products
+============================================================
+
+复用已验证 total gradient：
+
+    grad Pi(z)
+
+定义：
+
+    H v ≈
+      [grad(z+eps v)-grad(z-eps v)]
+      /(2 eps)
+
+在 bounds 允许时 central difference。
+
+one-sided constrained directions
+使用 appropriate one-sided probe。
+
+必须做 epsilon sensitivity：
+
+至少三档。
+
+不要自己写 eigensolver。
+
+使用：
+
+    scipy.sparse.linalg.LinearOperator
+
+配合：
+
+    eigsh
+或
+    lobpcg
+
+求 mechanical/full-space
+低特征模态。
+
+============================================================
+16. lower-bound critical-cone stability
+============================================================
+
+这是本轮核心。
+
+若所有 phase variables 为：
+
+STRONG LOWER
+
+临界锥中 phase component 固定为0。
+
+稳定性由：
+
+    Hxx
+
+检查。
+
+当出现：
+
+WEAK LOWER
+
+不能把它们从 reduced Hessian 中简单删除。
+
+需要寻找：
+
+    feasible phase-opening direction
+    ds >= 0
+
+使：
+
+    first-order directional derivative ≈ 0
+
+并检查：
+
+    v^T H v
+
+============================================================
+17. fine mesh 不要求求 exact cone minimum
+============================================================
+
+寻找一个合法：
+
+    negative-curvature witness
+
+就足以证明：
+
+    unstable。
+
+至少使用以下候选方向：
+
+A.
+uniform nonnegative phase opening
+
+B.
+energy-driver weighted opening
+
+C.
+positive part of lowest unconstrained
+coupled phase mode
+
+D.
+negative part after sign reversal,
+if it forms a different feasible candidate
+
+E.
+coarse critical mode
+spatially interpolated / projected
+onto refined bonds
+
+F.
+deterministic nonnegative random directions
+
+G.
+projected mechanically condensed directions
+
+所有方向：
+phase part >=0 on weak lower bonds
+strong lower phase part =0
+
+============================================================
+18. mechanical condensation for cone witnesses
+============================================================
+
+对于给定 phase trial p：
+
+求最优 mechanical response u：
+
+    Hxx u = -Hxs p
+
+不要显式逆矩阵。
+
+LEVEL 0 可用：
+
+    scipy.linalg.solve
+
+fine levels：
+
+优先：
+
+    scipy.sparse.linalg.cg
+
+如果 Hxx SPD 已验证；
+
+否则：
+
+    minres
+
+或合适成熟 solver。
+
+然后形成：
+
+    v = [u,p]
+
+计算：
+
+    Rayleigh = v^T H v / (v^T v)
+
+任何：
+
+    resolved Rayleigh < -curvature_tol
+
+即可证明存在可行负曲率方向。
+
+没有找到负 witness：
+
+只能标：
+
+    INSTABILITY_NOT_DETECTED
+
+不能自动标：
+
+    STABLE
+
+除非 phase 仍全部 strong lower
+且 Hxx 已正定。
+
+============================================================
+19. stability classification rules
+============================================================
+
+STABLE：
+
+    first-order gates pass
+
+AND
+
+    all phase variables strong lower
+    or interior directions fully resolved
+
+AND
+
+    minimum permitted curvature > tolerance
+
+UNSTABLE：
+
+    first-order gates pass
+
+AND
+
+    at least one verified feasible
+    negative-curvature direction exists
+
+UNRESOLVED：
+
+    weak-bound cone exists
+    but neither stability certification
+    nor negative witness is reliable
+
+不要把：
+
+    no negative witness found
+
+写成：
+
+    stable。
+
+============================================================
+20. mesh-independent scaling for curvature comparison
+============================================================
+
+Hessian eigenvalue magnitude
+取决于 coordinate scaling 和 DOF。
+
+因此跨 mesh 不要直接比较
+未经规范化的 raw eigenvalue 大小。
+
+统一使用物理尺度：
+
+length scale:
+    fixed cube physical length L
+
+phase scale:
+    1
+
+energy scale:
+    fixed Gc_demo * physical reference area
+或
+    一个在 PREDECLARED_CONFIG 中固定的
+    mesh-independent physical energy scale
+
+形成：
+
+    dimensionless Hessian / Rayleigh quotient
+
+所有 meshes 使用完全相同的 physical scales。
+
+稳定/不稳定的符号是主结论；
+幅值 convergence 是辅助结论。
+
+============================================================
+21. critical interval consistency criteria
+============================================================
+
+每档输出：
+
+    [epsilon_L(h), epsilon_U(h)]
+
+midpoint:
+
+    epsilon_mid(h)
+
+width:
+
+    Delta_epsilon(h)
+
+比较：
+
+coarse -> medium -> fine
+
+定义：
+
+    midpoint difference
+    interval overlap
+    extrapolated trend if justified
+
+不要强行做 Richardson extrapolation，
+因为当前 onset 是 nonsmooth active-set event。
+
+主一致性标准：
+
+A.
+medium/fine intervals overlap
+或距离小于预声明 tolerance
+
+建议 development tolerance：
+
+    2e-5 engineering strain
+
+B.
+interval widths <= 1e-5
+
+C.
+analytic AT1 threshold
+位于或紧邻每档 stability interval
+
+如果不满足：
+
+    SPATIAL_STABILITY_ONSET_NOT_CONVERGED
+
+============================================================
+22. reaction 必须用物理归一化量比较
+============================================================
+
+同时记录：
+
+reaction force
+
+和：
+
+nominal reaction stress =
+    reaction / fixed physical cross-sectional area
+
+因为不同 particle discretization
+不能只靠节点力总和的视觉相近判断。
+
+在 onset bracket 两端记录：
+
+sigma_reaction
+
+比较：
+
+coarse
+medium
+fine
+
+如果 quadrature consistency 正确，
+reaction stress 应趋于一致。
+
+============================================================
+23. energy comparison
+============================================================
+
+每档在：
+
+last stable
+first unstable
+
+记录：
+
+elastic energy
+crack energy
+total internal energy
+
+同时除以固定 physical volume/area
+生成：
+
+energy density
+或
+energy per reference area
+
+避免总能量随粒子个数的表示方式
+干扰比较。
+
+============================================================
+24. critical-mode spatial comparison
+============================================================
+
+不同 meshes DOF 不同，
+不能直接比较 eigenvector arrays。
+
+把 critical phase witness
+聚合为固定物理空间场。
+
+建议：
+
+1. bond -> particle weighted aggregation
+2. normalize amplitude
+3. sample/interpolate to
+   a common physical comparison grid
+
+同样处理 displacement-mode magnitude。
+
+然后比较：
+
+spatial correlation
+participation ratio
+center of activity
+second moment / spread
+
+不要宣称 mode convergence
+只因为两张图看起来相似。
+
+============================================================
+25. localization metric
+============================================================
+
+至少计算一个无量纲 localization metric。
+
+推荐 normalized participation ratio：
+
+    PR =
+      (sum a_i^2)^2
+      /
+      (N * sum a_i^4)
+
+范围大致：
+
+    PR ~ 1
+        diffuse/global
+
+    PR << 1
+        localized
+
+其中 a_i 使用：
+    particle-aggregated nonnegative
+    phase-opening amplitude
+
+同时报告：
+
+top 10% particles
+承载的 mode amplitude fraction。
+
+不要把它解释成 crack width。
+
+============================================================
+26. active-set spatial localization
+============================================================
+
+对于 first unstable state：
+
+绘制 weak/interior bonds 的空间位置。
+
+计算：
+
+fraction of bonds weak/interior
+within each z layer
+
+以及：
+
+physical bounding box
+of active weak/interior region
+
+如果 coarse 是：
+
+    100% bonds weak
+
+而 fine 仍然近100%：
+
+说明是 diffuse/homogeneous event。
+
+如果 refinement 后：
+    active region 缩小到局部区域，
+
+标：
+
+    ACTIVE_SET_LOCALIZATION_EMERGES
+
+但不要叫：
+    physical crack.
+
+============================================================
+27. fixed physical horizon family statistics
+============================================================
+
+每档必须输出：
+
+h
+delta
+delta/h
+number particles
+number bonds
+mean family size
+median family size
+min/max family size
+interior family size
+surface family size
+support-rank statistics
+
+特别检查：
+
+随着 h 减小：
+
+family sampling increases
+
+但 physical horizon 不变。
+
+如果任何 mesh
+出现 unexpected rank loss：
+
+STOP 해당 case。
+
+============================================================
+28. surface / boundary effects
+============================================================
+
+因为 fixed delta 下
+fine grids 会改变 boundary quadrature resolution，
+
+对 onset mode 统计：
+
+distance to top clamp
+distance to bottom clamp
+distance to free side surfaces
+
+比较 critical activity 是否
+系统性贴近 boundary。
+
+如果 instability 随 refinement
+一直由 clamp-near region 主导：
+
+只能写：
+
+    BOUNDARY-ASSOCIATED MODE
+
+不能直接说：
+    boundary artifact
+
+除非另有 controlled test。
+
+============================================================
+29. 不要在本轮修改 boundary model
+============================================================
+
+即使发现 boundary-associated behavior：
+
+不要：
+
+- 改 clamp
+- 改 surface correction
+- 加 cohesive boundary
+- 加 wall adhesion
+
+记录即可。
+
+否则无法区分：
+    refinement effect
+和
+    boundary-model effect。
+
+============================================================
+30. 当前 3×3×3 结果必须精确复现
+============================================================
+
+LEVEL 0 必须先复现：
+
+critical interval:
+    [0.0099921875, 0.0100000000]
+
+active-set event:
+    185 strong
+      ->
+    185 weak
+
+以及已保存：
+reaction
+energy
+stationarity residual
+critical-cone witness
+
+若不能复现：
+
+STOP refinement。
+
+状态：
+
+    COARSE_REFERENCE_REPRODUCTION_FAILED
+
+============================================================
+31. optional constant-delta/h sensitivity 不属于主结果
+============================================================
+
+本轮默认不做。
+
+如果计算资源充足并且主研究完成后，
+允许额外做一个非常小的 diagnostic：
+
+    delta/h approximately constant
+
+但必须放：
+
+    diagnostic_only/
+
+并明确：
+
+    THIS CHANGES THE NONLOCAL PHYSICAL LENGTH SCALE
+
+不能与主 fixed-delta study
+放在同一个 convergence 图里。
+
+============================================================
+32. 测试要求
+============================================================
+
+当前：
+
+    255 passed
+    3 known failed
+
+全部保留。
+
+新增例如：
+
+tests/test_pfpd_refined_geometry.py
+tests/test_pfpd_fixed_horizon.py
+tests/test_pfpd_refinement_mechanics.py
+tests/test_pfpd_refinement_stability.py
+tests/test_pfpd_matrix_free_hessian.py
+
+至少：
+
+TEST 1
+physical dimensions identical across levels
+
+TEST 2
+physical delta identical
+
+TEST 3
+delta/h increases monotonically
+
+TEST 4
+Gc_demo identical
+
+TEST 5
+Yc identical
+
+TEST 6
+physical boundary locations identical
+
+TEST 7
+particle-volume / total-volume consistency
+
+TEST 8
+affine BAQP reproduction every level
+
+TEST 9
+global force balance every level
+
+TEST 10
+coarse reference exact reproduction
+
+TEST 11
+dense HVP vs matrix-free HVP
+agree on coarse fixture
+
+TEST 12
+matrix-free epsilon sensitivity
+
+TEST 13
+mechanical Hxx lowest mode
+agrees dense/matrix-free on coarse
+
+TEST 14
+critical-cone witness satisfies bounds
+
+TEST 15
+negative witness Rayleigh
+agrees with dense coarse reference
+
+TEST 16
+stationary force/KKT gates each level
+
+TEST 17
+critical interval builder
+does not smooth nonsmooth event
+
+TEST 18
+active-set fractions correct
+
+TEST 19
+mode aggregation normalization
+
+TEST 20
+diagnostics read-only
+
+TEST 21
+production solver unchanged
+
+旧三个失败必须保持相同 ID 和原因。
+
+============================================================
+33. 服务器资源
+============================================================
+
+记录：
+
+CPU
+physical/logical cores
+RAM
+free RAM
+disk
+Python
+NumPy
+SciPy
+Numba
+Julia
+
+保存：
+
+provenance/HARDWARE.json
+
+每个 mesh 开始前估计：
+
+particle count
+bond count
+DOF
+dense Hessian RAM
+expected temporary RAM
+
+保存：
+
+    MEMORY_BUDGET_<LEVEL>.json
+
+原则：
+
+至少保留 20% 总 RAM headroom。
+
+不能为了 LEVEL 2
+把系统 swap 打满。
+
+fine Hessian 必须 matrix-free
+如果 dense 超过安全门槛。
+
+独立 mesh cases 可并行，
+但在 8 GB RAM 机器上
+优先串行大 case + 并行小 probes。
+
+BLAS：
+
+OPENBLAS_NUM_THREADS=1
+OMP_NUM_THREADS=1
+MKL_NUM_THREADS=1
+
+============================================================
+34. 输出目录
+============================================================
+
+新增：
+
+verification/pfpd_at1_spatial_discretization_audit_v1/
+
+建议：
+
+preaudit/
+geometry/
+level_0/
+level_1/
+level_2/
+optional_level_3/
+mechanics/
+branch_tracking/
+critical_brackets/
+active_sets/
+cone_stability/
+matrix_free/
+modes/
+comparisons/
+tests/
+figures/
+provenance/
+
+如保存 states：
+
+results/pfpd_at1_spatial_discretization_audit_v1/
+
+禁止覆盖旧结果。
+
+============================================================
+35. 强制可视化
+============================================================
+
+全部：
+
+PNG + PDF
+
+要求普通审核者能读懂。
+
+------------------------------------------------------------
+FIGURE 1
+mesh_family_overview
+
+显示三档物理 cube，
+只画 particle locations / horizon sample statistics。
+
+注明：
+
+same physical domain
+same physical delta
+different h
+
+人工问题：
+
+“我们是不是只改了数值分辨率？”
+
+------------------------------------------------------------
+FIGURE 2
+critical_interval_vs_spacing
+
+横轴：
+particle spacing h
+
+纵轴：
+engineering strain
+
+每档画：
+
+[epsilon_L, epsilon_U]
+
+error-bar style。
+
+另画：
+
+analytic AT1 threshold
+
+不要 spline。
+
+人工问题：
+
+“临界区间是否随 refinement 稳定？”
+
+------------------------------------------------------------
+FIGURE 3
+reaction_at_onset_vs_spacing
+
+横轴：
+h 或 h/delta
+
+纵轴：
+nominal reaction stress
+
+分别显示：
+last stable
+first unstable
+
+人工问题：
+
+“临界载荷的整体力学响应是否收敛？”
+
+------------------------------------------------------------
+FIGURE 4
+active_set_fraction_vs_strain
+
+三档 resolution 分图。
+
+显示：
+
+strong fraction
+weak fraction
+interior fraction
+
+重点放大 onset。
+
+人工问题：
+
+“还是所有 bonds 一起切换吗？”
+
+------------------------------------------------------------
+FIGURE 5
+critical_cone_witness_vs_spacing
+
+显示每档：
+
+normalized feasible negative
+Rayleigh witness
+
+只在存在 verified negative witness 时画。
+
+未分辨 case 写：
+UNRESOLVED
+
+不要把“没找到”画成0。
+
+------------------------------------------------------------
+FIGURE 6
+mode_localization_vs_spacing
+
+显示：
+
+participation ratio
+top-10% amplitude fraction
+
+人工问题：
+
+“临界方向是全局的还是逐渐局域化？”
+
+------------------------------------------------------------
+FIGURE 7
+critical_mode_maps
+
+每档各自：
+phase-opening particle field
+displacement-mode magnitude
+
+统一物理坐标范围。
+
+标：
+
+NUMERICAL / VARIATIONAL MODE
+NOT PHYSICAL CRACK PREDICTION
+
+------------------------------------------------------------
+FIGURE 8
+family_sampling
+
+横轴：
+h
+
+显示：
+
+delta/h
+mean family size
+interior family size
+
+分图，不用多轴堆一起。
+
+人工问题：
+
+“horizon 是否真正被越来越细地采样？”
+
+------------------------------------------------------------
+FIGURE 9
+stationarity_by_resolution
+
+每档 onset 附近：
+
+force residual
+KKT residual
+
+人工问题：
+
+“不稳定状态是否仍然是一阶平衡？”
+
+============================================================
+36. 人工审核报告
+============================================================
+
+生成：
+
+verification/pfpd_at1_spatial_discretization_audit_v1/
+    REVIEW_SPATIAL_DISCRETIZATION_AUDIT.md
+
+语言必须简单。
+
+结构：
+
+1. 为什么做这一轮
+
+2. 什么是 h，什么是 delta
+
+解释：
+    h 是网格分辨率
+    delta 是模型长度尺度
+
+3. 是否真的保持相同物理问题
+
+4. geometry / volume audit
+
+5. 三档 mesh 信息
+
+6. intact mechanics verification
+
+7. 各 mesh stability interval
+
+8. critical interval 是否收敛
+
+9. reaction/stress 是否收敛
+
+10. active-set switch 是否仍为全局
+
+11. critical-cone negative direction 是否保留
+
+12. mode 是否局域化
+
+13. boundary association 是否改变
+
+14. 当前 3×3×3 instability
+    更像：
+    robust model feature
+    discretization-sensitive feature
+    或
+    inconclusive
+
+15. tests
+
+16. 当前状态标签
+
+17. 唯一下一步
+
+============================================================
+37. 预声明结论分类
+============================================================
+
+最终必须给：
+
+SPATIAL_DISCRETIZATION_AUDIT:
+    COMPLETE / INCOMPLETE
+
+PHYSICAL_DOMAIN_CONSISTENCY:
+    VERIFIED / NOT_VERIFIED
+
+PHYSICAL_HORIZON:
+    FIXED / NOT_FIXED
+
+REFINEMENT_LEVELS_COMPLETED:
+    [list]
+
+INTACT_MECHANICS_ACROSS_LEVELS:
+    VERIFIED / NOT_VERIFIED
+
+STABILITY_INTERVAL_CONSISTENCY:
+    PASSED / FAILED / INCONCLUSIVE
+
+REACTION_AT_ONSET_CONSISTENCY:
+    PASSED / FAILED / INCONCLUSIVE
+
+CRITICAL_CONE_INSTABILITY:
+    PERSISTS_ACROSS_LEVELS
+    / DISAPPEARS
+    / INCONCLUSIVE
+
+ACTIVE_SET_BEHAVIOR:
+    DIFFUSE_ALL_BONDS
+    / PARTIALLY_LOCALIZED
+    / LOCALIZED
+    / RESOLUTION_DEPENDENT
+
+CRITICAL_MODE_LOCALIZATION:
+    CONVERGING
+    / RESOLUTION_DEPENDENT
+    / INCONCLUSIVE
+
+BOUNDARY_ASSOCIATION:
+    PERSISTS
+    / WEAKENS
+    / STRENGTHENS
+    / INCONCLUSIVE
+
+CURRENT 3x3x3 INSTABILITY:
+    SUPPORTED_AS_SPATIALLY_ROBUST_DEVELOPMENT_FEATURE
+    / SPATIAL_DISCRETIZATION_SENSITIVE
+    / INCONCLUSIVE
+
+MESH OBJECTIVITY:
+    NOT YET ESTABLISHED
+
+PFPD_AT1_EVOLUTION_V1:
+    REMAINS_NOT_VERIFIED
+
+PRODUCTION MODEL:
+    UNCHANGED
+
+============================================================
+38. “PASSED” 的最低要求
+============================================================
+
+若要：
+
+STABILITY_INTERVAL_CONSISTENCY:
+    PASSED
+
+至少要求：
+
+- required 3 levels complete
+- fixed physical delta verified
+- medium/fine intervals overlap
+  or midpoint difference <= 2e-5 strain
+- bracket width <= 1e-5
+- stationary gates pass
+- negative-cone witness resolved
+  at first unstable endpoint
+
+若这些不满足：
+不得 PASS。
+
+============================================================
+39. 禁止过度结论
+============================================================
+
+禁止：
+
+    mesh objective fracture model
+
+因为只做三档 development refinement。
+
+禁止：
+
+    physical clot critical strain
+
+禁止：
+
+    critical mode = crack
+
+禁止：
+
+    if epsilon_c stays ~1%
+    then model is validated
+
+禁止：
+
+    all-bond switching is physical
+
+禁止：
+
+    refinement convergence
+    equals physical calibration
+
+============================================================
+40. 最终终端摘要
+============================================================
+
+最终只输出：
+
+- repository / HEAD
+- production files modified
+- historical files modified
+- old passed / known failed
+- new tests passed
+- geometry convention
+- volume convention
+- physical cube dimensions
+- fixed delta
+- per-level:
+    N particles
+    h
+    delta/h
+    N bonds
+    mean family size
+- per-level critical interval
+- per-level bracket width
+- analytic AT1 threshold
+- per-level nominal reaction stress at onset
+- per-level active-set fractions
+- per-level negative-cone witness
+- per-level localization metric
+- stability-interval consistency
+- reaction consistency
+- current 3x3x3 classification
+- REVIEW_SPATIAL_DISCRETIZATION_AUDIT.md
+- figures directory
+- final status labels
+
+不要只输出：
+    development complete
+
+============================================================
+41. 完成后停止
+============================================================
+
+不要自动进入：
+
+branch switching
+arc-length
+post-instability continuation
+h(s)<1
+full fracture propagation
+wall attachment
+Ogden
+real clot Gc
+streaming erosion coupling
+fatigue
+real CFD
+
+等待人工审核。

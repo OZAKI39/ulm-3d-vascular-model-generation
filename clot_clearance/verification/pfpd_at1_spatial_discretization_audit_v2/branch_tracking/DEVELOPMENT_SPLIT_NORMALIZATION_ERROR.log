@@ -1,0 +1,48 @@
+C3_A_000 STATIONARY_STABLE `gtol` termination condition is satisfied. force= 8.754772727510552e-16 green= -2.9785571028452055e-30
+C3_A_001 STATIONARY_STABLE `gtol` termination condition is satisfied. force= 4.818867918830534e-17 green= -1.1409803370766037e-30
+Traceback (most recent call last):
+  File "<stdin>", line 6, in <module>
+  File "/home/lzy/projects/temp_storage/clot_clearance_github_sync_20260930/clot_clearance/scripts/spatial_stability_v2.py", line 150, in schedule
+    result,row=audit_state(n,e,lower,xx,ss,f'C{n}_{name}_{k:03d}');rows.append(row)
+               ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lzy/projects/temp_storage/clot_clearance_github_sync_20260930/clot_clearance/scripts/spatial_stability_v2.py", line 124, in audit_state
+    blocks,epsrows=dense_reference(pp,zz,label);tests,vectors,_=cone_probes(pp,zz,blocks,epsrows)
+                                                                ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lzy/projects/temp_storage/clot_clearance_github_sync_20260930/clot_clearance/scripts/spatial_stability_v2.py", line 75, in cone_probes
+    curvature=[float(v@S@v) for S in blocks];mf=[float(v@(hessian_operator(p,z,e)@v)) for e in EPS]
+                                                          ~~~~~~~~~~~~~~~~~~~~~~~^~
+  File "/home/lzy/projects/formal_3D_flow_solver/FEM_SimVascular/.venv/lib/python3.13/site-packages/scipy/sparse/linalg/_interface.py", line 656, in __matmul__
+    return self.__mul__(other)
+           ~~~~~~~~~~~~^^^^^^^
+  File "/home/lzy/projects/formal_3D_flow_solver/FEM_SimVascular/.venv/lib/python3.13/site-packages/scipy/sparse/linalg/_interface.py", line 546, in __mul__
+    return self.dot(x)
+           ~~~~~~~~^^^
+  File "/home/lzy/projects/formal_3D_flow_solver/FEM_SimVascular/.venv/lib/python3.13/site-packages/scipy/sparse/linalg/_interface.py", line 643, in dot
+    return self.matvec(x)
+           ~~~~~~~~~~~^^^
+  File "/home/lzy/projects/formal_3D_flow_solver/FEM_SimVascular/.venv/lib/python3.13/site-packages/scipy/sparse/linalg/_interface.py", line 391, in matvec
+    return self._shared_matvec(x)
+           ~~~~~~~~~~~~~~~~~~~^^^
+  File "/home/lzy/projects/formal_3D_flow_solver/FEM_SimVascular/.venv/lib/python3.13/site-packages/scipy/sparse/linalg/_interface.py", line 353, in _shared_matvec
+    y = self._rmatvec(x) if adjoint else self._matvec(x)
+                                         ~~~~~~~~~~~~^^^
+  File "/home/lzy/projects/formal_3D_flow_solver/FEM_SimVascular/.venv/lib/python3.13/site-packages/scipy/sparse/linalg/_interface.py", line 891, in _matvec
+    return self.__matvec_impl(x)
+           ~~~~~~~~~~~~~~~~~~^^^
+  File "/home/lzy/projects/temp_storage/clot_clearance_github_sync_20260930/clot_clearance/scripts/spatial_audit_v2.py", line 113, in mv
+    out=bn*(grad(z+eps*base/bn)-grad(z-eps*base/bn))/(2*eps) if bn else np.zeros_like(v)
+                                ~~~~^^^^^^^^^^^^^^^
+  File "/home/lzy/projects/temp_storage/clot_clearance_github_sync_20260930/clot_clearance/scripts/spatial_audit_v2.py", line 101, in grad
+    def grad(t):calls[0]+=1;return p.objective_gradient(t)[1]
+                                   ~~~~~~~~~~~~~~~~~~~~^^^
+  File "/home/lzy/projects/temp_storage/clot_clearance_github_sync_20260930/clot_clearance/pd_clot/pfpd_candidate/coupling_stability_audit.py", line 96, in objective_gradient
+    x,s = self.unpack(z); state = self.state(x,s)
+                                  ~~~~~~~~~~^^^^^
+  File "/home/lzy/projects/temp_storage/clot_clearance_github_sync_20260930/clot_clearance/pd_clot/pfpd_candidate/coupling_stability_audit.py", line 84, in state
+    return evaluate(self.family,x,self.material,g=(1-np.asarray(s))**2,h=np.ones(self.ns))
+  File "/home/lzy/projects/temp_storage/clot_clearance_github_sync_20260930/clot_clearance/pd_clot/pfpd_candidate/baqp.py", line 37, in evaluate
+    g=factor(g);h=factor(h);w=f.omega*h;xi=f.xi
+  File "/home/lzy/projects/temp_storage/clot_clearance_github_sync_20260930/clot_clearance/pd_clot/pfpd_candidate/baqp.py", line 35, in factor
+    if a.shape!=(m,) or np.any((a<0)|(a>1)) or not np.isfinite(a).all():raise ValueError('Invalid prescribed factor')
+                                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: Invalid prescribed factor

@@ -1,0 +1,31 @@
+......F.........                                                         [100%]
+=================================== FAILURES ===================================
+____________ test_reduced_residual_uses_original_force_and_active_q ____________
+
+    def test_reduced_residual_uses_original_force_and_active_q():
+        p,a,ids=activation_fixture();system=ReducedSystem(p,ids);u=system.compress(p.pack(a['x'],a['s']))
+        r=system.residual(u);state=p.state(a['x'],a['s'])
+>       np.testing.assert_allclose(r[:p.nx],state.force[p.free].ravel()/p.config['mechanical_equilibrium']['force_floor_N'])
+E       AssertionError: 
+E       Not equal to tolerance rtol=1e-07, atol=0
+E       
+E       Mismatched elements: 54 / 225 (24%)
+E       First 5 mismatches are at indices:
+E        [4]: -1.2070945099691367e-17 (ACTUAL), -1.207056782370763e-17 (DESIRED)
+E        [10]: -1.710531582668876e-17 (ACTUAL), -1.7102297618818857e-17 (DESIRED)
+E        [13]: 4.02455382892476e-17 (ACTUAL), 4.024629284121507e-17 (DESIRED)
+E        [22]: 7.552560059981337e-17 (ACTUAL), 7.552213250879623e-17 (DESIRED)
+E        [25]: 8.802222582503499e-17 (ACTUAL), 8.802165434284163e-17 (DESIRED)
+E       Max absolute difference among violations: 1.08655483e-19
+E       Max relative difference among violations: 0.00601403
+E        ACTUAL: array([ 2.742419e-18, -8.643393e-18,  1.979944e-18,  2.388949e-17,
+E              -1.207095e-17,  4.285855e-18,  1.131488e-17, -1.178195e-17,
+E              -1.400448e-18,  3.399294e-17, -1.710532e-17,  2.694052e-17,...
+E        DESIRED: array([ 2.742419e-18, -8.643393e-18,  1.979944e-18,  2.388949e-17,
+E              -1.207057e-17,  4.285855e-18,  1.131488e-17, -1.178195e-17,
+E              -1.400448e-18,  3.399294e-17, -1.710230e-17,  2.694052e-17,...
+
+tests/test_c5_activation_stationarity.py:62: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_c5_activation_stationarity.py::test_reduced_residual_uses_original_force_and_active_q
+1 failed, 15 passed in 2.47s

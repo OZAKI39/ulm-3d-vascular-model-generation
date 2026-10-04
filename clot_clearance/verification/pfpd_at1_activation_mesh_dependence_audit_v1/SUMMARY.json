@@ -1,0 +1,159 @@
+{
+  "task": "PFPD_AT1_ACTIVATION_MESH_DEPENDENCE_AUDIT_V1",
+  "audit_status": "STOPPED_AT_PAPER_MAPPING_GATE",
+  "audit_complete": false,
+  "status": {
+    "PFPD_PAPER_PHASE_MAPPING": "AMBIGUOUS",
+    "DIRECT_PHASE_REGULARIZATION": "ABSENT_BY_THEORY",
+    "AFFINE_ORACLE": "INCONCLUSIVE",
+    "EQUILIBRIUM_DRIVER_HOTSPOT": "INCONCLUSIVE",
+    "ACTIVATION_LAYER": "FIRST_GRID_LAYER",
+    "PROFILE_SCALING": "INCONCLUSIVE",
+    "SUPPORT_TRUNCATION_ASSOCIATION": "INCONCLUSIVE",
+    "CLAMP_KINEMATIC_ASSOCIATION": "NOT_TESTED",
+    "PHYSICAL_DAMAGE_SUPPORT_C5_C7": "INCONCLUSIVE",
+    "ACTIVATION_THRESHOLD_OBJECTIVITY": "NOT_ESTABLISHED",
+    "ROOT_CAUSE_PRIMARY": "INCONCLUSIVE",
+    "C7_STABILITY": "NOT_RUN",
+    "C9": "NOT_RUN",
+    "PRODUCTION": "UNCHANGED"
+  },
+  "hard_stop": {
+    "status": "STOPPED_AT_PAPER_MAPPING_GATE",
+    "audit_complete": false,
+    "numerical_diagnosis_allowed": false,
+    "trigger": [
+      "User section 8 requires VERIFIED/EQUIVALENT paper formulation mapping before numerical diagnosis",
+      "User section 46A stops if paper phase energy and current implementation differ"
+    ],
+    "paper_mapping": "AMBIGUOUS",
+    "missing_required_phase_terms": [],
+    "missing_required_phase_term_found": false,
+    "phase_formulation_incomplete_asserted": false,
+    "differences": [
+      "Eq. 3.4/3.10 literal g(s)*Psi0 and g(s)*P0 versus implemented g(s)*Psi_plus+Psi_minus and corresponding split stress",
+      "Eq. 3.25 conflicts with the AT1 stationary relation in Eq. 3.17; current implementation intentionally follows the latter with tensile driver"
+    ],
+    "historical_candidate_authorization_preserved": true,
+    "no_model_change": true
+  },
+  "baseline_tests": {
+    "passed": 412,
+    "failed": 3,
+    "errors": 0,
+    "skipped": 0,
+    "failures": [
+      {
+        "id": "tests.test_pfpd_at1_staggered::test_saved_coupled_mechanics_phase_and_energy_all_converged",
+        "message": "AssertionError: assert 10 == 19\n +  where 10 = len([{'load_step': 0, 'strain': 0, 'displacement_m': 0.0, 'reaction_N': -0.0, ...}, {'load_step': 1, 'strain': 0.0025, 'di...e-06, ...}, {'load_step': 5, 'strain': 0.01, 'displacement_m': 2.5e-06, 'reaction_N': 4.282242187499839e-06, ...}, ...])\n +  and   19 = len([0, 0.0025, 0.005, 0.0075, 0.009, 0.01, ...])",
+        "traceback": "def test_saved_coupled_mechanics_phase_and_energy_all_converged():\n        c = config()\n        rows = json.loads((RESULTS/'loading_unloading/LOAD_PATH.json').read_text())\n>       assert len(rows) == len(c['schedules']['loading_unloading'])\nE       AssertionError: assert 10 == 19\nE        +  where 10 = len([{'load_step': 0, 'strain': 0, 'displacement_m': 0.0, 'reaction_N': -0.0, ...}, {'load_step': 1, 'strain': 0.0025, 'di...e-06, ...}, {'load_step': 5, 'strain': 0.01, 'displacement_m': 2.5e-06, 'reaction_N': 4.282242187499839e-06, ...}, ...])\nE        +  and   19 = len([0, 0.0025, 0.005, 0.0075, 0.009, 0.01, ...])\n\ntests/test_pfpd_at1_staggered.py:14: AssertionError"
+      },
+      {
+        "id": "tests.test_pfpd_at1_staggered::test_coupled_no_bond_heals_on_unload_and_reload",
+        "message": "AssertionError: Unload/reload was not reached: coupled acceptance gate FAILED\nassert 10 == 19\n +  where 10 = len([{'load_step': 0, 'strain': 0, 'displacement_m': 0.0, 'reaction_N': -0.0, ...}, {'load_step': 1, 'strain': 0.0025, 'di...e-06, ...}, {'load_step': 5, 'strain': 0.01, 'displacement_m': 2.5e-06, 'reaction_N': 4.282242187499839e-06, ...}, ...])\n +  and   19 = len([0, 0.0025, 0.005, 0.0075, 0.009, 0.01, ...])",
+        "traceback": "def test_coupled_no_bond_heals_on_unload_and_reload():\n        rows = json.loads((RESULTS/'loading_unloading/LOAD_PATH.json').read_text())\n>       assert len(rows) == len(config()['schedules']['loading_unloading']), 'Unload/reload was not reached: coupled acceptance gate FAILED'\nE       AssertionError: Unload/reload was not reached: coupled acceptance gate FAILED\nE       assert 10 == 19\nE        +  where 10 = len([{'load_step': 0, 'strain': 0, 'displacement_m': 0.0, 'reaction_N': -0.0, ...}, {'load_step': 1, 'strain': 0.0025, 'di...e-06, ...}, {'load_step': 5, 'strain': 0.01, 'displacement_m': 2.5e-06, 'reaction_N': 4.282242187499839e-06, ...}, ...])\nE        +  and   19 = len([0, 0.0025, 0.005, 0.0075, 0.009, 0.01, ...])\n\ntests/test_pfpd_at1_staggered.py:23: AssertionError"
+      },
+      {
+        "id": "tests.test_pfpd_at1_staggered::test_extra_stagger_iterations_change_no_accepted_state_materially",
+        "message": "AssertionError: assert 8 == 19\n +  where 8 = len([{'step': 0, 'max_delta_x_m': 0.0, 'max_delta_s': 0.0}, {'step': 1, 'max_delta_x_m': 6.88214269644119e-22, 'max_delta_...82197683525802e-21, 'max_delta_s': 0.0}, {'step': 5, 'max_delta_x_m': 1.2705494208814505e-21, 'max_delta_s': 0.0}, ...])\n +  and   19 = len([0, 0.0025, 0.005, 0.0075, 0.009, 0.01, ...])",
+        "traceback": "def test_extra_stagger_iterations_change_no_accepted_state_materially():\n        rows = json.loads((OUT/'staggered/EXTRA_ITERATIONS.json').read_text())\n>       c = config(); assert len(rows) == len(c['schedules']['loading_unloading'])\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nE       AssertionError: assert 8 == 19\nE        +  where 8 = len([{'step': 0, 'max_delta_x_m': 0.0, 'max_delta_s': 0.0}, {'step': 1, 'max_delta_x_m': 6.88214269644119e-22, 'max_delta_...82197683525802e-21, 'max_delta_s': 0.0}, {'step': 5, 'max_delta_x_m': 1.2705494208814505e-21, 'max_delta_s': 0.0}, ...])\nE        +  and   19 = len([0, 0.0025, 0.005, 0.0075, 0.009, 0.01, ...])\n\ntests/test_pfpd_at1_staggered.py:48: AssertionError"
+      }
+    ]
+  },
+  "final_tests": {
+    "passed": 412,
+    "failed": 3,
+    "errors": 0,
+    "skipped": 0,
+    "failures": [
+      {
+        "id": "tests.test_pfpd_at1_staggered::test_saved_coupled_mechanics_phase_and_energy_all_converged",
+        "message": "AssertionError: assert 10 == 19\n +  where 10 = len([{'load_step': 0, 'strain': 0, 'displacement_m': 0.0, 'reaction_N': -0.0, ...}, {'load_step': 1, 'strain': 0.0025, 'di...e-06, ...}, {'load_step': 5, 'strain': 0.01, 'displacement_m': 2.5e-06, 'reaction_N': 4.282242187499839e-06, ...}, ...])\n +  and   19 = len([0, 0.0025, 0.005, 0.0075, 0.009, 0.01, ...])",
+        "traceback": "def test_saved_coupled_mechanics_phase_and_energy_all_converged():\n        c = config()\n        rows = json.loads((RESULTS/'loading_unloading/LOAD_PATH.json').read_text())\n>       assert len(rows) == len(c['schedules']['loading_unloading'])\nE       AssertionError: assert 10 == 19\nE        +  where 10 = len([{'load_step': 0, 'strain': 0, 'displacement_m': 0.0, 'reaction_N': -0.0, ...}, {'load_step': 1, 'strain': 0.0025, 'di...e-06, ...}, {'load_step': 5, 'strain': 0.01, 'displacement_m': 2.5e-06, 'reaction_N': 4.282242187499839e-06, ...}, ...])\nE        +  and   19 = len([0, 0.0025, 0.005, 0.0075, 0.009, 0.01, ...])\n\ntests/test_pfpd_at1_staggered.py:14: AssertionError"
+      },
+      {
+        "id": "tests.test_pfpd_at1_staggered::test_coupled_no_bond_heals_on_unload_and_reload",
+        "message": "AssertionError: Unload/reload was not reached: coupled acceptance gate FAILED\nassert 10 == 19\n +  where 10 = len([{'load_step': 0, 'strain': 0, 'displacement_m': 0.0, 'reaction_N': -0.0, ...}, {'load_step': 1, 'strain': 0.0025, 'di...e-06, ...}, {'load_step': 5, 'strain': 0.01, 'displacement_m': 2.5e-06, 'reaction_N': 4.282242187499839e-06, ...}, ...])\n +  and   19 = len([0, 0.0025, 0.005, 0.0075, 0.009, 0.01, ...])",
+        "traceback": "def test_coupled_no_bond_heals_on_unload_and_reload():\n        rows = json.loads((RESULTS/'loading_unloading/LOAD_PATH.json').read_text())\n>       assert len(rows) == len(config()['schedules']['loading_unloading']), 'Unload/reload was not reached: coupled acceptance gate FAILED'\nE       AssertionError: Unload/reload was not reached: coupled acceptance gate FAILED\nE       assert 10 == 19\nE        +  where 10 = len([{'load_step': 0, 'strain': 0, 'displacement_m': 0.0, 'reaction_N': -0.0, ...}, {'load_step': 1, 'strain': 0.0025, 'di...e-06, ...}, {'load_step': 5, 'strain': 0.01, 'displacement_m': 2.5e-06, 'reaction_N': 4.282242187499839e-06, ...}, ...])\nE        +  and   19 = len([0, 0.0025, 0.005, 0.0075, 0.009, 0.01, ...])\n\ntests/test_pfpd_at1_staggered.py:23: AssertionError"
+      },
+      {
+        "id": "tests.test_pfpd_at1_staggered::test_extra_stagger_iterations_change_no_accepted_state_materially",
+        "message": "AssertionError: assert 8 == 19\n +  where 8 = len([{'step': 0, 'max_delta_x_m': 0.0, 'max_delta_s': 0.0}, {'step': 1, 'max_delta_x_m': 6.88214269644119e-22, 'max_delta_...82197683525802e-21, 'max_delta_s': 0.0}, {'step': 5, 'max_delta_x_m': 1.2705494208814505e-21, 'max_delta_s': 0.0}, ...])\n +  and   19 = len([0, 0.0025, 0.005, 0.0075, 0.009, 0.01, ...])",
+        "traceback": "def test_extra_stagger_iterations_change_no_accepted_state_materially():\n        rows = json.loads((OUT/'staggered/EXTRA_ITERATIONS.json').read_text())\n>       c = config(); assert len(rows) == len(c['schedules']['loading_unloading'])\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nE       AssertionError: assert 8 == 19\nE        +  where 8 = len([{'step': 0, 'max_delta_x_m': 0.0, 'max_delta_s': 0.0}, {'step': 1, 'max_delta_x_m': 6.88214269644119e-22, 'max_delta_...82197683525802e-21, 'max_delta_s': 0.0}, {'step': 5, 'max_delta_x_m': 1.2705494208814505e-21, 'max_delta_s': 0.0}, ...])\nE        +  and   19 = len([0, 0.0025, 0.005, 0.0075, 0.009, 0.01, ...])\n\ntests/test_pfpd_at1_staggered.py:48: AssertionError"
+      }
+    ]
+  },
+  "known_failures_unchanged": true,
+  "new_tests": 0,
+  "new_test_reason": "Stopped before numerical diagnosis; no scientific implementation changed.",
+  "preservation": {
+    "files": 29828,
+    "symlinks": 481,
+    "modified": [],
+    "missing": [],
+    "symlink_changes": [],
+    "production_modified": [],
+    "existing_tests_modified": [],
+    "passed": true
+  },
+  "historical_facts": {
+    "C5": {
+      "strain": 0.0044973907362122045,
+      "count": 2,
+      "d_act_m": 3.125e-05,
+      "h_m": 6.25e-05,
+      "delta_m": 0.00025125,
+      "d_act_over_h": 0.5,
+      "d_act_over_delta": 0.12437810945273632,
+      "source": "/home/lzy/projects/temp_storage/clot_clearance_github_sync_20260930/clot_clearance/verification/pfpd_at1_c7_early_branch_v1/activation/C5_C7_COMPARISON.json",
+      "scope": "Read-only historical facts and unit normalization; no new field evaluation"
+    },
+    "C7": {
+      "strain": 0.0031376074552536015,
+      "count": 2,
+      "d_act_m": 2.0833333333333336e-05,
+      "h_m": 4.1666666666666665e-05,
+      "delta_m": 0.00025125,
+      "d_act_over_h": 0.5000000000000001,
+      "d_act_over_delta": 0.08291873963515756,
+      "source": "/home/lzy/projects/temp_storage/clot_clearance_github_sync_20260930/clot_clearance/verification/pfpd_at1_c7_early_branch_v1/activation/C5_C7_COMPARISON.json",
+      "scope": "Read-only historical facts and unit normalization; no new field evaluation"
+    }
+  },
+  "resources": {
+    "physical_cores": 12,
+    "logical_cores": 24,
+    "RAM_total_bytes": 8183234560,
+    "RAM_available_bytes": 5304758272,
+    "active_scientific_workers": 0,
+    "analysis_processes": 1,
+    "decision": "Paper/code gate stopped numerical diagnosis before worker pools or equilibrium solves.",
+    "CPU_thread_limits": 1,
+    "GPU_status": "GPU_NOT_USED_BY_DESIGN",
+    "GPU_installation_retried": false,
+    "GPU_reason": "No useful validated backend; post-processing is not the bottleneck. No numerical mesh diagnosis after paper gate.",
+    "optional_python_modules": {
+      "cupy": false,
+      "jax": false,
+      "torch": false
+    },
+    "timestamp": 1791130524.5898893
+  },
+  "final_test_resources": {
+    "exit_code": 1,
+    "wall_seconds": 29.397898658004124,
+    "peak_observed_tree_RSS_bytes": 507404288,
+    "max_observed_process_swap_bytes": 0,
+    "scope": "Final full-suite subprocess tree only, sampled every 0.25 s; not a whole-task peak"
+  },
+  "observed_wall_seconds_since_pre_manifest": 556.2231228351593,
+  "wall_definition": "Elapsed wall time from PRE_RUN_MANIFEST timestamp to report finalization, including reading, tools and two full test suites; excludes initial manifest hashing.",
+  "peak_RAM_whole_task_bytes": null,
+  "peak_RAM_note": "No whole-task peak monitor; final-suite observed peak is separately reported.",
+  "new_equilibrium_solves": 0,
+  "new_affine_oracle_evaluations": 0,
+  "new_clamp_control_solves": 0,
+  "numerical_diagnosis": "NOT_RUN_HARD_STOP",
+  "figures_generated": 0,
+  "HEAD": "f0e891686b9b107510ab3292aa27ce83638b3339"
+}

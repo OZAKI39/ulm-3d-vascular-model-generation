@@ -1,0 +1,2056 @@
+你正在继续开发 clot CFD–PD 项目。
+
+本轮任务名称：
+
+    PFPD_AT1_C7_EARLY_BRANCH_V1
+
+============================================================
+0. 当前科学基线
+============================================================
+
+首先记录：
+
+    git rev-parse --show-toplevel
+    git rev-parse HEAD
+    git status --short
+
+当前已经确认：
+
+GEOMETRY:
+    corrected 0.25 mm boundary-node cube
+
+PHYSICAL HORIZON:
+    delta = 0.25125 mm fixed
+
+SVK_SPECTRAL_SPLIT:
+    VERIFIED
+
+MIXED_STRAIN_MECHANICS:
+    VERIFIED
+
+AT1 DRIVER:
+    Y = Psi_plus
+
+PETSC RSLS:
+    VERIFIED_CANDIDATE FOR C5
+
+C5 FIRST ACTIVATION:
+    strain ≈ 0.00449739
+
+C5 FIRST ACTIVATION SET:
+    2 / 5392 bonds
+
+C5 ACTIVATION POINT:
+    STABLE
+
+C5 FIRST POSITIVE ROOT:
+    STABLE
+
+C5 STABLE POSITIVE-PHASE BRANCH:
+    VERIFIED through
+    strain = 0.004697390736
+    max(s) = 0.105282593434
+
+C5 FIRST STABILITY LOSS:
+    NOT_FOUND_IN_AUDITED_WINDOW
+
+C3 HISTORICAL BEHAVIOR:
+    activation ≈ 0.01
+    185 / 185 bonds activate
+    stability loss near activation
+
+SPATIAL CONVERGENCE:
+    NOT YET ASSESSED
+
+C7 COUPLED BRANCH:
+    NOT YET VERIFIED
+
+PRODUCTION:
+    UNCHANGED
+
+当前测试基线：
+
+    390 passed
+    3 known failed
+    0 skipped
+
+原3个 known failures：
+
+- same IDs
+- same messages
+- same tracebacks
+- no xfail
+- no skip
+- no weakened assertions
+
+必须继续保留。
+
+============================================================
+1. 本轮唯一科学问题
+============================================================
+
+回答：
+
+Q1.
+    C7 intact stationary branch
+    第一次何时失去 s=0 lower-bound KKT 可行性？
+
+Q2.
+    第一次 activation 有多少 bonds？
+
+Q3.
+    activation 是：
+      diffuse
+      partially localized
+      localized
+      boundary-associated
+    哪一种？
+
+Q4.
+    PETSc RSLS 是否可以在不知道 active bond IDs 的情况下
+    自动跨过 C7 activation？
+
+Q5.
+    C7 是否存在 early positive-phase stationary branch？
+
+本轮不回答：
+
+    C7 stability loss
+
+不计算：
+
+    C7 full Hessian
+    C7 critical cone
+    C7 unstable mode
+
+除非另有人工批准。
+
+============================================================
+2. 为什么本轮先不做 C7 stability
+============================================================
+
+C5 已经证明：
+
+    phase activation
+    !=
+    stability loss
+
+因此 C7 必须先建立：
+
+    valid stationary branch
+
+再谈 stability。
+
+本轮最高优先级：
+
+    activation
+    spatial structure
+    stationary continuation
+
+不要提前做昂贵 Hessian。
+
+============================================================
+3. Physics 完全冻结
+============================================================
+
+保持：
+
+L = 0.25 mm
+
+boundary-node conservative quadrature
+
+delta = 0.25125 mm
+
+C7 = 7×7×7 points
+
+SVK
+
+spectral Psi_plus / Psi_minus
+
+Gc_demo
+
+c0
+
+Yc
+
+AT1
+
+g(s) = (1-s)^2
+
+h(s) = 1
+
+sc = 0.95
+
+irreversibility
+
+PETSc RSLS
+
+force tolerance = 1e-9
+
+projected KKT tolerance = 1e-8
+
+所有 safety criteria
+
+完全不变。
+
+禁止：
+
+- 调 Gc
+- 调 Yc
+- 调 delta
+- 改 mesh geometry
+- 改 material
+- 改 spectral split
+- 换 AT2
+- 加 viscosity
+- 加 residual stiffness
+- 加 h(s)<1
+- 调 PETSc tolerance
+- 调 solver 直到“看起来好看”
+
+============================================================
+4. 历史结果保护
+============================================================
+
+保护至少：
+
+verification/pfpd_at1_petsc_vi_solver_v1/
+verification/pfpd_at1_c5_stability_v1/
+verification/pfpd_at1_c5_activation_stationarity_audit_v1/
+verification/pfpd_at1_spectral_split_v1/
+verification/pfpd_at1_spatial_discretization_audit_v2/
+
+以及全部历史 results。
+
+新建：
+
+verification/pfpd_at1_c7_early_branch_v1/
+
+results/pfpd_at1_c7_early_branch_v1/
+
+开始：
+
+    PRE_RUN_MANIFEST.json
+
+结束：
+
+    POST_RUN_MANIFEST.json
+    PRESERVATION_CHECK.json
+
+要求：
+
+production modified files = 0
+historical modified files = 0
+existing tests modified = 0
+
+============================================================
+5. C7 规模
+============================================================
+
+当前 C7：
+
+particles:
+    343
+
+mechanical free DOF:
+    735
+
+phase bonds:
+    46059
+
+full unknown count if unreduced:
+    46794
+
+不得构造：
+
+46059 × 46059 dense phase matrix
+
+不得构造：
+
+46794 × 46794 dense Jacobian/Hessian
+
+上一轮 full C7 Jacobian path
+保守 RAM 估计约 6.49 GB。
+
+本轮必须使用：
+
+    active-set-aware reduced phase pool
+
+避免把严格 inactive
+strong-lower phase DOF
+全部装入 nonlinear system。
+
+============================================================
+6. 首先读取并验证 C7 geometry
+============================================================
+
+不要重新生成另一套 geometry。
+
+读取 corrected C7。
+
+确认：
+
+343 points
+
+physical domain:
+    [-0.125,+0.125] mm each axis
+
+particle spacing:
+    h = 0.041666666... mm
+
+delta/h ≈ 6.03
+
+volume sum:
+    L^3
+
+top/bottom surface quadrature:
+    L^2
+
+bond count:
+    46059
+
+保存：
+
+    C7_GEOMETRY_CHECK.json
+
+如与上一轮不同：
+
+STOP。
+
+============================================================
+7. 不使用上一轮 non-equilibrated cheap C7 scan
+作为科学 activation result
+============================================================
+
+上一轮曾有：
+
+    epsilon ≈ 0.00314907
+
+附近的 cheap C7 predictor / smoke。
+
+那不是机械平衡状态。
+
+它只能作为：
+
+    computational hint
+
+不能作为：
+
+    activation bracket
+    stationary state
+    fracture onset
+
+本轮必须从真正的：
+
+    s=0 mechanical equilibrium
+
+重新定位 activation。
+
+============================================================
+8. 第一阶段：C7 s=0 equilibrium activation scan
+============================================================
+
+phase：
+
+    s=0 fixed
+
+关闭 phase update。
+
+使用已经验证的：
+
+    intact mixed-strain mechanics
+
+负 principal Green strain：
+
+    diagnostic only
+
+不作为 hard reject。
+
+每个 load：
+
+1.
+    solve full mechanical equilibrium
+
+2.
+    require:
+        force <= 1e-9
+
+3.
+    evaluate all 46059 bonds:
+
+        Psi_plus_b
+
+4.
+    compute:
+
+        q_b =
+          2*(Yc - Psi_plus_b)
+
+5.
+    save full q statistics.
+
+============================================================
+9. 高效 activation search
+============================================================
+
+不要先做密集 uniform sweep。
+
+根据历史信息：
+
+C5 activation:
+    ~0.004497
+
+C7 old cheap predictor:
+    only a rough non-equilibrium hint
+
+先使用宽 bracket loads：
+
+    0.0020
+    0.0025
+    0.0030
+    0.0035
+    0.0040
+    0.0045
+    0.0050
+
+每一点：
+
+必须是真正 mechanical equilibrium。
+
+找到：
+
+lower:
+    min q >= 0
+
+upper:
+    min q < 0
+
+后停止宽 sweep。
+
+然后：
+
+    bisection
+
+目标：
+
+    bracket width <= 1e-7 strain
+
+最多：
+
+    14 refinements
+
+不要用 brentq
+跨 unknown branch behavior。
+
+============================================================
+10. continuation reuse
+============================================================
+
+s=0 mechanical equilibrium scan
+按 increasing load 顺序运行。
+
+每个 load initial x：
+
+    previous accepted equilibrium
+
+不要每点从 affine state
+重新开始。
+
+这样减少 ADR / nonlinear solve 成本。
+
+============================================================
+11. activation classification
+============================================================
+
+沿用 C5 tolerance：
+
+STRONG_LOWER:
+    q_scaled > q_tol
+
+WEAK_LOWER:
+    |q_scaled| <= q_tol
+
+VIOLATED_LOWER:
+    q_scaled < -q_tol
+
+其中：
+
+    q_scaled =
+      q / max(Psi_plus,Yc)
+
+保存：
+
+count
+fraction
+bond IDs
+
+特别输出：
+
+first weak set
+
+first violated set
+
+============================================================
+12. activation spatial analysis
+============================================================
+
+对 first activation set：
+
+保存每根 bond：
+
+ID
+endpoint coordinates
+midpoint
+orientation
+reference length
+Psi_plus
+q
+distance to:
+    top clamp
+    bottom clamp
+    lateral surfaces
+    cube center
+
+不要称为 crack。
+
+名称：
+
+    C7 AT1 ACTIVATION SET
+
+============================================================
+13. physical localization metrics
+============================================================
+
+不要只比较：
+
+number of active bonds
+
+因为 C5/C7 bond count不同。
+
+至少计算：
+
+A.
+activation fraction
+
+B.
+physical bounding-box dimensions
+
+C.
+RMS radius about activation centroid
+
+D.
+distance-to-clamp distribution
+
+E.
+orientation histogram
+
+F.
+particle-aggregated activation amplitude
+
+G.
+equivalent physical activation volume/region metric
+仅作为离散比较指标
+
+不要称：
+    crack width
+
+============================================================
+14. C5/C7 activation comparison
+============================================================
+
+直接读取历史 C5：
+
+activation strain
+2/5392
+bond midpoints
+orientations
+clamp distances
+
+不要重新计算 C5。
+
+比较：
+
+activation strain
+activation fraction
+number of bonds
+physical centroid
+RMS spread
+distance to clamp
+orientation structure
+
+结果分类：
+
+C7_ACTIVATION_PATTERN:
+    DIFFUSE
+    PARTIALLY_LOCALIZED
+    LOCALIZED
+    BOUNDARY_ASSOCIATED
+    INCONCLUSIVE
+
+============================================================
+15. C7 solver scalability：不要先装完整46k phase Jacobian
+============================================================
+
+PETSc RSLS 是正式 solver。
+
+但为了避免 C7 memory waste，
+引入：
+
+    STRONG-BOUND VARIABLE ELIMINATION
+
+这不是新的 physics。
+
+原则：
+
+如果 phase bond：
+
+    s == lower
+    AND
+    q_scaled >> 0
+
+它严格满足 lower-bound KKT，
+可从当前 nonlinear unknown vector中临时消除。
+
+只保留：
+
+    mechanical DOF
+
++
+
+    candidate phase pool
+
+进入 PETSc RSLS。
+
+============================================================
+16. candidate phase pool
+============================================================
+
+每个 load 初始 pool：
+
+A.
+所有 previous interior phase bonds
+
+B.
+所有 previous weak bonds
+
+C.
+当前 predictor 上：
+
+    q_scaled <= q_pool_threshold
+
+D.
+first-ring neighboring bonds
+of A/B/C
+
+使用固定、预声明：
+
+    q_pool_threshold
+
+不要看结果后调。
+
+推荐先使用：
+
+    q_pool_threshold =
+      10 * q_tol
+
+若历史项目已有 near-active threshold，
+优先复用已有值。
+
+============================================================
+17. 为什么允许 pool reduction
+============================================================
+
+被排除 phase bonds：
+
+    fixed at lower bound
+
+但最终必须对：
+
+    ALL 46059 bonds
+
+重新检查完整 KKT。
+
+若任何 excluded bond：
+
+    q_scaled < -KKT tolerance
+
+则：
+
+1.
+加入 pool
+
+2.
+重新构造 reduced VI system
+
+3.
+从当前 state重新 solve
+
+4.
+重新 full-KKT check
+
+直到：
+
+    all excluded inequalities pass
+
+或：
+
+    max pool expansions reached
+
+============================================================
+18. pool expansion
+============================================================
+
+最多：
+
+    8 expansions per load
+
+每次加入：
+
+所有 violated excluded bonds
+
++
+
+其 first-ring neighbors。
+
+保存：
+
+pool size history
+new bond IDs
+reason
+
+如果 pool 最终增长到：
+
+    > 25% of all phase bonds
+
+停止 heavy continuation。
+
+状态：
+
+    C7_PHASE_POOL_NOT_SPARSE
+
+等待人工审核。
+
+不要自动退回全46k Jacobian。
+
+============================================================
+19. 先在 C5 做 reduced-pool regression
+============================================================
+
+这是 HARD GATE。
+
+在 C7 正式 coupled run 前：
+
+使用同一 pool-elimination adapter
+重新求两个 C5 loads：
+
+A.
+first positive root
+
+B.
+old failure load
+
+初始 phase 不喂 oracle。
+
+必须：
+
+force <= 1e-9
+KKT <= 1e-8
+
+并与 full C5 PETSc RSLS：
+
+phase Linf <= 1e-8
+scaled x L2 <= 1e-8
+energy relative <= 1e-9
+reaction relative <= 1e-8
+
+同时自动发现：
+
+4488 / 5059
+或得到完整等价 KKT root。
+
+若不通过：
+
+STOP。
+
+不能用于 C7。
+
+============================================================
+20. reduced PETSc unknown vector
+============================================================
+
+定义：
+
+    z_reduced =
+      [
+        x_free,
+        s_pool
+      ]
+
+C7 mechanical:
+
+    735
+
+phase：
+
+    current pool size
+
+excluded phase：
+
+    exact lower bound
+
+bounds：
+
+mechanics:
+    +/- inf
+
+phase pool:
+    lower = previous accepted s
+    upper = sc
+
+PETSc solver：
+
+    SNESVINEWTONRSLS
+
+仍由 PETSc 自己判断
+pool 内部哪些 phase
+处在 lower / interior / upper。
+
+============================================================
+21. reduced residual
+============================================================
+
+mechanical residual：
+
+必须由完整 current physical state计算，
+
+包括：
+
+pool phase
++
+excluded lower-bound phase。
+
+phase residual：
+
+只返回 pool 中：
+
+    q_scaled
+
+禁止 projected clip residual。
+
+============================================================
+22. reduced Jacobian
+============================================================
+
+只需要：
+
+Jxx:
+    735×735
+
+Jxs:
+    735×Npool
+
+Jsx:
+    Npool×735
+
+Jss:
+    Npool local structure
+
+这应显著小于完整 C7 Jacobian。
+
+仍使用：
+
+PETSc sparse AIJ
+
+不要 dense。
+
+============================================================
+23. reduced Jacobian gate
+============================================================
+
+在 C5 regression先验证后，
+
+C7 first weak state做：
+
+10 deterministic directions
+× 3 FD epsilon
+
+比较：
+
+Jv
+vs FD residual derivative
+
+要求：
+
+max relative error
+<= existing PETSc adapter tolerance
+
+即：
+
+    5e-5
+
+否则停止。
+
+============================================================
+24. C7 first positive root
+============================================================
+
+在 activation bracket upper side：
+
+从：
+
+last accepted s=0 state
+
+开始。
+
+phase lower：
+
+all zeros
+
+pool：
+
+由 activation scan自动得到。
+
+不得：
+
+hard-code active bond IDs
+
+不得：
+
+使用未来 positive root
+作为 initial guess。
+
+目标：
+
+PETSc RSLS 自动得到：
+
+    positive-phase stationary root
+
+并通过：
+
+force <= 1e-9
+
+KKT <= 1e-8 on ALL 46059 bonds
+
+bounds
+
+irreversibility
+
+inactive inequalities
+
+positive J
+
+safety
+
+============================================================
+25. 第一个 positive root 失败怎么办
+============================================================
+
+允许：
+
+pool expansion
+
+允许：
+
+PETSc normal line search
+
+允许：
+
+从更靠近 activation bracket
+的 smaller load increment继续
+
+但不得：
+
+调 physics
+
+放宽 tolerance
+
+喂 active IDs
+
+喂正相场 oracle
+
+如果：
+
+3 个 activation-adjacent load attempts
++
+完整 pool expansion
+
+仍无合法 root：
+
+状态：
+
+    C7_POSITIVE_BRANCH_NOT_ESTABLISHED
+
+停止本轮。
+
+============================================================
+26. early branch continuation
+============================================================
+
+只有 first positive root通过后：
+
+继续 C7 early branch。
+
+使用：
+
+previous PETSc accepted state
+
+作为唯一 initial history。
+
+初始 load step：
+
+    1e-6 engineering strain
+
+如果连续5点都容易收敛，
+允许：
+
+    2e-6
+    5e-6
+
+逐步增加。
+
+不要一开始用 C5 的2.5e-5。
+
+============================================================
+27. early branch stop criteria
+============================================================
+
+停止于最早发生：
+
+A.
+    max(s) >= 0.05
+
+B.
+    20 accepted positive-phase states
+
+C.
+    pool > 25% phase DOF
+
+D.
+    PETSc stationary failure
+
+E.
+    safety violation
+
+F.
+    new large activation event
+    >5% bonds in one step
+
+本轮不追到：
+
+    s=0.1
+
+除非20点前自然达到。
+
+============================================================
+28. 每个 C7 accepted state保存
+============================================================
+
+strain
+
+force residual
+
+KKT all bonds
+
+reaction
+
+nominal stress
+
+elastic energy
+
+crack energy
+
+Psi+ total
+
+Psi- total
+
+max s
+
+weighted mean s
+
+number interior phase bonds
+
+number weak phase bonds
+
+pool size
+
+pool expansion count
+
+active spatial bounding box
+
+wall time
+
+PETSc iterations
+
+============================================================
+29. C7 early spatial growth
+============================================================
+
+每个 accepted state：
+
+计算：
+
+phase-active bond set
+
+定义：
+
+    s > phase_detection_tol
+
+phase_detection_tol
+沿用项目已有值。
+
+统计：
+
+bond count
+particle aggregation
+centroid
+RMS radius
+z spread
+x/y spread
+clamp distance
+orientation distribution
+
+目的：
+
+判断：
+
+damage zone：
+
+- remains on same few bonds
+- grows to neighboring bonds
+- jumps elsewhere
+- becomes diffuse
+
+============================================================
+30. C5 / C7 early branch comparison
+============================================================
+
+使用历史 C5：
+
+activation ~0.00449739
+
+2/5392 first bonds
+
+stable to max(s)>0.10
+
+但本轮不要重跑 C5 stability。
+
+比较：
+
+C5 vs C7：
+
+activation strain
+
+activation fraction
+
+first active physical location
+
+first active orientation
+
+active-region RMS size
+
+reaction stress at activation
+
+initial ds/depsilon
+
+active bond growth rate
+
+不要比较：
+C7 stability
+因为本轮没有做。
+
+============================================================
+31. 本轮不做 C7 Hessian
+============================================================
+
+禁止：
+
+full Hxx stability sweep
+
+Schur complement
+
+critical cone
+
+negative mode
+
+stability bracket
+
+C7 unstable mode
+
+原因：
+
+先证明 spatial branch
+本身存在且有可比较结构。
+
+============================================================
+32. CPU 使用
+============================================================
+
+服务器重新检测：
+
+physical cores
+logical cores
+RAM
+
+历史为：
+
+12 physical / 24 logical。
+
+主要 CPU heavy tasks：
+
+A.
+C7 mechanical equilibrium
+
+B.
+full 46059-bond
+Psi+/q evaluation
+
+C.
+reduced Jacobian columns
+
+D.
+Jv checks
+
+PETSc正式 solve：
+
+    1 MPI rank
+
+因为历史本机 benchmark：
+1 rank > 2/4 ranks。
+
+列并行：
+
+    ProcessPoolExecutor
+
+动态：
+
+max_workers =
+    min(
+        physical_cores - 2,
+        memory_safe_workers
+    )
+
+预计：
+
+8~10 workers
+
+但必须按实际 RAM决定。
+
+============================================================
+33. Numba CPU 优化
+============================================================
+
+对全 bond batch：
+
+spectral split
+Psi+
+q
+KKT scan
+spatial metrics
+
+优先：
+
+NumPy vectorization
+
+或现有：
+
+Numba njit(parallel=True)
+
+不要 Python per-bond loop。
+
+如果现有 Numba kernel可扩展：
+
+优先扩展现有 kernel。
+
+不要复制 constitutive formulas。
+
+============================================================
+34. GPU preflight
+============================================================
+
+检测：
+
+nvidia-smi
+
+nvcc if present
+
+Python：
+
+cupy
+jax
+torch
+numba.cuda
+
+PETSc：
+
+CUDA/Kokkos/HIP support
+
+保存：
+
+    GPU_PREFLIGHT.json
+
+历史：
+
+RTX 4060 Laptop 8GB
+
+但上一 PETSc build：
+无 CUDA。
+
+重新检测，
+不要假设环境没变化。
+
+============================================================
+35. GPU 使用目标
+============================================================
+
+GPU 不负责：
+
+PETSc nonlinear VI solver
+
+除非现有 PETSc build
+已经原生支持 CUDA。
+
+GPU 优先候选：
+
+    C7 batch constitutive evaluation
+
+即：
+
+46059 bonds 的：
+
+F
+Green strain
+eigenvalues
+Psi+
+Psi-
+q
+
+以及：
+
+full-KKT batch check
+
+这些最适合 GPU SIMD。
+
+============================================================
+36. GPU backend
+============================================================
+
+如果已经安装：
+
+CuPy
+或
+JAX
+或
+PyTorch CUDA
+
+优先选择最轻量、
+最容易与 NumPy reference
+严格比对的一个。
+
+如果都没有：
+
+允许在本轮隔离目录中
+安装预编译 binary wheel，
+
+前提：
+
+- 与当前 CUDA兼容
+- 不需要源码编译
+- 不修改 system Python
+- 安装时间合理
+
+优先：
+
+    CuPy binary wheel
+
+如果开始源码编译：
+
+取消。
+
+状态：
+
+    GPU_RUNTIME_NOT_AVAILABLE
+
+============================================================
+37. GPU correctness gate
+============================================================
+
+随机选择：
+
+至少5000 C7 bonds
+
+以及：
+
+完整46059-bond一个状态
+
+比较 CPU/GPU：
+
+Psi+
+Psi-
+q
+
+要求：
+
+energy relative <= 1e-11
+
+q relative / scaled error <= 1e-10
+
+activation classification:
+    exact same IDs
+    within tolerance convention
+
+如不满足：
+
+禁止使用 GPU 科学结果。
+
+============================================================
+38. GPU speed gate
+============================================================
+
+benchmark：
+
+C7 full 46059 bonds
+
+至少：
+
+10 warm repetitions
+
+分别：
+
+CPU optimized
+
+GPU including necessary transfer overhead
+
+只有：
+
+speedup >= 1.3×
+
+才在正式 activation scan
+使用 GPU。
+
+否则：
+
+    GPU_AVAILABLE_NOT_BENEFICIAL
+
+继续 CPU。
+
+不要为了“使用 GPU”
+牺牲 reproducibility。
+
+============================================================
+39. GPU 结果只是 backend
+============================================================
+
+科学 canonical reference
+仍然保存 CPU verification。
+
+如果 GPU 被采用：
+
+每个关键状态至少抽样：
+
+CPU cross-check。
+
+activation bracket endpoints
+必须完整 CPU复核一次。
+
+============================================================
+40. 内存预算
+============================================================
+
+C7 每个阶段开始前保存：
+
+current free RAM
+
+estimated arrays
+
+reduced Jacobian size
+
+worker count
+
+GPU VRAM if used
+
+保存：
+
+    MEMORY_BUDGET.json
+
+要求：
+
+CPU：
+至少20% total RAM headroom
+
+GPU：
+至少15% VRAM headroom
+
+不得 swap。
+
+============================================================
+41. checkpoint / resume
+============================================================
+
+C7 计算比 C5 贵。
+
+每个 accepted load：
+
+立即保存：
+
+state
+PETSc summary
+pool
+full-KKT result
+hardware timing
+
+每个 activation bisection点：
+立即保存。
+
+支持：
+
+    resume
+
+根据：
+
+physics hash
+geometry hash
+previous-state hash
+
+不能只按 filename resume。
+
+============================================================
+42. 测试策略
+============================================================
+
+开始：
+
+运行一次 full suite：
+
+    pytest tests -q
+
+开发中：
+
+只 targeted tests。
+
+结束：
+
+再运行一次 full suite。
+
+不要中间反复 full pytest。
+
+新增建议：
+
+tests/test_c7_activation_scan.py
+tests/test_c7_phase_pool.py
+tests/test_c7_reduced_rsls.py
+tests/test_c7_early_branch.py
+tests/test_c7_gpu_backend.py
+
+至少：
+
+TEST 1
+C7 geometry/hash unchanged
+
+TEST 2
+C7 s=0 force equilibrium
+
+TEST 3
+q classification deterministic
+
+TEST 4
+activation bracket contracts
+
+TEST 5
+pool excludes only strong lower variables
+
+TEST 6
+excluded bond KKT validator detects violation
+
+TEST 7
+pool expansion adds violating bonds
+
+TEST 8
+C5 reduced-pool solver reproduces
+full C5 RSLS first root
+
+TEST 9
+C5 reduced-pool solver reproduces
+old failure root
+
+TEST 10
+C7 reduced Jacobian Jv vs FD
+
+TEST 11
+first positive C7 root
+does not use hard-coded bond IDs
+
+TEST 12
+full 46059-bond KKT after reduced solve
+
+TEST 13
+irreversibility across early branch
+
+TEST 14
+checkpoint/resume equivalence
+
+TEST 15
+GPU CPU agreement
+if GPU backend available
+
+TEST 16
+production unchanged
+
+原3 known failures：
+保持完全相同。
+
+============================================================
+43. 不重复运行的历史验证
+============================================================
+
+禁止重复：
+
+- C5 PETSc 7-root regression
+- C5 SSLS
+- C5 stability Hessian
+- C5 15-state stability window
+- C5 activation bracket
+- spectral split tensor suite
+- PhaseFieldX oracle
+- C3 Hessian
+- C3 stability
+- old C7 non-equilibrium smoke
+- Peridynamics.jl full campaign
+- c0
+- Griffith normalization
+- 35-state old energy audit
+
+全部读取历史结果。
+
+============================================================
+44. 强制可视化
+============================================================
+
+只生成有决策价值的图。
+
+全部：
+PNG + PDF。
+
+------------------------------------------------------------
+FIGURE 1
+c5_vs_c7_activation
+
+显示：
+
+activation strain
+
+activated bond fraction
+
+C3 可用灰色 historical reference
+
+人工问题：
+
+“空间加密后，
+damage initiation 是否趋向局部事件？”
+
+------------------------------------------------------------
+FIGURE 2
+c7_activation_gradient
+
+横轴：
+strain
+
+纵轴：
+
+min q
+5th percentile q
+median q
+
+标 activation bracket。
+
+------------------------------------------------------------
+FIGURE 3
+c7_activation_set_map
+
+first activation：
+
+bond midpoints
+orientation
+
+标：
+
+top/bottom clamp
+
+标题必须：
+
+AT1 ACTIVATION SET
+NOT CRACK PREDICTION
+
+------------------------------------------------------------
+FIGURE 4
+c7_phase_pool_evolution
+
+横轴：
+accepted load step
+
+显示：
+
+total phase bonds
+pool size
+interior count
+weak count
+excluded strong count
+
+人工问题：
+
+“reduced formulation
+是否始终只需要很少 phase DOF？”
+
+------------------------------------------------------------
+FIGURE 5
+c7_early_branch
+
+三幅：
+
+max s
+weighted mean s
+reaction stress
+
+横轴：
+engineering strain
+
+标题：
+
+STATIONARY BRANCH
+NO STABILITY CLASSIFICATION
+
+------------------------------------------------------------
+FIGURE 6
+activation_region_growth
+
+横轴：
+strain
+
+分别显示：
+
+active bond count
+
+RMS spatial radius
+
+distance to clamp
+
+不要多单位放同一轴。
+
+------------------------------------------------------------
+FIGURE 7
+c5_vs_c7_spatial_activation
+
+统一 physical coordinates。
+
+C5 first activation
+C7 first activation
+
+显示：
+
+particle/bond aggregation
+
+人工问题：
+
+“C7 是否延续 C5 的
+局部、夹持关联 activation？”
+
+------------------------------------------------------------
+FIGURE 8
+compute_backend
+
+只简单显示：
+
+CPU batch time
+GPU batch time if available
+speedup
+
+以及：
+
+PETSc solve wall time
+
+不把性能图和科学图混在一起。
+
+============================================================
+45. REVIEW 报告
+============================================================
+
+生成：
+
+verification/pfpd_at1_c7_early_branch_v1/
+    REVIEW_C7_EARLY_BRANCH_V1.md
+
+要求非专业读者也能看懂。
+
+结构：
+
+1. 为什么现在做 C7
+
+2. C5 已经告诉我们什么
+
+3. 为什么本轮不直接做 C7 stability
+
+4. C7 activation bracket
+
+5. 第一次多少 bonds 激活
+
+6. activation 在哪里
+
+7. 与 C5 是否相似
+
+8. reduced phase pool 是什么
+
+9. 为什么这不改变 physics
+
+10. full-KKT 如何保证
+    被排除 bonds 真正可以固定
+
+11. PETSc RSLS 是否跨过 C7 activation
+
+12. early positive branch 是否存在
+
+13. damage zone 是否增长
+
+14. C5/C7 spatial comparison
+
+15. CPU/GPU 实际使用和 speedup
+
+16. tests
+
+17. 当前 scientific status
+
+18. 唯一下一步
+
+============================================================
+46. 结论标签
+============================================================
+
+最终必须给：
+
+C7_ACTIVATION_AUDIT:
+    COMPLETE / INCOMPLETE
+
+C7_S0_ACTIVATION:
+    BRACKETED / NOT_BRACKETED
+
+C7_ACTIVATION_INTERVAL:
+    [lower,upper]
+    / NOT_AVAILABLE
+
+C7_FIRST_ACTIVATION_SET:
+    N / 46059
+
+C7_ACTIVATION_PATTERN:
+    DIFFUSE
+    / PARTIALLY_LOCALIZED
+    / LOCALIZED
+    / BOUNDARY_ASSOCIATED
+    / INCONCLUSIVE
+
+C5_TO_C7_ACTIVATION_STRAIN:
+    CONVERGING
+    / SHIFTING
+    / INCONCLUSIVE
+
+C5_TO_C7_ACTIVATION_REGION:
+    CONSISTENT
+    / BROADENS
+    / LOCALIZES
+    / CHANGES_LOCATION
+    / INCONCLUSIVE
+
+REDUCED_PHASE_POOL:
+    VERIFIED
+    / NOT_VERIFIED
+
+C7_PETSC_RSLS:
+    VERIFIED_FOR_EARLY_BRANCH
+    / NOT_VERIFIED
+
+C7_FIRST_POSITIVE_ROOT:
+    FOUND
+    / NOT_FOUND
+
+C7_EARLY_POSITIVE_BRANCH:
+    EXISTS
+    / NOT_ESTABLISHED
+
+C7_MAX_PHASE_REACHED:
+    value
+
+C7_STABILITY:
+    NOT_ASSESSED
+
+SPATIAL_STABILITY_CONVERGENCE:
+    NOT_YET_ESTABLISHED
+
+GPU_BACKEND:
+    USED
+    / AVAILABLE_NOT_BENEFICIAL
+    / RUNTIME_UNAVAILABLE
+    / PETSC_GPU_ONLY_UNAVAILABLE
+
+PRODUCTION:
+    UNCHANGED
+
+============================================================
+47. 最低验收标准
+============================================================
+
+要宣布：
+
+C7_ACTIVATION_AUDIT:
+    COMPLETE
+
+至少：
+
+- real mechanical equilibrium used
+- bracket width <= 1e-7
+- all q evaluated on all 46059 bonds
+- spatial set saved
+- no non-equilibrium predictor used as onset
+
+要宣布：
+
+REDUCED_PHASE_POOL:
+    VERIFIED
+
+必须：
+
+- C5 full-RSLS regression通过
+- C7 full-KKT检查覆盖所有46059 bonds
+- any excluded violation triggers expansion
+- no hard-coded active IDs
+
+要宣布：
+
+C7_PETSC_RSLS:
+    VERIFIED_FOR_EARLY_BRANCH
+
+至少：
+
+- first positive root scientifically accepted
+- >=5 sequential accepted positive-phase states
+- full KKT passes each state
+- irreversibility passes
+- no oracle roots fed as initial guesses
+
+============================================================
+48. 禁止过度结论
+============================================================
+
+禁止：
+
+    C7 activation = fracture
+
+禁止：
+
+    activation set = crack
+
+禁止：
+
+    C5/C7 agreement = mesh convergence
+
+禁止：
+
+    C7 stationary branch = stable branch
+
+因为本轮不做 C7 stability。
+
+禁止：
+
+    GPU faster once
+    = universally faster
+
+禁止：
+
+    C7 differs from C5
+    = model invalid
+
+只报告实际结果。
+
+============================================================
+49. 最终终端摘要
+============================================================
+
+最终只输出：
+
+- repository / HEAD
+- production files modified
+- historical files modified
+- baseline tests
+- final tests
+
+- C7 particles
+- C7 bonds
+- h
+- delta/h
+
+- activation bracket
+- bracket width
+- first activation bond count
+- activation fraction
+- activation centroid
+- activation RMS radius
+- distance to clamp
+- orientation summary
+
+- C5 activation strain
+- C7 activation strain
+- activation strain difference
+
+- reduced pool C5 regression
+- C7 initial pool size
+- max C7 pool size
+- pool expansion count
+
+- C7 first positive root status
+- first positive root force
+- first positive root KKT
+- first positive root max s
+
+- number early branch accepted states
+- last strain
+- last max s
+- last active bond count
+
+- CPU workers
+- CPU wall time
+- GPU runtime
+- GPU speedup if measured
+- peak RAM
+- peak VRAM if used
+
+- C7_ACTIVATION_AUDIT
+- REDUCED_PHASE_POOL
+- C7_PETSC_RSLS
+- C7_EARLY_POSITIVE_BRANCH
+- C7_STABILITY = NOT_ASSESSED
+
+- REVIEW_C7_EARLY_BRANCH_V1.md
+- figures directory
+
+不要只输出：
+
+    complete
+
+============================================================
+50. 完成后停止
+============================================================
+
+不要自动进入：
+
+C7 Hessian stability
+C7 critical cone
+C7 instability bracket
+C9
+post-instability continuation
+arc-length
+h(s)<1
+Ogden
+viscoelasticity
+wall adhesion
+real clot Gc
+erosion coupling
+fatigue
+real CFD
+
+等待人工审核。

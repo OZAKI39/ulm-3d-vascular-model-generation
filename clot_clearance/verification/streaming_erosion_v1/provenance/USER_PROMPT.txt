@@ -1,0 +1,691 @@
+你正在继续开发仓库：
+
+OZAKI39/ulm-3d-vascular-model-generation
+branch:
+clot-clearance/energy-regularization-20260930
+
+主要子项目：
+clot_clearance/
+
+当前科学状态必须保持：
+- SOFTWARE VERIFIED
+- fracture-energy coupon: ENERGY REGULARIZED FOR SPECIFIED OPENING PROTOCOL ONLY
+- main streaming case: NOT CONVERGED
+- current regularized case: NO FAILURE / NO DETACHMENT at N=25,000
+- new fragment resolution: NOT_ASSESSED_NO_DETACHMENT
+- old forced-failure case: FRAGMENT_RESOLUTION_INADEQUATE
+- manufactured field is NOT real microbubble CFD
+- current material and damage parameters are NOT experimentally calibrated
+
+本轮任务：
+实现第一版独立的 STREAMING_EROSION damage mode，作为 dD/dt 型的慢时间损伤模型。
+这是一个 mechanism-isolation / software-verification development step，不是物理验证。
+
+============================================================
+1. 科学依据和本轮允许借鉴的 Bajd & Serša (2013) 思想
+============================================================
+
+Bajd & Serša (2013) 的 clot model 中：
+- fibrin bond degradation 可以有 deformation-dependent degradation rate；
+- degradation 随 physical time 积分；
+- mechanical flow deformation 可以促进 progressive bond degradation；
+- bond degradation / connectivity loss 最终导致 fragment release。
+
+本轮只借鉴：
+    flow-induced deformation
+        ->
+    time-dependent progressive damage
+        ->
+    connectivity loss if D eventually reaches 1
+
+不要直接复制论文中的：
+- coarse-grained RBC particle model
+- Kelvin-Voigt bond parameters
+- spatial corrosion term
+- alpha / beta numerical values
+- epsilon > 2 rupture threshold
+- Stokes drag fluid model
+
+论文中的 corrosion parameters 是 phenomenological 且缺乏充分实验标定，
+因此本轮所有 erosion parameters 必须明确标记为 DEVELOPMENT / UNCALIBRATED PLACEHOLDERS。
+
+============================================================
+2. 本轮明确不做的事情
+============================================================
+
+不要：
+- 修改旧 forced-failure results；
+- 修改已有 regularized cyclic results；
+- 覆盖任何已有 results / verification / visualization 文件；
+- 降低 D_break；
+- 人工切 bond；
+- 调高流场强度以强迫 fracture；
+- 调 erosion parameter 直到出现 fracture；
+- 加入 rt-PA / fibrinolysis biochemistry；
+- 加入 Bajd spatial corrosion / connectivity feedback；
+- 加入 combined STREAMING_EROSION + CYCLIC_FATIGUE；
+- 修改 clot material model；
+- 宣称 mesh convergence；
+- 宣称 physical validation；
+- 把 mechanical solver time 当作 erosion/treatment time；
+- 把 manufactured flow 称作 microbubble CFD。
+
+如果本轮没有 bond failure，这是完全可以接受的结果。
+
+============================================================
+3. 总体设计原则
+============================================================
+
+不要重构或破坏现有：
+
+pd_clot/regularization/runner.py
+pd_clot/regularization/damage.py
+
+中的现有 cyclic path。
+
+优先采用隔离式实现，例如新增：
+
+pd_clot/regularization/erosion.py
+pd_clot/regularization/erosion_runner.py
+
+使旧的：
+
+energy_regularized_cyclic
+
+保持原行为。
+
+STREAMING_EROSION 必须使用自己的 slow physical exposure time，
+不能使用 DeltaN，也不能通过 ultrasound cycle count N 推进 damage。
+
+============================================================
+4. STREAMING_EROSION v1 damage law
+============================================================
+
+定义 bond tensile strain：
+
+stretch_ij =
+    |x_j - x_i| / |xi_ij|
+
+epsilon_plus_ij =
+    max(stretch_ij - 1, 0)
+
+只使用 tensile part。
+compression 本轮不直接产生 erosion damage。
+
+第一版 rate law：
+
+rate_ij =
+    C_t_s_inv
+    * max(
+        epsilon_plus_ij / epsilon_ref
+        - threshold_ratio,
+        0
+      ) ** m_t
+
+damage update：
+
+D_new =
+    min(
+        1,
+        D_old + erosion_exposure_step_s * rate
+    )
+
+要求：
+- irreversible；
+- D in [0,1]；
+- D_break = 1；
+- active bond iff D < 1；
+- integrity g = 1 - D；
+- damaged bond 继续通过现有 integrity softening 进入 PD mechanics；
+- D=1 才真正失去 connectivity。
+
+不要把现有 fracture coupon critical_J 或 Gc_demo 直接用于这个 erosion law。
+本轮必须明确说明：
+Gc coupon calibration 不等于 streaming erosion calibration。
+
+============================================================
+5. 两个时间尺度必须真正分开
+============================================================
+
+STREAMING_EROSION 中必须记录两个独立时间：
+
+A. mechanical_time_s
+仅代表为了求解当前 damage 状态下机械响应而实际积分的时间。
+
+B. erosion_exposure_time_s
+代表 dD/dt 模型中的 slow damage exposure time。
+
+必须保证：
+
+改变 erosion_exposure_step_s
+不应自动改变每个 macro step 的 mechanical relaxation duration。
+
+禁止使用：
+
+represented_cycles
+DeltaN
+N / ultrasound_frequency
+
+作为 erosion time。
+
+推荐新增配置：
+
+"streaming_erosion": {
+    "C_t_s_inv": 0.01,
+    "m_t": 1.0,
+    "epsilon_ref": 1.0e-4,
+    "threshold_ratio": 0.0,
+    "erosion_exposure_step_s": 0.01,
+    "number_of_erosion_steps": 10,
+    "D_break": 1.0,
+    "tension_only": true,
+    "spatial_feedback": false,
+    "demonstration_parameter": true
+}
+
+这些数值仅作为预先声明的 development placeholder。
+不要根据运行结果重新调参数。
+
+============================================================
+6. mean-streaming mechanics
+============================================================
+
+新增：
+
+configs/streaming_erosion_demo_coarse.json
+
+以现有：
+configs/streaming_regularized_demo_coarse.json
+
+为几何、材料、流体和安全参数基础，但：
+
+streaming.oscillatory_amplitude = 0.0
+streaming.mean_fraction = 1.0
+
+即本轮只测试 mean streaming。
+
+不要使用 cyclic stretch amplitude。
+
+每一个 erosion macro step：
+
+1. 固定当前 D；
+2. 在 mean field 下积分 mechanics；
+3. 让系统经过固定的 mechanical relaxation window；
+4. 在 relaxation window 最后部分检查 clot 是否接近准稳态；
+5. 从准稳态 configuration 计算 epsilon_plus；
+6. 用 erosion_exposure_step_s 更新 D；
+7. 更新 integrity / shape / topology；
+8. 进入下一 slow erosion step。
+
+mechanical relaxation duration 必须是固定配置，
+且不能随着 erosion_exposure_step_s 改变。
+
+可以新增：
+
+"erosion_mechanics": {
+    "relaxation_time_s": 0.002,
+    "settling_check_fraction": 0.2,
+    "maximum_relative_driver_drift": 0.05
+}
+
+在最后 settling_check_fraction 的时间窗中，
+至少记录：
+
+- kinetic energy；
+- maximum epsilon_plus；
+- mean epsilon_plus。
+
+计算 driver drift。
+
+如果准稳态检查不满足：
+不要隐藏。
+输出：
+
+MECHANICAL_STEADY_STATE_NOT_ESTABLISHED
+
+并在报告中说明。
+
+本轮 demo 应尝试使用预先定义的 relaxation_time，
+不要通过反复调流场或 damage 参数来让结果“更漂亮”。
+
+============================================================
+7. 与现有 flow provider 的关系
+============================================================
+
+继续复用：
+
+ManufacturedStreamingProvider
+ResolvedStreamingFieldProvider
+ConsistentFragmentFluid
+
+但 STREAMING_EROSION demo 必须是 mean-only。
+
+特别验证：
+
+对于 static ResolvedStreamingFieldProvider：
+它可以作为 STREAMING_EROSION 输入，
+但不能被解释成 cyclic fatigue。
+
+erosion runner 不得读取 static field 的 transient mechanical settling
+然后将 max-min stretch 当作 fatigue amplitude。
+
+============================================================
+8. 本轮测试要求
+============================================================
+
+必须保留全部已有 tests。
+
+新增独立测试文件，例如：
+
+tests/test_streaming_erosion_damage.py
+tests/test_streaming_erosion_runner.py
+
+至少包括以下测试。
+
+TEST 1: zero driver
+epsilon_plus = 0
+在任意 exposure time 下：
+D 不变。
+
+TEST 2: constant driver analytic check
+给定固定 epsilon_plus，
+检查：
+
+D(t) =
+D0 + t * C_t * (...)^m
+
+在未达到 1 前与解析值一致。
+
+TEST 3: compression does not damage
+stretch < 1
+damage increment = 0。
+
+TEST 4: irreversible and capped
+D 只能增加；
+D <= 1；
+D=1 后保持 1；
+active=False；
+g=0。
+
+TEST 5: D_break must equal 1
+如果配置 D_break < 1，
+必须抛出异常。
+
+TEST 6: slow-time step consistency
+用同一个恒定 driver 和同样 total erosion exposure：
+
+Delta_t = 0.02
+Delta_t = 0.01
+Delta_t = 0.005
+
+最终 D 应在 floating-point tolerance 内一致。
+
+这项测试必须完全独立于 mechanical integration duration。
+
+TEST 7: erosion mode does not use DeltaN
+修改 legacy damage.DeltaN，
+STREAMING_EROSION 结果必须不变。
+
+TEST 8: erosion mode does not use ultrasound_frequency_Hz
+修改 ultrasound carrier metadata，
+STREAMING_EROSION damage evolution 必须不变。
+
+TEST 9: pure mean-flow runner smoke test
+运行一个小型 clot case：
+- oscillatory_amplitude = 0
+- no NaN
+- positive J / existing safety rules pass
+- damage monotonic
+- fixed particles exact
+- no unexpected particle deletion
+
+TEST 10: legacy regression
+运行完整：
+
+pytest tests -q -p no:cacheprovider
+
+已有 48 项测试必须全部继续通过，
+再加上新测试。
+
+如果已有测试数量发生变化，
+报告：
+old tests passed
+new tests passed
+total tests passed
+
+============================================================
+9. 必须新增一个最小 coupled numerical verification
+============================================================
+
+运行：
+
+streaming_erosion_demo_coarse
+
+不要追求 fracture。
+
+总 slow exposure：
+0.1 s
+
+例如：
+10 steps × 0.01 s
+
+使用预先固定的参数：
+C_t_s_inv = 0.01
+m_t = 1
+epsilon_ref = 1e-4
+threshold_ratio = 0
+
+如果 damage 很小甚至接近零，
+保留真实结果。
+
+绝对不要：
+- 增大 C_t
+- 降低 epsilon_ref
+- 增大 streaming velocity
+- 降低 D_break
+
+来制造显眼 damage。
+
+============================================================
+10. 必须做 erosion-time-step study
+============================================================
+
+使用相同：
+- geometry
+- mean flow
+- material
+- total erosion exposure
+- fixed mechanical relaxation duration
+
+比较至少：
+
+erosion_exposure_step_s = 0.02
+erosion_exposure_step_s = 0.01
+erosion_exposure_step_s = 0.005
+
+保证总 exposure time 相同。
+
+比较：
+
+mean damage
+maximum damage
+damage dissipation / stored-energy changes if available
+maximum displacement
+maximum epsilon_plus
+spatial localization
+
+不要把 mechanical integration time 混进横轴。
+
+横轴必须使用：
+
+erosion_exposure_time_s
+
+============================================================
+11. 输出目录
+============================================================
+
+全部写入新目录，不覆盖旧结果。
+
+建议：
+
+results/streaming_erosion_demo_v1/
+    coarse/
+    dt_erosion_0p02/
+    dt_erosion_0p01/
+    dt_erosion_0p005/
+
+verification/streaming_erosion_v1/
+    tests/
+    comparisons/
+    figures/
+
+visualization/streaming_erosion_v1/
+
+保留：
+- CONFIG.json
+- IDENTITY.json
+- SUMMARY.json
+- history.json
+- history.csv
+- states.npz
+- VTK/VTP if current architecture naturally supports
+- source_snapshot
+- SHA256 identity/provenance
+
+不得覆盖旧：
+results/streaming_regularized_demo/
+verification/regularization/
+visualization/streaming_regularized_demo/
+
+============================================================
+12. 可视化是本轮强制验收内容
+============================================================
+
+必须输出 PNG + PDF。
+
+图必须阅读友好。
+不要做“漂亮动画优先”的展示。
+每张图只回答一个明确问题。
+
+至少生成：
+
+FIGURE 1
+erosion_rate_law.png/pdf
+
+显示：
+固定几个 epsilon_plus 值下，
+D 随 erosion_exposure_time_s 的解析/数值演化。
+
+目标：
+人工确认 dD/dt 实现是否正确。
+
+------------------------------------------------------------
+
+FIGURE 2
+erosion_time_step_consistency.png/pdf
+
+横轴：
+erosion_exposure_time_s
+
+纵轴：
+mean damage
+
+三条曲线：
+Delta_t_erosion = 0.02
+0.01
+0.005 s
+
+另可用第二张图显示 maximum damage。
+
+目标：
+人工确认 slow-time integration 是否一致。
+
+------------------------------------------------------------
+
+FIGURE 3
+mechanical_settling.png/pdf
+
+显示每个 macro step 中最后 settling window 的：
+
+kinetic energy
+maximum epsilon_plus
+
+目标：
+确认 static mean loading 下不是把初始 mechanical transient
+错误当成 erosion driver。
+
+------------------------------------------------------------
+
+FIGURE 4
+spatial_erosion_driver.png/pdf
+
+显示 clot reference/current particle position上的：
+
+epsilon_plus / particle-aggregated erosion driver
+
+必须明确：
+- source location
+- fixed region
+- actual displacement scale
+- 不允许视觉放大 displacement 后冒充真实形变。
+
+目标：
+人工确认 driver 是否局域在合理加载区域。
+
+------------------------------------------------------------
+
+FIGURE 5
+final_damage_map.png/pdf
+
+显示最终 D 的空间分布。
+
+如果 D 极小，
+用科学计数法或清晰 colorbar 表示真实范围，
+不要把 1e-4 画成看似 D=1。
+
+图注必须明确写真实 min/max。
+
+============================================================
+13. 人工审核报告
+============================================================
+
+生成：
+
+verification/streaming_erosion_v1/REVIEW_STREAMING_EROSION.md
+
+要求语言简单、直接、少术语。
+
+报告必须按以下顺序：
+
+1. 这一轮做了什么
+用 5-8 句话解释。
+
+2. 模型公式
+只给必要公式，并逐个解释变量。
+
+3. 代码改了哪些文件
+每个文件一句话说明用途。
+
+4. 测试结果
+写：
+- old tests
+- new tests
+- failures if any
+
+5. 数值结果
+用一个简洁表格列：
+- total erosion exposure
+- mean damage
+- max damage
+- broken bonds
+- detached volume
+- maximum displacement
+- maximum epsilon_plus
+- settling status
+
+6. erosion time-step comparison
+明确说明是否：
+CONSISTENT
+NOT YET CONVERGED
+或 INCONCLUSIVE
+
+不能含糊写“looks good”。
+
+7. 图怎么看
+每张图用 2-3 句话告诉人工审核者：
+- 看什么
+- 什么现象算正常
+- 当前实际结果是什么
+
+8. 当前科学状态
+必须明确写：
+
+STREAMING_EROSION v1:
+    SOFTWARE / NUMERICAL DEVELOPMENT
+
+PHYSICAL CALIBRATION:
+    NOT PERFORMED
+
+MESH OBJECTIVITY:
+    NOT ASSESSED IN THIS STEP
+
+WALL-ATTACHMENT MESH CONSISTENCY:
+    STILL OPEN
+
+CYCLIC_FATIGUE:
+    UNCHANGED
+
+COMBINED EROSION + FATIGUE:
+    NOT IMPLEMENTED
+
+REAL MICROBUBBLE CFD:
+    NOT USED IN THIS VERIFICATION
+
+9. 下一步建议
+只允许给出一个最小下一步。
+不要一次建议很多新 physics。
+
+============================================================
+14. 验收条件
+============================================================
+
+本轮只有满足以下条件才能标记完成：
+
+A.
+所有旧测试继续通过。
+
+B.
+所有新 STREAMING_EROSION unit tests 通过。
+
+C.
+STREAMING_EROSION 中不存在 DeltaN / represented-cycle damage update。
+
+D.
+erosion_exposure_time_s 与 mechanical_time_s 明确分开记录。
+
+E.
+static mean field 不通过 cycle amplitude 产生 damage。
+
+F.
+D_break 强制等于 1。
+
+G.
+没有为了得到 fracture 调参数。
+
+H.
+输出完整 PNG/PDF 图和 REVIEW_STREAMING_EROSION.md。
+
+I.
+所有新输出位于新目录，没有覆盖历史结果。
+
+J.
+如果未出现 failure / detachment，
+必须如实写：
+NO FAILURE / NO DETACHMENT OBSERVED
+而不是把它当成失败。
+
+============================================================
+15. 最后给我的 Codex 输出
+============================================================
+
+完成代码和运行后，在终端最终总结中只输出：
+
+1. 修改文件列表；
+2. 新增测试数量；
+3. pytest 总结果；
+4. demo 的关键数值：
+   total erosion time
+   mean damage
+   max damage
+   broken bonds
+   detached volume
+5. erosion-time-step study 的最大相对差异；
+6. mechanical settling 是否通过；
+7. REVIEW_STREAMING_EROSION.md 路径；
+8. figures 目录；
+9. 明确状态标签。
+
+不要只告诉我“implementation complete”。
+
+我要能够根据你的输出，
+立即决定是否接受这一轮开发。

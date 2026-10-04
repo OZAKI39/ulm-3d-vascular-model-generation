@@ -1,0 +1,67 @@
+2766                                             C. Miehe et al. / Computer Methods in Applied Mechanics and Engineering 199 (2010) 2765–2778
+
+
+
+
+
+          Fig. 1. Sharp and diffusive crack topology. a) Sharp crack at x=0. b) Diffusive crack at x=0 modeled with the length scale l in terms of the crack phase ﬁeld d.
+
+
+
+
+thermodynamically-consistent framework of phase ﬁeld modeling in     surface itself and postulate that it should stay constant or grow for
+fracture mechanics and considered aspects of its numerical imple-     arbitrary loading processes. The next modeling step, discussed in
+mentation. It overcomes some of the difﬁculties inherent in the above     Section 3,  is concerned with the deﬁnition of energy storage and
+mentioned phase ﬁeld approaches, by deﬁnition of fracture only in     dissipation functionals which depend on the fracture phase ﬁeld. Here,
+tension, precise characterization of the dissipation and introduction of   we consider stored energy functions where the degradation due to the
+the viscosity as a regularization of the rate-independent formulation.    growing phase ﬁeld acts only on a properly deﬁned positive (tensile)
+The numerical treatment was based on a monolithic three-ﬁeld saddle     part of the stored energy. The dissipation functional is directly related to
+point principle, that includes beside the displacement and fracture    the evolution of the crack surface functional via a material parameter
+phase ﬁeld a particular crack driving force ﬁeld.                          that represents the critical energy release. With the dissipation and
+   In this work, we develop a new model of phase-ﬁeld-type fracture    energy functionals at hand, we derive the governing balance equations
+that substantially enhances our formulations in Miehe, Welschinger &    from an incremental variational principle. For the quasi-static processes
+Hofacker [1]. The key novel aspects are the formulation of the balance    under consideration, the coupled system of equations consists of the
+equation for the evolution of the phase ﬁeld in terms of a strain-      static equilibrium condition for the degraded stresses and the balance
+history source term, which allows an extremely simple and robust     equation for the phase ﬁeld. It characterizes a two-ﬁeld problem with the
+staggered solution of the two-ﬁeld problem in terms of the algorithm    displacement ﬁeld and the phase-ﬁeld as the primary variables. For this
+summarized in Box  1. On the theoretical  side, we outline an    coupled ﬁeld problem, we develop in Section 4 the new staggered
+incremental variational formulation for a rate-independent evolution     solution scheme which contains minimizers for each partial problem.
+of the crack phase model. The important characteristic  is the    The discrete counterparts of the continuous variational principles
+introduction of a crack surface density function that governs the     results in two linear algebraic Euler equations for the algorithmically
+dissipation in the diffusive fracture theory. The key observation then    decoupled incremental problem. Finally, Section 5 outlines representa-
+is that the possible discontinuous evolution of the phase ﬁeld in time     tive numerical examples which demonstrate the features and algorith-
+is driven by a local history ﬁeld. It contains a maximum reference    mic robustness of the proposed phase ﬁeld models of fracture.
+energy obtained in the deformation history, which may be considered
+as a measure for the maximum tensile strain obtained in history. It is     2. Crack phase ﬁeld and crack surface density function
+shown that this local variable drives the evolution of the crack phase
+ﬁeld. The introduction of the history ﬁeld provides a very transparent      2.1. Phase ﬁeld approximation of crack topology
+representation of the balance equation that governs the evolution of
+the diffusive crack topology. It represents a source term in the balance     We motivate the construction of a variational principle of diffusive
+equation for the phase-ﬁeld. In order to stabilize post-critical solution     crack topology by a simple model problem. Following our work Miehe,
+paths, we may add a viscous regularization. This consists of the    Welschinger & Hofacker [1], we consider an inﬁnitely expanded bar of
+introduction of a viscous term that supplements the crack surface     cross-section Γ occupying the domain B=Γ×L with L=[−∞, +∞] and
+resistance. A particular ingredient is that the rate-independent limit is     position x∈L of its axis. Assume a crack of the bar at the axial position
+recovered by simply setting the viscosity to zero. This feature of the   x=0, where Γ represents the fully-broken crack surface. This sharp crack
+proposed theory is a very important element of a robust numerical     topology may be described by an auxiliary ﬁeld variable d(x)∈[0, 1],
+implementation. The proposed approach is embedded in the theory of     characterizing for d=0 the unbroken state and for d=1 the fully-
+gradient-type materials with a characteristic length scale, such as    broken state of the material. Fig. 1a gives a visualization. We denote
+outlined in the general context by Capriz [22], Mariano [23] and    the auxiliary variable d(x) as the crack phase ﬁeld. Clearly, such an
+Fremond [24]. On the numerical side, we develop a robust scheme for    approach is related to the continuum theory of damage, where the
+the incremental update of the fracture phase ﬁeld and the displace-     scalar damage ﬁeld d describes in a homogenized macroscopic sense
+ment ﬁeld. It represents an operator split algorithm within a typical    the development of micro-cracks and micro-voids. With this
+time step that allows a staggered update of the phase ﬁeld and the    viewpoint in mind, we approximate the non-smooth phase ﬁeld by
+displacement ﬁeld. The central idea for the algorithmic decoupling of    the exponential function
+the coupled equations is an approximation of the current history
+ﬁeld that provides the crack source term in the diffusive crack
+                                                                          dðxÞ = e−jxj =l:                                                     ð1Þ
+topology equation. The formulation results in two linear problems
+for the successive update of the phase ﬁeld and the displacement
+ﬁeld within a typical time step. The proposed staggered scheme is      It smears out the crack over the axial domain L of the bar, representing
+extremely robust. The formulation may be considered as a canonical    a regularized or diffusive crack topology as depicted in Fig. 1b. The
+framework for the implementation of phase-ﬁeld-type fracture in the     regularization is governed by the length scale parameter l and gives
+rate-independent setting.                                                   for l→0 the sharp crack topology. The exponential function (1) has
+  We start our investigation in Section 2 with a descriptive motivation    the property d(0)=1 and d(±∞)=0. Now observe that Eq. (1) is the
+of a regularized crack topology based on a phase ﬁeld. This treatment     solution of the homogeneous differential equation
+results in the deﬁnition of a crack surface functional, depending on the
+crack phase ﬁeld, that Γ-converges for vanishing length-scale parameter
+to a sharp crack topology. We consider this crack functional as the crack     dðxÞ−l2d″ðxÞ = 0  in  B                                          ð2Þ

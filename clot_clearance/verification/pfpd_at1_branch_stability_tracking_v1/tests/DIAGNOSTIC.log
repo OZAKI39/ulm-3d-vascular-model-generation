@@ -1,0 +1,30 @@
+......F.................                                                 [100%]
+=================================== FAILURES ===================================
+_____ test_residual_jacobian_chain_rule_matches_live_residual_differences ______
+
+    def test_residual_jacobian_chain_rule_matches_live_residual_differences():
+        p,d=load_audit_state('B');z=p.pack(d['x'],d['s']);J=residual_jacobian(p,z)
+        rng=np.random.default_rng(76543)
+        for _ in range(5):
+            v=rng.normal(size=len(z));v/=np.linalg.norm(v);eps=3e-6
+            fd=(stationary_residual(p,z+eps*v,False)-stationary_residual(p,z-eps*v,False))/(2*eps)
+>           np.testing.assert_allclose(J@v,fd,rtol=2e-5,atol=1e-8)
+E           AssertionError: 
+E           Not equal to tolerance rtol=2e-05, atol=1e-08
+E           
+E           Mismatched elements: 1 / 212 (0.472%)
+E           Mismatch at index:
+E            [137]: -2.9022705223220174e-05 (ACTUAL), -2.9036005081787643e-05 (DESIRED)
+E           Max absolute difference among violations: 1.32998586e-08
+E           Max relative difference among violations: 0.00045805
+E            ACTUAL: array([ 6.790829e-04, -2.246511e-03, -9.003394e-04,  3.073963e-03,
+E                  -2.021678e-03,  9.304775e-03,  6.275752e-04,  6.016963e-03,
+E                  -9.391855e-03,  5.587633e-05, -1.304622e-03, -4.217607e-03,...
+E            DESIRED: array([ 6.790829e-04, -2.246511e-03, -9.003394e-04,  3.073963e-03,
+E                  -2.021678e-03,  9.304775e-03,  6.275750e-04,  6.016963e-03,
+E                  -9.391855e-03,  5.587645e-05, -1.304622e-03, -4.217607e-03,...
+
+tests/test_pfpd_branch_stationarity.py:57: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_pfpd_branch_stationarity.py::test_residual_jacobian_chain_rule_matches_live_residual_differences
+1 failed, 23 passed in 4.79s

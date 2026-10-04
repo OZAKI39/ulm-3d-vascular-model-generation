@@ -1,0 +1,77 @@
+{
+  "task": "PFPD_AT1_PETSC_VI_SOLVER_V1",
+  "force_tolerance": 1e-09,
+  "KKT_tolerance": 1e-08,
+  "agreement": {
+    "phase_Linf": 1e-08,
+    "scaled_state_L2": 1e-08,
+    "energy_relative": 1e-09,
+    "reaction_relative": 1e-08
+  },
+  "jacobian_epsilons": [
+    1e-05,
+    3e-06,
+    1e-06
+  ],
+  "jacobian_vectors": 10,
+  "jacobian_seed": 93121,
+  "jacobian_max_error": 5e-05,
+  "primary": {
+    "type": "vinewtonrsls",
+    "line_search": "bt",
+    "atol": 1e-12,
+    "rtol": 1e-12,
+    "stol": 1e-14,
+    "max_it": 30,
+    "ksp": "preonly",
+    "pc": "lu",
+    "factor": "mumps"
+  },
+  "workers": 5,
+  "resources": {
+    "physical_cores": 12,
+    "memory_safe_worker_count": 5,
+    "reserve_RAM_bytes": 1636646912.0,
+    "parent_budget_bytes": 805306368.0,
+    "worker_budget_bytes": 644245094.4,
+    "mem_available_bytes": 5719584768,
+    "BLAS_threads": 1,
+    "FD_parallelism": "ProcessPoolExecutor spawn; exact old displacement-column loop"
+  },
+  "targets": [
+    {
+      "label": "first_A1",
+      "strain": 0.004498390736212205
+    },
+    {
+      "label": "continuation_01",
+      "strain": 0.004499390736212205
+    },
+    {
+      "label": "continuation_04",
+      "strain": 0.004502390736212204
+    },
+    {
+      "label": "offset_1e-05",
+      "strain": 0.004507390736212204
+    },
+    {
+      "label": "same_load_as_original",
+      "strain": 0.004514117555920948
+    },
+    {
+      "label": "offset_2e-05",
+      "strain": 0.0045173907362122045
+    },
+    {
+      "label": "offset_5e-05",
+      "strain": 0.004547390736212204
+    }
+  ],
+  "oracle_use": "Post-solve comparison only; diagnostic gate C reads a saved root, never passes it to any solver.",
+  "phase_F": "raw q/max(Psi_plus,Yc), no projected clip",
+  "negative_phase_FD": "Diagnostic-only exact polynomial continuation by removing original s-domain guard in a private cloned function; solver uses original guard.",
+  "derivative_reuse": "AST clone of verified ResidualBlocks.__init__: parallelize its loop, remove C[clipped]=0, replace projected diag by Qs/D; all other derivative statements unchanged.",
+  "production_changes": false,
+  "stability_assessed": false
+}

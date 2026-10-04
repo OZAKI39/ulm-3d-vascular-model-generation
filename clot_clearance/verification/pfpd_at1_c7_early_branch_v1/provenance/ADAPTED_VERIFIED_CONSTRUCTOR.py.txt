@@ -1,0 +1,18 @@
+def build(self, p, z, step=3e-06):
+    self.p = p
+    self.z = np.array(z, copy=True)
+    self.x, self.s = p.unpack(z)
+    self.Y, self.q, self.D, self.qs = q_fields(p, self.x, self.s)
+    nx = p.nx
+    ns = p.ns
+    floor = p.config['mechanical_equilibrium']['force_floor_N']
+    self.M = np.empty((nx, nx))
+    self.Yx = np.empty((ns, nx))
+    _parallel_columns(self, p, z, step, pool, workers)
+    self.B = self.Yx.T * (2 * (1 - self.s) * p.weights / (p.length_scale * floor))[None, :]
+    self.Qx = -2 * (1 - self.s)[:, None] * self.Yx
+    self.Qs = 2 * self.Y
+    arg = self.s - self.qs
+    self.clipped = (arg < p.lower) | (arg > p.sc)
+    self.C = self.Qx / self.D[:, None] - self.q[:, None] * self.Yx * (self.Y > p.yc)[:, None] / self.D[:, None] ** 2
+    self.diag = self.Qs / self.D
