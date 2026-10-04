@@ -1,10 +1,16 @@
 # 血管几何、3D流场、微泡与RBC工作流
 
-2026-09-29增量同步至 `sync/roi-flow-mb1500-wss-stop-analysis-20260928`。原有小鼠流程完整保留；最新新增BraVa人脑打印通道的18 mL/min流场及其动画。**BraVa微泡批次已按用户要求停止，未完成1500条，未生成微泡动画。**
+2026-10-04：BraVa当前源码、冻结Gmsh V2、GPU steady field及误差诊断同步至 `sync/roi-flow-mb1500-wss-stop-analysis-20260928`。默认入口为 [BraVa active scope](brava_flow_roi_18mlmin/ACTIVE_DEVELOPMENT_SCOPE.md)，结果为 [报告与三张最终PNG](brava_flow_roi_18mlmin/production_workflow/OPEN_RESULTS.html)。
+
+已完成 continuous population simulator、GPU particle backend、Gmsh V2 manufactured reference与GPU svMultiPhysics稳态场。科学状态仍为 **REFERENCE_PIPE_FIELD_FAIL_SCIENTIFIC + MIXED_FIELD_ERROR + P1_FIELD_TRAJECTORY_IMPACT_LARGE（DIAGNOSTIC_ONLY）**。V3、正式CFD-vs-oracle trajectory、dt convergence、新BraVa validation均NOT_RUN；不能写成全部轨迹已验证。
+
+旧BraVa正式群体为1565条（458/527/437出流、141观察截止、2数值失败）。固定灌注1.240815660s+观察10s的新协议尚无正式大批量结果。旧`microbubble/`1500条独立任务保持停止；已有群体动画见 [最新四视角](brava_flow_roi_18mlmin/population_v1/candidate_0/views_0to1p2s_large_axes/OPEN_RESULTS.html)。本轮没有运行科学计算，没有更改production physics。
+
+[同步与排除说明](brava_flow_roi_18mlmin/GITHUB_SYNC_MANIFEST_ZH.md) · [清理计划](brava_flow_roi_18mlmin/SYNC_CLEANUP_PLAN_ZH.md) · [大文件身份](brava_flow_roi_18mlmin/EXCLUDED_LARGE_ARTIFACTS.json)。其它小鼠、RBC、几何工作流保留。
 
 | 内容 | 入口 |
 |---|---|
-| BraVa最新流场、数值限制与微泡停止状态 | [当前结果说明](brava_flow_roi_18mlmin/CURRENT_RESULTS_ZH.md) |
+| BraVa当前科学状态与结果身份 | [当前结果说明](brava_flow_roi_18mlmin/CURRENT_RESULTS_ZH.md) |
 | BraVa真实网格、压力边界及求解日志 | [算例](brava_flow_roi_18mlmin/cases/balanced_pressure_final/) |
 | candidate 0 / 15 的流场动画与4K图 | [candidate 0](brava_flow_roi_18mlmin/visualization/candidate_0/OPEN_RESULTS.html) · [candidate 15](brava_flow_roi_18mlmin/visualization/candidate_15/OPEN_RESULTS.html) |
 | BraVa几何、ROI与四端口芯的生成来源 | [开发与使用指南](vascular_printing/开发与使用指南.md) |

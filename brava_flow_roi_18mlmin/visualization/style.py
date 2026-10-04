@@ -102,7 +102,7 @@ def crop_ellipsoid(mesh, center, radii):
 
 
 class Turntable:
-    def __init__(self, points, axis, center, start_angle=90.):
+    def __init__(self, points, axis, center, start_angle=90., magnification=1.):
         self.points = points
         self.axis = np.asarray(axis, dtype=float)
         self.axis /= np.linalg.norm(self.axis)
@@ -117,7 +117,10 @@ class Turntable:
         height = q @ self.axis
         radial = np.linalg.norm(q - height[:, None] * self.axis, axis=1)
         vertical=np.abs(height)*np.cos(phi)+radial*np.sin(phi)
-        self.scale=float(max(vertical.max(),radial.max()/ASPECT)/.975)
+        assert np.isfinite(magnification) and magnification > 0
+        self.magnification = float(magnification)
+        self.fitted_scale=float(max(vertical.max(),radial.max()/ASPECT)/.975)
+        self.scale=self.fitted_scale / self.magnification
         self.radius = float(np.linalg.norm(q, axis=1).max())
         self.position = self.center + self.direction * 4.5 * self.radius
         self.matrices, self.trace = [], []
@@ -131,7 +134,9 @@ class Turntable:
             x = transformed @ self.right / (self.scale * ASPECT)
             y = transformed @ self.up / self.scale
             bounds = [float(x.min()), float(x.max()), float(y.min()), float(y.max())]
-            assert max(abs(v) for v in bounds) <= .975001
+            # Explicit camera enlargement can put peripheral tubes outside the
+            # viewport. Do not silently refit and cancel the requested zoom.
+            assert max(abs(v) for v in bounds) <= .975001*self.magnification
             assert abs(self.right@self.axis)<1e-14, 'Z must project vertically'
             assert np.allclose(rotation.T @ rotation, np.eye(3), atol=1e-13)
             assert np.isclose(np.linalg.det(rotation), 1.)
@@ -182,7 +187,8 @@ class AnnotationPlan:
     """
     FADE_RADIUS = 10  # 21 samples / 0.875 s; includes the last-to-first seam.
 
-    def __init__(self, orbit, wall, axes, ports):
+    def __init__(self, orbit, wall, axes, ports, axis_title_size=24,
+                 tick_size=18, tick_label_offset=23.):
         self.orbit = orbit
         self.tracks = []
         self.projected_wall = [self.project(wall.points, i) for i in range(FRAMES)]
@@ -231,12 +237,12 @@ class AnnotationPlan:
                     positions.append(projected+offset)
             centers=np.stack(positions,axis=1)
             text='XYZ'[axis]+' (mm)'
-            width,height=self.text_size(text,24)
+            width,height=self.text_size(text,axis_title_size)
             valid=self.in_view(centers,width,height)
             valid &= self.unoccupied(centers,width,height,pad=12.)
             valid &= self.clearance(centers,width,height)>9.
             cost=np.broadcast_to(np.arange(centers.shape[1])*.045,centers.shape[:2]).copy()
-            self.add(text,24,centers,valid,cost,'axis_title')
+            self.add(text,axis_title_size,centers,valid,cost,'axis_title')
         # Keep the identity and world coordinate of every tick. Crowded labels
         # fade at their own projected location rather than being moved elsewhere.
         for axis,ends in enumerate(axes.axis_ends):
@@ -247,8 +253,8 @@ class AnnotationPlan:
             for value in axes.ticks[axis]:
                 point=axes.origin.copy();point[axis]=value
                 anchors=np.stack([self.project([point],i)[0] for i in range(FRAMES)])
-                centers=(anchors+normal*23.)[:,None,:]
-                width,height=self.text_size(f'{value:g}',18)
+                centers=(anchors+normal*tick_label_offset)[:,None,:]
+                width,height=self.text_size(f'{value:g}',tick_size)
                 valid=self.in_view(centers,width,height)
                 valid &= self.unoccupied(centers,width,height,pad=7.)
                 valid &= self.clearance(centers,width,height)>5.
@@ -259,7 +265,7 @@ class AnnotationPlan:
                 mark_valid=self.in_view(anchors[:,None,:],10.,10.).astype(float)
                 mark_safe=minimum_filter1d(mark_valid,size=2*self.FADE_RADIUS+1,axis=0,mode='wrap')
                 mark_alpha=convolve1d(mark_safe,self.kernel,axis=0,mode='wrap')[:,0]
-                self.tracks.append(dict(text=f'{value:g}',font_size=18,kind='tick',
+                self.tracks.append(dict(text=f'{value:g}',font_size=tick_size,kind='tick',
                     centers=centers,alpha=alpha,width=width,height=height,
                     anchor=anchors,normal=normal,axis=axis,value=float(value),mark_alpha=mark_alpha))
         self.audit()
@@ -516,4 +522,3 @@ def validate_video(path, key):
     return dict(file=str(path.relative_to(OUT)), sha256=sha(path), decoded_frames=count,
                 distinct_frames=len(distinct), fps=FPS, size=SIZE, duration_s=FRAMES/FPS,
                 footer_only_primitive_count=True, no_extra_colorbar_text=True, all_pass=True)
-

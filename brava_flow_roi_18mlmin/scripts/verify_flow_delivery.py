@@ -23,7 +23,10 @@ for pose in ['0','15']:
         assert sha(movie)==row['sha256'],str(movie)
         reader=imageio_ffmpeg.read_frames(str(movie),pix_fmt='rgb24')
         header=next(reader);count=sum(1 for _ in reader)
-        assert header['size']==(1920,1080) and header['fps']==24 and count==432
+        expected_fps=row.get('fps',manifest['fps'])
+        assert header['size']==(1920,1080) and header['fps']==expected_fps and count==row['frames']
+        if 'duration_s' in row:
+            assert abs(header['duration']-row['duration_s'])<.05
         movies.append(dict(pose=pose,kind=row['kind'],decoded_frames=count,sha256=row['sha256']))
         print('Verified',pose,row['kind'],count,flush=True)
 record=dict(PASS=True,flow_sha256=active['flow_sha256'],input_files_verified=len(input_hashes),movies=movies,
