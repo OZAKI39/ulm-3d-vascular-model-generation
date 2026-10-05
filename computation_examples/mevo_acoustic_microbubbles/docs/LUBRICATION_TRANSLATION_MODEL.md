@@ -37,7 +37,7 @@ The backend currently requires monodisperse radii (relative floating tolerance 8
 
 `wall_gap_and_normal(x, r)` returns gap, outward normal and validity. The production Y geometry reuses the exact `vtkImplicitPolyDataDistance` level/gradient and its existing coordinate cache. No Warp or approximate surface is used. The cylinder implementation is for software fixtures. Curved-wall lubrication uses the local-plane approximation.
 
-Assembly uses a SciPy CSC matrix and cKDTree pair candidates. Diagonal self-drag removes the translational nullspace. Positive coefficients give a symmetric positive definite matrix. Sparse LU solves the matrix scaled by median self-drag; the residual is checked in the original dimensional equation against 1e-11. Diagnostics include matrix size, nonzeros, solver, residual, solve time and failure. With no active lubrication the original Stokes operation order is used directly for bitwise far-field equality.
+Assembly uses a SciPy CSC matrix and cKDTree pair candidates. Diagonal self-drag removes the translational nullspace. Positive coefficients give a symmetric positive definite matrix. Sparse LU solves the matrix scaled by median self-drag; the residual is checked in the original dimensional equation against 1e-11. Diagnostics include matrix size, nonzeros, solver, residual, solve time and failure, with separate pair/wall active and subfloor counts. The result exposes the Stokes reference and pair/wall resistance-force contributions in newtons, evaluated at the unconstrained velocity by default; callers may request these forces at the contact-constrained velocity. Contact reactions remain separate. With no active lubrication the original Stokes operation order is used directly for bitwise far-field equality.
 
 ## Contact in the resistance metric
 
@@ -48,6 +48,8 @@ Instantaneous touching contacts solve
 \]
 
 where pair rows give \((U_j-U_i)\cdot n\), and wall rows give \(-U_i\cdot n_w\). There is no tangential constraint. A SciPy bounded quadratic dual followed by active-set polishing is checked using primal feasibility and complementary slackness; an optimizer success flag alone is insufficient. Dense checkpoints have persistent contacts, so the old diagonal NNLS is not used by this backend.
+
+Observed primary and short-secondary states contained rank-deficient contact rows (for example 340 rows but numerical rank 329). Forming the contact Gram matrix squares this conditioning. A repeated active-set pattern or a failed KKT check now triggers a QR refinement in Cholesky-whitened primal coordinates. Strictly slack rows are released from the equality active set while all original inequalities remain checked. This solves the same A-metric optimization, with unchanged contact and residual tolerances; it does not add resistance, force caps, friction or cluster locking. A repeated primal working set additionally falls back to a feasible QR active-set solve: zero velocity supplies a mathematically feasible starting point, each direction preserves its working constraints, and the first blocking inequality limits the optimization step. Zero is only an optimizer starting point, not the returned velocity or a physical freeze. Four stored rejected-step fixtures exercise these paths, including a case that previously cycled for 1,306 iterations. The same 1e-9 contact residual threshold remains enforced.
 
 For RK stage proposals and the final displacement, a **finite-horizon nonpenetration guard** uses the same A metric at the step start, with \(G U\ge-\max(h,0)/\Delta t\) for predicted contacts, and zero lower bound for touching pairs. This permits positive subfloor gaps to close to zero; it never pins them at the floor. The spatial projection then handles residual geometric error. This constrained RK rule is a numerical contact treatment and still requires timestep sensitivity; it is not a film drainage solver or added damping. The legacy path retains its old RK and diagonal contact treatment.
 
@@ -66,3 +68,27 @@ Not included: full thin-film drainage; Young–Laplace contact deformation; tang
 - Ball & Melrose (1997), [doi:10.1016/S0378-4371(97)00412-3](https://doi.org/10.1016/S0378-4371(97)00412-3): pair-resistance/many-body mobility framework and squeeze mode. Rigid-sphere suspension context; not SonoVue validation.
 - Costa et al. (2015), [doi:10.1103/PhysRevE.92.053012](https://doi.org/10.1103/PhysRevE.92.053012), [author preprint, equations 32–34](https://arxiv.org/pdf/1506.01880): normal asymptotic functions and saturation concept. This project uses the explicitly specified relative-speed pair convention and activation parameters, not an IBM resolution calibration.
 - Chan, Klaseboer & Manica (2011), [doi:10.1039/C0SM00812E](https://doi.org/10.1039/C0SM00812E): deformable drop/bubble drainage and interface-mobility context. A lipid shell motivates an immobile-interface approximation but these references do not directly calibrate SonoVue or validate this model for it.
+
+## Recorded Reynolds diagnostic
+
+The dense-probe field `saved_Reynolds_max` uses `2 rho R |U| / mu` from the saved total velocity. It is a total-speed screening proxy, not a slip-based Reynolds validation. Initially high values remain a limitation even when velocities later fall. Source arrays and forces are preserved; smooth cluster motion and small residuals are not evidence of fully accurate near-contact acoustics.
+
+## Reproduction and result identity
+
+Run from the isolated Stage 4L project with the existing project Python environment:
+
+```bash
+cd /workspace/mevo_acoustic_microbubbles_stage4l
+source /workspace/mevo_acoustic_microbubbles/.venv/bin/activate
+export PYTHONPATH=src:.
+export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
+python -m pytest -q tests/test_stage4l_lubrication.py tests/test_stage4l_metrics.py
+python -m scripts.stage4l.analytic_artifacts
+python -m scripts.stage4l.campaign --help
+python -m scripts.stage4l.branch_campaign --help
+python -m scripts.stage4l.secondary_stages --help
+```
+
+The campaign entry points require the preceding machine-readable gate where applicable. Each scientific run creates an exclusive new directory and records immutable input hashes, effective configuration, source hashes/archive and its translation backend. Primary and secondary initial-condition reruns use the original population, field and flow identified by the historical primary run; dense probes instead use an explicitly copied 3 s sealed checkpoint. These are different experiment types and must not be combined into a purported continuous trajectory.
+
+`compare_branches` compares completed initial-condition runs only, includes all unassigned IDs, and reconstructs actual accepted RK2 timesteps from the solve log with a checked step count. The old baseline's dt/2 conclusion is never inherited. Its early cluster comparison interpolates scalar metrics at common times, not particle positions. `analyze_dense` uses actual accepted particle states and records sample ages at common physical clocks; no positions are interpolated for contact graphs.

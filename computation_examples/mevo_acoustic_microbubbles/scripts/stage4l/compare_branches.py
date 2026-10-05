@@ -99,6 +99,19 @@ def compare(reference, candidate):
         shared_crossings=len(shared),
         mean_abs_crossing_time_difference_s=float(np.mean(abs(delta))) if len(delta) else None,
         max_abs_crossing_time_difference_s=float(np.max(abs(delta))) if len(delta) else None,
+        crossing_time_absolute_difference_quantiles_s={
+            str(q): float(np.quantile(abs(delta), q)) for q in [0.5, 0.9, 0.95, 1.0]
+        }
+        if len(delta)
+        else {},
+        max_relative_crossing_time_difference=float(
+            np.max(abs(delta) / np.array([ea[pid]["crossing_time_s"] for pid in shared]))
+        )
+        if len(delta)
+        else None,
+        largest_crossing_time_difference_particle_id=int(shared[np.argmax(abs(delta))])
+        if len(delta)
+        else None,
         early_cluster_common_times_s=grid.tolist(),
         early_cluster_metrics=early,
     )
@@ -117,6 +130,9 @@ def main():
         for path in sorted((BASE / kind).glob("*/SUMMARY.json")):
             d = json.loads(path.read_text())
             if d.get("status") == "COMPLETE" and "legacy_reference" in d:
+                expected_factor = 1.0 if kind == "primary_baseline" else 0.5
+                if d.get("dt_factor") != expected_factor:
+                    continue
                 case = json.loads((path.parent / "RUN_IDENTITY.json").read_text())["case"]
                 target[case] = path.parent
     if set(nominal) != set(["B0", "B1", "B2", "B3"]) or set(halves) != set(["B2", "B3"]):

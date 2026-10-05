@@ -1,35 +1,111 @@
-# Stage 4L development record
+# Stage 4L — normal lubrication translation development
 
-## Isolation and preserved legacy state
+## Current status
 
-Local branch: `dev/stage4l-lubrication-20261005`, created from the GitHub snapshot commit `aaf2549fc506933df74229be8e0ec9717f97f7ed` (`sync/mevo-acoustic-microbubbles-stage4-20261005`). All 278 tracked original project source files were byte-identical to that snapshot before development.
+Final scoped decision: **`LUBRICATION_TRANSLATION_DEVELOPED_WITH_SCOPE`**. The backend, paired 1 ms/5 ms probes, new 6 s primary B0–B3 baseline, and new B2/B3 nominal/dt-half comparison are complete. **60 focused tests pass**, and changed Python modules pass Ruff. This is an engineering development result for branch-control stability with explicit timing and contact limitations, not an overall Stage 4 PASS or validated full near-contact bubble physics.
 
-Local project: `/home/lzy/projects/computation_examples/_archives/mevo_stage4l_20261005/computation_examples/mevo_acoustic_microbubbles`.
-Server project: `/workspace/mevo_acoustic_microbubbles_stage4l`, branch `stage4l-lubrication-20261005`, based on source commit `a6c3153f484113d37ffb5e9b4b57f0c6594ef396` with the same starting source bytes. Its distinct Git ancestry is recorded in run identities; it is not misrepresented as the monorepo snapshot ancestry.
+Both S1 retries stopped at their declared 3,600 s wall budget before 0.1 s: B2 reached **0.089448770 s**, B3 **0.096525398 s**. They remain **INCOMPLETE**, with no numerical solver failure and zero geometric corrections in those retries. No 0.5–1 s secondary extension, full 6 s secondary, multiseed, old K or final audit was launched. The full-secondary runtime gate is **NOT_PASSED**.
 
-The original server controller remains paused. The already-running Stage J child was observed but not signalled. No old K, final acceptance, multiseed, or BraVa task was resumed. No original gold, configuration, checkpoint or result identity is changed. New evidence lives only below `results/stage4/lubrication_upgrade/` in the isolated project.
+Final gate and secondary termination evidence: `results/stage4/lubrication_upgrade/comparison_legacy/final_stage4l_20261005/`.
 
-## Implemented
+The final `ARTIFACT_INDEX.json` records SHA-256 values for the curated reports, figures, inputs and source snapshots. Sixteen selected raw HDF5 files (about 205 MB) are preserved locally and on the server outside Git; verbose per-step logs remain on the server. The Git archive contains about 14.4 MB of selected evidence, rather than the raw trajectory/log collection. No original data was deleted.
 
-- Independent `TranslationBackend`, legacy Stokes and coupled lubrication implementations; default remains legacy.
-- Monodisperse normal particle-particle and particle-wall resistance, sparse direct solve, strict residual check and bitwise far-field bypass.
-- Exact cached VTK wall gap/normal, predictive closing-gap timestep guard without floor collapse.
-- A-metric frictionless instantaneous and finite-horizon contact projection, residual geometric projection diagnostics including RK stages.
-- Finite checkpoint runner with input/source hashes, exclusive result paths, copied read-only 3 s inputs and paired unchanged force inputs.
-- Same-ID cluster metrics and contact lifetimes at equal physical sampling intervals. Statistics may interpolate accepted states; scientific trajectory output is never filtered.
 
-## Software evidence and experiment protocol
+## Isolation, source and immutable inputs
 
-Initial server checks: **47 passed**, covering the requested T1–T10 cases, matrix symmetry/SPD and CG agreement, factor-two convention, predictive crossing, unequal radii rejection, A-metric contact, legacy tracker and ordered contact projection. The local shared Python environment lacks pandas; full tests use the already provisioned server project environment without changing it.
+- Local project: `/home/lzy/projects/computation_examples/_archives/mevo_stage4l_20261005/computation_examples/mevo_acoustic_microbubbles`, branch `dev/stage4l-lubrication-20261005`.
+- Baseline snapshot: `aaf2549fc506933df74229be8e0ec9717f97f7ed`, branch `sync/mevo-acoustic-microbubbles-stage4-20261005`. All 278 original tracked source files matched this snapshot byte for byte before development.
+- Server project: `/workspace/mevo_acoustic_microbubbles_stage4l`, branch `stage4l-lubrication-20261005`, starting from the byte-identical standalone source baseline `a6c3153f484113d37ffb5e9b4b57f0c6594ef396`. Its Git ancestry differs from the local monorepo and is not misrepresented.
+- Final backend code at this update: local `921e989`; server `06af1f5`. B2/B3 nominal and dt/2 scientific reruns use source commit `12331bb`. The later code adds exposed force components, split diagnostics and JSON-safe rejection reporting, without changing successful velocity/contact computations. Every run retains its actual source archive and hashes.
+- Original files, gold inputs, configurations and HDF5 files remain untouched. The original legacy controller remains paused; its already-running Stage J child was observed but not signalled. No old BraVa batch or stopped mouse task was resumed.
 
-At the sealed t=3 s checkpoints, B2/B3 have 186/189 active particles, 327/344 pairs in lubrication range, and about 150 particles participating in hard contacts. This motivates A-metric contact rather than continued use of a diagonal mobility constraint.
+All results of this task live below `results/stage4/lubrication_upgrade/`. Existing results are interpreted as `LEGACY_STOKES_TRANSLATION_BASELINE`; they are not relabelled as new lubrication physics. Each new experiment has its own exclusive identity, initial population/snapshot, input SHA-256 values and source snapshot. Completed selected runs passed post-run input-hash checks.
 
-S0 order: paired B2/B3 1 ms, then 5 ms only after stable behavior. Nominal clock, contact tolerance, initial IDs, positions, field, flow, radial response, and acoustic forces are identical between arms. Legacy and new arms use the same ordered geometric fallback implementation. All failures and partial results remain saved as failures.
+## Model and solver evidence
 
-The first new-model attempts stopped because the diagnostic logger duplicated `time_s`; these are recorder failures, not solver or scientific results. Their directories remain intact. The logger was fixed and new result IDs were generated. The completed legacy 1 ms runs are reused for comparison.
+See [LUBRICATION_TRANSLATION_MODEL.md](LUBRICATION_TRANSLATION_MODEL.md) for equations, assumptions, wall-normal convention, activation subtraction, continuum floor, exact wall geometry, timestep and contact semantics, references and reproduction commands.
 
-## Gates still pending
+The implementation retains Stokes self-drag and adds normal particle-particle and particle-wall resistance. It is always on when the configuration selects `lubrication_coupled`, including primary-only and flow-only experiments. R=1.78 µm, activation=0.1R and floor=0.001R. Unequal radii are explicitly rejected. The floor saturates a resistance coefficient; it is not adhesion, a target gap or a cluster lock.
 
-Dense rearrangement and severe-projection gate; new primary B0–B3; new B2/B3 dt/2; staged secondary 0.1 s and 0.5–1 s; possible 6 s secondary only after the runtime/behavior gate. No inherited legacy timestep PASS is transferred to this backend. No overall Stage 4 PASS is claimed.
+Sparse CSC/LU mobility is checked against 1e-11 relative residual. Contact uses the coupled A metric, with a 1e-9 normalized feasibility/complementarity threshold. Nearly dependent contact rows require primal QR refinement; a feasible active-set fallback resolves cycling working sets. These refinements solve the same constrained optimization with unchanged forces, tolerances and resistance law. Finite-horizon normal constraints protect RK proposals; geometric projection remains a residual correction and is measured at every stage.
 
-See `LUBRICATION_TRANSLATION_MODEL.md` for equations, contact semantics, physical scope and references. This file will be updated with measured probe outcomes and an explicit final gate decision.
+Focused checks cover T1–T10, the pair relative-speed factor of two, wall asymptotics, far-field regression, symmetry/SPD and CG agreement, predictive gap guards, floor behavior, unequal-radius rejection, exact VTK cache reuse, always-on lubrication, A-metric contact and unchanged legacy tracking. Four small stored fixtures reproduce actual rejected contact QPs. Further tests check force-component balance, strict-JSON failure evidence and cluster/graph statistics. Current evidence: `unit_tests/final_failures_v8.xml` (60 passed), plus dimensional CSV/JSON tables under `analytic_pair/` and `analytic_wall/`.
+
+## Paired dense-checkpoint probes
+
+Both arms start from the same sealed t=3 s state: 186/189 active B2/B3 particles; initial largest near-neighbor clusters contain 75/91 particles. Initial positions, IDs, radii, masks, field/response/flow samples and primary/secondary force arrays match bitwise. No gold trajectory was overwritten or presented as a new continuation. These mature clusters were formed by legacy translation; the probes do not show that the new model would form the same clusters by t=3 s from the original initial condition.
+
+| Probe | Case | Legacy/new accepted steps | New wall time (s) | Rigid-fit residual, new/legacy | Mean near-neighbor turnover, new/legacy | New maximum projection (m) |
+|---|---|---:|---:|---:|---:|---:|
+| 1 ms | B2 | 158 / 3,626 | 400.37 | 0.16295 | 0.00917 | 0 |
+| 1 ms | B3 | 174 / 3,684 | 491.86 | 0.14110 | 0.00902 | 0 |
+| 5 ms | B2 | 791 / 17,385 | 2,216.01 | 0.16597 | 0.001864 | 5.54e-12 |
+| 5 ms | B3 | 872 / 18,627 | 3,080.30 | 0.14362 | 0.001806 | 0 |
+
+These ratios use the fixed initial largest-cluster IDs and a 10 µs physical clock. The saved states are actual last-accepted positions, with sample ages recorded; graphs/envelopes do not interpolate coordinates. A separate 2 µs analysis is retained. The earlier interpolated-statistics analysis under `paired_1ms_v3/` is exploratory and superseded for graph/envelope interpretation; its original launch gate remains preserved.
+
+For all initial clusters of at least three particles in the 1 ms probe, particle-weighted rigid-fit RMS falls from 7.02 to 1.18 µm (B2) and 7.49 to 1.19 µm (B3). Some initially quiet small clusters have increased internal displacement, so improvement is not universal per cluster. Largest-cluster gyration radii compact by about 6.8%/6.6% and then stabilize. This is measured behavior, not an imposed rigid aggregate.
+
+Legacy 5 ms maximum projections are about 10 µm, with 28,418/38,281 particle corrections above two radii. The new arms have none above two radii. Median new steps are 0.285/0.254 µs, only about 4.45%/4.36% of legacy medians. The specified closing-gap rule therefore does not improve runtime. Holding the measured dense-state cost over all 6 s would take about **31/43 days per case**. This is a cost scenario, not a prediction of the entire evolving trajectory, and it fails the full-secondary launch gate.
+
+Authoritative comparisons, figures and gate: `comparison_legacy/paired_1ms_actual_states_v5/` and `comparison_legacy/paired_5ms_actual_states_v5/`. The short-probe gate is `PASS_WITH_SCOPE`; it is not long-time physical validation.
+
+### Native-step hard-contact limitation
+
+Every accepted state was also checked without fixed-clock sampling. Near-neighbor edge-change rate ratios remain 0.001996/0.001673, confirming suppression of neighbor replacement. However, strict hard-contact membership at h <= 10 pm changes faster: rate ratios about 4.01/4.57, and observed hard-contact lifetimes are shorter. Near-contact edge lifetime improvements must not be described as an improvement of every contact metric.
+
+At those hard-contact switches, median normal gap changes are 0.044/0.057 nm, 99th percentiles 0.848/0.881 nm, and maxima 1.76/2.22 nm. Legacy medians were 4.45/4.43 µm. This is residual subnanometre contact/gap chatter, not merely floating-point noise or validated physical contact kinetics. No hysteresis, filtering or tolerance change was applied. All reported lifetimes are censored by the 5 ms window, not material persistence estimates.
+
+Evidence: `comparison_legacy/paired_5ms_actual_states_v5/NATIVE_GRAPH_REVIEW.json` and each probe's `NATIVE_GRAPH_METRICS.json`. No tangential-lubrication conclusion is inferred solely from these counts.
+
+## New primary-only baseline
+
+All four new primary cases completed 6 s from the original initial population. The table compares each new run against its legacy counterpart. A/B/unassigned count all 256 particles; unassigned means observation cutoff, not successful outflow. There are no wall-loss assignments. All 256 final particle identities agree in each comparison, but crossing times change.
+
+| Case | A / B / unassigned | ID agreement vs legacy | Maximum crossing-time change (ms) | Accepted steps | Maximum all-stage projection / R |
+|---|---:|---:|---:|---:|---:|
+| B0 | 128 / 123 / 5 | 100% | 5.329e-12 | 12,000 | 0 |
+| B1 | 37 / 28 / 191 | 100% | 4.893 | 12,056 | 0.0034462 |
+| B2 | 90 / 0 / 166 | 100% | 97.11 | 17,110 | 0.055533 |
+| B3 | 0 / 98 / 158 | 100% | 14.11 | 16,703 | 0.060537 |
+
+B2/B3 steering is retained: assigned B2 particles exit A, and assigned B3 particles exit B. `f_A` and `f_B` in the machine report condition on assigned exits; separate initial-population fractions include all unassigned IDs. Short dense probes having negligible projection must not be generalized to every primary stage: B2/B3 maxima are about 0.056R/0.061R, with RMS corrections about 0.716/0.680 nm and no multi-radius corrections.
+
+Evidence: `comparison_legacy/primary_baseline_v7/PRIMARY_COMPARISON.json`.
+
+## New timestep sensitivity
+
+B2 nominal 0.5 ms and half 0.25 ms both completed. All 256 branch identities agree. Of 90 shared crossings, mean absolute difference is 0.662 ms, median 0.0404 ms, 95th percentile 1.44 ms, and maximum 31.10 ms (particle 188, about 0.948% of its nominal crossing time). Early 0–0.1 s cluster count, near-contact fraction and largest-cluster fraction agree at common recorded times; nearest-neighbor relative L2 difference is 1.21e-5.
+
+This supports the branch assignment result while leaving a measurable timing sensitivity. It does not certify pointwise trajectory convergence or dense-secondary subfloor contact motion. B3 nominal and dt/2 also completed: all 256 branch identities agree; crossing-time differences have mean 0.366 ms, median 0.0244 ms, 95th percentile 1.07 ms and maximum 12.47 ms (particle 25, 0.487% of its nominal time). Its early nearest-neighbor relative L2 difference is 5.47e-6, with the other listed early cluster metrics equal. No legacy dt/2 result is inherited.
+
+The engineering acceptance is limited to branch-control stability with the measured timing bounds. It does not certify every crossing to sub-millisecond accuracy, pointwise trajectory convergence or dense-secondary gap dynamics. The review does not introduce a previously declared accuracy tolerance; observed timing differences remain explicit limitations. Authoritative combined comparison: `comparison_legacy/20261005T232125840331Z_branches/SUMMARY.json`.
+
+## Secondary staging and finite runtime limits
+
+The initial B2 0.1 s attempt exposed a contact solver failure; the initial B3 attempt reached its 1,800 s budget around t=0.074 s. Both remain incomplete. Repaired-solver retries used new identities and the original initial condition, with a declared 3,600 s per-case budget.
+
+| Case | Accepted time (s) | Target (s) | Accepted steps | Median dt (µs) | Maximum projection (m) | Result |
+|---|---:|---:|---:|---:|---:|---|
+| B2 | 0.089448770 | 0.1 | 16,907 | 0.579 | 0 | INCOMPLETE — runtime budget |
+| B3 | 0.096525398 | 0.1 | 30,955 | 1.010 | 0 | INCOMPLETE — runtime budget |
+
+Both retained all 256 active particles. Source input postchecks passed. Maximum linear residuals were 1.36e-14/1.73e-14; contact residuals remained below the unchanged 1e-9 threshold. B2's accumulated contact solves consumed about 2,535 s, compared with 1,640 s for B3. No solver failure or nonpositive timestep occurred in these retries. Stopping at a finite resource limit is not physical completion.
+
+The ordinary visualization HDF5 files end at their last saved 0.08 s frame and have `complete=false`; each final accepted state is separately preserved in `particles/last_accepted_state.npz`. Do not claim the HDF5 contains frames through the checkpoint time. S1 has not passed the requested 0.1 s completion gate, so S2 was not launched. Measured dense-state step behavior and cost also rule out the S3 launch. The task ends at this explicit scoped gate, with no new simulation left running.
+
+The final secondary report is `comparison_legacy/final_stage4l_20261005/SECONDARY_STAGE_REPORT.json`. `secondary_full/NOT_LAUNCHED.json` records staging only, not a successful secondary run. No full secondary-upgrade status is assigned.
+
+## Retained failures and numerical repairs
+
+- The first dense attempts failed because a logger supplied `time_s` twice. New result IDs were created after repair; failed artifacts were not overwritten.
+- Some original primary identities predate `effective_acoustic_field`. The loader now reads their historical PZT field path and validates the recorded field SHA-256. Their failed campaign rows remain recorded.
+- Longer primary/secondary runs exposed rank-deficient contact rows. Four rejected steps were exactly replayed, retained as fixtures and solved after QR refinements. The original failures remain incomplete; reruns use new IDs and frozen initial conditions.
+- An early validation command pointed at the wrong scratch import root. Its collection-error report is retained separately; final tests used the actual isolated project source and passed.
+- Runtime-limited partial secondary results are not numerical or scientific completion. The earlier primary dt campaign was allowed to finish rather than being killed; final comparisons select the explicit new nominal/half solver revision.
+
+## Remaining physical scope
+
+Classical secondary Bjerknes remains unchanged despite its known near-contact far-field limitation. Floor/contact occupancy remains substantial. The dense-probe `saved_Reynolds_max` uses total speed, not slip speed, and starts above creeping-flow conditions. Small residuals, same branch counts and smooth envelopes do not establish local physical accuracy.
+
+No tangential/rotational lubrication, friction, shell repulsion, adhesion, fusion, coalescence, deformable-contact/film PDE, history or added-mass production dynamics was added. Rigid-sphere resistance literature is not SonoVue calibration. No artificial damping, speed cap, smoothing or cluster locking was introduced. Full Stage 4 acceptance remains outside this record.
