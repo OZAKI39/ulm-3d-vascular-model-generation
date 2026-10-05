@@ -1,5 +1,7 @@
 # ULM 3-D vascular lumen model generation
 
+This branch also contains the [MEVO acoustic–microbubble project snapshot](MEVO_SNAPSHOT.md), including source, selected data, logs, and B2/B3 animations.
+
 This private repository contains the current `model_generate.py` implementation and the
 minimal code/data closure needed to reproduce the active v8 ROI test. It reconstructs a
 CFD-ready lumen surface from saved representative-ROI centerlines and SWC radii.

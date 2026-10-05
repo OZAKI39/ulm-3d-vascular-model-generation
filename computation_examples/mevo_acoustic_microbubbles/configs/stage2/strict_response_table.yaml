@@ -1,0 +1,26 @@
+# Configuration template; Stage2J is gated. This does not launch a simulation.
+# Existing blood-like acoustic bases have a different medium identity.
+extends: ../demo.yaml
+name: stage2_strict_table_template
+medium:
+  density_kg_m3: 1000.0
+  sound_speed_m_s: 1500.0
+  viscosity_Pa_s: 0.001  # physical translation viscosity
+  radial_effective_viscosity_Pa_s: 0.002  # Tu2009 radial damping including thermal loss
+acoustics:
+  frequency_Hz: 2500000.0
+  backend: python
+  device: gpu
+bubble_response:
+  model: response_table
+  path: results/stage2/single_bubble/20261001T201550430625Z/bubble_response_database.h5
+particles:
+  near_field_policy: strict
+  pair_backend: numpy
+physics_validity:
+  pair:
+    min_distance_over_radius: 10.0
+    min_distance_over_sum: 5.0
+    max_radial_fraction: 0.2
+    max_kd: 0.3
+  min_wall_distance_over_radius: 5.0
