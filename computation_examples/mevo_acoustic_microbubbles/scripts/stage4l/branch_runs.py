@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import json
 from pathlib import Path
 import time
@@ -11,6 +12,18 @@ import time
 import numpy as np
 
 from scripts.stage4l.dense_probe import BASE, sha, write
+
+
+def historical_field_path(config, identity):
+    """Support original primary records, which predate effective-field metadata."""
+    path = (
+        (config.get("effective_acoustic_field") or {}).get("path")
+        or identity.get("acoustic_field_path")
+        or config.get("pzt_control", {}).get("field")
+    )
+    if not path:
+        raise ValueError("Historical identity does not identify an acoustic field")
+    return path
 
 
 def run_case(legacy, case, dt_factor=1.0, secondary=False, duration=6.0, max_wall_s=1800):
@@ -51,11 +64,25 @@ def run_case(legacy, case, dt_factor=1.0, secondary=False, duration=6.0, max_wal
     if case == "B0":
         field = AcousticOff()
     else:
-        config["effective_acoustic_field"]["path"] = frozen(config["effective_acoustic_field"]["path"])
-        field = ComplexAcousticField.load(config["effective_acoustic_field"]["path"])
+        field_path = frozen(historical_field_path(config, previous))
+        if inputs[field_path] != previous["acoustic_field_sha256"]:
+            raise ValueError("Legacy acoustic field hash does not match its recorded identity")
+        config["effective_acoustic_field"] = dict(path=field_path, source="historical run identity")
+        field = ComplexAcousticField.load(field_path)
     initial = Path(frozen(source / "INITIAL_POPULATION.npz"))
     with np.load(initial) as p:
         population = BubblePopulation(p["positions_m"].copy(), p["radii_m"].copy(), p["particle_id"].copy())
+    population_hash = hashlib.sha256(
+        population.positions_m.tobytes() + population.radii_m.tobytes() + population.ids.tobytes()
+    ).hexdigest()
+    if population_hash != previous["initial_population_sha256"]:
+        raise ValueError("Legacy initial population hash mismatch")
+    for key, path in [
+        ("flow_sha256", f["snapshot"]),
+        ("response_table_sha256", config["bubble_response"]["path"]),
+    ]:
+        if inputs[path] != previous[key]:
+            raise ValueError(f"Legacy input mismatch: {key}")
     config["particles"].update(
         translation_backend="lubrication_coupled",
         secondary_enabled=secondary,

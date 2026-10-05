@@ -4,7 +4,10 @@ import numpy as np
 import pytest
 from scipy.sparse.linalg import cg
 
-from mevo_mb.bubbles.translation_backends import LegacyStokesTranslation, LubricationCoupledTranslation
+from mevo_mb.bubbles.translation_backends import (
+    LegacyStokesTranslation,
+    LubricationCoupledTranslation,
+)
 from mevo_mb.coupling.geometry import Cylinder
 
 R, MU = 1.78e-6, 0.001
@@ -244,3 +247,95 @@ def test_vtk_wall_gap_reuses_exact_cache():
     np.testing.assert_array_equal(gap, -value / np.linalg.norm(gradient, axis=1) - R)
     np.testing.assert_array_equal(normal, gradient / np.linalg.norm(gradient, axis=1)[:, None])
     assert valid.all()
+
+
+@pytest.mark.parametrize(
+    "fixture",
+    [
+        "stage4l_contact_qp",
+        "stage4l_contact_qp_b2",
+        "stage4l_contact_qp_secondary",
+        "stage4l_contact_qp_cycle",
+    ],
+)
+def test_observed_nearly_dependent_contact_qp_qr_refinement(fixture):
+    """Replay the rejected B3 primary RK stage without weakening KKT tolerance."""
+    from pathlib import Path
+    from scipy.sparse import load_npz
+    from scipy.sparse.linalg import splu
+    from mevo_mb.bubbles.translation_backends import TranslationResult
+
+    folder = Path(__file__).parent / "data" / fixture
+    with np.load(folder / "contact_input.npz") as data:
+        d = {key: data[key] for key in data.files}
+    a = load_npz(folder / "matrix.npz")
+    scale = float(d["scale"])
+    result = TranslationResult(
+        d["velocity_m_s"],
+        d["velocity_m_s"],
+        a,
+        d["drag"],
+        None,
+        None,
+        None,
+        (d["wall_gap_m"], d["wall_normal"], d["wall_valid"]),
+        factor=splu(a / scale),
+        scale=scale,
+    )
+    model = LubricationCoupledTranslation(MU)
+    velocity, diag = model.contact(
+        result,
+        d["positions_m"],
+        d["radii_m"],
+        d["velocity_m_s"],
+        float(d["tolerance_m"]),
+        None if np.isnan(float(d["horizon_s"])) else float(d["horizon_s"]),
+    )
+    assert diag["contact_kkt_residual"] < 1e-10
+    assert diag["contact_primal_stationarity"] < 1e-10
+    assert diag["contact_refinement"] in (
+        "whitened_primal_QR_active_set",
+        "feasible_primal_QR_active_set",
+    )
+    delta = (velocity - d["velocity_m_s"]).ravel()
+    zero = -d["velocity_m_s"].ravel()
+    assert delta @ (a @ delta) <= zero @ (a @ zero) * (1 + 1e-10)
+
+
+def test_touching_pair_tangential_motion_is_not_locked():
+    free = np.array([[0.0, 0.01, 0.0], [0.0, -0.01, 0.0]])
+    model, result = solve(pair(0.0), flow=free)
+    velocity, diag = model.contact(result, pair(0.0), np.full(2, R), result.velocity, 1e-11, horizon=0.001)
+    np.testing.assert_allclose(velocity, free, rtol=1e-13, atol=1e-15)
+
+
+def test_returned_resistance_components_obey_dimensional_force_balance():
+    force = np.array([[1e-11, 2e-12, 3e-11], [-2e-11, 4e-12, 1e-11]])
+    model, result = solve(pair(0.01), force=force, w=wall(2, 0.01))
+    pair_force, wall_force = result.lubrication_forces()
+    np.testing.assert_allclose(pair_force.sum(axis=0), 0, atol=1e-25)
+    np.testing.assert_allclose(wall_force[:, :2], 0, atol=1e-25)
+    np.testing.assert_allclose(
+        force + pair_force + wall_force,
+        result.drag[:, None] * result.velocity,
+        rtol=1e-11,
+        atol=1e-24,
+    )
+    assert result.diagnostics["pair_subfloor"] == 0
+    assert result.diagnostics["wall_subfloor"] == 0
+    tangent = np.array([[0, 0.2, 0], [0, -0.2, 0]])
+    pp, pw = result.lubrication_forces(tangent)
+    np.testing.assert_array_equal(pp, np.zeros((2, 3)))
+    np.testing.assert_array_equal(pw, np.zeros((2, 3)))
+
+
+def test_nonfinite_force_is_rejected_with_json_safe_failure_evidence():
+    import json
+
+    model = LubricationCoupledTranslation(MU)
+    force = np.full((2, 3), np.nan)
+    with pytest.raises(RuntimeError, match="LINEAR_SOLVER_RESIDUAL_FAILURE"):
+        model.solve(pair(0.01), np.full(2, R), force, np.zeros((2, 3)), wall())
+    assert model.last_failure["relative_residual"] is None
+    assert "relative_residual" in model.last_failure["nonfinite_diagnostics"]
+    json.dumps(model.last_failure, allow_nan=False)

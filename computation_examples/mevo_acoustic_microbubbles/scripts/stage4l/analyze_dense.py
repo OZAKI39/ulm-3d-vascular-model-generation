@@ -68,12 +68,15 @@ def analyze(run, cadence=1e-5, member=None, tag=""):
         raise ValueError("No multi-particle cluster at the selected checkpoint")
     if len(t) < 2:
         return dict(status="NO_ACCEPTED_STEPS")
-    samples = np.arange(t[0], t[-1] + cadence * 0.01, cadence)
-    # Sampling for statistics only; raw accepted positions are retained unchanged.
-    sampled = np.empty((len(samples), len(member), 3))
-    for j, index in enumerate(member):
-        for a in range(3):
-            sampled[:, j, a] = np.interp(samples, t, x[:, index, a])
+    count = int(np.floor((t[-1] - t[0]) / cadence + 1e-8))
+    samples = t[0] + np.arange(count + 1) * cadence
+    if abs(samples[-1] - t[-1]) < 1e-12:
+        samples[-1] = t[-1]
+    # Graphs must use actual accepted positions. Linear interpolation can create
+    # false overlaps and gyration dips when legacy particles rearrange rapidly.
+    indices = np.maximum(np.searchsorted(t, samples, side="right") - 1, 0)
+    sampled = x[indices][:, member]
+    sample_age = samples - t[indices]
     centered = sampled - sampled.mean(axis=1, keepdims=True)
     reference = centered[0]
     rms = np.sqrt(np.mean(np.sum((centered - reference) ** 2, axis=2), axis=1))
@@ -94,10 +97,11 @@ def analyze(run, cadence=1e-5, member=None, tag=""):
         row["pair"] = [int(ids[member[k]]) for k in row["pair"]]
     distances = np.stack([np.quantile(pdist(frame), [0, 0.1, 0.25, 0.5, 0.75, 0.9, 1]) for frame in sampled])
     cluster_sizes = [len(largest(frame, 2.1 * r)) for frame in sampled]
-    key = f"{tag}{cadence * 1e6:g}us"
+    key = f"actual_{tag}{cadence * 1e6:g}us"
     np.savez_compressed(
         run / f"cluster_metrics_{key}.npz",
         time_s=samples,
+        actual_sample_time_s=t[indices],
         particle_ids=ids[member],
         centered_rms_m=rms,
         rigid_fit_residual_m=rigid,
@@ -117,6 +121,9 @@ def analyze(run, cadence=1e-5, member=None, tag=""):
     result = dict(
         status=summary["status"],
         sampling_cadence_s=cadence,
+        sampling_mode="last_accepted_state",
+        max_sample_age_s=float(np.max(sample_age)),
+        metric_artifact=str(run / f"cluster_metrics_{key}.npz"),
         initial_cluster_size=len(member),
         same_ID_particle_ids=ids[member].tolist(),
         same_ID_centroid_removed_RMS_end_m=float(rms[-1]),
@@ -135,7 +142,7 @@ def analyze(run, cadence=1e-5, member=None, tag=""):
         largest_component_final_size=cluster_sizes[-1],
         pair_distance_quantiles_initial_m=distances[0].tolist(),
         pair_distance_quantiles_final_m=distances[-1].tolist(),
-        interpolation="Linear interpolation of raw accepted states for statistics only; same physical cadence in both arms",
+        interpolation="Actual last accepted state at each common clock time; no coordinate interpolation. Sample age is recorded.",
     )
     write(run / f"CLUSTER_METRICS_{key}.json", result)
     return result
@@ -225,6 +232,7 @@ def compare(legacy, lub, out):
         initial_inputs_and_forces_bitwise_identical=identical,
         diagnostics=diagnostics,
         analysis_sha256=sha(Path(__file__)),
+        sampling_mode="last_accepted_state",
         gate_status="REQUIRES_SCIENTIFIC_REVIEW",
         overall_stage4_acceptance="NOT_EVALUATED",
     )
