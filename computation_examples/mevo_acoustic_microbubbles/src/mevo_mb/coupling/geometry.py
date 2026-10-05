@@ -20,6 +20,20 @@ class Cylinder:
         return np.minimum(self.radius_m-np.linalg.norm(positions_m[:, 1:], axis=1),
                           self.length_m/2-np.abs(positions_m[:, 0]))
 
+    def wall_gap_and_normal(self, positions_m, radii_m):
+        x = np.asarray(positions_m)
+        radial = np.linalg.norm(x[:, 1:], axis=1)
+        side = self.radius_m - radial
+        cap = self.length_m / 2 - np.abs(x[:, 0])
+        normal = np.zeros_like(x)
+        normal[:, 1:] = x[:, 1:] / np.maximum(radial[:, None], np.finfo(float).tiny)
+        normal[radial == 0, 1] = 1.
+        end = cap < side
+        normal[end] = 0.
+        normal[end, 0] = np.where(x[end, 0] >= 0, 1., -1.)
+        gap = np.minimum(side, cap) - np.asarray(radii_m)
+        return gap, normal, np.isfinite(x).all(axis=1) & np.isfinite(gap)
+
     def contains(self, positions_m: np.ndarray, radii_m: np.ndarray | float = 0.0) -> np.ndarray:
         x = np.asarray(positions_m)
         return (np.linalg.norm(x[..., 1:], axis=-1) <= self.radius_m - radii_m) & (np.abs(x[..., 0]) <= self.length_m / 2 - radii_m)

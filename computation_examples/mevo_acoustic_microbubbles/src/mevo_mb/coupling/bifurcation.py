@@ -117,6 +117,15 @@ class BifurcationGeometry:
         value, gradient = self.level_and_gradient(positions)
         return -value / np.maximum(np.linalg.norm(gradient, axis=1), 1e-12)
 
+    def wall_gap_and_normal(self, positions, radii):
+        """Gap and outward normal from the same exact cached VTK level/gradient."""
+        value, gradient = self.level_and_gradient(positions)
+        norm = np.linalg.norm(gradient, axis=1)
+        valid = np.isfinite(value) & np.isfinite(gradient).all(axis=1) & (norm > 1e-12)
+        normal = gradient / np.maximum(norm[:, None], 1e-12)
+        gap = -value / np.maximum(norm, 1e-12) - np.asarray(radii)
+        return gap, normal, valid
+
     def contains(self, positions, radii=0.0):
         return self.wall_distance(positions) >= np.asarray(radii)
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections import deque
 import time
 from pathlib import Path
 
@@ -10,6 +11,9 @@ import h5py
 import numpy as np
 import pandas as pd
 
+from mevo_mb.bubbles.translation_backends import (
+    make_translation_backend, LUBRICATION_PHYSICS, INTERFACE_SCOPE, NOT_INCLUDED, LEGACY_LABEL,
+)
 from mevo_mb.bubbles.contact import constrain_pair_velocities, project_contacts
 from mevo_mb.bubbles.forces import NumpyPairBackend, ClassicalFarFieldBjerknes, primary_bjerknes
 from mevo_mb.bubbles.metrics import aggregation_metrics
@@ -24,10 +28,11 @@ from mevo_mb.io.artifacts import write_json
 
 
 class ParticleTracker:
-    """Fixed nominal RK2/RK4 clock, optional displacement-limited internal substeps.
+    """RK2/RK4 with an explicit translation backend and geometric guards.
 
-    Every accepted substep is saved. Displacement guards establish geometry safety,
-    not integration-error convergence. Contact stages use geometric projections.
+    Legacy uses the original displacement guard and diagonal contact metric.
+    Lubrication uses closing-gap guards and A-metric normal contact constraints.
+    These guards do not establish integration-error convergence.
     """
 
     def __init__(self, config: dict, acoustic_field, flow: FlowField):
@@ -39,6 +44,17 @@ class ParticleTracker:
         self.timings["contact_search_calls"] = 0
         self.contact_backend = self.p.get("contact_search_backend", "brute")
         self.cylinder = geometry_from_config(config)
+        self.translation = make_translation_backend(config)
+        self.lubrication_enabled = self.translation.name == "lubrication_coupled"
+        self.translation_diagnostics = deque(maxlen=256)
+        self.translation_log = None
+        self.translation_summary = dict(linear_solves=0, contact_solves=0,
+            max_linear_relative_residual=0., max_contact_kkt_residual=0.,
+            total_linear_solve_time_s=0., total_contact_solve_time_s=0.)
+        self.projection_diagnostics = dict(calls=0, corrected_calls=0, max_correction_m=0.,
+                                           squared_correction_m2=0., particle_queries=0,
+                                           multi_radius_corrections=0)
+
         response = config["bubble_response"]
         # Old explicitly-surrogate configurations retain their baseline behavior,
         # always labelled DEMO ONLY. New response-table runs default to strict.
@@ -188,14 +204,20 @@ class ParticleTracker:
         from mevo_mb.flow.fields import VTKFlowField
         if isinstance(self.flow, VTKFlowField):
             self.timings["vtk_interpolation_s"] += flow_elapsed
-        free = flow + (primary + secondary) / (
-            6 * np.pi * self.config["medium"]["viscosity_Pa_s"] * radii[:, None]
-        )
-        velocity = self.cylinder.constrain_velocity(x, radii, free)
-        velocity = constrain_pair_velocities(
-            x, radii, velocity, self.p["contact_tolerance_m"], self.p["contact_max_iterations"], self.contact_backend, self.timings
-        )
-        velocity = self.cylinder.constrain_velocity(x, radii, velocity)
+        wall = self.cylinder.wall_gap_and_normal(x, radii) if self.lubrication_enabled else None
+        translation = self.translation.solve(x, radii, primary + secondary, flow, wall)
+        self.last_translation = translation
+        free = translation.velocity
+        if self.lubrication_enabled:
+            velocity, contact_diag = self.translation.contact(
+                translation, x, radii, free, self.p["contact_tolerance_m"])
+            self._record_translation(dict(translation.diagnostics, **contact_diag, time_s=float(t)))
+        else:
+            velocity = self.cylinder.constrain_velocity(x, radii, free)
+            velocity = constrain_pair_velocities(
+                x, radii, velocity, self.p["contact_tolerance_m"], self.p["contact_max_iterations"],
+                self.contact_backend, self.timings)
+            velocity = self.cylinder.constrain_velocity(x, radii, velocity)
         if not np.isfinite(velocity).all():
             raise RuntimeError("Nonfinite translation velocity")
         return {
@@ -209,13 +231,57 @@ class ParticleTracker:
         }
 
     def _project(self, x, radii):
-        return project_contacts(
+        result = project_contacts(
             x, radii, self.cylinder, self.p["contact_tolerance_m"], self.p["contact_max_iterations"], self.contact_backend, self.timings
         )
+        correction = np.linalg.norm(result[0] - x, axis=1)
+        diag = self.projection_diagnostics
+        diag["calls"] += 1
+        diag["corrected_calls"] += int(np.any(correction > 0))
+        diag["max_correction_m"] = max(diag["max_correction_m"], float(np.max(correction)))
+        diag["squared_correction_m2"] += float(correction @ correction)
+        diag["particle_queries"] += len(x)
+        diag["multi_radius_corrections"] += int(np.count_nonzero(correction > 2*radii))
+        return result
+
+    def _record_translation(self, diagnostic):
+        self.translation_diagnostics.append(diagnostic)
+        summary = self.translation_summary
+        if "solver" in diagnostic:
+            summary["linear_solves"] += 1
+        summary["contact_solves"] += int(diagnostic.get("contact_solve_time_s", 0) > 0)
+        summary["max_linear_relative_residual"] = max(summary["max_linear_relative_residual"],
+            diagnostic.get("relative_residual", 0.))
+        summary["max_contact_kkt_residual"] = max(summary["max_contact_kkt_residual"],
+            diagnostic.get("contact_kkt_residual", 0.))
+        summary["total_linear_solve_time_s"] += diagnostic.get("solve_time_s", 0.)
+        summary["total_contact_solve_time_s"] += diagnostic.get("contact_solve_time_s", 0.)
+        if self.translation_log is not None:
+            self.translation_log.write(json.dumps(diagnostic)+"\n")
+
+    def select_timestep(self, x, radii, state, remaining):
+        if self.lubrication_enabled:
+            return self.translation.timestep(x, radii, state["total_velocity_m_s"],
+                                            self.last_translation.wall, remaining)
+        speed = np.linalg.norm(state["total_velocity_m_s"], axis=1)
+        return min(remaining, float(np.min(self.p["max_displacement_per_radius"] * radii /
+                                          np.maximum(speed, 1e-30))))
 
     def step(self, x, radii, t, dt, first):
         integration_start = time.perf_counter()
+        initial_translation = self.last_translation if self.lubrication_enabled else None
+
+        def feasible_step(candidate, horizon):
+            if not self.lubrication_enabled:
+                return candidate
+            average_velocity = (candidate - x) / horizon
+            safe, diag = self.translation.contact(initial_translation, x, radii, average_velocity,
+                                                   self.p["contact_tolerance_m"], horizon=horizon)
+            self._record_translation(dict(diag, time_s=float(t), stage="finite_horizon_contact"))
+            return x + horizon * safe
+
         def velocity(position, at):
+            position = feasible_step(position, at-t)
             feasible, _, _, _ = self._project(position, radii)
             return self.evaluate(feasible, radii, at)["total_velocity_m_s"]
 
@@ -229,6 +295,7 @@ class ParticleTracker:
             proposed = x + dt * (k1 + 2 * k2 + 2 * k3 + k4) / 6
         else:
             raise ValueError("Integrator must be RK2 or RK4")
+        proposed = feasible_step(proposed, dt)
         corrected, wall, contacts, iterations = self._project(proposed, radii)
         self.timings["particle_integration_s"] += time.perf_counter()-integration_start
         return (
@@ -253,8 +320,18 @@ class ParticleTracker:
             "contact_search_backend": self.contact_backend,
             "contact_semantics": "Geometric nonpenetration only; contact is not coalescence, adhesion, fusion or validated near-field dynamics",
         }
+        self.banner["translation_backend"] = self.translation.name
+        if self.lubrication_enabled:
+            self.banner["production_physics"].remove("quasi-steady Stokes translation")
+            self.banner["production_physics"].extend([LUBRICATION_PHYSICS, INTERFACE_SCOPE])
+            self.banner["not_included"].extend(NOT_INCLUDED)
+            self.banner["contact_semantics"] = "A-metric frictionless normal nonpenetration; geometric residual projection"
+        else:
+            self.banner["baseline_identity"] = LEGACY_LABEL
         write_json(run / "PHYSICS_BANNER.json", self.banner)
         print("PRODUCTION_PHYSICS " + json.dumps(self.banner), flush=True)
+        if self.lubrication_enabled:
+            self.translation_log = (run / "TRANSLATION_SOLVES.jsonl").open("x")
         try:
             return self._run(population, run)
         except PhysicsValidityError as error:
@@ -270,6 +347,13 @@ class ParticleTracker:
             if hasattr(self, "_last_query"):
                 np.savez(run / "particles/rejected_state.npz", **self._last_query)
             raise
+        finally:
+            if self.translation_log is not None:
+                self.translation_log.close()
+                self.translation_log = None
+                write_json(run / "TRANSLATION_DIAGNOSTICS.json", dict(
+                    **self.translation_summary, projection=self.projection_diagnostics,
+                    failure=getattr(self.translation, "last_failure", None)))
 
     def _run(self, population: BubblePopulation, run: Path) -> dict:
         start = time.perf_counter()
@@ -284,11 +368,14 @@ class ParticleTracker:
         metric_rows = []
         file = run / "particles/trajectories.h5"
         with h5py.File(file, "x") as h5, (run / "particles/events.jsonl").open("x") as events:
+            h5.attrs["translation_backend"] = self.translation.name
             h5.attrs["velocity_semantics"] = (
                 "Instantaneous force/drag velocity at saved state; not the preceding displacement divided by dt. All accepted substeps saved."
             )
             h5.attrs["model"] = (
-                f"{self.config['bubble_response']['model']}; {self.policy}; quasisteady Stokes; geometric contact only"
+                f"{self.config['bubble_response']['model']}; {self.policy}; " +
+                (LUBRICATION_PHYSICS + "; A-metric normal contact" if self.lubrication_enabled else
+                 "quasisteady Stokes; geometric contact only")
             )
             h5.attrs["physics_status"] = (
                 "NOT PHYSICALLY VALIDATED" if self.policy == "legacy_demo" else "partially validated"
@@ -350,11 +437,7 @@ class ParticleTracker:
                 target = min(macro * nominal, duration)
                 local_count = 0
                 while time_s < target - 1e-15:
-                    speed = np.linalg.norm(state["total_velocity_m_s"], axis=1)
-                    geometric_dt = np.min(
-                        self.p["max_displacement_per_radius"] * radii / np.maximum(speed, 1e-30)
-                    )
-                    dt = min(target - time_s, geometric_dt)
+                    dt = self.select_timestep(x, radii, state, target - time_s)
                     if dt <= 1e-15:
                         raise RuntimeError(
                             "Translation step collapsed; preserve failure instead of fabricating motion"

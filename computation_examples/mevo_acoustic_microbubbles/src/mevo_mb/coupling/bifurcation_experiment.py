@@ -59,7 +59,10 @@ class BifurcationExperimentTracker(ParticleTracker):
         trajectory_path = run / "particles/trajectories.h5"
         with h5py.File(trajectory_path,"x") as h:
             h.attrs["complete"] = False
-            h.attrs["model"] = "Stage3 forces/RK; open classification planes; geometric wall/contact"
+            h.attrs["translation_backend"] = self.translation.name
+            h.attrs["model"] = ("Stage4L normal lubrication; A-metric contact; open classification planes"
+                                if self.lubrication_enabled else
+                                "Stage3 forces/RK; open classification planes; geometric wall/contact")
             h.attrs["all_accepted_substeps_recorded"] = False
             h.attrs["event_semantics"] = "Every accepted substep tested; inactive coordinates freeze at first crossing"
             h.attrs["inactive_force_velocity_semantics"] = "NaN: inactive particles are not evaluated"
@@ -130,10 +133,7 @@ class BifurcationExperimentTracker(ParticleTracker):
                 target = min(macro*nominal, duration)
                 local_steps = 0
                 while len(active) and t < target-1e-15:
-                    speed = np.linalg.norm(state["total_velocity_m_s"], axis=1)
-                    geometric_dt = np.min(self.p["max_displacement_per_radius"]*radii[active]
-                                          /np.maximum(speed, 1e-30))
-                    dt = min(target-t, float(geometric_dt))
+                    dt = self.select_timestep(x, radii[active], state, target-t)
                     if dt <= 1e-15:
                         raise RuntimeError("Translation step collapsed")
                     old = x.copy()
