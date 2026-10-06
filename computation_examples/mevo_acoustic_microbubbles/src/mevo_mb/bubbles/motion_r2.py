@@ -1,9 +1,10 @@
 """Versioned R2 motion: S0 diagnostic and converged S1 semi-implicit Euler.
 
-S1 freezes F_acoustic and u_flow at the beginning of each substep. It solves
- A(x0+dt U) U = F0 + D u_flow0 + J(x0+dt U)' lambda.
-Contact inequalities are linearized about the current endpoint and expressed
-in the ONE x0 displacement anchor. Historical tangent rows are not stacked.
+S1 V2 freezes F_acoustic, u_flow and contact normals at each substep start.
+It solves A(x0+dt U) U = F0 + D u_flow0 + J(x0)' lambda.
+The single start tangent set guarantees pair clearance along the adopted straight
+path, including initially negative tolerance-band gaps. End geometry and real WALL
+sweeps are separately certified. Historical tangent rows are not stacked.
 The resistance is never differentiated as a position energy.
 """
 from collections import OrderedDict
@@ -26,7 +27,7 @@ class MotionR2(ConstrainedLubrication):
         super().__init__(viscosity_Pa_s, **kwargs)
         self.qp_factory=lambda: NativeQP(solver)
         self.qp=self.qp_factory();self.qp_solver=solver
-        self.method='STAGE5A_R2_S1_SEMI_IMPLICIT_EULER_V1'
+        self.method='STAGE5A_R2_S1_SEMI_IMPLICIT_EULER_V2'
         self.stage_workspaces=OrderedDict()
 
     def constrained_stage(self,result,constraints,ids,stage,feasible=None):
@@ -93,7 +94,7 @@ class SemiImplicit:
             wk=self.wall(xk,r)
             start=perf_counter();a=self.backend.solve(xk,r,force,flow,wk)
             self.timings['assembly']+=perf_counter()-start
-            c=anchored_constraints(x,xk,r,w0,wk,dt,ids,self.tolerance,a.velocity)
+            c=anchored_constraints(x,x,r,w0,w0,dt,ids,self.tolerance,a.velocity)
             start=perf_counter()
             u,cache,diag=self.backend.constrained_stage(a,c,ids,stage,feasible=uk.ravel())
             self.timings['qp']+=perf_counter()-start;self.calls+=1
@@ -108,7 +109,7 @@ class SemiImplicit:
                 if self.method=='S1':
                     we=self.wall(y,r);beg=perf_counter();ae=self.backend.solve(y,r,force,flow,we)
                     self.timings['assembly']+=perf_counter()-beg
-                    ce=anchored_constraints(x,y,r,w0,we,dt,ids,self.tolerance,u)
+                    ce=anchored_constraints(x,x,r,w0,w0,dt,ids,self.tolerance,a.velocity)
                     vs=max(float(np.max(abs(ae.velocity))),1e-30)
                     an=ae.matrix/ae.scale;bn=an@(ae.velocity.ravel()/vs)
                     lam=np.array([cache.dual.get(key,0.)/(ae.scale*vs) for key in ce.ids])
