@@ -67,10 +67,12 @@ def main():
                     max_projection_m=s["projection"]["max_correction_m"],
                 )
             )
-            if policy != "A0":
-                force[case][policy] = removal_summary(
-                    ROOT / s["run"] / "PAIR_FORCE_DIAGNOSTICS.jsonl"
-                )
+            diagnostics = (
+                BASE / "comparisons/dense" / case / "A0/PAIR_FORCE_DIAGNOSTICS.jsonl"
+                if policy == "A0"
+                else ROOT / s["run"] / "PAIR_FORCE_DIAGNOSTICS.jsonl"
+            )
+            force[case][policy] = removal_summary(diagnostics)
     write(BASE / "comparisons/SECONDARY_REMOVAL_SUMMARY.json", force)
     answers = dict(
         Q1=dict(
@@ -178,10 +180,20 @@ def main():
         "",
         "[Doinikov & Bouakaz (2015)](https://doi.org/10.1103/PhysRevE.92.043001) and [Chen, Chen & Li (2020)](https://doi.org/10.1016/j.ultsonch.2019.104814) motivate unresolved close-separation and multi-bubble coupling. Neither paper validates a zero near-contact force or provides correction factors for this study.",
     ]
+    md += [
+        "",
+        "All dense runs retain the inherited PHYSICS_VALIDITY_WARNING, including far-field separation, acoustic-retardation and near-wall scope limits. Software-test and numerical-stability passes do not validate these physical approximations.",
+        "",
+        "The read-only A0 pair diagnostics cover every saved accepted state. They were reconstructed with NumPy 2.5.3 on the local analysis environment; initial-force relative L2 differences from the archived server arrays are about 1.6–1.7×10⁻¹⁶. These roundoff-scale cross-environment differences are distinct from the same-environment bitwise A0 unit regression. No A0 translation step was taken.",
+    ]
     text = "\n".join(md) + "\n"
     (BASE / "final_decision/FINAL_REPORT.md").write_text(text)
     doc = ROOT / "docs/STAGE4M_NEAR_CONTACT_SECONDARY_ABLATION.md"
     contents = doc.read_text().split("\n## Final measured outcome\n")[0]
+    contents = contents.replace(
+        "M0 and downstream results will be populated only after their respective gates.",
+        "M0 is complete; the failed engineering gate prevented downstream formation, growth and full branch experiments.",
+    )
     doc.write_text(
         contents + "\n## Final measured outcome\n\n" + text.replace("# Stage 4M final decision\n\n", "", 1)
     )

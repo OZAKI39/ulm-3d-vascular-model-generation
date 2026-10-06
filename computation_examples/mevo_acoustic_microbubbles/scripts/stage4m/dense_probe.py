@@ -235,12 +235,6 @@ def run(legacy, stage4l, case, policy, max_wall_s=7200, max_steps=100000):
                 state = tracker.evaluate(x, radii[active], tnew)
                 if not np.isfinite(x).all() or not all(np.isfinite(v).all() for v in state.values()):
                     raise RuntimeError("NONFINITE_ACCEPTED_STATE")
-                pair_log.write(
-                    json.dumps(
-                        dict(time_s=tnew, **recorded_pair_diagnostics(tracker, len(active))), allow_nan=False
-                    )
-                    + "\n"
-                )
                 events = classifier.observe(
                     active, previous, x, oldstate["total_velocity_m_s"], state["total_velocity_m_s"], t, tnew
                 )
@@ -286,6 +280,12 @@ def run(legacy, stage4l, case, policy, max_wall_s=7200, max_steps=100000):
                     state = tracker.evaluate(x, radii[active], t)
                 tracker.monitor.record_accepted_interval(dt)
                 mask = np.isin(ids, active)
+                pair_log.write(
+                    json.dumps(
+                        dict(time_s=t, **recorded_pair_diagnostics(tracker, len(active))), allow_nan=False
+                    )
+                    + "\n"
+                )
                 times.append(t)
                 dts.append(dt)
                 positions.append(xfull.copy())

@@ -209,3 +209,15 @@ def test_engineering_gate_requires_each_case_and_stability(tmp_path, monkeypatch
             },
         }
     assert analyze.dense_gate(rows)["continue_formation"] is expected
+
+
+def test_empty_active_population_has_no_stale_pair_diagnostics():
+    from types import SimpleNamespace
+    from scripts.stage4m.common import recorded_pair_diagnostics
+
+    tracker = SimpleNamespace(config={"medium": {"density_kg_m3": 1000}})
+    d = recorded_pair_diagnostics(tracker, 0)
+    assert d["unordered_pair_count"] == 0
+    assert d["S_classical_N"] == d["S_effective_N"] == 0
+    assert d["effective_classical_ratio"] is None
+    assert d["full_weight_pair_fraction"] is None

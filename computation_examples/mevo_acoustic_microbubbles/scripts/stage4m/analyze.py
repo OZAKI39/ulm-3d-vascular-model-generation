@@ -168,9 +168,8 @@ def dense_figures(rows, locations):
                     )
         ax.set_xticks([0, 1], ["B2", "B3"])
         ax.set_ylabel(label)
-        ax.set_yscale("log")
         ax.margins(y=0.3)
-    axs[0].legend(frameon=False)
+    axs[0].legend(frameon=False, ncol=3, loc="upper right")
     fig.suptitle("Dense 5 ms diagnostic: runtime and accepted steps")
     save(fig, "Figure_M2_dense_performance")
     fig, axs = plt.subplots(2, 3, figsize=(10, 6), constrained_layout=True)
@@ -195,9 +194,12 @@ def dense_figures(rows, locations):
     save(fig, "Figure_M3_dense_internal_dynamics")
     fig, axs = plt.subplots(1, 2, figsize=(9, 3.4), constrained_layout=True)
     for ax, case in zip(axs, ["B2", "B3"]):
-        ax.axhline(1, color=colors["A0"], label="A0 (full secondary)", lw=1)
-        for policy in ["A1", "A2"]:
-            file = Path(rows[case][policy]["summary"]["absolute_run"]) / "PAIR_FORCE_DIAGNOSTICS.jsonl"
+        for policy in ["A0", "A1", "A2"]:
+            file = (
+                locations[case][policy] / "PAIR_FORCE_DIAGNOSTICS.jsonl"
+                if policy == "A0"
+                else Path(rows[case][policy]["summary"]["absolute_run"]) / "PAIR_FORCE_DIAGNOSTICS.jsonl"
+            )
             diag = [json.loads(line) for line in file.read_text().splitlines()]
             ax.plot(
                 [(d["time_s"] - 3) * 1e3 for d in diag],

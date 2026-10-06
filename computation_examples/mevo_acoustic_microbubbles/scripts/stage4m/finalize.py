@@ -85,6 +85,9 @@ def main():
     _, gate = analyze_all(a.legacy_root, a.stage4l_root)
     if gate["continue_formation"]:
         raise RuntimeError("M0 passed; do not finalize before authorized original-initial formation stage")
+    from scripts.stage4m.validate_artifacts import validate
+
+    validate()
     report()
     artifact_index()
     print("STAGE4M_FINAL_REPORT_READY", flush=True)

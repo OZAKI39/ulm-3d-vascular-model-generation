@@ -64,6 +64,13 @@ def exact_frame(path, time_s):
 
 
 def recorded_pair_diagnostics(tracker, n):
+    if n == 0:
+        from mevo_mb.bubbles.secondary_ablation import pair_norm_diagnostics
+
+        empty = np.empty((0, 0))
+        return pair_norm_diagnostics(
+            empty, empty, empty, empty, 1.78e-6, tracker.config["medium"]["density_kg_m3"]
+        )
     pair = tracker.pair
     if hasattr(pair, "cpu"):
         pair = pair.cpu if n < pair.crossover or pair.gpu_disabled else pair.gpu
@@ -139,7 +146,10 @@ def reference_analysis(legacy, stage4l):
         ax.set_xticks([0, 1], ["B2", "B3"])
         ax.set_ylabel(label)
         ax.spines[["top", "right"]].set_visible(False)
-    axes[0].legend(frameon=False)
+    axes[0].set_ylim(0, 26)
+    axes[1].set_ylim(0, 95)
+    axes[2].set_ylim(0, 1.05)
+    axes[0].legend(frameon=False, ncol=2, loc="upper right")
     fig.suptitle("Lubrication-only formation effect at 0.08 s")
     for suffix in ("png", "pdf"):
         fig.savefig(out / f"Figure_M1_lubrication_only.{suffix}", dpi=300)
