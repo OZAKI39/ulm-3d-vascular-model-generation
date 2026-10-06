@@ -109,3 +109,22 @@ The final secondary report is `comparison_legacy/final_stage4l_20261005/SECONDAR
 Classical secondary Bjerknes remains unchanged despite its known near-contact far-field limitation. Floor/contact occupancy remains substantial. The dense-probe `saved_Reynolds_max` uses total speed, not slip speed, and starts above creeping-flow conditions. Small residuals, same branch counts and smooth envelopes do not establish local physical accuracy.
 
 No tangential/rotational lubrication, friction, shell repulsion, adhesion, fusion, coalescence, deformable-contact/film PDE, history or added-mass production dynamics was added. Rigid-sphere resistance literature is not SonoVue calibration. No artificial damping, speed cap, smoothing or cluster locking was introduced. Full Stage 4 acceptance remains outside this record.
+
+## Recorded-data visualization — 2026-10-06
+
+The Stage 4L renderer reuses the existing `scripts/stage4/render_single_overview.py` v7 scene: black background, one enlarged orthographic view, shaded blue spheres, the same PZT discs and purple pressure slices, upper-left clock, and largest-cluster population label. Camera, field range, physical clustering threshold and 60-fold visibility magnification are unchanged. Only experiment-specific titles, force labels, time precision and a concise scope annotation are added. There is no second view, blue aggregation ring or explanatory footer.
+
+Following the user's title correction, B2/B3 case identifiers are omitted from the video image. Filenames and the viewer retain them to distinguish the datasets.
+
+Four separate 1920 × 1080, 60 fps videos are generated below `results/stage4/lubrication_upgrade/visualization/B2_B3_clean_enlarged_v8_20261006/`:
+
+- B2/B3 dense probes: recorded absolute t=3.000–3.005 s, 1,001 frames, about 16.7 s per video. Every frame takes the actual last-accepted state at a uniform 5 µs display clock. Maximum sampling ages are about 0.44/0.51 µs. No coordinate interpolation or raster blending is used for these dense probes.
+- B2/B3 primary-only runs: t=0–6 s, 1,201 frames, about 20 s per video at constant 0.30× playback. All 301 saved states are used; the established v7 raster cross-dissolves supply intermediate display frames without interpolating particle coordinates. Population labels refer to the latest saved state.
+
+These experiments are not spliced into a continuous trajectory. The dense initial clusters were formed by the legacy model; the new short probe does not establish their formation under lubrication. The primary videos contain no secondary force. The incomplete S1 retries and absent full-secondary runs are not represented as completed trajectories.
+
+The renderer verifies raw trajectory hashes against the final Stage 4L artifact index and resolves the original acoustic field and wall mesh by SHA-256. It retains per-frame source/time mappings and per-state active particle identities and connected components. `scripts/stage4l/check_motion.py` checks full video decoding, exact 1/60 s presentation intervals, constant display-time increments, encoded keyframe fidelity, active-ID partitions and unchanged inputs. Any physically stationary or subpixel motion remains visible as such; no artificial motion is introduced to eliminate repeated-looking frames. The delivery report is authoritative for completion of these checks.
+
+All four final videos passed the delivery checker: 1,001/1,201 frames at exact 60 fps, complete decoding, correct source-state and active-ID mappings, and unchanged input hashes. The initial 3D scene and colorbar match v7 pixel for pixel over the compared 824,850-pixel region in both cases; deliberately changed titles and annotations are excluded from that style check. Case labels are absent from the video titles.
+
+The local viewing entry beside the older videos is `/home/lzy/projects/computation_examples/mevo_acoustic_microbubbles/results/stage4/visualization/B2_B3_lubrication_v8_20261006/`, a link to this delivery. Original v7 exports and all scientific results remain unchanged. This is a visualization-only task; it launches no scientific simulation or controller. An initial render with case labels was superseded after the user's title correction; its partial outputs are retained separately and are not the delivered videos.

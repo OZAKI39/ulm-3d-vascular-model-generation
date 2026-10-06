@@ -59,14 +59,25 @@ def prepare_clusters(d):
 
 def scene(name, d, sphere_mode=False, magnification=1.0):
     fig = base.plt.figure(figsize=(19.2, 10.8), dpi=100, facecolor="black")
-    fig.text(0.035, 0.946, f"{name}  |  Acoustic field & bubble aggregation", color="white", fontsize=28)
+    fig.text(
+        0.035,
+        0.946,
+        d.get("scene_title", f"{name}  |  Acoustic field & bubble aggregation"),
+        color="white",
+        fontsize=28,
+    )
     fig.text(
         0.035,
         0.902,
-        "2.5 MHz  |  Flow + primary + secondary force  |  256 bubbles",
+        d.get(
+            "scene_subtitle",
+            "2.5 MHz  |  Flow + primary + secondary force  |  256 bubbles",
+        ),
         color="#bed0e0",
         fontsize=17,
     )
+    if d.get("scope_label"):
+        fig.text(0.035, 0.737, d["scope_label"], color="#bed0e0", fontsize=14)
     # Source controls occupy the free upper-left margin, without a second scene.
     elements = d["config"]["pzt"]
     for row, pair in enumerate([elements[:2], elements[2:]]):
@@ -76,7 +87,12 @@ def scene(name, d, sphere_mode=False, magnification=1.0):
             for e in pair
         )
         fig.text(0.035, 0.848 - row * 0.030, label, color="#dec09a", fontsize=14)
-    ax = fig.add_axes([0.13, 0.15, 0.87, 0.80], projection="3d", facecolor="black", computed_zorder=False)
+    ax = fig.add_axes(
+        [0.13, 0.15, 0.87, 0.80],
+        projection="3d",
+        facecolor="black",
+        computed_zorder=False,
+    )
     original.axes_style(ax, original.FIELD_BOUNDS, ["X (mm)", "Y (mm)", "Z (mm)"], zoom=1.31)
     ax.set_xticks([0, 5, 10])
     ax.set_yticks([-5, 0, 5])
@@ -119,11 +135,22 @@ def scene(name, d, sphere_mode=False, magnification=1.0):
         face_rgb = intensity[:, None] * np.array(colors.to_rgb(BLUE))
     else:
         points = ax.scatter(
-            [], [], [], c=BLUE, edgecolors="#c1e3ff", linewidths=0.23, s=22, depthshade=False, zorder=10
+            [],
+            [],
+            [],
+            c=BLUE,
+            edgecolors="#c1e3ff",
+            linewidths=0.23,
+            s=22,
+            depthshade=False,
+            zorder=10,
         )
     bar_ax = fig.add_axes([0.24, 0.090, 0.48, 0.014])
     bar = fig.colorbar(
-        ScalarMappable(norm=norm, cmap=cmap), cax=bar_ax, orientation="horizontal", ticks=[0, 10, 20, 30, 39]
+        ScalarMappable(norm=norm, cmap=cmap),
+        cax=bar_ax,
+        orientation="horizontal",
+        ticks=[0, 10, 20, 30, 39],
     )
     bar.ax.tick_params(colors="white", labelsize=12, pad=3)
     bar.outline.set_visible(False)
@@ -168,14 +195,20 @@ def scene(name, d, sphere_mode=False, magnification=1.0):
     projected = base.screen_points(ax, geometry)
     lo, hi = projected.min(axis=0), projected.max(axis=0)
     assert np.all(lo > [45, 160]) and np.all(hi < [1875, 920]), (lo, hi)
-    checks["source_and_particle_screen_bounds_bottom_origin"] = [lo.tolist(), hi.tolist()]
+    checks["source_and_particle_screen_bounds_bottom_origin"] = [
+        lo.tolist(),
+        hi.tolist(),
+    ]
     background = fig.canvas.copy_from_bbox(fig.bbox)
     for artist in dynamic:
         artist.set_visible(True)
     for k, groups in enumerate(d["clusters"]):
         for group in groups:
             center = base.screen_points(ax, np.asarray(group["center_m"])[None] * 1000)[0]
-            group["screen_center_top_origin"] = [float(center[0]), float(1080 - center[1])]
+            group["screen_center_top_origin"] = [
+                float(center[0]),
+                float(1080 - center[1]),
+            ]
             if sphere_mode:
                 indices = [d["id_index"][pid] for pid in group["particle_ids"]]
                 center_m = np.asarray(group["center_m"])
@@ -196,7 +229,10 @@ def scene(name, d, sphere_mode=False, magnification=1.0):
                 radius_px = radii * 1000 * singular.mean()
                 lower = (uv - radius_px[:, None]).min(axis=0)
                 upper = (uv + radius_px[:, None]).max(axis=0)
-                assert np.all(lower > [40, 160]) and np.all(upper < [1880, 920]), (lower, upper)
+                assert np.all(lower > [40, 160]) and np.all(upper < [1880, 920]), (
+                    lower,
+                    upper,
+                )
                 group["label_radius_px"] = float(np.max(np.linalg.norm(uv - center, axis=1) + radius_px))
                 group.pop("marker_area_pt2")
         if groups[0]["count"] > 1:
@@ -242,7 +278,14 @@ def overlay(im, d, k, physical_time):
     draw = ImageDraw.Draw(im)
     font = ImageFont.truetype(str(FONT), 33)
     count_font = ImageFont.truetype(str(FONT), 24)
-    draw.text((67, 224), f"t = {physical_time * 1000:.1f} ms", font=font, fill=MINT, anchor="la")
+    precision = d.get("clock_precision", 1)
+    draw.text(
+        (67, 224),
+        f"t = {physical_time * 1000:.{precision}f} ms",
+        font=font,
+        fill=MINT,
+        anchor="la",
+    )
     # The label refers to the most recent saved state, never an interpolated group count.
     group = d["clusters"][k][0]
     if group["count"] > 1:
@@ -253,7 +296,11 @@ def overlay(im, d, k, physical_time):
             else np.sqrt(group["marker_area_pt2"]) * 100 / 72 / 2
         )
         tx, ty = x + radius + 24, y - radius - 24
-        draw.line([(x + radius * 0.6, y - radius * 0.6), (tx - 6, ty + 12)], fill=BLUE, width=2)
+        draw.line(
+            [(x + radius * 0.6, y - radius * 0.6), (tx - 6, ty + 12)],
+            fill=BLUE,
+            width=2,
+        )
         label = (
             f"Largest: {group['count']} bubbles"
             if "label_radius_px" in group
@@ -315,7 +362,10 @@ def main():
         with playback.writer(video) as encoder:
             for frame, (left, right, alpha, t) in enumerate(sample_timeline):
                 if left != previous:
-                    left_image, right_image = right_image, render(right) if right > left else right_image
+                    left_image, right_image = (
+                        right_image,
+                        render(right) if right > left else right_image,
+                    )
                     previous = left
                 im = Image.blend(left_image, right_image, alpha) if alpha else left_image.copy()
                 im = overlay(im, d, left, t)
