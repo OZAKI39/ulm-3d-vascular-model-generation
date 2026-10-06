@@ -19,7 +19,13 @@ def numerical(s):
         and s["accepted_steps"] > 0
         and s["accepted_kkt_max"] <= 1e-9
         and s["accepted_linear_residual_max"] <= 1e-11
-        and s["accepted_nonlinear_kkt_max"] <= 1e-9
+        and (
+            s["accepted_nonlinear_kkt_max"] <= 1e-9
+            if s["accepted_nonlinear_kkt_max"] is not None
+            else s.get("accepted_method_counts", {}).get("S1", 0) == 0
+        )
+        and s.get("explicit_recovery_bursts", 0) <= 1024
+        and (s.get("explicit_recovery_max_dt_s") is None or s["explicit_recovery_max_dt_s"] <= 1e-7)
         and s["accepted_pair_swept_gap_min_m"] >= -1e-11
         and s["accepted_wall_swept_gap_bound_min_m"] >= -1e-11
         and s["projection_max_m"] == 0
@@ -30,6 +36,9 @@ def numerical(s):
 def main():
     verify()
     holdout = json.loads((BASE / "final/HOLDOUT_V3.json").read_text())
+    assert holdout["status"] == "PASS"
+    assert json.loads((BASE / "final/V3_PREVIOUS_FAILURE_REGRESSIONS.json").read_text())["status"] == "PASS"
+    assert json.loads((BASE / "final/GEOMETRY_INPUT_AUDIT.json").read_text())["status"] == "PASS"
     # A failed *motion* holdout remains a promotion blocker. It does not erase
     # the separately passed original-QP gate or prohibit scoped original-3s
     # validation. No solver parameters are changed after opening these states.
