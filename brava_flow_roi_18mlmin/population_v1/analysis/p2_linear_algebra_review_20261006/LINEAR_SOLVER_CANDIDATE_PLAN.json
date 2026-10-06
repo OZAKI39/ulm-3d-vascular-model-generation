@@ -1,0 +1,39 @@
+{
+  "status": "FROZEN_BEFORE_TRIALS",
+  "candidate_count": 2,
+  "MPI_ranks": 8,
+  "candidates": [
+    {
+      "name": "asm0",
+      "choice": "ASM overlap0 + existing PETSc CPU LU",
+      "basis": "Removes measured overlap duplication, retains robust local direct saddle-point solve; actual P2 factor safety still required",
+      "expected_memory": "Less than overlap2, quantitative graph-based estimate after C",
+      "options": "-skip_petscrc -ksp_type fgmres -ksp_pc_side right -ksp_norm_type unpreconditioned -ksp_rtol 1e-10 -ksp_atol 1e-24 -ksp_max_it 2000 -ksp_diagonal_scale -ksp_diagonal_scale_fix -ksp_monitor_true_residual -ksp_converged_reason -ksp_view -options_view -options_left -use_gpu_aware_mpi 0 -mat_type aijcusparse -vec_type cuda -vec_view ::ascii_info -mat_view ::ascii_info -ksp_view_mat ::ascii_info -ksp_view_rhs ::ascii_info -ksp_view_solution ::ascii_info -ksp_gmres_restart 100 -pc_type asm -pc_asm_overlap 0 -sub_ksp_type preonly -sub_pc_type lu -sub_pc_factor_mat_solver_type petsc -pc_asm_sub_mat_type seqaij -sv_pc_adaptive_rebuild true -log_view :petsc_profile.txt -log_view_gpu_time -log_view :petsc_profile.txt -log_view_gpu_time -ksp_gmres_cgs_refinement_type refine_always"
+    },
+    {
+      "name": "schur",
+      "choice": "Existing native PCFIELDSPLIT velocity/pressure IS + full Schur + selfp + GAMG on both blocks",
+      "basis": "Build has GAMG, no HYPRE/external LU; selfp is PETSc A11-A10 diag(A00)^-1 A01; no invented pressure operator; avoids full LU",
+      "expected_memory": "Sparse matrix products and multigrid hierarchy, measured rather than assumed",
+      "options": "-skip_petscrc -ksp_type fgmres -ksp_pc_side right -ksp_norm_type unpreconditioned -ksp_rtol 1e-10 -ksp_atol 1e-24 -ksp_max_it 2000 -ksp_diagonal_scale -ksp_diagonal_scale_fix -ksp_monitor_true_residual -ksp_converged_reason -ksp_view -options_view -options_left -use_gpu_aware_mpi 0 -mat_type aijcusparse -vec_type cuda -vec_view ::ascii_info -mat_view ::ascii_info -ksp_view_mat ::ascii_info -ksp_view_rhs ::ascii_info -ksp_view_solution ::ascii_info -ksp_gmres_restart 100 -sv_pc_adaptive_rebuild true -log_view :petsc_profile.txt -log_view_gpu_time -log_view :petsc_profile.txt -log_view_gpu_time -ksp_gmres_cgs_refinement_type refine_always -pc_type fieldsplit -pc_fieldsplit_type schur -pc_fieldsplit_schur_fact_type full -pc_fieldsplit_schur_precondition selfp -fieldsplit_0_ksp_type preonly -fieldsplit_0_pc_type gamg -fieldsplit_1_ksp_type preonly -fieldsplit_1_pc_type gamg"
+    }
+  ],
+  "baseline_options": "-skip_petscrc -ksp_type fgmres -ksp_pc_side right -ksp_norm_type unpreconditioned -ksp_rtol 1e-10 -ksp_atol 1e-24 -ksp_max_it 2000 -ksp_diagonal_scale -ksp_diagonal_scale_fix -ksp_monitor_true_residual -ksp_converged_reason -ksp_view -options_view -options_left -use_gpu_aware_mpi 0 -mat_type aijcusparse -vec_type cuda -vec_view ::ascii_info -mat_view ::ascii_info -ksp_view_mat ::ascii_info -ksp_view_rhs ::ascii_info -ksp_view_solution ::ascii_info -ksp_gmres_restart 100 -pc_type asm -pc_asm_overlap 2 -sub_ksp_type preonly -sub_pc_type lu -sub_pc_factor_mat_solver_type petsc -pc_asm_sub_mat_type seqaij -sv_pc_adaptive_rebuild true -log_view :petsc_profile.txt -log_view_gpu_time -log_view :petsc_profile.txt -log_view_gpu_time -ksp_gmres_cgs_refinement_type refine_always",
+  "scientific_configuration": "UNMODIFIED",
+  "P1_protocol": {
+    "preferred_initial_state": "original GPU step10 BIN, with independent global-node state correspondence to step10 VTU before solving; if correspondence fails, no use of this checkpoint",
+    "controlled_segment": "step10 -> step11, dt .01, same initial Y/A, residual/Jacobian and all tolerances",
+    "relative_state_tolerance": 1e-08,
+    "velocity_absolute_tolerance_m_s": 1e-09,
+    "pressure_absolute_tolerance_Pa": 1e-06,
+    "initial_R_J": "first native PETSc matrix/RHS byte-identical hashes across all runs",
+    "convergence": "All KSP positive reason; nonlinear native tolerance1e-10; <=24 nonlinear iterations; candidate wall<=1800s; KSPmax2000 unchanged; total Krylov <=10x baseline",
+    "GPU": "all Mat/Vec CUDA, CPU PC where implemented"
+  },
+  "P2_safety": {
+    "required_headroom_fraction": 0.2,
+    "accounting": "limit minus conservative nonreclaimable upper; raw memory.current and reclaimable cache reported separately",
+    "no_unbounded_symbolic_LU": true
+  },
+  "compact_prototype_peak_benefit_threshold": 0.15
+}

@@ -1,0 +1,201 @@
+{
+  "retained_source_sha_manifest": "aa73a18f672300a15c8af15624b9752d4e6dc55d902fb0b1cf472e28fe14c971",
+  "branches": {
+    "Dir": {
+      "path": [
+        "Parameters::read_xml",
+        "BoundaryConditionParameters::set_values",
+        "read_files_ns::read_eq",
+        "read_files_ns::read_bc",
+        "baf_ini_ns::bc_ini",
+        "set_bc::set_bc_dir",
+        "set_bc::set_bc_dir_l"
+      ],
+      "condition": "bType_Dir set, weakDir=false; no mixed-order automatic override",
+      "pressure_inverse": false
+    },
+    "Traction": {
+      "path": [
+        "Parameters::read_xml",
+        "read_files_ns::read_bc",
+        "read_trac_bcff",
+        "baf_ini_ns::bc_ini (general early return)",
+        "set_bc::set_bc_neu",
+        "set_bc::set_bc_trac_l",
+        "nn::gnnb (full TRI6)"
+      ],
+      "condition": "bType_trac + bType_gen + bType_flat; explicit early weakDir=false return",
+      "pressure_inverse": false
+    },
+    "Neu": {
+      "path": [
+        "Parameters::read_xml",
+        "read_files_ns::read_bc",
+        "baf_ini_ns::bc_ini",
+        "set_bc::set_bc_neu",
+        "set_bc::set_bc_neu_l",
+        "eq_assem::b_assem_neu_bc",
+        "fluid::b_fluid"
+      ],
+      "condition": "bType_Neu + bType_bfs; pressure scalar prescribed, not a pressure-field inverse",
+      "pressure_inverse": false
+    },
+    "Weak": {
+      "path": [
+        "read_files_ns::read_bc",
+        "set_bc::set_bc_dir_w",
+        "set_bc::set_bc_dir_wl",
+        "nn::get_nnx(TET10)",
+        "nn::get_nnx(TET4)"
+      ],
+      "condition": "Dir AND fluid/FSI AND explicit Weakly_applied=true; absent from target XML",
+      "pressure_inverse": true
+    }
+  },
+  "excerpts": [
+    {
+      "path": "Code/Source/solver/Parameters.cpp",
+      "sha256": "bc37aad1b96c009ed452955c725c30bb68d6b37e3a0db3fc3760a2d7e4c51f62",
+      "lines": [
+        530,
+        595
+      ],
+      "text": "530:     std::cout << key << \": \" << value << std::endl;\n531:   }\n532: }\n533: \n534: BoundaryConditionParameters::BoundaryConditionParameters() {\n535:   // A parameter that must be defined.\n536:   bool required = true;\n537: \n538:   // Set name from  Add_BC name=\"\" XML element.\n539:   name = Parameter<std::string>(\"name\", \"\", required);\n540: \n541:   set_parameter(\"Apply_along_normal_direction\", false, !required,\n542:                 apply_along_normal_direction);\n543:   set_parameter(\"Bct_file_path\", \"\", !required, bct_file_path);\n544: \n545:   set_parameter(\"Damping\", 1.0, !required, damping);\n546:   set_parameter(\"Distal_pressure\", {}, !required, distal_pressure);\n547: \n548:   set_parameter(\"Effective_direction\", {}, !required, effective_direction);\n549:   // set_parameter(\"Effective_direction\", {0,0,0}, !required,\n550:   // effective_direction);\n551:   set_parameter(\"Follower_pressure_load\", false, !required,\n552:                 follower_pressure_load);\n553:   set_parameter(\"Fourier_coefficients_file_path\", \"\", !required,\n554:                 fourier_coefficients_file_path);\n555: \n556:   set_parameter(\"Impose_flux\", false, !required, impose_flux);\n557:   set_parameter(\"Impose_on_state_variable_integral\", false, !required,\n558:                 impose_on_state_variable_integral);\n559:   set_parameter(\"Initial_displacements_file_path\", \"\", !required,\n560:                 initial_displacements_file_path);\n561: \n562:   set_parameter(\"Penalty_parameter\", 0.0, !required, penalty_parameter);\n563:   set_parameter(\"Penalty_parameter_normal\", 0.0, !required,\n564:                 penalty_parameter_normal);\n565:   set_parameter(\"Penalty_parameter_tangential\", 0.0, !required,\n566:                 penalty_parameter_tangential);\n567:   set_parameter(\"Prestress_file_path\", \"\", !required, prestress_file_path);\n568:   set_parameter(\"Profile\", \"Flat\", !required, profile);\n569: \n570:   set_parameter(\"Ramp_function\", false, !required, ramp_function);\n571: \n572:   set_parameter(\"CST_shell_bc_type\", \"\", !required, cst_shell_bc_type);\n573:   set_parameter(\"Spatial_profile_file_path\", \"\", !required,\n574:                 spatial_profile_file_path);\n575:   set_parameter(\"Spatial_values_file_path\", \"\", !required,\n576:                 spatial_values_file_path);\n577:   set_parameter(\"Stiffness\", 1.0, !required, stiffness);\n578: \n579:   set_parameter(\"Temporal_and_spatial_values_file_path\", \"\", !required,\n580:                 temporal_and_spatial_values_file_path);\n581:   set_parameter(\"Temporal_values_file_path\", \"\", !required,\n582:                 temporal_values_file_path);\n583:   set_parameter(\"Time_dependence\", \"Steady\", !required, time_dependence);\n584:   set_parameter(\"Traction_values_file_path\", \"\", !required,\n585:                 traction_values_file_path);\n586:   set_parameter(\"Traction_multiplier\", 1.0, !required, traction_multiplier);\n587:   set_parameter(\"Type\", \"\", required, type);\n588: \n589:   set_parameter(\"Undeforming_neu_face\", false, !required, undeforming_neu_face);\n590:   set_parameter(\"Value\", 0.0, !required, value);\n591: \n592:   set_parameter(\"Weakly_applied\", false, !required, weakly_applied);\n593:   set_parameter(\"Zero_out_perimeter\", false, !required, zero_out_perimeter);\n594: \n595:   set_parameter(\"Resistance\", 1.e5, !required, resistance);"
+    },
+    {
+      "path": "Code/Source/solver/read_files.cpp",
+      "sha256": "57ab378dc3f7e8442b28b99a908b91a546db2f63a769244a1a9e2510d7e624b4",
+      "lines": [
+        129,
+        181
+      ],
+      "text": "129: void read_bc(Simulation* simulation, EquationParameters* eq_params, eqType& lEq, BoundaryConditionParameters* bc_params, bcType& lBc)\n130: {\n131:   using namespace consts;\n132:   auto bc_type = bc_params->type.value();\n133:   BoundaryConditionType coupled_bc_type = BoundaryConditionType::bType_Neu;\n134:   std::string oned_input_file;\n135: \n136:   if (std::set<std::string>{\"Dirichlet\", \"Dir\"}.count(bc_type)) {\n137:     lBc.bType = utils::ibset(lBc.bType, enum_int(BoundaryConditionType::bType_Dir));\n138:     coupled_bc_type = BoundaryConditionType::bType_Dir; \n139: \n140:   } else if (std::set<std::string>{\"Neumann\", \"Neu\"}.count(bc_type)) {\n141:     lBc.bType = utils::ibset(lBc.bType, enum_int(BoundaryConditionType::bType_Neu)); \n142:     coupled_bc_type = BoundaryConditionType::bType_Neu;\n143:     if ((lEq.phys == EquationType::phys_fluid) || (lEq.phys == EquationType::phys_FSI)) {\n144:       lBc.bType = utils::ibset(lBc.bType, enum_int(BoundaryConditionType::bType_bfs));\n145:     }\n146: \n147:   } else if (std::set<std::string>{\"Traction\", \"Trac\"}.count(bc_type)) {\n148:     lBc.bType = utils::ibset(lBc.bType, enum_int(BoundaryConditionType::bType_trac)); \n149: \n150:     if (bc_params->traction_values_file_path.defined()) { \n151:       int iM = lBc.iM;\n152:       int iFa = lBc.iFa;\n153:       lBc.gm.nTP = 2;\n154:       auto& com_mod = simulation->com_mod;\n155:       int nsd = com_mod.nsd;\n156:       lBc.gm.dof = nsd;\n157: \n158:       lBc.gm.t.resize(2); \n159:       lBc.gm.d.resize(nsd, com_mod.msh[iM].fa[iFa].nNo, 2);\n160: \n161:       lBc.gm.t[0] = 0.0;\n162:       lBc.gm.t[1] = 1.E+10;\n163:       lBc.gm.period = lBc.gm.t[1];\n164:       auto file_name = bc_params->traction_values_file_path.value();\n165: \n166:       read_trac_bcff(com_mod, lBc.gm, com_mod.msh[iM].fa[iFa], file_name);\n167: \n168:       lBc.bType = utils::ibset(lBc.bType, enum_int(BoundaryConditionType::bType_gen));\n169:       lBc.bType = utils::ibset(lBc.bType, enum_int(BoundaryConditionType::bType_flat));\n170: \n171:       if (bc_params->traction_multiplier.defined()) { \n172:         double rtmp = bc_params->traction_multiplier.value(); \n173:         lBc.gm.d *= rtmp;\n174:       }\n175: \n176:       lBc.eDrn.resize(nsd); \n177:       lBc.h.resize(nsd);\n178:       lBc.weakDir = false;\n179:       return; \n180:     }\n181: "
+    },
+    {
+      "path": "Code/Source/solver/read_files.cpp",
+      "sha256": "57ab378dc3f7e8442b28b99a908b91a546db2f63a769244a1a9e2510d7e624b4",
+      "lines": [
+        220,
+        239
+      ],
+      "text": "220: \n221:   auto ctmp = bc_params->time_dependence.value();\n222: \n223:   if (ctmp == \"Steady\") { \n224:     lBc.bType = utils::ibset(lBc.bType, enum_int(BoundaryConditionType::bType_std)); \n225:     if (utils::btest(lBc.bType, enum_int(BoundaryConditionType::bType_trac))) { \n226:        lBc.h = bc_params->value.value();\n227:     } else { \n228:       lBc.g = bc_params->value.value();\n229:     }\n230: \n231:   } else if (ctmp == \"Unsteady\") {\n232:     lBc.bType =\n233:         utils::ibset(lBc.bType, enum_int(BoundaryConditionType::bType_ustd));\n234: \n235:     const unsigned int n_dimensions =\n236:         utils::btest(lBc.bType, enum_int(BoundaryConditionType::bType_trac))\n237:             ? com_mod.nsd\n238:             : 1;\n239: "
+    },
+    {
+      "path": "Code/Source/solver/read_files.cpp",
+      "sha256": "57ab378dc3f7e8442b28b99a908b91a546db2f63a769244a1a9e2510d7e624b4",
+      "lines": [
+        499,
+        519
+      ],
+      "text": "499:   } else if (ctmp == \"General\") {\n500:     lBc.bType = utils::ibset(lBc.bType, enum_int(BoundaryConditionType::bType_gen)); \n501:     int iM = lBc.iM;\n502:     int iFa = lBc.iFa;\n503: \n504:     // [NOTE] This is not implemented.\n505:     if (bc_params->bct_file_path.defined()) {\n506:       auto file_name = bc_params->bct_file_path.value();\n507:       read_bct(com_mod, lBc.gm, com_mod.msh[iM].fa[iFa], file_name);\n508: \n509:     } else {\n510:       if (bc_params->temporal_and_spatial_values_file_path.defined()) {\n511:         auto file_name = bc_params->temporal_and_spatial_values_file_path.value(); \n512:         read_temp_spat_values(com_mod, com_mod.msh[iM], com_mod.msh[iM].fa[iFa], file_name, lBc); \n513:       } else {\n514:         throw std::runtime_error(\"[read_bc] No bct.vtp input file provided for General BC.\");\n515:       }\n516:     }\n517: \n518:   } else {\n519:     throw std::runtime_error(\"[read_bc] Unknown time dependence type '\" + ctmp + \"'.\");"
+    },
+    {
+      "path": "Code/Source/solver/read_files.cpp",
+      "sha256": "57ab378dc3f7e8442b28b99a908b91a546db2f63a769244a1a9e2510d7e624b4",
+      "lines": [
+        685,
+        776
+      ],
+      "text": "685:   bool ltmp = bc_params->impose_flux.value();\n686:   if (ltmp) {\n687:     lBc.bType = utils::ibset(lBc.bType, enum_int(BoundaryConditionType::bType_flx)); \n688:   }\n689: \n690:   // To zero-out perimeter or not. Default is .true. for Dir/CMM and Coupled-DIR.\n691:   // For Coupled-DIR BCs, bType_Dir is cleared, but we still need bType_zp so that\n692:   // bc_ini zeros shared perimeter nodes before normalising gx.  Without bType_zp,\n693:   // gx = 1/full_area and the wall BC later zeros perimeter nodes, reducing the\n694:   // effective flux to Q*(interior_area/full_area) instead of Q.\n695:   //\n696:   ltmp = false; \n697:   ltmp = utils::btest(lBc.bType, enum_int(BoundaryConditionType::bType_Dir)) || is_coupled_dir;\n698: \n699:   if (bc_params->zero_out_perimeter.defined()) {\n700:     ltmp = bc_params->zero_out_perimeter.value();\n701:   }\n702: \n703:   if (is_coupled_dir) {\n704:     ltmp = true;\n705:   }\n706:   \n707:   lBc.bType = utils::ibclr(lBc.bType, enum_int(BoundaryConditionType::bType_zp));\n708:   if (ltmp || utils::btest(lBc.bType, enum_int(BoundaryConditionType::bType_CMM))) {\n709:     lBc.bType = utils::ibset(lBc.bType, enum_int(BoundaryConditionType::bType_zp));\n710:   }\n711: \n712:   // Impose BC on the state variable or its integral\n713:   //\n714:   if (std::set<EquationType>{Equation_lElas,Equation_mesh,Equation_struct,Equation_shell}.count(lEq.phys) != 0) {\n715:     ltmp = true;\n716:   } else {\n717:     ltmp = false;\n718:   }\n719: \n720:   if (bc_params->impose_on_state_variable_integral.defined()) {\n721:     ltmp = bc_params->impose_on_state_variable_integral.value(); \n722:   }\n723: \n724:   lBc.bType = utils::ibclr(lBc.bType, enum_int(BoundaryConditionType::bType_impD));\n725:   if (ltmp) { \n726:     lBc.bType = utils::ibset(lBc.bType, enum_int(BoundaryConditionType::bType_impD));\n727:   }\n728: \n729:   // Reading the spatial profile: flat/para/ud.\n730:   //\n731:   ctmp = bc_params->profile.value();\n732: \n733:   if (ctmp == \"Flat\") { \n734:     lBc.bType = utils::ibset(lBc.bType, enum_int(BoundaryConditionType::bType_flat));\n735: \n736:   } else if (ctmp == \"Parabolic\") { \n737:     lBc.bType = utils::ibset(lBc.bType, enum_int(BoundaryConditionType::bType_para));\n738: \n739:   } else if (ctmp == \"User_defined\") { \n740:     lBc.bType = utils::ibset(lBc.bType, enum_int(BoundaryConditionType::bType_ud));\n741:     auto file_name =  bc_params->spatial_profile_file_path.value();\n742: \n743:     int iM = lBc.iM;\n744:     int iFa = lBc.iFa;\n745: \n746:     read_spatial_values(com_mod, com_mod.msh[iM], com_mod.msh[iM].fa[iFa], file_name, lBc);\n747:   } else {\n748:     throw std::runtime_error(\"[read_bc] Unknown spatial profile type '\" + ctmp + \"'.\");\n749:   }\n750: \n751:   // Weak Dirichlet BC for fluid/FSI equations\n752:   //\n753:   lBc.weakDir = false;\n754:   if (utils::btest(lBc.bType, enum_int(BoundaryConditionType::bType_Dir))) {\n755:     if ((lEq.phys == Equation_fluid) || (lEq.phys == Equation_FSI)) {\n756:       lBc.weakDir = bc_params->weakly_applied.value();\n757:     }\n758:   }\n759: \n760:   // Read penalty values for weakly applied Dir BC\n761:   //\n762:   if (lBc.weakDir) {\n763:     lBc.bType = utils::ibclr(lBc.bType, enum_int(BoundaryConditionType::bType_zp));\n764:     if (bc_params->penalty_parameter.defined()) {\n765:       lBc.tauB = bc_params->penalty_parameter.value();\n766:     }\n767:     if (bc_params->penalty_parameter_tangential.defined()) {\n768:       lBc.tauB[0] = bc_params->penalty_parameter_tangential.value();\n769:     }\n770:     if (bc_params->penalty_parameter_normal.defined()) {\n771:       lBc.tauB[1] = bc_params->penalty_parameter_normal.value();\n772:     }\n773:   }\n774: \n775:   // Read BCs for shells with triangular elements. Not necessary for\n776:   // NURBS elements"
+    },
+    {
+      "path": "Code/Source/solver/read_files.cpp",
+      "sha256": "57ab378dc3f7e8442b28b99a908b91a546db2f63a769244a1a9e2510d7e624b4",
+      "lines": [
+        1750,
+        1806
+      ],
+      "text": "1750:   // Check if explicit geometric coupling is allowed for the equation\n1751:   if (lEq.expl_geom_cpl) {\n1752:     if (lEq.phys != EquationType::phys_FSI) {\n1753:       throw std::runtime_error(\"Explicit geometric coupling is only allowed for FSI equation.\");\n1754:     }\n1755:   }\n1756: \n1757:   // Read parameters related to VTU output.\n1758:   read_outputs(simulation, eq_params, lEq, nDOP, outPuts);\n1759: \n1760:   // Set the number of function spaces\n1761:   for (int iM = 0; iM < com_mod.nMsh; iM++) {\n1762:     auto& msh = com_mod.msh[iM];\n1763:     if (!THflag) {\n1764:       msh.nFs = 1;\n1765:     } else { \n1766:       if (com_mod.ibFlag) {\n1767:         throw std::runtime_error(\"Taylor-Hood basis is not implemented for immersed boundaries.\");\n1768:       }\n1769:       if (msh.lShl || msh.lFib || (msh.eType == ElementType::NRB)) {\n1770:         msh.nFs = 1;\n1771:         throw std::runtime_error(\"Taylor-Hood basis is not allowed for NURBS mesh or shells and fibers.\");\n1772:       } else { \n1773:         if ( (msh.eType != ElementType::TRI6)  && (msh.eType != ElementType::TET10)) {\n1774:           throw std::runtime_error(\"Taylor-Hood basis is currently applicable for TRI6 (2D) or TET10 (3D) elements only.\");\n1775:         }\n1776:         msh.nFs = 2;\n1777:       }\n1778:     }\n1779:   }\n1780: \n1781:   // Searching for BCs\n1782:   //\n1783:   int num_bcs = eq_params->boundary_conditions.size();\n1784:   lEq.nBc = num_bcs;\n1785: \n1786:   if (num_bcs != 0) { \n1787:     lEq.bc.resize(num_bcs);\n1788:   }\n1789: \n1790:   for (int iBc = 0; iBc < num_bcs; iBc++) {\n1791:     auto& bc_params = eq_params->boundary_conditions[iBc];\n1792:     auto bc_name = bc_params->name.value();\n1793:     int iM, iFa;\n1794: \n1795:     all_fun::find_face(com_mod.msh, bc_name, iM, iFa);\n1796: \n1797:     lEq.bc[iBc].iM = iM; \n1798:     lEq.bc[iBc].iFa = iFa;\n1799: \n1800:     read_bc(simulation, eq_params, lEq, bc_params, lEq.bc[iBc]);\n1801:   }\n1802: \n1803:   // Initialize cplBC for RCR-type BC\n1804:   //\n1805:   bool has_rcr_bc = false;\n1806:   for (auto& bc : lEq.bc) {"
+    },
+    {
+      "path": "Code/Source/solver/baf_ini.cpp",
+      "sha256": "e4b8946bb52fee5593429490622bc02abd1eac7a1120c6fd5164a3ab52d90680",
+      "lines": [
+        275,
+        321
+      ],
+      "text": "275: void bc_ini(const ComMod& com_mod, const CmMod& cm_mod, bcType& lBc, faceType& lFa, const SolutionStates& solutions)\n276: {\n277:   // Local alias for old displacement\n278:   const auto& Do = solutions.old.get_displacement();\n279: \n280:   using namespace consts;\n281:   using namespace utils;\n282: \n283:   auto& cm = com_mod.cm;\n284:   int nsd = com_mod.nsd;\n285:   int tnNo = com_mod.tnNo;\n286:  \n287:   #define n_debug_bc_ini\n288:   #ifdef debug_bc_ini\n289:   DebugMsg dmsg(__func__, com_mod.cm.idcm());\n290:   dmsg.banner();\n291:   #endif\n292: \n293:   if (btest(lBc.bType, enum_int(BoundaryConditionType::bType_gen))) {\n294:     if (btest(lBc.bType, enum_int(BoundaryConditionType::bType_Neu)) && lBc.gm.dof != 1) {\n295:       throw std::runtime_error(\"Only for (int F=1 is accepted for Neu general BCs\");\n296:     }\n297:     return;\n298:   }\n299: \n300:   if (btest(lBc.bType, enum_int(BoundaryConditionType::bType_Robin))) {\n301:     if (!com_mod.dFlag) {\n302:       throw std::runtime_error(\"Robin BC can be set for a displacement-based eqn only\");\n303:     }\n304:   }\n305: \n306:   int iM = lFa.iM;\n307:   int iFa = lBc.iFa;\n308: \n309:   // lBc.gx may have values set when for example when \n310:   // reading in a user-defined profile.\n311:   if (lBc.gx.size() == 0) {\n312:     lBc.gx.resize(lFa.nNo);\n313:   }\n314: \n315:   #ifdef debug_bc_ini\n316:   dmsg << \"iM: \" << iM;\n317:   dmsg << \"iFa: \" << iFa ;\n318:   dmsg << \"tnNo: \" << tnNo ;\n319: \n320:   dmsg << \"cm.np(): \" << cm.np();\n321:   dmsg << \"lBc.bType: \" << lBc.bType;"
+    },
+    {
+      "path": "Code/Source/solver/baf_ini.cpp",
+      "sha256": "e4b8946bb52fee5593429490622bc02abd1eac7a1120c6fd5164a3ab52d90680",
+      "lines": [
+        438,
+        467
+      ],
+      "text": "438:   // Now correcting the inlet BC for the inlet ring\n439:   //\n440:   if (btest(lBc.bType, enum_int(BoundaryConditionType::bType_zp))) { \n441:     for (int jFa = 0; jFa < com_mod.msh[iM].nFa; jFa++) {\n442:       if (jFa == iFa) {\n443:         continue; \n444:       }\n445:       for (int a = 0; a < com_mod.msh[iM].fa[jFa].nNo; a++) {\n446:         int Ac = com_mod.msh[iM].fa[jFa].gN(a);\n447:         s(Ac) = 0.0;\n448:       }\n449:     }\n450:   }\n451: \n452:   // Normalizing the profile for flux\n453:   //\n454:   double tmp = 1.0;\n455:   if (btest(lBc.bType, enum_int(BoundaryConditionType::bType_flx))) {\n456:     tmp = all_fun::integ(com_mod, cm_mod, lFa, s, solutions, false);\n457:     if (is_zero(tmp)) {\n458:       tmp = 1.0;\n459:       throw std::runtime_error(\"Face '\" + lFa.name + \"' used for a BC has no non-zero node.\");\n460:      }\n461:   }\n462: \n463:   for (int a = 0; a < lFa.nNo; a++) {\n464:     int Ac = lFa.gN(a);\n465:     lBc.gx(a) = s(Ac) / tmp;\n466:   }\n467: }"
+    },
+    {
+      "path": "Code/Source/solver/set_bc.cpp",
+      "sha256": "bc1efd7c1a9b3ebc642a6e50fd368567b3f822863068547d6bc8e3082ebbc28b",
+      "lines": [
+        984,
+        1042
+      ],
+      "text": "984:             }\n985:           }\n986:         }\n987:       } // END bType_CMM\n988: \n989:       // Allow Coupled BCs whose internal coupling type is DIR (svZeroD/svOneD DIR\n990:       // coupling): iBC_Dir is cleared for these in read_files but the velocity\n991:       // profile must still be applied via set_bc_dir_l.\n992:       bool isCoupledDir = utils::btest(bc.bType, iBC_Coupled) &&\n993:                           (bc.coupled_bc.get_bc_type() == BoundaryConditionType::bType_Dir);\n994:       if (!utils::btest(bc.bType, iBC_Dir) && !isCoupledDir) {\n995:         continue;\n996:       }\n997: \n998:       if (bc.weakDir) {\n999:         continue; \n1000:       }\n1001:       int s = eq.s;\n1002:       int e = eq.e;\n1003:       if (eq.dof == nsd+1) {\n1004:         e = e - 1;\n1005:       }\n1006:       #ifdef set_bc_dir\n1007:       dmsg << \">> s: \" << s;\n1008:       dmsg << \">> e: \" << e;\n1009:       #endif\n1010:       std::fill(eDir.begin(), eDir.end(), false);\n1011:       int lDof = 0;\n1012: \n1013:       for (int i = 0; i < nsd; i++) {\n1014:         if (bc.eDrn(i) != 0) {\n1015:           eDir[i] = true; \n1016:           lDof = lDof + 1;\n1017:         }\n1018:       }\n1019: \n1020:       if (lDof == 0) {\n1021:         lDof = e - s + 1;\n1022:       }\n1023:       int iFa = bc.iFa;\n1024:       int iM = bc.iM;\n1025:       int nNo = com_mod.msh[iM].fa[iFa].nNo;\n1026:       #ifdef set_bc_dir\n1027:       dmsg << \">> lDof: \" << lDof;\n1028:       dmsg << \">> iM: \" << iM;\n1029:       dmsg << \">> iFa: \" << iFa;\n1030:       dmsg << \">> name: \" << com_mod.msh[iM].fa[iFa].name ;\n1031:       dmsg << \">> nNo: \" << nNo;\n1032:       #endif\n1033: \n1034:       Array<double> tmpA(lDof,nNo); \n1035:       Array<double> tmpY(lDof,nNo);\n1036: \n1037:       // Modifies: tmpA, tmpY\n1038:       set_bc::set_bc_dir_l(com_mod, bc, com_mod.msh[iM].fa[iFa], tmpA, tmpY, lDof);\n1039: \n1040:       if (std::find(eDir.begin(), eDir.end(), true) != eDir.end()) {\n1041:         if (utils::btest(bc.bType, enum_int(BoundaryConditionType::bType_impD))) {\n1042: "
+    },
+    {
+      "path": "Code/Source/solver/set_bc.cpp",
+      "sha256": "bc1efd7c1a9b3ebc642a6e50fd368567b3f822863068547d6bc8e3082ebbc28b",
+      "lines": [
+        1070,
+        1100
+      ],
+      "text": "1070:       // No eDir[] is true. \n1071:       //\n1072:       } else {\n1073:         if (utils::btest(bc.bType, enum_int(BoundaryConditionType::bType_impD))) {\n1074:           for (int a = 0; a < com_mod.msh[iM].fa[iFa].nNo; a++) {\n1075:             int Ac = com_mod.msh[iM].fa[iFa].gN(a);\n1076:             for (int i = 0; i < tmpA.nrows(); i++) {\n1077:               Yn(i+s,Ac) = tmpA(i,a);\n1078:               Dn(i+s,Ac) = tmpY(i,a);\n1079:             }\n1080:           }\n1081:         } else {\n1082:           for (int a = 0; a < com_mod.msh[iM].fa[iFa].nNo; a++) {\n1083:             int Ac = com_mod.msh[iM].fa[iFa].gN(a);\n1084:             for (int i = 0; i < lDof; i++) {\n1085:               An(i+s,Ac) = tmpA(i,a);\n1086:               Yn(i+s,Ac) = tmpY(i,a);\n1087:             }\n1088:           }\n1089:         }\n1090:       } // if (std::find(eDir.begin(), eDir.end(), true) != eDir.end())\n1091: \n1092:       // if FSI and velocity-pressure based structural dynamics solver is used \n1093:       // of nonlinear structure (v-p).\n1094:       //\n1095:       if ((eq.phys == EquationType::phys_FSI && com_mod.sstEq) || (eq.phys == EquationType::phys_ustruct)) {\n1096:         double c1  = eq.gam * com_mod.dt;\n1097:         double c1i = 1.0 / c1;\n1098:         double c2  = (eq.gam - 1.0)*com_mod.dt;\n1099: \n1100:         if (std::find(eDir.begin(), eDir.end(), true) != eDir.end()) {"
+    },
+    {
+      "path": "Code/Source/solver/set_bc.cpp",
+      "sha256": "bc1efd7c1a9b3ebc642a6e50fd368567b3f822863068547d6bc8e3082ebbc28b",
+      "lines": [
+        1158,
+        1237
+      ],
+      "text": "1158: void set_bc_dir_l(ComMod& com_mod, const bcType& lBc, const faceType& lFa, Array<double>& lA, Array<double>& lY, int lDof)\n1159: {\n1160:   using namespace consts;\n1161: \n1162:   #define n_debug_set_bc_dir_l\n1163:   #ifdef debug_set_bc_dir_l\n1164:   DebugMsg dmsg(__func__, com_mod.cm.idcm());\n1165:   dmsg.banner();\n1166:   #endif\n1167: \n1168:   int nsd = com_mod.nsd;\n1169:   int nEq = com_mod.nEq;\n1170: \n1171:   double dirY, dirA;\n1172: \n1173:   if (utils::btest(lBc.bType, enum_int(BoundaryConditionType::bType_gen))) {\n1174:     #ifdef debug_set_bc_dir_l\n1175:     dmsg << \"bType_gen\";\n1176:     #endif\n1177:     if (lDof != lBc.gm.dof) {\n1178:       throw std::runtime_error(\"[set_bc_dirl] Inconsistent DOF\");\n1179:     }\n1180: \n1181:     all_fun::igbc(com_mod, lBc.gm, lY, lA);\n1182:     return;\n1183:   \n1184:   } else if (utils::btest(lBc.bType, enum_int(BoundaryConditionType::bType_ustd))) {\n1185:     #ifdef debug_set_bc_dir_l\n1186:     dmsg << \"bType_ustd\";\n1187:     #endif\n1188:     const auto [value, derivative] = lBc.gt.value_and_derivative(com_mod.time);\n1189:     dirY = value[0];\n1190:     dirA = derivative[0];\n1191: \n1192:   } else { \n1193:     dirA = 0.0;\n1194:     dirY = lBc.g;\n1195:   }\n1196: \n1197:   if (lDof == nsd) {\n1198:     for (int a = 0; a < lFa.nNo; a++) {\n1199: \n1200:       for (int i = 0; i < lA.nrows(); i++) {\n1201:         double nV = lFa.nV(i,a);\n1202:         lA(i,a) = dirA * lBc.gx(a) * nV;\n1203:         lY(i,a) = dirY * lBc.gx(a) * nV;\n1204:       }\n1205:     }\n1206: \n1207:   } else {\n1208:     for (int a = 0; a < lFa.nNo; a++) {\n1209:       for (int i = 0; i < lDof; i++) {\n1210:         lA(i,a) = dirA*lBc.gx(a);\n1211:         lY(i,a) = dirY*lBc.gx(a);\n1212:       }\n1213:     }\n1214:   }\n1215: }\n1216: \n1217: /// @brief Weak treatment of Dirichlet boundary conditions\n1218: //\n1219: void set_bc_dir_w(ComMod& com_mod, const SolutionStates& solutions)\n1220: {\n1221:   using namespace consts;\n1222: \n1223:   const int cEq = com_mod.cEq;\n1224:   const auto& eq = com_mod.eq[cEq];\n1225: \n1226:   for (int iBc = 0; iBc < eq.nBc; iBc++) {\n1227:     auto& bc = eq.bc[iBc];\n1228:     int iM = bc.iM;\n1229:     int iFa = bc.iFa;\n1230:     if (!bc.weakDir) {\n1231:       continue;\n1232:     }\n1233:     set_bc_dir_wl(com_mod, bc, com_mod.msh[iM], com_mod.msh[iM].fa[iFa], solutions);\n1234:   }\n1235: }\n1236: \n1237: /// @brief Reproduces Fortran 'SETBCDIRWL'."
+    },
+    {
+      "path": "Code/Source/solver/set_bc.cpp",
+      "sha256": "bc1efd7c1a9b3ebc642a6e50fd368567b3f822863068547d6bc8e3082ebbc28b",
+      "lines": [
+        1440,
+        1459
+      ],
+      "text": "1440:       }\n1441: \n1442:       // Compute Nw and Nwxi of the mesh at the face integration\n1443:       // point using Newton method. Then calculate Nwx.\n1444:       //\n1445:       auto xi = xi0;\n1446:       nn::get_nnx(nsd, fs[0].eType, fs[0].eNoN, xwl, fs[0].xib, fs[0].Nb, xp, xi, Nw, Nwxi);\n1447: \n1448:       if (g==0 || !fs[0].lShpF) {\n1449:         Array<double> Ks(nsd,nsd);\n1450:         nn::gnn(fs[0].eNoN, nsd, nsd, Nwxi, xwl, Nwx, Jac, Ks);\n1451:       }\n1452: \n1453:       // Compute Nq of the mesh at the face integration point using\n1454:       // Newton method.\n1455:       //\n1456:       xi = xi0;\n1457:       nn::get_nnx(nsd, fs[1].eType, fs[1].eNoN, xql, fs[1].xib, fs[1].Nb, xp, xi, Nq, Nqx);\n1458: \n1459:       if (nsd == 3) {"
+    },
+    {
+      "path": "Code/Source/solver/set_bc.cpp",
+      "sha256": "bc1efd7c1a9b3ebc642a6e50fd368567b3f822863068547d6bc8e3082ebbc28b",
+      "lines": [
+        1472,
+        1517
+      ],
+      "text": "1472: void set_bc_neu(ComMod& com_mod, const CmMod& cm_mod, const SolutionStates& solutions)\n1473: {\n1474:   const auto& Yn = solutions.current.get_velocity();\n1475:   const auto& Do = solutions.old.get_displacement();\n1476: \n1477:   using namespace consts;\n1478: \n1479:   #define n_debug_set_bc_neu\n1480:   #ifdef debug_set_bc_neu\n1481:   DebugMsg dmsg(__func__, com_mod.cm.idcm());\n1482:   dmsg.banner();\n1483:   #endif\n1484: \n1485:   int cEq = com_mod.cEq;\n1486:   auto& eq = com_mod.eq[cEq];\n1487:   #ifdef debug_set_bc_neu\n1488:   dmsg << \"cEq: \" << cEq;\n1489:   #endif\n1490: \n1491:   for (int iBc = 0; iBc < eq.nBc; iBc++) {\n1492:     auto& bc = eq.bc[iBc];\n1493:     int iFa = bc.iFa;\n1494:     int iM = bc.iM;\n1495:     #ifdef debug_set_bc_neu\n1496:     dmsg << \"----- iBc \" << iBc+1;\n1497:     #endif\n1498: \n1499:     if (utils::btest(bc.bType, iBC_Ris0D))  {continue;}\n1500: \n1501:     // Coupled BCs with DIR type must be handled by set_bc_dir (velocity profile),\n1502:     // not here.  Only NEU Coupled BCs get a Neumann pressure traction.\n1503:     bool isCoupledDir = utils::btest(bc.bType, iBC_Coupled) &&\n1504:                         (bc.coupled_bc.get_bc_type() == BoundaryConditionType::bType_Dir);\n1505:     if ((utils::btest(bc.bType, iBC_Neu) || utils::btest(bc.bType, iBC_Coupled)) && !isCoupledDir) {\n1506:       #ifdef debug_set_bc_neu\n1507:       dmsg << \"iM: \" << iM+1;\n1508:       dmsg << \"iFa: \" << iFa+1;\n1509:       dmsg << \"name: \" << com_mod.msh[iM].fa[iFa].name;\n1510:       #endif\n1511:       set_bc_neu_l(com_mod, cm_mod, bc, com_mod.msh[iM].fa[iFa], solutions);\n1512: \n1513:     } else if (utils::btest(bc.bType,iBC_trac)) { \n1514:       set_bc_trac_l(com_mod, cm_mod, bc, com_mod.msh[iM].fa[iFa], solutions);\n1515:     } \n1516:   }\n1517: }"
+    },
+    {
+      "path": "Code/Source/solver/set_bc.cpp",
+      "sha256": "bc1efd7c1a9b3ebc642a6e50fd368567b3f822863068547d6bc8e3082ebbc28b",
+      "lines": [
+        1650,
+        1690
+      ],
+      "text": "1650:   } else {\n1651:     eq_assem::b_assem_neu_bc(com_mod, lFa, hg, solutions);\n1652:   }\n1653: \n1654: \n1655:   // Now update surface integrals involved in coupled/resistance BC\n1656:   // contribution to stiffness matrix to reflect deformed geometry.\n1657:   // We must do this if we have a resistance boundary condition and\n1658:   // a follower pressure load (struct/ustruct) or a moving mesh (FSI)\n1659:   if (utils::btest(lBc.bType, iBC_res)) {\n1660:     if (lBc.flwP || com_mod.mvMsh) {\n1661:       eq_assem::fsi_ls_upd(com_mod, lBc, lFa, solutions);\n1662:     }\n1663:   }\n1664:   // Now treat Robin BC (stiffness and damping) here\n1665:   if (lBc.robin_bc.is_initialized()) {\n1666:     set_bc_rbnl(com_mod, lFa, lBc.robin_bc, solutions);\n1667:   }\n1668: }\n1669: \n1670: /// @brief Set Robin BC contribution to residual and tangent\n1671: //\n1672: void set_bc_rbnl(ComMod& com_mod, const faceType& lFa, const RobinBoundaryCondition& robin_bc,\n1673:   const SolutionStates& solutions)\n1674: {\n1675:   // Local aliases for solution arrays\n1676:   const auto& Do = solutions.old.get_displacement();\n1677:   const auto& Yg = solutions.intermediate.get_velocity();\n1678:   const auto& Dg = solutions.intermediate.get_displacement();\n1679: \n1680:   using namespace consts;\n1681: \n1682:   #define n_debug_set_bc_rbnl_l\n1683:   #ifdef debug_set_bc_rbnl_l\n1684:   DebugMsg dmsg(__func__, com_mod.cm.idcm());\n1685:   dmsg.banner();\n1686:   #endif\n1687: \n1688:   const int cEq = com_mod.cEq;\n1689:   const auto& eq = com_mod.eq[cEq];\n1690:   const double dt = com_mod.dt;"
+    },
+    {
+      "path": "Code/Source/solver/set_bc.cpp",
+      "sha256": "bc1efd7c1a9b3ebc642a6e50fd368567b3f822863068547d6bc8e3082ebbc28b",
+      "lines": [
+        1926,
+        2032
+      ],
+      "text": "1926: void set_bc_trac_l(ComMod& com_mod, const CmMod& cm_mod, const bcType& lBc, const faceType& lFa, const SolutionStates& solutions)\n1927: {\n1928:   // Local alias for old displacement\n1929:   const auto& Do = solutions.old.get_displacement();\n1930: \n1931:   using namespace consts;\n1932: \n1933:   #define n_debug_set_bc_trac_l \n1934:   #ifdef debug_set_bc_trac_l \n1935:   DebugMsg dmsg(__func__, com_mod.cm.idcm());\n1936:   dmsg.banner();\n1937:   #endif\n1938: \n1939:   const int nsd = com_mod.nsd;\n1940:   const int dof = com_mod.dof;\n1941:   const int tnNo = com_mod.tnNo;\n1942:   const int cEq = com_mod.cEq;\n1943:   const auto& eq = com_mod.eq[cEq];\n1944:   auto& cDmn = com_mod.cDmn;\n1945: \n1946:   int iM = lFa.iM;\n1947:   int nNo = lFa.nNo;\n1948:   int eNoN = lFa.eNoN;\n1949:   #ifdef debug_set_bc_trac_l \n1950:   dmsg << \"eNoN: \" << eNoN;\n1951:   dmsg << \"nNo: \" << nNo;\n1952:   #endif\n1953: \n1954:   // Geting the contribution of traction BC\n1955:   //\n1956:   Array<double> hg(nsd,tnNo);\n1957: \n1958:   if (utils::btest(lBc.bType,iBC_gen)) {\n1959:     Array<double> tmpA(nsd,nNo), hl(nsd,nNo);\n1960:     all_fun::igbc(com_mod, lBc.gm, tmpA, hl);\n1961:     for (int a = 0; a < nNo; a++) {\n1962:       int Ac = lFa.gN(a);\n1963:       hg.set_col(Ac, tmpA.col(a));\n1964:     }\n1965: \n1966:   } else if (utils::btest(lBc.bType,iBC_std)) {\n1967:     for (int a = 0; a < nNo; a++) {\n1968:       int Ac = lFa.gN(a);\n1969:       hg.set_col(Ac, lBc.h);\n1970:     }\n1971: \n1972:   } else if (utils::btest(lBc.bType,iBC_ustd)) {\n1973:     if (lBc.gt.get_n_components() != nsd) {\n1974:       throw std::runtime_error(\n1975:           \"[set_bc_trac_l]  Traction dof not initialized properly\");\n1976:     }\n1977:      const Vector<double> h = lBc.gt.value(com_mod.time);\n1978:      for (int a = 0; a < nNo; a++) {\n1979:        int Ac = lFa.gN(a);\n1980:        hg.set_col(Ac, h);\n1981:       }\n1982: \n1983:   } else {\n1984:     throw std::runtime_error(\"[set_bc_trac_l] Undefined time dependence for traction BC on face '\" +  lFa.name + \"'.\");\n1985:   }\n1986: \n1987:   Vector<double> N(eNoN); \n1988:   Vector<int> ptr(eNoN); \n1989:   Array<double> hl(nsd,eNoN), lR(dof,eNoN);\n1990:   Array3<double> lK(dof*dof,eNoN,eNoN);\n1991: \n1992:   // Constructing LHS/RHS contribution and assembiling them\n1993:   //\n1994:   for (int e = 0; e < lFa.nEl; e++) {\n1995:     cDmn = all_fun::domain(com_mod, com_mod.msh[iM], cEq, lFa.gE(e));\n1996:     auto cPhys = eq.dmn[cDmn].phys;\n1997: \n1998:     if (lFa.eType == ElementType::NRB) {\n1999:       //CALL NRBNNXB(msh(iM), lFa, e)\n2000:     }\n2001: \n2002:     for (int a = 0; a < eNoN; a++) {\n2003:       int Ac = lFa.IEN(a,e);\n2004:       ptr(a) = Ac;\n2005:       hl.set_col(a, hg.col(Ac));\n2006:     }\n2007: \n2008:     lK = 0.0;\n2009:     lR = 0.0;\n2010: \n2011:     for (int g = 0; g < lFa.nG; g++) {\n2012:       auto Nx = lFa.Nx.slice(g);\n2013:       const Vector<double> nV = nn::gnnb(com_mod, lFa, e, g, Nx, solutions);\n2014:       double Jac = utils::norm(nV);\n2015:       double w = lFa.w(g)*Jac;\n2016:       N = lFa.N.col(g);\n2017: \n2018:       Vector<double> h(nsd);\n2019:       for (int a = 0; a < eNoN; a++) {\n2020:         h = h + N(a)*hl.col(a);\n2021:       }\n2022: \n2023:       for (int a = 0; a < eNoN; a++) {\n2024:         for (int i = 0; i < nsd; i++) {\n2025:           lR(i,a) = lR(i,a) - w*N(a)*h(i);\n2026:         }\n2027:       }\n2028:     }\n2029: \n2030:     eq.linear_algebra->assemble(com_mod, eNoN, ptr, lK, lR);\n2031:   }\n2032: }"
+    },
+    {
+      "path": "Code/Source/solver/eq_assem.cpp",
+      "sha256": "b07ac95bede7dd7ca10e35778c3f72a3bfdd691166e1a72c000d26fc2270b30d",
+      "lines": [
+        32,
+        169
+      ],
+      "text": "32: void b_assem_neu_bc(ComMod& com_mod, const faceType& lFa, const Vector<double>& hg, const SolutionStates& solutions)\n33: {\n34:   // Local aliases for solution arrays\n35:   const auto& Do = solutions.old.get_displacement();\n36:   const auto& Yg = solutions.intermediate.get_velocity();\n37: \n38:   #define n_debug_b_assem_neu_bc\n39:   #ifdef debug_b_assem_neu_bc\n40:   DebugMsg dmsg(__func__, com_mod.cm.idcm());\n41:   dmsg.banner();\n42:   #endif\n43: \n44:   using namespace consts;\n45: \n46:   const int cEq = com_mod.cEq;\n47:   const auto& eq = com_mod.eq[cEq];\n48:   const int nsd = com_mod.nsd;\n49:   const int dof = com_mod.dof;\n50:   const int tDof = com_mod.tDof;\n51: \n52:   const int iM = lFa.iM;\n53:   const int eNoN = lFa.eNoN;\n54:   const auto& msh = com_mod.msh[iM];\n55:   auto& cDmn = com_mod.cDmn;\n56: \n57:   for (int e = 0; e < lFa.nEl; e++) {\n58:     int Ec = lFa.gE(e);\n59:     cDmn = all_fun::domain(com_mod, msh, cEq, Ec);\n60:     auto cPhys = eq.dmn[cDmn].phys;\n61: \n62:     Vector<int> ptr(eNoN); \n63:     Vector<double> N(eNoN), hl(eNoN); \n64:     Array<double> yl(tDof,eNoN), lR(dof,eNoN); \n65:     Array3<double> lK(dof*dof,eNoN,eNoN);\n66: \n67:     for (int a = 0; a < eNoN; a++) {\n68:       int Ac = lFa.IEN(a,e);\n69:       ptr(a) = Ac;\n70:       hl(a) = hg(Ac);\n71:       for (int i = 0; i < tDof; i++) {\n72:         yl(i,a) = Yg(i,Ac);\n73:       }\n74:     }\n75: \n76:     // Updating the shape functions, if neccessary\n77:     if (lFa.eType == ElementType::NRB) {\n78:       //CALL NRBNNXB(msh(iM), lFa, e)\n79:     }\n80: \n81:     for (int g = 0; g < lFa.nG; g++) {\n82:       auto Nx = lFa.Nx.rslice(g);\n83:       Vector<double> nV = nn::gnnb(com_mod, lFa, e, g, Nx, solutions);\n84:       double Jac = utils::norm(nV);\n85:       nV = nV / Jac;\n86:       double w = lFa.w(g)*Jac;\n87:       N  = lFa.N.col(g);\n88: \n89:       double h = 0.0;\n90:       Vector<double> y(tDof);\n91: \n92:       for (int a = 0; a < eNoN; a++) {\n93:         h = h + N(a)*hl(a);\n94:         y = y + N(a)*yl.col(a);\n95:       }\n96: \n97:       switch ( cPhys) {\n98:         case EquationType::phys_fluid:\n99:           fluid::b_fluid(com_mod, eNoN, w, N, y, h, nV, lR, lK);\n100:         break;\n101: \n102:         case EquationType::phys_CMM:\n103:           fluid::b_fluid(com_mod, eNoN, w, N, y, h, nV, lR, lK);\n104:         break;\n105: \n106:         case EquationType::phys_heatS:\n107:           heats::b_heats(com_mod, eNoN, w, N, h, lR);\n108:         break;\n109: \n110:         case EquationType::phys_heatF:\n111:           heatf::b_heatf(com_mod, eNoN, w, N, y, h, nV, lR, lK);\n112:         break;\n113: \n114:         case EquationType::phys_darcy:\n115:           darcy::b_darcy(com_mod, eNoN, w, N, h, lR);\n116:         break;\n117: \n118:         case EquationType::phys_lElas:\n119:           l_elas::b_l_elas(com_mod, eNoN, w, N, h, nV, lR);\n120:         break;\n121: \n122:         case EquationType::phys_struct:\n123:           l_elas::b_l_elas(com_mod, eNoN, w, N, h, nV, lR);\n124:         break;\n125: \n126:         case EquationType::phys_ustruct:\n127:           l_elas::b_l_elas(com_mod, eNoN, w, N, h, nV, lR);\n128:         break;\n129: \n130:         case EquationType::phys_shell:\n131:           l_elas::b_l_elas(com_mod, eNoN, w, N, h, nV, lR);\n132:         break;\n133: \n134:         case EquationType::phys_mesh:\n135:           l_elas::b_l_elas(com_mod, eNoN, w, N, h, nV, lR);\n136:         break;\n137: \n138:         case EquationType::phys_stokes:\n139:           l_elas::b_l_elas(com_mod, eNoN, w, N, h, nV, lR);\n140:         break;\n141: \n142:         case EquationType::phys_CEP:\n143:           cep::b_cep(com_mod, eNoN, w, N, h, lR);\n144:         break;\n145: \n146:         default:\n147:           throw std::runtime_error(\"[b_assem_neu_bc] Undefined physics selection for assembly\");\n148:       }\n149:     }\n150: \n151:     eq.linear_algebra->assemble(com_mod, eNoN, ptr, lK, lR);\n152:   }\n153: }\n154: \n155: /// @brief  For struct/ustruct - construct follower pressure load contribution\n156: /// to the residual vector and stiffness matrix.\n157: /// We use Nanson's formula to take change in normal direction with\n158: /// deformation into account. Additional calculations based on mesh\n159: /// need to be performed.\n160: ///\n161: /// Reproduces 'SUBROUTINE BNEUFOLWP(lFa, hg, Dg)'\n162: /// @param com_mod \n163: /// @param lBc \n164: /// @param lFa \n165: /// @param hg Pressure magnitude\n166: /// @param Dg \n167: void b_neu_folw_p(ComMod& com_mod, const bcType& lBc, const faceType& lFa, const Vector<double>& hg, const SolutionStates& solutions)\n168: {\n169:   using namespace consts;"
+    }
+  ]
+}

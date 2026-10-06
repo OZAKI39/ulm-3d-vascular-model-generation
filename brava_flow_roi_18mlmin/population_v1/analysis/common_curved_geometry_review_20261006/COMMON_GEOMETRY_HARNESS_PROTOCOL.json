@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "frozen_before_patch_execution": true,
+  "purpose": "Native mixed element geometry semantics only; no CFD timesteps or linear solves",
+  "fixtures": {"central_wall": 143654, "inlet_rim": 35265},
+  "source_of_nodes": "Previous P2_CURVED_GEOMETRY_SAMPLES.npz, both affine and curved variants; no new meshing/projection",
+  "tolerances": {
+    "scaled_field_max": 1e-11,
+    "scaled_gradient_max": 1e-11,
+    "scaled_residual_max": 1e-11,
+    "scaled_matrix_max": 1e-11,
+    "geometry_relative": 1e-11,
+    "position_over_characteristic_length": 1e-12,
+    "deterministic_repeat": 0.0
+  },
+  "scales": {
+    "H": "maximum corner-to-corner distance of each retained cell",
+    "u": "H for u=x-x0 or (x-x0,-(y-y0),0); H^2 for axial quadratic; 1 for diagnostic general reference polynomial",
+    "G": "u_scale/H",
+    "p": "1 Pa for pressure=0.3 + (z-z0)/H; general physical-pressure diagnostic uses gradient (1,2,3)/H",
+    "gradp": "p_scale/H",
+    "continuity_residual": "H^2*u_scale; explicitly avoids dividing by near-zero divergence-free residual",
+    "momentum_residual": "max(norm_inf(reference), H^2*p_scale, mu*H*u_scale, rho*H^2*u_scale^2)",
+    "local_matrix": "norm_inf(reference), with pressure/velocity row blocks separately compared",
+    "J": "H", "invJ": "1/H", "detJ": "reference detJ", "metric": "norm_inf(reference metric)"
+  },
+  "fields": [
+    "A: u=x-x_corner3, p=0.3+(z-z0)/H; exact G=I, div=3",
+    "B: u=(x-x0,-(y-y0),0), same axial pressure; exact G=diag(1,-1,0), div=0",
+    "C: u=(0,0,(z-z0)^2), same axial pressure; representable on these curved cells because z geometry remains affine",
+    "P: u=0, general physical linear pressure at corners; momentum pressure residual isolation",
+    "R: deterministic general nodal velocity/acceleration/body force for P1 and affine P2 regression"
+  ],
+  "pressure_representation_contract": {
+    "reference_pressure_basis": "P1 lambda_i remains unchanged",
+    "common_transform": "grad_x p_h = J_geom^-T sum_i P_i grad_xi lambda_i",
+    "exact_physical_linear_test": "p=0.3+(z-z0)/H is exactly representable for both retained cells since wall projection moves x/y only; verify this before testing",
+    "general_physical_linear_negative_control": "p=c0+c.x generally pulls back to a quadratic on curved P2 geometry; P1 corner interpolation cannot reproduce it exactly. Record approximation error separately and never count it as a geometry-transform failure or hide it",
+    "quadratic_velocity_contract": "General physical quadratic exactness on affine cells is inherited, not rerun; curved cells test representable axial quadratic and independent reference-basis/chain-rule values"
+  },
+  "reference": "FP64 NumPy independent centered geometric Jacobian/inverse/metric and Hessian chain rule, fed into retained native fluid_3d_m/c using identical quadrature/coefficients; separate direct continuity and pressure-only weak-form integrals",
+  "P1_gate": "Same validation executable contains unmodified TET4/P1/P1 branch; original production object, trace-only rebuild, patched build, repeated outputs compared",
+  "baseline_gate": "Reproduce both previous curved Rp mismatches and pressure transform defect, while affine control is roundoff",
+  "boundary_gate": "Native TRI6 normal/traction fixtures plus mixed weak-Dirichlet pressure trace audit; if same mapping defect remains, MIXED_CURVED_BOUNDARY_ASSEMBLY_BLOCKED and no next CFD recommendation",
+  "prohibited_jobs": ["CFD", "linear solve", "time stepping", "trajectory", "population", "GPU particle kernel", "refinement"],
+  "tolerance_relaxation": false
+}

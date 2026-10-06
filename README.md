@@ -1,5 +1,7 @@
 # 血管几何、3D流场、微泡与RBC工作流
 
+2026-10-06：本分支 `sync/brava-p2-algebra-20261006` 同步当前 BraVa 源码、执行日志、必要数据与验证图。入口：[同步范围与排除清单](sync_metadata/brava_p2_20261006/SYNC_REPORT_ZH.md) · [最新 P2 资源报告](brava_flow_roi_18mlmin/population_v1/analysis/p2_linear_algebra_rerun_20261006/P2_LINEAR_ALGEBRA_AND_RESOURCE_REVIEW_ZH.md)。P1 回归通过；P2 setup 因资源保护停止，完整 P2 CFD 未运行。
+
 2026-10-04：BraVa当前源码、冻结Gmsh V2、GPU steady field及误差诊断同步至 `sync/roi-flow-mb1500-wss-stop-analysis-20260928`。默认入口为 [BraVa active scope](brava_flow_roi_18mlmin/ACTIVE_DEVELOPMENT_SCOPE.md)，结果为 [报告与三张最终PNG](brava_flow_roi_18mlmin/production_workflow/OPEN_RESULTS.html)。
 
 已完成 continuous population simulator、GPU particle backend、Gmsh V2 manufactured reference与GPU svMultiPhysics稳态场。科学状态仍为 **REFERENCE_PIPE_FIELD_FAIL_SCIENTIFIC + MIXED_FIELD_ERROR + P1_FIELD_TRAJECTORY_IMPACT_LARGE（DIAGNOSTIC_ONLY）**。V3、正式CFD-vs-oracle trajectory、dt convergence、新BraVa validation均NOT_RUN；不能写成全部轨迹已验证。

@@ -1,0 +1,353 @@
+src/ksp/pc/impls/fieldsplit/fieldsplit.c
+685:   if (!jac->pmat) {
+686:     Vec xtmp;
+687: 
+688:     PetscCall(MatCreateVecs(pc->pmat, &xtmp, NULL));
+689:     PetscCall(PetscMalloc1(nsplit, &jac->pmat));
+690:     PetscCall(PetscMalloc2(nsplit, &jac->x, nsplit, &jac->y));
+691:     for (i = 0; i < nsplit; i++) {
+692:       MatNullSpace sp;
+693: 
+694:       /* Check for matrix attached to IS */
+695:       PetscCall(PetscObjectQuery((PetscObject)ilink->is, "pmat", (PetscObject *)&jac->pmat[i]));
+696:       if (jac->pmat[i]) {
+697:         PetscCall(PetscObjectReference((PetscObject)jac->pmat[i]));
+698:         if (jac->type == PC_COMPOSITE_SCHUR) {
+699:           jac->schur_user = jac->pmat[i];
+700: 
+701:           PetscCall(PetscObjectReference((PetscObject)jac->schur_user));
+702:         }
+703:       } else {
+704:         const char *prefix;
+705:         PetscCall(MatCreateSubMatrix(pc->pmat, ilink->is, ilink->is_col, MAT_INITIAL_MATRIX, &jac->pmat[i]));
+706:         PetscCall(MatGetOptionsPrefix(jac->pmat[i], &prefix));
+707:         if (!prefix) {
+708:           PetscCall(KSPGetOptionsPrefix(ilink->ksp, &prefix));
+709:           PetscCall(MatSetOptionsPrefix(jac->pmat[i], prefix));
+710:         }
+711:         PetscCall(MatSetFromOptions(jac->pmat[i]));
+712:         PetscCall(MatViewFromOptions(jac->pmat[i], NULL, "-mat_view"));
+713:       }
+714:       /* create work vectors for each split */
+715:       PetscCall(MatCreateVecs(jac->pmat[i], &jac->x[i], &jac->y[i]));
+716:       ilink->x = jac->x[i];
+717:       ilink->y = jac->y[i];
+718:       ilink->z = NULL;
+719:       /* compute scatter contexts needed by multiplicative versions and non-default splits */
+720:       PetscCall(VecScatterCreate(xtmp, ilink->is, jac->x[i], NULL, &ilink->sctx));
+721:       PetscCall(PetscObjectQuery((PetscObject)ilink->is, "nearnullspace", (PetscObject *)&sp));
+722:       if (sp) PetscCall(MatSetNearNullSpace(jac->pmat[i], sp));
+723:       ilink = ilink->next;
+724:     }
+725:     PetscCall(VecDestroy(&xtmp));
+726:   } else {
+727:     MatReuse      scall;
+728:     MatNullSpace *nullsp = NULL;
+729: 
+730:     if (pc->flag == DIFFERENT_NONZERO_PATTERN) {
+731:       PetscCall(MatGetNullSpaces(nsplit, jac->pmat, &nullsp));
+732:       for (i = 0; i < nsplit; i++) PetscCall(MatDestroy(&jac->pmat[i]));
+733:       scall = MAT_INITIAL_MATRIX;
+734:     } else scall = MAT_REUSE_MATRIX;
+735: 
+736:     for (i = 0; i < nsplit; i++) {
+737:       Mat pmat;
+738: 
+739:       /* Check for matrix attached to IS */
+740:       PetscCall(PetscObjectQuery((PetscObject)ilink->is, "pmat", (PetscObject *)&pmat));
+741:       if (!pmat) PetscCall(MatCreateSubMatrix(pc->pmat, ilink->is, ilink->is_col, scall, &jac->pmat[i]));
+742:       ilink = ilink->next;
+743:     }
+744:     if (nullsp) PetscCall(MatRestoreNullSpaces(nsplit, jac->pmat, &nullsp));
+745:   }
+746:   if (jac->diag_use_amat) {
+747:     ilink = jac->head;
+748:     if (!jac->mat) {
+749:       PetscCall(PetscMalloc1(nsplit, &jac->mat));
+750:       for (i = 0; i < nsplit; i++) {
+751:         PetscCall(MatCreateSubMatrix(pc->mat, ilink->is, ilink->is_col, MAT_INITIAL_MATRIX, &jac->mat[i]));
+752:         ilink = ilink->next;
+753:       }
+754:     } else {
+755:       MatReuse      scall;
+756:       MatNullSpace *nullsp = NULL;
+757: 
+758:       if (pc->flag == DIFFERENT_NONZERO_PATTERN) {
+759:         PetscCall(MatGetNullSpaces(nsplit, jac->mat, &nullsp));
+760:         for (i = 0; i < nsplit; i++) PetscCall(MatDestroy(&jac->mat[i]));
+761:         scall = MAT_INITIAL_MATRIX;
+762:       } else scall = MAT_REUSE_MATRIX;
+763: 
+764:       for (i = 0; i < nsplit; i++) {
+765:         PetscCall(MatCreateSubMatrix(pc->mat, ilink->is, ilink->is_col, scall, &jac->mat[i]));
+766:         ilink = ilink->next;
+767:       }
+768:       if (nullsp) PetscCall(MatRestoreNullSpaces(nsplit, jac->mat, &nullsp));
+769:     }
+770:   } else {
+771:     jac->mat = jac->pmat;
+772:   }
+773: 
+774:   /* Check for null space attached to IS */
+775:   ilink = jac->head;
+776:   for (i = 0; i < nsplit; i++) {
+853:     PetscCall(PetscObjectTypeCompareAny(jac->offdiag_use_amat ? (PetscObject)pc->mat : (PetscObject)pc->pmat, &flg, MATSEQSBAIJ, MATMPISBAIJ, ""));
+854: 
+855:     if (jac->schur) {
+856:       KSP      kspA = jac->head->ksp, kspInner = NULL, kspUpper = jac->kspupper;
+857:       MatReuse scall;
+858: 
+859:       if (pc->flag == DIFFERENT_NONZERO_PATTERN) {
+860:         scall = MAT_INITIAL_MATRIX;
+861:         PetscCall(MatDestroy(&jac->B));
+862:         PetscCall(MatDestroy(&jac->C));
+863:       } else scall = MAT_REUSE_MATRIX;
+864: 
+865:       PetscCall(MatSchurComplementGetKSP(jac->schur, &kspInner));
+866:       ilink = jac->head;
+867:       PetscCall(MatCreateSubMatrix(jac->offdiag_use_amat ? pc->mat : pc->pmat, ilink->is, ilink->next->is, scall, &jac->B));
+868:       if (!flg) PetscCall(MatCreateSubMatrix(jac->offdiag_use_amat ? pc->mat : pc->pmat, ilink->next->is, ilink->is, scall, &jac->C));
+869:       else {
+870:         PetscCall(MatIsHermitianKnown(jac->offdiag_use_amat ? pc->mat : pc->pmat, &isset, &flg));
+871:         if (isset && flg) PetscCall(MatCreateHermitianTranspose(jac->B, &jac->C));
+872:         else PetscCall(MatCreateTranspose(jac->B, &jac->C));
+873:       }
+874:       ilink = ilink->next;
+875:       PetscCall(MatSchurComplementUpdateSubMatrices(jac->schur, jac->mat[0], jac->pmat[0], jac->B, jac->C, jac->mat[1]));
+876:       if (jac->schurpre == PC_FIELDSPLIT_SCHUR_PRE_SELFP) {
+877:         PetscCall(MatDestroy(&jac->schurp));
+878:         PetscCall(MatSchurComplementGetPmat(jac->schur, MAT_INITIAL_MATRIX, &jac->schurp));
+879:       } else if (jac->schurpre == PC_FIELDSPLIT_SCHUR_PRE_FULL && jac->kspupper != jac->head->ksp) {
+880:         PetscCall(MatDestroy(&jac->schur_user));
+881:         PetscCall(MatSchurComplementComputeExplicitOperator(jac->schur, &jac->schur_user));
+882:       }
+883:       if (kspA != kspInner) PetscCall(KSPSetOperators(kspA, jac->mat[0], jac->pmat[0]));
+884:       if (kspUpper != kspA) PetscCall(KSPSetOperators(kspUpper, jac->mat[0], jac->pmat[0]));
+885:       PetscCall(KSPSetOperators(jac->kspschur, jac->schur, FieldSplitSchurPre(jac)));
+886:     } else {
+887:       const char  *Dprefix;
+888:       char         schurprefix[256], schurmatprefix[256];
+889:       char         schurtestoption[256];
+890:       MatNullSpace sp;
+891:       KSP          kspt;
+892: 
+893:       /* extract the A01 and A10 matrices */
+894:       ilink = jac->head;
+895:       PetscCall(MatCreateSubMatrix(jac->offdiag_use_amat ? pc->mat : pc->pmat, ilink->is, ilink->next->is, MAT_INITIAL_MATRIX, &jac->B));
+896:       if (!flg) PetscCall(MatCreateSubMatrix(jac->offdiag_use_amat ? pc->mat : pc->pmat, ilink->next->is, ilink->is, MAT_INITIAL_MATRIX, &jac->C));
+897:       else {
+898:         PetscCall(MatIsHermitianKnown(jac->offdiag_use_amat ? pc->mat : pc->pmat, &isset, &flg));
+899:         if (isset && flg) PetscCall(MatCreateHermitianTranspose(jac->B, &jac->C));
+900:         else PetscCall(MatCreateTranspose(jac->B, &jac->C));
+901:       }
+902:       ilink = ilink->next;
+903:       /* Use mat[0] (diagonal block of Amat) preconditioned by pmat[0] to define Schur complement */
+904:       PetscCall(MatCreate(((PetscObject)jac->mat[0])->comm, &jac->schur));
+905:       PetscCall(MatSetType(jac->schur, MATSCHURCOMPLEMENT));
+906:       PetscCall(MatSchurComplementSetSubMatrices(jac->schur, jac->mat[0], jac->pmat[0], jac->B, jac->C, jac->mat[1]));
+907:       PetscCall(PetscSNPrintf(schurmatprefix, sizeof(schurmatprefix), "%sfieldsplit_%s_", ((PetscObject)pc)->prefix ? ((PetscObject)pc)->prefix : "", ilink->splitname));
+908:       PetscCall(MatSetOptionsPrefix(jac->schur, schurmatprefix));
+909:       PetscCall(MatSchurComplementGetKSP(jac->schur, &kspt));
+910:       PetscCall(KSPSetOptionsPrefix(kspt, schurmatprefix));
+911: 
+912:       /* Note: this is not true in general */
+913:       PetscCall(MatGetNullSpace(jac->mat[1], &sp));
+914:       if (sp) PetscCall(MatSetNullSpace(jac->schur, sp));
+915: 
+916:       PetscCall(PetscSNPrintf(schurtestoption, sizeof(schurtestoption), "-fieldsplit_%s_inner_", ilink->splitname));
+917:       PetscCall(PetscOptionsFindPairPrefix_Private(((PetscObject)pc)->options, ((PetscObject)pc)->prefix, schurtestoption, NULL, NULL, &flg));
+918:       if (flg) {
+src/ksp/ksp/utils/schurm/schurm.c
+782: PetscErrorCode MatCreateSchurComplementPmat(Mat A00, Mat A01, Mat A10, Mat A11, MatSchurComplementAinvType ainvtype, MatReuse preuse, Mat *Sp)
+783: {
+784:   PetscInt N00;
+785: 
+786:   PetscFunctionBegin;
+787:   /* Use an appropriate approximate inverse of A00 to form A11 - A10 inv(DIAGFORM(A00)) A01; a NULL A01, A10 or A11 indicates a zero matrix. */
+788:   /* TODO: Perhaps should create an appropriately-sized zero matrix of the same type as A00? */
+789:   PetscValidLogicalCollectiveEnum(A11, preuse, 6);
+790:   if (preuse == MAT_IGNORE_MATRIX) PetscFunctionReturn(PETSC_SUCCESS);
+791: 
+792:   /* A zero size A00 or empty A01 or A10 imply S = A11. */
+793:   PetscCall(MatGetSize(A00, &N00, NULL));
+794:   if (!A01 || !A10 || !N00) {
+795:     if (preuse == MAT_INITIAL_MATRIX) {
+796:       PetscCall(MatDuplicate(A11, MAT_COPY_VALUES, Sp));
+797:     } else { /* MAT_REUSE_MATRIX */
+798:       /* TODO: when can we pass SAME_NONZERO_PATTERN? */
+799:       PetscCall(MatCopy(A11, *Sp, DIFFERENT_NONZERO_PATTERN));
+800:     }
+801:   } else {
+802:     Mat       AdB, T;
+803:     Vec       diag;
+804:     PetscBool flg;
+805: 
+806:     if (ainvtype == MAT_SCHUR_COMPLEMENT_AINV_LUMP || ainvtype == MAT_SCHUR_COMPLEMENT_AINV_DIAG) {
+807:       PetscCall(PetscObjectTypeCompare((PetscObject)A01, MATTRANSPOSEVIRTUAL, &flg));
+808:       if (flg) {
+809:         PetscCall(MatTransposeGetMat(A01, &T));
+810:         PetscCall(MatTranspose(T, MAT_INITIAL_MATRIX, &AdB));
+811:       } else {
+812:         PetscCall(PetscObjectTypeCompare((PetscObject)A01, MATHERMITIANTRANSPOSEVIRTUAL, &flg));
+813:         if (flg) {
+814:           PetscCall(MatHermitianTransposeGetMat(A01, &T));
+815:           PetscCall(MatHermitianTranspose(T, MAT_INITIAL_MATRIX, &AdB));
+816:         }
+817:       }
+818:       if (!flg) PetscCall(MatDuplicate(A01, MAT_COPY_VALUES, &AdB));
+819:       else {
+820:         PetscScalar shift, scale;
+821: 
+822:         PetscCall(MatShellGetScalingShifts(A01, &shift, &scale, (Vec *)MAT_SHELL_NOT_ALLOWED, (Vec *)MAT_SHELL_NOT_ALLOWED, (Vec *)MAT_SHELL_NOT_ALLOWED, (Mat *)MAT_SHELL_NOT_ALLOWED, (IS *)MAT_SHELL_NOT_ALLOWED, (IS *)MAT_SHELL_NOT_ALLOWED));
+823:         PetscCall(MatShift(AdB, shift));
+824:         PetscCall(MatScale(AdB, scale));
+825:       }
+826:       PetscCall(MatCreateVecs(A00, &diag, NULL));
+827:       if (ainvtype == MAT_SCHUR_COMPLEMENT_AINV_LUMP) PetscCall(MatGetRowSum(A00, diag));
+828:       else PetscCall(MatGetDiagonal(A00, diag));
+829:       PetscCall(VecReciprocal(diag));
+830:       PetscCall(MatDiagonalScale(AdB, diag, NULL));
+831:       PetscCall(VecDestroy(&diag));
+832:     } else if (ainvtype == MAT_SCHUR_COMPLEMENT_AINV_BLOCK_DIAG) {
+833:       Mat      A00_inv;
+834:       MatType  type;
+835:       MPI_Comm comm;
+836: 
+837:       PetscCall(PetscObjectGetComm((PetscObject)A00, &comm));
+838:       PetscCall(MatGetType(A00, &type));
+839:       PetscCall(MatCreate(comm, &A00_inv));
+840:       PetscCall(MatSetType(A00_inv, type));
+841:       PetscCall(MatInvertBlockDiagonalMat(A00, A00_inv));
+842:       PetscCall(MatMatMult(A00_inv, A01, MAT_INITIAL_MATRIX, PETSC_DETERMINE, &AdB));
+843:       PetscCall(MatDestroy(&A00_inv));
+844:     } else SETERRQ(PETSC_COMM_SELF, PETSC_ERR_ARG_WRONG, "Unknown MatSchurComplementAinvType: %d", ainvtype);
+845:     /* Cannot really reuse Sp in MatMatMult() because of MatAYPX() -->
+846:          MatAXPY() --> MatHeaderReplace() --> MatDestroy_XXX_MatMatMult()  */
+847:     if (preuse == MAT_REUSE_MATRIX) PetscCall(MatDestroy(Sp));
+848:     PetscCall(MatMatMult(A10, AdB, MAT_INITIAL_MATRIX, PETSC_DETERMINE, Sp));
+849:     PetscCall(MatScale(*Sp, -1.0));
+850:     if (A11) { /* TODO: when can we pass SAME_NONZERO_PATTERN? */
+851:       PetscCall(MatAXPY(*Sp, 1.0, A11, DIFFERENT_NONZERO_PATTERN));
+852:     }
+853:     PetscCall(MatDestroy(&AdB));
+854:   }
+855:   PetscFunctionReturn(PETSC_SUCCESS);
+src/mat/impls/aij/mpi/mpimatmatmult.c
+799: PetscErrorCode MatMatMultSymbolic_MPIAIJ_MPIAIJ(Mat A, Mat P, PetscReal fill, Mat C)
+800: {
+801:   MPI_Comm             comm;
+802:   PetscMPIInt          size;
+803:   MatProductCtx_APMPI *ptap;
+804:   PetscFreeSpaceList   free_space = NULL, current_space = NULL;
+805:   Mat_MPIAIJ          *a  = (Mat_MPIAIJ *)A->data;
+806:   Mat_SeqAIJ          *ad = (Mat_SeqAIJ *)a->A->data, *ao = (Mat_SeqAIJ *)a->B->data, *p_loc, *p_oth;
+807:   PetscInt            *pi_loc, *pj_loc, *pi_oth, *pj_oth, *dnz, *onz;
+808:   PetscInt            *adi = ad->i, *adj = ad->j, *aoi = ao->i, *aoj = ao->j, rstart = A->rmap->rstart;
+809:   PetscInt             i, pnz, row, *api, *apj, *Jptr, apnz, nspacedouble = 0, j, nzi, *lnk, apnz_max = 1;
+810:   PetscInt             am = A->rmap->n, pn = P->cmap->n, pm = P->rmap->n, lsize = pn + 20;
+811:   PetscReal            afill;
+812:   MatType              mtype;
+813: 
+814:   PetscFunctionBegin;
+815:   MatCheckProduct(C, 4);
+816:   PetscCheck(!C->product->data, PETSC_COMM_SELF, PETSC_ERR_PLIB, "Extra product struct not empty");
+817:   PetscCall(PetscObjectGetComm((PetscObject)A, &comm));
+818:   PetscCallMPI(MPI_Comm_size(comm, &size));
+819: 
+820:   /* create struct MatProductCtx_APMPI and attached it to C later */
+821:   PetscCall(PetscNew(&ptap));
+822: 
+823:   /* get P_oth by taking rows of P (= non-zero cols of local A) from other processors */
+824:   PetscCall(MatGetBrowsOfAoCols_MPIAIJ(A, P, MAT_INITIAL_MATRIX, &ptap->startsj_s, &ptap->startsj_r, &ptap->bufa, &ptap->P_oth));
+825: 
+826:   /* get P_loc by taking all local rows of P */
+827:   PetscCall(MatMPIAIJGetLocalMat(P, MAT_INITIAL_MATRIX, &ptap->P_loc));
+828: 
+829:   p_loc  = (Mat_SeqAIJ *)ptap->P_loc->data;
+830:   pi_loc = p_loc->i;
+831:   pj_loc = p_loc->j;
+832:   if (size > 1) {
+833:     p_oth  = (Mat_SeqAIJ *)ptap->P_oth->data;
+834:     pi_oth = p_oth->i;
+835:     pj_oth = p_oth->j;
+836:   } else {
+837:     p_oth  = NULL;
+838:     pi_oth = NULL;
+839:     pj_oth = NULL;
+840:   }
+841: 
+842:   /* first, compute symbolic AP = A_loc*P = A_diag*P_loc + A_off*P_oth */
+843:   PetscCall(PetscMalloc1(am + 1, &api));
+844:   ptap->api = api;
+845:   api[0]    = 0;
+846: 
+847:   PetscCall(PetscLLCondensedCreate_Scalable(lsize, &lnk));
+848: 
+849:   /* Initial FreeSpace size is fill*(nnz(A)+nnz(P)) */
+850:   PetscCall(PetscFreeSpaceGet(PetscRealIntMultTruncate(fill, PetscIntSumTruncate(adi[am], PetscIntSumTruncate(aoi[am], pi_loc[pm]))), &free_space));
+851:   current_space = free_space;
+901:       PetscCall(PetscFreeSpaceGet(PetscIntSumTruncate(apnz, current_space->total_array_size), &current_space));
+902:       nspacedouble++;
+903:     }
+904: 
+905:     /* Copy data into free space, then initialize lnk */
+906:     PetscCall(PetscLLCondensedClean_Scalable(apnz, current_space->array, lnk));
+907:     PetscCall(MatPreallocateSet(i + rstart, apnz, current_space->array, dnz, onz));
+908: 
+909:     current_space->array += apnz;
+910:     current_space->local_used += apnz;
+911:     current_space->local_remaining -= apnz;
+912:   }
+913: 
+914:   /* Allocate space for apj, initialize apj, and */
+915:   /* destroy list of free space and other temporary array(s) */
+916:   PetscCall(PetscMalloc1(api[am], &ptap->apj));
+917:   apj = ptap->apj;
+918:   PetscCall(PetscFreeSpaceContiguous(&free_space, ptap->apj));
+919:   PetscCall(PetscLLCondensedDestroy_Scalable(lnk));
+920: 
+921:   /* create and assemble symbolic parallel matrix C */
+922:   PetscCall(MatSetSizes(C, am, pn, PETSC_DETERMINE, PETSC_DETERMINE));
+923:   PetscCall(MatSetBlockSizesFromMats(C, A, P));
+924:   PetscCall(MatGetType(A, &mtype));
+925:   PetscCall(MatSetType(C, mtype));
+926:   PetscCall(MatMPIAIJSetPreallocation(C, 0, dnz, 0, onz));
+927:   MatPreallocateEnd(dnz, onz);
+928: 
+929:   /* malloc apa for assembly C */
+930:   PetscCall(PetscCalloc1(apnz_max, &ptap->apa));
+931: 
+932:   PetscCall(MatSetValues_MPIAIJ_CopyFromCSRFormat_Symbolic(C, apj, api));
+933:   PetscCall(MatSetOption(C, MAT_NO_OFF_PROC_ENTRIES, PETSC_TRUE));
+934:   PetscCall(MatAssemblyBegin(C, MAT_FINAL_ASSEMBLY));
+935:   PetscCall(MatAssemblyEnd(C, MAT_FINAL_ASSEMBLY));
+936:   PetscCall(MatSetOption(C, MAT_NEW_NONZERO_LOCATION_ERR, PETSC_TRUE));
+937: 
+938:   C->ops->matmultnumeric = MatMatMultNumeric_MPIAIJ_MPIAIJ;
+939:   C->ops->productnumeric = MatProductNumeric_AB;
+940: 
+941:   /* attach the supporting struct to C for reuse */
+src/ksp/pc/impls/gamg/gamg.c
+130: #if defined(PETSC_HAVE_CUDA)
+131:   HEURISTIC:
+132: #endif
+133:     PetscCall(MatGetSize(Pold, NULL, &ncrs_eq_glob));
+134:     new_size = (PetscMPIInt)((float)ncrs_eq_glob / (float)pc_gamg->min_eq_proc + 0.5); /* hardwire min. number of eq/proc */
+135:     if (!new_size) new_size = 1;                                                       /* not likely, possible? */
+136:     else if (new_size >= nactive) new_size = nactive;                                  /* no change, rare */
+137:     PetscCall(PetscInfo(pc, "%s: Coarse grid reduction from %d to %d active processes\n", ((PetscObject)pc)->prefix, nactive, new_size));
+138:   }
+139:   if (new_size == nactive) {
+140:     /* output - no repartitioning or reduction - could bail here
+141:        we know that the grid structure can be reused in MatPtAP */
+142:     PetscCall(PetscLogEventBegin(petsc_gamg_setup_events[GAMG_PTAP], 0, 0, 0, 0));
+143:     PetscCall(PetscLogEventBegin(petsc_gamg_setup_matmat_events[pc_gamg->current_level][1], 0, 0, 0, 0));
+144:     PetscCall(MatPtAP(Amat_fine, Pold, MAT_INITIAL_MATRIX, 2.0, a_Amat_crs));
+145:     PetscCall(PetscLogEventEnd(petsc_gamg_setup_matmat_events[pc_gamg->current_level][1], 0, 0, 0, 0));
+146:     PetscCall(PetscLogEventEnd(petsc_gamg_setup_events[GAMG_PTAP], 0, 0, 0, 0));
+147:     if (new_size < size) {
+148:       /* odd case where multiple coarse grids are on one processor or no coarsening ... */
+149:       PetscCall(PetscInfo(pc, "%s: reduced grid using same number of processors (%d) as last grid (use larger coarse grid)\n", ((PetscObject)pc)->prefix, nactive));
+150:       if (pc_gamg->cpu_pin_coarse_grids) {
+151:         PetscCall(MatBindToCPU(*a_Amat_crs, PETSC_TRUE));
+152:         PetscCall(MatBindToCPU(*a_P_inout, PETSC_TRUE));

@@ -1,0 +1,92 @@
+--- native/petsc_impl.cpp
++++ validation/petsc_impl.cpp
+@@ -9,7 +9,8 @@
+ 
+ LHSCtx plhs;       /* PETSc lhs */
+ LSCtx *psol;       /* PETSc solver */
+-PetscLogStage stages[6];  /* performance tuning. */
++PetscLogStage stages[6];
++#include "algebra_observe.h"  /* performance tuning. */
+ 
+ /*
+     Nomenclature used in this file:
+@@ -277,6 +278,13 @@
+     KSPConvergedReason reason;
+     PetscLogDouble ts, te;
+ 
++    static int audit_calls=0;
++    ++audit_calls;
++    algebra_audit::snapshot("before_solve",psol[cEq].A,psol[cEq].b);
++    if(audit_calls==1){
++      if(!algebra_audit::mode("single")) algebra_audit::dump_system(psol[cEq].A,psol[cEq].b);
++      KSPMonitorSet(psol[cEq].ksp,algebra_audit::monitor,nullptr,nullptr);
++    }
+     PetscLogStagePush(stages[4]);
+     na = maxIter;
+     PetscMalloc1(na, &a);
+@@ -300,6 +308,13 @@
+       KSPSolve(psol[cEq].ksp, psol[cEq].b, psol[cEq].b);
+     }
+ 
++    algebra_audit::snapshot("after_solve",psol[cEq].A,psol[cEq].b);
++    if(algebra_audit::mode("single")) {
++      PetscInt its;KSPConvergedReason why;PetscReal rn;
++      KSPGetIterationNumber(psol[cEq].ksp,&its);KSPGetConvergedReason(psol[cEq].ksp,&why);KSPGetResidualNorm(psol[cEq].ksp,&rn);
++      if(algebra_audit::rank()==0){std::ofstream out("single_result.json");out<<std::setprecision(17)<<"{\"iterations\":"<<its<<",\"reason\":"<<why<<",\"residual\":"<<rn<<"}\n";}
++      algebra_audit::finish();
++    }
+     /* Rescale solution for RCS preconditioner */
+     if (psol[cEq].rcs){
+         VecPointwiseMult(psol[cEq].b, psol[cEq].b, psol[cEq].Dc);
+@@ -582,6 +597,7 @@
+ 
+     PetscFunctionBeginUser;
+ 
++    algebra_audit::snapshot("before_MatSetUp");
+     /* Create vector data structures */
+     PetscCall(VecCreateGhostBlock(MPI_COMM_WORLD, dof, plhs.mynNo*dof, PETSC_DECIDE, plhs.nNo-plhs.mynNo, plhs.ghostltg, &psol[cEq].b));
+     if (nEq > 1) PetscCall(VecSetOptionsPrefix(psol[cEq].b, psol[cEq].pre));
+@@ -639,6 +655,7 @@
+     PetscCall(MatSetOption(psol[cEq].A, MAT_NEW_NONZERO_LOCATION_ERR, PETSC_TRUE));
+     PetscCall(MatSetOption(psol[cEq].A, MAT_NEW_NONZERO_LOCATIONS, PETSC_FALSE));
+ 
++    algebra_audit::snapshot("after_MatSetUp",psol[cEq].A,psol[cEq].b);
+     /* Create vector structure for RCS preconditioner */
+     if (psol[cEq].rcs){
+         PetscCall(VecDuplicate(psol[cEq].b, &psol[cEq].Dr));
+@@ -1097,6 +1114,11 @@
+ 
+   petsc_create_linearsolver(ls_type, prec_type, ls.sD, ls.mItr, ls.relTol, ls.absTol, 
+       phys, equation.dof, eq_num, com_mod.nEq);
++  if(algebra_audit::mode("graph")) {
++    std::vector<double> w(4*com_mod.tnNo,1.0), v(4*com_mod.tnNo,0.0);
++    petsc_create_linearsystem(4,eq_num,com_mod.nEq,w.data(),v.data());
++    algebra_audit::overlaps(psol[eq_num].A); algebra_audit::finish();
++  }
+   PetscCallAbort(MPI_COMM_WORLD, PetscOptionsGetBool(nullptr, nullptr,
+       "-sv_pc_reuse_within_timestep", &reuse_within_timestep_, nullptr));
+   PetscCallAbort(MPI_COMM_WORLD, PetscOptionsGetInt(nullptr, nullptr,
+@@ -1136,6 +1158,7 @@
+ 
+   petsc_set_values(com_mod.dof, com_mod.cEq, com_mod.R.data(), com_mod.Val.data(), W_.data(), V_.data());
+ 
++  if(algebra_audit::mode("single")) algebra_audit::numeric(psol[com_mod.cEq].A,psol[com_mod.cEq].b,com_mod);
+   if (reuse_within_timestep_) {
+     const PetscBool reuse = last_pc_timestep_ == com_mod.cTS ? PETSC_TRUE : PETSC_FALSE;
+     PetscCallAbort(MPI_COMM_WORLD, KSPSetReusePreconditioner(psol[com_mod.cEq].ksp, reuse));
+--- native/main.cpp
++++ validation/main.cpp
+@@ -647,6 +647,13 @@
+     #endif
+     initialize(simulation, init_time);
+ 
++    if(getenv("BRAVA_ALGEBRA_MODE") && std::string(getenv("BRAVA_ALGEBRA_MODE"))=="initial") {
++      auto& cm=simulation->com_mod;auto& st=simulation->get_integrator().get_solutions();
++      auto& y=st.old.get_velocity();auto& a=st.old.get_acceleration();
++      std::ofstream out("initial_rank_"+std::to_string(cm.cm.idcm())+".csv");out<<std::setprecision(17);
++      for(int i=0;i<cm.tnNo;i++){out<<cm.ltg(i);for(int d=0;d<3;d++)out<<","<<cm.x(d,i);for(int d=0;d<4;d++)out<<","<<y(d,i);for(int d=0;d<4;d++)out<<","<<a(d,i);out<<"\n";}
++      out.close();MPI_Barrier(MPI_COMM_WORLD);MPI_Finalize();return 0;
++    }
+     // Create LinearAlgebra objects for each equation.
+     //
+     for (int iEq = 0; iEq < simulation->com_mod.nEq; iEq++) {

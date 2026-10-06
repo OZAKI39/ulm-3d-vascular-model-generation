@@ -1,0 +1,11 @@
+--- attempt1/algebra_observe.h
++++ corrected/algebra_observe.h
+@@ -52,7 +52,7 @@
+     snapshot(("CPU_split_"+std::to_string(j)).c_str(),sP);
+     PC subpc;KSPGetPC(splits[j],&subpc);PetscInt levels;PetscCall(PCMGGetLevels(subpc,&levels));
+     for(PetscInt lev=0;lev<levels;lev++){
+-      KSP smoother;PetscCall(PCMGGetSmoother(subpc,lev,&smoother));Mat m;KSPGetOperators(smoother,&m,nullptr);MatGetType(m,&tp);
++      KSP smoother;PetscCall(PCMGGetSmoother(subpc,lev,&smoother));Mat m;KSPGetOperators(smoother,nullptr,&m);MatGetType(m,&tp);
+       PetscCheck(std::string(tp)=="mpiaij"||std::string(tp)=="seqaij",MPI_COMM_WORLD,PETSC_ERR_PLIB,"AMG level is not CPU AIJ");
+       snapshot(("CPU_AMG_"+std::to_string(j)+"_"+std::to_string(lev)).c_str(),m);
+     }

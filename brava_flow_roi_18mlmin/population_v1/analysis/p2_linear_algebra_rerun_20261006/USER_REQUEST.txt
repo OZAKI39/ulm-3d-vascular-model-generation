@@ -1,0 +1,776 @@
+# Codex 新一轮开发分析提示词
+## 主题：P2/P1 线性代数内存解剖与低内存 PETSc 路线验证 —— 不改变科学离散，条件满足后最多运行 1 次 manufactured pipe GPU CFD
+
+你现在继续开发当前 BraVa 3D 微泡持续灌注/轨迹项目。
+
+上一轮已经确认：
+
+- target manufactured pipe 与历史 BraVa 的真实 BC 均不进入 weak Dirichlet；
+- mixed P2/P1 common-curved volume assembly 已通过 native gate；
+- strong Dirichlet、prescribed Cauchy traction、BraVa natural-pressure Neumann 路径已通过；
+- 完整 frozen V2 TET4→TET10 curved elevation 已通过全单元 Jacobian/边界/topology QA；
+- P2 representation、P2 CPU sampler、Poiseuille exact-node representation 均已验证；
+- P1/P1 production path 保持不变；
+- **actual P2/P1 CFD 仍未运行**；
+- 唯一当前 blocker 是：原固定线性求解路线 `8 MPI + PETSc CUDA Mat/Vec + ASM overlap=2 + CPU LU` 的 host-memory preflight 不安全。
+
+当前报告给出的规划量：
+
+```text
+P1 independent unknowns         = 144,844
+P2 independent unknowns         = 814,201
+P2 native storage slots         = 1,037,320
+P1 structural scalar NNZ        = 7,719,184
+P2 structural scalar NNZ        = 111,793,312
+P2 / P1 structural-NNZ ratio    ≈ 14.48253
+cgroup total limit              ≈ 42.06 GiB
+current plannable headroom      ≈ 31.42 GiB
+```
+
+历史原路线估计：
+- RSS×structural NNZ ≈ 152.4 GiB
+- RSS×independent DOF ≈ 59.2 GiB
+- inherited LU fill + observed ASM overlap，仅 value/index arrays ≈ 49.8 GiB
+- deliberately removing overlap 的敏感性对照 ≈ 26.55 GiB
+
+这些是估计，不是实测 P2 峰值，也不是数学下界。
+
+本轮唯一主目标：
+
+> **在完全保持 P2 velocity / P1 pressure 离散、BC、stabilization、时间步、非线性容差和物理模型不变的前提下，找出原线性代数路线的真实内存瓶颈，并判断能否用现有成熟 PETSc 功能把 P2 manufactured pipe 安全压进当前 cgroup。**
+
+本轮允许改变的只包括：
+- algebraic numbering / storage（若证明确有冗余且可局部修复）；
+- PETSc preconditioner / KSP 实现；
+- MPI/ASM 配置，但必须受控验证解等价性。
+
+本轮禁止把线性求解器调整写成“新的 CFD 物理模型”。
+
+最终只能回答：
+
+`P2_PIPE_LINEAR_ALGEBRA_FEASIBLE = YES / NO / NOT_EVALUABLE`
+
+并且只有 YES 时，才允许最多启动 **1 次** P2/P1 manufactured pipe GPU CFD。
+
+---
+
+# 0. 服务器和安全规则
+
+服务器连接方式你已经知道。不要把 SSH 地址、端口或凭据写入代码、报告或 Git。
+
+任何服务器操作前：
+
+```bash
+cat /etc/vast-agents-guide.md
+```
+
+实际读取：
+- project root / branch / HEAD / git status
+- CPU quota
+- cgroup memory limit/current/nonreclaimable
+- GPU model/driver/runtime/free VRAM
+- current other GPU processes
+- PETSc version/build options/external packages
+- current production svMultiPhysics binary/source identities
+
+禁止：
+- 修改 cgroup
+- 杀其它项目任务
+- 修改系统 CUDA/PETSc
+- 覆盖 production binary
+- 覆盖历史 P1/P2 validation artifacts
+- 自动 push
+
+所有新 build/run 在独立 validation 目录。
+所有 setup/solve/CFD 任务必须 supervised，并记录 execution receipt。
+
+---
+
+# 1. 首先读取当前权威证据
+
+至少读取：
+
+1. `README.md`
+2. `brava_flow_roi_18mlmin/ACTIVE_DEVELOPMENT_SCOPE.md`
+3. `brava_flow_roi_18mlmin/AGENTS.md`
+4. `brava_flow_roi_18mlmin/CURRENT_RESULTS_ZH.md`
+5. 最新：
+   - `P2_TARGET_BC_AND_PIPE_CFD_REVIEW_ZH.md`
+   - `P2_RESOURCE_PREFLIGHT.json`
+   - `P2_PIPE_READINESS_GATE.json`
+   - `TARGET_BC_RUNTIME_DISPATCH.json`
+   - `P2_CURVED_MESH_QA.json`
+6. 前一轮 common geometry：
+   - `COMMON_CURVED_GEOMETRY_MAPPING_REVIEW_ZH.md`
+   - patch identity / harness results
+7. 原 production P1 GPU execution identity：
+   - PETSc options
+   - MPI layout
+   - RA reuse policy
+   - execution logs / peak RSS
+8. current svMultiPhysics/PETSc source relevant to:
+   - DOF numbering
+   - Mat preallocation
+   - 4×4 block structure
+   - mixed P2/P1 pressure-edge slots
+   - ASM subdomains
+   - overlap construction
+   - LU package
+   - KSP/PC option parser
+
+不要重新做：
+- BC dispatch
+- P2 geometry QA
+- P2 representation
+- stabilization analysis
+- RT reference
+- particle analysis
+
+这些只作为 frozen regression。
+
+---
+
+# 2. 必须继承的科学边界
+
+本轮不允许改变：
+
+- velocity space：P2/TET10
+- pressure space：P1/TET4
+- common curved geometry patch
+- rho / mu / Umean
+- exact inlet
+- full analytical Cauchy outlet
+- wall no-slip
+- CFD dt
+- generalized-alpha
+- VMS/PSPG coefficients
+- nonlinear tolerance
+- fixed probes
+- curved mesh topology
+
+因此任何“更省内存”的方案若需要：
+- 降阶
+- 删除 P2 DOF
+- 改 pressure space
+- 改 BC
+- 改 mesh
+- 改 stabilization
+
+都不是本轮允许的解决方案。
+
+---
+
+# 3. Phase A —— 精确解剖 mixed P2/P1 algebraic storage
+
+必须回答为什么：
+
+```text
+independent unknowns = 814,201
+native storage slots = 1,037,320
+差值 = 223,119
+```
+
+而 223,119 与 unique P2 edge count 相同。
+
+逐层审计：
+
+```text
+mesh DOF
+→ field DOF
+→ local equation slots
+→ global equation numbering
+→ PETSc row/column numbering
+→ block preallocation
+→ constrained/unused pressure-edge slots
+```
+
+必须区分：
+
+1. 真正独立 unknown
+2. storage-only slot
+3. constrained slot
+4. structurally allocated but numerically zero entry
+5. actual nonzero matrix entry
+
+输出至少：
+
+`P2_DOF_STORAGE_AUDIT.json`
+`P2_DOF_STORAGE_AUDIT_ZH.md`
+
+必须给出：
+- velocity corner DOFs
+- velocity edge DOFs
+- pressure corner DOFs
+- edge pressure slots
+- total equation rows
+- active rows
+- constrained rows
+- PETSc block size
+- scalar vs block NNZ
+
+### Phantom-pressure structural cost
+
+量化：
+
+> 如果只保留数学上的 `3*N_P2_velocity_nodes + N_P1_pressure_nodes`，理论 graph 比当前 `4*N_P2_nodes` 少多少 rows / structural scalar NNZ / block entries？
+
+不要立刻改代码。
+先输出一个**compact mixed graph reference**。
+
+输出：
+
+`COMPACT_MIXED_GRAPH_REFERENCE.npz`
+`COMPACT_MIXED_GRAPH_STATS.json`
+
+### Stop A
+如果 223,119 差值不是 pressure-edge slots，或无法建立可信 mapping：
+
+`MIXED_STORAGE_ROOT_CAUSE_NOT_ESTABLISHED`
+
+不要实现 compact numbering。
+继续只做 preconditioner memory audit。
+
+---
+
+# 4. Phase B —— 真实 structural graph 和 memory accounting
+
+不要再只使用 P1 RSS 比例外推。
+
+在**完整 P2 curved mesh**上，仅构造 algebraic graph / preallocation，不做 CFD time stepping。
+
+必须测量/记录：
+- global scalar rows
+- local rows per rank
+- owned/ghost rows
+- scalar NNZ
+- block NNZ
+- diagonal/off-diagonal NNZ
+- actual PETSc Mat allocated bytes（如 API 可得）
+- vector bytes
+- index-set bytes
+- ghost/scatter bytes
+- ASM overlap row counts
+- ASM submatrix NNZ per rank
+- overlap duplication factor
+- memory before/after MatSetUp
+- memory before/after overlap construction
+
+优先使用现成 PETSc introspection：
+- `MatGetInfo`
+- `MatView` / `-mat_view`（只保存summary，不输出GB文本）
+- `KSPView`
+- `PCView`
+- `PetscMemoryGetCurrentUsage`
+- `PetscMemoryGetMaximumUsage`
+- `-memory_view`
+- `-malloc_view` / equivalent if build supports
+- existing svMultiPhysics logging
+
+不要为此写新的 sparse matrix library。
+
+输出：
+
+`P2_PETSC_GRAPH_MEASUREMENTS.json`
+
+图：
+
+`01_P2_MEMORY_BREAKDOWN.png`
+
+至少分：
+- matrix
+- vectors
+- overlap duplication
+- preconditioner symbolic structures
+- numeric factors（若尚未分配则标 NOT_RUN）
+
+### Safety
+在任何可能触发大规模 numeric LU 之前，先检查当前 cgroup headroom。
+若预测下一操作可能超过安全余量，停止于 symbolic/setup 阶段。
+
+---
+
+# 5. Phase C —— ASM/LU 的真实瓶颈测量
+
+当前路线：
+
+`ASM overlap=2 + subdomain CPU LU`
+
+本轮需要把“49.8 GiB 估算”推进为更直接的证据，但禁止 OOM 试跑。
+
+## C1. overlap 构造
+
+实际测量：
+- overlap=0/1/2 的 subdomain row counts
+- duplicated row fraction
+- local NNZ
+
+这只是 graph/symbolic sensitivity，不是科学 sweep。
+
+## C2. symbolic LU
+
+如果 LU backend 支持只做 symbolic factorization / factor-info query：
+- 允许做到 symbolic stage
+- 记录 estimated fill / factor NNZ / bytes
+- 在 numeric factor allocation前做资源gate
+
+如果 backend不能安全分离 symbolic/numeric：
+不要强行进入可能OOM的 numeric LU。
+保留 `NOT_EVALUABLE_NUMERIC_LU_MEMORY`。
+
+输出：
+
+`ASM_LU_MEMORY_AUDIT.json`
+
+图：
+
+`02_ASM_OVERLAP_AND_FILL.png`
+
+---
+
+# 6. Phase D —— 审计 PETSc 中现成的低内存候选，不自研求解器
+
+先读取当前 PETSc build 实际支持的 PC/KSP/package。
+
+只允许从**已有成熟 PETSc 功能**中筛候选。
+
+重点检查但不预设一定可用：
+
+1. **ASM overlap 0 或 1 + 现有 local factorization**
+2. **field-split Schur complement**：
+   - velocity field
+   - pressure field
+   - PETSc `PCFIELDSPLIT`
+3. velocity block 使用已有：
+   - GAMG
+   - HYPRE/BoomerAMG（只有实际build有）
+   - other installed AMG
+4. pressure Schur approximation：
+   - 只使用现有/文献标准且能由当前矩阵构造的形式
+   - 不自创经验压力算子
+
+不要同时测试十个PC。
+
+静态审计后，最多选择 **2 个候选**进入下一阶段。
+
+选择规则必须在运行前写入：
+
+`LINEAR_SOLVER_CANDIDATE_PLAN.json`
+
+选择依据：
+- 预计内存
+- 当前build可用性
+- 对saddle-point系统的适用性
+- 实现改动大小
+- GPU/CPU兼容
+
+---
+
+# 7. Phase E —— 先在 P1 已知系统上验证“只改变线性代数，不改变解”
+
+这是必须的回归门。
+
+不能先拿 P2 当实验场调 solver。
+
+优先复用一个已有 P1 manufactured pipe checkpoint / saved state，运行最小受控段：
+- 同一 residual / Jacobian
+- 同一 nonlinear tolerance
+- 同一 linear tolerance
+
+对于 baseline PC 和最多2个候选，比较：
+- linear convergence
+- nonlinear convergence
+- final state difference
+- velocity/pressure max difference
+- Q / dpdz
+- residual norm
+- wall time
+- peak RSS
+- GPU memory
+
+候选只有在：
+- 解在 solver tolerance / roundoff合理范围内一致；
+- 没有改变 scientific configuration；
+- convergence不恶化到不可接受；
+
+时才能进入 P2。
+
+输出：
+
+`P1_LINEAR_SOLVER_PARITY.json`
+
+### Stop E
+如果没有候选能在 P1 保持解一致并稳定收敛：
+
+`NO_SAFE_LOW_MEMORY_LINEAR_SOLVER_CANDIDATE`
+
+停止，不跑 P2 CFD。
+
+---
+
+# 8. Phase F —— P2 full-system setup / 单线性系统资源实测
+
+只有通过 P1 parity 的候选才允许。
+
+在完整 P2 curved mesh 上：
+
+1. construct full mixed matrix/vector
+2. assemble一个真实 P2 system
+3. setup selected PC
+4. 测量实际 peak RSS / GPU VRAM
+5. 若安全，再允许解**一个**线性系统
+
+这仍不是完整 CFD。
+
+必须记录：
+- Mat bytes
+- PC bytes
+- overlap bytes
+- factor/AMG bytes
+- vectors/workspace
+- rank-wise peak RSS
+- cgroup memory current/max
+- host headroom
+- GPU memory
+- iteration count（若solve）
+
+## 安全门
+
+本轮定义：
+
+在进入完整 CFD 前，P2 单系统 setup/solve 后必须至少保留：
+
+```text
+>= 20% cgroup total limit
+```
+
+的**实测安全余量**，并且不能处于持续增长状态。
+
+以约42.06GiB上限计，目标至少保留约8.4GiB，但使用实际本轮读取的cgroup值计算。
+
+如果不足：
+
+`P2_LINEAR_SYSTEM_MEMORY_UNSAFE`
+
+不运行 CFD。
+
+输出：
+
+`P2_LINEAR_SYSTEM_RESOURCE_RESULT.json`
+
+图：
+
+`03_P2_SOLVER_RESOURCE_COMPARISON.png`
+
+---
+
+# 9. Phase G —— compact mixed numbering 只在明确高收益时允许 prototype
+
+不要默认重构 equation numbering。
+
+只有当 Phase A/B 证明：
+- pressure-edge phantom slots 对 structural NNZ / memory 有显著贡献；
+- 现有 low-memory PC 仍不能提供安全余量；
+- compact numbering 可以局部实现，不要求重写全solver；
+
+才允许 validation-only prototype。
+
+预声明收益门：
+
+若理论/实测显示 compact numbering 对峰值内存预计改善 <15%，不实现。
+
+若 >=15%，允许做：
+- isolated numbering/graph prototype
+- local/global index validation
+- matrix assembly regression
+
+本轮**不要求**把 compact numbering 变成production feature。
+
+任何 prototype 必须：
+- P1 numbering unchanged
+- P2 mathematical DOFs unchanged
+- matrix/residual equivalent
+- no physics change
+
+输出：
+
+`COMPACT_MIXED_NUMBERING_PROTOTYPE.json`
+
+---
+
+# 10. Phase H —— 条件满足后最多 1 次 P2/P1 manufactured pipe GPU CFD
+
+只有以下全部成立：
+
+1. target BC/geometry gates仍通过；
+2. selected linear solver在P1 parity通过；
+3. full P2 system setup/solve实测内存有 >=20% cgroup headroom；
+4. solver convergence可接受；
+5. high-order output/sampler identity仍可信；
+
+才允许启动 **1次**完整 P2/P1 manufactured pipe GPU CFD。
+
+## Scientific configuration必须与原P1 manufactured case相同
+
+- rho
+- mu
+- Umean
+- exact inlet
+- Cauchy outlet
+- wall no-slip
+- CFD dt
+- generalized-alpha
+- stabilization
+- nonlinear tolerance
+- steady gate
+- probes
+- curved P2 mesh
+
+允许改变的只有：
+- linear solver/preconditioner implementation
+
+如果使用compact algebra prototype，只有在已证明matrix/residual等价后才可用于run。
+
+## hard limits
+- 最多1次P2 CFD
+- 4h wall time
+- cgroup >=10% emergency stop margin：如果实时可用余量跌到10%以下且仍增长，监督器必须停止任务并保存receipt/checkpoint（如安全）
+- 禁止OOM试错
+
+---
+
+# 11. 若实际P2 pipe运行，继续原科学验证
+
+如果未运行CFD，则本节全部NOT_RUN，禁止推断。
+
+若运行完成并steady，比较：
+
+1. exact analytic Poiseuille
+2. exact-node P1 interpolation
+3. exact-node P2 interpolation
+4. original actual P1 GPU CFD
+5. new actual P2/P1 GPU CFD
+
+原固定 probes：
+- 0.377 / 1 / 2 / 5 / 10 µm
+- 29.839 / 59.678 / 149.195 / 298.390 µm
+
+指标：
+- u
+- G
+- s
+- curl
+- Q
+- dp/dz
+
+并继续原error decomposition：
+
+```text
+e_P1_repr
+e_P2_repr
+e_P1_disc
+e_P2_disc
+e_P1_total
+e_P2_total
+```
+
+必须保留 cross term / cosine，禁止直接百分数相减。
+
+输出：
+- `P2_PIPE_RUN_IDENTITY.json`
+- `P2_PIPE_FIELD_VALIDATION.json`
+- `P2_PIPE_ERROR_DECOMPOSITION.json`
+
+图：
+- `04_P2_PIPE_FIELD_VALIDATION.png`
+- `05_P2_PIPE_ERROR_DECOMPOSITION.png`
+
+---
+
+# 12. 本轮不运行 BraVa P2
+
+无论pipe结果多好：
+- BraVa P2 CFD = 0
+- trajectory = 0
+- population = 0
+- particle dt sweep = 0
+
+下一轮才决定是否值得跑一个 BraVa field pilot。
+
+---
+
+# 13. 资源策略
+
+实际服务器资源每次重读。
+
+CPU：
+- graph分析
+- symbolic setup
+- PETSc introspection
+- P1 parity
+
+GPU：
+- PETSc CUDA矩阵/向量
+- 只有条件满足后的P2 setup/solve/CFD
+
+禁止：
+- CPU CFD benchmark
+- 多个MPI数量大扫面
+- 多个PC参数 sweep
+
+MPI/overlap只允许为最多2个候选做预声明的离散比较。
+
+---
+
+# 14. 必须生成的图
+
+至少：
+
+1. `01_P2_MEMORY_BREAKDOWN.png`
+2. `02_ASM_OVERLAP_AND_FILL.png`
+3. `03_P2_SOLVER_RESOURCE_COMPARISON.png`
+4. 如实际CFD：`04_P2_PIPE_FIELD_VALIDATION.png`
+5. 如实际CFD：`05_P2_PIPE_ERROR_DECOMPOSITION.png`
+
+要求：
+- 300dpi
+- measured 与 estimated 明确分开
+- 不把估算画成实测
+- 显示 cgroup total / required safety headroom
+- rank-wise memory最好单列
+
+---
+
+# 15. 必须输出的机器结果
+
+至少：
+
+- `P2_DOF_STORAGE_AUDIT.json`
+- `P2_DOF_STORAGE_AUDIT_ZH.md`
+- `COMPACT_MIXED_GRAPH_STATS.json`
+- `P2_PETSC_GRAPH_MEASUREMENTS.json`
+- `ASM_LU_MEMORY_AUDIT.json`
+- `LINEAR_SOLVER_CANDIDATE_PLAN.json`
+- `P1_LINEAR_SOLVER_PARITY.json`
+- `P2_LINEAR_SYSTEM_RESOURCE_RESULT.json`
+- `P2_LINEAR_ALGEBRA_DECISION_GATE.json`
+- `TEST_RESULTS.json`
+- `EXECUTION_RECEIPT.json`
+- `INPUT_SHA256.json`
+- `RESULT_IDENTITY.json`
+
+如实施compact prototype：
+- `COMPACT_MIXED_NUMBERING_PROTOTYPE.json`
+
+如运行CFD：
+- P2 pipe scientific results
+
+主报告：
+
+`P2_LINEAR_ALGEBRA_AND_RESOURCE_REVIEW_ZH.md`
+
+---
+
+# 16. 主报告首页必须回答
+
+| 问题 | 结果 |
+|---|---|
+| 223,119个额外storage slots到底是什么？ | ... |
+| phantom pressure slots占多少rows/NNZ/内存？ | ... |
+| 当前111.79M structural NNZ的主要来源是什么？ | ... |
+| ASM overlap=2实际造成多少重复？ | ... |
+| CPU LU symbolic/numeric fill预计/实测多少？ | ... |
+| 最多2个低内存候选是什么？为什么？ | ... |
+| 候选在P1是否保持相同科学解？ | YES/NO |
+| 完整P2单系统setup实际峰值内存多少？ | ... |
+| 是否保留>=20%cgroup安全余量？ | YES/NO |
+| 是否实际运行P2 pipe CFD？ | YES/NO |
+| 如果运行，actual P2 field是否改善？ | ... |
+| 是否值得下一轮进入BraVa P2 field pilot？ | YES/NO/NOT_EVALUABLE |
+
+---
+
+# 17. 停止规则
+
+## Stop A
+mixed storage/root graph无法解释：
+→ 不做compact refactor；继续PC审计。
+
+## Stop B
+没有成熟PETSc低内存候选：
+→ `NO_SAFE_LOW_MEMORY_LINEAR_SOLVER_CANDIDATE`
+→ 不跑P2 CFD。
+
+## Stop C
+候选在P1不能保持解一致/稳定收敛：
+→ 不进入P2。
+
+## Stop D
+P2 full-system setup/solve实测后安全余量<20%：
+→ 不跑CFD。
+
+## Stop E
+P2 single system setup即接近OOM或memory持续增长：
+→ supervisor立即停止。
+
+## Stop F
+完整P2 CFD未steady / solver divergence / memory unsafe：
+→ `P2_PIPE_NOT_EVALUABLE`
+→ 不重跑参数 sweep。
+
+## Stop G
+P2 representation好但actual CFD discrete error无改善：
+→ 不跑BraVa，不继续P3/P4。
+
+---
+
+# 18. 禁止事项
+
+禁止：
+
+- 改P2/P1科学离散
+- 改BC
+- 改mesh refinement
+- 改stabilization
+- 改CFD dt
+- P3/P4
+- RT/H(div) production
+- 新solver框架
+- 新BraVa CFD
+- particle dt
+- trajectory
+- population
+- 多候选大扫面
+- OOM试错
+- 用估计值冒充实测
+- 因为solver更快/省内存就宣称field更准确
+
+---
+
+# 19. 最终分类
+
+本轮结尾只能选择：
+
+1. `NEXT_RECOMMENDATION = RUN_ONE_BRAVA_P2P1_FIELD_PILOT`
+   - 仅当P2 pipe实际运行、steady、field evidence支持继续。
+
+2. `P2P1_LINEAR_ALGEBRA_FEASIBLE_BUT_PIPE_NOT_RUN`
+   - 资源路线已证明可行，但因本轮其它gate/时间未执行完整CFD。
+
+3. `STOP_NATIVE_P2P1_ROUTE_RESOURCE_LIMIT`
+   - 在当前服务器和成熟PETSc候选下无法安全运行。
+
+4. `P2P1_PIPE_RESULT_NOT_EVALUABLE`
+   - run失败/科学结果不可评价。
+
+不要同时再建议三条新路线。
+
+如果因资源限制停止，报告只允许给一个下一方向：
+- 更高内存服务器，或
+- 已证明确切高收益的compact mixed algebra实现
+二选一，不能同时展开。
+
+完成后：
+- 所有监督任务退出
+- TASK移除
+- 只commit本轮相关文件
+- 不push，除非用户明确授权

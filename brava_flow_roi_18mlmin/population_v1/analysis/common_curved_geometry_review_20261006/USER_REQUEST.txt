@@ -1,0 +1,447 @@
+# Codex 新一轮开发分析提示词
+## 主题：修复/验证 svMultiPhysics mixed P2/P1 的 common curved-geometry mapping —— 只做 native assembly 与 regression，不跑新 CFD
+
+你现在继续开发当前 BraVa 3D 微泡持续灌注/轨迹项目。
+
+上一轮已经证明：
+- 原生 TET10/P2 velocity 的二次场表示能力成立；
+- P2 在解析 Poiseuille 的 exact-node representation 中，u/G/s/curl 基本达到 roundoff；
+- 真实 138584 在 P2 下不再被拓扑强制全零，但仍只有一个自由 edge-midpoint velocity node；
+- validation-only P2 sampler 已通过解析场测试；
+- 真正阻断 P2 CFD 的是 svMultiPhysics 当前 mixed curved element assembly：P2 velocity 与 P1 pressure 在曲面单元中没有始终使用同一个 geometry mapping / Jacobian / integration weight。
+
+当前正式状态：
+
+`P2P1_NOT_EVALUABLE_DUE_TO_IMPLEMENTATION_BLOCKER`
+
+本轮唯一目标：
+
+> **在不改变 production P1 行为的前提下，修复或原型化 mixed P2/P1 在 curved TET10 geometry 上的共同几何映射语义，并用 native element harness 证明其数学和实现一致。**
+
+本轮明确：
+- 不运行任何新 pipe CFD；
+- 不运行 BraVa CFD；
+- 不运行粒子轨迹；
+- 不运行 population；
+- 不开发 GPU P2 particle sampler；
+- 不改 stabilization；
+- 不改 mesh refinement；
+- 不切换 CFD 框架。
+
+若 native harness 最终通过，报告里只允许建议下一轮做一次 P2/P1 manufactured pipe GPU CFD，但本轮不自动启动。
+
+---
+
+# 0. 服务器与安全
+
+服务器连接方式你已经知道，不要把 SSH 地址、端口或凭据写入 GitHub、源码、报告或提交。
+
+操作前必须读取：
+
+```bash
+/etc/vast-agents-guide.md
+```
+
+实际确认：
+- project root / branch / HEAD / working tree
+- production svMultiPhysics source identity
+- production binary SHA
+- PETSc/CUDA/build identity
+- GPU/CPU/RAM/cgroup和其它任务
+
+禁止修改其它项目、系统CUDA/PETSc、cgroup、历史production binary和历史P1 CFD结果。
+所有编译/测试使用独立 validation build/output 目录；长任务必须 supervised 并保存 receipt。
+
+---
+
+# 1. 首先阅读当前权威文件
+
+依次读取：
+1. README.md
+2. brava_flow_roi_18mlmin/ACTIVE_DEVELOPMENT_SCOPE.md
+3. brava_flow_roi_18mlmin/AGENTS.md
+4. brava_flow_roi_18mlmin/CURRENT_RESULTS_ZH.md
+5. NATIVE_P2P1_DEVELOPMENT_REVIEW_ZH.md
+6. NATIVE_P2P1_PATH_AUDIT_ZH.md
+7. P2_CURVED_GEOMETRY_AUDIT.json
+8. P2_CURVED_GEOMETRY_SAMPLES.npz
+9. P2_REPRESENTATION_FIXTURES.json
+10. P2_FIELD_SAMPLER_TESTS.json
+11. P2_POISEUILLE_REPRESENTATION.json
+12. P2_DECISION_GATE.json
+13. STABILIZATION_AND_LOCAL_CONSERVATION_REVIEW_ZH.md
+14. production source/binary/build identity
+
+不要重新跑上一轮 A-D1；本轮只把其结果作为 regression。
+
+---
+
+# 2. 必须继承的结论
+
+不要重复包装：
+- affine TET10 对完整三维二次向量场的 u/G/curl/strain 到 roundoff；
+- 388769-like fixture 中 P1 rank(G)=1，P2 rank(G)=3；
+- exact Poiseuille P2 representation 在既有 probes 上接近 roundoff；
+- 当前 CPU validation P2 sampler 对解析场已通过；
+- 真实138584：4 corner velocity DOF均受WALL约束，6个edge-midpoint中只有1个FREE；因此P2不再强制u=0，但仍只有一个自由velocity node，G可能严重受限；
+- 当前 blocker 只属于“新P2路线的实现语义”，不能用于解释旧P1历史异常。
+
+---
+
+# 3. 先写清楚正确数学语义
+
+对于 curved TET10 physical element：
+
+## Geometry map
+唯一物理几何映射：
+
+```text
+x(ξ) = Σ_A N_A^geom,P2(ξ) X_A
+J_geom = ∂x/∂ξ
+```
+
+同一 quadrature point 的：
+- physical position
+- J
+- detJ
+- invJ
+- metric/Kxi
+- integration weight
+都必须来自这一个 geometry map。
+
+## Velocity field
+P2 field basis：
+
+```text
+u(ξ)=Σ_A N_A^u,P2(ξ) U_A
+∇_x u = reference derivatives transformed by J_geom^{-1}
+```
+
+## Pressure field
+pressure 保持 P1/TET4 field basis：
+
+```text
+p(ξ)=Σ_i N_i^p,P1(ξ) P_i
+∇_x p = J_geom^{-T} ∇_ξ p
+```
+
+P1 pressure field **不等于** P1 geometry。
+
+momentum / continuity / pressure-gradient / stabilization mixed terms 不允许因为 field basis 切换而静默换另一套 geometry。
+
+---
+
+# 4. Phase A —— 固定并复现 blocker
+
+只使用上一轮两个真实 V2 curved cells：
+- central wall cell 143654
+- inlet rim cell 35265
+
+复现：
+1. 当前 native mixed assembly
+2. common-curved-geometry reference assembly
+3. affine midpoint control
+
+沿用解析field：
+- `u=x-x0` 或等价，G=I、div=3
+- 至少一组 linear physical pressure
+- 不做time stepping
+- 不做linear solve
+
+若不能复现上一轮差异：
+`BLOCKER_REPRODUCTION_FAILED`
+立即停止。
+
+输出：
+`CURVED_MIXED_BLOCKER_BASELINE.json`
+
+---
+
+# 5. Phase B —— 源码级 root-cause trace
+
+从 production retained exact source 出发，重点追踪：
+- `fluid::construct_fluid`
+- velocity/pressure function space
+- geometry storage
+- `gnn/get_gnn`
+- `lShpF`及相关flags
+- quadrature weights
+- Jacobian state variables
+- local assembly loops
+- pressure-gradient path
+- continuity path
+- stabilization K/Kxi path
+- boundary integration path
+
+必须回答：
+1. 为什么 velocity/pressure basis 切换会覆盖 geometry Jacobian？
+2. 是API设计把 field basis 与 geometry basis 耦合，还是仅调用顺序错误？
+3. 为什么 continuity 第一个q-point和后续q-point出现不同used/velocity Jacobian？
+4. momentum 是否有同类问题？
+5. pressure-gradient、PSPG/VMS、tau_M/tau_C 用哪套geometry？
+6. boundary traction/Cauchy path 是否有同类问题？
+
+输出：
+- `MIXED_CURVED_GEOMETRY_ROOT_CAUSE_ZH.md`
+- `MIXED_CURVED_GEOMETRY_CALL_GRAPH.json`
+
+---
+
+# 6. Phase C —— 最小 patch
+
+目标：mixed P2/P1 fluid assembly 在 curved element 上共享 geometry mapping。
+
+优先最小改法：
+
+1. 每个quadrature point先由TET10 geometry计算一次：xq/J/detJ/invJ/Kxi。
+2. velocity P2 basis仅计算参考形函数和参考导数，再用common invJ变换。
+3. pressure P1 basis仅计算参考形函数和参考导数，再用**同一个common invJ**变换。
+4. mixed integration weight统一使用`w_ref*detJ_geom`。
+5. stabilization metric使用common geometry，不改stabilization physics/coefficients。
+6. 不允许pressure path再次调用会重算/覆盖physical geometry的TET4 gnn。
+
+若现有API不支持，可添加最小 helper：
+- reference basis only
+- transform with externally supplied common Jacobian
+
+禁止：
+- 重写完整FE library
+- 重写PETSc assembly
+- 重写fluid solver
+- 修改production P1/P1算法
+
+patch必须validation-gated，独立build/binary，保留diff/source SHA/build receipt/binary SHA。
+
+---
+
+# 7. Phase D —— Native element harness gate
+
+测试前先写 `COMMON_GEOMETRY_HARNESS_PROTOCOL.json` 并冻结容差。
+
+建议预声明：
+- analytic u/G/p/gradp scaled max error <=1e-11
+- continuity/momentum local residual vs common reference <=1e-11
+- J/invJ/detJ relative <=1e-11
+- physical q-point coordinate <=1e-12 characteristic length
+
+若conditioning要求调整，只能在看到修复结果前调整并记录理由。
+
+必须覆盖：
+
+## D1 affine regression
+patch前后 affine mixed P2/P1 一致到roundoff。
+
+## D2 curved central-wall cell143654
+至少：
+- Field A: `u=x-x0`, G=I, div=3
+- Field B: 严格 divergence-free linear field，例如 `(x,-y,0)`
+- linear physical pressure `p=c0+c1x+c2y+c3z`
+
+检查：u/G/div/p/gradp/continuity residual/momentum pressure term/q-point x/J/detJ/invJ/weight。
+
+## D3 curved inlet-rim cell35265
+同样测试。
+
+## D4 per-quadrature state
+逐点保存：
+- velocity J
+- pressure-transform J
+- used J
+- detJ
+- xq
+- weight
+
+必须证明第一q-point与后续q-point不再切换geometry semantics。
+
+输出：
+`COMMON_GEOMETRY_HARNESS_RESULTS.json`
+
+---
+
+# 8. Phase E —— P1/P1 regression，必须通过
+
+在同一validation binary运行TET4/P1 velocity + TET4/P1 pressure fixture/既有regression。
+
+比较patch前后：
+- element residual
+- Jacobian
+- pressure gradient
+- stabilization parameters
+- local matrix/vector
+- deterministic output
+
+要求P1/P1在roundoff范围内不变。
+
+若失败：
+`P1_REGRESSION_FAILED`
+立即停止。
+
+输出：
+`P1_REGRESSION_RESULTS.json`
+
+---
+
+# 9. Phase F —— boundary mixed geometry audit
+
+仍不跑CFD，只做静态/element-level fixture：
+- curved wall boundary
+- inlet/outlet curved face/edge
+- velocity edge Dirichlet
+- pressure on mixed geometry
+- traction/full Cauchy boundary integration
+- cap plane
+
+确认 future P2 pipe full analytical Cauchy outlet 不会再次把 pressure field basis 当 geometry basis。
+
+若存在同类问题：
+`MIXED_CURVED_BOUNDARY_ASSEMBLY_BLOCKED`
+停止。
+
+输出：
+`BOUNDARY_MIXED_GEOMETRY_AUDIT.json`
+
+---
+
+# 10. 本轮绝对不运行 CFD
+
+即使全部harness通过，也不启动：
+- P2 pipe CFD
+- BraVa P2 CFD
+- trajectory
+- population
+
+成功状态：
+`COMMON_CURVED_GEOMETRY_MAPPING_FIX_VALIDATED`
+
+唯一允许的下一步建议：
+`NEXT_RECOMMENDATION = RUN_ONE_P2P1_MANUFACTURED_PIPE_GPU_CFD`
+
+失败状态只能是：
+- `STOP_NATIVE_P2P1_ROUTE`
+或
+- `COMMON_GEOMETRY_FIX_NOT_EVALUABLE`
+
+不能为了继续而放宽gate。
+
+---
+
+# 11. 本轮禁止事项
+
+禁止：
+- 任何新的CFD timestep
+- pipe/BraVa solve
+- mesh refinement
+- P3/P4
+- stabilization修改
+- time-consistent VMS
+- RT/H(div) production
+- 新CFD框架
+- particle GPU P2 migration
+- particle dt研究
+- trajectory smoothing
+- population
+- 重新分析1565条
+- 参数 sweep
+- 因为0.03%“看起来很小”就跳过语义修复
+
+本轮判断标准是**mixed curved geometry语义一致性**。
+
+---
+
+# 12. 必须输出
+
+至少：
+- `CURVED_MIXED_BLOCKER_BASELINE.json`
+- `MIXED_CURVED_GEOMETRY_ROOT_CAUSE_ZH.md`
+- `MIXED_CURVED_GEOMETRY_CALL_GRAPH.json`
+- `COMMON_GEOMETRY_HARNESS_PROTOCOL.json`
+- `COMMON_GEOMETRY_PATCH.diff`
+- `COMMON_GEOMETRY_PATCH_IDENTITY.json`
+- `COMMON_GEOMETRY_HARNESS_RESULTS.json`
+- `P1_REGRESSION_RESULTS.json`
+- `BOUNDARY_MIXED_GEOMETRY_AUDIT.json`
+- `TEST_RESULTS.json`
+- `EXECUTION_RECEIPT.json`
+- `INPUT_SHA256.json`
+- `RESULT_IDENTITY.json`
+
+主报告：
+`COMMON_CURVED_GEOMETRY_MAPPING_REVIEW_ZH.md`
+
+---
+
+# 13. 图件
+
+至少两张300dpi：
+
+## 01_COMMON_GEOMETRY_BEFORE_AFTER.png
+两个真实cell中比较：
+- patch前native
+- common curved reference
+- patch后native
+
+显示：continuity residual、gradp、J/detJ、per-q-point mapping一致性。
+
+## 02_P1_P2_GEOMETRY_REGRESSION.png
+显示：
+- affine P1/P1 patch前后
+- affine P2/P1
+- curved P2/P1 patch前后
+- exact/reference
+
+目的：证明修复只作用于原本不一致的mixed curved path。
+
+如需要第三张：
+`03_BOUNDARY_MIXED_GEOMETRY_AUDIT.png`
+
+---
+
+# 14. 测试
+
+至少覆盖：
+- TET10 curved mapping/J/invJ/detJ/reference↔physical
+- P1 pressure reference basis不变、physical gradp使用common J
+- exact linear physical pressure
+- P2 quadratic exact field/G/div/curl
+- affine mixed assembly
+- curved central-wall/inlet-rim
+- first q-point vs later q-points
+- continuity
+- momentum pressure term
+- stabilization geometry metric
+- boundary traction/Cauchy
+- production P1/P1 local assembly unchanged
+- historical inputs unchanged
+- production binary unchanged
+
+测试通过只表示implementation blocker解决，不代表P2 CFD或物理场已验证。
+
+---
+
+# 15. 报告首页必须回答
+
+| 问题 | 结果 |
+|---|---|
+| blocker是否稳定复现？ | ... |
+| root cause是否为field basis / geometry basis混用？ | ... |
+| patch是否让P1 pressure使用common curved TET10 geometry transform？ | ... |
+| continuity是否统一使用common detJ/weight？ | ... |
+| stabilization metric是否使用一致geometry？ | ... |
+| central-wall真实cell是否到预声明门槛？ | ... |
+| inlet-rim真实cell是否到预声明门槛？ | ... |
+| P1/P1 production path是否保持不变？ | ... |
+| boundary mixed geometry是否安全？ | ... |
+| 是否允许下一轮跑一次P2/P1 pipe GPU CFD？ | YES/NO/NOT_EVALUABLE |
+
+---
+
+# 16. 最终只允许一个主建议
+
+只能三选一：
+1. `NEXT_RECOMMENDATION = RUN_ONE_P2P1_MANUFACTURED_PIPE_GPU_CFD`
+2. `STOP_NATIVE_P2P1_ROUTE`
+3. `COMMON_GEOMETRY_FIX_NOT_EVALUABLE`
+
+不要同时开启新mesh、P3/P4、H(div)、新stabilization、新solver或particle dt路线。
+
+所有监督任务结束时必须退出并移除TASK。只提交本轮相关代码/测试/报告/图，不重写历史，不push，除非用户另有明确授权。
