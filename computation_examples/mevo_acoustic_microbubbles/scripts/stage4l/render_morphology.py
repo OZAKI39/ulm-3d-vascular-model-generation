@@ -51,13 +51,13 @@ def projection(ax, positions_m):
     return centers, scale, u, v, eye
 
 
-def analytic_spheres(background, ax, positions_m, radii_m, ids, supersampling=SS):
+def analytic_spheres(background, ax, positions_m, radii_m, ids, supersampling=SS, projector=None):
     """Analytic orthographic spheres, sparse per-pixel depth and 32x32 coverage.
 
     No minimum glyph diameter. Fully hidden spheres remain submitted. Sparse
     buffers avoid allocating a supersampled image of the entire vessel.
     """
-    centers, scale, u, v, eye = projection(ax, positions_m)
+    centers, scale, u, v, eye = projection(ax, positions_m) if projector is None else projector(positions_m)
     radius_px = radii_m * scale
     affine = np.stack([u, v]) * scale
     offset = centers[0] - affine @ positions_m[0]
@@ -70,7 +70,7 @@ def analytic_spheres(background, ax, positions_m, radii_m, ids, supersampling=SS
     for i, (center, radius) in enumerate(zip(centers, radius_px, strict=True)):
         lower = np.floor(center - radius).astype(int)
         upper = np.ceil(center + radius).astype(int)
-        assert np.all(lower >= 0) and np.all(upper <= [WIDTH, HEIGHT]), "Global view crops a bubble"
+        assert np.all(lower >= 0) and np.all(upper <= background.size), "Global view crops a bubble"
         for y in range(lower[1], upper[1]):
             for x in range(lower[0], upper[0]):
                 nx = (x + offsets[None] - center[0]) / radius
