@@ -45,6 +45,7 @@ class ParticleTracker:
         self.contact_backend = self.p.get("contact_search_backend", "brute")
         self.cylinder = geometry_from_config(config)
         self.translation = make_translation_backend(config)
+        self.motion_constrained = self.translation.name == "constrained_lubrication_v1"
         self.lubrication_enabled = self.translation.name == "lubrication_coupled"
         self.translation_diagnostics = deque(maxlen=256)
         self.translation_log = None
@@ -209,6 +210,12 @@ class ParticleTracker:
         from mevo_mb.flow.fields import VTKFlowField
         if isinstance(self.flow, VTKFlowField):
             self.timings["vtk_interpolation_s"] += flow_elapsed
+        if self.motion_constrained:
+            # Stage5A driver performs exactly one predictor/corrector pair; do not
+            # insert old instantaneous contact solves into its force evaluations.
+            return {"primary_force_N": primary, "secondary_force_N": secondary,
+                    "flow_velocity_m_s": flow, "local_pressure_complex_Pa": pressure,
+                    "volume_response_complex_m3": volume}
         wall = self.cylinder.wall_gap_and_normal(x, radii) if self.lubrication_enabled else None
         translation = self.translation.solve(x, radii, primary + secondary, flow, wall)
         self.last_translation = translation
@@ -273,6 +280,8 @@ class ParticleTracker:
                                           np.maximum(speed, 1e-30))))
 
     def step(self, x, radii, t, dt, first):
+        if self.motion_constrained:
+            raise ValueError("Stage5A requires PredictorCorrector.interval, not the frozen RK driver")
         integration_start = time.perf_counter()
         initial_translation = self.last_translation if self.lubrication_enabled else None
 
@@ -312,6 +321,8 @@ class ParticleTracker:
         )
 
     def run(self, population: BubblePopulation, run: Path) -> dict:
+        if self.motion_constrained:
+            raise ValueError("Use the explicit scripts.stage5a.run_probe driver for experimental motion")
         if self.policy == "pair_reference":
             from mevo_mb.validation.pair_policy import run_pair_reference
 

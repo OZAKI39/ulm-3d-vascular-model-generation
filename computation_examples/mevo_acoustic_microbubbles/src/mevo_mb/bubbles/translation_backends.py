@@ -550,4 +550,7 @@ def make_translation_backend(config):
         return LegacyStokesTranslation(mu)
     if name == "lubrication_coupled":
         return LubricationCoupledTranslation(mu, **p.get("lubrication", {}))
+    if name == "constrained_lubrication_v1":
+        from .constrained_motion import ConstrainedLubrication
+        return ConstrainedLubrication(mu, **p.get("lubrication", {}), **p.get("constrained_solver", {}))
     raise ValueError(f"Unknown translation backend: {name}")
