@@ -12,9 +12,10 @@ from scripts.stage4l.render_motion import ROOT, sha, viewer, write
 def collect(out):
     assert not (out / "RENDER_MANIFEST.json").exists(), "Preserve completed deliveries."
     parts = sorted((out / "parts").glob("*/RENDER_MANIFEST.json"))
-    assert len(parts) == 4, "All four independent renders must finish."
+    assert len(parts) in [2, 4], "All requested independent renders must finish."
     videos, checks, states, protected, sources, provenance = {}, {}, {}, {}, {}, {}
     rows = []
+    geometry_checks = {}
     (out / "keyframes").mkdir()
     (out / "provenance").mkdir()
     first = None
@@ -32,6 +33,11 @@ def collect(out):
             assert sha(source) == video["sha256"]
             shutil.copy2(source, out / video["path"])
             videos[key] = video
+            if data.get("display_geometry") == "physical_centers":
+                for relative in [video["display_samples"], video["lumen_mask"], f"{key}_BACKGROUND.png"]:
+                    shutil.copy2(p.parent / relative, out / relative)
+        if data.get("display_geometry") == "physical_centers":
+            geometry_checks.update(json.loads((p.parent / "DISPLAY_GEOMETRY_CHECKS.json").read_text()))
         for png in (p.parent / "keyframes").glob("*.png"):
             shutil.copy2(png, out / "keyframes" / png.name)
         for script in (p.parent / "provenance").glob("*"):
@@ -45,15 +51,18 @@ def collect(out):
         with (p.parent / "frame_map.csv").open() as f:
             rows.extend(csv.DictReader(f))
         provenance[str(p.relative_to(out))] = sha(p)
-    assert set(videos) == {f"{case}_{kind}" for case in ["B2", "B3"] for kind in ["dense_probe", "primary"]}
+    physical_centers = first.get("display_geometry") == "physical_centers"
+    kinds = ["primary"] if physical_centers else ["dense_probe", "primary"]
+    assert set(videos) == {f"{case}_{kind}" for case in ["B2", "B3"] for kind in kinds}
     # Show aggregation probes first in the viewer, then the complete primary transport.
-    order = [f"{case}_{kind}" for kind in ["dense_probe", "primary"] for case in ["B2", "B3"]]
+    order = [f"{case}_{kind}" for kind in kinds for case in ["B2", "B3"]]
     videos = {key: videos[key] for key in order}
     rows.sort(key=lambda row: (order.index(row["video"]), int(row["frame"])))
     for p, digest in (protected | sources).items():
         assert sha(p) == digest, p
-    sources[str(Path(__file__).resolve())] = sha(__file__)
-    shutil.copy2(__file__, out / "provenance" / "collect_motion.py")
+    collector_snapshot = out / "provenance" / "collect_motion.py"
+    shutil.copy2(__file__, collector_snapshot)
+    sources[str(collector_snapshot)] = sha(collector_snapshot)
     write(out / "STATE_GROUPS.json", states)
     write(out / "SCREEN_CHECKS.json", checks)
     with (out / "frame_map.csv").open("w", newline="") as f:
@@ -68,17 +77,26 @@ def collect(out):
         case_identifiers_in_video=False,
         part_manifest_sha256=provenance,
         elapsed_s=None,
-        render_execution="Four independent local render processes; see part manifests for timings.",
+        render_execution="Independent local render processes; see part manifests for timings.",
     )
     write(out / "RENDER_MANIFEST.json", first)
-    viewer(out, videos)
+    if physical_centers:
+        from scripts.stage4l.render_transport import viewer as transport_viewer
+
+        first["geometry_checks"] = geometry_checks
+        write(out / "RENDER_MANIFEST.json", first)
+        write(out / "DISPLAY_GEOMETRY_CHECKS.json", geometry_checks)
+        transport_viewer(out, videos)
+    else:
+        viewer(out, videos)
+    module = "render_transport" if physical_centers else "render_motion"
     (out / "REPRODUCE.txt").write_text(
         f"cd {ROOT}\n"
         "PYTHONPATH=src:. /home/lzy/projects/computation_examples/_shared/python_environment/bin/python "
-        "-m scripts.stage4l.render_motion --output <new-directory>\n"
+        f"-m scripts.stage4l.{module} --output <new-directory>\n"
         "PYTHONPATH=src:. /home/lzy/projects/computation_examples/_shared/python_environment/bin/python "
         "-m scripts.stage4l.check_motion <new-directory>\n"
-        "Independent --kind/--case renders may instead be placed in <new-directory>/parts/<case>_<kind>, "
+        "Independent --case renders (plus --kind for render_motion) may be placed in <new-directory>/parts/<case>_<kind>, "
         "then combined with python -m scripts.stage4l.collect_motion <new-directory> before verification.\n"
     )
     print(json.dumps(dict(status="COLLECTED", videos=list(videos), output=str(out))), flush=True)

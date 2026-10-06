@@ -20,8 +20,68 @@ def sha(path):
         return hashlib.file_digest(f, "sha256").hexdigest()
 
 
+def check_physical_centers(out, key, video, display_times):
+    import pyvista as pv
+    from mevo_mb.coupling.bifurcation import BifurcationGeometry
+    from scripts.stage4l.render_motion import resolve_input, style
+
+    run = Path(video["source"]["run"])
+    identity = json.loads((run / "RUN_IDENTITY.json").read_text())
+    cfg = identity["config"]
+    with h5py.File(video["source"]["trajectory"]) as h:
+        times, x, ids, radii, active = [
+            h[k][:] for k in ["time_s", "positions_m", "particle_id", "radii_m", "active"]
+        ]
+    with np.load(out / video["display_samples"]) as s:
+        q, drawn, visible, correction = [
+            s[k] for k in ["time_s", "positions_m", "active", "wall_adjustment_m"]
+        ]
+        assert np.array_equal(s["particle_id"], ids)
+    assert np.array_equal(q, display_times)
+    assert np.array_equal(drawn[::4], x), "Saved particle centers were displaced"
+    assert np.array_equal(visible[::4], active)
+    assert not ((~visible[:-1]) & visible[1:]).any()
+    branches = json.loads((run / "BRANCH_METRICS.json").read_text())
+    mapping = {int(pid): i for i, pid in enumerate(ids)}
+    exits = np.full(len(ids), np.inf)
+    for e in branches["crossings"]:
+        exits[mapping[e["particle_id"]]] = e["crossing_time_s"]
+    assert np.array_equal(visible, q[:, None] < exits)
+    straight = style.base.sample_case(dict(t=times, x=x, id_index=mapping, events=branches["crossings"]), q)[
+        0
+    ]
+    straight[::4] = x
+    actual_correction = np.linalg.norm(drawn - straight, axis=2)
+    np.testing.assert_allclose(actual_correction, correction, atol=1e-18, rtol=0)
+    assert not correction[::4].any() and correction.max() < 10e-6
+    surface = cfg["geometry"]["mesh_surface"]
+    mesh = resolve_input(surface, identity["inputs_sha256"][surface])
+    geometry = BifurcationGeometry(cfg["geometry"])
+    geometry.bind_mesh_surface(pv.read(mesh))
+    r = np.broadcast_to(radii, visible.shape)[visible]
+    gap, _, valid = geometry.wall_gap_and_normal(drawn[visible], r)
+    assert valid.all() and np.all(gap + r > 0) and gap.min() >= -1.001e-12
+    checks = json.loads((out / "DISPLAY_GEOMETRY_CHECKS.json").read_text())[key]
+    assert checks["frames_checked_for_glyph_clipping"] == video["frames"]
+    assert checks["outside_lumen_glyph_pixels"] == 0
+    common = visible[1:] & visible[:-1]
+    maximum_step = float(np.linalg.norm(np.diff(drawn, axis=0), axis=2)[common].max())
+    return dict(
+        saved_positions_bitwise_exact=True,
+        independently_checked_active_samples=int(visible.sum()),
+        active_centers_outside_count=int((gap + r < 0).sum()),
+        minimum_surface_gap_m=float(gap.min()),
+        max_display_wall_adjustment_m=float(correction.max()),
+        max_display_frame_displacement_m=maximum_step,
+        group_coordinate_magnification=False,
+        raster_cross_dissolve=False,
+        glyph_clipping_all_frames=checks["frames_checked_for_glyph_clipping"],
+    )
+
+
 def check(out):
     manifest = json.loads((out / "RENDER_MANIFEST.json").read_text())
+    physical_centers = manifest.get("display_geometry") == "physical_centers"
     for p, digest in (manifest["protected_inputs"] | manifest["renderer_sources"]).items():
         assert sha(p) == digest, p
     rows = list(csv.DictReader((out / "frame_map.csv").open()))
@@ -58,8 +118,20 @@ def check(out):
                 assert left == np.searchsorted(times, display_times[frame], side="right") - 1
             else:
                 assert left == frame // 4 and right == min(left + 1, 300)
-                assert alpha == (frame % 4) / 4
-                assert abs(display_times[frame] - ((1 - alpha) * times[left] + alpha * times[right])) < 1e-12
+                if physical_centers:
+                    assert alpha == 0
+                    coordinate_fraction = float(row["coordinate_fraction"])
+                    assert coordinate_fraction == (frame % 4) / 4
+                else:
+                    assert alpha == (frame % 4) / 4
+                    coordinate_fraction = alpha
+                assert (
+                    abs(
+                        display_times[frame]
+                        - ((1 - coordinate_fraction) * times[left] + coordinate_fraction * times[right])
+                    )
+                    < 1e-12
+                )
         for state in states[key]:
             source = state["source_state"]
             actual_ids = sorted(ids[active[source]].tolist())
@@ -127,6 +199,8 @@ def check(out):
             source_mapping="PASS",
             kind=video["kind"],
         )
+        if physical_centers:
+            report["videos"][key]["display_geometry"] = check_physical_centers(out, key, video, display_times)
         print(json.dumps(dict(video=key, status="PASS", frames=n)), flush=True)
     assert len(rows) == sum(v["frames"] for v in manifest["videos"].values())
     (out / "DELIVERY_VERIFICATION.json").write_text(json.dumps(report, indent=2) + "\n")

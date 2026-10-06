@@ -58,6 +58,7 @@ def prepare_clusters(d):
 
 
 def scene(name, d, sphere_mode=False, magnification=1.0):
+    physical_centers = d.get("display_geometry") == "physical_centers"
     fig = base.plt.figure(figsize=(19.2, 10.8), dpi=100, facecolor="black")
     fig.text(
         0.035,
@@ -200,6 +201,23 @@ def scene(name, d, sphere_mode=False, magnification=1.0):
         hi.tolist(),
     ]
     background = fig.canvas.copy_from_bbox(fig.bbox)
+    static_image = Image.fromarray(np.asarray(fig.canvas.buffer_rgba())[:, :, :3].copy())
+    lumen_mask = None
+    if physical_centers:
+        # Clip visibility glyphs against the projection of the actual lumen mesh.
+        # Scientific centers and radii are not moved or edited by this operation.
+        mesh = base.pv.read(d["surface"]).triangulate()
+        projected = base.screen_points(ax, np.asarray(mesh.points) * 1000)
+        projected[:, 1] = 1080 - projected[:, 1]
+        mask_hi = Image.new("L", (3840, 2160), 0)
+        mask_draw = ImageDraw.Draw(mask_hi)
+        for triangle in mesh.faces.reshape(-1, 4)[:, 1:]:
+            mask_draw.polygon([tuple(v * 2) for v in projected[triangle]], fill=255)
+        lumen_mask = mask_hi.resize((1920, 1080), Image.Resampling.BOX)
+        checks["display_geometry"] = "physical_centers"
+        checks["coordinate_magnification"] = 1.0
+        checks["sphere_symbol_magnification"] = magnification
+        checks["sphere_layer_clipped_to_exact_lumen_projection"] = True
     for artist in dynamic:
         artist.set_visible(True)
     for k, groups in enumerate(d["clusters"]):
@@ -213,12 +231,12 @@ def scene(name, d, sphere_mode=False, magnification=1.0):
                 indices = [d["id_index"][pid] for pid in group["particle_ids"]]
                 center_m = np.asarray(group["center_m"])
                 real = d["x"][k, indices]
-                display = center_m + magnification * (real - center_m)
+                display = real.copy() if physical_centers else center_m + magnification * (real - center_m)
                 radii = magnification * d["radii"][indices]
                 # Uniform magnification preserves packing, distance/radius ratios, and centroid.
                 np.testing.assert_allclose(display.mean(axis=0), center_m, atol=1e-15, rtol=0)
                 np.testing.assert_allclose(
-                    (display[:, None] - display[None, :]) / magnification,
+                    (display[:, None] - display[None, :]) / (1.0 if physical_centers else magnification),
                     real[:, None] - real[None, :],
                     atol=1e-15,
                     rtol=0,
@@ -244,19 +262,26 @@ def scene(name, d, sphere_mode=False, magnification=1.0):
             )
             assert center[0] - radius_px > 40 and center[0] + radius_px < 1880
 
-    def render(k):
+    def render(k, positions_m=None, active_mask=None):
         fig.canvas.restore_region(background)
         state = d["states"][k]
-        x = d["x"][k] * 1000
-        active = state["active_mask"]
+        if positions_m is not None or active_mask is not None:
+            assert physical_centers and positions_m is not None and active_mask is not None
+        current = d["x"][k] if positions_m is None else np.asarray(positions_m)
+        x = current * 1000
+        active = state["active_mask"] if active_mask is None else np.asarray(active_mask)
         exits._offsets3d = tuple(x[~active].T)
         if sphere_mode:
             meshes = []
-            for group in d["clusters"][k]:
-                for center, radius in zip(
-                    group["display_positions_m"], group["display_radii_m"], strict=True
-                ):
-                    meshes.append((template * radius + np.asarray(center)) * 1000)
+            if physical_centers:
+                for i in np.flatnonzero(active):
+                    meshes.append((template * (magnification * d["radii"][i]) + current[i]) * 1000)
+            else:
+                for group in d["clusters"][k]:
+                    for center, radius in zip(
+                        group["display_positions_m"], group["display_radii_m"], strict=True
+                    ):
+                        meshes.append((template * radius + np.asarray(center)) * 1000)
             assert len(meshes) == int(active.sum())
             points.set_verts(np.concatenate(meshes))
             points.set_facecolor(np.tile(np.c_[face_rgb, np.ones(len(face_rgb))], (len(meshes), 1)))
@@ -269,12 +294,19 @@ def scene(name, d, sphere_mode=False, magnification=1.0):
         for artist in dynamic:
             artist.do_3d_projection()
             ax.draw_artist(artist)
-        return Image.fromarray(np.asarray(fig.canvas.buffer_rgba())[:, :, :3].copy())
+        im = Image.fromarray(np.asarray(fig.canvas.buffer_rgba())[:, :, :3].copy())
+        if lumen_mask is not None:
+            im = Image.composite(im, static_image, lumen_mask)
+        return im
+
+    render.lumen_mask = lumen_mask
+    render.static_image = static_image
+    render.screen_points = lambda positions_m: base.screen_points(ax, np.asarray(positions_m) * 1000)
 
     return fig, render, checks
 
 
-def overlay(im, d, k, physical_time):
+def overlay(im, d, k, physical_time, label_group=None):
     draw = ImageDraw.Draw(im)
     font = ImageFont.truetype(str(FONT), 33)
     count_font = ImageFont.truetype(str(FONT), 24)
@@ -287,7 +319,7 @@ def overlay(im, d, k, physical_time):
         anchor="la",
     )
     # The label refers to the most recent saved state, never an interpolated group count.
-    group = d["clusters"][k][0]
+    group = d["clusters"][k][0] if label_group is None else label_group
     if group["count"] > 1:
         x, y = group["screen_center_top_origin"]
         radius = (
