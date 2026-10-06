@@ -99,12 +99,16 @@ def load_data(display_times):
     return data, protected
 
 
-def wall_sections(path):
+def wall_sections(path, bounds=None):
     """Sections of the actual particle-wall mesh, clipped only for the camera."""
     mesh = pv.read(path)
+    bounds = BOUNDS if bounds is None else np.asarray(bounds)
     lines = []
     planes = [("z", [0, 0, z]) for z in [-.0007, 0, .0007]]
-    planes += [("x", [x / 1000, 0, 0]) for x in [-3, -1, 1, 3, 5, 7, 9, 10]]
+    sections = [-3, -1, 1, 3, 5, 7, 9, 10] if bounds is BOUNDS else np.arange(
+        np.ceil(bounds[0, 0]), bounds[0, 1], 2
+    )
+    planes += [("x", [x / 1000, 0, 0]) for x in sections]
     for normal, origin in planes:
         section = mesh.slice(normal=normal, origin=origin)
         cells, offset = section.lines, 0
@@ -112,7 +116,7 @@ def wall_sections(path):
             n = cells[offset]
             pts = section.points[cells[offset + 1:offset + n + 1]] * 1000
             for a, b in zip(pts[:-1], pts[1:]):
-                if np.all(np.minimum(a, b) >= BOUNDS[:, 0]) and np.all(np.maximum(a, b) <= BOUNDS[:, 1]):
+                if np.all(np.minimum(a, b) >= bounds[:, 0]) and np.all(np.maximum(a, b) <= bounds[:, 1]):
                     lines.append([a, b])
             offset += n + 1
     return np.asarray(lines)

@@ -145,7 +145,8 @@ def source_and_field(ax, d):
     x, y, z = d["axes"]
     iz, ix = int(np.argmin(abs(z))), int(np.argmin(abs(x)))
     assert abs(z[iz]) < 1e-10 and abs(x[ix]) < 1e-10
-    take = (x >= FIELD_BOUNDS[0, 0]) & (x <= FIELD_BOUNDS[0, 1])
+    view_bounds = np.asarray(d.get("view_bounds_mm", FIELD_BOUNDS))
+    take = (x >= view_bounds[0, 0]) & (x <= view_bounds[0, 1])
     X, Y = np.meshgrid(x[take], y, indexing="ij")
     ax.plot_surface(
         X,
@@ -174,7 +175,7 @@ def source_and_field(ax, d):
         alpha=0.60,
         zorder=2,
     )
-    wall = base.wall_sections(d["surface"])
+    wall = base.wall_sections(d["surface"], bounds=d.get("view_bounds_mm"))
     ax.add_collection3d(Line3DCollection(wall, colors="#d8e2ed", linewidths=0.7, alpha=0.68, zorder=3))
     for element in d["config"]["pzt"]:
         center = np.array(element["position_m"]) * 1000
