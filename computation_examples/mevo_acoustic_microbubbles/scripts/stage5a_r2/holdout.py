@@ -13,6 +13,12 @@ from scripts.stage5a_r2.seal import BASE
 from scripts.stage5a_r2.run import load
 from scripts.stage4l.dense_probe import sha, write
 from mevo_mb.bubbles.motion_r2 import anchored_constraints, SemiImplicit
+from mevo_mb.bubbles.motion_recovery_r2 import (
+    selected_method,
+    recovery_ceiling,
+    begin_recovery,
+    accepted_recovery,
+)
 from mevo_mb.bubbles.constrained_motion import SubdivideInterval, MotionSolverFailure
 
 
@@ -34,7 +40,7 @@ def evaluate(item):
     r = data["radii_m"][mask]
     ids = data["particle_id"][mask]
     t = float(data["time_s"])
-    out = BASE / "diagnosis/holdout_v2_component" / f"{item['case']}_{k}"
+    out = BASE / "diagnosis/holdout_v3" / f"{item['case']}_{k}"
     out.mkdir(parents=True, exist_ok=False)
     np.savez_compressed(out / "SEALED_STATE.npz", **data)
     f = tr.evaluate(x, r, t)
@@ -75,6 +81,7 @@ def evaluate(item):
     step = SemiImplicit(tr.translation, tr.cylinder, tr.evaluate, sw, nonlinear_strategy="quasi_newton")
     elapsed = 0.0
     dt = 1e-8
+    controller = {}
     accepted = []
     rejected = []
     start = perf_counter()
@@ -83,12 +90,16 @@ def evaluate(item):
     try:
         while elapsed < 1e-6 - 1e-16:
             assert perf_counter() - start < 90 and len(rejected) < 100 and dt >= 1e-12, "HOLDOUT_BUDGET"
-            dt = min(dt, 1e-6 - elapsed)
+            step.method = selected_method(controller)
+            dt = min(dt, 1e-6 - elapsed, recovery_ceiling(1.0) if step.method == "S0" else 1e-5)
             try:
                 states, d = step.trial(x, r, ids, t + elapsed, dt)
             except (SubdivideInterval, MotionSolverFailure) as exc:
                 rejected.append(dict(dt=dt, elapsed=elapsed, diagnostics=exc.diagnostics))
+                failed_dt = dt
                 dt *= 0.5
+                if step.method == "S1" and begin_recovery(controller, exc, failed_dt, 1e-6 - elapsed):
+                    dt = controller["next_dt"]
                 continue
             for j, (y, u, cache, sub) in enumerate(states):
                 accepted.append(dict(time_s=t + elapsed + (j + 1) * dt / 2, dt_s=dt / 2, diagnostics=sub))
@@ -97,7 +108,8 @@ def evaluate(item):
             x = states[-1][0]
             tr.translation.cache = states[-1][2]
             elapsed += dt
-            dt *= min(2.0, max(0.5, 0.85 / max(d["error_ratio"], 1e-8) ** 0.5))
+            proposed = dt * min(2.0, max(0.5, 0.85 / max(d["error_ratio"], 1e-8) ** 0.5))
+            dt = accepted_recovery(controller, step.method, dt, proposed, 1e-5)
         status = "PASS" if max(relative_u) <= 1e-7 and max(relative_reaction) <= 1e-7 else "FAIL"
         error = None
     except Exception as exc:
@@ -115,8 +127,10 @@ def evaluate(item):
         accepted=accepted,
         rejected=rejected,
         wall_s=perf_counter() - start,
-        source_protocol_sha256=sha(BASE / "final/VALIDATION_PROTOCOL_V2.json"),
+        source_protocol_sha256=sha(BASE / "final/VALIDATION_PROTOCOL_V3.json"),
         actual_motion_layout="component_serial",
+        integrator="S1_V6_WITH_BOUNDED_S0_WALL_RECOVERY",
+        recovery_controller=controller,
         evaluator_sha256=sha(Path(__file__)),
     )
     write(out / "RESULT.json", report)
@@ -136,7 +150,7 @@ def evaluate(item):
 
 if __name__ == "__main__":
     protocol = verify()
-    selected = BASE / "fixtures/HOLDOUT_SELECTION_V2.json"
+    selected = BASE / "fixtures/HOLDOUT_SELECTION_V3.json"
     assert sha(selected) == protocol["holdout_selection_sha256"]
     with ProcessPoolExecutor(max_workers=6) as pool:
         rows = list(pool.map(evaluate, json.loads(selected.read_text())))
@@ -148,5 +162,5 @@ if __name__ == "__main__":
         pair_backend="numpy",
         timing="parallel diagnostic throughput, not formal latency",
     )
-    write(BASE / "final/HOLDOUT_V2_COMPONENT.json", result)
+    write(BASE / "final/HOLDOUT_V3.json", result)
     print(json.dumps(result), flush=True)

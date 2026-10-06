@@ -19,8 +19,8 @@ def critical_hashes():
 
 
 def verify():
-    protocol = json.loads((BASE / "final/VALIDATION_PROTOCOL_V2.json").read_text())
-    gate = json.loads((BASE / "final/TEST_GATE_V2.json").read_text())
+    protocol = json.loads((BASE / "final/VALIDATION_PROTOCOL_V3.json").read_text())
+    gate = json.loads((BASE / "final/TEST_GATE_V3.json").read_text())
     assert protocol["source_sha256"] == critical_hashes(), "formal source differs from frozen protocol"
     assert gate["status"] == "PASS" and gate["source_sha256"] == critical_hashes()
     assert (
@@ -29,14 +29,15 @@ def verify():
         == gate["environment_sha256"]
     )
     assert gate["junit_sha256"] == sha(ROOT / gate["junit_path"])
+    assert all(sha(ROOT / p) == digest for p, digest in gate["test_source_sha256"].items())
     return protocol
 
 
 def main():
-    protocol_path = BASE / "final/VALIDATION_PROTOCOL_V2.json"
+    protocol_path = BASE / "final/VALIDATION_PROTOCOL_V3.json"
     assert not protocol_path.exists(), "frozen validation protocol cannot be overwritten"
     protocol = dict(
-        version="STAGE5A_R2_S1_V4_COMPONENT_VALIDATION_V2",
+        version="STAGE5A_R2_S1_V6_HYBRID_VALIDATION_V3",
         time_utc=datetime.now(timezone.utc).isoformat(),
         source_commit=(ROOT / "SOURCE_COMMIT_R2.txt").read_text().strip(),
         source_sha256=critical_hashes(),
@@ -59,8 +60,18 @@ def main():
             ],
         ),
         integrator=dict(
-            name="S1 semi-implicit Euler, adopted two half steps",
-            resistance="A(x_end)",
+            name="S1 endpoint-resistance method with bounded explicitly labelled S0 recovery; adopted two half steps",
+            nonsmooth_S0_recovery=True,
+            recovery=dict(
+                trigger="NONLINEAR_NOT_CONVERGED and WALL normal jump >0.01",
+                max_macro_dt_s=1e-7,
+                refined_macro_dt_s=5e-8,
+                burst_macro_steps=8,
+                max_bursts=1024,
+                original_equation="S1 endpoint matrix; S0 start matrix",
+                nonlinear_S0_status="NOT_APPLICABLE_EXPLICIT_STEP",
+            ),
+            resistance="A(x_end) on S1; original A(x_start) on explicitly labelled S0 recovery",
             force_and_contact_normal="frozen at each substep start",
             nonlinear_strategy="quasi_newton",
             anderson_history=6,
@@ -96,7 +107,7 @@ def main():
             repeat_target=3,
         ),
         state_policy="Solved + original independent certificate. Inaccurate candidate retained; choose a separately certified alternative native solve, never accept by status alone.",
-        holdout_selection_sha256=sha(BASE / "fixtures/HOLDOUT_SELECTION_V2.json"),
+        holdout_selection_sha256=sha(BASE / "fixtures/HOLDOUT_SELECTION_V3.json"),
     )
     write(protocol_path, protocol)
     tests = [
@@ -108,8 +119,8 @@ def main():
         "tests/test_stage4l_metrics.py",
         "tests/test_stage4m_ablation.py",
     ]
-    xml = BASE / "environment/FORMAL_TESTS_V2.xml"
-    log = BASE / "environment/FORMAL_TESTS_V2.log"
+    xml = BASE / "environment/FORMAL_TESTS_V3.xml"
+    log = BASE / "environment/FORMAL_TESTS_V3.log"
     with log.open("x") as f:
         result = subprocess.run(
             [sys.executable, "-m", "pytest", *tests, "-q", f"--junitxml={xml}"],
@@ -134,7 +145,7 @@ def main():
         junit_sha256=sha(xml),
         test_source_sha256={p: sha(ROOT / p) for p in tests},
     )
-    write(BASE / "final/TEST_GATE_V2.json", gate)
+    write(BASE / "final/TEST_GATE_V3.json", gate)
     print(json.dumps({k: v for k, v in gate.items() if "sha256" not in k}), flush=True)
     assert gate["status"] == "PASS"
 

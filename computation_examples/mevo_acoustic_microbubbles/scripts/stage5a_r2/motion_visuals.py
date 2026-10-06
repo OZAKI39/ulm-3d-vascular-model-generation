@@ -132,7 +132,7 @@ def main(video=False):
         arrays, origin, bounds, radius = context(report)
         indices = np.rint(np.linspace(0, len(arrays[0]["time_s"]) - 1, 4)).astype(int)
         plotter = pv.Plotter(shape=(2, 4), window_size=(2560, 1280), off_screen=True, border=False)
-        for row, (d, name) in enumerate(zip(arrays, ["Frozen Stage4L", "R2 S1 V4"])):
+        for row, (d, name) in enumerate(zip(arrays, ["Frozen Stage4L", "R2 S1/S0 V6"])):
             for col, index in enumerate(indices):
                 plotter.subplot(row, col)
                 elapsed = (d["requested_time_s"][index] - d["requested_time_s"][0]) * 1e3
@@ -174,7 +174,9 @@ def main(video=False):
         for row, (case, report) in enumerate(selected.items()):
             arrays, origin, bounds, radius = context(report)
             members = arrays[0]["particle_ids"]
-            for col, (kind, name) in enumerate([("reference", "Frozen Stage4L"), ("candidate", "R2 S1 V4")]):
+            for col, (kind, name) in enumerate(
+                [("reference", "Frozen Stage4L"), ("candidate", "R2 S1/S0 V6")]
+            ):
                 path = local(report[kind])
                 d = actual_sample(path, clock, members)
                 plotter.subplot(row, col)

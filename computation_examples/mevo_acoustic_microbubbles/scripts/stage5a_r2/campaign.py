@@ -29,7 +29,7 @@ def numerical(s):
 
 def main():
     verify()
-    holdout = json.loads((BASE / "final/HOLDOUT_V2_COMPONENT.json").read_text())
+    holdout = json.loads((BASE / "final/HOLDOUT_V3.json").read_text())
     # A failed *motion* holdout remains a promotion blocker. It does not erase
     # the separately passed original-QP gate or prohibit scoped original-3s
     # validation. No solver parameters are changed after opening these states.
@@ -37,7 +37,7 @@ def main():
         max(r["relative_velocity_difference"]) <= 1e-7 and max(r["relative_reaction_difference"]) <= 1e-7
         for r in holdout["rows"]
     )
-    out = BASE / "final/CAMPAIGN_V2"
+    out = BASE / "final/CAMPAIGN_V3"
     out.mkdir(exist_ok=False)
     ledger = []
     stages = {}
@@ -58,7 +58,7 @@ def main():
     def execute(case, duration, kind, repeat=0):
         bucket = "reference" if kind == "reference" else "new"
         remaining = 10800 - spent[bucket]
-        label = f"formal_v2_{duration:g}_{kind}_repeat{repeat}"
+        label = f"formal_v3_{duration:g}_{kind}_repeat{repeat}"
         if remaining < 60:
             ledger.append(
                 dict(case=case, duration=duration, kind=kind, status="NOT_RUN", reason="AGGREGATE_BUDGET")
@@ -96,6 +96,7 @@ def main():
                 str(0.25 if kind == "refined" else 1.0),
                 "--pair",
                 "cupy",
+                "--nonsmooth-recovery",
                 "--nonlinear-strategy",
                 "quasi_newton",
                 "--label",
@@ -261,7 +262,7 @@ def main():
             spent_s=spent,
             stages=stages,
             complete=True,
-            protocol_sha256=sha(BASE / "final/VALIDATION_PROTOCOL_V2.json"),
+            protocol_sha256=sha(BASE / "final/VALIDATION_PROTOCOL_V3.json"),
         ),
     )
 

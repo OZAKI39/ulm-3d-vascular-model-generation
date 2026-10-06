@@ -50,7 +50,7 @@ def save(fig, name, description):
 
 
 def select():
-    campaign = read(BASE / "final/CAMPAIGN_V1/RESULT.json")
+    campaign = read(sorted((BASE / "final").glob("CAMPAIGN_V*/RESULT.json"))[-1])
     entries = [e for e in campaign["ledger"] if e.get("summary")]
     # Longest attempted nominal, retaining failures. Performance comparisons
     # separately filter COMPLETE and equal durations; no partial extrapolation.
@@ -95,6 +95,14 @@ def progress(entries, chosen):
                     color=color,
                     marker="x",
                     alpha=0.5,
+                )
+                recovery = [r for r in a if r.get("substep_method") == "S0"]
+                ax.scatter(
+                    [r["wall_s"] for r in recovery],
+                    [r["elapsed_s"] * 1e3 for r in recovery],
+                    s=8,
+                    color="#b77e38",
+                    label="S0 recovery" if kind == "nominal" else None,
                 )
                 fb = [r for r in a if r["fallbacks"]]
                 ax.scatter(
@@ -157,8 +165,8 @@ def error_and_safety(chosen):
         saxes[0, column].set_yscale("symlog", linthresh=0.01)
         saxes[0, column].legend(fontsize=7)
         for key, label, color in [
-            ("kkt", "QP original KKT", BLUE),
-            ("nonlinear_kkt", "Endpoint nonlinear KKT", PURPLE),
+            ("kkt", "Numerical QP KKT (S0: start matrix)", BLUE),
+            ("nonlinear_kkt", "Original endpoint KKT (S1 only)", PURPLE),
             ("linear_residual", "Resistance residual", GRAY),
         ]:
             saxes[1, column].plot(t, [r[key] for r in a], lw=0.6, color=color, label=label)
@@ -216,7 +224,7 @@ def metrics():
             SOURCES[str(f.relative_to(ROOT))] = sha(f)
         fig, axes = plt.subplots(2, 3, figsize=(13, 7.2), layout="constrained")
         origin = arrays[0]["centroid_m"][0]
-        for d, name, color in zip(arrays, ["Frozen Stage4L", "R2 S1 V4"], [GRAY, BLUE]):
+        for d, name, color in zip(arrays, ["Frozen Stage4L", "R2 S1/S0 V6"], [GRAY, BLUE]):
             t = (d["requested_time_s"] - d["requested_time_s"][0]) * 1e3
             axes[0, 0].plot(t, d["rg_m"] * 1e6, label=name, color=color)
             axes[0, 1].plot(
@@ -251,7 +259,22 @@ def metrics():
 
 def performance(entries, chosen):
     fig, axes = plt.subplots(2, 3, figsize=(14, 8.2), layout="constrained")
-    duration = max(e["duration"] for e in entries)
+    paired = [
+        duration
+        for duration in {e["duration"] for e in entries}
+        if all(
+            any(
+                e["duration"] == duration
+                and e["case"] == case
+                and e["kind"] == kind
+                and e["summary"]["status"] == "COMPLETE"
+                for e in entries
+            )
+            for case in ["B2", "B3"]
+            for kind in ["nominal", "reference"]
+        )
+    ]
+    duration = max(paired, default=max(e["duration"] for e in entries))
     for j, case in enumerate(["B2", "B3"]):
         for k, kind in enumerate(["reference", "nominal"]):
             samples = [
@@ -337,7 +360,7 @@ def performance(entries, chosen):
     save(
         fig,
         "R8_PERFORMANCE_RESOURCES",
-        "Only complete equal-duration runs enter performance samples; all retries and setup included. One scientific worker, BLAS=1. Actual solve layout is global sparse; component graph is diagnostic. Host/GPU readings are device-wide. Cost partition excludes overlapping wall/error subcounters; see TIMING_AUDIT.json.",
+        "Only complete equal-duration runs enter performance samples; all retries and setup included. One scientific worker, BLAS=1. Actual final solve layout is component serial; component graph is diagnostic. Host/GPU readings are device-wide. Cost partition excludes overlapping wall/error subcounters; see TIMING_AUDIT.json.",
     )
     # Full per-core evidence is plotted separately, not replaced by host mean.
     fig, axes = plt.subplots(1, 2, figsize=(12, 4), layout="constrained")

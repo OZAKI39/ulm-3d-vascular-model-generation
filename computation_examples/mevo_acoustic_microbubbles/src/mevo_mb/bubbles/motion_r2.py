@@ -168,17 +168,21 @@ class SemiImplicit:
         fixed_c = None
         scratch = None
         prior_wall_normals = None
+        prior_wall_gaps = None
         wall_normal_jump = 0.0
         jump_particle_id = None
         for iteration in range(1 if self.method == "S0" else self.max_iterations):
             wk = self.wall(xk, r)
             if prior_wall_normals is not None:
                 changes = np.linalg.norm(wk[1] - prior_wall_normals, axis=1)
+                relevant = np.minimum(wk[0], prior_wall_gaps) < self.backend.activation * r
+                changes = np.where(relevant, changes, 0.0)
                 j = int(np.argmax(changes))
                 if changes[j] > wall_normal_jump:
                     wall_normal_jump = float(changes[j])
                     jump_particle_id = int(ids[j])
             prior_wall_normals = wk[1].copy()
+            prior_wall_gaps = wk[0].copy()
             start = perf_counter()
             a = self.backend.solve(xk, r, force, flow, wk)
             self.timings["assembly"] += perf_counter() - start
@@ -342,6 +346,11 @@ class SemiImplicit:
         terminal_kkt, terminal_terms = kkt_residual(
             an, bn, end_c.matrix, end_c.lower / vs, u.ravel() / vs, lam
         )
+        terminal_force_residual = (
+            end_result.matrix @ u.ravel()
+            - end_result.matrix @ end_result.velocity.ravel()
+            - end_c.matrix.T @ (lam * end_result.scale * vs)
+        )
         raise SubdivideInterval(
             "NONLINEAR_NOT_CONVERGED",
             dict(
@@ -352,6 +361,7 @@ class SemiImplicit:
                 jump_particle_id=jump_particle_id,
                 terminal_original_nonlinear_kkt=terminal_kkt,
                 terminal_kkt_terms=terminal_terms,
+                terminal_physical_force_residual_l2_N=float(np.linalg.norm(terminal_force_residual)),
                 last_qp_kkt=diagnostics[-1]["kkt"],
             ),
         )
@@ -394,6 +404,12 @@ class SemiImplicit:
             nonlinear_iterations=sum(q["iterations"] for q in [df, dh, d]),
             qp_iterations=sum(q["qp_iterations"] for q in [df, dh, d]),
             fallbacks=sum(q["fallbacks"] for q in [df, dh, d]),
+            substep_method=self.method,
+            original_equilibrium_kkt=max(
+                q["qp"]["nonlinear_kkt"] if q["qp"]["nonlinear_kkt"] is not None else q["kkt"]
+                for q in [df, dh, d]
+            ),
+            physical_force_residual_l2_N=max(q["qp"]["physical_force_residual_l2_N"] for q in [df, dh, d]),
         )
         if error > 1:
             raise SubdivideInterval("LOCAL_ERROR", dict(diag, dt_s=dt))
