@@ -1,0 +1,176 @@
+.F..F......F.............                                                [100%]
+=================================== FAILURES ===================================
+____________ test_osqp_physical_limits[test_T2_common_translation] _____________
+
+osqp_reference = <module 'test_stage5a_motion' from '/workspace/mevo_acoustic_microbubbles_stage5a/tests/test_stage5a_motion.py'>
+name = 'test_T2_common_translation'
+
+    @pytest.mark.parametrize("name", [
+        "test_T1_stokes_force_and_flow", "test_T2_common_translation", "test_T3_squeeze_large_dt",
+        "test_T4_separating_inactive", "test_T5_tangential_not_locked", "test_T6_wall_large_dt",
+        "test_T10_components_global", "test_T11_warm_cold_and_cache_ids",
+        "test_T12_predictor_corrector_refinement", "test_rejection_does_not_commit_cache",
+    ])
+    def test_osqp_physical_limits(osqp_reference, name):
+>       getattr(osqp_reference, name)()
+
+tests/test_stage5a_osqp.py:29: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def test_T2_common_translation():
+        flow = np.tile([0.01, -0.02, 0.003], (2, 1))
+        u, _, _, result, _ = solve(pair(0.001), flow)
+>       np.testing.assert_allclose(u, flow, rtol=1e-12, atol=1e-15)
+E       AssertionError: 
+E       Not equal to tolerance rtol=1e-12, atol=1e-15
+E       
+E       Mismatched elements: 6 / 6 (100%)
+E       Max absolute difference among violations: 1.61634595e-13
+E       Max relative difference among violations: 8.08193211e-12
+E        ACTUAL: array([[ 0.01 , -0.02 ,  0.003],
+E              [ 0.01 , -0.02 ,  0.003]])
+E        DESIRED: array([[ 0.01 , -0.02 ,  0.003],
+E              [ 0.01 , -0.02 ,  0.003]])
+
+tests/test_stage5a_motion.py:68: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Polishing not needed - no active set detected at optimal point
+___________ test_osqp_physical_limits[test_T5_tangential_not_locked] ___________
+
+osqp_reference = <module 'test_stage5a_motion' from '/workspace/mevo_acoustic_microbubbles_stage5a/tests/test_stage5a_motion.py'>
+name = 'test_T5_tangential_not_locked'
+
+    @pytest.mark.parametrize("name", [
+        "test_T1_stokes_force_and_flow", "test_T2_common_translation", "test_T3_squeeze_large_dt",
+        "test_T4_separating_inactive", "test_T5_tangential_not_locked", "test_T6_wall_large_dt",
+        "test_T10_components_global", "test_T11_warm_cold_and_cache_ids",
+        "test_T12_predictor_corrector_refinement", "test_rejection_does_not_commit_cache",
+    ])
+    def test_osqp_physical_limits(osqp_reference, name):
+>       getattr(osqp_reference, name)()
+
+tests/test_stage5a_osqp.py:29: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def test_T5_tangential_not_locked():
+        flow = np.array([[0, 0.01, 0], [0, -0.01, 0]])
+        u, *_ = solve(pair(), flow)
+>       np.testing.assert_allclose(u, flow, rtol=1e-14, atol=1e-16)
+E       AssertionError: 
+E       Not equal to tolerance rtol=1e-14, atol=1e-16
+E       
+E       Mismatched elements: 2 / 6 (33.3%)
+E       Max absolute difference among violations: 8.08172973e-14
+E       Max relative difference among violations: 8.08172973e-12
+E        ACTUAL: array([[ 0.  ,  0.01,  0.  ],
+E              [ 0.  , -0.01,  0.  ]])
+E        DESIRED: array([[ 0.  ,  0.01,  0.  ],
+E              [ 0.  , -0.01,  0.  ]])
+
+tests/test_stage5a_motion.py:93: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Polishing not needed - no active set detected at optimal point
+_____________________________ test_osqp_chain[30] ______________________________
+
+osqp_reference = <module 'test_stage5a_motion' from '/workspace/mevo_acoustic_microbubbles_stage5a/tests/test_stage5a_motion.py'>
+count = 30
+
+    @pytest.mark.parametrize("count", [3, 30])
+    def test_osqp_chain(osqp_reference, count):
+>       osqp_reference.test_contact_chain(count)
+
+tests/test_stage5a_osqp.py:34: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_stage5a_motion.py:110: in test_contact_chain
+    u, _, d, _, _ = solve(x, flow)
+                    ^^^^^^^^^^^^^^
+tests/test_stage5a_motion.py:44: in solve
+    v, cache, d = m.constrained(result, c, ids)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/mevo_mb/bubbles/constrained_motion.py:467: in constrained
+    outputs = [component(k) for k in groups]
+               ^^^^^^^^^^^^
+src/mevo_mb/bubbles/constrained_motion.py:456: in component
+    answer, lam, d = solver.solve(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <mevo_mb.bubbles.osqp_motion.OSQPMotionQP object at 0x7f842f239f70>
+a = <Compressed Sparse Column sparse matrix of dtype 'float64'
+	with 148 stored elements and shape (90, 90)>
+b = array([ 2.37060129,  0.        ,  0.        ,  2.24798398,  0.        ,
+        0.        ,  2.12536667,  0.        , ...006603,  0.        ,  0.        , -1.06268333,
+        0.        ,  0.        , -1.18530064,  0.        ,  0.        ])
+g = <Compressed Sparse Column sparse matrix of dtype 'float64'
+	with 114 stored elements and shape (57, 90)>
+lower = array([ 0.        , -0.42196703,  0.        , -0.42196703,  0.        ,
+       -0.42196703,  0.        , -0.42196703, ... -0.42196703,
+        0.        , -0.42196703,  0.        , -0.42196703,  0.        ,
+       -0.42196703,  0.        ])
+warm_dual = None, warm_primal = None, feasible = None
+
+    def solve(self, a, b, g, lower, *, warm_dual=None, warm_primal=None, feasible=None):
+        begin = perf_counter()
+        a, g = a.tocsc(), g.tocsc()
+        p = sparse.triu(a, format="csc")
+        p.sort_indices()
+        g.sort_indices()
+        m, n = g.shape
+        diag = dict(solver="OSQP_BUILTIN_CPU", version=self.osqp.__version__,
+                    matrix_dimension=n, constraint_count=m, A_nnz=a.nnz, G_nnz=g.nnz,
+                    cold_start=warm_dual is None, primal_warm_start=warm_primal is not None,
+                    setup_s=0.0, solve_s=0.0, polish_s=0.0, iterations=0,
+                    workspace_reused=False, settings=SETTINGS, attempts=[])
+        if not m:
+            # Isolated, unrestrained Stokes coordinates avoid OSQP entirely.
+            u = b / a.diagonal() if a.nnz == n else splu(a).solve(b)
+            lam = np.empty(0)
+            kkt, terms = kkt_residual(a, b, g, lower, u, lam)
+            if not np.isfinite(u).all() or not np.isfinite(kkt) or kkt > 1e-9:
+                raise MotionSolverFailure(dict(diag, reason="UNCONSTRAINED_KKT", kkt=kkt))
+            diag.update(setup_s=perf_counter()-begin, kkt=kkt, kkt_terms=terms,
+                        objective=float(0.5*u@(a@u)-b@u), isolated_bypass=True)
+            return u, lam, diag
+        pattern = hashlib.sha256(
+            np.array([m, n]).tobytes()+p.indptr.tobytes()+p.indices.tobytes()
+            +g.indptr.tobytes()+g.indices.tobytes()).hexdigest()
+        reused = self.workspace is not None and self.pattern == pattern
+        if reused:
+            self.workspace.update(Px=p.data, Ax=g.data, q=-b, l=lower, u=np.full(m, np.inf))
+        else:
+            self.workspace = self.osqp.OSQP(algebra="builtin")
+            self.workspace.setup(P=p, q=-b, A=g, l=lower, u=np.full(m, np.inf), **SETTINGS)
+            self.pattern = pattern
+        diag.update(setup_s=perf_counter()-begin, workspace_reused=reused)
+        warm = warm_primal is not None and warm_dual is not None
+        for mode in (["accepted_warm", "cold_retry"] if warm else ["cold"]):
+            if mode == "accepted_warm":
+                self.workspace.warm_start(x=warm_primal, y=-warm_dual)
+            else:
+                # Also reset rho after a failed warm solve: identical cold policy.
+                self.workspace.update_settings(rho=0.1)
+                self.workspace.warm_start(x=np.zeros(n), y=np.zeros(m))
+            result = self.workspace.solve(raise_error=False)
+            u, lam = result.x, -result.y
+            finite = bool(np.isfinite(u).all() and np.isfinite(lam).all())
+            kkt, terms = kkt_residual(a, b, g, lower, u, lam) if finite else (None, {})
+            good = bool(finite and np.isfinite(kkt) and kkt <= 1e-9 and result.info.status_val == 1)
+            row = dict(mode=mode, status=result.info.status, status_val=int(result.info.status_val),
+                       iterations=int(result.info.iter), kkt=kkt, kkt_terms=terms,
+                       solve_s=float(result.info.solve_time), polish_s=float(result.info.polish_time),
+                       polish_status=int(result.info.status_polish), accepted=good)
+            diag["attempts"].append(row)
+            for key in ["solve_s", "polish_s", "iterations"]:
+                diag[key] += row[key]
+            if good:
+                diag.update(kkt=kkt, kkt_terms=terms, objective=float(0.5*u@(a@u)-b@u),
+                            cold_retry_used=mode=="cold_retry", wall_s=perf_counter()-begin)
+                return u, lam, diag
+>       raise MotionSolverFailure(dict(diag, reason="OSQP_CONTACT_KKT_FAILURE", wall_s=perf_counter()-begin))
+E       mevo_mb.bubbles.constrained_motion.MotionSolverFailure: {'solver': 'OSQP_BUILTIN_CPU', 'version': '1.1.3', 'matrix_dimension': 90, 'constraint_count': 57, 'A_nnz': 148, 'G_nnz': 114, 'cold_start': True, 'primal_warm_start': False, 'setup_s': 0.00023263413459062576, 'solve_s': 0.094032931, 'polish_s': 0.0, 'iterations': 100000, 'workspace_reused': False, 'settings': {'verbose': False, 'eps_abs': 1e-10, 'eps_rel': 0.0, 'max_iter': 100000, 'polishing': True, 'polish_refine_iter': 10, 'adaptive_rho_interval': 50, 'check_termination': 25, 'warm_starting': True}, 'attempts': [{'mode': 'cold', 'status': 'maximum iterations reached', 'status_val': 7, 'iterations': 100000, 'kkt': 7.081111868192267e-08, 'kkt_terms': {'stationarity': 7.081111868192267e-08, 'feasibility': 4.440892098500626e-16, 'dual_feasibility': 0.0, 'active_slack': 4.440892098500626e-16, 'complementarity': 3.3306690738754696e-16}, 'solve_s': 0.094032931, 'polish_s': 0.0, 'polish_status': 0, 'accepted': False}], 'reason': 'OSQP_CONTACT_KKT_FAILURE', 'wall_s': 0.09438231401145458}
+
+src/mevo_mb/bubbles/osqp_motion.py:88: MotionSolverFailure
+=========================== short test summary info ============================
+FAILED tests/test_stage5a_osqp.py::test_osqp_physical_limits[test_T2_common_translation]
+FAILED tests/test_stage5a_osqp.py::test_osqp_physical_limits[test_T5_tangential_not_locked]
+FAILED tests/test_stage5a_osqp.py::test_osqp_chain[30] - mevo_mb.bubbles.cons...
+3 failed, 22 passed in 1.35s
