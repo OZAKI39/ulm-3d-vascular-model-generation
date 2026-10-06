@@ -135,6 +135,21 @@ def gate(duration, qp_solver="sparse_active_set"):
                 selected[s["macro_dt_s"]] = (p.parent, s)
         if not all(dt in selected for dt in [20e-6, 10e-6]):
             cases[case] = dict(pass_gate=False, reason="RUNS_NOT_COMPLETE")
+            if 20e-6 in selected:
+                nominal, ns = selected[20e-6]
+                cases[case].update(
+                    nominal=ns,
+                    numerical_pass=False,
+                    wall_speedup=None,
+                    scientific_comparison=compare(
+                        Path(ns["baseline_run"]) / "trajectories.h5",
+                        nominal / "trajectories.h5",
+                        out,
+                        f"{qp_solver}_{case}_{duration * 1000:g}ms_old_new",
+                    ),
+                    dt_half_comparison=None,
+                    dt_half_status="NOT_LAUNCHED_NOMINAL_PREREQUISITE_FAILED",
+                )
             continue
         nominal, ns = selected[20e-6]
         half, hs = selected[10e-6]

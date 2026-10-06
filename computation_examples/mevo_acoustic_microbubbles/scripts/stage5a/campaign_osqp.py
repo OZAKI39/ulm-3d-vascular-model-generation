@@ -11,8 +11,15 @@ def main():
         complete = True
         for case in ["B2", "B3"]:
             folder, summary = run(case, duration, 20e-6, qp_solver="osqp")
-            rows.append(dict(run=str(folder), status=summary["status"], case=case,
-                             duration_s=duration, macro_dt_s=20e-6))
+            rows.append(
+                dict(
+                    run=str(folder),
+                    status=summary["status"],
+                    case=case,
+                    duration_s=duration,
+                    macro_dt_s=20e-6,
+                )
+            )
             write(BASE / "OSQP_CAMPAIGN_ROWS.json", rows)
             complete &= summary["status"] == "COMPLETE"
             if summary["status"] == "STOPPED_BY_USER":
@@ -22,17 +29,30 @@ def main():
         if complete:
             for case in ["B2", "B3"]:
                 folder, summary = run(case, duration, 10e-6, qp_solver="osqp")
-                rows.append(dict(run=str(folder), status=summary["status"], case=case,
-                                 duration_s=duration, macro_dt_s=10e-6))
+                rows.append(
+                    dict(
+                        run=str(folder),
+                        status=summary["status"],
+                        case=case,
+                        duration_s=duration,
+                        macro_dt_s=10e-6,
+                    )
+                )
                 write(BASE / "OSQP_CAMPAIGN_ROWS.json", rows)
                 if summary["status"] == "STOPPED_BY_USER":
                     return
         decision = gate(duration, qp_solver="osqp")
-        write(BASE / "OSQP_CAMPAIGN_STATE.json", dict(
-            status="STAGE_COMPLETE" if decision["pass_gate"] else "STOPPED_AT_GATE",
-            last_duration_s=duration, pass_gate=decision["pass_gate"],
-            nominal_complete=complete, rows=rows,
-            dt_half_skipped_reason=None if complete else "Nominal completion prerequisite failed"))
+        write(
+            BASE / "OSQP_CAMPAIGN_STATE.json",
+            dict(
+                status="STAGE_COMPLETE" if decision["pass_gate"] else "STOPPED_AT_GATE",
+                last_duration_s=duration,
+                pass_gate=decision["pass_gate"],
+                nominal_complete=complete,
+                rows=rows,
+                dt_half_skipped_reason=None if complete else "Nominal completion prerequisite failed",
+            ),
+        )
         if not decision["pass_gate"]:
             break
 

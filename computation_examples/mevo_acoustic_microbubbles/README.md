@@ -1,5 +1,15 @@
 # MEVO acoustic–microbubble simulator
 
+## Stage 5A — experimental constrained motion
+
+**FAILED_WITH_EVIDENCE / MOTION_SOLVER_NUMERICAL_GATE_FAILED.** 本轮只开发平移数值算法；原 `lubrication_coupled`、Stage 4L 物理与归档结果保持冻结。新 `constrained_lubrication_v1` 尚未通过连续密集微泡算例，不能用于 production。5 ms 及更长计算未启动。
+
+- [预注册计划](docs/STAGE5A_MOTION_SOLVER_PLAN.md)
+- [开发报告与失败原因](docs/STAGE5A_MOTION_SOLVER_DEVELOPMENT.md)
+- [图表与机器可读证据](results/stage5/motion_solver/OPEN_RESULTS.html)
+- [复核入口和执行范围](scripts/stage5a/README.md)
+
+
 ## Stage 4 — Y-bifurcation branch steering
 
 Stage 4 在 `stage4-bifurcation-control` 分支继续开发，冻结的 Stage 3 标签为 `stage3-minimal-validated`。十个配对种子、40 个纯初级力算例及统计已完成；完整阶段验收尚未生成。
