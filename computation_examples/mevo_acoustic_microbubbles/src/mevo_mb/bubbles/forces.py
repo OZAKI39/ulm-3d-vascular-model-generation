@@ -51,7 +51,14 @@ class ClassicalFarFieldBjerknes(PairInteractionBackend):
     delegates nonpenetration to the geometric constraints, without changing force.
     """
 
-    def __init__(self, backend="numpy", min_distance_over_sum=5.0, max_bubbles=2000, enforce_far_field=True):
+    def __init__(self, backend="numpy", min_distance_over_sum=5.0, max_bubbles=2000, enforce_far_field=True,
+                 near_contact_secondary_ablation="A0", record_pair_diagnostics=False):
+        from .secondary_ablation import POLICIES
+        if near_contact_secondary_ablation not in POLICIES:
+            raise ValueError("Unknown near_contact_secondary_ablation policy")
+        self.secondary_ablation = near_contact_secondary_ablation
+        self.record_pair_diagnostics = record_pair_diagnostics
+        self._pair_diagnostics_args = None
         if backend == "cupy":
             import cupy as xp
         elif backend == "numpy":
@@ -90,7 +97,27 @@ class ClassicalFarFieldBjerknes(PairInteractionBackend):
             v = v[:, None]
         dotv = (2j * np.pi * frequency_Hz) * v * xp.arange(1, v.shape[-1] + 1)
         correlation = 0.5 * xp.real(dotv @ xp.conj(dotv.T))
+        if self.secondary_ablation != "A0" or self.record_pair_diagnostics:
+            from .secondary_ablation import near_contact_secondary_ablation
+            if len(r) and not bool(xp.all(r == r[0])):
+                raise ValueError("Stage 4M ablation requires monodisperse radii")
+            radius = r[0] if len(r) else 1.78e-6
+            gaps = xp.sqrt(d2) - (r[:, None] + r[None, :])
+            weights = near_contact_secondary_ablation(gaps, radius, self.secondary_ablation, xp)
+            if self.record_pair_diagnostics:
+                self._pair_diagnostics_args = (d2, correlation, weights, gaps, radius, density_kg_m3)
+            if self.secondary_ablation != "A0":
+                return density_kg_m3 / (4 * np.pi) * xp.sum(
+                    ((correlation / d2**1.5) * weights)[..., None] * delta, axis=1
+                )
+        # Preserve the Stage 4L A0 operation order bitwise (no multiply by one).
         return density_kg_m3 / (4 * np.pi) * xp.sum((correlation / d2**1.5)[..., None] * delta, axis=1)
+
+    def pair_diagnostics(self):
+        from .secondary_ablation import pair_norm_diagnostics
+        if self._pair_diagnostics_args is None:
+            raise ValueError("No recorded force evaluation")
+        return pair_norm_diagnostics(*self._pair_diagnostics_args, xp=self.xp)
 
 
 class CuPyPairBackend(ClassicalFarFieldBjerknes):

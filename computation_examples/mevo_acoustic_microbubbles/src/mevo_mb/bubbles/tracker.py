@@ -110,15 +110,20 @@ class ParticleTracker:
                 self.p["secondary_force_cutoff_m"],
             )
         else:
+            ablation_kwargs = dict(
+                near_contact_secondary_ablation=self.p.get("near_contact_secondary_ablation", "A0"),
+                record_pair_diagnostics=self.p.get("record_pair_diagnostics", False),
+            )
             if self.p.get('pair_backend') == 'auto':
                 from mevo_mb.bubbles.auto_backend import AutoPairBackend
                 self.pair = AutoPairBackend(benchmark_path=self.p.get('pair_benchmark_path', 'results/stage2/performance/STATE.json'),
-                    crossover=self.p.get('pair_crossover'),min_distance_over_sum=self.monitor.pair.min_distance_over_sum, enforce_far_field=self.policy != "simulator")
+                    crossover=self.p.get('pair_crossover'),min_distance_over_sum=self.monitor.pair.min_distance_over_sum, enforce_far_field=self.policy != "simulator", **ablation_kwargs)
             else:
                 self.pair = ClassicalFarFieldBjerknes(
                     self.p.get("pair_backend", "numpy"),
                     min_distance_over_sum=self.monitor.pair.min_distance_over_sum,
                     enforce_far_field=self.policy != "simulator",
+                    **ablation_kwargs,
                 )
 
     def evaluate(self, x, radii, t):
