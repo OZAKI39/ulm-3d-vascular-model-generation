@@ -109,6 +109,14 @@ def run(
     resume=None,
     nonlinear_strategy="picard",
 ):
+    if label.startswith("formal"):
+        from scripts.stage5a_r2.freeze import verify
+
+        protocol = verify()
+        assert method == "S1" and pair == "cupy" and not components
+        assert nonlinear_strategy == protocol["integrator"]["nonlinear_strategy"]
+        assert (max_dt, tol_factor) in [(1e-5, 1.0), (5e-6, 0.25)]
+        assert budget <= protocol["resources"]["per_run_s"]
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     out = BASE / "runs" / f"{stamp}_{case}_{method}_{duration:g}s_{label}"
     out.mkdir(parents=True)
@@ -144,10 +152,16 @@ def run(
         if sha(previous_identity) != meta["identity"]:
             raise ValueError("CONFIG_ERROR: checkpoint identity hash mismatch")
         old_identity = json.loads(previous_identity.read_text())
+        for name, digest in old_identity["source_sha256"].items():
+            if name.startswith("src/") and sha(ROOT / name) != digest:
+                raise ValueError("CONFIG_ERROR: restart solver source differs")
+        if old_identity["environment_sha256"] != sha(BASE / "environment/IDENTITY.json"):
+            raise ValueError("CONFIG_ERROR: restart environment differs")
         if (
             old_identity["config"] != config
             or old_identity["method"] != method
             or old_identity["tolerance_factor"] != tol_factor
+            or old_identity.get("nonlinear_strategy", "picard") != nonlinear_strategy
         ):
             raise ValueError("CONFIG_ERROR: exact continuation configuration differs")
         t = float(data["time_s"])
@@ -276,6 +290,9 @@ def run(
                         trial_wall_s=time.perf_counter() - trial_start,
                     )
                     rejected.append(row)
+                    qp_state = getattr(exc, "qp_state", None)
+                    if qp_state is not None:
+                        np.savez_compressed(out / f"FAILED_QP_{len(rejected):05d}.npz", **qp_state)
                     rl.write(json.dumps(row, allow_nan=False) + "\n")
                     rl.flush()
                     if reason in [

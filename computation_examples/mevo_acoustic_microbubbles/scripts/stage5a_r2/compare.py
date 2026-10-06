@@ -95,15 +95,17 @@ def compare(reference, candidate, out, label):
     ab = sampling_bound(reference, a)
     bb = sampling_bound(candidate, b)
     uncertainty = float(ab[-1] + bb[-1])
+    rg_series_uncertainty = float(np.linalg.norm(ab + bb) / np.linalg.norm(a["rg_m"]))
     passed = meaningful and rg_end <= 0.02 and rg_l2 <= 0.02 and max(quart) <= 0.02 and centroid <= budget
     # Interval uncertainty cannot silently decide a marginal gate.
     sampling_ambiguous = (
         meaningful
-        and uncertainty > 0
+        and (uncertainty > 0 or rg_series_uncertainty > 0)
         and (
             abs(centroid - budget) <= uncertainty
             or abs(rg_end - 0.02) <= uncertainty / a["rg_m"][-1]
             or np.any(abs(quart - 0.02) <= 2 * uncertainty / a["pair_quantiles_m"][-1, 1:4])
+            or abs(rg_l2 - 0.02) <= rg_series_uncertainty
         )
     )
     for key, data in [("reference", a), ("candidate", b)]:
@@ -143,6 +145,7 @@ def compare(reference, candidate, out, label):
         reference_sampling_displacement_bound_max_m=float(ab.max()),
         candidate_sampling_displacement_bound_max_m=float(bb.max()),
         endpoint_sampling_uncertainty_m=uncertainty,
+        Rg_series_sampling_relative_L2_uncertainty=rg_series_uncertainty,
         rigid_fit_reference_end_m=float(a["rigid_fit_m"][-1]),
         rigid_fit_candidate_end_m=float(b["rigid_fit_m"][-1]),
         graph_change_mean_reference=float(a["neighbor_turnover"].mean()) if meaningful else None,

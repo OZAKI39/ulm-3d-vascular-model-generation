@@ -63,7 +63,6 @@ def main():
                 tr = frames.get("trial", {})
                 co = frames.get("component", {})
                 cg = frames.get("constrained", {})
-                qp = frames.get("solve", {})
                 if "xp" in tr:
                     pairs = np.unique(np.vstack([tr["c0"].pairs, tr["cp"].pairs]), axis=0)
                     h0, n0 = _gap_vectors(tr["x"], pairs, r[0])

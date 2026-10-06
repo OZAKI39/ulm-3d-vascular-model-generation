@@ -25,11 +25,11 @@ def test_real_failed_qp(fixture):
     d = dict(np.load(next(z for z in p.glob("*.npz") if z.name not in ["A.npz", "G.npz"])))
     a, g = sparse.load_npz(p / "A.npz"), sparse.load_npz(p / "G.npz")
     qp = NativeQP()
-    u, l, diag = qp.solve(a, d["b"], g, d["lower"], feasible=d.get("feasible"))
+    u, lam, diag = qp.solve(a, d["b"], g, d["lower"], feasible=d.get("feasible"))
     assert diag["pass_gate"] and diag["kkt"] <= 1e-9
-    v, m, w = qp.solve(a, d["b"], g, d["lower"], warm_primal=u, warm_dual=l)
+    v, m, w = qp.solve(a, d["b"], g, d["lower"], warm_primal=u, warm_dual=lam)
     np.testing.assert_allclose(u, v, atol=1e-8, rtol=1e-8)
-    np.testing.assert_allclose(g.T @ l, g.T @ m, atol=1e-8, rtol=1e-7)
+    np.testing.assert_allclose(g.T @ lam, g.T @ m, atol=1e-8, rtol=1e-7)
     assert abs(w["objective"] - diag["objective"]) < 1e-9 * max(1, abs(w["objective"]))
 
 
@@ -37,10 +37,10 @@ def test_real_failed_qp(fixture):
 def test_native_lower_sign_and_bound(solver):
     a = sparse.eye(2, format="csc")
     g = sparse.csc_matrix([[1.0, 0.0]])
-    u, l, d = NativeQP(solver, 1e-10).candidate(a, np.array([-1.0, 2.0]), g, np.array([0.5]))
+    u, lam, d = NativeQP(solver, 1e-10).candidate(a, np.array([-1.0, 2.0]), g, np.array([0.5]))
     np.testing.assert_allclose(u, [0.5, 2.0], atol=1e-8)
-    np.testing.assert_allclose(l, [1.5], atol=1e-8)
-    assert certificate(a, np.array([-1.0, 2.0]), g, np.array([0.5]), u, -l)["kkt"] > 1
+    np.testing.assert_allclose(lam, [1.5], atol=1e-8)
+    assert certificate(a, np.array([-1.0, 2.0]), g, np.array([0.5]), u, -lam)["kkt"] > 1
 
 
 @pytest.mark.parametrize("epsilon", [0.0, 1e-12, 1e-8])
@@ -49,7 +49,7 @@ def test_parallel_different_bounds_and_nonunique_dual(epsilon):
     g = sparse.csc_matrix([[1.0, 0.0], [1.0, epsilon], [1.0, 0.0]])
     lo = np.array([0.1, 0.2, 0.2])
     b = np.array([-1.0, 1.0])
-    u, l, d = NativeQP().solve(a, b, g, lo)
+    u, lam, d = NativeQP().solve(a, b, g, lo)
     assert d["pass_gate"] and np.min(g @ u - lo) > -1e-9
     np.testing.assert_allclose(u, [0.2, 1.0], atol=1e-7)
 
@@ -61,8 +61,8 @@ def test_objective_units_row_scaling(objective_scale, row_scale):
     b = np.array([-1.0, 2.0])
     g = sparse.eye(2, format="csc")
     lo = np.array([0.0, 0.0])
-    u, l, d = NativeQP().solve(a * objective_scale, b * objective_scale, g * row_scale, lo * row_scale)
-    audit = certificate(a, b, g, lo, u, l * row_scale / objective_scale)
+    u, lam, d = NativeQP().solve(a * objective_scale, b * objective_scale, g * row_scale, lo * row_scale)
+    audit = certificate(a, b, g, lo, u, lam * row_scale / objective_scale)
     assert audit["pass_gate"]
     np.testing.assert_allclose(u, [0.0, 2 / 3], atol=1e-9)
 
@@ -203,12 +203,12 @@ def test_solver_success_still_requires_certificate_and_recoverable_fallback(monk
         if self.name == "prox":
             a, b, g, lo = args[:4]
             u = np.ones(len(b))
-            l = np.zeros(len(lo))
+            lam = np.zeros(len(lo))
             return (
                 u,
-                l,
+                lam,
                 dict(
-                    certificate(a, b, g, lo, u, l),
+                    certificate(a, b, g, lo, u, lam),
                     status="QPSolverOutput.PROXQP_SOLVED",
                     setup_s=0.0,
                     update_s=0.0,
@@ -222,7 +222,7 @@ def test_solver_success_still_requires_certificate_and_recoverable_fallback(monk
     monkeypatch.setattr(NativeQP, "candidate", injected)
     a = sparse.eye(1, format="csc")
     g = a.copy()
-    u, l, d = NativeQP().solve(a, np.array([-1.0]), g, np.array([0.0]))
+    u, lam, d = NativeQP().solve(a, np.array([-1.0]), g, np.array([0.0]))
     assert calls == ["prox", "osqp"] and d["fallbacks"] == 1
     assert d["kkt"] <= 1e-9 and u[0] < 1e-9
 
@@ -231,10 +231,10 @@ def test_inaccurate_status_requires_crosscheck(monkeypatch):
     original = NativeQP.candidate
 
     def inaccurate(self, *args, **kwargs):
-        u, l, d = original(self, *args, **kwargs)
+        u, lam, d = original(self, *args, **kwargs)
         if self.name == "prox":
             d["status"] = "solved inaccurate"
-        return u, l, d
+        return u, lam, d
 
     monkeypatch.setattr(NativeQP, "candidate", inaccurate)
     a = sparse.eye(1, format="csc")
@@ -248,8 +248,8 @@ def test_velocity_unit_equivalence(scale):
     b = np.array([-1.0, 2.0])
     g = sparse.eye(2, format="csc")
     lo = np.zeros(2)
-    z, l, d = NativeQP().solve(a * scale**2, b * scale, g * scale, lo)
-    assert certificate(a, b, g, lo, z * scale, l)["pass_gate"]
+    z, lam, d = NativeQP().solve(a * scale**2, b * scale, g * scale, lo)
+    assert certificate(a, b, g, lo, z * scale, lam)["pass_gate"]
 
 
 def test_exact_continuation_equivalence(tmp_path):

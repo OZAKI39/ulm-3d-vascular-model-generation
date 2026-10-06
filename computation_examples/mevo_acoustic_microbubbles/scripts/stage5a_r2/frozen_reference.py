@@ -4,6 +4,8 @@ Only execution resources, pair device and exact 10 us output-clock truncation
 are selected here. Old solver/evaluator/contact/projection methods are imported
 from the frozen server tree, not copied or altered.
 """
+# ruff: noqa: E402
+# Imports after the explicit frozen-source path switch are intentional.
 
 import sys
 from pathlib import Path
@@ -22,6 +24,7 @@ from mevo_mb.coupling.integrators import GlobalSynchronousIntegrator
 from mevo_mb.bubbles.ordered_contact_sweep import OrderedContactSweep
 import mevo_mb.bubbles.tracker as tracking
 from scripts.stage4l.dense_probe import load_case, sha, write
+from scripts.stage5a_r2.resources import ResourceMonitor
 
 
 def run(case, duration, pair="cupy", repeat=0):
@@ -99,6 +102,7 @@ def run(case, duration, pair="cupy", repeat=0):
     last_report = time.perf_counter()
     io = 0.0
     tracker.translation_log = (out / "TRANSLATION_SOLVES.jsonl").open("x")
+    monitor = ResourceMonitor().__enter__()
     try:
         f = tracker.evaluate(x, rr, t)
         with (out / "ACCEPTED.jsonl").open("x") as log:
@@ -152,6 +156,8 @@ def run(case, duration, pair="cupy", repeat=0):
         h.attrs["complete"] = status == "COMPLETE"
         h.close()
         tracker.translation_log.close()
+        monitor.__exit__()
+        write(out / "RESOURCE_SAMPLES.json", monitor.rows)
     summary = dict(
         status=status,
         error=error,
@@ -170,6 +176,7 @@ def run(case, duration, pair="cupy", repeat=0):
         translation=tracker.translation_summary,
         projection=tracker.projection_diagnostics,
         tracker_timings_inclusive_s=tracker.timings,
+        monitoring_inclusive_s=monitor.overhead_s,
         input_unchanged=all(sha(p) == s for p, s in inputs.items()),
     )
     write(out / "SUMMARY.json", summary)

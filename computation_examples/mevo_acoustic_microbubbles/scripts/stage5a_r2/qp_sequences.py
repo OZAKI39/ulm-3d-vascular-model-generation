@@ -101,7 +101,7 @@ def replay(task):
         if mode == "cold":
             q = NativeQP(solver, q.eps)
         start = perf_counter()
-        u, l, audit = q.candidate(a, b, g, lo, warm_u, warm_l)
+        u, lam, audit = q.candidate(a, b, g, lo, warm_u, warm_l)
         row = dict(
             case=case,
             solver=solver,
@@ -115,10 +115,10 @@ def replay(task):
         folder = BASE / "benchmarks/changing_qp"
         folder.mkdir(exist_ok=True)
         target = folder / f"{case}_{solver}_{mode}_{index}.npz"
-        np.savez_compressed(target, u=u, lambda_=l, reaction=g.T @ l)
+        np.savez_compressed(target, u=u, lambda_=lam, reaction=g.T @ lam)
         row["candidate_file"] = str(target)
         rows.append(row)
-        prior_u, prior_l, prior_keys = u, l, keys
+        prior_u, prior_l, prior_keys = u, lam, keys
     return rows
 
 
