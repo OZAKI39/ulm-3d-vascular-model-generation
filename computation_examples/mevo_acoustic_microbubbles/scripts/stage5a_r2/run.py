@@ -17,6 +17,12 @@ from scripts.stage5a_r2.resources import ResourceMonitor
 from scripts.stage5a_r2.seal import ROOT, BASE
 from mevo_mb.bubbles.tracker import ParticleTracker
 from mevo_mb.bubbles.motion_r2 import SemiImplicit
+from mevo_mb.bubbles.motion_recovery_r2 import (
+    selected_method,
+    recovery_ceiling,
+    begin_recovery,
+    accepted_recovery,
+)
 from mevo_mb.bubbles.motion_sweep_r2 import WallSweep
 from mevo_mb.bubbles.constrained_motion import SubdivideInterval, MotionSolverFailure, AcceptedCache
 
@@ -108,6 +114,7 @@ def run(
     components=True,
     resume=None,
     nonlinear_strategy="picard",
+    nonsmooth_recovery=False,
 ):
     if label.startswith("formal"):
         from scripts.stage5a_r2.freeze import verify
@@ -115,6 +122,7 @@ def run(
         protocol = verify()
         assert method == "S1" and pair == "cupy" and components
         assert nonlinear_strategy == protocol["integrator"]["nonlinear_strategy"]
+        assert nonsmooth_recovery == protocol["integrator"].get("nonsmooth_S0_recovery", False)
         assert (max_dt, tol_factor) in [(1e-5, 1.0), (5e-6, 0.25)]
         assert budget <= protocol["resources"]["per_run_s"]
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
@@ -162,6 +170,7 @@ def run(
             or old_identity["method"] != method
             or old_identity["tolerance_factor"] != tol_factor
             or old_identity.get("nonlinear_strategy", "picard") != nonlinear_strategy
+            or old_identity.get("nonsmooth_recovery", False) != nonsmooth_recovery
         ):
             raise ValueError("CONFIG_ERROR: exact continuation configuration differs")
         t = float(data["time_s"])
@@ -194,6 +203,7 @@ def run(
         case=case,
         method=method,
         duration_s=duration,
+        integrator_variant="S1_V6_WITH_BOUNDED_S0_WALL_RECOVERY" if nonsmooth_recovery else "S1_V4_OR_S0",
         config=config,
         max_dt_s=max_dt,
         tolerance_factor=tol_factor,
@@ -211,6 +221,7 @@ def run(
         pair_backend=pair,
         components=components,
         nonlinear_strategy=nonlinear_strategy,
+        nonsmooth_recovery=nonsmooth_recovery,
     )
     write(out / "IDENTITY.json", identity)
     np.savez_compressed(out / "INPUT_SNAPSHOT.npz", **state)
@@ -274,6 +285,9 @@ def run(
                 check_budget()
                 next_clock = (np.floor((elapsed + 1e-14) / 1e-5) + 1) * 1e-5
                 dt = min(controller["next_dt"], max_dt, duration - elapsed, next_clock - elapsed)
+                step.method = selected_method(controller, method) if nonsmooth_recovery else method
+                if step.method == "S0" and nonsmooth_recovery:
+                    dt = min(dt, recovery_ceiling(tol_factor))
                 if dt < 1e-12 or controller["consecutive_rejections"] >= 30:
                     raise RuntimeError("MINIMUM_PHYSICAL_PROGRESS")
                 trial_start = time.perf_counter()
@@ -282,6 +296,7 @@ def run(
                 except (SubdivideInterval, MotionSolverFailure) as exc:
                     reason = getattr(exc, "reason", exc.diagnostics.get("reason", "UNKNOWN"))
                     row = dict(
+                        trial_method=step.method,
                         time_s=t,
                         elapsed_s=elapsed,
                         dt_s=dt,
@@ -319,6 +334,14 @@ def run(
                         last_reason=reason,
                         consecutive_rejections=controller["consecutive_rejections"] + 1,
                     )
+                    if nonsmooth_recovery and step.method == "S1":
+                        begin_recovery(
+                            controller,
+                            exc,
+                            dt,
+                            min(max_dt, duration - elapsed, next_clock - elapsed),
+                            tol_factor,
+                        )
                     check_budget()
                     continue
                 trials.append(d)
@@ -328,6 +351,8 @@ def run(
                     full[mask] = y
                     ufull[mask] = u
                     row = dict(
+                        substep_method=sub["substep_method"],
+                        resistance_evaluation=sub["resistance_evaluation"],
                         time_s=time_sub,
                         elapsed_s=elapsed + dt * (k + 1) / 2,
                         dt_s=dt / 2,
@@ -367,7 +392,7 @@ def run(
                 t = t0 + elapsed
                 factor = min(2.0, max(0.5, 0.85 / max(d["error_ratio"], 1e-8) ** 0.5))
                 controller.update(
-                    next_dt=min(max_dt, dt * factor),
+                    next_dt=accepted_recovery(controller, step.method, dt, dt * factor, max_dt),
                     last_error=d["error_ratio"],
                     last_reason="ACCEPTED",
                     consecutive_rejections=0,
@@ -455,6 +480,7 @@ def run(
         case=case,
         method=method,
         target_s=duration,
+        integrator_variant="S1_V6_WITH_BOUNDED_S0_WALL_RECOVERY" if nonsmooth_recovery else "S1_V4_OR_S0",
         completed_duration_s=elapsed,
         accepted_steps=len(accepted),
         rejected_trials=len(rejected),
@@ -489,6 +515,15 @@ def run(
         segment_initial_time_s=times[0],
         segment_completed_duration_s=t - times[0],
         cumulative_accepted_steps=controller.get("total_accepted_steps", len(accepted)),
+        accepted_method_counts=dict(Counter(a["substep_method"] for a in accepted)),
+        explicit_recovery_duration_s=controller.get("recovery_duration_s", 0.0),
+        explicit_recovery_bursts=controller.get("recovery_bursts", 0),
+        explicit_recovery_max_dt_s=max(
+            (a["dt_s"] * 2 for a in accepted if a["substep_method"] == "S0"), default=None
+        ),
+        recovery_policy="S0 start-state QP is audited separately; no claim of endpoint implicit equilibrium for S0 steps"
+        if nonsmooth_recovery
+        else None,
         source_inputs_unchanged=all(sha(p) == s for p, s in inputs.items()),
     )
     write(out / "SUMMARY.json", summary)
@@ -511,6 +546,7 @@ if __name__ == "__main__":
     p.add_argument("--initial-dt", type=float, default=1e-8)
     p.add_argument("--global-qp", action="store_true")
     p.add_argument("--resume")
+    p.add_argument("--nonsmooth-recovery", action="store_true")
     p.add_argument("--nonlinear-strategy", choices=["picard", "quasi_newton"], default="picard")
     a = p.parse_args()
     run(
@@ -526,4 +562,5 @@ if __name__ == "__main__":
         not a.global_qp,
         a.resume,
         a.nonlinear_strategy,
+        a.nonsmooth_recovery,
     )

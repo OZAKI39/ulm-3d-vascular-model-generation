@@ -353,3 +353,58 @@ def test_native_nonconvex_status_is_fatal(monkeypatch):
             sparse.eye(1, format="csc"), np.array([-1.0]), sparse.csc_matrix([[1.0]]), np.zeros(1)
         )
     assert caught.value.diagnostics["reason"] == "INVALID_MODEL"
+
+
+def test_recovery_never_bypasses_local_error_or_geometry_budget():
+    from mevo_mb.bubbles.constrained_motion import SubdivideInterval
+    from mevo_mb.bubbles.motion_recovery_r2 import (
+        begin_recovery,
+        selected_method,
+        accepted_recovery,
+        recovery_ceiling,
+    )
+
+    for reason in ["LOCAL_ERROR", "SWEEP_NOT_CERTIFIED", "QP_CERTIFICATE_REJECTED"]:
+        controller = {}
+        assert not begin_recovery(
+            controller, SubdivideInterval(reason, dict(wall_normal_jump=0.2)), 1e-6, 1e-5
+        )
+        assert not controller
+    controller = {}
+    assert begin_recovery(
+        controller, SubdivideInterval("NONLINEAR_NOT_CONVERGED", dict(wall_normal_jump=0.2)), 1e-6, 1e-5
+    )
+    assert selected_method(controller) == "S0" and controller["next_dt"] <= 1e-7
+    for _ in range(8):
+        accepted_recovery(controller, "S0", 1e-7, 2e-7, 1e-5)
+    assert selected_method(controller) == "S1"
+    assert controller["recovery_duration_s"] == pytest.approx(8e-7)
+    assert recovery_ceiling(0.25) == pytest.approx(recovery_ceiling(1.0) / 2)
+
+
+def test_budget_interrupt_preserves_zero_step_state_and_null_certificates(tmp_path, monkeypatch):
+    import json
+    from types import SimpleNamespace
+    from scripts.stage5a_r2 import run as driver
+
+    base = tmp_path / "evidence"
+    (base / "environment").mkdir(parents=True)
+    (base / "environment/IDENTITY.json").write_text("{}")
+    geometry = old.NoWall()
+    x = old.pair(0.05)
+    r = np.full(2, old.R)
+    tracker = SimpleNamespace(
+        translation=MotionR2(old.MU), cylinder=geometry, evaluate=lambda *a: None, timings={}
+    )
+    state = dict(
+        positions_m=x, radii_m=r, particle_id=np.array([7, 9]), active=np.ones(2, bool), time_s=np.array(3.0)
+    )
+    monkeypatch.setattr(driver, "BASE", base)
+    monkeypatch.setattr(driver, "load", lambda *a: (tracker, analytic_sweep(geometry), {}, state, {}))
+    folder, summary = driver.run("B2", 1e-6, budget=0, label="watchdog_test")
+    assert summary["status"] == "INCOMPLETE" and summary["accepted_steps"] == 0
+    assert summary["accepted_kkt_max"] is None and summary["projection_max_m"] is None
+    restored, meta, cache = driver.restore(folder / "CHECKPOINT.npz")
+    np.testing.assert_array_equal(restored["positions_m"], x)
+    assert float(restored["time_s"]) == 3.0 and meta["controller"]["elapsed_s"] == 0.0
+    assert json.loads((folder / "SUMMARY.json").read_text())["accepted_nonlinear_kkt_max"] is None

@@ -34,7 +34,7 @@ def evaluate(item):
     r = data["radii_m"][mask]
     ids = data["particle_id"][mask]
     t = float(data["time_s"])
-    out = BASE / "diagnosis/holdout_v2" / f"{item['case']}_{k}"
+    out = BASE / "diagnosis/holdout_v2_component" / f"{item['case']}_{k}"
     out.mkdir(parents=True, exist_ok=False)
     np.savez_compressed(out / "SEALED_STATE.npz", **data)
     f = tr.evaluate(x, r, t)
@@ -63,7 +63,7 @@ def evaluate(item):
         reaction = c.matrix.T @ lam
         solutions.append((u, reaction))
         audits.append(d)
-    tr.translation.components = False
+    tr.translation.components = True
     relative_u = [
         float(np.linalg.norm(u - solutions[0][0]) / max(np.linalg.norm(solutions[0][0]), 1e-300))
         for u, _ in solutions
@@ -116,6 +116,8 @@ def evaluate(item):
         rejected=rejected,
         wall_s=perf_counter() - start,
         source_protocol_sha256=sha(BASE / "final/VALIDATION_PROTOCOL_V2.json"),
+        actual_motion_layout="component_serial",
+        evaluator_sha256=sha(Path(__file__)),
     )
     write(out / "RESULT.json", report)
     return {
@@ -146,5 +148,5 @@ if __name__ == "__main__":
         pair_backend="numpy",
         timing="parallel diagnostic throughput, not formal latency",
     )
-    write(BASE / "final/HOLDOUT_V2.json", result)
+    write(BASE / "final/HOLDOUT_V2_COMPONENT.json", result)
     print(json.dumps(result), flush=True)

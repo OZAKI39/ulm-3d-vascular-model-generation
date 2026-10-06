@@ -98,6 +98,23 @@ def anchored_constraints(x0, xk, r, wall0, wallk, dt, ids, tolerance, reach_velo
     return Constraints(g, lower, keys, pairs)
 
 
+def endpoint_wall_constraints(pair_anchor, x0, xk, r, wall0, wallk, dt, ids, tolerance, reach_velocity):
+    """Keep start pair tangents; update only WALL normals with the same x0 anchor.
+
+    At convergence the wall row slack equals (gap(x1)-allowed_gap)/dt. This is
+    an endpoint unilateral contact condition, not an accumulated tangent set.
+    Full swept sphere checks still certify the actual adopted straight path.
+    """
+    current = anchored_constraints(x0, xk, r, wall0, wallk, dt, ids, tolerance, reach_velocity)
+    n0, nk = len(pair_anchor.pairs), len(current.pairs)
+    return Constraints(
+        sparse.vstack([pair_anchor.matrix[:n0], current.matrix[nk:]], format="csc"),
+        np.r_[pair_anchor.lower[:n0], current.lower[nk:]],
+        pair_anchor.ids[:n0] + current.ids[nk:],
+        pair_anchor.pairs,
+    )
+
+
 class SemiImplicit:
     def __init__(
         self,
@@ -115,6 +132,7 @@ class SemiImplicit:
         gap_rtol=0.02,
         relaxation=1.0,
         nonlinear_strategy="picard",
+        wall_contact_mode="start",
     ):
         self.backend, self.geometry, self.forcing, self.sweep = backend, geometry, forcing, sweep
         self.method, self.tolerance = method, tolerance
@@ -122,6 +140,9 @@ class SemiImplicit:
         self.atol_R, self.rtol, self.gap_rtol = atol_R, rtol, gap_rtol
         self.relaxation = relaxation
         self.nonlinear_strategy = nonlinear_strategy
+        if wall_contact_mode not in ["start", "endpoint"]:
+            raise ValueError("CONFIG_ERROR: wall contact mode")
+        self.wall_contact_mode = wall_contact_mode
         self.timings = {k: 0.0 for k in ["forcing", "wall", "assembly", "qp", "geometry", "error"]}
         self.calls = 0
 
@@ -146,14 +167,26 @@ class SemiImplicit:
         history_f = []
         fixed_c = None
         scratch = None
+        prior_wall_normals = None
+        wall_normal_jump = 0.0
+        jump_particle_id = None
         for iteration in range(1 if self.method == "S0" else self.max_iterations):
             wk = self.wall(xk, r)
+            if prior_wall_normals is not None:
+                changes = np.linalg.norm(wk[1] - prior_wall_normals, axis=1)
+                j = int(np.argmax(changes))
+                if changes[j] > wall_normal_jump:
+                    wall_normal_jump = float(changes[j])
+                    jump_particle_id = int(ids[j])
+            prior_wall_normals = wk[1].copy()
             start = perf_counter()
             a = self.backend.solve(xk, r, force, flow, wk)
             self.timings["assembly"] += perf_counter() - start
             if fixed_c is None:
                 fixed_c = anchored_constraints(x, x, r, w0, w0, dt, ids, self.tolerance, a.velocity)
             c = fixed_c
+            if self.wall_contact_mode == "endpoint":
+                c = endpoint_wall_constraints(fixed_c, x, xk, r, w0, wk, dt, ids, self.tolerance, a.velocity)
             # Normal gap derivative in the nonlinear SOLVER Jacobian only.
             # Positive correction preserves an SPD QP metric; the fixed point is
             # still audited against the unmodified A(x1) equations below.
@@ -207,6 +240,10 @@ class SemiImplicit:
                     ae = self.backend.solve(y, r, force, flow, we)
                     self.timings["assembly"] += perf_counter() - beg
                     ce = c
+                    if self.wall_contact_mode == "endpoint":
+                        ce = endpoint_wall_constraints(
+                            fixed_c, x, y, r, w0, we, dt, ids, self.tolerance, ae.velocity
+                        )
                     vs = max(float(np.max(abs(ae.velocity))), 1e-30)
                     an = ae.matrix / ae.scale
                     bn = an @ (ae.velocity.ravel() / vs)
@@ -228,6 +265,9 @@ class SemiImplicit:
                         np.linalg.norm(force_residual)
                         / max(np.linalg.norm(physical_rhs), np.linalg.norm(reaction), 1e-300)
                     )
+                    diag["physical_constraint_velocity_error_m_s"] = float(
+                        max(0, -np.min(ce.matrix @ u.ravel() - ce.lower, initial=0))
+                    )
                 else:
                     diag["nonlinear_kkt"] = None
                 begin = perf_counter()
@@ -240,6 +280,8 @@ class SemiImplicit:
                     u,
                     cache,
                     dict(
+                        substep_method=self.method,
+                        resistance_evaluation="endpoint" if self.method == "S1" else "start",
                         qp=diag,
                         iterations=iteration + 1,
                         kkt=max(z["kkt"] for z in diagnostics),
@@ -282,9 +324,36 @@ class SemiImplicit:
             uk = candidate
             xk = x + dt * uk
             last_delta = delta
+        end_wall = self.wall(y, r)
+        begin = perf_counter()
+        end_result = self.backend.solve(y, r, force, flow, end_wall)
+        self.timings["assembly"] += perf_counter() - begin
+        end_c = (
+            fixed_c
+            if self.wall_contact_mode == "start"
+            else endpoint_wall_constraints(
+                fixed_c, x, y, r, w0, end_wall, dt, ids, self.tolerance, end_result.velocity
+            )
+        )
+        vs = max(float(np.max(abs(end_result.velocity))), 1e-30)
+        an = end_result.matrix / end_result.scale
+        bn = an @ (end_result.velocity.ravel() / vs)
+        lam = np.array([cache.dual.get(key, 0.0) / (end_result.scale * vs) for key in end_c.ids])
+        terminal_kkt, terminal_terms = kkt_residual(
+            an, bn, end_c.matrix, end_c.lower / vs, u.ravel() / vs, lam
+        )
         raise SubdivideInterval(
             "NONLINEAR_NOT_CONVERGED",
-            dict(dt_s=dt, iterations=len(diagnostics), last_delta=diagnostics[-1]["nonlinear_delta"]),
+            dict(
+                dt_s=dt,
+                iterations=len(diagnostics),
+                last_delta=diagnostics[-1]["nonlinear_delta"],
+                wall_normal_jump=wall_normal_jump,
+                jump_particle_id=jump_particle_id,
+                terminal_original_nonlinear_kkt=terminal_kkt,
+                terminal_kkt_terms=terminal_terms,
+                last_qp_kkt=diagnostics[-1]["kkt"],
+            ),
         )
 
     def trial(self, x, r, ids, t, dt):

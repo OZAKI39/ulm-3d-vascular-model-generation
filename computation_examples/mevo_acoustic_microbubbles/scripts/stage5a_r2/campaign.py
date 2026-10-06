@@ -29,7 +29,7 @@ def numerical(s):
 
 def main():
     verify()
-    holdout = json.loads((BASE / "final/HOLDOUT_V2.json").read_text())
+    holdout = json.loads((BASE / "final/HOLDOUT_V2_COMPONENT.json").read_text())
     # A failed *motion* holdout remains a promotion blocker. It does not erase
     # the separately passed original-QP gate or prohibit scoped original-3s
     # validation. No solver parameters are changed after opening these states.
