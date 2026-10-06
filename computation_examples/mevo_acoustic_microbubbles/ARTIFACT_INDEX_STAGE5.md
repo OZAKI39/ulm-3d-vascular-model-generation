@@ -67,6 +67,10 @@
 - Stage 4L/M input snapshots, initial force/velocity arrays, source archives and run identities — exact copies, sufficient to identify short diagnostic inputs; full flow/acoustic files still require the omitted originals.
 - Retained small adaptive response tables and response-database files are individually listed with hashes in the manifest. No new scientific data was generated for this archive.
 
+## Previous archival provenance
+
+- [sync/](sync/) — unchanged Oct-05 snapshot manifests, source-history bundle and project-specific orchestration logs. These are historical records; use `SYNC_MANIFEST.json` and the current handoff for this branch's contents and status. The original snapshot verifier targets the old export, not this curated tip.
+
 ## Excluded large raw artifacts
 
 - [SYNC_MANIFEST.json](SYNC_MANIFEST.json) is the authoritative branch-content manifest: included-file sizes/hashes/origins, important results, environment and exclusions with server paths.
