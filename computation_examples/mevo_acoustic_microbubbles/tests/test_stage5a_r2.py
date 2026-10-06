@@ -308,3 +308,48 @@ def test_nonfinite_cannot_fallback_to_success():
         NativeQP().solve(
             sparse.eye(1, format="csc"), np.array([np.nan]), sparse.eye(1, format="csc"), np.zeros(1)
         )
+
+
+@pytest.mark.parametrize("infeasible", [False, True])
+def test_native_infeasibility_is_audited_without_acceptance(monkeypatch, infeasible):
+    from mevo_mb.bubbles.motion_qp_r2 import NativeQP, certificate
+    from mevo_mb.bubbles.constrained_motion import MotionSolverFailure
+
+    a = sparse.eye(1, format="csc")
+    b = np.array([-1.0])
+    g = sparse.csc_matrix([[1.0], [-1.0]]) if infeasible else sparse.csc_matrix([[1.0]])
+    lower = np.array([1.0, 0.0]) if infeasible else np.array([0.0])
+
+    def reported(self, a, b, g, lower, *args):
+        u = np.zeros(1)
+        lam = np.zeros(len(lower)) if infeasible else np.ones(1)
+        audit = certificate(a, b, g, lower, u, lam)
+        return (
+            u,
+            lam,
+            dict(audit, status="primal infeasible", setup_s=0.0, update_s=0.0, solve_s=0.0, iterations=1),
+        )
+
+    monkeypatch.setattr(NativeQP, "candidate", reported)
+    with pytest.raises(MotionSolverFailure) as caught:
+        NativeQP().solve(a, b, g, lower)
+    expected = "QP_INFEASIBILITY_UNRESOLVED" if infeasible else "QP_INFEASIBILITY_CONTRADICTED"
+    assert caught.value.diagnostics["reason"] == expected
+    assert len(caught.value.diagnostics["attempts"]) == 3
+    assert np.array_equal(caught.value.qp_state["lower"], lower)
+    assert bool(caught.value.diagnostics["infeasibility_audit"]["feasible_witness"]) != infeasible
+
+
+def test_native_nonconvex_status_is_fatal(monkeypatch):
+    from mevo_mb.bubbles.motion_qp_r2 import NativeQP
+    from mevo_mb.bubbles.constrained_motion import MotionSolverFailure
+
+    def reported(self, *args):
+        return np.zeros(1), np.zeros(1), dict(status="problem non convex", pass_gate=False)
+
+    monkeypatch.setattr(NativeQP, "candidate", reported)
+    with pytest.raises(MotionSolverFailure) as caught:
+        NativeQP().solve(
+            sparse.eye(1, format="csc"), np.array([-1.0]), sparse.csc_matrix([[1.0]]), np.zeros(1)
+        )
+    assert caught.value.diagnostics["reason"] == "INVALID_MODEL"

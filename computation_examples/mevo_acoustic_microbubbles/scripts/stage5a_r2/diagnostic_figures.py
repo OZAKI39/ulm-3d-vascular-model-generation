@@ -81,6 +81,7 @@ def qp_figure():
         "Original matrices retained; internal tolerance 1e−12. Red = independent certificate rejected. Parallel diagnostic timing; not trajectory speedup.",
         fontsize=8,
     )
+    fig.get_layout_engine().set(rect=(0, 0.045, 1, 0.955))
     out = BASE / "figures"
     out.mkdir(exist_ok=True)
     for suffix in ["png", "pdf"]:
@@ -129,5 +130,73 @@ def qp_figure():
     )
 
 
+def convergence_figure():
+    folder = BASE / "diagnosis/manufactured_v2"
+    rows = json.loads((folder / "SUMMARY.json").read_text())
+    fig, axes = plt.subplots(2, 3, figsize=(13, 7.5), layout="constrained")
+    colors = ["#72869b", "#43678f", "#2d3c69"]
+    for i, case in enumerate(["pair", "wall"]):
+        items = sorted(
+            [r for r in rows if r["case"] == case and r["tolerance_factor"] == 1],
+            key=lambda r: -r["max_dt_s"],
+        )
+        for color, row in zip(colors, items):
+            grid = row["max_dt_s"] / 1e-4
+            d = np.load(folder / f"{case}_tol1_grid{grid:g}.npz")
+            label = f"Max macro dt = {row['max_dt_s'] * 1e6:g} µs ({row['accepted_steps']} steps)"
+            axes[i, 0].plot(d["time_s"] * 1e3, d["gap_m"] * 1e9, color=color, label=label)
+            axes[i, 1].plot(
+                d["time_s"] * 1e3, abs(d["gap_m"] - d["reference_gap_m"]) * 1e9, color=color, label=label
+            )
+        axes[i, 0].plot(
+            d["time_s"] * 1e3,
+            d["reference_gap_m"] * 1e9,
+            "--",
+            color="black",
+            lw=1.2,
+            label="Independent scalar ODE",
+        )
+        axes[i, 0].scatter(
+            [1.0],
+            [items[0]["raw_large_step_gap_m"] * 1e9],
+            marker="^",
+            color="#b05353",
+            s=55,
+            label="Single 1 ms step: safe, inaccurate",
+        )
+        axes[i, 0].set_ylabel("Surface gap (nm)")
+        axes[i, 1].set_ylabel("Absolute gap error (nm)")
+        for ax in axes[i, :2]:
+            ax.set_xlabel("Physical time (ms)")
+        axes[i, 0].set_title(
+            "Stiff pair squeeze" if case == "pair" else "Stiff wall approach", loc="left", fontweight="bold"
+        )
+        axes[i, 0].legend(fontsize=7)
+        h = np.array([r["max_dt_s"] / 2 for r in items]) * 1e6
+        errors = np.array([r["endpoint_error_m"] for r in items]) * 1e9
+        axes[i, 2].loglog(h, errors, "o-", color="#315f89", label="Actual terminal error")
+        axes[i, 2].loglog(h, errors[0] * h / h[0], "--", color="gray", label="First-order slope")
+        axes[i, 2].set_xlabel("Maximum accepted half-step dt (µs)")
+        axes[i, 2].set_ylabel("Terminal gap error (nm)")
+        axes[i, 2].legend(fontsize=8)
+    fig.suptitle("R4 | S1 V4: continuous stiff motion and actual grid refinement", fontweight="bold")
+    out = BASE / "figures"
+    for suffix in ["png", "pdf"]:
+        fig.savefig(out / f"R4_CONVERGENCE.{suffix}", dpi=240, bbox_inches="tight")
+    plt.close(fig)
+    write(
+        out / "R4_DATA_SOURCES.json",
+        dict(
+            summary=str(folder / "SUMMARY.json"),
+            summary_sha256=sha(folder / "SUMMARY.json"),
+            script_sha256=sha(Path(__file__)),
+            model="Frozen Stage4L self drag + normal lubrication; constant imposed flow; float64",
+            reference="Independent scalar solve_ivp, rtol=2e-12, atol=1e-20; no coordinate interpolation in simulated trajectory",
+            source_note="Development manufactured_v2 diagnostic; formal B2/B3 gates are separate. Explicit max-dt refinement uses 20/40/80 actual accepted steps.",
+        ),
+    )
+
+
 if __name__ == "__main__":
     qp_figure()
+    convergence_figure()

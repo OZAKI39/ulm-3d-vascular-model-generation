@@ -19,8 +19,8 @@ def critical_hashes():
 
 
 def verify():
-    protocol = json.loads((BASE / "final/VALIDATION_PROTOCOL_V1.json").read_text())
-    gate = json.loads((BASE / "final/TEST_GATE_V1.json").read_text())
+    protocol = json.loads((BASE / "final/VALIDATION_PROTOCOL_V2.json").read_text())
+    gate = json.loads((BASE / "final/TEST_GATE_V2.json").read_text())
     assert protocol["source_sha256"] == critical_hashes(), "formal source differs from frozen protocol"
     assert gate["status"] == "PASS" and gate["source_sha256"] == critical_hashes()
     assert (
@@ -33,10 +33,10 @@ def verify():
 
 
 def main():
-    protocol_path = BASE / "final/VALIDATION_PROTOCOL_V1.json"
+    protocol_path = BASE / "final/VALIDATION_PROTOCOL_V2.json"
     assert not protocol_path.exists(), "frozen validation protocol cannot be overwritten"
     protocol = dict(
-        version="STAGE5A_R2_S1_V4_VALIDATION_V1",
+        version="STAGE5A_R2_S1_V4_COMPONENT_VALIDATION_V2",
         time_utc=datetime.now(timezone.utc).isoformat(),
         source_commit=(ROOT / "SOURCE_COMMIT_R2.txt").read_text().strip(),
         source_sha256=critical_hashes(),
@@ -51,7 +51,8 @@ def main():
             max_iter_in=1500,
             dense_dimension_cap=300,
             dense_rows_cap=1200,
-            global_layout="sparse",
+            layout="component_serial",
+            input_memory_cap_MiB=8,
             fallback=[
                 "OSQP 1.1.3 eps_abs=1e-12 max_iter=300000 time_limit=5s",
                 "ProxQP sparse eps_abs=1e-13",
@@ -95,7 +96,7 @@ def main():
             repeat_target=3,
         ),
         state_policy="Solved + original independent certificate. Inaccurate candidate retained; choose a separately certified alternative native solve, never accept by status alone.",
-        holdout_selection_sha256=sha(BASE / "fixtures/HOLDOUT_SELECTION.json"),
+        holdout_selection_sha256=sha(BASE / "fixtures/HOLDOUT_SELECTION_V2.json"),
     )
     write(protocol_path, protocol)
     tests = [
@@ -107,8 +108,8 @@ def main():
         "tests/test_stage4l_metrics.py",
         "tests/test_stage4m_ablation.py",
     ]
-    xml = BASE / "environment/FORMAL_TESTS_V1.xml"
-    log = BASE / "environment/FORMAL_TESTS_V1.log"
+    xml = BASE / "environment/FORMAL_TESTS_V2.xml"
+    log = BASE / "environment/FORMAL_TESTS_V2.log"
     with log.open("x") as f:
         result = subprocess.run(
             [sys.executable, "-m", "pytest", *tests, "-q", f"--junitxml={xml}"],
@@ -133,7 +134,7 @@ def main():
         junit_sha256=sha(xml),
         test_source_sha256={p: sha(ROOT / p) for p in tests},
     )
-    write(BASE / "final/TEST_GATE_V1.json", gate)
+    write(BASE / "final/TEST_GATE_V2.json", gate)
     print(json.dumps({k: v for k, v in gate.items() if "sha256" not in k}), flush=True)
     assert gate["status"] == "PASS"
 

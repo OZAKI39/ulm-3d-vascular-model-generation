@@ -37,7 +37,7 @@ class MotionR2(ConstrainedLubrication):
         self.qp_factory = lambda: NativeQP(solver)
         self.qp = self.qp_factory()
         self.qp_solver = solver
-        self.method = "STAGE5A_R2_S1_SEMI_IMPLICIT_EULER_V3"
+        self.method = "STAGE5A_R2_S1_SEMI_IMPLICIT_EULER_V4"
         self.stage_workspaces = OrderedDict()
 
     def constrained_stage(self, result, constraints, ids, stage, feasible=None, scratch=None):

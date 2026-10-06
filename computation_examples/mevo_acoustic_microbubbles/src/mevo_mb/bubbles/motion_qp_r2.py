@@ -57,7 +57,8 @@ def pattern(a, g):
 class NativeQP:
     """One solver/stage/component/pattern workspace; numeric values always updated.
 
-    ProxQP dense is bounded to <=300 unknowns and <=1200 rows (under 8 MiB input).
+    ProxQP dense defaults to <=300 unknowns; the separately benchmarked bounded
+    dense-global option allows <=600. Both cap rows at 1200 and input at 8 MiB.
     Larger systems use its sparse primal API. Calls have bounded iteration counts;
     the external watchdog additionally bounds native-call wall time.
     """
@@ -78,7 +79,8 @@ class NativeQP:
         if self.name.startswith("prox"):
             import proxsuite as ps
 
-            dense = self.name != "prox_sparse" and n <= 300 and m <= 1200
+            cap = 600 if self.name == "prox_dense_bounded" else 300
+            dense = self.name != "prox_sparse" and n <= cap and m <= 1200 and 8 * (n * n + n * m) <= 8 * 2**20
             aa, gg = (a.toarray(), g.toarray()) if dense else (a, g)
             if not reused:
                 q = (ps.proxqp.dense if dense else ps.proxqp.sparse).QP(n, 0, m)
@@ -254,12 +256,30 @@ class NativeQP:
                 )
             # Inaccurate candidates are retained, never promoted by status alone.
             # The alternative mature solver supplies the final certified candidate.
-        reason = (
-            "QP_DISCRETE_INFEASIBLE"
-            if any("infeasible" in d["status"].lower() for d in attempts)
-            else "QP_CERTIFICATE_REJECTED"
+        infeasibility = None
+        reason = "QP_CERTIFICATE_REJECTED"
+        if any("infeasible" in d["status"].lower() for d in attempts):
+            known = [("zero", np.zeros(len(b))), ("free", free), ("trial", feasible), ("warm", warm_primal)]
+            witnesses = [
+                {"source": name, "minimum_slack": float(np.min(g @ v - lower, initial=0))}
+                for name, v in known
+                if v is not None and np.isfinite(v).all()
+            ]
+            feasible_witness = next((w for w in witnesses if w["minimum_slack"] >= -1e-12), None)
+            infeasibility = dict(known_candidates=witnesses, feasible_witness=feasible_witness)
+            reason = "QP_INFEASIBILITY_CONTRADICTED" if feasible_witness else "QP_INFEASIBILITY_UNRESOLVED"
+        fingerprint = hashlib.sha256(
+            a.data.tobytes() + g.data.tobytes() + b.tobytes() + lower.tobytes() + pattern(a, g).encode()
+        ).hexdigest()
+        exc = MotionSolverFailure(
+            dict(
+                reason=reason,
+                attempts=attempts,
+                wall_s=perf_counter() - start,
+                infeasibility_audit=infeasibility,
+                input_sha256=fingerprint,
+            )
         )
-        exc = MotionSolverFailure(dict(reason=reason, attempts=attempts, wall_s=perf_counter() - start))
         exc.qp_state = dict(
             A_data=a.data,
             A_indices=a.indices,

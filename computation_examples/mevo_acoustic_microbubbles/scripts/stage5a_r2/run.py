@@ -113,7 +113,7 @@ def run(
         from scripts.stage5a_r2.freeze import verify
 
         protocol = verify()
-        assert method == "S1" and pair == "cupy" and not components
+        assert method == "S1" and pair == "cupy" and components
         assert nonlinear_strategy == protocol["integrator"]["nonlinear_strategy"]
         assert (max_dt, tol_factor) in [(1e-5, 1.0), (5e-6, 0.25)]
         assert budget <= protocol["resources"]["per_run_s"]
@@ -235,6 +235,7 @@ def run(
     trials = []
     io_seconds = 0.0
     interrupted = False
+    repeated_failures = Counter()
     history = h5py.File(out / "trajectories.h5", "x")
     history.attrs.update(
         complete=False,
@@ -293,6 +294,17 @@ def run(
                     qp_state = getattr(exc, "qp_state", None)
                     if qp_state is not None:
                         np.savez_compressed(out / f"FAILED_QP_{len(rejected):05d}.npz", **qp_state)
+                    fingerprint = exc.diagnostics.get("input_sha256")
+                    if fingerprint:
+                        repeated_failures[fingerprint] += 1
+                        if repeated_failures[fingerprint] >= 3:
+                            raise RuntimeError(
+                                "REPEATED_IDENTICAL_QP_FAILURE: stop ineffective interval retries"
+                            ) from exc
+                    if reason == "QP_INFEASIBILITY_UNRESOLVED":
+                        raise RuntimeError(
+                            "INFEASIBILITY_REPORTED: independent diagnosis required; no mechanical bisection"
+                        ) from exc
                     rl.write(json.dumps(row, allow_nan=False) + "\n")
                     rl.flush()
                     if reason in [
@@ -349,6 +361,7 @@ def run(
                         dataset.resize(count + 1, axis=0)
                         dataset[count] = value
                 x = states[-1][0]
+                repeated_failures.clear()
                 tracker.translation.cache = states[-1][2]
                 elapsed += dt
                 t = t0 + elapsed

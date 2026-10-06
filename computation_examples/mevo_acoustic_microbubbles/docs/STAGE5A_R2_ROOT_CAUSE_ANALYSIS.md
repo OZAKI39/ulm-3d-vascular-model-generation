@@ -29,3 +29,12 @@ retained; V2 fixes start tangents and iterates endpoint resistance. V3 uses boun
 Anderson iterations. No initial coordinates, force, radius, floor or geometric
 tolerance were changed. Subsequent numerical/scientific/holdout results remain
 separate from these root-cause findings.
+
+Later execution evidence distinguishes two remaining issues. V1's six unseen
+QP states are all solvable, but one subsequent motion probe stalls at 0.211 us
+with a nonlinear map difference that does not vanish as dt shrinks. The precise
+trigger is UNRESOLVED; it is not evidence that those original QPs are infeasible.
+V1's complete B2 1 ms run spends 466.39 of 559.59 s in QP calls. Late-state
+substep benchmarks confirm that the initial global-layout timing did not predict
+the full trajectory: component serial is faster on the later development states.
+This is an execution-layout finding, not a change to any physical force.
