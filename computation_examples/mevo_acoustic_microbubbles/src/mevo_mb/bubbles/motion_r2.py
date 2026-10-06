@@ -27,7 +27,7 @@ class MotionR2(ConstrainedLubrication):
         super().__init__(viscosity_Pa_s, **kwargs)
         self.qp_factory=lambda: NativeQP(solver)
         self.qp=self.qp_factory();self.qp_solver=solver
-        self.method='STAGE5A_R2_S1_SEMI_IMPLICIT_EULER_V2'
+        self.method='STAGE5A_R2_S1_SEMI_IMPLICIT_EULER_V3'
         self.stage_workspaces=OrderedDict()
 
     def constrained_stage(self,result,constraints,ids,stage,feasible=None):
@@ -89,12 +89,14 @@ class SemiImplicit:
         self.timings['forcing']+=perf_counter()-start
         force=f['primary_force_N']+f['secondary_force_N'];flow=f['flow_velocity_m_s']
         w0=self.wall(x,r);xk=x.copy();uk=np.zeros_like(x)
-        diagnostics=[];last_delta=None
+        diagnostics=[];last_delta=None;history_x=[];history_f=[];fixed_c=None
         for iteration in range(1 if self.method=='S0' else self.max_iterations):
             wk=self.wall(xk,r)
             start=perf_counter();a=self.backend.solve(xk,r,force,flow,wk)
             self.timings['assembly']+=perf_counter()-start
-            c=anchored_constraints(x,x,r,w0,w0,dt,ids,self.tolerance,a.velocity)
+            if fixed_c is None:
+                fixed_c=anchored_constraints(x,x,r,w0,w0,dt,ids,self.tolerance,a.velocity)
+            c=fixed_c
             start=perf_counter()
             u,cache,diag=self.backend.constrained_stage(a,c,ids,stage,feasible=uk.ravel())
             self.timings['qp']+=perf_counter()-start;self.calls+=1
@@ -103,19 +105,19 @@ class SemiImplicit:
             scale=max(np.max(np.linalg.norm(u,axis=1),initial=0),1e-12)
             diag.update(linear_residual=a.diagnostics['relative_residual'], nonlinear_delta=delta/scale)
             diagnostics.append(diag)
-            if self.method=='S0' or delta/scale<=self.nonlinear_rtol:
+            if self.method=='S0' or delta/scale<=1e-7:
                 # Re-evaluate the unlagged endpoint equations with the returned U,
                 # multipliers and the SAME fixed Stage5A normalization.
                 if self.method=='S1':
                     we=self.wall(y,r);beg=perf_counter();ae=self.backend.solve(y,r,force,flow,we)
                     self.timings['assembly']+=perf_counter()-beg
-                    ce=anchored_constraints(x,x,r,w0,w0,dt,ids,self.tolerance,a.velocity)
+                    ce=c
                     vs=max(float(np.max(abs(ae.velocity))),1e-30)
                     an=ae.matrix/ae.scale;bn=an@(ae.velocity.ravel()/vs)
                     lam=np.array([cache.dual.get(key,0.)/(ae.scale*vs) for key in ce.ids])
                     k,terms=kkt_residual(an,bn,ce.matrix,ce.lower/vs,u.ravel()/vs,lam)
                     diag['nonlinear_kkt']=k;diag['nonlinear_kkt_terms']=terms
-                    if k>1e-9:
+                    if k>self.nonlinear_rtol:
                         uk=u;xk=y
                         continue
                     diag['endpoint_linear_residual']=ae.diagnostics['relative_residual']
@@ -134,7 +136,21 @@ class SemiImplicit:
             alpha=self.relaxation
             if last_delta is not None and delta>last_delta*1.2:
                 alpha=min(alpha,.5)
-            uk=(1-alpha)*uk+alpha*u;xk=x+dt*uk;last_delta=delta
+            residual=(u-uk).ravel()
+            history_x.append(uk.ravel().copy());history_f.append(residual)
+            if len(history_x)>7:
+                history_x.pop(0);history_f.pop(0)
+            candidate=(1-alpha)*uk+alpha*u
+            if len(history_x)>1:
+                dx=np.diff(np.array(history_x),axis=0).T
+                df=np.diff(np.array(history_f),axis=0).T
+                gamma=np.linalg.lstsq(df,residual,rcond=1e-10)[0]
+                accelerated=u.ravel()-(dx+df)@gamma
+                # Safeguard ONLY trial nonlinear iterates. Final physical U is
+                # always the original-equation certified QP result above.
+                if np.isfinite(accelerated).all() and np.linalg.norm(accelerated-uk.ravel())<=4*max(np.linalg.norm(residual),1e-30):
+                    candidate=accelerated.reshape(uk.shape)
+            uk=candidate;xk=x+dt*uk;last_delta=delta
         raise SubdivideInterval('NONLINEAR_NOT_CONVERGED',dict(dt_s=dt,iterations=len(diagnostics),
                                     last_delta=diagnostics[-1]['nonlinear_delta']))
 

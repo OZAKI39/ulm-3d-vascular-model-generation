@@ -24,3 +24,16 @@ not promoted. All frozen force and lubrication classes remain unchanged.
    lubrication resistance. End wall geometry still needs full WALL sweep.
    No new force term, projection, gap floor or tolerance. New source/tests/run
    identity required; V1 evidence is retained in its source snapshot.
+
+4. V2 completed B2 1 us with 60 accepted half steps, 15 nonlinear rejections,
+   33.43 s, KKT 9.04e-10, linear residual 3.59e-14, minimum swept pair gap
+   -9.99757e-12 m and no projection. Its 10 us continuation was stopped for
+   diagnosis; repeated Picard iterations were the bottleneck (1888 QP calls for
+   the 1 us prefix). The solver-map velocity difference hovered at 1e-9 while
+   independent nonlinear equilibrium can already be substantially better.
+
+5. V3: bounded 6-history Anderson acceleration of the nonlinear solve, with a
+   trial-iterate step safeguard; acceptance remains unregularized KKT <=1e-9.
+   Velocity-map delta <=1e-7 triggers evaluation of the final original-equation
+   residual, it does NOT itself accept a step. Fix the candidate contact set for
+   each substep. 34 regressions including whole-step squeeze/wall refinement pass.
