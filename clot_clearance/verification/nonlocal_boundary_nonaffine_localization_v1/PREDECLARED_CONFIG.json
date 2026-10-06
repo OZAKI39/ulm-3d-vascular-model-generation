@@ -1,0 +1,68 @@
+{
+  "task": "NONLOCAL_BOUNDARY_NONAFFINE_LOCALIZATION_V1",
+  "declared_utc": "2026-10-05T21:29:32.121212+00:00",
+  "N": 19,
+  "L_m": 0.001125,
+  "h_m": 6.25e-05,
+  "delta_m": 0.00025125,
+  "epsilon": 0.003,
+  "beta": 0.001,
+  "material": {
+    "model": "svk",
+    "mu_Pa": 1000.0,
+    "lambda_Pa": 0.0,
+    "bulk_Pa": 666.6666666666666
+  },
+  "quadrature": "Existing physical boundary-node trapezoid volumes",
+  "oracle_n": 27,
+  "oracle_levels": 19,
+  "oracle_workers": 8,
+  "BLAS_threads": 1,
+  "GPU": "GPU_NOT_USED_BY_DESIGN",
+  "gate": 1e-10,
+  "mechanical_residual_gate": 1e-08,
+  "gradient_recovery_gate": 1e-05,
+  "solver_max_wall_seconds_per_case": 1800,
+  "solver_max_nfev": 80,
+  "solver_lsmr_maxiter": 120,
+  "minimum_RAM_headroom": 0.2,
+  "peak_estimate_oracle_pool_GiB": 2.0,
+  "peak_estimate_solve_GiB": 1.6,
+  "force_reference": "max(max physical N19 ||P|| * h^2, max physical N19 ||b|| * h^3); common N19 scale for N27",
+  "gradient_scale": "max physical N19 ||F_local-I|| = epsilon+abs(beta) = 0.004",
+  "recovery_F_metric": "Fbar(x_solved)-Fbar(x_target), normalized by 0.004; separately report Fbar(x_solved)-F_local(X), including target reconstruction bias",
+  "recovery_reason": "For nonaffine fields truncated shape reconstruction is not analytically exact even at the prescribed nodal solution; solver recovery compares the same discrete observable at both states.",
+  "solver_force_floor": "F_ref; adapter scale is max(L2 external free-node load, F_ref)",
+  "perturbation": "0.02*epsilon*L*prod(sin(pi*(X-lower)/L))*[1,-0.4,0.7]; both z faces fixed to uL",
+  "N27_field": "Same physical polynomial with fixed L=1.125 mm; specimen extent alone becomes 26h",
+  "N27_points_offsets": [
+    [
+      -9,
+      0,
+      0
+    ],
+    [
+      -5,
+      0,
+      0
+    ],
+    [
+      -1,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0
+    ]
+  ],
+  "bulk_difference_threshold": 0.001,
+  "bulk_difference_rule": "SMALL if max norm(e_model)/max norm(b_local) <= 0.001, MATERIAL above; INCONCLUSIVE if oracle not validated. Descriptive 0.1% body-force scale threshold, not universality claim.",
+  "global_accounting": "BC - surface = model - (nodal body - continuum body) - internal resultant; retain every term",
+  "sign_convention": "Section 11: fBC=bulkTarget-fFD. Section 20 reverses the verbal order; use section 11 consistently.",
+  "optional_shear": "NOT_RUN: complete required axial localization and two equilibrium controls only",
+  "phase": "DISABLED",
+  "surface_operator_correction": "NOT_MODIFIED",
+  "full_pytest": "DO_NOT_RUN"
+}

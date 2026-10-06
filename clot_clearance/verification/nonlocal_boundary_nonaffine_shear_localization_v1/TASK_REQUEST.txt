@@ -1,0 +1,1887 @@
+You are continuing the clot CFD–PD / PFPD scientific development.
+
+TASK NAME:
+
+    NONLOCAL_BOUNDARY_NONAFFINE_SHEAR_LOCALIZATION_V1
+
+This round follows:
+
+    NONLOCAL_BOUNDARY_NONAFFINE_LOCALIZATION_V1
+
+The previous round established, for a quadratic axial
+manufactured field:
+
+    NONAFFINE_AXIAL_REFERENCE = VERIFIED
+
+    BULK_BAQP_NONAFFINE_ORACLE = VERIFIED
+
+    NODEWISE_DECOMPOSITION = PASS
+
+    NAIVE_NONAFFINE_CANCELLATION =
+        CONTAINS_INTERIOR_PHYSICS
+
+    BOUNDARY_LOCALIZATION = VERIFIED
+
+    N27_CLOSED_CENTER_BOUNDARY_CORRECTION = PASS
+
+    BULK_MODEL_DIFFERENCE = SMALL
+
+    BOUNDARY_DATA_CONVERSION_STATUS =
+        NONAFFINE_LOCALIZATION_VERIFIED
+
+The only purpose of this round is:
+
+    test whether the SAME decomposition and localization
+    remain valid for a spatially varying shear field,
+    with nonzero off-diagonal deformation,
+    stress, tangential traction,
+    and body-force components.
+
+Do NOT start clot geometry yet.
+
+============================================================
+0. HIGHEST-LEVEL SCIENTIFIC QUESTION
+============================================================
+
+For a quadratic nonaffine shear deformation:
+
+    can the finite-domain BAQP residual
+    still be decomposed cleanly into
+
+        genuine bulk nonlocal mechanics
+
+    plus
+
+        a localized boundary-data correction
+
+without cancelling legitimate tangential/interior physics?
+
+This round is a transferability test.
+
+It does NOT introduce a new boundary method.
+
+============================================================
+1. CURRENT ACCEPTED STATE
+============================================================
+
+Read first:
+
+    PROJECT_ACTIVE_CONTEXT.md
+
+    verification/
+    nonlocal_boundary_nonaffine_localization_v1/
+    REVIEW_NONAFFINE_BOUNDARY_LOCALIZATION_V1.md
+
+Then read only the required implementation from:
+
+    pd_clot/pfpd_candidate/nonlocal_boundary/
+
+and the existing:
+
+    bulk-reference
+    selective-stencil
+    equilibrium-solver
+    diagnostic helpers.
+
+Do not recursively reread all old verification directories.
+
+Accepted and frozen:
+
+BAQP BULK MECHANICS:
+    VERIFIED
+
+AFFINE NORMAL BOUNDARY CONVERSION:
+    VERIFIED
+
+AFFINE SHEAR BOUNDARY CONVERSION:
+    VERIFIED
+
+NONAFFINE AXIAL LOCALIZATION:
+    VERIFIED
+
+NAIVE -r_FD GENERALIZATION:
+    REJECTED
+
+SURFACE OPERATOR CORRECTION:
+    NOT MODIFIED
+
+C5/C7 ACTIVATION:
+    NOT RUN
+
+FRACTURE:
+    NOT RUN
+
+============================================================
+2. PHYSICS FREEZE
+============================================================
+
+This round is intact mechanics only.
+
+PHASE:
+    disabled
+
+AT1:
+    unused
+
+Gc:
+    unused
+
+damage:
+    unused
+
+fracture:
+    not run
+
+stability:
+    not run
+
+erosion:
+    not run
+
+CFD:
+    not run
+
+Use the unchanged validated BAQP mechanics.
+
+============================================================
+3. MATERIAL / DISCRETIZATION
+============================================================
+
+Use explicitly:
+
+    mu = 1000 Pa
+
+    lambda = 0
+
+    bulk = 666.6666666666666 Pa
+
+Primary physical domain:
+
+    N = 19
+
+    L = 1.125 mm
+
+    h = 62.5 um
+
+    delta = 251.25 um
+
+    delta/h ~= 4.02
+
+Use the same corrected boundary-node trapezoid volumes.
+
+Do not use implicit Material() defaults.
+
+============================================================
+4. PRIMARY NONAFFINE SHEAR FIELD
+============================================================
+
+Use reference coordinate:
+
+    Z in [-L/2, L/2]
+
+Define:
+
+    u_x(Z)
+      =
+    gamma Z
+      +
+    beta_s Z^2 / L
+
+    u_y = 0
+
+    u_z = 0
+
+Predeclare:
+
+    gamma = 0.003
+
+    beta_s = 0.001
+
+Do NOT tune these values after results.
+
+Define:
+
+    k(Z)
+      =
+    gamma
+      +
+    2 beta_s Z / L
+
+Then:
+
+    F(Z)
+      =
+    I
+      +
+    k(Z) e_x tensor e_z
+
+so explicitly:
+
+    F =
+    [[1, 0, k],
+     [0, 1, 0],
+     [0, 0, 1]]
+
+and:
+
+    J = 1
+
+everywhere.
+
+============================================================
+5. INDEPENDENT CLOSED-FORM SVK REFERENCE
+============================================================
+
+For lambda = 0:
+
+    C = F^T F
+
+    E = 0.5 (C - I)
+
+which gives:
+
+    E =
+    [[0,   0,   k/2],
+     [0,   0,   0  ],
+     [k/2, 0, k^2/2]]
+
+Since:
+
+    S = 2 mu E
+
+the exact first Piola stress is:
+
+    P =
+    mu *
+    [[k^2, 0, k + k^3],
+     [0,   0, 0      ],
+     [k,   0, k^2    ]]
+
+Implement this independently
+from the general constitutive implementation.
+
+The exact energy density is:
+
+    W =
+    mu/2 * k^2
+      +
+    mu/4 * k^4
+
+Verify independently.
+
+============================================================
+6. EXACT LOCAL BODY FORCE
+============================================================
+
+Let:
+
+    k_prime
+      =
+    2 beta_s / L
+
+Because the field depends only on Z:
+
+    Div P_i
+      =
+    d P_iZ / dZ
+
+Thus:
+
+    Div P_x
+      =
+    mu (1 + 3 k^2) k_prime
+
+    Div P_y
+      =
+    0
+
+    Div P_z
+      =
+    2 mu k k_prime
+
+The local manufactured body force is:
+
+    b_local
+      =
+    -Div P
+
+therefore:
+
+    b_x
+      =
+    -mu (1 + 3 k^2) k_prime
+
+    b_y
+      =
+    0
+
+    b_z
+      =
+    -2 mu k k_prime
+
+Save exact formulas and sampled values in:
+
+    NONAFFINE_SHEAR_EXACT_REFERENCE.json
+
+============================================================
+7. EXACT CLASSICAL SURFACE TRACTION
+============================================================
+
+Use:
+
+    t = P N
+
+on EVERY face.
+
+Do not reduce this benchmark
+to top-face-only shear.
+
+For x-normal faces:
+
+    N = +/- e_x
+
+traction uses column 1 of P:
+
+    t_x = +/- mu k^2
+
+    t_z = +/- mu k
+
+For z-normal faces:
+
+    N = +/- e_z
+
+traction uses column 3 of P:
+
+    t_x = +/- mu (k + k^3)
+
+    t_z = +/- mu k^2
+
+For y-normal faces:
+
+    traction = 0.
+
+This is essential.
+
+The affine shear round already showed
+that lateral x-face traction cannot be omitted.
+
+============================================================
+8. LOCAL CONTINUUM SANITY CHECK
+============================================================
+
+Before BAQP work:
+
+verify:
+
+    integral_Omega b_local dV
+
+    +
+
+    integral_Gamma P N dA
+
+    =
+    0
+
+to analytic / quadrature precision.
+
+Also verify resultant moment about the reference centroid.
+
+Use sufficiently accurate analytic/Gauss integration.
+
+Do not silently rely on trapezoid quadrature
+as the continuum gold reference.
+
+============================================================
+9. CONTINUUM VIRTUAL WORK CHECK
+============================================================
+
+Check at least:
+
+rigid translations:
+
+    delta u = e_x
+    delta u = e_z
+
+affine shear:
+
+    delta u_x = Z
+
+axial virtual strain:
+
+    delta u_z = Z
+
+quadratic shear variation:
+
+    delta u_x = Z^2 / L
+
+and one cross mode such as:
+
+    delta u_z = X
+
+Verify:
+
+    integral_Gamma t dot delta u dA
+
+    +
+
+    integral_Omega b dot delta u dV
+
+matches:
+
+    integral_Omega P : Grad(delta u) dV
+
+to numerical precision.
+
+============================================================
+10. REUSE THE SAME BULK BAQP ORACLE
+============================================================
+
+Do NOT invent a second oracle.
+
+Reuse the already verified:
+
+    selective N27 fully closed stencil machinery
+
+from the axial round.
+
+For each of the 19 physical N19 z levels:
+
+1.
+construct / reuse a fully closed local stencil;
+
+2.
+evaluate the quadratic shear displacement
+   on all required nodes;
+
+3.
+evaluate unchanged BAQP force
+   at the observation center;
+
+4.
+divide by h^3:
+
+       q_bulk(Z)
+         =
+       f_closed(Z) / h^3.
+
+Save all vector components.
+
+============================================================
+11. BULK ORACLE REGRESSION
+============================================================
+
+Before beta_s != 0 results:
+
+run:
+
+    beta_s = 0
+
+with:
+
+    gamma = 0.003.
+
+This is the previous affine shear limit.
+
+Require:
+
+    q_bulk -> 0
+
+and the boundary conversion
+reduces to the already verified affine shear B1.
+
+Gate:
+
+    relative L2 difference <= 1e-10.
+
+If this fails:
+
+STOP.
+
+============================================================
+12. BULK BAQP VS LOCAL CONTINUUM
+============================================================
+
+Define:
+
+    e_model(Z)
+      =
+    q_bulk(Z)
+      +
+    b_local(Z)
+
+This is:
+
+    bulk BAQP nonlocal mechanics
+    versus
+    local SVK continuum mechanics.
+
+It is NOT boundary contamination.
+
+Report vector components separately:
+
+    e_model_x
+
+    e_model_y
+
+    e_model_z
+
+and norms.
+
+Primary relative measure:
+
+    max |e_model|
+      /
+    max |b_local|
+
+Also report component-wise ratios
+only when denominators are safely nonzero.
+
+============================================================
+13. PREDECLARED BULK-MODEL CLASSIFICATION
+============================================================
+
+Use the same descriptive threshold
+as the previous axial round:
+
+    SMALL
+    if
+    max |e_model|
+    / max |b_local|
+      <= 1e-3
+
+This is only a descriptive development label.
+
+It is not a universal modeling tolerance.
+
+Do not change it after seeing results.
+
+============================================================
+14. FINITE-DOMAIN FORCE
+============================================================
+
+On the physical N19 domain,
+evaluate the manufactured shear displacement u_L.
+
+Compute:
+
+    f_FD_i
+
+using the unchanged current BAQP force law.
+
+Do not solve equilibrium yet.
+
+============================================================
+15. LOCALIZED BOUNDARY CORRECTION
+============================================================
+
+For each physical particle:
+
+    f_bulk_target_i
+      =
+    q_bulk(Z_i) * V_i
+
+where:
+
+    V_i
+
+is the existing physical nodal volume,
+including boundary face/edge/corner factors.
+
+Define:
+
+    f_BC_localized_i
+      =
+    f_bulk_target_i
+      -
+    f_FD_i
+
+This is the exact same definition
+used and verified in the axial round.
+
+Do not modify it for shear.
+
+============================================================
+16. NAIVE CONTROL
+============================================================
+
+Define only for diagnostic comparison:
+
+    f_BC_naive_i
+      =
+    -f_FD_i
+
+Verify:
+
+    f_BC_naive
+      -
+    f_BC_localized
+
+      =
+    -f_bulk_target
+
+to the predeclared numerical gate.
+
+This should demonstrate again
+that naive cancellation removes
+legitimate interior shear mechanics.
+
+============================================================
+17. NODEWISE DECOMPOSITION
+============================================================
+
+Verify:
+
+    f_FD
+      +
+    f_BC_localized
+      +
+    b_local V
+
+      =
+    e_model V
+
+for EVERY physical node.
+
+Use the same:
+
+    F_ref
+
+style normalization,
+now defined using the shear field.
+
+Predeclare:
+
+    nodewise closure <= 1e-10.
+
+============================================================
+18. SHEAR FORCE REFERENCE SCALE
+============================================================
+
+Define before result inspection:
+
+    P_ref
+      =
+    max_Z ||P(Z)||_F
+
+    b_ref
+      =
+    max_Z ||b_local(Z)||
+
+    F_ref
+      =
+    max(
+        P_ref h^2,
+        b_ref h^3
+    )
+
+Use this for:
+
+local correction
+N27 decay
+nodewise closure.
+
+Do not normalize local residuals
+with specimen-area reaction.
+
+============================================================
+19. NORMAL / TANGENTIAL CHANNEL ACCOUNTING
+============================================================
+
+This round MUST separately examine:
+
+    normal traction channel
+
+and:
+
+    tangential traction channel.
+
+For each physical face:
+
+    t_n =
+      (t dot N) N
+
+    t_t =
+      t - t_n
+
+Build exact continuum resultant vectors for:
+
+normal channel
+tangential channel
+combined channel.
+
+Compare to corresponding pieces
+of the localized nonlocal conversion
+where the decomposition is algebraically well-defined.
+
+Do not invent a unique face ownership
+for a distributed nonlocal nodal force
+if one does not exist.
+
+Global work / force identities
+are more important than arbitrary face assignment.
+
+============================================================
+20. GLOBAL FORCE ACCOUNTING
+============================================================
+
+Retain:
+
+    exact continuum body-force integral
+
+    nodal body-force quadrature
+
+    finite-domain internal resultant
+
+    localized BC resultant
+
+    bulk-model resultant.
+
+Do not force a simplified identity
+if nodal body-force quadrature adds a known correction.
+
+Explicitly report:
+
+    body quadrature error.
+
+Use the previous axial bookkeeping pattern.
+
+============================================================
+21. GLOBAL MOMENT ACCOUNTING
+============================================================
+
+Moment is especially important for shear.
+
+About the reference centroid compute:
+
+    M_surface_local
+
+    M_body_exact
+
+    M_body_nodal
+
+    M_internal
+
+    M_BC_localized
+
+    M_model
+
+Use reference-coordinate moment
+for classical comparison.
+
+If current-position BAQP angular momentum
+requires a separate diagnostic,
+report it separately.
+
+Do not conflate the two.
+
+============================================================
+22. VIRTUAL-WORK DECOMPOSITION
+============================================================
+
+Reuse the same infrastructure.
+
+For each virtual mode compute work of:
+
+    f_FD
+
+    f_BC_localized
+
+    b_local V
+
+    corrected residual
+
+    e_model V.
+
+Require:
+
+    corrected residual work
+      =
+    model residual work
+
+to:
+
+    <= 1e-10
+    relative to a stable work scale.
+
+Do NOT force corrected work to zero.
+
+============================================================
+23. SPATIAL LOCALIZATION
+============================================================
+
+For:
+
+    |f_BC_localized|
+
+vs nearest physical face distance:
+
+compute:
+
+    mean
+    max
+
+and cumulative magnitude:
+
+    d50
+    d90
+    d95
+    d99
+
+in:
+
+    um
+    h
+    delta.
+
+Do the same for:
+
+    naive correction.
+
+Expected qualitative diagnostic:
+
+localized:
+    shorter tail
+
+naive:
+    retains legitimate bulk shear force
+    and therefore longer interior support.
+
+Do not impose this expected trend as a gate.
+
+============================================================
+24. N27 SELECTIVE LOCALIZATION
+============================================================
+
+Reuse the same N27 lateral-depth geometry
+used in the axial round.
+
+At Z = 0,
+sample points approximately at:
+
+    1 delta
+
+    2 delta
+
+    3 delta
+
+    fully closed center
+
+from a lateral x-face.
+
+This is particularly valuable
+because the local shear field depends on Z,
+so moving only in x keeps the local k value fixed.
+
+Compute:
+
+    f_BC_localized
+
+and:
+
+    f_BC_naive.
+
+Require the fully closed center:
+
+    |f_BC_localized| / F_ref
+        <= 1e-10.
+
+This is the primary localization gate.
+
+============================================================
+25. DO NOT CLAIM PHYSICAL BC THICKNESS
+============================================================
+
+Even if:
+
+    d99 ~ delta
+
+or:
+
+    localized correction numerically vanishes
+    around 3delta,
+
+do not claim:
+
+    physical nonlocal traction layer thickness
+    equals delta / 3delta.
+
+Only say:
+
+    conversion support for this benchmark.
+
+============================================================
+26. BAQP-MANUFACTURED BODY FORCE
+============================================================
+
+Define:
+
+    b_NL(X)
+      =
+    -q_bulk(X)
+
+and:
+
+    f_ext_NL_i
+      =
+    b_NL(X_i) V_i
+      +
+    f_BC_localized_i.
+
+At target u_L:
+
+    f_FD
+      +
+    f_ext_NL
+      =
+    0.
+
+Again:
+
+this substitution identity is not sufficient.
+
+============================================================
+27. NONLOCAL-MANUFACTURED RECOVERY SOLVE
+============================================================
+
+Use the existing verified mechanics solver.
+
+Start from a smooth nonzero perturbation
+that:
+
+- is not identically zero;
+- preserves the required prescribed boundary values;
+- contains an x-displacement perturbation component.
+
+Do not start exactly at u_L.
+
+Freeze:
+
+    f_BC_localized
+
+throughout the solve.
+
+Require:
+
+existing force gate:
+    <= 1e-8
+
+and discrete-target recovery:
+
+    max ||Fbar_solved - Fbar_target||
+    / imposed-gradient scale
+        <= 1e-5.
+
+Use the DISCRETE target Fbar
+as the recovery metric.
+
+Report analytic-gradient bias separately.
+
+============================================================
+28. CLASSICAL-MANUFACTURED SOLVE
+============================================================
+
+Then solve with:
+
+    b_local V
+      +
+    f_BC_localized
+
+using the same:
+
+initial perturbation
+constraints
+solver
+frozen boundary conversion.
+
+Do not add:
+
+    -e_model V.
+
+At target:
+
+residual should equal:
+
+    e_model V.
+
+Verify independently.
+
+Then solve equilibrium.
+
+Record:
+
+    displacement deviation from target
+
+    discrete F deviation
+
+    energy deviation
+
+    final residual.
+
+============================================================
+29. INTERPRETATION RULE
+============================================================
+
+If classical-manufactured solution
+differs from the prescribed local field:
+
+that is NOT automatically a boundary failure.
+
+If:
+
+    localized boundary identities pass
+
+and:
+
+    e_model is independently measured,
+
+then the difference represents:
+
+    finite-horizon bulk-model difference
+    +
+    lattice discretization
+    +
+    solver resolution.
+
+Do not "correct" it away.
+
+============================================================
+30. ANALYTIC F RECONSTRUCTION BIAS
+============================================================
+
+This is a REQUIRED diagnostic.
+
+The axial round found:
+
+    exact nodal target
+    did not imply exact analytic Fbar
+    near truncated boundaries.
+
+For shear, compute at target nodal positions:
+
+    Fbar_discrete
+      -
+    F_analytic
+
+and:
+
+    Ftilde_discrete
+      -
+    F_analytic.
+
+Report vs:
+
+    d_min/delta.
+
+Also compute:
+
+    Psi_plus_discrete
+      -
+    Psi_plus_analytic
+
+using the same spectral-split candidate.
+
+Important:
+
+this is DIAGNOSTIC ONLY.
+
+Do not modify the operator.
+
+============================================================
+31. WHY THIS DIAGNOSTIC MATTERS
+============================================================
+
+The boundary-force conversion can be correct
+while local reconstructed:
+
+    F
+    Ftilde
+    Psi_plus
+
+remain biased near truncated neighborhoods.
+
+That would matter directly for:
+
+    future clot fracture initiation.
+
+This round should quantify this bias,
+not fix it.
+
+============================================================
+32. PSI+ REFERENCE
+============================================================
+
+For the analytic shear field:
+
+compute:
+
+    Psi_plus_analytic(Z)
+
+from the current spectral split
+applied to exact analytic F(Z).
+
+Then compare at physical N19 target coordinates:
+
+    Psi_plus_BAQP_target
+
+from discrete Ftilde / Fbar
+using the unchanged candidate implementation.
+
+Report:
+
+max absolute error
+
+max relative error using a stable nonzero scale
+
+RMS error
+
+depth profile.
+
+Do not use component-wise ratios near zero.
+
+============================================================
+33. FIELD-BIAS CLASSIFICATION
+============================================================
+
+Do not invent a pass threshold
+for future fracture suitability.
+
+Classify descriptively:
+
+KINEMATIC_BOUNDARY_BIAS:
+
+    LOW
+    MODERATE
+    MATERIAL
+
+using predeclared report-only thresholds:
+
+LOW:
+    max F error / imposed-gradient scale < 1e-3
+
+MODERATE:
+    1e-3 to 1e-2
+
+MATERIAL:
+    > 1e-2
+
+These are development descriptors,
+not physical acceptance criteria.
+
+For Psi_plus:
+
+report values only.
+
+Do not declare fracture-safe.
+
+============================================================
+34. NO OPERATOR CORRECTION IN THIS ROUND
+============================================================
+
+Do not implement:
+
+perifit
+
+optimized BAQP weights
+
+ghost nodes
+
+surface factors
+
+modified K
+
+modified Z
+
+variable horizon
+
+kernel changes.
+
+This round only measures the shear bias.
+
+If bias is significant,
+the next round may become:
+
+    BAQP_NEAR_BOUNDARY_KINEMATIC_ENERGY_AUDIT_V1
+
+============================================================
+35. NO CLOT GEOMETRY
+============================================================
+
+Do not run:
+
+hemisphere clot
+ellipsoid clot
+wall attachment
+adhesion
+delamination
+fracture
+activation.
+
+Shear localization must be reviewed first.
+
+============================================================
+36. CODE ORGANIZATION
+============================================================
+
+Extend the EXISTING:
+
+    pd_clot/pfpd_candidate/nonlocal_boundary/
+
+Do not create another boundary framework.
+
+Prefer reuse of:
+
+    nonaffine_manufactured.py
+
+    bulk_reference.py
+
+    localized_conversion.py
+
+    residual_decomposition.py
+
+Add shear-specific formulas
+without duplicating the axial framework.
+
+============================================================
+37. TARGETED TESTS ONLY
+============================================================
+
+Do not run full pytest.
+
+Required focused tests:
+
+TEST 1
+
+closed-form shear:
+F/E/S/P/W
+
+TEST 2
+
+closed-form shear body force
+
+TEST 3
+
+continuum resultant closure
+
+TEST 4
+
+continuum moment/work closure
+
+TEST 5
+
+beta_s=0 recovers affine shear B1
+
+TEST 6
+
+bulk oracle affine shear regression
+
+TEST 7
+
+nodewise localized decomposition
+
+TEST 8
+
+naive-minus-localized identity
+
+TEST 9
+
+N27 fully closed center correction
+
+TEST 10
+
+NL-manufactured perturbed-start recovery
+
+TEST 11
+
+analytic F / Ftilde / Psi+ diagnostic is deterministic
+
+No unrelated tests.
+
+============================================================
+38. RESOURCE POLICY
+============================================================
+
+Use server CPU effectively.
+
+Historical machine:
+
+    ~12 physical cores
+    ~24 logical
+    RAM ~7.6 GiB
+
+Use:
+
+    8 oracle/postprocess workers
+
+and:
+
+    1 serial equilibrium solve worker
+
+BLAS:
+    1 thread
+
+Do not overlap large equilibrium solves.
+
+Maintain:
+
+    >=20% RAM headroom.
+
+============================================================
+39. GPU
+============================================================
+
+Do not install GPU dependencies.
+
+Current problem is:
+
+small local stencils
++
+CPU nonlinear equilibrium.
+
+Set:
+
+    GPU_NOT_USED_BY_DESIGN
+
+unless a validated backend already exists
+with effectively zero development work.
+
+============================================================
+40. REQUIRED OUTPUT DATA
+============================================================
+
+Create:
+
+verification/
+nonlocal_boundary_nonaffine_shear_localization_v1/
+
+results/
+nonlocal_boundary_nonaffine_shear_localization_v1/
+
+Required:
+
+    EXACT_NONAFFINE_SHEAR_REFERENCE.json
+
+    BULK_BAQP_SHEAR_REFERENCE.csv
+
+    NODEWISE_SHEAR_DECOMPOSITION.npz
+
+    SHEAR_BOUNDARY_LOCALIZATION.csv
+
+    SHEAR_FORCE_BALANCE.json
+
+    SHEAR_MOMENT_BALANCE.json
+
+    SHEAR_VIRTUAL_WORK.csv
+
+    SHEAR_NL_MANUFACTURED_RECOVERY.json
+
+    SHEAR_CLASSICAL_MANUFACTURED_RESULT.json
+
+    SHEAR_FIELD_BIAS.csv
+
+============================================================
+41. REQUIRED FIGURE 1
+============================================================
+
+All figure text in English.
+
+Publication style:
+
+PNG 600 dpi
+vector PDF.
+
+Name:
+
+    nonaffine_shear_residual_decomposition
+
+Show vs Z:
+
+finite-domain force components
+
+bulk BAQP target
+
+local body force
+
+localized conversion
+
+bulk-model residual.
+
+Use separate x and z panels
+if necessary.
+
+============================================================
+42. REQUIRED FIGURE 2
+============================================================
+
+Name:
+
+    shear_naive_vs_localized_conversion
+
+Show:
+
+|localized correction|
+
+vs:
+
+|naive correction|
+
+against:
+
+d_min/delta.
+
+Include N27 deep-bulk diagnostic.
+
+============================================================
+43. REQUIRED FIGURE 3
+============================================================
+
+Name:
+
+    shear_boundary_localization_support
+
+Show cumulative magnitude:
+
+d50
+d90
+d95
+d99
+
+localized vs naive.
+
+Title must clearly state:
+
+    CONVERSION SUPPORT,
+    NOT PHYSICAL BC THICKNESS
+
+============================================================
+44. REQUIRED FIGURE 4
+============================================================
+
+Name:
+
+    n27_nonaffine_shear_boundary_decay
+
+x:
+
+nearest lateral face distance / delta
+
+y:
+
+|f_BC_localized| / F_ref
+
+log scale.
+
+Include:
+
+1e-10 gate
+
+and mark:
+
+fully closed center.
+
+============================================================
+45. REQUIRED FIGURE 5
+============================================================
+
+Name:
+
+    nonaffine_shear_manufactured_recovery
+
+Compare:
+
+BAQP-manufactured load
+
+vs
+
+classical manufactured load
+
+using:
+
+discrete F recovery error
+vs depth.
+
+Report solver residuals.
+
+============================================================
+46. REQUIRED FIGURE 6
+============================================================
+
+Name:
+
+    nonaffine_shear_kinematic_energy_bias
+
+At exact target nodal positions show:
+
+Panel A:
+    Fbar error vs d_min/delta
+
+Panel B:
+    Ftilde error vs d_min/delta
+
+Panel C:
+    Psi_plus error vs d_min/delta
+
+This figure is important for deciding
+whether the NEXT problem is operator reconstruction
+rather than boundary force conversion.
+
+============================================================
+47. REVIEW REPORT
+============================================================
+
+Generate:
+
+verification/
+nonlocal_boundary_nonaffine_shear_localization_v1/
+REVIEW_NONAFFINE_SHEAR_LOCALIZATION_V1.md
+
+Structure:
+
+1.
+Why shear is the decisive transferability test
+
+2.
+Exact nonaffine shear field
+
+3.
+Closed-form P, body force and surface traction
+
+4.
+Continuum force / moment / work checks
+
+5.
+Bulk BAQP shear oracle
+
+6.
+Bulk BAQP vs local continuum difference
+
+7.
+Localized boundary correction
+
+8.
+Why naive cancellation is wrong
+
+9.
+Nodewise decomposition
+
+10.
+Global force / moment accounting
+
+11.
+Virtual work
+
+12.
+Spatial localization
+
+13.
+N27 fully closed center result
+
+14.
+BAQP-manufactured recovery
+
+15.
+Classical-manufactured result
+
+16.
+Normal vs tangential channel interpretation
+
+17.
+Fbar / Ftilde reconstruction bias
+
+18.
+Psi_plus boundary bias
+
+19.
+Implication for future clot-wall shear loading
+
+20.
+One next task only
+
+============================================================
+48. FINAL STATUS LABELS
+============================================================
+
+Must output:
+
+NONAFFINE_SHEAR_REFERENCE:
+    VERIFIED / FAILED
+
+CONTINUUM_FORCE_CLOSURE:
+    PASS / FAIL
+
+CONTINUUM_MOMENT_CLOSURE:
+    PASS / FAIL
+
+CONTINUUM_WORK_CLOSURE:
+    PASS / FAIL
+
+BULK_BAQP_SHEAR_ORACLE:
+    VERIFIED / NOT_VERIFIED
+
+AFFINE_SHEAR_LIMIT_RECOVERY:
+    PASS / FAIL
+
+NODEWISE_SHEAR_DECOMPOSITION:
+    PASS / FAIL
+
+NAIVE_SHEAR_CANCELLATION:
+    CONTAINS_INTERIOR_PHYSICS
+    / NOT_DEMONSTRATED
+
+SHEAR_BOUNDARY_LOCALIZATION:
+    VERIFIED / NOT_VERIFIED
+
+N27_CLOSED_CENTER_SHEAR_CORRECTION:
+    PASS / FAIL
+
+SHEAR_BULK_MODEL_DIFFERENCE:
+    SMALL / MATERIAL / INCONCLUSIVE
+
+SHEAR_NL_MANUFACTURED_RECOVERY:
+    PASS / FAIL
+
+SHEAR_CLASSICAL_MANUFACTURED_FIELD:
+    APPROXIMATE_DUE_TO_BULK_NONLOCALITY
+    / EXACT
+    / FAILED_FOR_OTHER_REASON
+
+KINEMATIC_BOUNDARY_BIAS:
+    LOW / MODERATE / MATERIAL
+
+PSI_PLUS_BOUNDARY_BIAS:
+    REPORTED_NOT_ACCEPTANCE_RATED
+
+BOUNDARY_DATA_CONVERSION_STATUS:
+    NONAFFINE_NORMAL_AND_SHEAR_LOCALIZATION_VERIFIED
+    / AXIAL_ONLY
+    / NOT_VERIFIED
+
+SURFACE_OPERATOR_CORRECTION:
+    NOT_MODIFIED
+
+C5_C7_ACTIVATION:
+    NOT_RUN
+
+CLOT_GEOMETRY:
+    NOT_RUN
+
+FRACTURE:
+    NOT_RUN
+
+============================================================
+49. DECISION LOGIC
+============================================================
+
+If all are true:
+
+A.
+beta_s=0 recovers affine shear B1
+
+B.
+bulk shear oracle is verified
+
+C.
+nodewise decomposition closes
+
+D.
+fully closed N27 center correction
+falls below 1e-10
+
+E.
+NL-manufactured perturbed-start solve
+recovers the discrete target
+
+then:
+
+    SHEAR_BOUNDARY_LOCALIZATION =
+        VERIFIED
+
+If axial from previous round
+and shear from this round are both VERIFIED:
+
+    BOUNDARY_DATA_CONVERSION_STATUS =
+        NONAFFINE_NORMAL_AND_SHEAR_LOCALIZATION_VERIFIED
+
+At that point:
+
+do not add more polynomial localization tests.
+
+The next decision should be based on:
+
+    Fbar / Ftilde / Psi_plus
+    near-boundary reconstruction bias.
+
+============================================================
+50. NEXT-TASK DECISION
+============================================================
+
+If:
+
+    KINEMATIC_BOUNDARY_BIAS =
+        MATERIAL
+
+or:
+
+    Psi_plus shows a strong systematic boundary bias,
+
+recommend:
+
+    BAQP_NEAR_BOUNDARY_KINEMATIC_ENERGY_AUDIT_V1
+
+Do NOT implement a correction yet.
+
+If bias is LOW
+and shear localization passes:
+
+recommend:
+
+    CURVED_CLOT_WALL_INTACT_MECHANICS_V1
+
+But do not start automatically.
+
+============================================================
+51. HARD STOP CONDITIONS
+============================================================
+
+STOP if:
+
+1.
+closed-form continuum shear reference fails
+
+2.
+affine shear regression fails
+
+3.
+bulk shear oracle cannot be validated
+
+4.
+nodewise decomposition does not close
+
+5.
+fully closed N27 center has significant
+   localized correction
+
+6.
+NL-manufactured recovery fails unexpectedly.
+
+Do not tune:
+
+gamma
+beta_s
+delta
+h
+material
+thresholds
+
+after observing results.
+
+============================================================
+52. FINAL TERMINAL SUMMARY
+============================================================
+
+Print only:
+
+- branch / HEAD
+
+- N19 geometry
+- h
+- delta
+- delta/h
+
+- gamma
+- beta_s
+
+- max |P|
+- max |b_local|
+
+- continuum:
+    force closure
+    moment closure
+    work closure
+
+- bulk BAQP:
+    max |q_bulk|
+    max |e_model|
+    relative model difference
+
+- affine shear regression error
+
+- nodewise decomposition error
+
+- localized correction:
+    d50
+    d90
+    d95
+    d99
+
+- naive correction:
+    d50
+    d90
+    d95
+    d99
+
+- N27:
+    ~1delta correction
+    ~2delta correction
+    ~3delta correction
+    fully closed center correction
+
+- NL manufactured:
+    force residual
+    max discrete F recovery error
+
+- classical manufactured:
+    force residual
+    displacement deviation
+    F deviation
+
+- Fbar max analytic bias
+- Ftilde max analytic bias
+- Psi_plus max/RMS bias
+
+- SHEAR_BOUNDARY_LOCALIZATION
+- SHEAR_BULK_MODEL_DIFFERENCE
+- KINEMATIC_BOUNDARY_BIAS
+- BOUNDARY_DATA_CONVERSION_STATUS
+
+- CPU workers
+- wall time
+- peak RAM
+- GPU status
+
+- REVIEW path
+- figures path
+
+Then stop.
+
+============================================================
+53. DO NOT CONTINUE AUTOMATICALLY
+============================================================
+
+Do not automatically start:
+
+curved clot
+C5/C7 activation
+surface correction
+perifit
+ghost nodes
+optimized weights
+Ogden
+adhesion
+fracture
+erosion
+CFD
+microbubble loading.
+
+Wait for human review.
+
+The scientific question for this round is:
+
+    DOES THE VERIFIED NONAFFINE
+    BOUNDARY-LOCALIZATION DECOMPOSITION
+    TRANSFER TO SPATIALLY VARYING SHEAR,
+
+    AND IF IT DOES,
+
+    IS THE NEXT LIMITATION NOW
+    NEAR-BOUNDARY F / FTILDE / PSI_PLUS
+    RECONSTRUCTION ACCURACY?

@@ -1,0 +1,1785 @@
+You are continuing the clot CFD–PD / PFPD scientific development.
+
+TASK NAME:
+
+    NONLOCAL_BOUNDARY_NONAFFINE_LOCALIZATION_V1
+
+This round follows:
+
+    NONLOCAL_BOUNDARY_FORMULATION_V1
+
+The previous round established:
+
+    BOUNDARY_DATA_CONVERSION_STATUS =
+        VERIFIED_FOR_INTACT_AFFINE_MECHANICS
+
+for analytic normal and shear affine benchmarks.
+
+The next scientific question is:
+
+    for a NONAFFINE deformation field,
+    how much of the finite-domain BAQP residual
+    is truly boundary data,
+
+    and how much represents genuine bulk
+    nonlocal mechanics / physical body-force response?
+
+Do NOT extend the old affine identity blindly.
+
+============================================================
+0. HIGHEST-LEVEL PRINCIPLE
+============================================================
+
+The old affine construction was:
+
+    f_BC = -r_FD(u_L)
+
+This was valid as an affine benchmark because:
+
+    bulk BAQP affine force = 0
+    body force = 0
+
+For a nonaffine field this is no longer sufficient.
+
+In general:
+
+    r_bulk(u_L) != 0
+
+and a local manufactured solution may also require:
+
+    b_local = -Div P
+
+Therefore:
+
+    -r_FD(u_L)
+
+contains BOTH:
+
+    boundary contamination
+
+and:
+
+    legitimate interior mechanical loading.
+
+The purpose of this round is to separate them.
+
+============================================================
+1. CURRENT ACCEPTED STATE
+============================================================
+
+Read first:
+
+    PROJECT_ACTIVE_CONTEXT.md
+
+    verification/
+    nonlocal_boundary_formulation_v1/
+    REVIEW_NONLOCAL_BOUNDARY_FORMULATION_V1.md
+
+Also read only as needed:
+
+    latest fully-closed BAQP stencil audit
+    latest affine coefficient-reference audit
+
+Accepted:
+
+BAQP BULK OPERATOR:
+    SUPPORTED
+
+FINITE-DOMAIN MULTI-HOP BOUNDARY INFLUENCE:
+    SUPPORTED
+
+AFFINE NORMAL B1:
+    VERIFIED
+
+AFFINE SHEAR B1:
+    VERIFIED
+
+VOLUME DIRICHLET B2:
+    REFERENCE ONLY
+
+SCABBIA:
+    DEFERRED
+
+PERIFIT:
+    COMPATIBILITY REVIEW ONLY
+
+C5/C7 ACTIVATION:
+    NOT RUN
+
+FRACTURE:
+    NOT RUN
+
+Do not reopen these campaigns.
+
+============================================================
+2. THIS ROUND IS INTACT MECHANICS ONLY
+============================================================
+
+PHASE:
+    DISABLED
+
+AT1:
+    NOT USED
+
+Gc:
+    NOT USED
+
+PETSc phase VI:
+    NOT USED
+
+stability:
+    NOT RUN
+
+fracture:
+    NOT RUN
+
+erosion:
+    NOT RUN
+
+CFD:
+    NOT RUN
+
+The only physics is:
+
+    current validated BAQP intact mechanics.
+
+============================================================
+3. MATERIAL / DISCRETIZATION FREEZE
+============================================================
+
+Use explicitly:
+
+    mu = 1000 Pa
+
+    lambda = 0
+
+    bulk = 666.6666666666666 Pa
+
+Primary finite domain:
+
+    N = 19 per dimension
+
+    L = 1.125 mm
+
+    h = 62.5 um
+
+    delta = 251.25 um
+
+    delta/h ~= 4.02
+
+Use existing corrected boundary-node quadrature.
+
+Do not rely on Material() defaults.
+
+============================================================
+4. PRIMARY MANUFACTURED NONAFFINE FIELD
+============================================================
+
+Use reference coordinate:
+
+    Z in [-L/2, L/2]
+
+Define:
+
+    u_x = 0
+    u_y = 0
+
+    u_z(Z)
+      =
+    epsilon * Z
+      +
+    beta * Z^2 / L
+
+Predeclare:
+
+    epsilon = 0.003
+
+    beta = 0.001
+
+Do NOT tune beta after seeing results.
+
+Then:
+
+    a(Z)
+      =
+    F_zz
+      =
+    1 + epsilon + 2 beta Z/L
+
+and:
+
+    F(Z)
+      =
+    diag(1, 1, a(Z))
+
+Check:
+
+    J = a(Z) > 0
+    everywhere.
+
+============================================================
+5. EXACT LOCAL CONTINUUM REFERENCE
+============================================================
+
+For lambda = 0:
+
+    E_zz
+      =
+    0.5 * (a^2 - 1)
+
+    S_zz
+      =
+    mu * (a^2 - 1)
+
+    P_zz
+      =
+    mu * a * (a^2 - 1)
+      =
+    mu * (a^3 - a)
+
+    W
+      =
+    mu/4 * (a^2 - 1)^2
+
+All other P components are zero.
+
+The exact classical body force is:
+
+    b_z(Z)
+      =
+    - dP_zz/dZ
+
+      =
+    - mu * (3 a^2 - 1)
+      * (2 beta / L)
+
+with:
+
+    b_x = 0
+    b_y = 0.
+
+The classical surface traction is:
+
+    t = P N.
+
+Therefore:
+
+top z-face:
+
+    t_z = +P_zz(Z=+L/2)
+
+bottom z-face:
+
+    t_z = -P_zz(Z=-L/2)
+
+side-face traction:
+
+    zero.
+
+Implement these formulas independently
+from the general constitutive function.
+
+Save:
+
+    NONAFFINE_AXIAL_EXACT_REFERENCE.json
+
+============================================================
+6. LOCAL CONTINUUM BALANCE CHECK
+============================================================
+
+Before BAQP analysis verify numerically:
+
+    integral_Omega b dV
+      +
+    integral_Gamma P N dA
+      =
+    0
+
+to quadrature / floating precision.
+
+Also verify continuum virtual work
+for several polynomial/affine virtual variations.
+
+This is only a local-reference sanity check.
+
+============================================================
+7. DEFINE THREE DIFFERENT FORCES CLEARLY
+============================================================
+
+For the exact manufactured displacement u_L:
+
+------------------------------------------------------------
+A. FINITE-DOMAIN BAQP INTERNAL FORCE
+------------------------------------------------------------
+
+    f_FD_i
+      =
+    current BAQP internal nodal force
+    evaluated on the physical N19 domain.
+
+------------------------------------------------------------
+B. BULK NONLOCAL REFERENCE FORCE DENSITY
+------------------------------------------------------------
+
+    q_bulk(X_i)
+
+defined from a fully closed BAQP stencil
+at the same physical location / local field value.
+
+Units:
+
+    N/m^3
+
+This represents:
+
+    what the validated BAQP operator would produce
+    without finite-domain boundary truncation.
+
+------------------------------------------------------------
+C. LOCAL CONTINUUM BODY FORCE
+------------------------------------------------------------
+
+    b_local(X_i)
+      =
+    -Div P(X_i)
+
+Units:
+
+    N/m^3.
+
+These three objects must NEVER be conflated.
+
+============================================================
+8. BUILD THE NONAFFINE BULK BAQP ORACLE
+============================================================
+
+Reuse the already-verified:
+
+    selective BAQP evaluator
+    D1/D2/D3 closure logic
+    N27 fully-closed-stencil machinery
+
+Do not allocate a new huge global N27 state
+unless absolutely necessary.
+
+Because the manufactured field depends only on Z,
+evaluate the fully-closed bulk stencil
+for each unique N19 z-coordinate.
+
+There are only 19 unique z levels.
+
+For each z level:
+
+1.
+place an observation point at that absolute Z;
+
+2.
+construct the already-verified fully closed
+   local lattice dependency stencil;
+
+3.
+evaluate the analytic manufactured displacement
+   on every required stencil node;
+
+4.
+compute the center BAQP internal force;
+
+5.
+divide by bulk nodal volume h^3:
+
+       q_bulk(Z)
+         =
+       f_bulk_center / h^3.
+
+Record:
+
+    q_bulk_x
+    q_bulk_y
+    q_bulk_z
+
+as functions of Z.
+
+============================================================
+9. BULK ORACLE VALIDATION
+============================================================
+
+Required checks:
+
+A.
+
+beta = 0 regression:
+
+    q_bulk -> 0
+
+and the result must reduce
+to the previous affine bulk oracle.
+
+B.
+
+reflection / translation consistency
+where analytically applicable.
+
+C.
+
+repeat selected z levels
+with equivalent shifted local stencil construction.
+
+D.
+
+no boundary node / truncated volume
+is present inside the bulk oracle.
+
+If bulk oracle construction fails:
+
+STOP.
+
+Do not proceed with boundary localization.
+
+============================================================
+10. QUANTIFY BULK NONLOCAL VS LOCAL DIFFERENCE
+============================================================
+
+Define:
+
+    e_model(Z)
+      =
+    q_bulk(Z)
+      +
+    b_local(Z)
+
+because:
+
+    b_local = -Div P.
+
+This is the intrinsic difference between:
+
+    finite-horizon BAQP bulk mechanics
+
+and:
+
+    the local SVK continuum manufactured problem.
+
+Report:
+
+absolute force-density error
+
+relative to:
+
+    max_Z |b_local|
+
+and relative to:
+
+    characteristic stress-gradient scale.
+
+Do NOT call e_model a boundary error.
+
+============================================================
+11. NEW BOUNDARY-ONLY CORRECTION
+============================================================
+
+For every physical N19 particle i:
+
+compute:
+
+    f_bulk_target_i
+      =
+    q_bulk(X_i) * V_i
+
+where V_i is the CURRENT physical nodal volume.
+
+Define:
+
+    f_BC_localized_i
+      =
+    f_bulk_target_i
+      -
+    f_FD_i
+
+This is the main new candidate.
+
+Interpretation:
+
+    it converts the finite-domain BAQP operator
+    into the corresponding bulk BAQP operator
+    on the chosen surrogate field.
+
+Do not call it:
+
+    final physical traction law.
+
+============================================================
+12. CRITICAL AFFINE-LIMIT REGRESSION
+============================================================
+
+Repeat with:
+
+    beta = 0
+
+while keeping:
+
+    epsilon = 0.003.
+
+Require:
+
+    q_bulk = 0
+
+and:
+
+    f_BC_localized
+      =
+    -f_FD
+
+to previous B1 precision.
+
+This proves the new formulation
+reduces to the verified affine candidate.
+
+Gate:
+
+    relative difference <= 1e-10.
+
+============================================================
+13. COMPARE AGAINST THE NAIVE NONAFFINE EXTENSION
+============================================================
+
+Define a diagnostic only:
+
+    f_BC_naive
+      =
+    -f_FD
+
+which is simply the old affine construction
+used incorrectly for a nonaffine field.
+
+Do NOT use this as the new candidate.
+
+Compare:
+
+    f_BC_naive
+
+vs:
+
+    f_BC_localized.
+
+The difference should be:
+
+    -f_bulk_target
+
+up to floating error.
+
+Verify this identity numerically.
+
+============================================================
+14. WHY THIS COMPARISON MATTERS
+============================================================
+
+In the deep bulk:
+
+    f_BC_localized
+        should -> 0
+
+while:
+
+    f_BC_naive
+        should contain
+        the genuine nonzero bulk mechanical force.
+
+This is the decisive demonstration
+that the old affine residual-cancellation rule
+cannot be used for general nonaffine fields.
+
+============================================================
+15. NODEWISE RESIDUAL DECOMPOSITION
+============================================================
+
+For every physical node save:
+
+    X
+    distance to each boundary
+    d_min/delta
+    d_min/h
+
+    f_FD
+
+    q_bulk * V_i
+
+    f_BC_localized
+
+    f_BC_naive
+
+    b_local * V_i
+
+    e_model * V_i
+
+Verify the nodewise identity:
+
+    f_FD
+      +
+    f_BC_localized
+      +
+    b_local V
+
+      =
+    e_model V
+
+to numerical precision.
+
+Gate:
+
+    normalized closure residual <= 1e-10.
+
+============================================================
+16. GLOBAL FORCE ACCOUNTING
+============================================================
+
+Classical surface resultant:
+
+    F_surface_local
+      =
+    integral_Gamma P N dA.
+
+Classical body resultant:
+
+    F_body_local
+      =
+    integral_Omega b_local dV.
+
+Check:
+
+    F_surface_local
+      +
+    F_body_local
+      ~ 0.
+
+Now compute:
+
+    F_BC_localized
+      =
+    sum_i f_BC_localized_i.
+
+Also compute:
+
+    F_model
+      =
+    sum_i e_model_i V_i.
+
+Report the identity:
+
+    F_BC_localized
+      -
+    F_surface_local
+
+against:
+
+    F_model
+
+with the correct sign convention
+verified from the code.
+
+Do not assume the sign blindly.
+
+The goal is to show that any difference between:
+
+    equivalent BAQP boundary load
+
+and:
+
+    classical surface traction
+
+is explained by the BULK model difference,
+not by finite-domain truncation.
+
+============================================================
+17. MOMENT ACCOUNTING
+============================================================
+
+About the reference centroid:
+
+compute:
+
+    M_surface_local
+
+    M_BC_localized
+
+    M_model
+
+Verify the analogous decomposition
+where angular-momentum conservation
+of the current BAQP force assembly permits it.
+
+If a simple identity is not valid:
+
+do not force one.
+
+Report the actual residual
+and explain the force convention.
+
+============================================================
+18. WORK ACCOUNTING
+============================================================
+
+Use the same virtual-variation infrastructure
+already verified in Boundary Formulation V1.
+
+At least include:
+
+    rigid x translation
+    rigid z translation
+
+    A_zz axial variation
+
+    A_xz shear variation
+
+and one nonaffine-compatible variation:
+
+    delta u_z
+      proportional to
+    Z^2 / L.
+
+Compute work of:
+
+    finite-domain internal force
+
+    localized boundary correction
+
+    local body force
+
+    corrected total residual
+
+    bulk-model residual e_model.
+
+Required identity:
+
+the corrected residual work
+must equal the work of:
+
+    e_model * V
+
+to numerical precision.
+
+Do not demand that it equals zero.
+
+That would incorrectly remove
+the finite-horizon bulk model difference.
+
+============================================================
+19. BOUNDARY LOCALIZATION METRICS
+============================================================
+
+For:
+
+    f_BC_localized
+
+compute magnitude-weighted:
+
+    d50
+    d90
+    d95
+    d99
+
+in:
+
+    micrometers
+    h
+    delta.
+
+Also compute profile:
+
+    mean |f_BC_localized|
+    max |f_BC_localized|
+
+vs:
+
+    d_min/delta.
+
+Do the same for:
+
+    f_BC_naive
+
+for diagnostic comparison.
+
+============================================================
+20. N27 SELECTIVE DEPTH CHECK
+============================================================
+
+N19 does not contain a fully closed
+three-hop physical center stencil.
+
+Therefore do NOT infer deep-bulk localization
+only from the N19 center.
+
+Reuse the N27 selective machinery.
+
+Evaluate the same nonaffine field
+at representative points with approximately:
+
+    d ~ 1 delta
+
+    d ~ 2 delta
+
+    d ~ 3 delta
+
+    fully closed center
+
+For each point compute:
+
+    f_BC_localized
+
+using:
+
+finite-domain selective force
+minus
+bulk reference force.
+
+The fully closed center should satisfy:
+
+    |f_BC_localized| / F_ref
+        <= 1e-10
+
+if boundary localization is correct.
+
+============================================================
+21. FORCE REFERENCE SCALE
+============================================================
+
+Define before running:
+
+    P_ref
+      =
+    max_Z ||P(Z)||_F
+
+    b_ref
+      =
+    max_Z ||b_local(Z)||
+
+and:
+
+    F_ref
+      =
+    max(
+        P_ref * h^2,
+        b_ref * h^3
+    )
+
+Use F_ref
+for local boundary-correction normalization.
+
+Do not normalize local residuals by specimen area
+because that changes with domain size.
+
+============================================================
+22. BAQP-MANUFACTURED CONTROL
+============================================================
+
+This is a REQUIRED control.
+
+Define a nonlocal manufactured body force:
+
+    b_NL(X)
+      =
+    -q_bulk(X).
+
+Then use external loading:
+
+    f_ext_NL_i
+      =
+    b_NL(X_i) V_i
+      +
+    f_BC_localized_i.
+
+At u_L:
+
+    f_FD
+      +
+    f_ext_NL
+      =
+    0
+
+should hold.
+
+This is NOT proof of physical boundary correctness.
+
+It verifies that:
+
+    bulk mechanics
+    +
+    localized boundary correction
+
+reproduce the chosen nonlocal manufactured state.
+
+Gate:
+
+    residual <= 1e-10 * F_ref.
+
+============================================================
+23. NONLOCAL-MANUFACTURED EQUILIBRIUM SOLVE
+============================================================
+
+Use the existing verified mechanical equilibrium solver.
+
+Start from a perturbed u_L state,
+not exactly u_L.
+
+Solve with:
+
+    b_NL
+    +
+    f_BC_localized.
+
+Require recovery of u_L:
+
+    force gate <= existing 1e-8 solver criterion
+
+and:
+
+    max F error
+      <= 1e-5
+      of imposed gradient scale.
+
+This is an independent solver recovery test,
+not just substitution of the target state.
+
+============================================================
+24. CLASSICAL-MANUFACTURED LOAD CASE
+============================================================
+
+Then use:
+
+    b_local
+    +
+    f_BC_localized.
+
+Do NOT expect u_L
+to be an exact BAQP equilibrium.
+
+At u_L the residual should equal:
+
+    e_model V.
+
+Verify this first.
+
+Then run equilibrium
+from a perturbed u_L initial state.
+
+Record:
+
+    displacement deviation from u_L
+
+    F deviation
+
+    energy deviation
+
+    residual
+
+This deviation represents
+finite-horizon bulk-model difference
+plus discretization,
+
+NOT boundary failure,
+provided the localization identities above pass.
+
+============================================================
+25. CLASSICAL SOLUTION ERROR MUST NOT BE "CORRECTED AWAY"
+============================================================
+
+Do not modify:
+
+    f_BC_localized
+
+to force the classical nonaffine field
+to become exact.
+
+Do not add:
+
+    -e_model V
+
+to the boundary correction.
+
+Doing so would incorrectly move
+bulk constitutive/nonlocal model discrepancy
+into the boundary model.
+
+This is a HARD RULE.
+
+============================================================
+26. TRANSFERABILITY CLASSIFICATION
+============================================================
+
+At the end classify separately:
+
+BOUNDARY LOCALIZATION
+
+and:
+
+LOCAL-TO-NONLOCAL MODEL DIFFERENCE.
+
+Allowed:
+
+BOUNDARY_LOCALIZATION:
+    VERIFIED
+    / NOT_VERIFIED
+
+BULK_MODEL_DIFFERENCE:
+    SMALL
+    / MATERIAL
+    / INCONCLUSIVE
+
+Do not combine them into one PASS/FAIL.
+
+============================================================
+27. OPTIONAL NONAFFINE SHEAR
+============================================================
+
+Only run if all axial localization identities
+and the N27 center gate pass.
+
+Use:
+
+    u_x(Z)
+      =
+    gamma Z
+      +
+    beta_s Z^2/L
+
+with:
+
+    gamma = 0.003
+    beta_s = 0.001
+
+Define:
+
+    k(Z)
+      =
+    gamma + 2 beta_s Z/L
+
+and:
+
+    F
+      =
+    I + k e_x tensor e_z.
+
+For lambda=0:
+
+    P =
+    mu *
+    [
+      [k^2, 0, k+k^3],
+      [0,   0, 0],
+      [k,   0, k^2]
+    ]
+
+and:
+
+    k_prime
+      =
+    2 beta_s/L
+
+local body force:
+
+    b_x
+      =
+    -mu * (1 + 3 k^2) * k_prime
+
+    b_y
+      =
+    0
+
+    b_z
+      =
+    -2 mu k * k_prime.
+
+Surface traction:
+
+    t = P N
+
+on every face.
+
+Do not simplify to top-face-only shear.
+
+If implemented,
+repeat the SAME localization decomposition.
+
+Do not create new methodology.
+
+============================================================
+28. DO NOT RUN MIXED TRACTION YET
+============================================================
+
+Mixed normal + shear
+is unnecessary in this round.
+
+The problem being solved is:
+
+    localization of boundary data
+    in nonaffine mechanics.
+
+Do not expand scope.
+
+============================================================
+29. NO SURFACE CORRECTION
+============================================================
+
+Do not implement:
+
+perifit weights
+
+BAQP optimized weights
+
+ghost correction
+
+surface normalization changes
+
+variable horizon
+
+kernel modification.
+
+The validated bulk BAQP operator remains unchanged.
+
+If localized correction does not vanish in a fully closed N27 center:
+
+STOP.
+
+Do not hide that by adding a surface correction.
+
+============================================================
+30. NO CLOT GEOMETRY YET
+============================================================
+
+Do not run:
+
+hemisphere clot
+
+ellipsoidal clot
+
+wall adhesion
+
+delamination
+
+fracture.
+
+Curved geometry comes only after
+nonaffine boundary localization is understood.
+
+============================================================
+31. CODE ORGANIZATION
+============================================================
+
+Extend the existing:
+
+    pd_clot/pfpd_candidate/nonlocal_boundary/
+
+Do not create another parallel boundary framework.
+
+Suggested additions:
+
+    bulk_reference.py
+
+    nonaffine_manufactured.py
+
+    localized_conversion.py
+
+    residual_decomposition.py
+
+Reuse:
+
+    geometry.py
+    diagnostics.py
+    solver adapter
+
+where possible.
+
+============================================================
+32. DATA PRODUCTS
+============================================================
+
+Create:
+
+verification/
+nonlocal_boundary_nonaffine_localization_v1/
+
+results/
+nonlocal_boundary_nonaffine_localization_v1/
+
+Required:
+
+    EXACT_NONAFFINE_REFERENCE.json
+
+    BULK_BAQP_REFERENCE.csv
+
+    NODEWISE_RESIDUAL_DECOMPOSITION.npz
+
+    NODEWISE_RESIDUAL_SUMMARY.csv
+
+    BOUNDARY_LOCALIZATION.csv
+
+    FORCE_BALANCE.json
+
+    MOMENT_BALANCE.json
+
+    VIRTUAL_WORK_DECOMPOSITION.csv
+
+    NL_MANUFACTURED_RECOVERY.json
+
+    CLASSICAL_MANUFACTURED_RESULT.json
+
+If shear runs:
+
+    NONAFFINE_SHEAR_REFERENCE.json
+    NONAFFINE_SHEAR_DECOMPOSITION.csv
+
+============================================================
+33. TARGETED TESTS ONLY
+============================================================
+
+Do not run full pytest.
+
+Add only:
+
+TEST 1
+
+closed-form quadratic axial
+F/E/S/P/W/b formulas
+
+TEST 2
+
+local continuum force balance
+
+TEST 3
+
+beta=0 recovers previous affine B1
+
+TEST 4
+
+bulk oracle returns zero
+for beta=0
+
+TEST 5
+
+localized correction identity:
+
+    f_BC =
+    f_bulk_target - f_FD
+
+TEST 6
+
+naive-minus-localized identity
+
+TEST 7
+
+nodewise corrected residual
+equals e_model V
+
+TEST 8
+
+N27 fully closed center
+boundary correction -> numerical zero
+
+TEST 9
+
+BAQP-manufactured control
+recovers u_L from perturbed start
+
+No unrelated tests.
+
+============================================================
+34. CPU / MEMORY
+============================================================
+
+Use server CPU for real numerical work.
+
+Historical machine approximately:
+
+    12 physical cores
+    24 logical cores
+    RAM ~7.6 GiB
+
+Use up to:
+
+    8–10 physical CPU workers
+
+for independent bulk-oracle z layers
+and postprocessing.
+
+BLAS:
+    1 thread/process.
+
+Do not run multiple large equilibrium solves
+at the same time.
+
+Maintain:
+
+    >=20% RAM headroom.
+
+============================================================
+35. GPU
+============================================================
+
+Do not install CUDA/CuPy/PETSc GPU packages.
+
+The dominant work here is:
+
+small local-stencil oracles
++
+CPU equilibrium.
+
+Set:
+
+    GPU_NOT_USED_BY_DESIGN
+
+unless a working backend already exists
+with zero engineering effort.
+
+============================================================
+36. REQUIRED FIGURE 1
+============================================================
+
+All text in English.
+Publication style.
+
+PNG 600 dpi + vector PDF.
+
+Name:
+
+    nonaffine_residual_decomposition
+
+Plot vs Z or d_boundary:
+
+    finite-domain internal force
+
+    bulk BAQP target force
+
+    local body force
+
+    localized boundary correction
+
+    bulk-model residual
+
+Question:
+
+    Which part of the residual is boundary data?
+
+============================================================
+37. REQUIRED FIGURE 2
+============================================================
+
+Name:
+
+    naive_vs_localized_boundary_conversion
+
+Compare:
+
+    |f_BC_naive|
+
+and:
+
+    |f_BC_localized|
+
+vs:
+
+    d_min/delta.
+
+Highlight the deep interior.
+
+Question:
+
+    Why can the affine cancellation formula
+    not be generalized directly?
+
+============================================================
+38. REQUIRED FIGURE 3
+============================================================
+
+Name:
+
+    boundary_localization_cumulative_support
+
+Show cumulative magnitude:
+
+    d50
+    d90
+    d95
+    d99
+
+for:
+
+localized correction
+and
+naive correction.
+
+Clearly label:
+
+    CONVERSION SUPPORT
+    NOT PHYSICAL BC THICKNESS
+
+============================================================
+39. REQUIRED FIGURE 4
+============================================================
+
+Name:
+
+    n27_nonaffine_boundary_decay
+
+Representative N27 points:
+
+    ~1delta
+    ~2delta
+    ~3delta
+    fully closed center
+
+y:
+
+    |f_BC_localized| / F_ref
+
+log scale.
+
+Include:
+
+    1e-10 localization gate.
+
+============================================================
+40. REQUIRED FIGURE 5
+============================================================
+
+Name:
+
+    manufactured_solution_recovery
+
+Two panels:
+
+A.
+BAQP-manufactured body force
+
+B.
+classical manufactured body force
+
+Show:
+
+F error vs depth
+
+and/or:
+
+displacement error vs Z.
+
+Make clear:
+
+A should recover the prescribed field.
+
+B is allowed to differ
+because of finite-horizon bulk model error.
+
+============================================================
+41. OPTIONAL FIGURE 6
+============================================================
+
+Only if nonaffine shear runs:
+
+    nonaffine_shear_localization
+
+Use the same scientific layout,
+not a new analysis framework.
+
+============================================================
+42. REVIEW REPORT
+============================================================
+
+Generate:
+
+verification/
+nonlocal_boundary_nonaffine_localization_v1/
+REVIEW_NONAFFINE_BOUNDARY_LOCALIZATION_V1.md
+
+Structure:
+
+1.
+Why affine B1 was insufficient for generalization
+
+2.
+Manufactured nonaffine field
+
+3.
+Exact local continuum body force and traction
+
+4.
+How the fully closed BAQP bulk oracle is constructed
+
+5.
+Bulk BAQP force vs local Div P
+
+6.
+Definition of the localized boundary correction
+
+7.
+Why naive -r_FD is wrong for nonaffine fields
+
+8.
+Nodewise residual decomposition
+
+9.
+Global force / moment accounting
+
+10.
+Virtual-work accounting
+
+11.
+Boundary-correction spatial support
+
+12.
+N27 fully closed center result
+
+13.
+BAQP-manufactured recovery
+
+14.
+Classical-manufactured result
+
+15.
+What part is boundary physics?
+
+16.
+What part is finite-horizon bulk-model difference?
+
+17.
+Optional shear result
+
+18.
+Implication for future curved clot-wall mechanics
+
+19.
+One next task only
+
+============================================================
+43. FINAL STATUS LABELS
+============================================================
+
+Must output:
+
+NONAFFINE_AXIAL_REFERENCE:
+    VERIFIED / FAILED
+
+BULK_BAQP_NONAFFINE_ORACLE:
+    VERIFIED / NOT_VERIFIED
+
+AFFINE_LIMIT_RECOVERY:
+    PASS / FAIL
+
+NODEWISE_DECOMPOSITION:
+    PASS / FAIL
+
+NAIVE_NONAFFINE_CANCELLATION:
+    CONTAINS_INTERIOR_PHYSICS
+    / NOT_DEMONSTRATED
+
+BOUNDARY_LOCALIZATION:
+    VERIFIED
+    / NOT_VERIFIED
+
+N27_CLOSED_CENTER_BOUNDARY_CORRECTION:
+    PASS / FAIL / NOT_RUN
+
+BULK_MODEL_DIFFERENCE:
+    SMALL
+    / MATERIAL
+    / INCONCLUSIVE
+
+NL_MANUFACTURED_RECOVERY:
+    PASS / FAIL
+
+CLASSICAL_MANUFACTURED_FIELD:
+    EXACT
+    / APPROXIMATE_DUE_TO_BULK_NONLOCALITY
+    / FAILED_FOR_OTHER_REASON
+
+NONAFFINE_SHEAR:
+    VERIFIED
+    / FAILED
+    / NOT_RUN
+
+BOUNDARY_DATA_CONVERSION_STATUS:
+    AFFINE_ONLY
+    / NONAFFINE_LOCALIZATION_VERIFIED
+    / NOT_VERIFIED
+
+SURFACE_OPERATOR_CORRECTION:
+    NOT_MODIFIED
+
+C5_C7_ACTIVATION:
+    NOT_RUN
+
+FRACTURE:
+    NOT_RUN
+
+CLOT_GEOMETRY:
+    NOT_RUN
+
+============================================================
+44. DECISION LOGIC
+============================================================
+
+If all are true:
+
+A.
+beta=0 recovers old affine B1
+
+B.
+bulk nonaffine oracle is verified
+
+C.
+nodewise decomposition closes
+
+D.
+localized correction decays to numerical zero
+at the fully closed N27 center
+
+E.
+BAQP-manufactured body-force case
+recovers the target field
+
+then:
+
+    BOUNDARY_LOCALIZATION =
+        VERIFIED
+
+If additionally the classical case differs
+only by the independently measured:
+
+    e_model = q_bulk + b_local
+
+then:
+
+    BOUNDARY_DATA_CONVERSION_STATUS =
+        NONAFFINE_LOCALIZATION_VERIFIED
+
+This does NOT mean:
+
+    local and nonlocal mechanics are identical.
+
+============================================================
+45. HARD STOP CONDITIONS
+============================================================
+
+STOP if:
+
+1.
+bulk oracle fails beta=0 regression
+
+2.
+new correction does not reduce to old B1
+in the affine limit
+
+3.
+nodewise decomposition does not close
+
+4.
+N27 fully closed center
+retains a significant boundary correction
+
+5.
+BAQP-manufactured recovery fails
+for reasons not explained by solver tolerance.
+
+Do not repair these failures
+by tuning beta, delta, h, material, or thresholds.
+
+============================================================
+46. FINAL TERMINAL SUMMARY
+============================================================
+
+Print only:
+
+- branch / HEAD
+
+- N19 geometry
+- h
+- delta
+- delta/h
+- epsilon
+- beta
+- material
+
+- max local body-force density
+
+- max bulk BAQP force density
+
+- max bulk-model mismatch
+
+- beta=0 affine recovery error
+
+- nodewise decomposition closure error
+
+- localized correction:
+    d50
+    d90
+    d95
+    d99
+
+- naive correction:
+    d50
+    d90
+    d95
+    d99
+
+- N27:
+    correction at ~1delta
+    ~2delta
+    ~3delta
+    center
+    normalized center value
+
+- NL manufactured recovery:
+    force residual
+    max F error
+
+- classical manufactured:
+    equilibrium residual
+    max F deviation from local surrogate
+
+- BOUNDARY_LOCALIZATION
+- BULK_MODEL_DIFFERENCE
+- BOUNDARY_DATA_CONVERSION_STATUS
+
+- optional shear status
+
+- CPU workers
+- wall time
+- peak RAM
+- GPU status
+
+- REVIEW path
+- figures path
+
+Then stop.
+
+============================================================
+47. DO NOT CONTINUE AUTOMATICALLY
+============================================================
+
+Do NOT automatically start:
+
+curved clot geometry
+wall adhesion
+C5/C7 activation
+C7 stability
+surface correction
+perifit integration
+ghost layers
+Ogden clot material
+fracture
+erosion
+CFD
+microbubble loading.
+
+Wait for human review.
+
+The only scientific question in this round is:
+
+    CAN THE FINITE-DOMAIN BAQP RESIDUAL
+    FOR A NONAFFINE FIELD
+    BE CLEANLY DECOMPOSED INTO
+
+        BULK NONLOCAL MECHANICS
+
+    PLUS
+
+        A GENUINE BOUNDARY-DATA CORRECTION
+
+    WITHOUT CANCELLING REAL INTERIOR PHYSICS?

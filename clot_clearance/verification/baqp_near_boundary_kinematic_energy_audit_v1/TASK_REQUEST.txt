@@ -1,0 +1,2028 @@
+You are continuing the clot CFD–PD / PFPD scientific development.
+
+TASK NAME:
+
+    BAQP_NEAR_BOUNDARY_KINEMATIC_ENERGY_AUDIT_V1
+
+This round follows:
+
+    NONLOCAL_BOUNDARY_NONAFFINE_SHEAR_LOCALIZATION_V1
+
+The boundary-data conversion problem is NOT the current target.
+
+Accepted current state:
+
+    NONAFFINE NORMAL LOCALIZATION:
+        VERIFIED
+
+    NONAFFINE SHEAR LOCALIZATION:
+        VERIFIED
+
+    BOUNDARY_DATA_CONVERSION_STATUS:
+        NONAFFINE_NORMAL_AND_SHEAR_LOCALIZATION_VERIFIED
+
+    BAQP BULK MODEL DIFFERENCE:
+        SMALL for the current axial/shear manufactured fields
+
+But the previous shear audit found, at the EXACT
+manufactured target nodal positions:
+
+    max Fbar error / 0.004
+        ≈ 2.9758e-2
+
+    max Ftilde error / 0.004
+        ≈ 2.9429e-2
+
+and:
+
+    max Psi_plus bias / common reference
+        ≈ 6.43e-2
+
+Therefore the new scientific question is:
+
+    WHY does a truncated BAQP family produce
+    significant nonaffine F / Ftilde / Psi_plus bias
+    even when the nodal coordinates themselves
+    are exactly correct?
+
+Do NOT implement a correction yet.
+
+============================================================
+0. STEERING BLOCK
+============================================================
+
+PRIMARY_FIELD =
+    QUADRATIC_SHEAR
+
+CROSS_CHECK_FIELD =
+    QUADRATIC_AXIAL
+
+PHASE =
+    DISABLED
+
+FRACTURE =
+    NOT_RUN
+
+EQUILIBRIUM_SOLVES =
+    NOT_REQUIRED
+
+BOUNDARY_FORCE_CONVERSION =
+    DO_NOT_REDEVELOP
+
+SURFACE_CORRECTION =
+    DO_NOT_IMPLEMENT
+
+PERIFIT =
+    THEORY_REFERENCE_ONLY
+
+SCABBIA_GHOST =
+    NOT_RUN
+
+PRIMARY_KERNEL =
+    CURRENT_EXISTING_BAQP_KERNEL
+
+PRIMARY_H =
+    62.5 um
+
+PRIMARY_DELTA =
+    251.25 um
+
+PRIMARY_DELTA_OVER_H =
+    approximately 4.02
+
+CPU_WORKERS =
+    up to 8
+
+GPU =
+    NOT_USED_BY_DESIGN
+
+============================================================
+1. READ CURRENT SCIENTIFIC BASIS
+============================================================
+
+Read first:
+
+    PROJECT_ACTIVE_CONTEXT.md
+
+    verification/
+    nonlocal_boundary_nonaffine_shear_localization_v1/
+    REVIEW_NONAFFINE_SHEAR_LOCALIZATION_V1.md
+
+    verification/
+    nonlocal_boundary_nonaffine_localization_v1/
+    REVIEW_NONAFFINE_BOUNDARY_LOCALIZATION_V1.md
+
+Read current implementation:
+
+    pd_clot/pfpd_candidate/baqp.py
+
+    current kernel implementation
+
+    current energy implementation
+
+    current spectral split implementation
+
+Read the previously saved target-state diagnostics.
+
+Do not rerun the expensive equilibrium campaigns.
+
+============================================================
+2. LITERATURE INTERPRETATION
+============================================================
+
+The uploaded Shojaei et al. 2026 paper is relevant
+because it identifies horizon truncation as an
+operator-consistency problem.
+
+In particular:
+
+    full symmetric horizons:
+        odd horizon moments vanish
+
+    truncated horizons:
+        odd moments survive
+
+which creates derivative / energy inconsistencies.
+
+Use this only as a theoretical motivation.
+
+Do NOT apply their BB/OSB optimized nodal weights
+to BAQP in this round.
+
+Their published operator targets are not
+automatically BAQP targets.
+
+============================================================
+3. CORE HYPOTHESES
+============================================================
+
+Test the following competing explanations.
+
+------------------------------------------------------------
+H1 — TRUNCATED ODD-MOMENT BIAS
+------------------------------------------------------------
+
+For quadratic deformation:
+
+the BAQP nodal reconstruction error
+is caused directly by a nonzero
+third-order weighted horizon moment M3
+created by family truncation.
+
+------------------------------------------------------------
+H2 — BOUNDARY VOLUME-WEIGHTING EFFECT
+------------------------------------------------------------
+
+The support truncation alone is not the whole effect.
+
+The physical trapezoid nodal volumes:
+
+    face h^3/2
+    edge h^3/4
+    corner h^3/8
+
+materially change the bias.
+
+------------------------------------------------------------
+H3 — DISCRETE FULL-LATTICE QUADRATURE ERROR
+------------------------------------------------------------
+
+Even with a symmetric full family
+on the same h/delta lattice,
+
+quadratic reproduction is not exact.
+
+------------------------------------------------------------
+H4 — BAQP INTRINSIC NONAFFINE REPRODUCTION LIMIT
+------------------------------------------------------------
+
+Even the continuous/full-lattice operator
+cannot reproduce the quadratic gradient
+with the current BAQP reconstruction.
+
+------------------------------------------------------------
+H5 — FTILDE-SPECIFIC ERROR
+------------------------------------------------------------
+
+The bond-associated correction introduces
+additional error beyond the nodal Fbar bias.
+
+------------------------------------------------------------
+H6 — SPECTRAL / ENERGY MAPPING ERROR
+------------------------------------------------------------
+
+Psi_plus bias cannot be explained
+solely by the kinematic F/Ftilde error.
+
+------------------------------------------------------------
+H7 — MIXED / INCONCLUSIVE
+------------------------------------------------------------
+
+============================================================
+4. DO NOT MODIFY PHYSICS
+============================================================
+
+Do not change:
+
+kernel
+horizon
+K definition
+F reconstruction
+Ftilde formula
+Z
+wbar
+material
+spectral split
+energy
+nodal volumes
+boundary conversion
+phase law
+
+All production / candidate physics remains unchanged.
+
+This is a diagnostic audit.
+
+============================================================
+5. PRIMARY MANUFACTURED FIELDS
+============================================================
+
+Reuse the exact fields already accepted.
+
+------------------------------------------------------------
+SHEAR
+------------------------------------------------------------
+
+    u_x =
+      gamma Z
+      +
+      beta_s Z^2/L
+
+    gamma = 0.003
+    beta_s = 0.001
+
+    u_y = u_z = 0
+
+Thus:
+
+    k(Z)
+      =
+    gamma + 2 beta_s Z/L
+
+and:
+
+    F_exact =
+      I + k e_x tensor e_z.
+
+The deformation gradient is linear in Z.
+
+The only nonzero second derivative of y
+relevant to the reconstruction is:
+
+    H_xzz =
+      2 beta_s / L.
+
+------------------------------------------------------------
+AXIAL CROSS-CHECK
+------------------------------------------------------------
+
+Reuse:
+
+    u_z =
+      epsilon Z
+      +
+      beta Z^2/L
+
+    epsilon = 0.003
+    beta = 0.001
+
+with:
+
+    H_zzz =
+      2 beta / L.
+
+Because beta = beta_s,
+the same geometry moment tensor should drive
+the axial and shear nodal reconstruction error,
+only in different output rows.
+
+This is a high-value cross-case causal check.
+
+============================================================
+6. DEFINE THE BAQP MOMENTS
+============================================================
+
+For every physical node i define:
+
+    K_i[c,b]
+      =
+    sum_j
+      omega_ij
+      xi_c
+      xi_b
+      V_j
+
+which is the existing BAQP shape tensor.
+
+Define the weighted third moment:
+
+    M3_i[c,d,b]
+      =
+    sum_j
+      omega_ij
+      xi_c
+      xi_d
+      xi_b
+      V_j.
+
+Do not alter the family.
+
+These are diagnostic tensors only.
+
+Save:
+
+    K
+    invK
+    M3
+
+for every physical node.
+
+============================================================
+7. DERIVE AND VERIFY THE EXACT QUADRATIC FBAR IDENTITY
+============================================================
+
+For a quadratic deformation mapping y(X):
+
+    eta_a
+      =
+    F_exact[a,c](X_i) xi_c
+      +
+    1/2 H[a,c,d] xi_c xi_d
+
+exactly.
+
+Therefore:
+
+    A[a,b]
+      =
+    sum_j
+      omega eta_a xi_b V_j
+
+      =
+    F_exact[a,c] K[c,b]
+      +
+    1/2 H[a,c,d] M3[c,d,b].
+
+Since:
+
+    Fbar = A K^{-1}
+
+the exact reconstruction error must satisfy:
+
+    DeltaFbar[a,n]
+      =
+    Fbar[a,n] - F_exact[a,n]
+
+      =
+    1/2
+    H[a,c,d]
+    M3[c,d,b]
+    K^{-1}[b,n].
+
+This is an EXACT algebraic identity
+for the quadratic field,
+up to floating arithmetic.
+
+Implement this independently
+from baqp.evaluate().
+
+============================================================
+8. SPECIALIZED AXIAL / SHEAR FORM
+============================================================
+
+For the current fields:
+
+SHEAR:
+
+    DeltaFbar[x,n]
+      =
+    (beta_s / L)
+    M3[z,z,b]
+    K^{-1}[b,n].
+
+AXIAL:
+
+    DeltaFbar[z,n]
+      =
+    (beta / L)
+    M3[z,z,b]
+    K^{-1}[b,n].
+
+All other output rows
+should contain only floating-level error.
+
+This predicts that the geometric error curve
+should be the same in axial and shear,
+up to output-row placement.
+
+Verify this explicitly.
+
+============================================================
+9. FBAR MOMENT-PREDICTION GATE
+============================================================
+
+Compare for every physical node:
+
+    DeltaFbar_actual
+
+vs:
+
+    DeltaFbar_predicted_from_M3.
+
+Use a stable scale:
+
+    imposed gradient variation scale = 0.004
+
+Required:
+
+    max prediction residual / 0.004
+        <= 1e-10
+
+and:
+
+    weighted RMS residual / 0.004
+        <= 1e-11.
+
+If this fails:
+
+STOP.
+
+Do not design a surface correction.
+
+Investigate reconstruction algebra first.
+
+============================================================
+10. FULL CONTINUOUS HORIZON REFERENCE
+============================================================
+
+For a spherical full horizon
+with radial influence function:
+
+all third-order moments must satisfy:
+
+    M3_full = 0
+
+by inversion symmetry.
+
+Evaluate analytically where practical.
+
+At minimum verify independently:
+
+    M3_zzx = 0
+    M3_zzy = 0
+    M3_zzz = 0
+
+for the continuous full ball.
+
+Also compute / verify the analytic
+second-moment K_full
+for the CURRENT influence kernel.
+
+Do not use the finite lattice
+as the sole gold reference.
+
+============================================================
+11. DISCRETE FULL-LATTICE REFERENCE
+============================================================
+
+Using the already verified infinite / fully symmetric
+regular-lattice offset set:
+
+all neighbor volumes:
+
+    V = h^3
+
+and the current:
+
+    h
+    delta
+    kernel
+
+compute:
+
+    K_lattice
+    M3_lattice.
+
+Because the offset set is inversion symmetric,
+M3 should vanish to numerical precision.
+
+Then evaluate the same quadratic Fbar reconstruction.
+
+Record:
+
+    full_lattice_Fbar_error / 0.004.
+
+If:
+
+    <= 1e-10
+
+then:
+
+    FULL_LATTICE_QUADRATIC_REPRODUCTION = PASS.
+
+If not:
+
+the problem cannot be assigned
+solely to boundary truncation.
+
+============================================================
+12. THREE DIAGNOSTIC FAMILY VARIANTS
+============================================================
+
+For the exact same physical observation nodes,
+evaluate moments and predicted Fbar error
+under three DIAGNOSTIC variants.
+
+Do not alter production results.
+
+------------------------------------------------------------
+R1 — FULL SYMMETRIC LATTICE
+------------------------------------------------------------
+
+complete family
+
+all V = h^3.
+
+------------------------------------------------------------
+R2 — TRUNCATED SUPPORT, UNIFORM VOLUME
+------------------------------------------------------------
+
+use the SAME retained physical neighbor coordinates
+as the finite specimen,
+
+but set every retained neighbor's diagnostic volume:
+
+    V = h^3.
+
+This isolates:
+
+    support truncation / lost symmetry
+
+from:
+
+    boundary trapezoid weighting.
+
+------------------------------------------------------------
+R3 — ACTUAL PHYSICAL DISCRETIZATION
+------------------------------------------------------------
+
+use:
+
+actual retained family
+
+actual face/edge/corner/interior volumes.
+
+This is the current model.
+
+============================================================
+13. SOURCE DECOMPOSITION
+============================================================
+
+For each node compute:
+
+    E_full
+    E_support_only
+    E_physical
+
+where each E is the moment-predicted Fbar error.
+
+Report:
+
+A.
+
+    support_truncation_contribution
+      =
+    E_support_only - E_full
+
+B.
+
+    volume_weighting_contribution
+      =
+    E_physical - E_support_only
+
+C.
+
+    total
+      =
+    E_physical - E_full.
+
+Verify:
+
+    A + B = C
+
+numerically.
+
+Do not assign arbitrary physical meaning
+to signs without inspecting tensors.
+
+============================================================
+14. K ANISOTROPY MODIFIER
+============================================================
+
+M3 is necessary for the quadratic bias,
+but K^{-1} may amplify / redirect it.
+
+For the actual physical M3 compute:
+
+    E_with_physical_K
+      =
+    1/2 H M3 K_physical^{-1}
+
+and a diagnostic:
+
+    E_with_bulk_K
+      =
+    1/2 H M3 K_full^{-1}.
+
+Compare them.
+
+Report:
+
+    K_anisotropy_modifier =
+      ||E_with_physical_K||
+      /
+      ||E_with_bulk_K||
+
+where denominator is safely nonzero.
+
+Do NOT call K itself the root cause
+if setting M3=0 removes the error exactly.
+
+============================================================
+15. DEPTH AND GEOMETRIC CLASSIFICATION
+============================================================
+
+For every node record:
+
+distance to nearest:
+
+face
+edge
+corner
+
+nearest-face distance / delta
+
+family size
+
+omega0 if relevant
+
+condition(K)
+
+||M3||
+
+||M3_zz:||
+
+moment-predicted F error
+
+actual F error.
+
+Classify geometric location:
+
+bulk-like
+face-near
+edge-near
+corner-near.
+
+No empirical tuning.
+
+Use purely geometric rules.
+
+============================================================
+16. EXACT FTILDE ERROR IDENTITY
+============================================================
+
+This is REQUIRED.
+
+For quadratic deformation,
+the exact bond secant satisfies:
+
+    eta_ij
+      =
+    F_exact(X_mid) xi_ij
+
+exactly.
+
+Because exact F is linear in position:
+
+    F_exact(X_mid)
+      =
+    1/2(
+        F_exact(X_i)
+        +
+        F_exact(X_j)
+      ).
+
+Define nodal errors:
+
+    DeltaF_i
+      =
+    Fbar_i - F_exact_i
+
+    DeltaF_j
+      =
+    Fbar_j - F_exact_j
+
+and:
+
+    D_ij
+      =
+    0.5(
+        DeltaF_i
+        +
+        DeltaF_j
+      ).
+
+The current BAQP formula is:
+
+    Ftilde
+      =
+    Fav
+      +
+    outer(
+        eta - Fav xi,
+        xi
+      ) / |xi|^2.
+
+Therefore the quadratic error must satisfy:
+
+    DeltaFtilde
+      =
+    Ftilde
+      -
+    F_exact_mid
+
+      =
+    D_ij
+    [
+        I
+        -
+        n tensor n
+    ]
+
+where:
+
+    n = xi / |xi|.
+
+This is an exact projection identity.
+
+============================================================
+17. FTILDE PREDICTION GATE
+============================================================
+
+For every bond:
+
+compare:
+
+    actual DeltaFtilde
+
+vs:
+
+    D (I - n tensor n).
+
+Require:
+
+    max residual / 0.004
+        <= 1e-10
+
+and weighted RMS:
+
+    <= 1e-11.
+
+If this passes:
+
+conclude that the Ftilde bias
+is inherited from nodal Fbar bias
+and projected transversely to the bond.
+
+Do NOT call the bond correction defective.
+
+============================================================
+18. BOND ORIENTATION DIAGNOSTIC
+============================================================
+
+For each bond record:
+
+    |n_x|
+    |n_y|
+    |n_z|
+
+    r/delta
+
+    depth of bond midpoint / delta
+
+    ||DeltaFtilde||
+
+    ||D||
+
+    projection reduction ratio.
+
+Bin by:
+
+    |n_z|
+
+using fixed bins:
+
+[0,0.25)
+[0.25,0.5)
+[0.5,0.75)
+[0.75,0.95)
+[0.95,1.0].
+
+Purpose:
+
+show which bond orientations retain
+the transverse Fbar error.
+
+This is diagnostic only.
+
+============================================================
+19. PSI_PLUS CAUSAL RECONSTRUCTION
+============================================================
+
+Do not change the spectral split.
+
+For every node / bond:
+
+A.
+
+compute exact:
+
+    Psi_plus_exact
+      =
+    spectral_split(
+        F_exact
+      )
+
+B.
+
+compute moment-predicted kinematic state:
+
+nodes:
+
+    F_pred =
+      F_exact
+      +
+      DeltaFbar_predicted
+
+bonds:
+
+    Ftilde_pred =
+      F_exact_mid
+      +
+      DeltaFtilde_predicted
+
+C.
+
+evaluate the SAME existing spectral split on:
+
+    F_pred
+
+or:
+
+    Ftilde_pred.
+
+Compare:
+
+    Psi_plus_predicted_bias
+
+to:
+
+    actual discrete Psi_plus bias.
+
+============================================================
+20. PSI_PLUS CAUSAL GATE
+============================================================
+
+Use stable scale:
+
+    Psi_ref =
+      max analytic physical-domain Psi_plus
+
+as in the previous round.
+
+Require:
+
+    max |
+      DeltaPsi_actual
+        -
+      DeltaPsi_predicted
+    | / Psi_ref
+
+      <= 1e-8
+
+for both:
+
+    Fbar-based
+    Ftilde-based
+
+unless floating noise requires
+a clearly documented tighter absolute comparison.
+
+If this passes:
+
+    PSI_PLUS_BIAS_SOURCE =
+        KINEMATIC_RECONSTRUCTION
+
+not:
+
+    spectral-split defect.
+
+============================================================
+21. DO NOT USE LINEARIZED PSI SENSITIVITY AS THE PRIMARY PROOF
+============================================================
+
+The spectral split can have
+eigenvalue branch sensitivity near zero.
+
+Therefore:
+
+primary proof =
+    full nonlinear evaluation
+    of the existing spectral split
+    using predicted F.
+
+Optional:
+
+first-order sensitivity analysis
+
+may be added only as a secondary diagnostic.
+
+============================================================
+22. GLOBAL ENERGY SOURCE DECOMPOSITION
+============================================================
+
+The previous Psi_plus diagnostic is local.
+
+This section examines the total intact energy.
+
+For the exact manufactured target,
+compute three energies.
+
+------------------------------------------------------------
+U0 — CURRENT BAQP
+------------------------------------------------------------
+
+current:
+
+weights
+Ftilde
+energy formula.
+
+------------------------------------------------------------
+U1 — EXACT KINEMATICS, CURRENT WEIGHTS
+------------------------------------------------------------
+
+keep:
+
+same bonds
+same wbar
+same Vi
+same Vj
+
+but replace:
+
+    Ftilde
+
+by exact analytic:
+
+    F_exact(X_mid)
+
+inside the constitutive energy only.
+
+This is DIAGNOSTIC.
+
+------------------------------------------------------------
+U2 — LOCAL CONTINUUM REFERENCE
+------------------------------------------------------------
+
+compute:
+
+    integral_Omega
+      W(F_exact(X))
+      dV
+
+with sufficiently accurate Gauss quadrature.
+
+Then report:
+
+    kinematic_energy_bias =
+      U0 - U1
+
+and:
+
+    weight/quadrature discrepancy =
+      U1 - U2
+
+and:
+
+    total =
+      U0 - U2.
+
+Do not call U1 a production model.
+
+============================================================
+23. POSITIVE-ENERGY ANALOGUE
+============================================================
+
+If technically straightforward,
+repeat the same decomposition for:
+
+    Psi_plus
+
+using the existing spectral split.
+
+Report:
+
+current reconstructed
+
+exact-kinematics / current weights
+
+local continuum integrated reference.
+
+Do not evolve phase.
+
+============================================================
+24. AXIAL–SHEAR GEOMETRY INVARIANCE
+============================================================
+
+Because:
+
+    beta = beta_s = 0.001
+
+and both fields have only:
+
+    second derivative in Z-Z
+
+the geometric vector:
+
+    G_i
+      =
+    M3_i[z,z,b]
+    K_i^{-1}[b,n]
+
+should be identical
+between the axial and shear cases.
+
+The only difference is output row:
+
+    axial -> z row
+
+    shear -> x row.
+
+Reuse previous saved axial target state.
+
+Do not rerun its equilibrium solve.
+
+Compare:
+
+normalized Fbar bias vs depth.
+
+Require agreement:
+
+    <= 1e-10
+    after mapping rows.
+
+If this passes:
+
+it is strong evidence that the bias
+is geometric / operator based,
+not constitutive or traction-specific.
+
+============================================================
+25. CONTINUOUS / DISCRETE / TRUNCATED DECISION
+============================================================
+
+At the end explicitly distinguish:
+
+------------------------------------------------------------
+CONTINUOUS FULL BALL
+------------------------------------------------------------
+
+Does:
+
+    M3 = 0
+
+and quadratic Fbar reproduction hold?
+
+------------------------------------------------------------
+DISCRETE FULL LATTICE
+------------------------------------------------------------
+
+Does the same hold
+with current h/delta lattice?
+
+------------------------------------------------------------
+TRUNCATED UNIFORM-VOLUME FAMILY
+------------------------------------------------------------
+
+How much bias appears
+from loss of support symmetry alone?
+
+------------------------------------------------------------
+PHYSICAL TRAPEZOID FAMILY
+------------------------------------------------------------
+
+How much extra bias comes from
+boundary quadrature weighting?
+
+This is the central scientific decomposition.
+
+============================================================
+26. PRIMARY ROOT-CAUSE LOGIC
+============================================================
+
+CASE A:
+
+If:
+
+continuous full ball:
+    exact
+
+discrete full lattice:
+    exact to numerical tolerance
+
+truncated uniform-volume:
+    biased
+
+physical family:
+    similarly biased
+
+and:
+
+third-moment formula reproduces actual error
+
+then:
+
+    FBAR_BIAS_PRIMARY =
+        TRUNCATED_ODD_MOMENT
+
+------------------------------------------------------------
+CASE B:
+
+If discrete full lattice
+already shows material quadratic bias:
+
+    FBAR_BIAS_PRIMARY =
+        FULL_LATTICE_DISCRETIZATION
+
+------------------------------------------------------------
+CASE C:
+
+If truncated uniform-volume error is small
+but physical-volume error becomes large:
+
+    FBAR_BIAS_PRIMARY =
+        BOUNDARY_VOLUME_QUADRATURE
+
+------------------------------------------------------------
+CASE D:
+
+If several are comparable:
+
+    FBAR_BIAS_PRIMARY =
+        MIXED
+
+------------------------------------------------------------
+CASE E:
+
+if identities fail:
+
+    INCONCLUSIVE
+
+Do not force a preferred literature narrative.
+
+============================================================
+27. FTILDE ROOT-CAUSE LOGIC
+============================================================
+
+If exact projection identity passes:
+
+    FTILDE_BIAS_PRIMARY =
+        PROJECTED_NODAL_RECONSTRUCTION_BIAS
+
+If it does not:
+
+    FTILDE_BIAS_PRIMARY =
+        INTRINSIC_BOND_CORRECTION_OR_IMPLEMENTATION
+
+and STOP before designing corrections.
+
+============================================================
+28. PSI_PLUS ROOT-CAUSE LOGIC
+============================================================
+
+If predicted F/Ftilde
+reconstruct actual Psi_plus bias:
+
+    PSI_PLUS_BIAS_PRIMARY =
+        KINEMATIC_RECONSTRUCTION
+
+If not:
+
+    PSI_PLUS_BIAS_PRIMARY =
+        MIXED_OR_SPECTRAL_MAPPING
+
+Do not modify the spectral split this round.
+
+============================================================
+29. FUTURE CORRECTION TARGETS — DESIGN ONLY
+============================================================
+
+If:
+
+    FBAR_BIAS_PRIMARY =
+        TRUNCATED_ODD_MOMENT
+
+and:
+
+    FTILDE_BIAS_PRIMARY =
+        PROJECTED_NODAL_RECONSTRUCTION_BIAS
+
+generate:
+
+    BAQP_OPERATOR_CORRECTION_TARGETS.md
+
+Do NOT implement a correction.
+
+The design note should identify
+minimum future obligations.
+
+At least consider:
+
+1.
+preserve affine exactness;
+
+2.
+preserve current K invertibility;
+
+3.
+restore full-horizon odd-moment behavior
+   for quadratic fields
+   where appropriate;
+
+4.
+preserve pair reciprocity;
+
+5.
+preserve a common energy-force first variation;
+
+6.
+do not alter physical horizon;
+
+7.
+keep boundary-data conversion separate;
+
+8.
+remain usable on irregular clot point clouds;
+
+9.
+avoid tuning against C5/C7 activation.
+
+Relate these requirements to
+Shojaei-style PD-to-PD operator matching,
+without copying BB/OSB weights.
+
+============================================================
+30. NO CORRECTION IMPLEMENTATION
+============================================================
+
+Forbidden this round:
+
+perifit application
+
+optimized nodal weights
+
+new BAQP weights
+
+ghost nodes
+
+mirror nodes
+
+surface factors
+
+renormalized K
+
+modified M3
+
+kernel modification
+
+variable horizon
+
+C5/C7 rerun
+
+clot geometry
+
+fracture.
+
+The task is root-cause analysis only.
+
+============================================================
+31. REUSE SAVED STATES
+============================================================
+
+Do not rerun:
+
+normal equilibrium
+shear equilibrium
+axial nonaffine equilibrium
+N19/N27 boundary conversion solves
+
+unless a tiny missing diagnostic
+cannot be recovered otherwise.
+
+Primary inputs should be:
+
+exact manufactured nodal coordinates
+
+saved physical families
+
+saved volumes
+
+existing BAQP formulas.
+
+This task should be much cheaper
+than the previous equilibrium rounds.
+
+============================================================
+32. TARGETED TESTS ONLY
+============================================================
+
+Do not run full pytest.
+
+Required focused tests:
+
+TEST 1
+
+continuous full-ball odd moments vanish
+
+TEST 2
+
+discrete full-lattice M3 symmetry
+
+TEST 3
+
+exact quadratic Fbar moment identity
+
+TEST 4
+
+specialized axial formula
+
+TEST 5
+
+specialized shear formula
+
+TEST 6
+
+support/volume decomposition closes
+
+TEST 7
+
+exact Ftilde projection identity
+
+TEST 8
+
+axial/shear geometry invariance
+
+TEST 9
+
+Psi_plus predicted-bias reconstruction
+
+TEST 10
+
+global energy decomposition deterministic
+
+No unrelated tests.
+
+============================================================
+33. RESOURCE POLICY
+============================================================
+
+This round is primarily:
+
+moment tensors
+bond diagnostics
+saved-state postprocessing
+
+not nonlinear solving.
+
+Use:
+
+    up to 8 CPU workers
+
+for independent nodes / bond blocks.
+
+BLAS:
+    1 thread per process.
+
+Estimate memory before allocating
+all third-order moments.
+
+M3 has only:
+
+    3 x 3 x 3
+
+components per node.
+
+Do not construct huge unnecessary
+per-bond fourth-order arrays.
+
+Maintain:
+
+    >=20% RAM headroom.
+
+============================================================
+34. GPU
+============================================================
+
+Do not install GPU software.
+
+This workload is too small / memory-structured
+to justify GPU engineering.
+
+Set:
+
+    GPU_NOT_USED_BY_DESIGN
+
+unless a working backend already exists
+and can be used with essentially zero development.
+
+============================================================
+35. REQUIRED DATA OUTPUTS
+============================================================
+
+Create:
+
+verification/
+baqp_near_boundary_kinematic_energy_audit_v1/
+
+results/
+baqp_near_boundary_kinematic_energy_audit_v1/
+
+Required files:
+
+    MOMENT_TENSORS.npz
+
+    CONTINUOUS_FULL_BALL_REFERENCE.json
+
+    FULL_LATTICE_REFERENCE.json
+
+    FAMILY_VARIANT_COMPARISON.csv
+
+    FBAR_MOMENT_CLOSURE.csv
+
+    FTILDE_PROJECTION_CLOSURE.csv
+
+    AXIAL_SHEAR_GEOMETRY_CROSSCHECK.csv
+
+    PSI_BIAS_RECONSTRUCTION.csv
+
+    ENERGY_SOURCE_DECOMPOSITION.json
+
+    ENERGY_DEPTH_PROFILES.csv
+
+    BAQP_OPERATOR_CORRECTION_TARGETS.md
+        only if root cause is sufficiently identified
+
+============================================================
+36. REQUIRED FIGURE 1
+============================================================
+
+All figure text in English.
+
+Publication quality:
+
+PNG 600 dpi
+vector PDF.
+
+Name:
+
+    third_moment_fbar_causality
+
+Panels:
+
+A.
+actual Fbar error vs depth
+
+B.
+moment-predicted Fbar error vs depth
+
+C.
+prediction residual
+
+D.
+||M3_zz:|| or geometric predictor vs depth
+
+Show axial and shear
+with the appropriate row mapping.
+
+Question:
+
+    Does the third moment quantitatively explain
+    the 3% near-boundary gradient bias?
+
+============================================================
+37. REQUIRED FIGURE 2
+============================================================
+
+Name:
+
+    full_vs_truncated_moment_comparison
+
+Compare:
+
+continuous full ball
+
+discrete full lattice
+
+truncated support / uniform volume
+
+physical trapezoid discretization.
+
+Show:
+
+||M3||
+
+and:
+
+predicted Fbar error.
+
+Question:
+
+    Is the error generated by support truncation,
+    discrete quadrature,
+    or boundary volume weighting?
+
+============================================================
+38. REQUIRED FIGURE 3
+============================================================
+
+Name:
+
+    ftilde_projection_bias
+
+Panels:
+
+A.
+actual vs predicted Ftilde error
+
+B.
+projection residual
+
+C.
+bias vs bond orientation |n_z|
+
+D.
+bias vs midpoint depth/delta.
+
+Question:
+
+    Is Ftilde adding a new error,
+    or only projecting the nodal Fbar bias?
+
+============================================================
+39. REQUIRED FIGURE 4
+============================================================
+
+Name:
+
+    psi_plus_bias_causal_reconstruction
+
+Compare:
+
+actual Psi_plus bias
+
+vs:
+
+Psi_plus bias obtained from
+moment-predicted F/Ftilde.
+
+Show:
+
+depth profile
+
+and:
+
+predicted-vs-observed scatter.
+
+Question:
+
+    Is the 6.4% Psi_plus bias
+    a consequence of kinematic reconstruction?
+
+============================================================
+40. REQUIRED FIGURE 5
+============================================================
+
+Name:
+
+    energy_error_source_decomposition
+
+Show:
+
+current BAQP energy U0
+
+exact-kinematics/current-weight energy U1
+
+continuum reference U2
+
+and:
+
+U0-U1
+U1-U2
+U0-U2.
+
+Use clear scientific units.
+
+If relative errors are used,
+show the absolute J values as well.
+
+============================================================
+41. REQUIRED FIGURE 6
+============================================================
+
+Name:
+
+    axial_shear_geometric_bias_invariance
+
+Compare normalized:
+
+axial Fbar z-row bias
+
+shear Fbar x-row bias
+
+vs:
+
+nearest-boundary depth/delta.
+
+Also compare moment prediction.
+
+Question:
+
+    Is the observed bias controlled by geometry
+    rather than loading type?
+
+============================================================
+42. REVIEW REPORT
+============================================================
+
+Generate:
+
+verification/
+baqp_near_boundary_kinematic_energy_audit_v1/
+REVIEW_BAQP_NEAR_BOUNDARY_KINEMATIC_ENERGY_V1.md
+
+Structure:
+
+1.
+Why boundary-force conversion is no longer the main blocker
+
+2.
+Observed Fbar/Ftilde/Psi_plus bias
+
+3.
+Quadratic BAQP reconstruction identity
+
+4.
+Second- and third-moment definitions
+
+5.
+Continuous full-ball reference
+
+6.
+Discrete full-lattice reference
+
+7.
+Truncated-support reference
+
+8.
+Effect of physical boundary volumes
+
+9.
+Exact Fbar error reconstruction
+
+10.
+Role of K anisotropy
+
+11.
+Exact Ftilde projection identity
+
+12.
+Bond-orientation dependence
+
+13.
+Axial/shear geometry cross-check
+
+14.
+Psi_plus causal reconstruction
+
+15.
+Global energy source decomposition
+
+16.
+Primary root cause
+
+17.
+What is and is not justified about surface correction
+
+18.
+BAQP-specific future correction requirements
+
+19.
+Implication for future clot-wall damage initiation
+
+20.
+One next task only
+
+============================================================
+43. FINAL STATUS LABELS
+============================================================
+
+Must output:
+
+CONTINUOUS_FULL_BALL_M3:
+    ZERO / NOT_ZERO
+
+DISCRETE_FULL_LATTICE_M3:
+    NUMERICAL_ZERO / NONZERO
+
+FULL_LATTICE_QUADRATIC_REPRODUCTION:
+    PASS / FAIL
+
+FBAR_MOMENT_IDENTITY:
+    PASS / FAIL
+
+FBAR_BIAS_PRIMARY:
+    TRUNCATED_ODD_MOMENT
+    / FULL_LATTICE_DISCRETIZATION
+    / BOUNDARY_VOLUME_QUADRATURE
+    / MIXED
+    / INCONCLUSIVE
+
+BOUNDARY_VOLUME_WEIGHTING_EFFECT:
+    value(s)
+
+K_ANISOTROPY_MODIFIER:
+    value / range
+
+FTILDE_PROJECTION_IDENTITY:
+    PASS / FAIL
+
+FTILDE_BIAS_PRIMARY:
+    PROJECTED_NODAL_RECONSTRUCTION_BIAS
+    / INTRINSIC_BOND_CORRECTION_OR_IMPLEMENTATION
+    / MIXED
+    / INCONCLUSIVE
+
+AXIAL_SHEAR_GEOMETRY_INVARIANCE:
+    PASS / FAIL
+
+PSI_PLUS_CAUSAL_RECONSTRUCTION:
+    PASS / FAIL
+
+PSI_PLUS_BIAS_PRIMARY:
+    KINEMATIC_RECONSTRUCTION
+    / MIXED_OR_SPECTRAL_MAPPING
+    / INCONCLUSIVE
+
+GLOBAL_ENERGY_KINEMATIC_BIAS:
+    value
+
+GLOBAL_ENERGY_WEIGHT_QUADRATURE_BIAS:
+    value
+
+SURFACE_OPERATOR_CORRECTION_READINESS:
+    READY_FOR_BAQP_SPECIFIC_DESIGN
+    / NOT_READY
+
+BOUNDARY_DATA_CONVERSION:
+    UNCHANGED_VERIFIED
+
+C5_C7_ACTIVATION:
+    NOT_RUN
+
+CLOT_GEOMETRY:
+    NOT_RUN
+
+FRACTURE:
+    NOT_RUN
+
+============================================================
+44. DECISION LOGIC
+============================================================
+
+The audit may conclude:
+
+    TRUNCATED_ODD_MOMENT
+
+only if ALL are true:
+
+1.
+continuous full-ball M3 = 0;
+
+2.
+discrete full-lattice M3 is numerical zero;
+
+3.
+full-lattice quadratic reconstruction passes;
+
+4.
+truncated M3 becomes nonzero;
+
+5.
+the exact M3/K formula reconstructs
+   the actual Fbar error;
+
+6.
+the same geometric predictor
+   explains axial and shear cases.
+
+If additionally:
+
+    Ftilde projection identity passes
+
+and:
+
+    predicted kinematic field reconstructs
+    Psi_plus bias,
+
+then the causal chain is:
+
+    HORIZON TRUNCATION
+        ->
+    NONZERO ODD MOMENTS
+        ->
+    FBAR BIAS
+        ->
+    PROJECTED FTILDE BIAS
+        ->
+    PSI_PLUS BIAS
+
+This would be a major scientific result.
+
+Do not dilute it with unrelated testing.
+
+============================================================
+45. SURFACE-CORRECTION READINESS
+============================================================
+
+Set:
+
+    READY_FOR_BAQP_SPECIFIC_DESIGN
+
+only if the above causal chain
+is established.
+
+This means:
+
+    there is enough evidence
+    to design a BAQP-specific operator correction.
+
+It does NOT mean:
+
+    perifit weights are validated for BAQP.
+
+It does NOT mean:
+
+    a correction has been selected.
+
+It does NOT mean:
+
+    fracture can be rerun.
+
+============================================================
+46. HARD STOP CONDITIONS
+============================================================
+
+STOP if:
+
+- exact quadratic moment identity fails;
+
+- discrete full-lattice reference is inconsistent
+  in a way not understood;
+
+- Ftilde projection formula does not reconstruct
+  actual Ftilde;
+
+- axial/shear geometry mapping fails materially;
+
+- Psi bias cannot be explained by the
+  predicted kinematic bias.
+
+Do not compensate failures by:
+
+changing kernel
+changing h/delta
+changing volumes
+changing material
+changing thresholds
+applying correction weights.
+
+============================================================
+47. FINAL TERMINAL SUMMARY
+============================================================
+
+Print only:
+
+- branch / HEAD
+
+- h
+- delta
+- delta/h
+- kernel
+
+- full-ball K reference
+- full-ball M3 norm
+
+- full-lattice:
+    K error
+    M3 norm
+    quadratic F error
+
+- physical boundary:
+    max M3 norm
+    max Fbar actual bias
+    max Fbar predicted bias
+    moment-identity residual
+
+- support-only contribution
+- boundary-volume contribution
+
+- K anisotropy modifier
+
+- Ftilde:
+    max actual bias
+    max predicted bias
+    projection residual
+
+- axial/shear mapped-bias difference
+
+- Psi_plus:
+    actual max bias
+    predicted max bias
+    causal reconstruction residual
+
+- energy:
+    U0
+    U1
+    U2
+    U0-U1
+    U1-U2
+
+- FBAR_BIAS_PRIMARY
+- FTILDE_BIAS_PRIMARY
+- PSI_PLUS_BIAS_PRIMARY
+- SURFACE_OPERATOR_CORRECTION_READINESS
+
+- targeted tests
+
+- CPU workers
+- wall time
+- peak RAM
+- GPU status
+
+- REVIEW path
+- figures path
+
+Then stop.
+
+============================================================
+48. DO NOT CONTINUE AUTOMATICALLY
+============================================================
+
+Do not automatically implement:
+
+perifit
+optimized nodal weights
+BAQP surface weights
+ghost nodes
+moment correction
+modified K
+modified F
+modified Ftilde
+modified energy
+C5/C7 activation
+clot geometry
+fracture
+adhesion
+CFD
+microbubble loading.
+
+Wait for human review.
+
+The only scientific question in this round is:
+
+    WHAT EXACTLY CAUSES THE ~3% F / FTILDE
+    AND ~6.4% PSI_PLUS BIAS
+    NEAR A TRUNCATED NONAFFINE BAQP BOUNDARY?
+
+Identify the cause first.
+Do not fix it yet.

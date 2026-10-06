@@ -1,0 +1,2045 @@
+You are continuing the clot CFD–PD / PFPD scientific development.
+
+TASK NAME:
+
+    HIGHER_ORDER_BAQP_ENERGY_FORCE_CANDIDATE_V1
+
+This round follows:
+
+    HIGHER_ORDER_BAQP_RK_ORACLE_V1
+
+The previous round established:
+
+    PD2_MOMENT_MATRIX =
+        FULL_RANK
+
+    PD2_CONDITIONING =
+        WELL_CONDITIONED
+
+    PD2_POLYNOMIAL_REPRODUCTION =
+        VERIFIED
+
+    PD2_AFFINE_REGRESSION =
+        PASS
+
+    PD2_AXIAL_QUADRATIC =
+        PASS
+
+    PD2_SHEAR_QUADRATIC =
+        PASS
+
+    PD2_CROSS_TERM =
+        PASS
+
+    FULL_3D_QUADRATIC_BASIS_REQUIRED =
+        YES
+
+    PD2_FTILDE_DIAGNOSTIC =
+        PASS
+
+    PD2_PSI_PLUS_DIAGNOSTIC =
+        PASS
+
+    PERIDYNAMICSJL_CROSSCHECK =
+        PASS
+
+    GMLS_REQUIRED =
+        NO
+
+    HIGHER_ORDER_KINEMATIC_CANDIDATE =
+        VERIFIED
+
+But:
+
+    PRODUCTION_FORCE =
+        NOT_IMPLEMENTED
+
+    PRODUCTION_BAQP =
+        UNCHANGED
+
+This round must therefore answer:
+
+    CAN THE VERIFIED FULL-PD2 KINEMATICS
+    BE EMBEDDED INTO A CONSERVATIVE,
+    VARIATIONAL BAQP MECHANICS CANDIDATE
+
+    SUCH THAT
+
+        force = - dU/dx
+
+    and the candidate preserves:
+
+        objectivity
+        global force balance
+        global moment balance
+        energy-force consistency
+        affine consistency
+        quadratic boundary accuracy?
+
+============================================================
+0. HARD SCOPE
+============================================================
+
+THIS ROUND IS:
+
+    INTACT HIGHER-ORDER MECHANICS CANDIDATE DEVELOPMENT
+
+PHASE:
+    DISABLED
+
+AT1:
+    NOT USED
+
+Gc:
+    NOT USED
+
+damage:
+    NOT USED
+
+fracture:
+    NOT RUN
+
+C5/C7:
+    NOT RUN
+
+boundary-data conversion:
+    NOT RE-INTEGRATED YET
+
+clot geometry:
+    NOT RUN
+
+CFD:
+    NOT RUN
+
+Do NOT modify the existing production BAQP mechanics.
+
+Build a parallel candidate only.
+
+============================================================
+1. READ CURRENT BASIS
+============================================================
+
+Read first:
+
+    PROJECT_ACTIVE_CONTEXT.md
+
+    verification/
+    higher_order_baqp_rk_oracle_v1/
+    REVIEW_HIGHER_ORDER_BAQP_RK_ORACLE_V1.md
+
+Then inspect only the required current implementation:
+
+    pd_clot/pfpd_candidate/baqp.py
+
+    pd_clot/pfpd_candidate/energy.py
+
+    pd_clot/pfpd_candidate/kernel.py
+
+    pd_clot/pfpd_candidate/svk_spectral_split.py
+
+    pd_clot/pfpd_candidate/higher_order_rk/
+
+Also inspect the historical tests / utilities
+that previously verified:
+
+    energy-force finite differences
+
+    objectivity
+
+    global force balance
+
+    global moment balance
+
+Reuse those utilities where possible.
+
+Do not rebuild them from scratch.
+
+============================================================
+2. PUBLISHED-METHOD INTERPRETATION
+============================================================
+
+The higher-order literature establishes that:
+
+- second-order RK/GMLS kinematics can provide
+  higher-order gradient reproduction;
+
+- higher-order gradient alone is NOT sufficient
+  to justify reusing an unrelated force-density operator;
+
+- bond-associated formulations provide the
+  stability architecture needed for correspondence models.
+
+Therefore:
+
+DO NOT implement:
+
+    PD2 F
+        ->
+    old C1 Z
+        ->
+    old force
+
+as the scientific candidate.
+
+The production candidate in this round must instead be:
+
+    PD2 nodal kinematics
+        ->
+    current bond-associated projection
+        ->
+    energy
+        ->
+    exact first variation
+        ->
+    force
+
+============================================================
+3. PRESERVE THE VERIFIED PD2 KINEMATICS
+============================================================
+
+Do not alter anything from the accepted oracle:
+
+    full 9-term P2 basis
+
+    dimensionless xi/delta coordinates
+
+    current quadratic kernel
+
+    current physical volumes
+
+    current horizon
+
+    current families
+
+    direct linear solves for moment systems
+
+    no pseudoinverse
+
+    no regularization
+
+    no GMLS
+
+Reuse cached:
+
+    g_PD2_ij
+
+and the configuration hashes
+from the previous round.
+
+PD2 weights are reference-configuration quantities.
+
+They must remain frozen
+during deformation.
+
+============================================================
+4. NODAL PD2 DEFORMATION GRADIENT
+============================================================
+
+For every physical node i:
+
+    F_i =
+        I
+        +
+        sum_j
+            (u_j - u_i)
+            outer
+            g_ij
+
+using the already-verified physical PD2
+gradient weights.
+
+Use the exact tensor convention
+from the previous oracle.
+
+Do not transpose the convention
+for convenience.
+
+============================================================
+5. VARIATION OF NODAL F
+============================================================
+
+Because:
+
+    g_ij
+
+depends only on reference geometry,
+
+the exact variation is:
+
+    delta F_i
+      =
+    sum_j
+      (delta x_j - delta x_i)
+      outer
+      g_ij.
+
+This linear variation
+must be the basis of the force derivation.
+
+Do not finite-difference F
+inside the force implementation.
+
+============================================================
+6. BOND-ASSOCIATED KINEMATICS
+============================================================
+
+Retain the verified diagnostic construction:
+
+For physical unordered bond:
+
+    b = (i,j)
+
+define:
+
+    xi =
+        X_j - X_i
+
+    r2 =
+        xi dot xi
+
+    eta =
+        x_j - x_i
+
+    Favg =
+        0.5 * (F_i + F_j)
+
+    c =
+        eta - Favg xi
+
+    Ftilde_b =
+        Favg
+        +
+        outer(c, xi) / r2
+
+This formula passed
+the PD2 quadratic diagnostic.
+
+Do not replace it.
+
+============================================================
+7. EXACT VARIATION OF FTILDE
+============================================================
+
+Derive and implement analytically.
+
+Define:
+
+    n =
+        xi / |xi|
+
+    R =
+        I - n outer n
+
+Then:
+
+    delta Ftilde_b
+      =
+    delta Favg * R
+      +
+    outer(
+        delta x_j - delta x_i,
+        xi
+    ) / r2
+
+with:
+
+    delta Favg
+      =
+    0.5(
+        delta F_i
+        +
+        delta F_j
+    ).
+
+Verify this identity independently
+against direct perturbation of Ftilde
+on a small deterministic test.
+
+This is a HARD gate.
+
+============================================================
+8. ENERGY DEFINITION
+============================================================
+
+Do NOT invent a new bond energy.
+
+Use the exact current intact BAQP
+bond-energy definition and geometric weights.
+
+Inspect the current energy implementation
+and define for each physical bond b:
+
+    m_b
+
+as the exact existing scalar prefactor
+multiplying the constitutive energy density.
+
+Do not guess factors of:
+
+    2
+    Vi
+    Vj
+    wbar
+    unordered vs directed bond multiplicity.
+
+The C1 regression below must identify
+any convention mistake.
+
+Define the PD2 intact candidate:
+
+    U_PD2(x)
+      =
+    sum_b
+      m_b
+      Psi0(
+        Ftilde_b_PD2
+      ).
+
+Use the same:
+
+    SVK
+
+    mu = 1000 Pa
+    lambda = 0
+
+development material initially.
+
+At s=0 this is the intact mechanical energy.
+
+Do not introduce phase degradation.
+
+============================================================
+9. CONSTITUTIVE STRESS
+============================================================
+
+Use:
+
+    P_b =
+      d Psi0 / d Ftilde_b
+
+from the same current intact
+SVK constitutive definition.
+
+Do not derive a new constitutive model.
+
+Independently verify on a few tensors that:
+
+    P_b
+
+matches central finite differences
+of Psi0 with respect to F.
+
+This is only a tiny constitutive sanity check.
+
+============================================================
+10. MATRIX-FREE ADJOINT FORCE DERIVATION
+============================================================
+
+Do NOT build an explicit:
+
+    dFtilde / dx
+
+fourth-order tensor for every bond/node.
+
+Use an adjoint accumulation.
+
+For each bond b=(i,j):
+
+    R_b =
+      I - n_b outer n_b
+
+    P_b =
+      dPsi0/dFtilde_b
+
+    A_b =
+      0.5 * m_b * P_b * R_b
+
+    t_b =
+      m_b * (P_b xi_b) / |xi_b|^2
+
+The bond variation is:
+
+    delta U_b
+      =
+    A_b : delta F_i
+      +
+    A_b : delta F_j
+      +
+    t_b dot (
+        delta x_j - delta x_i
+      ).
+
+This identity must be derived in the report,
+not merely coded.
+
+============================================================
+11. TWO-STAGE FORCE ACCUMULATION
+============================================================
+
+Use an O(number_of_bonds + number_of_directed_neighbors)
+algorithm.
+
+------------------------------------------------------------
+STAGE A — bond accumulation
+------------------------------------------------------------
+
+Initialize nodal conjugates:
+
+    G_i = 0
+
+and energy gradient:
+
+    gradU_i = 0.
+
+For each physical bond b=(i,j):
+
+    G_i += A_b
+    G_j += A_b
+
+    gradU_j += t_b
+    gradU_i -= t_b
+
+------------------------------------------------------------
+STAGE B — adjoint of nodal gradient
+------------------------------------------------------------
+
+For each directed family entry:
+
+    i -> k
+
+compute:
+
+    q_ik =
+      G_i * g_ik
+
+where:
+
+    g_ik
+
+is the PD2 gradient-weight vector.
+
+Because:
+
+    G_i :
+    [
+      (delta x_k - delta x_i)
+      outer
+      g_ik
+    ]
+
+    =
+    (G_i g_ik)
+      dot
+    (delta x_k - delta x_i),
+
+accumulate:
+
+    gradU_k += q_ik
+    gradU_i -= q_ik.
+
+Finally:
+
+    force_i =
+      -gradU_i.
+
+Do NOT loop over
+all neighbors of i and j
+inside every bond.
+
+That would create unnecessary
+O(B * family_size) cost.
+
+============================================================
+12. IMPLEMENT A GENERIC VARIATIONAL BACKEND
+============================================================
+
+The same adjoint implementation
+must support both:
+
+    C1 gradient weights
+
+and:
+
+    PD2 gradient weights.
+
+Conceptually:
+
+    VariationalBAQP(
+        gradient_operator=C1
+    )
+
+and:
+
+    VariationalBAQP(
+        gradient_operator=PD2
+    ).
+
+This is essential because
+C1 provides an independent regression
+against the existing verified BAQP force.
+
+Do not duplicate two force implementations.
+
+============================================================
+13. NEW CODE LOCATION
+============================================================
+
+Keep production unchanged.
+
+Prefer extending:
+
+    pd_clot/pfpd_candidate/higher_order_rk/
+
+with:
+
+    variational_energy.py
+
+    variational_force.py
+
+    adjoint_accumulation.py
+
+    mechanics_candidate.py
+
+    validation_states.py
+
+If useful,
+put the generic shared code in:
+
+    variational_baqp.py
+
+but do not move or rewrite
+the current production baqp.py.
+
+============================================================
+14. C1 VARIATIONAL ENERGY REGRESSION
+============================================================
+
+Before using PD2 force,
+run the generic variational backend
+with the current C1 gradient weights.
+
+Compare its energy against
+the current historical BAQP energy.
+
+Use at least:
+
+A.
+one affine deformation
+
+B.
+one nonaffine manufactured state
+
+C.
+one small deterministic random
+smooth displacement state
+
+Use a small / moderate geometry
+that the existing full BAQP evaluator
+can handle comfortably.
+
+Require:
+
+    relative energy difference
+        <= 1e-12.
+
+If this fails:
+
+STOP.
+
+Do not continue to PD2 force.
+
+============================================================
+15. C1 FORCE REGRESSION
+============================================================
+
+Using the SAME C1 states,
+compare:
+
+    force_variational_C1
+
+against:
+
+    existing verified BAQP force
+
+from the current candidate implementation.
+
+Use a stable force scale.
+
+Require:
+
+    max normalized force difference
+        <= 1e-10
+
+and:
+
+    RMS normalized difference
+        <= 1e-11.
+
+This is one of the MOST IMPORTANT gates.
+
+If the generic variational derivation
+does not reproduce the existing C1 force:
+
+STOP.
+
+The issue is force derivation / conventions,
+not PD2.
+
+============================================================
+16. EXPLAIN ANY NON-BITWISE DIFFERENCE
+============================================================
+
+Bitwise equality is preferred
+but not mandatory because:
+
+    summation ordering
+    vectorization
+    bond ordering
+
+may differ.
+
+If differences are above pure roundoff
+but below the scientific gate:
+
+report:
+
+    maximum absolute difference
+
+    normalized difference
+
+    likely accumulation-order source.
+
+Do not loosen the gate.
+
+============================================================
+17. PD2 ENERGY ORACLE AGAINST PREVIOUS U1
+============================================================
+
+The earlier kinematic-energy audit defined:
+
+    U0 =
+      current C1 reconstructed BAQP energy
+
+    U1 =
+      exact kinematics
+      with unchanged current bond weights
+
+    U2 =
+      continuum Gauss reference.
+
+For the previously used quadratic fields,
+PD2 Ftilde is now exact
+to numerical precision.
+
+Therefore:
+
+    U_PD2
+
+should reproduce:
+
+    U1
+
+NOT necessarily:
+
+    U2.
+
+This distinction is crucial.
+
+Compare:
+
+    axial quadratic
+
+    shear quadratic
+
+    XZ cross-term
+    if an exact-current-weight reference
+    is available or can be cheaply generated.
+
+Require:
+
+    |U_PD2 - U1|
+      / stable energy scale
+        <= 1e-10.
+
+Do NOT modify weights
+to force U_PD2 toward U2.
+
+The residual U1-U2
+is a separate quadrature/weight issue.
+
+============================================================
+18. RIGID TRANSLATION TEST
+============================================================
+
+Use:
+
+    x_i =
+      X_i + c
+
+with a nonzero deterministic vector c.
+
+Require:
+
+    F_i = I
+
+    Ftilde_b = I
+
+    energy approximately zero
+
+    maximum internal force
+      <= 1e-12 * F_ref
+
+or existing C1 objectivity noise floor,
+whichever is larger and predeclared.
+
+Do not use a zero translation.
+
+============================================================
+19. FINITE RIGID ROTATION TEST
+============================================================
+
+Use a nontrivial proper rotation:
+
+    angle =
+      37 degrees
+
+about a normalized axis such as:
+
+    [1,2,3].
+
+Set:
+
+    x_i =
+      Q X_i + c.
+
+Require:
+
+    F_i ~= Q
+
+    Ftilde_b ~= Q
+
+    SVK strain ~= 0
+
+    energy ~= 0
+
+    internal force ~= numerical noise.
+
+This verifies finite-deformation objectivity,
+not only infinitesimal rigid motion.
+
+============================================================
+20. GLOBAL INTERNAL FORCE BALANCE
+============================================================
+
+For each non-rigid validation state compute:
+
+    F_sum =
+      sum_i force_i.
+
+Normalize with:
+
+    F_ref =
+      max(
+          characteristic stress * h^2,
+          max_i |force_i|
+      )
+
+using a stable predeclared definition.
+
+Require:
+
+    |F_sum| / F_ref
+        <= 1e-10.
+
+Because energy depends only on
+relative coordinates / objective kinematics,
+translation invariance should imply this.
+
+============================================================
+21. GLOBAL INTERNAL MOMENT BALANCE
+============================================================
+
+Use CURRENT positions:
+
+    M_sum =
+      sum_i
+        (x_i - x_centroid)
+        cross
+        force_i.
+
+Use a stable moment scale:
+
+    M_ref =
+      F_ref * L_ref.
+
+Require:
+
+    |M_sum| / M_ref
+        <= 1e-10.
+
+Also report reference-coordinate moment
+as a diagnostic if useful,
+but the primary angular-momentum check
+uses the current configuration.
+
+============================================================
+22. ENERGY-FORCE DIRECTIONAL DERIVATIVE
+============================================================
+
+This is the PRIMARY variational gate.
+
+For deterministic perturbation direction v:
+
+    D_fd
+      =
+    [
+      U(x + eps v)
+      -
+      U(x - eps v)
+    ] / (2 eps)
+
+and:
+
+    D_force
+      =
+    - force dot v.
+
+Use the existing verified
+energy-force finite-difference utility
+if available.
+
+Do not create a competing normalization
+unless necessary.
+
+============================================================
+23. DIRECTIONAL-DERIVATIVE STATES
+============================================================
+
+Use exactly three mechanically distinct states:
+
+A.
+finite affine shear
+
+B.
+quadratic shear manufactured target
+
+C.
+XZ cross-term target
+
+Use deterministic perturbations.
+
+For example derive them from
+a fixed seeded smooth random field,
+with constrained rigid translation removed.
+
+Do not use dozens of random directions.
+
+Use:
+
+    2 deterministic directions per state
+
+for a total of:
+
+    6 directional checks.
+
+That is sufficient.
+
+============================================================
+24. PREDECLARED FINITE-DIFFERENCE STEPS
+============================================================
+
+Use a fixed dimensionless displacement
+perturbation sequence before inspecting results.
+
+For example:
+
+    eps_rel =
+      [1e-5, 3e-6, 1e-6]
+
+with physical perturbation scale
+defined relative to:
+
+    h.
+
+Do not tune steps afterward.
+
+For each direction,
+report all three values.
+
+Use the best asymptotic region
+only for interpretation,
+not to silently drop failed values.
+
+============================================================
+25. ENERGY-FORCE FD GATE
+============================================================
+
+For each deterministic direction
+define a stable denominator such as:
+
+    max(
+      |D_fd|,
+      |D_force|,
+      E_ref / h * ||v||
+    ).
+
+Require at the predeclared middle step:
+
+    relative error <= 5e-6
+
+and require that the three-step sequence
+shows no gross non-convergent behavior.
+
+If the middle step is contaminated
+by clear floating cancellation:
+
+do not automatically change the step.
+
+Report:
+
+    INCONCLUSIVE_NUMERICAL_FD
+
+and use an independent derivative check
+only if one already exists in the repository.
+
+Do not install AD packages.
+
+============================================================
+26. OPTIONAL COMPLEX-STEP / AD
+============================================================
+
+Do NOT install:
+
+    JAX
+    autograd
+    torch
+    new differentiation frameworks.
+
+If the current environment ALREADY has
+a trusted automatic differentiation
+or complex-step utility
+that supports the intact SVK energy
+without code changes,
+
+it may be used as an OPTIONAL independent check.
+
+The analytical adjoint remains the production candidate.
+
+============================================================
+27. AFFINE C1–PD2 ENERGY EQUIVALENCE
+============================================================
+
+For affine fields,
+C1 and PD2 both reproduce exact kinematics.
+
+Therefore with identical:
+
+    bond projection
+    constitutive law
+    energy weights
+
+require:
+
+    U_C1
+      ~= U_PD2
+
+to:
+
+    relative 1e-12
+
+for at least:
+
+    axial affine
+    shear affine.
+
+Also compare bondwise Ftilde
+and bondwise energy density.
+
+This is a clean regression.
+
+============================================================
+28. QUADRATIC C1–PD2 ENERGY DIFFERENCE
+============================================================
+
+For quadratic states,
+do NOT require C1 and PD2 energies to match.
+
+Instead report:
+
+    U_C1
+
+    U_PD2
+
+    U_exactkin_currentweights
+
+    U_continuum
+
+and separate:
+
+    kinematic correction:
+      U_PD2 - U_C1
+
+    remaining weight/quadrature difference:
+      U_PD2 - U_continuum.
+
+This preserves the causal decomposition
+from previous audits.
+
+============================================================
+29. NO OLD-Z PD2 FORCE CONTROL
+============================================================
+
+Do NOT create:
+
+    PD2 + old Z force
+
+even as a quick comparison.
+
+That path is scientifically ambiguous
+and can accidentally become entrenched.
+
+The only allowed PD2 force is:
+
+    -d U_PD2 / dx
+
+from the new variational backend.
+
+============================================================
+30. FORCE ASSEMBLY SELF-CHECK
+============================================================
+
+For a small geometry,
+construct an intentionally slow
+direct derivative oracle.
+
+Allowed options:
+
+A.
+coordinate-by-coordinate central FD
+of the total energy
+for only a tiny selected set of DOFs,
+
+or:
+
+B.
+explicit local Jacobian contribution assembly
+for a small selected subset.
+
+Compare selected force components
+against the fast adjoint.
+
+Use only:
+
+    <= 12 selected DOFs.
+
+Gate:
+
+    normalized difference <= 1e-6.
+
+This is an implementation oracle,
+not a production algorithm.
+
+============================================================
+31. DO NOT FORM THE FULL HESSIAN
+============================================================
+
+This round does not need:
+
+    stiffness matrix
+
+    Hessian
+
+    Schur complement
+
+    stability eigenvalues.
+
+Do not compute them.
+
+The task is first-variation mechanics only.
+
+============================================================
+32. DO NOT RUN EQUILIBRIUM AS A PRIMARY GATE
+============================================================
+
+Energy-force consistency is more fundamental
+than whether a nonlinear solver converges.
+
+Do not use equilibrium convergence
+to validate the force formulation.
+
+Only after ALL primary gates pass,
+one optional small manufactured recovery
+may be run.
+
+============================================================
+33. OPTIONAL SMALL RECOVERY SOLVE
+============================================================
+
+Only if:
+
+    C1 force regression PASS
+
+    objectivity PASS
+
+    global force/moment PASS
+
+    energy-force FD PASS
+
+then allow ONE small intact mechanics solve.
+
+Use a small regular cube
+with a fixed manufactured external force
+taken from the PD2 target state:
+
+    f_ext =
+      -f_PD2(target).
+
+Start from a smooth perturbed target.
+
+Use the existing verified mechanics solver.
+
+Freeze f_ext.
+
+Purpose:
+
+    confirm solver compatibility.
+
+This is not physical boundary validation.
+
+Do not run if it materially expands scope.
+
+============================================================
+34. DO NOT RE-INTEGRATE BOUNDARY CONVERSION
+============================================================
+
+The D'Elia-style boundary-data conversion
+was verified previously for C1 mechanics.
+
+Do not port it automatically to PD2
+in this round.
+
+The new internal-force operator
+must first pass all variational gates.
+
+Boundary conversion will be a separate next task.
+
+============================================================
+35. NO PHASE / SPECTRAL DEGRADATION FORCE YET
+============================================================
+
+The current Psi_plus diagnostic showed
+that PD2 removes the kinematic energy-driver bias.
+
+However this round's force candidate
+uses intact:
+
+    Psi0
+
+only.
+
+Do not yet derive mechanics for:
+
+    g(s) Psi_plus + Psi_minus.
+
+That requires:
+
+    frozen-phase variational verification
+
+and is a later task.
+
+Do not conflate intact force validation
+with phase-coupled force validation.
+
+============================================================
+36. CANDIDATE ARCHITECTURE
+============================================================
+
+The code should make the distinction explicit:
+
+    GradientOperator
+        C1
+        PD2
+
+    BondKinematics
+        current BA projection
+
+    IntactEnergy
+        current Psi0 + current bond weights
+
+    VariationalForce
+        adjoint of the exact energy graph
+
+Conceptually:
+
+    x
+      ->
+    F_node
+      ->
+    Ftilde_bond
+      ->
+    Psi0
+      ->
+    U
+      ->
+    -dU/dx.
+
+There should be exactly ONE
+energy definition feeding the force.
+
+============================================================
+37. CACHE / PERFORMANCE
+============================================================
+
+Reuse cached PD2 weights.
+
+Do not recompute 9x9 moment systems
+inside every energy or force call.
+
+Expected force-call work should be roughly:
+
+    evaluate nodal F
+    +
+    evaluate bond Ftilde/P
+    +
+    one bond adjoint pass
+    +
+    one directed-neighbor adjoint pass.
+
+No dense global matrix.
+
+============================================================
+38. CPU UTILIZATION
+============================================================
+
+Historical server:
+
+    ~12 physical CPU cores
+    ~24 logical
+    ~7.6 GiB RAM
+
+Use CPU for actual numerical work.
+
+Parallelize where useful:
+
+    bond-state evaluation
+    directional FD states
+    independent validation states
+
+Recommended total active workers:
+
+    <= 10 physical workers.
+
+BLAS:
+
+    1 thread per process.
+
+Avoid nested multiprocessing
+around large shared arrays.
+
+Maintain:
+
+    >=20% RAM headroom.
+
+============================================================
+39. GPU POLICY
+============================================================
+
+Do not install GPU dependencies.
+
+This algorithm is primarily:
+
+    sparse neighborhood reductions
+    +
+    many small tensor operations.
+
+If a working existing GPU backend
+can execute the same NumPy-compatible arrays
+with essentially zero engineering effort,
+a timing-only diagnostic is allowed.
+
+Otherwise:
+
+    GPU_NOT_USED_BY_DESIGN
+
+Do not delay scientific development
+for GPU porting.
+
+============================================================
+40. TARGETED TESTS ONLY
+============================================================
+
+Do not run full pytest.
+
+Required focused tests:
+
+TEST 1
+PD2 cached weights reproduce previous oracle
+
+TEST 2
+analytic delta-Ftilde identity
+
+TEST 3
+C1 generic energy regression
+
+TEST 4
+C1 generic force regression
+
+TEST 5
+rigid translation
+
+TEST 6
+finite rigid rotation
+
+TEST 7
+global internal force balance
+
+TEST 8
+global internal moment balance
+
+TEST 9
+six energy-force directional derivatives
+
+TEST 10
+affine C1-PD2 energy equivalence
+
+TEST 11
+quadratic PD2 energy vs exact-kinematics/current-weight reference
+
+TEST 12
+selected-DOF slow derivative oracle
+
+No unrelated tests.
+
+============================================================
+41. REQUIRED STRUCTURED OUTPUTS
+============================================================
+
+Create:
+
+    verification/
+    higher_order_baqp_energy_force_candidate_v1/
+
+and:
+
+    results/
+    higher_order_baqp_energy_force_candidate_v1/
+
+Required files:
+
+    CANDIDATE_CONFIGURATION.json
+
+    C1_ENERGY_REGRESSION.json
+
+    C1_FORCE_REGRESSION.npz
+    C1_FORCE_REGRESSION_SUMMARY.json
+
+    OBJECTIVITY_RESULTS.json
+
+    GLOBAL_BALANCE_RESULTS.csv
+
+    ENERGY_FORCE_DIRECTIONAL_DERIVATIVES.csv
+
+    SELECTED_DOF_FORCE_ORACLE.csv
+
+    AFFINE_ENERGY_COMPARISON.json
+
+    QUADRATIC_ENERGY_DECOMPOSITION.csv
+
+    PERFORMANCE_SUMMARY.json
+
+If optional recovery is run:
+
+    OPTIONAL_MANUFACTURED_RECOVERY.json
+
+============================================================
+42. REQUIRED FIGURE 1
+============================================================
+
+All visible figure text in English.
+
+Publication quality:
+
+    PNG 600 dpi
+    vector PDF.
+
+Name:
+
+    c1_variational_force_regression
+
+Show:
+
+existing C1 force
+vs
+generic variational-C1 force
+
+component scatter.
+
+Include y=x.
+
+Also report:
+
+    max normalized difference
+    RMS normalized difference.
+
+Purpose:
+
+    validate the generic force derivation
+    before trusting PD2.
+
+============================================================
+43. REQUIRED FIGURE 2
+============================================================
+
+Name:
+
+    pd2_energy_force_directional_derivative
+
+For all six checks:
+
+x:
+
+    -f dot v
+
+y:
+
+    central FD dU/deps
+
+Include:
+
+    y=x
+
+and optionally annotate
+the three predeclared FD steps.
+
+Purpose:
+
+    prove force is the first variation
+    of the SAME PD2 energy.
+
+============================================================
+44. REQUIRED FIGURE 3
+============================================================
+
+Name:
+
+    pd2_objectivity_and_global_balance
+
+Compact panels showing:
+
+    rigid-translation energy/force
+
+    rigid-rotation energy/force
+
+    global force residual
+
+    global moment residual
+
+for validation states.
+
+Use normalized log scales where appropriate.
+
+============================================================
+45. REQUIRED FIGURE 4
+============================================================
+
+Name:
+
+    c1_pd2_energy_decomposition
+
+For:
+
+    axial quadratic
+    shear quadratic
+    XZ cross-term
+
+show:
+
+    U_C1
+
+    U_PD2
+
+    U_exactkin_currentweights
+
+    U_continuum
+
+and separately:
+
+    U_PD2 - U_C1
+
+    U_PD2 - U_continuum.
+
+Make it visually explicit that:
+
+    PD2 should match
+    exact-kinematics/current-weight energy,
+
+not necessarily continuum energy.
+
+============================================================
+46. OPTIONAL FIGURE 5
+============================================================
+
+Only if manufactured recovery is run:
+
+    pd2_optional_manufactured_recovery
+
+Show:
+
+    target vs solved displacement/F
+
+and:
+
+    force residual history.
+
+Do not generate it otherwise.
+
+============================================================
+47. REVIEW REPORT
+============================================================
+
+Generate:
+
+    verification/
+    higher_order_baqp_energy_force_candidate_v1/
+    REVIEW_HIGHER_ORDER_BAQP_ENERGY_FORCE_V1.md
+
+Structure:
+
+1.
+Why PD2 kinematics are already accepted
+
+2.
+Why old C1 force cannot simply be reused
+
+3.
+PD2 energy definition
+
+4.
+Exact variation of nodal F
+
+5.
+Exact variation of Ftilde
+
+6.
+Matrix-free adjoint derivation
+
+7.
+Efficient two-stage force accumulation
+
+8.
+C1 energy regression
+
+9.
+C1 force regression
+
+10.
+Rigid translation / rotation objectivity
+
+11.
+Global force balance
+
+12.
+Global moment balance
+
+13.
+Energy-force directional finite differences
+
+14.
+Selected-DOF derivative oracle
+
+15.
+Affine C1 vs PD2 equivalence
+
+16.
+Quadratic energy decomposition
+
+17.
+Optional manufactured recovery
+
+18.
+What is now verified
+
+19.
+What remains unverified
+
+20.
+One next development task only
+
+============================================================
+48. FINAL STATUS LABELS
+============================================================
+
+Must output:
+
+PD2_KINEMATICS:
+    REUSED_VERIFIED
+    / REGRESSION_FAILED
+
+DELTA_FTILDE_IDENTITY:
+    PASS / FAIL
+
+C1_VARIATIONAL_ENERGY_REGRESSION:
+    PASS / FAIL
+
+C1_VARIATIONAL_FORCE_REGRESSION:
+    PASS / FAIL
+
+PD2_RIGID_TRANSLATION:
+    PASS / FAIL
+
+PD2_RIGID_ROTATION:
+    PASS / FAIL
+
+PD2_GLOBAL_FORCE_BALANCE:
+    PASS / FAIL
+
+PD2_GLOBAL_MOMENT_BALANCE:
+    PASS / FAIL
+
+PD2_ENERGY_FORCE_FD:
+    PASS / FAIL / INCONCLUSIVE_NUMERICAL_FD
+
+PD2_SELECTED_DOF_FORCE_ORACLE:
+    PASS / FAIL
+
+PD2_AFFINE_ENERGY_REGRESSION:
+    PASS / FAIL
+
+PD2_QUADRATIC_ENERGY_KINEMATIC_REFERENCE:
+    PASS / FAIL
+
+PD2_OPTIONAL_MANUFACTURED_RECOVERY:
+    PASS / FAIL / NOT_RUN
+
+HIGHER_ORDER_VARIATIONAL_MECHANICS_CANDIDATE:
+    VERIFIED
+    / NOT_VERIFIED
+
+PRODUCTION_BAQP:
+    UNCHANGED
+
+BOUNDARY_DATA_CONVERSION:
+    NOT_REINTEGRATED_THIS_ROUND
+
+PHASE_FORCE:
+    NOT_IMPLEMENTED
+
+C5_C7:
+    NOT_RUN
+
+FRACTURE:
+    NOT_RUN
+
+CLOT_GEOMETRY:
+    NOT_RUN
+
+============================================================
+49. DECISION LOGIC
+============================================================
+
+CASE A — SUCCESS
+
+If ALL are true:
+
+- PD2 kinematic regression passes
+- delta-Ftilde identity passes
+- C1 energy regression passes
+- C1 force regression passes
+- rigid translation passes
+- rigid rotation passes
+- global force passes
+- global moment passes
+- energy-force FD passes
+- selected-DOF oracle passes
+- affine energy regression passes
+- quadratic energy matches the
+  exact-kinematics/current-weight reference
+
+then declare:
+
+    HIGHER_ORDER_VARIATIONAL_MECHANICS_CANDIDATE =
+        VERIFIED
+
+Recommend exactly one next task:
+
+    HIGHER_ORDER_BAQP_BOUNDARY_REINTEGRATION_V1
+
+Do NOT start it automatically.
+
+------------------------------------------------------------
+CASE B
+------------------------------------------------------------
+
+If:
+
+    C1 force regression fails
+
+STOP.
+
+Do not interpret any PD2 force result.
+
+The force derivation / energy convention is wrong.
+
+------------------------------------------------------------
+CASE C
+------------------------------------------------------------
+
+If:
+
+    C1 regression passes
+
+but:
+
+    PD2 energy-force FD fails
+
+then classify:
+
+    PD2_VARIATIONAL_FORCE_IMPLEMENTATION =
+        FAILED
+
+Investigate:
+
+    gradient adjoint
+    Ftilde variation
+    bond energy multiplicity
+    tensor contraction conventions.
+
+Do not modify PD2 weights.
+
+------------------------------------------------------------
+CASE D
+------------------------------------------------------------
+
+If energy-force FD passes
+but global moment fails:
+
+investigate:
+
+    objectivity
+    current-vs-reference moment convention
+    bond projection derivative.
+
+Do not proceed to boundary integration.
+
+------------------------------------------------------------
+CASE E
+------------------------------------------------------------
+
+If all variational checks pass
+but quadratic energy does not match U1:
+
+investigate:
+
+    energy weights
+    Ftilde construction
+    exact-kinematics reference.
+
+Do not force agreement with continuum U2.
+
+============================================================
+50. WHAT SUCCESS DOES NOT MEAN
+============================================================
+
+Even if VERIFIED, do NOT claim:
+
+    higher-order PFPD fracture is verified
+
+    C5/C7 mesh objectivity is established
+
+    boundary conditions are verified with PD2
+
+    phase-coupled mechanics is verified
+
+    clot-wall mechanics is verified
+
+    PD2 is production-ready
+
+The strongest allowed statement is:
+
+    the accepted full-PD2 kinematics
+    have been embedded in an intact,
+    conservative BAQP energy-force candidate
+    whose force is verified as the first variation
+    of the same discrete energy.
+
+============================================================
+51. NEXT STAGE AFTER SUCCESS
+============================================================
+
+Only after human review,
+the next task should be:
+
+    HIGHER_ORDER_BAQP_BOUNDARY_REINTEGRATION_V1
+
+That future task should:
+
+- reuse the already verified
+  D'Elia-style boundary-data conversion architecture;
+
+- rebuild the equivalent boundary load
+  using the NEW PD2 variational internal force;
+
+- repeat only the highest-value
+  normal / shear / nonaffine localization benchmarks;
+
+- verify:
+    force
+    moment
+    virtual work
+    F
+    Ftilde
+    Psi_plus;
+
+- then decide whether C5/C7
+  may finally be revisited.
+
+Do not perform that now.
+
+============================================================
+52. HARD STOP CONDITIONS
+============================================================
+
+STOP if:
+
+- cached PD2 oracle no longer reproduces;
+
+- delta-Ftilde analytic identity fails;
+
+- C1 generic energy differs from historical energy;
+
+- C1 generic force differs materially
+  from historical verified BAQP force;
+
+- objectivity fails;
+
+- global force/moment fails;
+
+- directional energy-force derivatives fail.
+
+Do NOT repair failures by:
+
+changing PD2 basis
+
+changing horizon
+
+changing kernel
+
+changing physical volumes
+
+regularizing moment systems
+
+modifying energy weights
+
+tuning FD step sizes
+
+adding stabilization
+
+changing tolerances.
+
+============================================================
+53. FINAL TERMINAL SUMMARY
+============================================================
+
+Print only:
+
+- branch / HEAD
+
+- geometry used
+- h
+- delta
+- delta/h
+
+- PD2 weight-cache identity status
+
+- C1 energy regression:
+    max relative difference
+
+- C1 force regression:
+    max normalized difference
+    RMS normalized difference
+
+- delta-Ftilde identity:
+    max residual
+
+- rigid translation:
+    energy
+    max force
+
+- rigid rotation:
+    energy
+    max force
+
+- global force residual
+
+- global moment residual
+
+- energy-force FD:
+    maximum relative error
+    all six direction results
+
+- selected-DOF force oracle:
+    maximum normalized error
+
+- affine:
+    C1 vs PD2 energy difference
+
+- quadratic:
+    axial U_C1
+    axial U_PD2
+    axial U_exactkin
+    axial U_continuum
+
+    shear same
+
+    XZ same
+
+- optional recovery status
+
+- HIGHER_ORDER_VARIATIONAL_MECHANICS_CANDIDATE
+
+- production BAQP status
+- boundary re-integration status
+- phase-force status
+
+- targeted tests
+
+- CPU workers
+- wall time
+- peak RAM
+- GPU status
+
+- REVIEW path
+- figures path
+
+Then stop.
+
+============================================================
+54. DO NOT CONTINUE AUTOMATICALLY
+============================================================
+
+Do not automatically start:
+
+boundary re-integration
+phase degradation force
+C5/C7
+stability
+clot geometry
+Ogden
+adhesion
+fracture
+erosion
+CFD
+microbubble loading.
+
+Wait for human review.
+
+The ONLY scientific question in this round is:
+
+    CAN THE ALREADY-VERIFIED FULL-PD2
+    BOND-ASSOCIATED KINEMATICS
+    BE TURNED INTO A CONSERVATIVE
+    INTACT BAQP MECHANICS CANDIDATE
+
+    WHOSE INTERNAL FORCE IS THE
+    VERIFIED FIRST VARIATION
+    OF THE SAME DISCRETE ENERGY?

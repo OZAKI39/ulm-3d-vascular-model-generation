@@ -1,0 +1,71 @@
+{
+  "task": "NONLOCAL_BOUNDARY_NONAFFINE_SHEAR_LOCALIZATION_V1",
+  "declared_utc": "2026-10-05T23:16:56.704502+00:00",
+  "N": 19,
+  "L_m": 0.0011250000000000001,
+  "h_m": 6.25e-05,
+  "delta_m": 0.00025125,
+  "gamma": 0.003,
+  "beta_s": 0.001,
+  "material": {
+    "model": "svk",
+    "mu_Pa": 1000.0,
+    "lambda_Pa": 0.0,
+    "bulk_Pa": 666.6666666666666
+  },
+  "gate": 1e-10,
+  "mechanical_residual_gate": 1e-08,
+  "gradient_recovery_gate": 1e-05,
+  "gradient_scale": 0.004,
+  "bulk_model_small_threshold": 0.001,
+  "kinematic_low_threshold": 0.001,
+  "kinematic_material_threshold": 0.01,
+  "kinematic_classification": "Maximum of Fbar and Ftilde normalized max biases; descriptive, not fracture acceptance",
+  "oracle_workers": 8,
+  "solve_workers": 1,
+  "BLAS_threads": 1,
+  "GPU": "GPU_NOT_USED_BY_DESIGN",
+  "minimum_RAM_headroom": 0.2,
+  "estimated_peak_oracle_tree_GiB": 2.5,
+  "estimated_peak_N19_diagnostics_GiB": 1.8,
+  "estimated_peak_solve_GiB": 1.6,
+  "solver_max_wall_seconds_per_case": 1800,
+  "solver_max_nfev": 80,
+  "solver_lsmr_maxiter": 120,
+  "force_scale": "max(max physical N19 Frobenius(P)*h^2, max norm(b)*h^3); unchanged scale on N27",
+  "work_scale": "F_ref * max(L,max norm(virtual displacement)); unit rigid translations use amplitude 1 m",
+  "continuum_gate_scale": "P_ref L^2 for force; P_ref L^3 for moment; P_ref L^2 max(L,max norm(variation)) for work",
+  "moment_reference_identity": "surface(X)+body(X)=integral sum_a e_a cross P_col_a; current-position resultant moment tested separately",
+  "N27_offsets": [
+    [
+      -9,
+      0,
+      0
+    ],
+    [
+      -5,
+      0,
+      0
+    ],
+    [
+      -1,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0
+    ]
+  ],
+  "N27_field": "Same physical polynomial L=18h, same h and horizon; only specimen extent becomes 26h",
+  "constraint": "Both z faces fixed to target; all other nodes free",
+  "perturbation": "0.02*gamma*L*prod(sin(pi*(X-lower)/L))*[1,-0.4,0.7], zero on faces",
+  "field_bias_reference": "Fbar at nodes; Ftilde at reference bond midpoint; nearest-face depth at the respective sample location",
+  "field_bias_RMS_weights": "physical volume for Fbar; 2*wbar*Vi*Vj for Ftilde",
+  "Psi_plus_scale": "max analytic Psi_plus over physical N19 nodes; same scale for both reconstruction types",
+  "channels": "Diagonal vs off-diagonal of actual discrete bond Piola stress; force assembly linear at frozen geometry; no unique nonlocal face ownership",
+  "phase": "DISABLED",
+  "surface_operator": "NOT_MODIFIED",
+  "full_pytest": "DO_NOT_RUN"
+}

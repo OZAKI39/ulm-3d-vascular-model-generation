@@ -1,0 +1,79 @@
+{
+  "task": "NONLOCAL_BOUNDARY_FORMULATION_V1",
+  "model": "PFPD_AT1_SPECTRAL_CANDIDATE_V1",
+  "phase": "DISABLED",
+  "fracture": "DISABLED",
+  "h_m": 6.25e-05,
+  "delta_m": 0.00025125,
+  "L_m": 0.0011250000000000001,
+  "N": 19,
+  "material": {
+    "model": "svk",
+    "mu": 1000.0,
+    "bulk": 666.6666666666666,
+    "lambda_Pa": 0.0
+  },
+  "epsilon": 0.003,
+  "gamma": 0.003,
+  "force_gate": 1e-06,
+  "moment_gate": 1e-06,
+  "virtual_work_gate": 1e-06,
+  "field_accuracy_gate_relative_to_imposed_gradient": 1e-05,
+  "mechanical_residual_gate": 1e-08,
+  "permutation_gate": 1e-10,
+  "solver_max_nfev": 80,
+  "solver_lsmr_maxiter": 120,
+  "solver_max_wall_seconds_per_case": 1800,
+  "solver": "Existing regularization.equilibrium._scipy TRF/LSMR with analytic tangent callback and condition-number-report adapter; no new nonlinear iteration",
+  "B0": "Legacy two-face displacement grips; classical P*N on remaining faces; grip reactions retained",
+  "B1": "Fixed surrogate-derived nodal forces on topology-influenced support; same grip geometry; no adaptive load update",
+  "B2": "LOCALITY-STRONG REFERENCE: constrain physical nodes with d_boundary<delta on all six faces; zero external load; in-domain support adaptation, not a proved equivalent exterior formulation",
+  "B3": "DEFERRED: no uniquely validated BAQP ghost K/F/Z and physical-only energy/flux mapping",
+  "support": "Direct truncated/partial-volume family seeds expanded by two actual bond-graph hops; not a physical 3delta collar",
+  "refinement": [
+    {
+      "name": "base",
+      "n": 19,
+      "h_m": 6.25e-05,
+      "delta_m": 0.00025125,
+      "particles": 6859,
+      "bonds_estimate": 690020,
+      "persistent_bytes_estimate": 552016000,
+      "peak_bytes_estimate": 1510471456
+    },
+    {
+      "name": "fixed_delta_refined",
+      "n": 21,
+      "h_m": 5.6250000000000005e-05,
+      "delta_m": 0.00025125,
+      "particles": 9261,
+      "bonds_estimate": 1318128,
+      "persistent_bytes_estimate": 1054502400,
+      "peak_bytes_estimate": 2641065856
+    },
+    {
+      "name": "fixed_ratio_refined",
+      "n": 21,
+      "h_m": 5.6250000000000005e-05,
+      "delta_m": 0.000226125,
+      "particles": 9261,
+      "bonds_estimate": 954288,
+      "persistent_bytes_estimate": 763430400,
+      "peak_bytes_estimate": 1986153856
+    }
+  ],
+  "refinement_policy": "After normal and shear B1 gates, two small coefficient/virtual-work/support comparisons at fixed L; no additional equilibrium campaign",
+  "mixed": "NOT_RUN_OPTIONAL",
+  "clot_wall": "NOT_RUN_OPTIONAL",
+  "CPU_workers": 1,
+  "BLAS_threads": 1,
+  "GPU": "GPU_NOT_USED_BY_DESIGN",
+  "minimum_available_memory_fraction": 0.2,
+  "memory_total_bytes": 8183246848,
+  "normalization": {
+    "force": "||P||F * L^2, because closed-surface net target is zero",
+    "moment": "||P||F * L^3; reference X-cross-force per request; current-x moment separate",
+    "virtual_work": "Nonzero target: absolute relative error; zero target: ||P||F*L^3*||A||F or force_scale*||c||",
+    "F": "||Fbar-Fexact||F / ||Fexact-I||F; geometric core d>=delta is NOT fully closed bulk"
+  }
+}

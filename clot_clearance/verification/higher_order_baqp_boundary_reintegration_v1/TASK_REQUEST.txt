@@ -1,0 +1,2138 @@
+You are continuing the clot CFD–PD / PFPD scientific development.
+
+TASK NAME:
+
+    HIGHER_ORDER_BAQP_BOUNDARY_REINTEGRATION_V1
+
+This round follows:
+
+    HIGHER_ORDER_BAQP_ENERGY_FORCE_CANDIDATE_V1
+
+The previous round established:
+
+    PD2_KINEMATICS =
+        REUSED_VERIFIED
+
+    C1_VARIATIONAL_ENERGY_REGRESSION =
+        PASS
+
+    C1_VARIATIONAL_FORCE_REGRESSION =
+        PASS
+
+    PD2_RIGID_TRANSLATION =
+        PASS
+
+    PD2_RIGID_ROTATION =
+        PASS
+
+    PD2_GLOBAL_FORCE_BALANCE =
+        PASS
+
+    PD2_GLOBAL_MOMENT_BALANCE =
+        PASS
+
+    PD2_ENERGY_FORCE_FD =
+        PASS
+
+    PD2_SELECTED_DOF_FORCE_ORACLE =
+        PASS
+
+    PD2_AFFINE_ENERGY_REGRESSION =
+        PASS
+
+    PD2_QUADRATIC_ENERGY_KINEMATIC_REFERENCE =
+        PASS
+
+    HIGHER_ORDER_VARIATIONAL_MECHANICS_CANDIDATE =
+        VERIFIED
+
+But:
+
+    BOUNDARY_DATA_CONVERSION =
+        NOT_REINTEGRATED_WITH_PD2
+
+This round must answer:
+
+    CAN THE ALREADY-VERIFIED NONLOCAL
+    BOUNDARY-DATA CONVERSION FRAMEWORK
+    BE REBUILT USING THE NEW CONSERVATIVE
+    PD2 VARIATIONAL INTERNAL FORCE,
+
+    WHILE PRESERVING:
+
+        resultant force
+        resultant moment
+        virtual work
+        equilibrium recovery
+        nonaffine bulk physics
+        F
+        Ftilde
+        Psi_plus
+
+    AND WHILE THE LOCALIZED BOUNDARY CORRECTION
+    VANISHES IN A FULLY CLOSED BULK STENCIL?
+
+============================================================
+0. SCIENTIFIC ROLE OF THIS ROUND
+============================================================
+
+This is an INTEGRATION round.
+
+Do NOT redesign:
+
+    PD2 kinematics
+
+    PD2 energy
+
+    PD2 variational force
+
+    boundary-conversion mathematics
+
+All four already exist as verified candidates.
+
+The task is to connect them consistently.
+
+This round should answer:
+
+    does the previously verified
+    boundary conversion remain valid
+    after replacing C1 internal mechanics
+    with the new PD2 variational mechanics?
+
+============================================================
+1. HARD SCOPE
+============================================================
+
+THIS ROUND IS:
+
+    INTACT PD2 MECHANICS
+    +
+    NONLOCAL BOUNDARY REINTEGRATION
+
+PHASE:
+    DISABLED
+
+AT1:
+    NOT USED
+
+Gc:
+    NOT USED
+
+fracture:
+    NOT RUN
+
+stability:
+    NOT RUN
+
+C5/C7:
+    NOT RUN
+
+clot geometry:
+    NOT RUN
+
+Ogden:
+    NOT RUN
+
+adhesion:
+    NOT RUN
+
+CFD:
+    NOT RUN
+
+microbubble loading:
+    NOT RUN
+
+Production BAQP must remain unchanged.
+
+All new work remains candidate / verification code.
+
+============================================================
+2. READ ONLY THE ACTIVE SCIENTIFIC CHAIN
+============================================================
+
+Read first:
+
+    PROJECT_ACTIVE_CONTEXT.md
+
+    verification/
+    higher_order_baqp_energy_force_candidate_v1/
+    REVIEW_HIGHER_ORDER_BAQP_ENERGY_FORCE_V1.md
+
+    verification/
+    nonlocal_boundary_formulation_v1/
+    REVIEW_NONLOCAL_BOUNDARY_FORMULATION_V1.md
+
+    verification/
+    nonlocal_boundary_nonaffine_localization_v1/
+    REVIEW_NONAFFINE_BOUNDARY_LOCALIZATION_V1.md
+
+    verification/
+    nonlocal_boundary_nonaffine_shear_localization_v1/
+    REVIEW_NONAFFINE_SHEAR_LOCALIZATION_V1.md
+
+Read code only as required from:
+
+    pd_clot/pfpd_candidate/higher_order_rk/
+
+    pd_clot/pfpd_candidate/nonlocal_boundary/
+
+    current mechanical equilibrium solver adapter
+
+Do not recursively reread all historical campaigns.
+
+============================================================
+3. PRESERVE THE TWO VERIFIED MODULES
+============================================================
+
+MODULE A:
+
+    HIGHER-ORDER PD2 VARIATIONAL MECHANICS
+
+Use exactly:
+
+    accepted full-P2 gradient weights
+
+    accepted bond-associated Ftilde
+
+    accepted intact energy
+
+    accepted adjoint force
+
+Do not modify them.
+
+MODULE B:
+
+    NONLOCAL BOUNDARY CONVERSION
+
+Reuse the existing mathematical architecture:
+
+    finite-domain internal force
+
+    vs
+
+    corresponding bulk nonlocal force
+
+to isolate:
+
+    boundary-only correction.
+
+Do not invent a new BC model.
+
+============================================================
+4. REFACTOR BOUNDARY CONVERSION TO ACCEPT A MECHANICS BACKEND
+============================================================
+
+If the existing boundary code is tied directly
+to the C1 evaluator, minimally generalize it.
+
+Conceptually require an interface such as:
+
+    mechanics.energy(x)
+
+    mechanics.force(x)
+
+    mechanics.node_F(x)
+
+    mechanics.bond_Ftilde(x)
+
+    mechanics.psi_plus_diagnostic(x)
+
+Boundary conversion should not know
+whether the internal mechanics is:
+
+    C1
+
+or:
+
+    PD2.
+
+Do not create a second parallel
+nonlocal-boundary framework.
+
+============================================================
+5. C1 HISTORICAL RESULTS ARE REFERENCE DATA
+============================================================
+
+Do NOT rerun the complete C1 boundary campaigns.
+
+Reuse saved accepted C1 outputs.
+
+Only rerun a tiny C1 state
+if needed to verify the generalized API
+has not changed the old conversion.
+
+Any C1 regression should be:
+
+    small
+    targeted
+    deterministic.
+
+Do not spend this round repeating
+already-accepted C1 science.
+
+============================================================
+6. PRIMARY DOMAIN
+============================================================
+
+Reuse the exact N19 boundary benchmark geometry:
+
+    N = 19
+
+    L = 1.125 mm
+
+    h = 62.5 um
+
+    delta = 251.25 um
+
+    delta/h ~= 4.02
+
+Same:
+
+    coordinates
+
+    family topology
+
+    physical nodal volumes
+
+    quadratic kernel
+
+    reference normals
+
+    local boundary definitions
+
+    historical constraints.
+
+Do not redesign the benchmark geometry.
+
+============================================================
+7. PRIMARY BOUNDARY CANDIDATE
+============================================================
+
+Use:
+
+    PD2_LOCALIZED_VOLUME_FORCE
+
+For a prescribed surrogate field u_L,
+define:
+
+    f_FD_PD2(u_L)
+
+as the finite-domain internal force
+from the VERIFIED PD2 variational mechanics.
+
+For the corresponding bulk PD2 mechanics define:
+
+    q_bulk_PD2(X)
+
+in force-density units.
+
+Then:
+
+    f_bulk_target_i
+      =
+    q_bulk_PD2(X_i) * V_i
+
+and:
+
+    f_BC_PD2_i
+      =
+    f_bulk_target_i
+      -
+    f_FD_PD2_i(u_L).
+
+This is the only new boundary load
+used in the scientific candidate.
+
+============================================================
+8. AFFINE SPECIAL CASE
+============================================================
+
+For homogeneous affine states:
+
+    q_bulk_PD2 = 0
+
+to numerical precision.
+
+Therefore:
+
+    f_BC_PD2
+      =
+    -f_FD_PD2(u_L).
+
+This is NOT treated as a general identity.
+
+It is the affine special case only.
+
+============================================================
+9. NONAFFINE CASE
+============================================================
+
+For spatially varying fields:
+
+    q_bulk_PD2 != 0
+
+in general.
+
+Therefore NEVER define:
+
+    f_BC = -f_FD
+
+for nonaffine fields.
+
+Use only:
+
+    f_BC_PD2
+      =
+    q_bulk_PD2 V
+      -
+    f_FD_PD2.
+
+The old naive cancellation remains rejected.
+
+============================================================
+10. REBUILD A PD2 BULK FORCE ORACLE
+============================================================
+
+The earlier C1 nonaffine audits
+used a fully closed bulk reference.
+
+Build the analogous PD2 variational-force oracle.
+
+Reuse:
+
+    N27 / shifted reference machinery
+
+where appropriate.
+
+Do NOT assume the old C1 dependency closure
+is automatically valid for PD2.
+
+============================================================
+11. ACTUAL PD2 FORCE-DEPENDENCY GRAPH
+============================================================
+
+Construct the actual dependency graph
+from the current PD2 variational force implementation.
+
+At a center observation node identify:
+
+D0:
+    observation node
+
+D1:
+    direct neighbors participating
+    in gradient / incident bond terms
+
+D2:
+    nodes required by bond-endpoint
+    nodal gradients and adjoint accumulation
+
+D3:
+    any additional nodes required
+    for endpoint gradient-weight construction,
+    bond weights, or force pullback.
+
+Do not invent a hop count.
+
+Derive it from the implemented graph.
+
+Save:
+
+    PD2_FORCE_STENCIL_CLOSURE.json
+
+with:
+
+    node counts
+
+    maximum radius
+
+    maximum lattice offset
+
+    whether every required family
+    is complete.
+
+============================================================
+12. N27 CLOSURE DECISION
+============================================================
+
+Check whether the existing N27 center
+actually closes the PD2 variational force stencil.
+
+If:
+
+    FULL_PD2_FORCE_STENCIL_CLOSED = YES
+
+use N27.
+
+If NO:
+
+do not use a contaminated center.
+
+Select the smallest next odd regular domain
+that provably closes the graph.
+
+Do not enlarge blindly.
+
+Do not change:
+
+    h
+    delta
+    delta/h.
+
+============================================================
+13. PD2 BULK ORACLE IMPLEMENTATION
+============================================================
+
+For the required manufactured fields,
+evaluate bulk PD2 force using:
+
+    fully closed physical-local stencil
+
+or:
+
+    translation-invariant equivalent
+    constructed from the same PD2 force graph.
+
+Do NOT reuse C1 q_bulk numerically.
+
+The bulk reference must use:
+
+    PD2 nodal reconstruction
+
+    PD2 Ftilde
+
+    PD2 discrete energy
+
+    PD2 variational force.
+
+============================================================
+14. AFFINE BULK ORACLE GATE
+============================================================
+
+Before any boundary reintegration:
+
+run:
+
+    affine axial
+
+    affine shear
+
+on the fully closed PD2 bulk stencil.
+
+Require:
+
+    |q_bulk_PD2| * h^3 / F_ref
+        <= 1e-10
+
+for both.
+
+If affine bulk force is materially nonzero:
+
+STOP.
+
+Do not continue to boundary conversion.
+
+============================================================
+15. NONAFFINE BULK ORACLE
+============================================================
+
+Reuse exact manufactured fields:
+
+A.
+quadratic axial
+
+    u_z =
+      0.003 Z
+      +
+      0.001 Z^2/L
+
+B.
+quadratic shear
+
+    u_x =
+      0.003 Z
+      +
+      0.001 Z^2/L
+
+Do not introduce new polynomial fields
+in this round.
+
+The XZ field is not needed
+for boundary reintegration.
+
+It already served its purpose
+in the PD2 oracle.
+
+============================================================
+16. BULK MODEL DIFFERENCE
+============================================================
+
+For each nonaffine field compute:
+
+    e_model_PD2(X)
+      =
+    q_bulk_PD2(X)
+      +
+    b_local(X)
+
+where:
+
+    b_local =
+      -Div P_local
+
+from the previously verified
+analytic continuum references.
+
+Do not call:
+
+    e_model
+
+a boundary error.
+
+Report:
+
+    max |e_model|
+
+    RMS
+
+    relative to b_ref.
+
+============================================================
+17. NODEWISE DECOMPOSITION
+============================================================
+
+On physical N19:
+
+compute:
+
+    f_FD_PD2
+
+    f_bulk_target_PD2
+
+    f_BC_PD2
+
+    b_local V
+
+    e_model_PD2 V.
+
+Verify:
+
+    f_FD_PD2
+      +
+    f_BC_PD2
+      +
+    b_local V
+
+      =
+    e_model_PD2 V
+
+for every node.
+
+Predeclared gate:
+
+    max normalized closure residual
+        <= 1e-10.
+
+============================================================
+18. AFFINE BENCHMARK A:
+NORMAL TRACTION
+============================================================
+
+Reuse exactly the accepted normal-affine
+boundary benchmark.
+
+Do NOT redefine:
+
+    surfaces
+
+    local constraints
+
+    normals
+
+    continuum target traction
+
+    virtual variations.
+
+Only replace:
+
+    C1 internal mechanics
+
+with:
+
+    PD2 variational mechanics
+
+and rebuild:
+
+    f_BC_PD2.
+
+============================================================
+19. NORMAL AFFINE FORCE / MOMENT / WORK
+============================================================
+
+Re-evaluate:
+
+    continuum resultant force
+
+    discrete PD2 equivalent-load resultant
+
+    continuum moment
+
+    PD2 boundary-load moment
+
+    affine virtual work.
+
+Use the SAME conventions
+and normalization from the accepted C1
+boundary report.
+
+Predeclared gates remain:
+
+    resultant relative error <= 1e-6
+
+    moment normalized error <= 1e-6
+
+    nonzero virtual-work relative error <= 1e-6.
+
+Do not tighten them after seeing results.
+
+============================================================
+20. NORMAL AFFINE EQUILIBRIUM RECOVERY
+============================================================
+
+This time equilibrium recovery IS REQUIRED.
+
+Use the existing verified mechanics solver
+with the PD2 variational force candidate.
+
+Use:
+
+    f_BC_PD2
+
+frozen as the external equivalent load.
+
+Start from a deterministic perturbed state,
+not exactly u_L.
+
+Reuse the previous benchmark constraints.
+
+Require final mechanical force residual:
+
+    <= existing solver gate
+       (typically 1e-8).
+
+============================================================
+21. NORMAL AFFINE FIELD RECOVERY
+============================================================
+
+At the solved state measure:
+
+    displacement error
+
+    Fbar_PD2 error
+
+    Ftilde_PD2 error
+
+    Psi_plus error
+
+against exact affine target.
+
+Use:
+
+    imposed gradient scale = 0.003
+
+or the existing benchmark's
+frozen normalization.
+
+Require:
+
+    max Fbar normalized error <= 1e-5
+
+    max Ftilde normalized error <= 1e-5
+
+    max Psi_plus relative error <= 1e-4
+
+for the recovered affine benchmark.
+
+These are solver-level gates,
+not the previous oracle-level 1e-10 gates.
+
+============================================================
+22. AFFINE BENCHMARK B:
+SHEAR TRACTION
+============================================================
+
+Reuse exactly the accepted
+affine shear boundary benchmark.
+
+Use:
+
+    t = P N
+
+on all required faces.
+
+Do not simplify to top-face-only shear.
+
+Rebuild:
+
+    f_BC_PD2
+
+from PD2 finite-domain internal force.
+
+============================================================
+23. SHEAR FORCE / MOMENT / WORK
+============================================================
+
+Repeat the accepted decomposition:
+
+    normal traction channel
+
+    tangential traction channel
+
+    combined channel.
+
+Verify:
+
+force
+moment
+virtual work
+
+with the SAME historical gates:
+
+    <= 1e-6.
+
+Do not assign arbitrary face ownership
+to distributed nonlocal nodal force
+if the previous framework did not.
+
+============================================================
+24. SHEAR AFFINE EQUILIBRIUM RECOVERY
+============================================================
+
+Run one PD2 equilibrium solve
+from deterministic perturbed start.
+
+Use frozen:
+
+    f_BC_PD2.
+
+Require:
+
+    mechanical residual <= 1e-8
+
+and solved:
+
+    Fbar
+    Ftilde
+    Psi_plus
+
+to satisfy the same solver-level gates
+as the normal case.
+
+============================================================
+25. NONAFFINE BENCHMARK C:
+QUADRATIC AXIAL
+============================================================
+
+Reuse:
+
+    u_z =
+      0.003 Z
+      +
+      0.001 Z^2/L.
+
+Compute:
+
+    q_bulk_PD2
+
+    f_FD_PD2
+
+    f_BC_PD2
+
+    e_model_PD2.
+
+Do not use:
+
+    -f_FD
+
+as the correction.
+
+============================================================
+26. NONAFFINE AXIAL MANUFACTURED RECOVERY
+============================================================
+
+Define the PD2 nonlocal manufactured
+body force:
+
+    b_NL_PD2
+      =
+    -q_bulk_PD2.
+
+External load:
+
+    f_ext =
+      b_NL_PD2 V
+      +
+      f_BC_PD2.
+
+Start from a smooth deterministic perturbation.
+
+Freeze:
+
+    f_BC_PD2.
+
+Solve with existing mechanics solver.
+
+Require:
+
+    force residual <= 1e-8
+
+    max Fbar error / 0.004 <= 1e-5
+
+    max Ftilde error / 0.004 <= 1e-5
+
+    max Psi_plus error / Psi_ref <= 1e-4.
+
+Because PD2 reproduces the quadratic target,
+analytic F may be used directly.
+
+============================================================
+27. NONAFFINE BENCHMARK D:
+QUADRATIC SHEAR
+============================================================
+
+Reuse:
+
+    u_x =
+      0.003 Z
+      +
+      0.001 Z^2/L.
+
+Repeat exactly the axial workflow:
+
+    PD2 bulk force
+
+    localized correction
+
+    nodewise decomposition
+
+    nonlocal manufactured load
+
+    perturbed-start equilibrium recovery.
+
+Use the same gates.
+
+============================================================
+28. ONE CLASSICAL-MANUFACTURED SOLVE ONLY
+============================================================
+
+Do NOT duplicate classical
+continuum-load solves for both nonaffine fields.
+
+Run exactly ONE:
+
+    quadratic shear
+
+classical-manufactured case
+
+because it is most relevant to
+future fluid shear / streaming.
+
+Use:
+
+    b_local V
+      +
+    f_BC_PD2.
+
+Do NOT add:
+
+    -e_model_PD2 V.
+
+At the exact local target,
+the residual should equal:
+
+    e_model_PD2 V.
+
+Verify this identity first.
+
+Then solve equilibrium.
+
+============================================================
+29. INTERPRET THE CLASSICAL SOLVE CORRECTLY
+============================================================
+
+The solved classical-loaded state
+is NOT required to reproduce
+the local analytic field exactly.
+
+If:
+
+    boundary decomposition passes
+
+and:
+
+    target residual =
+      e_model_PD2 V,
+
+then any remaining shift represents:
+
+    finite-horizon bulk-model difference
+    +
+    quadrature
+    +
+    solver tolerance,
+
+not boundary failure.
+
+Report:
+
+    displacement shift
+
+    F shift
+
+    Psi_plus shift
+
+relative to the analytic target.
+
+Do not correct these away.
+
+============================================================
+30. FULLY CLOSED CENTER LOCALIZATION GATE
+============================================================
+
+For:
+
+    quadratic axial
+
+and:
+
+    quadratic shear
+
+evaluate representative points:
+
+    ~1 delta
+
+    ~2 delta
+
+    ~3 delta
+
+    fully closed center
+
+using the PD2 force stencil.
+
+Compute:
+
+    |f_BC_PD2| / F_ref.
+
+Require at the provably closed center:
+
+    <= 1e-10.
+
+This is the primary
+boundary-localization gate.
+
+============================================================
+31. SUPPORT METRICS
+============================================================
+
+For each of:
+
+    normal affine
+
+    shear affine
+
+    quadratic axial
+
+    quadratic shear
+
+compute PD2 boundary-load magnitude support:
+
+    d50
+    d90
+    d95
+    d99
+
+in:
+
+    um
+    h
+    delta.
+
+Also save:
+
+    mean |f_BC|
+
+    max |f_BC|
+
+vs:
+
+    d_min/delta.
+
+============================================================
+32. COMPARE PD2 VS HISTORICAL C1 BOUNDARY LOAD
+============================================================
+
+This is a HIGH-VALUE diagnostic.
+
+Do not rerun the full C1 campaign.
+
+Load the accepted saved C1 conversion data.
+
+At matched nodes compare:
+
+    f_BC_C1
+
+vs:
+
+    f_BC_PD2.
+
+Report:
+
+    L1 magnitude sum
+
+    L2 norm
+
+    max magnitude
+
+    d50/d90/d95/d99
+
+    difference:
+        f_BC_C1 - f_BC_PD2.
+
+This answers:
+
+    how much of the old equivalent boundary load
+    was compensating C1 kinematic truncation
+    versus representing the boundary interaction itself?
+
+============================================================
+33. DO NOT OVER-INTERPRET THE DIFFERENCE
+============================================================
+
+Do NOT call:
+
+    f_BC_C1 - f_BC_PD2
+
+a physical correction force.
+
+It is only:
+
+    difference between two
+    discrete mechanics representations
+    under the same surrogate field.
+
+Use it to understand mechanism,
+not to create another model term.
+
+============================================================
+34. COMPARE C1 VS PD2 NONAFFINE FIELD QUALITY
+============================================================
+
+Use saved accepted C1 target-state diagnostics.
+
+For:
+
+    quadratic axial
+    quadratic shear
+
+compare depth profiles of:
+
+    Fbar error
+
+    Ftilde error
+
+    Psi_plus error
+
+for:
+
+    C1
+
+vs:
+
+    PD2 solved manufactured state.
+
+Do not rerun C1.
+
+The main scientific expectation is:
+
+    C1 retained percent-level
+    near-boundary kinematic/energy-driver bias
+
+while:
+
+    PD2 should reduce it to
+    solver/numerical tolerance.
+
+Do not force this conclusion if the data disagree.
+
+============================================================
+35. GLOBAL ENERGY REPORTING
+============================================================
+
+For each PD2 benchmark report:
+
+    internal energy at target
+
+    internal energy at solved state
+
+    external work where meaningful.
+
+Do NOT require:
+
+    U_PD2 = continuum U
+
+because current bond energy quadrature
+still has a known independent discrepancy.
+
+The boundary task is not an
+energy-quadrature correction campaign.
+
+============================================================
+36. QUADRATURE ISSUE REMAINS SEPARATE
+============================================================
+
+The previous PD2 variational audit showed:
+
+    PD2 energy
+      matches
+    exact-kinematics/current-weight energy
+
+but not necessarily the continuum Gauss integral.
+
+Do not modify:
+
+    m_b
+    wbar
+    volumes
+    kernel
+
+during boundary reintegration.
+
+Any remaining continuum quadrature difference
+must remain visible.
+
+============================================================
+37. DO NOT ADD SURFACE OPERATOR CORRECTION
+============================================================
+
+Forbidden:
+
+    perifit
+
+    scalar surface factors
+
+    optimized BAQP weights
+
+    ghost nodes
+
+    modified K
+
+    modified PD2 basis
+
+    GMLS
+
+    variable horizon
+
+PD2 already solved the tested
+kinematic reconstruction problem.
+
+Do not add another correction layer.
+
+============================================================
+38. NO PHASE FORCE
+============================================================
+
+Use intact mechanics only:
+
+    Psi0.
+
+Psi_plus may be computed
+only as a DIAGNOSTIC field.
+
+Do not use:
+
+    g(s) Psi_plus + Psi_minus
+
+inside the force.
+
+Do not evolve:
+
+    s.
+
+Phase-force coupling is a later task.
+
+============================================================
+39. SOLVER POLICY
+============================================================
+
+Reuse the existing verified
+mechanics equilibrium solver.
+
+Do not write a new Newton/ADR solver.
+
+For each required solve:
+
+record:
+
+    initial residual
+
+    iteration count
+
+    final residual
+
+    wall time
+
+    accepted/rejected status.
+
+Do not tune solver tolerances
+per benchmark.
+
+Use one frozen solver configuration.
+
+============================================================
+40. PREDECLARED REQUIRED SOLVES
+============================================================
+
+Run exactly:
+
+1.
+normal affine PD2 recovery
+
+2.
+shear affine PD2 recovery
+
+3.
+quadratic axial
+   PD2 nonlocal-manufactured recovery
+
+4.
+quadratic shear
+   PD2 nonlocal-manufactured recovery
+
+5.
+quadratic shear
+   classical-manufactured solve
+
+Five equilibrium solves total.
+
+Do not add more
+unless a required solve fails.
+
+============================================================
+41. TARGETED TESTS ONLY
+============================================================
+
+Do not run full pytest.
+
+Required focused tests:
+
+TEST 1
+PD2 mechanics cache / energy-force regression unchanged
+
+TEST 2
+boundary conversion API
+accepts PD2 backend
+
+TEST 3
+PD2 affine bulk force is zero
+
+TEST 4
+PD2 nonaffine nodewise decomposition
+
+TEST 5
+PD2 fully closed center correction
+
+TEST 6
+normal resultant/moment/work
+
+TEST 7
+shear resultant/moment/work
+
+TEST 8
+normal equilibrium recovery
+
+TEST 9
+shear equilibrium recovery
+
+TEST 10
+nonaffine axial manufactured recovery
+
+TEST 11
+nonaffine shear manufactured recovery
+
+TEST 12
+classical-shear target residual
+equals measured bulk-model difference
+
+No unrelated regression work.
+
+============================================================
+42. CPU POLICY
+============================================================
+
+Use the server CPU efficiently.
+
+Historical hardware:
+
+    ~12 physical cores
+    ~24 logical
+    ~7.6 GiB RAM
+
+Parallelize:
+
+    independent bulk-oracle z levels
+
+    boundary postprocessing
+
+    field diagnostics.
+
+Use:
+
+    8–10 physical CPU workers
+
+for those tasks.
+
+Equilibrium solves should run:
+
+    one at a time
+
+unless memory measurements prove
+two simultaneous solves retain
+at least 20% RAM headroom.
+
+BLAS:
+
+    1 thread per process.
+
+============================================================
+43. GPU POLICY
+============================================================
+
+Do not install:
+
+    CuPy
+    CUDA PETSc
+    new GPU frameworks.
+
+Current verified PD2 force and solver
+are CPU implementations.
+
+If an already-working GPU backend
+exists with zero engineering modification,
+a timing-only diagnostic is allowed.
+
+Otherwise:
+
+    GPU_NOT_USED_BY_DESIGN.
+
+Use available CPU resources fully
+rather than spending this round on porting.
+
+============================================================
+44. REQUIRED STRUCTURED OUTPUTS
+============================================================
+
+Create:
+
+    verification/
+    higher_order_baqp_boundary_reintegration_v1/
+
+and:
+
+    results/
+    higher_order_baqp_boundary_reintegration_v1/
+
+Required:
+
+    PD2_BOUNDARY_CONFIGURATION.json
+
+    PD2_FORCE_STENCIL_CLOSURE.json
+
+    PD2_BULK_ORACLE.csv
+
+    PD2_NORMAL_AFFINE.json
+
+    PD2_SHEAR_AFFINE.json
+
+    PD2_NONAFFINE_AXIAL.json
+
+    PD2_NONAFFINE_SHEAR.json
+
+    PD2_CLASSICAL_SHEAR.json
+
+    PD2_NODEWISE_BOUNDARY_DECOMPOSITION.npz
+
+    PD2_BOUNDARY_SUPPORT.csv
+
+    C1_PD2_BOUNDARY_COMPARISON.csv
+
+    PD2_FORCE_MOMENT_WORK.csv
+
+    PD2_EQUILIBRIUM_RECOVERY.csv
+
+============================================================
+45. REQUIRED FIGURE 1
+============================================================
+
+All figure text in English.
+
+Publication quality:
+
+    PNG 600 dpi
+    vector PDF.
+
+Name:
+
+    pd2_boundary_reintegration_overview
+
+Show the exact architecture:
+
+    classical surrogate data
+
+        ->
+    PD2 finite-domain mechanics
+
+        +
+
+    fully closed PD2 bulk oracle
+
+        ->
+    localized equivalent boundary load
+
+        ->
+    PD2 equilibrium solve.
+
+Clearly distinguish:
+
+    internal mechanics
+
+from:
+
+    external equivalent boundary load.
+
+============================================================
+46. REQUIRED FIGURE 2
+============================================================
+
+Name:
+
+    pd2_affine_boundary_consistency
+
+Use normal and shear panels.
+
+Compare:
+
+    resultant error
+
+    moment error
+
+    virtual-work error
+
+    recovered Fbar error
+
+    recovered Ftilde error
+
+    recovered Psi_plus error.
+
+Show predeclared gates.
+
+============================================================
+47. REQUIRED FIGURE 3
+============================================================
+
+Name:
+
+    pd2_nonaffine_boundary_localization
+
+For axial and shear:
+
+show:
+
+    localized correction
+    vs d_min/delta
+
+and the fully closed
+bulk reference points.
+
+Include:
+
+    1e-10 closed-center gate.
+
+============================================================
+48. REQUIRED FIGURE 4
+============================================================
+
+Name:
+
+    c1_vs_pd2_boundary_load_support
+
+For matched historical C1
+and new PD2 results show:
+
+    d50
+    d90
+    d95
+    d99
+
+and:
+
+    cumulative force-magnitude curves.
+
+Title must state:
+
+    CONVERSION SUPPORT
+    NOT PHYSICAL BC THICKNESS.
+
+============================================================
+49. REQUIRED FIGURE 5
+============================================================
+
+Name:
+
+    c1_vs_pd2_boundary_field_quality
+
+For quadratic axial and shear,
+compare saved C1 vs new PD2:
+
+    Fbar error
+
+    Ftilde error
+
+    Psi_plus error
+
+vs:
+
+    boundary depth.
+
+This is a key scientific figure.
+
+Question:
+
+    after reintegration,
+    has the percent-level C1 near-boundary
+    energy-driver bias disappeared
+    from the solved PD2 mechanics?
+
+============================================================
+50. REQUIRED FIGURE 6
+============================================================
+
+Name:
+
+    pd2_manufactured_recovery
+
+Panels:
+
+A.
+normal affine
+
+B.
+shear affine
+
+C.
+nonaffine axial
+
+D.
+nonaffine shear
+
+Show:
+
+    target vs solved F error profiles
+
+and report:
+
+    final mechanical residual.
+
+Do not include the classical-shear case
+in this figure because that case
+is not expected to recover the local target exactly.
+
+============================================================
+51. OPTIONAL FIGURE 7
+============================================================
+
+Name:
+
+    pd2_classical_vs_nonlocal_shear
+
+Only for the required
+quadratic-shear classical solve.
+
+Show:
+
+    analytic local target
+
+    PD2 nonlocal-manufactured recovered state
+
+    PD2 classical-loaded equilibrium state
+
+for:
+
+    displacement
+    F
+    Psi_plus.
+
+Interpret the classical difference
+through:
+
+    e_model_PD2.
+
+============================================================
+52. REVIEW REPORT
+============================================================
+
+Generate:
+
+    verification/
+    higher_order_baqp_boundary_reintegration_v1/
+    REVIEW_HIGHER_ORDER_BAQP_BOUNDARY_REINTEGRATION_V1.md
+
+Structure:
+
+1.
+Why boundary reintegration is now the correct task
+
+2.
+What is reused unchanged:
+   PD2 mechanics and boundary architecture
+
+3.
+PD2 force-dependency closure
+
+4.
+Fully closed PD2 bulk oracle
+
+5.
+Affine normal boundary conversion
+
+6.
+Affine shear boundary conversion
+
+7.
+Force / moment / virtual-work consistency
+
+8.
+Affine equilibrium recovery
+
+9.
+Nonaffine axial localized conversion
+
+10.
+Nonaffine shear localized conversion
+
+11.
+Nodewise bulk/boundary decomposition
+
+12.
+Fully closed center localization
+
+13.
+Nonlocal-manufactured recovery
+
+14.
+Classical-shear result
+
+15.
+PD2 boundary-load support
+
+16.
+How PD2 boundary load differs from historical C1
+
+17.
+C1 vs PD2 F/Ftilde/Psi_plus near-boundary quality
+
+18.
+What remains quadrature rather than boundary error
+
+19.
+Whether the intact higher-order boundary mechanics
+    are ready for a curved clot geometry
+
+20.
+One next task only
+
+============================================================
+53. FINAL STATUS LABELS
+============================================================
+
+Must output:
+
+PD2_VARIATIONAL_MECHANICS:
+    REUSED_VERIFIED
+    / REGRESSION_FAILED
+
+PD2_BOUNDARY_BACKEND:
+    IMPLEMENTED / INCOMPLETE
+
+PD2_FORCE_STENCIL_CLOSURE:
+    VERIFIED / NOT_VERIFIED
+
+PD2_AFFINE_BULK_FORCE:
+    PASS / FAIL
+
+PD2_NONAFFINE_BULK_ORACLE:
+    VERIFIED / NOT_VERIFIED
+
+PD2_NODEWISE_BOUNDARY_DECOMPOSITION:
+    PASS / FAIL
+
+PD2_NORMAL_RESULTANT:
+    PASS / FAIL
+
+PD2_NORMAL_MOMENT:
+    PASS / FAIL
+
+PD2_NORMAL_VIRTUAL_WORK:
+    PASS / FAIL
+
+PD2_NORMAL_EQUILIBRIUM:
+    PASS / FAIL
+
+PD2_SHEAR_RESULTANT:
+    PASS / FAIL
+
+PD2_SHEAR_MOMENT:
+    PASS / FAIL
+
+PD2_SHEAR_VIRTUAL_WORK:
+    PASS / FAIL
+
+PD2_SHEAR_EQUILIBRIUM:
+    PASS / FAIL
+
+PD2_NONAFFINE_AXIAL_RECOVERY:
+    PASS / FAIL
+
+PD2_NONAFFINE_SHEAR_RECOVERY:
+    PASS / FAIL
+
+PD2_CLASSICAL_SHEAR:
+    CONSISTENT_WITH_BULK_MODEL_DIFFERENCE
+    / FAILED
+    / INCONCLUSIVE
+
+PD2_CLOSED_CENTER_BOUNDARY_CORRECTION:
+    PASS / FAIL
+
+C1_PD2_BOUNDARY_LOAD_COMPARISON:
+    COMPLETE / INCOMPLETE
+
+PD2_NEAR_BOUNDARY_F_BIAS:
+    REMOVED_TO_SOLVER_TOLERANCE
+    / MATERIAL
+    / INCONCLUSIVE
+
+PD2_NEAR_BOUNDARY_PSI_PLUS_BIAS:
+    REMOVED_TO_SOLVER_TOLERANCE
+    / MATERIAL
+    / INCONCLUSIVE
+
+HIGHER_ORDER_BOUNDARY_MECHANICS:
+    VERIFIED_FOR_INTACT_BENCHMARKS
+    / NOT_VERIFIED
+
+CURVED_CLOT_WALL_READINESS:
+    READY
+    / NOT_READY
+
+PRODUCTION_BAQP:
+    UNCHANGED
+
+PHASE_FORCE:
+    NOT_IMPLEMENTED
+
+C5_C7:
+    NOT_RUN
+
+FRACTURE:
+    NOT_RUN
+
+CLOT_GEOMETRY:
+    NOT_RUN
+
+============================================================
+54. SUCCESS LOGIC
+============================================================
+
+Declare:
+
+    HIGHER_ORDER_BOUNDARY_MECHANICS =
+        VERIFIED_FOR_INTACT_BENCHMARKS
+
+only if ALL are true:
+
+- PD2 mechanics regression unchanged
+- PD2 force stencil closure verified
+- affine bulk force passes
+- nonaffine bulk oracle verified
+- nodewise decomposition passes
+- normal force/moment/work pass
+- shear force/moment/work pass
+- normal equilibrium recovery passes
+- shear equilibrium recovery passes
+- nonaffine axial recovery passes
+- nonaffine shear recovery passes
+- fully closed center correction passes
+- PD2 F/Ftilde/Psi_plus field quality
+  is consistent with target/solver tolerance.
+
+Then set:
+
+    CURVED_CLOT_WALL_READINESS =
+        READY.
+
+============================================================
+55. FAILURE INTERPRETATION
+============================================================
+
+If PD2 mechanics regression fails:
+
+STOP.
+
+Do not interpret boundary results.
+
+If bulk closure fails:
+
+STOP.
+
+Do not tune the boundary load.
+
+If force/moment/work fail
+but nodewise decomposition passes:
+
+investigate:
+
+    global load accounting
+    surface reference integration
+    constraint reactions
+    sign conventions.
+
+Do not change PD2 mechanics.
+
+If equilibrium recovery fails
+while substitution identities pass:
+
+investigate:
+
+    mechanical solver integration
+
+rather than changing the boundary formulation.
+
+If F/Ftilde recover
+but Psi_plus does not:
+
+investigate diagnostic evaluation only.
+
+Do not modify the spectral split automatically.
+
+============================================================
+56. WHAT SUCCESS DOES NOT MEAN
+============================================================
+
+Even if successful, do NOT claim:
+
+    fracture is verified
+
+    phase-coupled PD2 mechanics is verified
+
+    C5/C7 are mesh-objective
+
+    real clot material is validated
+
+    adhesion/detachment is validated
+
+    CFD coupling is validated
+
+    physical BC thickness has been identified.
+
+The strongest allowed statement is:
+
+    the verified conservative PD2 intact mechanics
+    and the previously verified nonlocal
+    boundary-data conversion have been
+    successfully reintegrated for intact
+    affine and nonaffine benchmark mechanics.
+
+============================================================
+57. NEXT TASK AFTER SUCCESS
+============================================================
+
+If:
+
+    CURVED_CLOT_WALL_READINESS = READY
+
+recommend exactly:
+
+    CURVED_CLOT_WALL_INTACT_MECHANICS_V1
+
+That future task should finally leave
+the cube benchmark and construct:
+
+    a curved clot geometry
+
+    attached to a planar / simplified vessel wall
+
+with:
+
+    wall kinematics
+
+    normal pressure-like loading
+
+    tangential shear-like loading
+
+and visualize:
+
+    displacement
+
+    F
+
+    Ftilde
+
+    Psi_plus
+
+    resultant wall load.
+
+No fracture initially.
+
+Do not start automatically.
+
+============================================================
+58. TARGETED TESTS SUMMARY
+============================================================
+
+Do not run full pytest.
+
+Keep only tests directly related to:
+
+    PD2 mechanics regression
+
+    boundary conversion API
+
+    bulk oracle
+
+    decomposition
+
+    force/moment/work
+
+    equilibrium recovery
+
+    field recovery
+
+    closed-center localization.
+
+Avoid unrelated historical robustness campaigns.
+
+============================================================
+59. FINAL TERMINAL SUMMARY
+============================================================
+
+Print only:
+
+- branch / HEAD
+
+- N19:
+    h
+    delta
+    delta/h
+
+- PD2 mechanics regression status
+
+- PD2 force-stencil closure:
+    actual graph depth
+    closed-domain size
+    fully closed status
+
+- affine bulk-force residual:
+    axial
+    shear
+
+- normal:
+    resultant error
+    moment error
+    work error
+    final solver residual
+    max Fbar error
+    max Ftilde error
+    max Psi_plus error
+
+- shear:
+    same
+
+- nonaffine axial:
+    max q_bulk
+    max e_model
+    nodewise closure
+    final solver residual
+    F/Psi recovery
+
+- nonaffine shear:
+    same
+
+- classical shear:
+    target e_model residual
+    final displacement/F/Psi shift
+
+- PD2 boundary support:
+    d50
+    d90
+    d95
+    d99
+
+- historical C1 vs PD2:
+    total boundary-load magnitude ratio
+    d99 comparison
+    maximum load difference
+
+- closed-center correction
+
+- HIGHER_ORDER_BOUNDARY_MECHANICS
+- CURVED_CLOT_WALL_READINESS
+
+- production BAQP status
+- phase-force status
+- C5/C7 status
+
+- targeted tests
+
+- CPU workers
+- wall time
+- peak RAM
+- GPU status
+
+- REVIEW path
+- figures path
+
+Then stop.
+
+============================================================
+60. DO NOT CONTINUE AUTOMATICALLY
+============================================================
+
+Do not automatically start:
+
+curved clot geometry
+phase evolution
+C5/C7
+fracture
+Ogden
+adhesion
+CFD
+microbubble loading.
+
+Wait for human review.
+
+The ONLY scientific question in this round is:
+
+    CAN THE VERIFIED CONSERVATIVE PD2 BAQP
+    INTERNAL MECHANICS BE REINTEGRATED WITH
+    THE VERIFIED NONLOCAL BOUNDARY-DATA
+    CONVERSION SO THAT FORCE, MOMENT,
+    VIRTUAL WORK, EQUILIBRIUM, F, FTILDE,
+    PSI_PLUS AND BULK LOCALIZATION
+    ALL REMAIN CONSISTENT?
+
+If yes:
+
+    the numerical-method development
+    has reached the point where a
+    real curved clot-wall intact-mechanics
+    prototype may begin.

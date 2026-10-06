@@ -1,0 +1,41 @@
+--- verification/higher_order_baqp_boundary_reintegration_v1/source_before/mechanics_adapter.py
++++ pd_clot/pfpd_candidate/nonlocal_boundary/mechanics_adapter.py
+@@ -2,7 +2,8 @@
+ 
+ No new nonlinear iteration is defined. The historical _scipy function code is
+ executed unchanged; only its final dense condition-number diagnostic is disabled
+-for a LinearOperator. Residuals always call the unchanged baqp.evaluate.
++for a LinearOperator. The default C1 residual calls unchanged baqp.evaluate;
++an explicit PD2 backend delegates to the accepted variational force candidate.
+ """
+ import time
+ import types
+@@ -86,11 +87,15 @@
+     def __getattr__(self, key): return getattr(np, key)
+ 
+ 
+-def solve(family, material, prescribed, fixed, initial, external, h, force_scale, config):
++def solve(family, material, prescribed, fixed, initial, external, h, force_scale, config, *, mechanics=None):
+     free = ~fixed
+     view = SimpleNamespace(X=np.where(fixed[:, None], prescribed, family.X), fixed=fixed,
+                            spacing=h, pairs=family.pairs, volume=family.volume)
+-    callback = IntactForce(family, material, external, config['solver_max_wall_seconds_per_case'])
++    if mechanics is None:
++        callback = IntactForce(family, material, external, config['solver_max_wall_seconds_per_case'])
++    else:
++        from .mechanics_backend import PD2SolverCallback
++        callback = PD2SolverCallback(mechanics, external, config['solver_max_wall_seconds_per_case'])
+     x0 = initial.copy(); x0[fixed] = prescribed[fixed]
+     origin = view.X[free]
+     scale = max(np.linalg.norm(external[free]), force_scale)
+--- verification/higher_order_baqp_boundary_reintegration_v1/source_before/localized_conversion.py
++++ pd_clot/pfpd_candidate/nonlocal_boundary/localized_conversion.py
+@@ -10,3 +10,8 @@
+     return dict(f_FD=np.asarray(f_FD), f_bulk_target=fbulk, f_BC_localized=localized,
+                 f_BC_naive=-np.asarray(f_FD), f_body_local=body, f_model=model,
+                 f_external_NL=-fbulk+localized, f_external_classical=body+localized)
++
++
++def convert_localized(mechanics, x, q_bulk, b_local, volume):
++    """Backend-independent entry point; the accepted decomposition is unchanged."""
++    return localize(mechanics.force(x), q_bulk, b_local, volume)

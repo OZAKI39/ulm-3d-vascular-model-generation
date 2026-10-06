@@ -1,0 +1,2139 @@
+You are continuing the clot CFD–PD / PFPD scientific development.
+
+TASK NAME:
+
+    HIGHER_ORDER_BAQP_RK_ORACLE_V1
+
+This is a focused higher-order KINEMATIC ORACLE audit.
+
+It follows:
+
+    BAQP_NEAR_BOUNDARY_KINEMATIC_ENERGY_AUDIT_V1
+
+The previous audit established the causal chain:
+
+    horizon truncation
+        ->
+    nonzero weighted third moments M3
+        ->
+    nodal Fbar reconstruction bias
+        ->
+    projected bond-associated Ftilde bias
+        ->
+    Psi_plus bias
+
+Accepted previous quantitative result:
+
+    current C1 near-boundary Fbar bias
+        ~ 2.98% of imposed-gradient scale
+
+    current C1 near-boundary Ftilde bias
+        ~ 2.94%
+
+    current Psi_plus bias
+        ~ 6.4%
+
+and:
+
+    continuous full ball:
+        M3 = 0
+
+    symmetric discrete full lattice:
+        M3 ~= numerical zero
+
+    truncated physical family:
+        M3 != 0
+
+    FBAR_BIAS_PRIMARY =
+        TRUNCATED_ODD_MOMENT
+
+    FTILDE_BIAS_PRIMARY =
+        PROJECTED_NODAL_RECONSTRUCTION_BIAS
+
+    PSI_PLUS_BIAS_PRIMARY =
+        KINEMATIC_RECONSTRUCTION
+
+The new question is:
+
+    CAN AN ALREADY-PUBLISHED
+    SECOND-ORDER REPRODUCING-KERNEL / GMLS GRADIENT
+    REMOVE THIS TRUNCATED-BOUNDARY KINEMATIC BIAS
+    WITHOUT INVENTING A NEW SURFACE CORRECTION?
+
+============================================================
+0. HARD SCOPE
+============================================================
+
+THIS ROUND IS:
+
+    KINEMATIC / ENERGY-DRIVER ORACLE ONLY
+
+DO NOT IMPLEMENT:
+
+    production force
+    new BAQP Z
+    equilibrium
+    PETSc
+    phase evolution
+    fracture
+    activation
+    C5/C7
+    clot geometry
+    surface weights
+    perifit correction
+    ghost particles
+    boundary-force changes
+
+Production mechanics must remain unchanged.
+
+The only new implementation is:
+
+    higher-order reference-configuration
+    gradient reconstruction
+
+plus diagnostic:
+
+    Ftilde
+    Psi_plus
+
+No production force is permitted.
+
+============================================================
+1. STARTING REPOSITORY STATE
+============================================================
+
+Record only:
+
+    git branch --show-current
+    git rev-parse HEAD
+    git status --short
+
+Do not:
+
+    reset
+    clean
+    restore historical artifacts
+    delete files
+    run cleanup/recovery
+
+Do not modify historical verification outputs.
+
+Create new work only under the
+higher-order candidate / verification namespace.
+
+============================================================
+2. READ CURRENT PROJECT CONTEXT
+============================================================
+
+Read first:
+
+    PROJECT_ACTIVE_CONTEXT.md
+
+    verification/
+    baqp_near_boundary_kinematic_energy_audit_v1/
+    REVIEW_BAQP_NEAR_BOUNDARY_KINEMATIC_ENERGY_V1.md
+
+Also read only the implementation required from:
+
+    pd_clot/pfpd_candidate/baqp.py
+
+    current kernel implementation
+
+    current energy implementation
+
+    current spectral split implementation
+
+Reuse saved:
+
+    N19 geometry
+    N19 families
+    physical nodal volumes
+    exact axial target
+    exact shear target
+    previous C1 bias data
+
+Do not rerun previous equilibrium campaigns.
+
+============================================================
+3. LITERATURE IMPLEMENTATION CONTRACT
+============================================================
+
+The relevant published methods are:
+
+A.
+
+    Hillman, Pasetto, Zhou
+    Generalized reproducing kernel peridynamics
+
+B.
+
+    Behzadinasab, Trask, Bazilevs
+    A unified, stable and accurate meshfree framework
+    for peridynamic correspondence modeling
+    Part I: core methods
+
+C.
+
+    Behzadinasab, Foster, Bazilevs
+    Part II: wave propagation and enforcement
+    of stress boundary conditions
+
+This round uses ONLY the higher-order
+gradient material from A/B.
+
+Part II is retained for future natural-BC / FSI work.
+
+The published second-order 3D polynomial basis is:
+
+    x
+    y
+    z
+    x^2
+    y^2
+    z^2
+    xy
+    xz
+    yz
+
+A second-order operator must reproduce gradients
+of ALL of these functions.
+
+Do not replace this by only diagonal quadratic terms
+for the main candidate.
+
+============================================================
+4. CANDIDATES
+============================================================
+
+Evaluate only:
+
+------------------------------------------------------------
+C1
+------------------------------------------------------------
+
+Current validated BAQP nodal reconstruction.
+
+Role:
+
+    historical baseline.
+
+Do not modify.
+
+------------------------------------------------------------
+PD2
+------------------------------------------------------------
+
+Full second-order reproducing-kernel gradient.
+
+Basis:
+
+    [x, y, z,
+     x^2, y^2, z^2,
+     xy, xz, yz]
+
+This is the PRIMARY candidate.
+
+------------------------------------------------------------
+RK2_DIAG
+------------------------------------------------------------
+
+OPTIONAL CONTROL ONLY.
+
+Use only if:
+
+- an existing implementation already provides it,
+  or
+- it requires trivial basis selection.
+
+Basis:
+
+    [x, y, z, x^2, y^2, z^2]
+
+Do NOT spend significant development effort
+creating this control.
+
+Its only purpose is the cross-term discriminator.
+
+------------------------------------------------------------
+GMLS_P2
+------------------------------------------------------------
+
+CONDITIONAL FALLBACK.
+
+Do not implement initially.
+
+Trigger only if:
+
+- PD2 moment systems are rank deficient,
+- PD2 is materially ill-conditioned near boundaries,
+- or an independent higher-order oracle is required
+  to resolve a discrepancy.
+
+============================================================
+5. CRITICAL CONTROL VARIABLES
+============================================================
+
+Keep EXACTLY the current:
+
+    particle coordinates
+
+    family topology
+
+    physical horizon
+
+    delta
+
+    h
+
+    kernel
+
+    nodal volumes
+
+    current manufactured target coordinates
+
+Do NOT change:
+
+    delta/h
+
+    kernel shape
+
+    neighbor count
+
+    boundary quadrature
+
+to make PD2 easier.
+
+We are isolating:
+
+    polynomial reproduction order
+
+and nothing else.
+
+============================================================
+6. PRIMARY DISCRETIZATION
+============================================================
+
+Use:
+
+    N = 19
+
+    L = 1.125 mm
+
+    h = 62.5 um
+
+    delta = 251.25 um
+
+    delta/h ~= 4.02
+
+Use the current physical boundary-node
+trapezoid volumes:
+
+    interior h^3
+    face h^3/2
+    edge h^3/4
+    corner h^3/8
+
+Use the SAME families
+as the previous C1 audit.
+
+============================================================
+7. DIMENSIONLESS LOCAL COORDINATES
+============================================================
+
+For numerical conditioning define:
+
+    xi_hat =
+        (X_j - X_i) / delta
+
+Use xi_hat to construct the polynomial basis.
+
+Define:
+
+    Q2(xi_hat) =
+
+    [
+        xi_hat_x,
+        xi_hat_y,
+        xi_hat_z,
+
+        xi_hat_x^2,
+        xi_hat_y^2,
+        xi_hat_z^2,
+
+        xi_hat_x * xi_hat_y,
+        xi_hat_x * xi_hat_z,
+        xi_hat_y * xi_hat_z
+    ]^T
+
+This is only a coordinate scaling.
+
+The resulting derivative weights
+must be converted back to PHYSICAL derivatives
+with the correct factors of:
+
+    1/delta
+
+Do not silently change the mathematical operator.
+
+============================================================
+8. PD2 MOMENT MATRIX
+============================================================
+
+For every physical node i:
+
+    M2_i
+      =
+    sum_j
+      omega_ij
+      Q2_ij
+      Q2_ij^T
+      V_j
+
+where:
+
+    omega_ij
+
+is the SAME current radial influence kernel
+used by the current BAQP candidate.
+
+Do not switch to:
+
+    cubic B-spline
+    1/r^2
+    or any literature-specific kernel
+
+in the primary comparison.
+
+The question is:
+
+    effect of reproduction order
+
+not:
+
+    effect of changing kernel.
+
+============================================================
+9. DO NOT COMPUTE EXPLICIT MATRIX INVERSES
+============================================================
+
+For each M2:
+
+compute diagnostic:
+
+    rank
+
+    singular values
+
+    sigma_min
+
+    sigma_max
+
+    condition number
+
+using SVD or another stable diagnostic.
+
+For derivative coefficients:
+
+solve linear systems.
+
+Do NOT use:
+
+    np.linalg.inv(M2)
+
+as the production diagnostic path.
+
+Do NOT use:
+
+    pseudoinverse
+
+    Tikhonov regularization
+
+    diagonal regularization
+
+unless this task explicitly reaches
+a GMLS fallback decision.
+
+If M2 is rank deficient:
+
+record it honestly.
+
+Do not repair it by tuning the horizon.
+
+============================================================
+10. PHYSICAL DERIVATIVE SELECTORS
+============================================================
+
+Construct selector vectors that extract:
+
+    d/dX
+    d/dY
+    d/dZ
+
+from the quadratic polynomial representation.
+
+Because Q2 uses:
+
+    xi_hat = xi/delta
+
+the selector must include
+the correct physical:
+
+    1/delta
+
+scaling.
+
+Validate the scaling independently
+using:
+
+    p(X)=X
+    p(Y)=Y
+    p(Z)=Z.
+
+A missing delta factor is a HARD FAIL.
+
+============================================================
+11. PD2 GRADIENT WEIGHTS
+============================================================
+
+Construct, for each bond i-j,
+a physical gradient weight:
+
+    g_PD2_ij in R^3
+
+such that:
+
+    grad_h p(X_i)
+      =
+    sum_j
+      [p_j - p_i]
+      g_PD2_ij
+
+for a scalar field p.
+
+For vector displacement:
+
+    grad_h u_i
+      =
+    sum_j
+      (u_j - u_i)
+      tensor
+      g_PD2_ij.
+
+Then:
+
+    Fbar_PD2_i
+      =
+    I
+      +
+    grad_h u_i.
+
+Keep the precise row/column convention
+consistent with the current BAQP implementation.
+
+Document it explicitly.
+
+============================================================
+12. DIRECT POLYNOMIAL REPRODUCTION TEST
+============================================================
+
+This is the PRIMARY mathematical oracle.
+
+For EVERY physical N19 node,
+evaluate gradient reproduction for:
+
+    p1 = X
+    p2 = Y
+    p3 = Z
+
+    p4 = X^2
+    p5 = Y^2
+    p6 = Z^2
+
+    p7 = X*Y
+    p8 = X*Z
+    p9 = Y*Z
+
+Compare:
+
+    grad_PD2(p)
+        vs
+    exact analytic grad(p).
+
+Use coordinates centered locally
+where mathematically appropriate,
+but compare against physical derivatives.
+
+Save all nine reproduction residuals.
+
+============================================================
+13. POLYNOMIAL REPRODUCTION GATE
+============================================================
+
+Use a stable dimensionless normalization.
+
+Require:
+
+    maximum normalized residual
+        <= 1e-10
+
+and:
+
+    volume-weighted RMS
+        <= 1e-11
+
+for all nine basis functions
+at all FULL-RANK nodes.
+
+If any node is rank-deficient:
+
+    PD2_POLYNOMIAL_REPRODUCTION =
+        NOT_GLOBALLY_VERIFIED
+
+Do not hide such nodes.
+
+============================================================
+14. AFFINE REGRESSION
+============================================================
+
+Before quadratic tests,
+verify PD2 preserves the already-established
+affine exactness.
+
+Use at least:
+
+    axial affine
+    shear affine
+
+from prior benchmarks.
+
+Require:
+
+    max |F_PD2 - F_exact|
+        / 0.004
+        <= 1e-10.
+
+If PD2 breaks affine reproduction:
+
+STOP.
+
+============================================================
+15. BENCHMARK A:
+QUADRATIC AXIAL
+============================================================
+
+Reuse EXACT prior field:
+
+    u_z
+      =
+    epsilon Z
+      +
+    beta Z^2/L
+
+with:
+
+    epsilon = 0.003
+
+    beta = 0.001
+
+    u_x = u_y = 0.
+
+Do not solve equilibrium.
+
+Evaluate at exact target positions:
+
+    Fbar_C1
+
+    Fbar_PD2
+
+and RK2_DIAG if available.
+
+Compare against analytic:
+
+    F_exact(X).
+
+============================================================
+16. BENCHMARK B:
+QUADRATIC SHEAR
+============================================================
+
+Reuse EXACT prior field:
+
+    u_x
+      =
+    gamma Z
+      +
+    beta_s Z^2/L
+
+with:
+
+    gamma = 0.003
+
+    beta_s = 0.001
+
+    u_y = u_z = 0.
+
+Do not solve equilibrium.
+
+Evaluate:
+
+    Fbar_C1
+    Fbar_PD2
+    optional Fbar_RK2_DIAG
+
+against analytic F.
+
+============================================================
+17. BENCHMARK C:
+CROSS-TERM DISCRIMINATOR
+============================================================
+
+This is the ONLY new manufactured field.
+
+Define:
+
+    u_x
+      =
+    eta * X * Z / L
+
+    u_y = 0
+    u_z = 0
+
+with:
+
+    eta = 0.004
+
+Do NOT tune eta.
+
+The exact gradient is:
+
+    du_x/dX
+      =
+    eta Z/L
+
+    du_x/dZ
+      =
+    eta X/L
+
+all other displacement-gradient components:
+    zero.
+
+Thus:
+
+    F_exact =
+      I + grad u
+
+with the above x-row terms.
+
+This field requires the:
+
+    XZ
+
+quadratic cross term.
+
+Purpose:
+
+    distinguish a diagonal-only quadratic basis
+    from the full P2 basis.
+
+============================================================
+18. F REFERENCE SCALE
+============================================================
+
+For all three quadratic tests define:
+
+    F_scale = 0.004
+
+This is retained for continuity
+with the previous boundary-bias audit.
+
+Report:
+
+    max Frobenius error / F_scale
+
+    volume-weighted RMS / F_scale
+
+    depth profile vs d_min/delta
+
+    face / edge / corner / interior statistics.
+
+============================================================
+19. PD2 F GATE
+============================================================
+
+For each:
+
+    axial quadratic
+    shear quadratic
+    cross-term quadratic
+
+require:
+
+    max Fbar_PD2 error / 0.004
+        <= 1e-10
+
+and:
+
+    volume-weighted RMS / 0.004
+        <= 1e-11.
+
+This is the primary scientific gate.
+
+Do not relax the gate after seeing results.
+
+============================================================
+20. C1 REGRESSION
+============================================================
+
+The current C1 calculation must reproduce
+the previous saved boundary-bias results
+within ordinary floating reproducibility.
+
+In particular,
+the shear/axial near-boundary bias
+should remain approximately:
+
+    ~ 2.98% of F_scale
+
+at the worst nodes.
+
+If the C1 baseline materially differs
+from the previous saved audit:
+
+STOP.
+
+Do not compare PD2 against a changed baseline.
+
+============================================================
+21. CROSS-TERM DECISION
+============================================================
+
+Expected interpretation:
+
+If:
+
+    RK2_DIAG passes axial/shear
+
+but:
+
+    RK2_DIAG fails XZ cross-term
+
+while:
+
+    full PD2 passes all three,
+
+declare:
+
+    FULL_3D_QUADRATIC_BASIS_REQUIRED = YES.
+
+If RK2_DIAG is unavailable:
+
+do not implement it merely to obtain this result.
+
+Full PD2 success is sufficient.
+
+============================================================
+22. GEOMETRIC CONDITIONING ANALYSIS
+============================================================
+
+For every physical node classify geometrically:
+
+    interior-like
+    face-near
+    edge-near
+    corner-near
+
+using geometry only.
+
+Report for PD2 M2:
+
+    rank
+
+    sigma_min
+
+    condition number
+
+by:
+
+    d_min/delta
+
+and geometry class.
+
+Save:
+
+    median
+    P95
+    P99
+    maximum
+
+condition number.
+
+Do not invent an acceptance threshold
+after seeing the data.
+
+============================================================
+23. PREDECLARED CONDITIONING FLAGS
+============================================================
+
+Use report-only flags:
+
+    WELL_CONDITIONED:
+        kappa <= 1e6
+
+    ELEVATED:
+        1e6 < kappa <= 1e10
+
+    SEVERE:
+        kappa > 1e10
+
+These are development descriptors,
+not universal mathematical limits.
+
+Any rank-deficient node is a separate hard issue.
+
+============================================================
+24. DIAGNOSTIC FTILDE_PD2
+============================================================
+
+Only if:
+
+    PD2 axial PASS
+    PD2 shear PASS
+    PD2 cross-term PASS
+
+construct a DIAGNOSTIC bond-associated state
+using the current verified BAQP architecture:
+
+    Favg_PD2
+      =
+    0.5 * (
+        Fbar_PD2_i
+        +
+        Fbar_PD2_j
+      )
+
+    Ftilde_PD2
+      =
+    Favg_PD2
+      +
+    outer(
+        eta_ij
+          -
+        Favg_PD2 xi_ij,
+        xi_ij
+    ) / |xi_ij|^2
+
+This is NOT production mechanics.
+
+Do not compute force from it.
+
+============================================================
+25. WHY FTILDE SHOULD BE EXACT FOR THESE TESTS
+============================================================
+
+For every quadratic displacement field:
+
+    F_exact(X)
+
+is linear in X.
+
+Therefore:
+
+    F_exact(X_mid)
+      =
+    0.5[
+        F_exact(X_i)
+        +
+        F_exact(X_j)
+      ].
+
+Also the exact bond secant satisfies:
+
+    eta_ij
+      =
+    F_exact(X_mid)
+      xi_ij.
+
+Thus if nodal PD2 Fbar is exact,
+the current BAQP midpoint/projection construction
+should recover:
+
+    Ftilde_PD2
+      =
+    F_exact(X_mid)
+
+to numerical precision.
+
+This is an important independent check.
+
+============================================================
+26. FTILDE GATE
+============================================================
+
+Across all physical bonds:
+
+require:
+
+    max ||Ftilde_PD2 - F_exact_mid||
+        / 0.004
+        <= 1e-10
+
+and energy-weighted RMS:
+
+    <= 1e-11.
+
+If:
+
+    Fbar_PD2 PASS
+
+but:
+
+    Ftilde_PD2 FAIL
+
+then:
+
+    stop before any energy-force development.
+
+Classify:
+
+    BOND_ASSOCIATED_HIGHER_ORDER_EXTENSION =
+        NOT_VERIFIED.
+
+============================================================
+27. PSI_PLUS DIAGNOSTIC
+============================================================
+
+Only after PD2 Ftilde passes.
+
+Use the UNCHANGED current spectral split.
+
+Do not modify:
+
+    strain measure
+    eigenvalue split
+    Psi_plus definition
+    material
+
+Compute:
+
+    Psi_plus_exact
+
+from analytic exact F.
+
+Compute:
+
+    Psi_plus_C1
+
+and:
+
+    Psi_plus_PD2
+
+using the same existing spectral-split routine.
+
+Evaluate separately for:
+
+    nodal Fbar
+
+and:
+
+    bond Ftilde
+
+where relevant.
+
+============================================================
+28. PSI_PLUS REFERENCE SCALE
+============================================================
+
+For each manufactured field define:
+
+    Psi_ref
+      =
+    max physical-domain
+    analytic Psi_plus.
+
+Use:
+
+    max absolute error / Psi_ref
+
+and:
+
+    appropriate weighted RMS / Psi_ref.
+
+Do not divide pointwise by near-zero
+analytic energy values.
+
+============================================================
+29. PSI_PLUS DIAGNOSTIC GATE
+============================================================
+
+Require for full PD2:
+
+    max |Delta Psi_plus| / Psi_ref
+        <= 1e-8
+
+and:
+
+    weighted RMS / Psi_ref
+        <= 1e-9.
+
+If F/Ftilde pass
+but Psi_plus does not:
+
+do NOT blame RK immediately.
+
+Investigate:
+
+    exact-state construction
+    tensor convention
+    spectral evaluation
+
+before proceeding.
+
+============================================================
+30. PERIDYNAMICS.JL INDEPENDENT ORACLE
+============================================================
+
+This is strongly preferred,
+but must not block the entire audit
+if the installed interface does not expose
+the required diagnostic.
+
+First inspect:
+
+    installed Peridynamics.jl version
+
+    package path
+
+    source commit/tag if available
+
+Do NOT:
+
+    upgrade
+    install a new Julia version
+    modify the package
+    fork it
+
+Determine whether the installed implementation
+supports a full second-order RK / PD2 basis.
+
+Do not assume option names.
+
+Inspect the actual installed source/API.
+
+============================================================
+31. JULIA CROSS-CHECK SCOPE
+============================================================
+
+If available,
+compare Python PD2 against Peridynamics.jl
+at representative nodes:
+
+    one interior node
+
+    one face-near node
+
+    one edge-near node
+
+    one corner-near node
+
+for:
+
+    axial quadratic
+    shear quadratic
+    XZ cross term.
+
+Compare:
+
+    gradient weights if accessible
+
+or at minimum:
+
+    reconstructed F.
+
+Gate:
+
+    normalized F difference <= 1e-10.
+
+If the package API makes this impractical:
+
+set:
+
+    PERIDYNAMICSJL_CROSSCHECK =
+        NOT_AVAILABLE_WITHOUT_PACKAGE_MODIFICATION
+
+Do not modify the package to force a comparison.
+
+============================================================
+32. DO NOT CONFUSE PUBLISHED METHOD WITH PACKAGE API
+============================================================
+
+The scientific primary oracle is:
+
+    polynomial reproduction
+    +
+    published PD2 formulation.
+
+Peridynamics.jl is an independent
+software cross-check.
+
+If the package uses a slightly different
+kernel / normalization / basis convention:
+
+document it.
+
+Do not alter the primary candidate
+to mimic an unrelated package default.
+
+============================================================
+33. CONDITIONAL GMLS TRIGGER
+============================================================
+
+Do NOT implement GMLS_P2
+if full PD2 succeeds cleanly.
+
+Set:
+
+    GMLS_REQUIRED = YES
+
+only if one of these occurs:
+
+A.
+PD2 M2 is rank deficient
+at physical nodes.
+
+B.
+PD2 conditioning is severe
+and causes failed reproduction.
+
+C.
+published formula implementation
+and independent Julia oracle disagree
+for reasons apparently linked to RK weighting.
+
+D.
+human review explicitly asks
+for an irregular-cloud alternative.
+
+If GMLS is not triggered:
+
+    GMLS_REQUIRED = NO
+
+and stop there.
+
+============================================================
+34. IF GMLS IS TRIGGERED
+============================================================
+
+Use the published equality-constrained
+least-squares concept.
+
+Require exact reproduction of:
+
+    X
+    Y
+    Z
+    X^2
+    Y^2
+    Z^2
+    XY
+    XZ
+    YZ.
+
+Do not invent regularization
+without separate human approval.
+
+Use GMLS only to answer:
+
+    whether the difficulty is
+    RK moment conditioning
+    versus polynomial unisolvency.
+
+Do not build production GMLS mechanics.
+
+============================================================
+35. NO FORCE IN THIS ROUND
+============================================================
+
+This is a HARD RULE.
+
+Forbidden:
+
+    PD2 stress-divergence force
+
+    old BAQP Z with PD2 F
+
+    old BAQP force with PD2 F
+
+    Hillman force copied into production
+
+    equilibrium using PD2
+
+    mechanical reaction using PD2
+
+We have not yet established
+a consistent energy-force formulation.
+
+The current production mechanics
+must remain unchanged.
+
+============================================================
+36. WHY THIS RULE EXISTS
+============================================================
+
+Published higher-order correspondence work shows:
+
+    higher-order deformation gradient alone
+    is not sufficient to guarantee
+    a consistent or stable force-density operator.
+
+The future production candidate
+must retain a common:
+
+    energy
+        ->
+    first variation
+        ->
+    force
+
+architecture.
+
+That is a SEPARATE task.
+
+============================================================
+37. NEW CODE LOCATION
+============================================================
+
+Prefer:
+
+    pd_clot/pfpd_candidate/higher_order_rk/
+
+with:
+
+    __init__.py
+
+    basis.py
+
+    moment_matrix.py
+
+    rk_weights.py
+
+    rk_kinematics.py
+
+    bond_diagnostic.py
+
+    manufactured_fields.py
+
+    oracle_compare.py
+
+No higher-order code should be added
+inside current production baqp.py
+unless only importing a completely optional
+diagnostic helper.
+
+============================================================
+38. CACHE REFERENCE WEIGHTS
+============================================================
+
+The RK weights depend only on:
+
+    reference coordinates
+    families
+    volumes
+    horizon
+    kernel
+    basis order
+
+They do not depend on the current displacement.
+
+Therefore precompute and cache:
+
+    M2 diagnostics
+
+    derivative coefficient solves
+
+    g_PD2_ij
+
+using a deterministic format.
+
+Record configuration hashes.
+
+Do not cache enormous redundant matrices
+if per-bond gradient weights are sufficient.
+
+============================================================
+39. CPU / MEMORY POLICY
+============================================================
+
+Historical server:
+
+    ~12 physical CPU cores
+    ~24 logical
+    ~7.6 GiB RAM
+
+This task is many independent:
+
+    9x9 local systems
+
+and bond reductions.
+
+Use:
+
+    8 to 10 CPU workers
+
+where parallelism helps.
+
+Set:
+
+    BLAS threads = 1 per process
+
+to avoid oversubscription.
+
+Do not run equilibrium.
+
+Memory should remain modest.
+
+Record:
+
+    wall time
+    peak RAM
+    workers.
+
+============================================================
+40. GPU POLICY
+============================================================
+
+Do not install GPU software.
+
+These are tiny independent
+9x9 linear algebra problems.
+
+GPU engineering overhead
+is not scientifically justified.
+
+If a working GPU backend already exists
+with zero engineering work,
+it may be used only for optional batching.
+
+Otherwise:
+
+    GPU_NOT_USED_BY_DESIGN
+
+This is not a performance failure.
+
+============================================================
+41. TARGETED TESTS ONLY
+============================================================
+
+Do NOT run the full project pytest suite.
+
+Required focused tests only:
+
+TEST 1
+dimensionless basis scaling
+
+TEST 2
+PD2 moment matrix symmetry
+
+TEST 3
+linear polynomial reproduction
+
+TEST 4
+all six quadratic polynomial reproduction terms
+
+TEST 5
+affine axial regression
+
+TEST 6
+affine shear regression
+
+TEST 7
+quadratic axial exact reconstruction
+
+TEST 8
+quadratic shear exact reconstruction
+
+TEST 9
+XZ cross-term exact reconstruction
+
+TEST 10
+Ftilde midpoint exactness
+only after nodal PD2 passes
+
+TEST 11
+Psi_plus exact-state diagnostic
+
+TEST 12
+Peridynamics.jl representative-node comparison
+only if available
+
+No unrelated regression work.
+
+============================================================
+42. REQUIRED STRUCTURED OUTPUTS
+============================================================
+
+Create:
+
+    verification/
+    higher_order_baqp_rk_oracle_v1/
+
+and:
+
+    results/
+    higher_order_baqp_rk_oracle_v1/
+
+Required files:
+
+    PD2_CONFIGURATION.json
+
+    PD2_NODE_CONDITIONING.csv
+
+    PD2_POLYNOMIAL_REPRODUCTION.csv
+
+    PD2_AXIAL_QUADRATIC.csv
+
+    PD2_SHEAR_QUADRATIC.csv
+
+    PD2_CROSS_TERM.csv
+
+    PD2_FTILDE_DIAGNOSTIC.csv
+
+    PD2_PSI_PLUS_DIAGNOSTIC.csv
+
+    C1_PD2_SUMMARY.json
+
+    PERIDYNAMICSJL_CROSSCHECK.json
+        if attempted
+
+    GMLS_TRIGGER_DECISION.md
+
+============================================================
+43. REQUIRED FIGURE 1
+============================================================
+
+All figure text in English.
+
+Publication quality:
+
+    PNG 600 dpi
+    vector PDF
+
+Name:
+
+    c1_vs_pd2_boundary_bias
+
+Use 3 panels:
+
+A.
+quadratic axial
+
+B.
+quadratic shear
+
+C.
+XZ cross term
+
+x:
+
+    nearest-boundary depth / delta
+
+y:
+
+    max normalized Fbar error / 0.004
+
+Show:
+
+    C1
+    PD2
+    optional RK2_DIAG
+
+Use log y-axis if PD2 reaches
+numerical precision.
+
+Question:
+
+    Does full P2 reproduction eliminate
+    the current truncated-boundary bias?
+
+============================================================
+44. REQUIRED FIGURE 2
+============================================================
+
+Name:
+
+    pd2_polynomial_reproduction
+
+Use a compact heatmap / matrix view.
+
+Rows:
+
+    X
+    Y
+    Z
+    X^2
+    Y^2
+    Z^2
+    XY
+    XZ
+    YZ
+
+Columns:
+
+    interior
+    face
+    edge
+    corner
+
+Plot:
+
+    maximum normalized reproduction residual.
+
+Do not cherry-pick nodes.
+
+The class metric must use
+all corresponding physical nodes.
+
+============================================================
+45. REQUIRED FIGURE 3
+============================================================
+
+Name:
+
+    pd2_conditioning
+
+Show:
+
+Panel A:
+    condition number vs d_min/delta
+
+Panel B:
+    minimum singular value vs d_min/delta
+
+Panel C:
+    rank-deficient-node count
+    by geometry class
+
+Panel D:
+    condition-number distributions
+    by interior / face / edge / corner.
+
+============================================================
+46. REQUIRED FIGURE 4
+============================================================
+
+Name:
+
+    pd2_ftilde_and_energy_bias
+
+Use two main comparisons:
+
+Panel A:
+
+    C1 Ftilde bias
+    vs
+    PD2 Ftilde bias
+
+Panel B:
+
+    C1 Psi_plus bias
+    vs
+    PD2 Psi_plus bias
+
+vs:
+
+    boundary depth.
+
+Clearly label:
+
+    KINEMATIC / ENERGY-DRIVER DIAGNOSTIC
+    NO HIGHER-ORDER FORCE USED
+
+============================================================
+47. OPTIONAL FIGURE 5
+============================================================
+
+Only if Peridynamics.jl cross-check succeeds:
+
+    python_vs_peridynamicsjl_pd2
+
+Scatter:
+
+    Python reconstructed F component
+
+vs:
+
+    Peridynamics.jl reconstructed F component
+
+for representative nodes / fields.
+
+Include y=x.
+
+============================================================
+48. REVIEW REPORT
+============================================================
+
+Generate:
+
+    verification/
+    higher_order_baqp_rk_oracle_v1/
+    REVIEW_HIGHER_ORDER_BAQP_RK_ORACLE_V1.md
+
+Structure:
+
+1.
+Why this round uses published higher-order reconstruction
+instead of inventing a surface correction
+
+2.
+Current C1 root cause
+
+3.
+Published PD2/RK mathematical formulation
+
+4.
+Implementation conventions and coordinate scaling
+
+5.
+PD2 moment-matrix rank / conditioning
+
+6.
+Nine-term polynomial reproduction
+
+7.
+Affine regression
+
+8.
+Quadratic axial result
+
+9.
+Quadratic shear result
+
+10.
+XZ cross-term discriminator
+
+11.
+C1 vs PD2 near-boundary comparison
+
+12.
+Diagnostic bond-associated Ftilde result
+
+13.
+Psi_plus result
+
+14.
+Peridynamics.jl cross-check
+
+15.
+Whether GMLS is required
+
+16.
+What this proves
+
+17.
+What this does NOT prove
+
+18.
+Implication for future irregular clot clouds
+
+19.
+One next task only
+
+============================================================
+49. FINAL STATUS LABELS
+============================================================
+
+Must output:
+
+C1_BASELINE_REGRESSION:
+    PASS / FAIL
+
+PD2_MOMENT_MATRIX:
+    FULL_RANK
+    / PARTIALLY_RANK_DEFICIENT
+    / FAILED
+
+PD2_CONDITIONING:
+    WELL_CONDITIONED
+    / ELEVATED
+    / SEVERE
+    / MIXED
+
+PD2_POLYNOMIAL_REPRODUCTION:
+    VERIFIED / FAILED
+
+PD2_AFFINE_REGRESSION:
+    PASS / FAIL
+
+PD2_AXIAL_QUADRATIC:
+    PASS / FAIL
+
+PD2_SHEAR_QUADRATIC:
+    PASS / FAIL
+
+PD2_CROSS_TERM:
+    PASS / FAIL
+
+RK2_DIAG_CROSS_TERM:
+    PASS / FAIL / NOT_AVAILABLE
+
+FULL_3D_QUADRATIC_BASIS_REQUIRED:
+    YES / NOT_DEMONSTRATED
+
+PD2_FTILDE_DIAGNOSTIC:
+    PASS / FAIL / NOT_RUN
+
+PD2_PSI_PLUS_DIAGNOSTIC:
+    PASS / FAIL / NOT_RUN
+
+PERIDYNAMICSJL_CROSSCHECK:
+    PASS
+    / FAIL
+    / NOT_AVAILABLE_WITHOUT_PACKAGE_MODIFICATION
+    / NOT_RUN
+
+GMLS_REQUIRED:
+    YES / NO
+
+HIGHER_ORDER_KINEMATIC_CANDIDATE:
+    VERIFIED / NOT_VERIFIED
+
+PRODUCTION_FORCE:
+    NOT_IMPLEMENTED
+
+PRODUCTION_BAQP:
+    UNCHANGED
+
+BOUNDARY_DATA_CONVERSION:
+    UNCHANGED_VERIFIED
+
+C5_C7_ACTIVATION:
+    NOT_RUN
+
+PHASE:
+    NOT_RUN
+
+FRACTURE:
+    NOT_RUN
+
+CLOT_GEOMETRY:
+    NOT_RUN
+
+============================================================
+50. DECISION LOGIC
+============================================================
+
+CASE A — IDEAL RESULT
+
+If:
+
+- all PD2 moment matrices are full rank;
+- nine-term polynomial reproduction passes;
+- affine regression passes;
+- axial quadratic passes;
+- shear quadratic passes;
+- XZ cross-term passes;
+- Ftilde diagnostic passes;
+- Psi_plus diagnostic passes;
+
+then:
+
+    HIGHER_ORDER_KINEMATIC_CANDIDATE =
+        VERIFIED
+
+and recommend NEXT:
+
+    HIGHER_ORDER_BAQP_ENERGY_FORCE_CANDIDATE_V1
+
+Do NOT start it automatically.
+
+------------------------------------------------------------
+CASE B
+------------------------------------------------------------
+
+If:
+
+    axial/shear pass
+
+but:
+
+    XZ cross-term fails
+
+then classify:
+
+    INCOMPLETE_QUADRATIC_REPRODUCTION
+
+Investigate:
+
+    basis
+    monomial ordering
+    derivative selector
+    row/column convention
+    scaling
+
+before considering new physics.
+
+------------------------------------------------------------
+CASE C
+------------------------------------------------------------
+
+If only:
+
+    face/edge/corner
+
+nodes are rank deficient
+or severely conditioned:
+
+    GMLS_REQUIRED = YES
+
+and recommend:
+
+    PD2_GMLS_BOUNDARY_UNISOLVENCY_AUDIT_V1
+
+Do not enlarge delta automatically.
+
+------------------------------------------------------------
+CASE D
+------------------------------------------------------------
+
+If:
+
+    PD2 nodal F passes
+
+but:
+
+    Ftilde fails
+
+then:
+
+    HIGHER_ORDER_KINEMATIC_CANDIDATE =
+        NOT_VERIFIED
+
+and next issue is:
+
+    bond-associated higher-order construction
+
+not surface correction.
+
+------------------------------------------------------------
+CASE E
+------------------------------------------------------------
+
+If:
+
+    Fbar
+    and Ftilde
+
+pass but:
+
+    Psi_plus fails
+
+then investigate the exact-state/spectral
+diagnostic before any mechanics development.
+
+Do not proceed to force.
+
+============================================================
+51. SUCCESS INTERPRETATION
+============================================================
+
+If PD2 succeeds,
+the strongest allowed conclusion is:
+
+    A published full-quadratic
+    reproducing-kernel gradient removes
+    the previously identified truncated-family
+    nonaffine kinematic and Psi_plus bias
+    for the tested regular-grid fields.
+
+Do NOT say:
+
+    higher-order BAQP mechanics verified
+
+    fracture verified
+
+    mesh objectivity established
+
+    clot-wall model validated
+
+    PD2 is final production model
+
+because force consistency has not yet been established.
+
+============================================================
+52. NEXT STAGE IF SUCCESSFUL
+============================================================
+
+If:
+
+    HIGHER_ORDER_KINEMATIC_CANDIDATE =
+        VERIFIED
+
+the next development task should be:
+
+    HIGHER_ORDER_BAQP_ENERGY_FORCE_CANDIDATE_V1
+
+Its future purpose will be:
+
+1.
+define an energy using the verified
+   higher-order kinematics;
+
+2.
+derive force from the SAME energy;
+
+3.
+verify:
+
+    objectivity
+
+    global force
+
+    global moment
+
+    energy-force finite differences
+
+    affine patch tests
+
+    quadratic boundary patch tests
+
+4.
+only then reintegrate
+   the already verified boundary conversion.
+
+Do not perform any of that in this round.
+
+============================================================
+53. HARD STOP CONDITIONS
+============================================================
+
+STOP if:
+
+- C1 historical baseline does not reproduce;
+
+- physical derivative scaling is ambiguous;
+
+- PD2 moment matrices are unexpectedly rank deficient
+  and the cause is not understood;
+
+- polynomial reproduction fails;
+
+- axial/shear/cross-term PD2 results contradict
+  the reproduction test;
+
+- Peridynamics.jl cross-check materially contradicts
+  the Python implementation.
+
+Do not repair failures by:
+
+changing delta
+
+changing h
+
+changing kernel
+
+changing physical volumes
+
+regularizing moment matrices
+
+removing difficult boundary nodes
+
+changing tolerances.
+
+============================================================
+54. FINAL TERMINAL SUMMARY
+============================================================
+
+Print only:
+
+- branch / HEAD
+
+- N19
+- h
+- delta
+- delta/h
+- kernel
+
+- PD2 basis dimension
+
+- moment matrix:
+    min rank
+    sigma_min minimum
+    condition median
+    condition P95
+    condition max
+    rank-deficient count
+
+- polynomial reproduction:
+    max residual
+    weighted RMS
+
+- C1 baseline:
+    axial max F bias
+    shear max F bias
+
+- PD2:
+    affine max F error
+    axial max / RMS F error
+    shear max / RMS F error
+    XZ max / RMS F error
+
+- optional RK2_DIAG:
+    XZ result
+
+- Ftilde PD2:
+    max error
+    weighted RMS
+
+- Psi_plus:
+    C1 max relative bias
+    PD2 max relative bias
+    PD2 RMS relative bias
+
+- Peridynamics.jl status
+- GMLS_REQUIRED
+
+- HIGHER_ORDER_KINEMATIC_CANDIDATE
+
+- production force status
+- production BAQP status
+
+- targeted tests
+
+- CPU workers
+- wall time
+- peak RAM
+- GPU status
+
+- REVIEW path
+- figures path
+
+Then stop.
+
+============================================================
+55. DO NOT CONTINUE AUTOMATICALLY
+============================================================
+
+Do NOT automatically start:
+
+higher-order production force
+equilibrium
+boundary re-integration
+C5/C7 activation
+phase evolution
+stability
+clot geometry
+Ogden
+adhesion
+fracture
+CFD
+microbubble loading.
+
+Wait for human review.
+
+The ONLY scientific question for this round is:
+
+    DOES THE ALREADY-PUBLISHED
+    FULL SECOND-ORDER REPRODUCING-KERNEL GRADIENT
+    REMOVE THE CURRENT TRUNCATED-BOUNDARY
+    M3-DRIVEN F / FTILDE / PSI_PLUS BIAS?
+
+Answer that first.
