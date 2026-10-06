@@ -155,7 +155,7 @@ def run(case, duration, dt, qp_solver="sparse_active_set"):
         baseline_run=str(baseline),
         initial_time_s=t0,
         branch="dev/stage5a-motion-constrained-20261006",
-        source_commit=(ROOT / "SOURCE_COMMIT.txt").read_text().strip(),
+        source_commit=(ROOT / ("SOURCE_COMMIT_OSQP.txt" if qp_solver == "osqp" else "SOURCE_COMMIT.txt")).read_text().strip(),
         wall_budget_s=1800,
         step_budget=100000,
     )
