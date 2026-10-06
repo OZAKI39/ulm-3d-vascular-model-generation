@@ -1,0 +1,192 @@
+"""Finite R2 probes; append actual accepted states and atomic exact-state metadata."""
+import argparse
+from collections import Counter
+from dataclasses import asdict
+from datetime import datetime, timezone
+import json
+import os
+from pathlib import Path
+import signal
+import time
+import traceback
+import zipfile
+import h5py
+import numpy as np
+import psutil
+from scripts.stage4l.dense_probe import load_case,sha,write
+from scripts.stage5a.run_probe import ResourceMonitor
+from scripts.stage5a_r2.seal import ROOT,BASE
+from mevo_mb.bubbles.tracker import ParticleTracker
+from mevo_mb.bubbles.motion_r2 import SemiImplicit
+from mevo_mb.bubbles.motion_sweep_r2 import WallSweep
+from mevo_mb.bubbles.constrained_motion import SubdivideInterval, MotionSolverFailure, AcceptedCache
+
+
+def checkpoint(path, x,u,r,ids,mask,t,controller,cache,identity):
+    value=dict(time_s=t,positions_m=x,velocity_m_s=u,radii_m=r,particle_id=ids,active=mask,
+               metadata_json=json.dumps(dict(controller=controller,identity=identity,
+                   cache=dict(particle_ids=cache.particle_ids,
+                       primal=[[k,np.asarray(v).tolist()] for k,v in cache.primal.items()],
+                       dual=[[list(k),v] for k,v in cache.dual.items()],
+                       active=cache.active,sparsity_pattern=cache.sparsity_pattern)),allow_nan=False))
+    tmp=path.with_suffix('.tmp')
+    with tmp.open('wb') as f:
+        np.savez_compressed(f,**value);f.flush();os.fsync(f.fileno())
+    os.replace(tmp,path)
+
+
+def restore(path):
+    with np.load(path) as f:
+        values={k:f[k] for k in f.files if k!='metadata_json'}
+        meta=json.loads(str(f['metadata_json']))
+    c=meta['cache']
+    cache=AcceptedCache(tuple(c['particle_ids']),{int(k):np.array(v) for k,v in c['primal']},
+                        {tuple(k):v for k,v in c['dual']},tuple(tuple(k) for k in c['active']),c['sparsity_pattern'])
+    return values,meta,cache
+
+
+def load(case,method,pair='numpy',components=True):
+    config,field,flow,gold,inputs=load_case(Path('/workspace/mevo_acoustic_microbubbles'),case)
+    selected=json.loads((ROOT/'results/stage5/motion_solver/audit_v2/BASELINE_SELECTION.json').read_text())
+    source=Path(next(r['run'] for r in selected if r['key']==case+'_1ms'))
+    snapshot=source/'INPUT_SNAPSHOT.npz';inputs[str(snapshot)]=sha(snapshot)
+    with np.load(snapshot) as f:
+        state={k:f[k] for k in f.files}
+    config['particles'].update(translation_backend='constrained_lubrication_r2',pair_backend=pair,
+        response_backend='numpy',lubrication=dict(activation=.1,floor=.001,residual_tolerance=1e-11),
+        constrained_solver=dict(solver='prox',components=components,component_workers=1))
+    tracker=ParticleTracker(config,field,flow)
+    wall=Path(config['geometry']['mesh_surface']).parent/'mesh-surfaces/WALL.vtp'
+    if not wall.exists():
+        wall=Path('/workspace/mevo_acoustic_microbubbles/results/stage4/simvascular/mesh/20261002T141441884393Z/SV_MESH/mesh-surfaces/WALL.vtp')
+    inputs[str(wall)]=sha(wall)
+    sweep=WallSweep(tracker.cylinder,wall)
+    return tracker,sweep,config,state,inputs
+
+
+def run(case,duration,method='S1',max_dt=20e-6,tol_factor=1.,pair='numpy',budget=1800.,label='development',
+        initial_dt=1e-8,components=True,resume=None):
+    stamp=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
+    out=BASE/'runs'/f'{stamp}_{case}_{method}_{duration:g}s_{label}';out.mkdir(parents=True)
+    start=time.perf_counter();cpu=time.process_time();status='INCOMPLETE';error=None;failure=None
+    tracker,sweep,config,state,inputs=load(case,method,pair,components)
+    initialization=time.perf_counter()-start
+    full,rfull,ids,mask=state['positions_m'].copy(),state['radii_m'],state['particle_id'],state['active']
+    t0=float(state['time_s']);t=t0;elapsed=0.;ufull=np.zeros_like(full)
+    controller=dict(next_dt=initial_dt,last_error=None,last_reason=None,consecutive_rejections=0)
+    if resume:
+        data,meta,cache=restore(Path(resume));full=data['positions_m'];ufull=data['velocity_m_s']
+        t=float(data['time_s']);elapsed=t-t0;controller=meta['controller'];tracker.translation.cache=cache
+    x=full[mask].copy();r=rfull[mask];active=ids[mask]
+    step=SemiImplicit(tracker.translation,tracker.cylinder,tracker.evaluate,sweep,method=method,
+                      atol_R=.002*tol_factor,rtol=.01*tol_factor,gap_rtol=.02*tol_factor)
+    sources={str(p.relative_to(ROOT)):sha(p) for folder in ['src','scripts/stage5a_r2'] for p in (ROOT/folder).rglob('*.py')}
+    with zipfile.ZipFile(out/'SOURCE.zip','x',zipfile.ZIP_DEFLATED) as z:
+        for name in sources:z.write(ROOT/name,name)
+    identity=dict(case=case,method=method,duration_s=duration,config=config,max_dt_s=max_dt,tolerance_factor=tol_factor,
+       initial_dt_s=initial_dt,active_count=len(r),source_sha256=sources,input_sha256=inputs,
+       environment_sha256=sha(BASE/'environment/IDENTITY.json'),plan_sha256=sha(ROOT/'docs/STAGE5A_R2_MOTION_PLAN.md'),
+       source_commit=(ROOT/'SOURCE_COMMIT_R2.txt').read_text().strip() if (ROOT/'SOURCE_COMMIT_R2.txt').exists() else 'UNCOMMITTED_DEVELOPMENT',
+       resume=str(resume) if resume else None,wall_budget_s=budget,pair_backend=pair,components=components)
+    write(out/'IDENTITY.json',identity)
+    np.savez_compressed(out/'INPUT_SNAPSHOT.npz',**state)
+    write(out/'CONFIG.json',config)
+    statepath=out/'CHECKPOINT.npz'
+    checkpoint(statepath,full,ufull,rfull,ids,mask,t,controller,tracker.translation.cache,sha(out/'IDENTITY.json'))
+    times=[t];positions=[full.copy()];accepted=[];rejected=[];trials=[]
+    last_report=time.perf_counter()
+    def check_budget():
+        if time.perf_counter()-start>budget or len(accepted)>=100000 or len(rejected)>=10000:
+            raise TimeoutError('PREREGISTERED_RUNTIME_BUDGET')
+    def alarm(signum,frame):
+        raise TimeoutError('WATCHDOG_WALL_BUDGET')
+    prior=signal.signal(signal.SIGALRM,alarm);signal.setitimer(signal.ITIMER_REAL,budget+10)
+    with ResourceMonitor() as monitor, (out/'ACCEPTED.jsonl').open('x') as al, (out/'REJECTED.jsonl').open('x') as rl:
+        try:
+            while elapsed<duration-1e-15:
+                check_budget()
+                next_clock=(np.floor((elapsed+1e-14)/1e-5)+1)*1e-5
+                dt=min(controller['next_dt'],max_dt,duration-elapsed,next_clock-elapsed)
+                if dt<1e-12 or controller['consecutive_rejections']>=30:
+                    raise RuntimeError('MINIMUM_PHYSICAL_PROGRESS')
+                trial_start=time.perf_counter()
+                try:
+                    states,d=step.trial(x,r,active,t,dt)
+                except (SubdivideInterval,MotionSolverFailure) as exc:
+                    reason=getattr(exc,'reason',exc.diagnostics.get('reason','UNKNOWN'))
+                    row=dict(time_s=t,elapsed_s=elapsed,dt_s=dt,reason=reason,diagnostics=exc.diagnostics,
+                             wall_s=time.perf_counter()-start,trial_wall_s=time.perf_counter()-trial_start)
+                    rejected.append(row);rl.write(json.dumps(row,allow_nan=False)+'\n');rl.flush()
+                    if reason in ['NONFINITE_INPUT','INVALID_MODEL','CONFIG_ERROR','GEOMETRY_DATA_CORRUPTED']:
+                        raise
+                    controller.update(next_dt=dt*.5,last_reason=reason,
+                                      consecutive_rejections=controller['consecutive_rejections']+1)
+                    check_budget()
+                    continue
+                trials.append(d)
+                for k,(y,u,cache,sub) in enumerate(states):
+                    time_sub=t+dt*(k+1)/2
+                    full[mask]=y;ufull[mask]=u
+                    row=dict(time_s=time_sub,elapsed_s=elapsed+dt*(k+1)/2,dt_s=dt/2,
+                       wall_s=time.perf_counter()-start,error_ratio=d['error_ratio'],error_terms=d['error_terms'],
+                       kkt=sub['kkt'],linear_residual=sub['linear_residual'],nonlinear_kkt=sub['qp']['nonlinear_kkt'],
+                       nonlinear_iterations=sub['iterations'],qp_iterations=sub['qp_iterations'],fallbacks=sub['fallbacks'],
+                       component_sizes=sub['qp']['component_sizes'],safety=sub['safety'])
+                    accepted.append(row);al.write(json.dumps(row,allow_nan=False)+'\n')
+                    times.append(time_sub);positions.append(full.copy())
+                x=states[-1][0];tracker.translation.cache=states[-1][2]
+                elapsed+=dt;t=t0+elapsed
+                factor=min(2.,max(.5,.85/max(d['error_ratio'],1e-8)**.5))
+                controller.update(next_dt=min(max_dt,dt*factor),last_error=d['error_ratio'],last_reason='ACCEPTED',
+                                  consecutive_rejections=0)
+                if time.perf_counter()-last_report>5:
+                    checkpoint(statepath,full,ufull,rfull,ids,mask,t,controller,tracker.translation.cache,sha(out/'IDENTITY.json'))
+                    al.flush();rl.flush()
+                    progress=dict(run=out.name,case=case,elapsed_s=elapsed,target_s=duration,accepted=len(accepted),
+                                  rejected=len(rejected),last_dt_s=dt,wall_s=time.perf_counter()-start)
+                    write(out/'PROGRESS.json',progress);print(json.dumps(progress),flush=True)
+                    last_report=time.perf_counter()
+            status='COMPLETE'
+        except (Exception,KeyboardInterrupt) as exc:
+            error=repr(exc);failure=getattr(exc,'diagnostics',None)
+            status='INCOMPLETE' if isinstance(exc,(TimeoutError,KeyboardInterrupt)) else 'FAIL'
+            (out/'ERROR.txt').write_text(traceback.format_exc())
+        finally:
+            signal.setitimer(signal.ITIMER_REAL,0);signal.signal(signal.SIGALRM,prior)
+            checkpoint(statepath,full,ufull,rfull,ids,mask,t,controller,tracker.translation.cache,sha(out/'IDENTITY.json'))
+    with h5py.File(out/'trajectories.h5','x') as h:
+        h.attrs.update(complete=status=='COMPLETE',method=method,all_accepted_substeps_recorded=True,
+                       actual_path='piecewise linear accepted half steps; no coordinate interpolation')
+        h['time_s']=times;h.create_dataset('positions_m',data=positions,compression='gzip')
+        h.create_dataset('active',data=np.tile(mask,(len(times),1)),compression='gzip')
+        h['particle_id']=ids;h['radii_m']=rfull
+    write(out/'RESOURCE_SAMPLES.json',monitor.rows)
+    write(out/'COMPLETED_TRIALS.json',trials)
+    dtvalues=[a['dt_s'] for a in accepted]
+    wall=time.perf_counter()-start
+    summary=dict(status=status,error=error,failure=failure,run=str(out),case=case,method=method,target_s=duration,
+       completed_duration_s=elapsed,accepted_steps=len(accepted),rejected_trials=len(rejected),
+       rejection_reasons=dict(Counter(z['reason'] for z in rejected)),
+       actual_dt_quantiles_s=np.quantile(dtvalues,[0,.5,1]).tolist() if dtvalues else None,
+       accepted_kkt_max=max((a['kkt'] for a in accepted),default=None),
+       accepted_linear_residual_max=max((a['linear_residual'] for a in accepted),default=None),
+       accepted_nonlinear_kkt_max=max((a['nonlinear_kkt'] for a in accepted if a['nonlinear_kkt'] is not None),default=None),
+       accepted_pair_swept_gap_min_m=min((a['safety']['minimum_pair_swept_gap_m'] for a in accepted),default=None),
+       accepted_wall_swept_gap_bound_min_m=min((a['safety']['minimum_wall_swept_gap_bound_m'] for a in accepted),default=None),
+       projection_max_m=0. if accepted else None,wall_s=wall,initialization_s=initialization,
+       process_cpu_s=time.process_time()-cpu,timings_exclusive_s=step.timings,tracker_timings_inclusive_s=tracker.timings,
+       qp_calls=step.calls,pair_backend=pair,peak_rss_bytes=max((z['rss_bytes'] for z in monitor.rows),default=None),
+       source_inputs_unchanged=all(sha(p)==s for p,s in inputs.items()))
+    write(out/'SUMMARY.json',summary);print(json.dumps(summary),flush=True)
+    return out,summary
+
+
+if __name__=='__main__':
+    p=argparse.ArgumentParser();p.add_argument('--case',choices=['B2','B3'],required=True)
+    p.add_argument('--duration',type=float,required=True);p.add_argument('--method',choices=['S0','S1'],default='S1')
+    p.add_argument('--max-dt',type=float,default=20e-6);p.add_argument('--tol-factor',type=float,default=1.)
+    p.add_argument('--pair',default='numpy');p.add_argument('--budget',type=float,default=1800)
+    p.add_argument('--label',default='development');p.add_argument('--initial-dt',type=float,default=1e-8)
+    p.add_argument('--global-qp',action='store_true');p.add_argument('--resume')
+    a=p.parse_args();run(a.case,a.duration,a.method,a.max_dt,a.tol_factor,a.pair,a.budget,a.label,a.initial_dt,
+                         not a.global_qp,a.resume)

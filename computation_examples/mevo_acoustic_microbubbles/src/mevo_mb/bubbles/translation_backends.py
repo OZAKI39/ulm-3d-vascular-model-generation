@@ -545,6 +545,10 @@ class LubricationCoupledTranslation(LegacyStokesTranslation):
 def make_translation_backend(config):
     p = config["particles"]
     name = p.get("translation_backend", "legacy_stokes")
+    if name == "constrained_lubrication_r2":
+        from .motion_r2 import MotionR2
+        return MotionR2(config["medium"]["viscosity_Pa_s"], **p.get("lubrication", {}),
+                        **p.get("constrained_solver", {}))
     mu = config["medium"]["viscosity_Pa_s"]
     if name == "legacy_stokes":
         return LegacyStokesTranslation(mu)

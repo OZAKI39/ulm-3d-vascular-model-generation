@@ -45,7 +45,7 @@ class ParticleTracker:
         self.contact_backend = self.p.get("contact_search_backend", "brute")
         self.cylinder = geometry_from_config(config)
         self.translation = make_translation_backend(config)
-        self.motion_constrained = self.translation.name == "constrained_lubrication_v1"
+        self.motion_constrained = self.translation.name in {"constrained_lubrication_v1", "constrained_lubrication_r2"}
         self.lubrication_enabled = self.translation.name == "lubrication_coupled"
         self.translation_diagnostics = deque(maxlen=256)
         self.translation_log = None
