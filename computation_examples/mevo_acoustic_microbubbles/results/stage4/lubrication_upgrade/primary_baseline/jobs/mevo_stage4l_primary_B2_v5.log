@@ -1,0 +1,30 @@
+PRODUCTION_PHYSICS {"production_physics": ["linear external acoustics", "adaptive_response_table", "cycle-averaged primary Bjerknes", "classical secondary Bjerknes", "one-way flow coupling", "geometric no-penetration", "Stokes self-drag + normal particle-particle and particle-wall lubrication resistance", "tangentially immobile-interface approximation for near-contact hydrodynamic resistance"], "not_included": ["hydrodynamic history force", "high-fidelity near-contact dynamics", "coalescence", "adhesion", "fusion", "nonspherical bubble deformation", "acoustic streaming", "bubble feedback on flow", "bubble feedback on acoustic field", "full thin-film drainage", "Young\u2013Laplace contact deformation", "tangential lubrication", "shell repulsion", "adhesion", "fusion", "coalescence", "high-fidelity near-contact acoustic interaction"], "experimental_calibration": false, "primary_enabled": true, "secondary_enabled": false, "contact_search_backend": "ckdtree", "contact_semantics": "A-metric frictionless normal nonpenetration; geometric residual projection", "translation_backend": "lubrication_coupled"}
+Traceback (most recent call last):
+  File "<stdin>", line 3, in <module>
+  File "/workspace/mevo_acoustic_microbubbles_stage4l/scripts/stage4l/branch_runs.py", line 133, in run_case
+    result = tracker.run(population, out)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/mevo_acoustic_microbubbles_stage4l/src/mevo_mb/coupling/bifurcation_experiment.py", line 25, in run
+    return super().run(population, run)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/mevo_acoustic_microbubbles_stage4l/src/mevo_mb/bubbles/tracker.py", line 336, in run
+    return self._run(population, run)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/mevo_acoustic_microbubbles_stage4l/src/mevo_mb/coupling/bifurcation_experiment.py", line 141, in _run
+    x, wall, contacts, correction, _ = self.step(x, radii[active], t, dt, state)
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/mevo_acoustic_microbubbles_stage4l/scripts/stage4l/branch_runs.py", line 129, in finite_step
+    return step(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/mevo_acoustic_microbubbles_stage4l/src/mevo_mb/bubbles/tracker.py", line 289, in step
+    k2 = velocity(x + dt * k1 / 2, t + dt / 2)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/mevo_acoustic_microbubbles_stage4l/src/mevo_mb/bubbles/tracker.py", line 286, in velocity
+    return self.evaluate(feasible, radii, at)["total_velocity_m_s"]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/mevo_acoustic_microbubbles_stage4l/src/mevo_mb/bubbles/tracker.py", line 212, in evaluate
+    velocity, contact_diag = self.translation.contact(
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/mevo_acoustic_microbubbles_stage4l/src/mevo_mb/bubbles/translation_backends.py", line 345, in contact
+    raise RuntimeError(str(self.last_failure))
+RuntimeError: {'HARD_CONTACT': 324, 'contact_constraints': 324, 'contact_metric': 'A', 'contact_kkt_residual': 0.28631109385422737, 'contact_solve_time_s': 13.342339951079339, 'contact_dual_optimizer': 'CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH', 'contact_active_multipliers': 316, 'contact_primal_stationarity': 0.28631109385422737, 'contact_refinement': 'whitened_primal_QR_active_set', 'contact_refinement_iterations': 1306, 'failure_state': 'A_METRIC_CONTACT_KKT_FAILURE'}
