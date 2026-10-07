@@ -103,6 +103,15 @@ def main():
         )
     lines += [
         "",
+        "| Case | Complete protected R2 5 ms repeats | Protected R2 wall samples (s) | Median R2 / R3 speedup | Verdict |",
+        "|---|---:|---|---:|---|",
+    ]
+    for p in gate["protected_R2_repeat_performance"]:
+        lines.append(
+            f"| {p['case']} | {p['complete_R2_repeats']} | {', '.join(value(v) for v in p['protected_R2_wall_s'])} | {value(p['median_completion_speedup'])} | {p['status']} |"
+        )
+    lines += [
+        "",
         "Per-repeat comparisons against R2 and fresh Stage4L appear in MOTION_SOLVER_R3_GATE.json. Only complete equal-duration runs with verified identical initial arrays enter a speedup. Incomplete R2 B2 +5 ms is never extrapolated. Three repeats are required for the final performance gate; 5× is the target, not a promised result.",
         "",
         "The initial 50 ns layout benchmark did not represent B3's full-task cost. Complete 5 µs full/half1/half2 trials at +1.5/+2.5 ms gave global medians 1.618/1.321 s versus serial-component 0.351/0.288 s, with fixed-ID differences ≤2.43e−17 m. Persistent threaded component layouts were slower. The actual full tasks determine the final speedup; layout microbenchmarks do not.",

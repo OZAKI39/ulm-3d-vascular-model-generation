@@ -59,6 +59,7 @@ def ratio(reference, candidate, duration):
     value = old / new
     return dict(
         status="PASS" if value >= 5 else "FAIL",
+        non_regression_status="PASS" if value >= 1 else "FAIL",
         speedup=value,
         reference_wall_s=old,
         candidate_wall_s=new,
@@ -129,6 +130,7 @@ def main():
                 if r["case"] == case
                 and r["duration_s"] == duration
                 and r["kind"] == "r2"
+                and r["repeat"] == repeat
                 and r.get("summary")
             ),
             None,
@@ -266,6 +268,7 @@ def main():
         promotion=dict(status="FAIL", reason="Independent all-active global accuracy unavailable"),
         rows=rows,
         performance=performance,
+        protected_R2_repeat_performance=protected_performance(ledger),
         tests=dict(status=tests["status"], counts=tests["summary"], source_bound=True),
         holdout_status=holdout["status"],
         holdout_scope="Six preselected full-system numerical states; trajectory-level lineage was previously inspected",
@@ -277,6 +280,50 @@ def main():
     )
     write(BASE / "final/MOTION_SOLVER_R3_GATE.json", result)
     print(dict(outcome=result["outcome"], complete=campaign["complete"], performance=performance), flush=True)
+
+
+def protected_performance(ledger):
+    rows = []
+    for case in ["B2", "B3"]:
+        new = [
+            r
+            for r in ledger
+            if r["case"] == case
+            and r["kind"] == "nominal"
+            and r["duration_s"] == 0.005
+            and completed(r, 0.005)
+        ]
+        old = [
+            r
+            for r in ledger
+            if r["case"] == case and r["kind"] == "r2" and r["duration_s"] == 0.005 and completed(r, 0.005)
+        ]
+        paired = [ratio(next((o for o in old if o["repeat"] == n["repeat"]), None), n, 0.005) for n in new]
+        complete = len(new) >= 3 and len(old) >= 3 and all(r["speedup"] is not None for r in paired)
+        rows.append(
+            dict(
+                case=case,
+                duration_s=0.005,
+                new_wall_s=[n["charged_wall_s"] for n in new],
+                protected_R2_wall_s=[o["charged_wall_s"] for o in old],
+                paired=paired,
+                complete_new_repeats=len(new),
+                complete_R2_repeats=len(old),
+                status="PASS"
+                if complete and all(r["speedup"] >= 5 for r in paired)
+                else "FAIL"
+                if complete
+                else "NOT_EVALUABLE",
+                median_completion_speedup=float(
+                    np.median([o["charged_wall_s"] for o in old])
+                    / np.median([n["charged_wall_s"] for n in new])
+                )
+                if complete
+                else None,
+                reason="Three complete equal-start equal-duration R2 and R3 repeats required; historical incomplete B2 R2 is not extrapolated",
+            )
+        )
+    return rows
 
 
 if __name__ == "__main__":
