@@ -58,6 +58,7 @@ def main(case):
         decorate(
             plot, wall, (np.array(wall.bounds) * 1e6).tolist(), np.zeros(3), True, label + " | Full vessel"
         )
+        plot.camera.parallel_scale /= 1.7
         global_actor = glyph(plot, s["positions_m"][0][masks[col]] * 1e6, radius * 1e6, BLUE)
         plot.subplot(1, col)
         decorate(plot, wall, bounds.tolist(), origin, True, label + " | Local view")
@@ -93,9 +94,9 @@ def main(case):
                 plot.subplot(1, col)
                 label = "Frozen Stage4L" if col == 0 else "R3"
                 plot.add_text(
-                    f"{label} | t = {s['time_s'][k] * 1000:.6f} ms\n{len(x)} active bubbles | physical radius 1.78 um",
+                    f"{label} | Local view | t = {s['time_s'][k] * 1000:.6f} ms\n{len(x)} total active | R = {radius * 1e6:.2f} um | {len(group)}-ID region",
                     position="upper_left",
-                    font_size=16,
+                    font_size=14,
                     color="#d5dbe3",
                     name="title",
                 )
