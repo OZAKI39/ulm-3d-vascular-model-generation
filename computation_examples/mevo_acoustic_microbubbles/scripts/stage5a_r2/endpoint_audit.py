@@ -88,7 +88,7 @@ def audit(path):
 
 
 if __name__ == "__main__":
-    campaign = json.loads((BASE / "final/CAMPAIGN_V3/RESULT.json").read_text())
+    campaign = json.loads(sorted((BASE / "final").glob("CAMPAIGN_V*/RESULT.json"))[-1].read_text())
     assert campaign["complete"]
     paths = [
         e["run"]

@@ -219,7 +219,9 @@ def performance(entries):
 
 
 def main():
-    campaign = read(BASE / "final/CAMPAIGN_V3/RESULT.json")
+    campaign_path = sorted((BASE / "final").glob("CAMPAIGN_V*/RESULT.json"))[-1]
+    version = campaign_path.parent.name.rsplit("_", 1)[-1]
+    campaign = read(campaign_path)
     assert campaign and campaign["complete"]
     entries = [e for e in campaign["ledger"] if e.get("summary")]
     audits = [run_audit(e) for e in entries]
@@ -296,8 +298,8 @@ def main():
             if any(c["scientific_status"] == "FAIL" for c in cases.values())
             else "INCOMPLETE",
         )
-    tests = read(BASE / "final/TEST_GATE_V3.json")
-    holdout = read(BASE / "final/HOLDOUT_V3.json")
+    tests = read(BASE / f"final/TEST_GATE_{version}.json")
+    holdout = read(BASE / f"final/HOLDOUT_{version}.json")
     five = stages["0.005"]
     p5 = [r for r in perf if r["duration_s"] == 0.005]
     pstatus = (
@@ -327,7 +329,7 @@ def main():
             if r["solver"] == "prox_dense" and r["eps"] == 1e-12 and r["kkt"] <= 1e-9
         }
     )
-    identity = read(BASE / "final/VALIDATION_PROTOCOL_V3.json")
+    identity = read(BASE / f"final/VALIDATION_PROTOCOL_{version}.json")
     gate = dict(
         schema_version=1,
         time_utc=datetime.now(timezone.utc).isoformat(),
@@ -355,8 +357,11 @@ def main():
             if not r["repeatability_sufficient"]
         ],
         executed_source_commit=(ROOT / "SOURCE_COMMIT_R2.txt").read_text().strip(),
+        executed_source_commits=sorted({r["identity"]["source_commit"] for r in audits if "identity" in r}),
+        campaign=str(campaign_path),
+        validation_version=version,
         final_archive_identity="Resolve the Git commit containing this artifact; execution identity is separate. See DELIVERY_IDENTITY.json for archive parent.",
-        frozen_protocol_sha256=sha(BASE / "final/VALIDATION_PROTOCOL_V3.json"),
+        frozen_protocol_sha256=sha(BASE / f"final/VALIDATION_PROTOCOL_{version}.json"),
         protocol=identity,
         scope="Stages refer to original B2/B3 t=3 s states, active 186/189; hybrid S1/S0 is explicit in each ledger. Computational gates do not validate dense secondary physics.",
         policy="PASS, FAIL, NOT_RUN, NOT_EVALUABLE and INCOMPLETE retain separate meanings; no projection, no tolerance relaxation, no extrapolated speedup.",

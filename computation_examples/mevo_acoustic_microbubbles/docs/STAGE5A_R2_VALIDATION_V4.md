@@ -39,3 +39,14 @@ driver invocation records its full numerical configuration and executed source.
 After both 1 ms cases pass self-refinement and old-reference comparisons, run
 5 ms and necessary refinement. A failure or budget boundary is reported without
 further retuning. Performance uses only complete equal-duration measured runs.
+
+V4 entry failure and V4A correction: the old `run.py` formal whitelist rejected
+the new 0.0625 configuration before any run directory or trajectory was created.
+Both 0.46 s failed launches remain in `CAMPAIGN_V4`; their cost carries forward.
+V4A introduces a separate formal entry that verifies all source, configuration,
+method/backend and budget conditions against the V4A protocol, then calls the
+unchanged integration loop under an explicit `validated_v4a` label. It does not
+change or disable the old V3 entry's whitelist. Seven new entry-contract tests
+cover both valid configurations and five prohibited settings. The 12 completed
+V4 holdout probes are reused explicitly because neither kernel nor parameters
+changed; no holdout-driven tuning occurred. V4A receives fresh source-bound JUnit.
