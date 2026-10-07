@@ -88,7 +88,6 @@ def select():
 def progress(entries, chosen):
     fig, axes = plt.subplots(1, 2, figsize=(11.5, 4.3), layout="constrained")
     for ax, (case, e) in zip(axes, chosen.items()):
-        stopped = []
         for kind, color in [("nominal", BLUE), ("refined", PURPLE), ("reference", GRAY)]:
             row = next(
                 (
@@ -104,18 +103,23 @@ def progress(entries, chosen):
             if not row:
                 continue
             summary = row["summary"]
+            label = f"{kind}: {summary['status']}"
             if summary["status"] != "COMPLETE":
                 failure = summary.get("failure")
                 reason = failure.get("reason") if isinstance(failure, dict) else failure
                 reason = reason or summary.get("error") or "See terminal log"
-                stopped.append(f"{kind}: {str(reason)[:85]}")
+                for tag in ["MINIMUM_PHYSICAL_PROGRESS", "REFERENCE_BUDGET"]:
+                    if tag in str(reason):
+                        reason = tag
+                        break
+                label += f"\n{str(reason)[:65]}"
             folder = local(row["run"])
             a = read(folder / "ACCEPTED.jsonl", True)
             ax.plot(
                 [0] + [r["wall_s"] for r in a],
                 [0] + [r["elapsed_s"] * 1e3 for r in a],
                 color=color,
-                label=f"{kind}: {row['summary']['status']}",
+                label=label,
             )
             if kind != "reference":
                 rejected = read(folder / "REJECTED.jsonl", True)
@@ -126,6 +130,7 @@ def progress(entries, chosen):
                     color=color,
                     marker="x",
                     alpha=0.5,
+                    label="Rejected trial" if kind == "nominal" else None,
                 )
                 recovery = [r for r in a if r.get("substep_method") == "S0"]
                 ax.scatter(
@@ -133,26 +138,20 @@ def progress(entries, chosen):
                     [r["elapsed_s"] * 1e3 for r in recovery],
                     s=8,
                     color="#b77e38",
-                    label="S0 recovery" if kind == "nominal" else None,
+                    label="S0 recovery" if kind == "nominal" and recovery else None,
                 )
                 fb = [r for r in a if r["fallbacks"]]
                 ax.scatter(
-                    [r["wall_s"] for r in fb], [r["elapsed_s"] * 1e3 for r in fb], s=25, color=RED, marker="^"
+                    [r["wall_s"] for r in fb],
+                    [r["elapsed_s"] * 1e3 for r in fb],
+                    s=25,
+                    color=RED,
+                    marker="^",
+                    label="Native solver fallback" if kind == "nominal" and fb else None,
                 )
         ax.axhline(e["duration"] * 1e3, ls="--", lw=1, color="black", label="Requested duration")
         ax.set(xlabel="Elapsed wall time (s)", ylabel="Accepted physical duration (ms)", title=case)
-        ax.legend(fontsize=8)
-        if stopped:
-            ax.text(
-                0.02,
-                0.02,
-                "\n".join(stopped),
-                transform=ax.transAxes,
-                fontsize=7,
-                va="bottom",
-                color=RED,
-                bbox=dict(facecolor="white", alpha=0.9, edgecolor="none"),
-            )
+        ax.legend(fontsize=7, loc="lower right")
     save(
         fig,
         "R1_PROGRESS",

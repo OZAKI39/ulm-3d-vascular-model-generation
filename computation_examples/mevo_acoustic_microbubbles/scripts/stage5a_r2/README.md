@@ -99,6 +99,7 @@ PYTHONPATH=src:. python -m scripts.stage5a_r2.diagnostic_figures
 PYTHONPATH=src:. python -m scripts.stage5a_r2.validation_figures
 PYTHONPATH=src:. python -m scripts.stage5a_r2.motion_visuals --video --duration 0.001
 PYTHONPATH=src:. python -m scripts.stage5a_r2.video_audit
+PYTHONPATH=src:. python -m scripts.stage5a_r2.prefix_disagreement
 PYTHONPATH=src:. python -m scripts.stage5a_r2.delivery
 PYTHONPATH=src:. python -m scripts.stage5a_r2.artifacts
 ```

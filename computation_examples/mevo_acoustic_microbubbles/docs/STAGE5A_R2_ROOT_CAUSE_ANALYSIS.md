@@ -114,3 +114,15 @@ The independently finer B2 trajectory stops by the same mechanism at
 4.311149113464 ms. Its stop differs by only 3.08535 us despite 6918 instead of
 3908 accepted substeps. This supplies refinement evidence that the remaining
 progress limit is not removed by the current time-error refinement alone.
+
+There is also a separate longer-prefix scientific disagreement. On the actual
+3.926404948744 ms common clock, B2 nominal/refined centroids differ from the
+fresh Stage4L reference by 275.595 / 274.365 nm, exceeding the registered 178 nm
+budget. The two R2 trajectories differ by only 1.23126 nm on that same clock;
+their registered self-comparison metrics still pass after conservative sampling
+bounds are included. This is **BASELINE_DISAGREEMENT**, not merely the later
+WALL-certificate stop. It neither proves Stage4L is experimental truth nor
+automatically invalidates the self-converging method. See the actual arrays and
+[same-clock audit](../results/stage5/motion_solver_r2/final/PARTIAL_BASELINE_DISAGREEMENT.json).
+Resolving this discrepancy and the conservative WALL progress limit remains
+necessary before broader use; increasing resources alone addresses neither.

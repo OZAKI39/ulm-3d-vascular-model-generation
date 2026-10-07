@@ -235,6 +235,7 @@ def main():
     write(BASE / "final/PERFORMANCE.json", dict(rows=perf, budget_spent_s=campaign["spent_s"]))
     partial = read(BASE / "final/PARTIAL_COMPARISONS.json")
     repetitions = read(BASE / "final/REPEAT_AUDIT.json")
+    prefix_disagreement = read(BASE / "final/PARTIAL_BASELINE_DISAGREEMENT.json")
     stages = {}
     blockers = []
     endpoint = read(BASE / "final/INDEPENDENT_ENDPOINT_AUDIT.json")
@@ -349,6 +350,12 @@ def main():
         blockers.append("Final-kernel manufactured convergence audit incomplete or failed")
     if not repetitions or repetitions["status"] != "PASS":
         blockers.append("Post-timing scientific repeatability audit incomplete or failed")
+    if prefix_disagreement:
+        for row in prefix_disagreement["rows"]:
+            if row["interpretation"] == "BASELINE_DISAGREEMENT":
+                blockers.append(
+                    f"{row['case']} BASELINE_DISAGREEMENT on the actual {row['compared_duration_s'] * 1e3:.8g} ms common prefix despite same-clock refinement; separate from uncompleted 5 ms endpoint gates"
+                )
     motion_pass = five["continuous_motion_status"] == "PASS"
     science_pass = five["scientific_status"] == "PASS"
     promoted = (
@@ -398,6 +405,7 @@ def main():
         repeated_scientific_status=repetitions["status"] if repetitions else "NOT_RUN",
         performance=perf,
         partial_prefix_comparisons=partial,
+        partial_prefix_baseline_disagreement=prefix_disagreement,
         archived_full_duration_science=read(BASE / "final/ARCHIVED_SCIENCE.json"),
         timing_limitations=[
             f"{r['case']} {r['duration_s'] * 1e3:g} ms has fewer than three complete repeats per method"
@@ -504,6 +512,7 @@ def report(gate, entries):
         "",
         "V3 ordinary B2 remains BASELINE_DISAGREEMENT (1 ms Q1 difference 2.20205%). V4/V4A use a documented tighter time-error configuration of the unchanged kernel. V4's rejected entry launches remain recorded; V4A fixes entry routing, with fresh bound tests and explicitly reused V4 holdouts. Earlier results are never relabelled as later configuration runs.",
         "Optional [partial-prefix comparisons](PARTIAL_COMPARISONS.json) describe actual common intervals when a 5 ms run stops early. They retain exact source frames and sampling uncertainty, and never upgrade a complete-duration gate.",
+        "[Same-clock prefix refinement analysis](PARTIAL_BASELINE_DISAGREEMENT.json) checks whether a legacy disagreement persists while the new method converges on exactly that comparison clock, including conservative sampling bounds. BASELINE_DISAGREEMENT remains separate from uncompleted full-duration gates; neither reference truth nor new-method invalidity is inferred automatically.",
         "When a fresh reference cannot finish within budget, [archived full-duration science](ARCHIVED_SCIENCE.json) separately compares complete new 5 ms trajectories against the immutable original Stage4L data. These supplementary comparisons do not change the frozen campaign or use historical runtime as a speedup denominator.",
     ]
     for field, title in [

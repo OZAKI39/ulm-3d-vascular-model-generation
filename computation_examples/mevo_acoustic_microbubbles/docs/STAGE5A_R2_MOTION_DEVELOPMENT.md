@@ -265,3 +265,27 @@ The label correction is explicit; raw historical counters are retained.
     registered metrics and exact original initial identities. All timing samples
     remain visible; this additional audit cannot improve the frozen campaign's
     status, and no solver or parameter change follows the observation.
+32. Final independent checks pass: twelve reconstructed last-accepted original
+    equations (including failed prefixes), ten final-kernel manufactured cases,
+    and twelve post-timing repetition comparisons. Manufactured pair orders
+    are 0.99417 / 0.99722; wall orders are 0.98180 / 0.99076 on 20/40/80 steps.
+    These endpoint audits supplement, rather than replace, online checks on
+    every adopted segment.
+33. B2 has an additional **BASELINE_DISAGREEMENT** on the actual common
+    3.926404948744 ms prefix. Nominal/refined centroid differences from the
+    fresh legacy reference are 275.595 / 274.365 nm, above its 178 nm budget.
+    Comparing the two new trajectories on exactly that clock gives only
+    1.23126 nm centroid difference and passes the original self-comparison
+    metrics even with conservative sampling bounds. Both Rg and quartile
+    metrics against legacy remain within their 2% limits. This scientific
+    disagreement is separate from B2's later continuous-WALL progress failure;
+    it is not relabelled as a completed 5 ms test or proof either model is truth.
+34. B3's full 5 ms supplementary comparison to the sealed archived Stage4L
+    reference passes for both nominal and refined trajectories. Nominal Rg
+    endpoint difference is 0.00239359%; pair Q1/Q2/Q3 differences are
+    0.00269057 / 0.00231020 / 0.00520692%; centroid difference is 0.494132 nm.
+    This does not fill the missing fresh same-environment 5 ms timing sample.
+35. Formal timing ends with 9956.1615 s charged to new-method work and
+    6182.8102 s to fresh references, including earlier failed/reused work under
+    the recorded budget policy. Each case/method has three complete 1 ms
+    measurements. No partial 5 ms run is converted into a completion speedup.
