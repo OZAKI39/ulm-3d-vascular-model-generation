@@ -107,3 +107,24 @@ time-error settings, S0 policy and predeclared accuracy budgets are unchanged.
 Equivalent B2 executions keep their actual V1 execution identities and are not
 described as newly rerun. New numerical-state holdouts and source-bound tests
 precede V2 formal B3 runs and repeated timing.
+
+## First completed full-reference comparison
+
+The first B2 fresh frozen Stage4L +5 ms reference completes in **2472.194 s**
+of process-inclusive wall time, compared with **728.034 s** for R3. The paired
+single-run completion ratio is **3.3957×**. Three complete repeats remain the
+performance acceptance requirement; this sample alone is not a final gate.
+The earlier R2 fresh reference is bitwise identical on their shared actual
+stored interval ending at +3.926405 ms.
+
+At +5 ms, R3/fresh all-active raw RMS/max differences are **1057.410/3890.946 nm**;
+archived/fresh are **1051.929/3894.183 nm**. R3/archived endpoint RMS/max are
+**20.830/72.701 nm**, but the archived clock has unmatched intermediate samples
+without a certified sampling bound. These different numerical lineages are not
+ranked by how favorable their error is to R3. BASELINE_DISAGREEMENT remains.
+
+The source revision ledger conservatively counts eight numerical, controller or
+resource source revisions, including preparatory exact-predicate code and frozen
+driver checks. Later reporting and packaging commits do not modify the executed
+scientific kernels. `NUMERICAL_REVISION_LEDGER.json` names every counted commit;
+the experiment time ledger independently carries every prior charged run.

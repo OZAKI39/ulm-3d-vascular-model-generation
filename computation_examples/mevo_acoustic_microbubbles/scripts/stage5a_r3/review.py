@@ -115,6 +115,12 @@ For executable reproduction commands, see scripts/stage5a_r3/README.md.
         if p.is_file() and p.suffix != ".zip" and p.name != "PACKAGE_IDENTITY.json"
     )
     selected.update(BASE / "final" / (name + ".json") for name in REQUIRED)
+    selected.update(
+        p
+        for p in (BASE / "final").glob("*.json")
+        if p.name not in ["ARTIFACT_MANIFEST.json", "SERVER_ARTIFACT_MANIFEST.json", "DELIVERY_IDENTITY.json"]
+        and p.stat().st_size <= 4 * 2**20
+    )
     selected.update((BASE / "final").glob("*PRECISION*.json"))
     selected.update((BASE / "environment").glob("JUNIT*.xml"))
     selected.update((BASE / "figures").glob("G*.png"))
