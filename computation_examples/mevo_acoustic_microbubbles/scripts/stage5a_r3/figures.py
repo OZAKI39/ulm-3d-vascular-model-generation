@@ -92,6 +92,13 @@ def g1():
     decorate(plot, wall, bounds, origin, False, "Actual finite WALL and bubble 152")
     positions = new["positions_m"][0][new["active"][0]]
     glyph(plot, (positions - origin) * 1e6, radius * 1e6, BLUE)
+    glyph(plot, np.zeros((1, 3)), radius * 1e6, "#75a8ce")
+    plot.add_text(
+        "Bubble 152: light blue\nWALL facets 3178 / 13018",
+        position="lower_left",
+        font_size=12,
+        color="#282c33",
+    )
     # Highlight the two actual source faces; no reconstructed smooth wall.
     tri = wall.triangulate()
     for cell, color in [(3178, "#bb7372"), (13018, "#ceae9c")]:
@@ -113,15 +120,23 @@ def g1():
     left.axis("off")
     left.set_title("a  Actual radius: 1.78 µm", loc="left", fontweight="bold")
     ax = fig.add_subplot(1, 2, 2, projection="3d")
+    displacements = []
     for data, color, label in [(old, RED, "R2 accepted path (stalled)"), (new, BLUE, "R3 accepted path")]:
         index = int(np.flatnonzero(data["particle_id"] == 152)[0])
         x = (data["positions_m"][:, index] - origin) * 1e9
+        displacements.append(x)
         ax.plot(*x.T, color=color, lw=1.8, label=label)
         ax.scatter(*x[-1], color=color, s=24)
     ax.set(xlabel="Δx (nm)", ylabel="Δy (nm)", zlabel="Δz (nm)", title="b  Bubble-center displacement")
     ax.view_init(elev=24, azim=-55)
     ax.legend(loc="upper left", fontsize=8)
     ax.set_box_aspect((1, 1, 1))
+    all_displacements = np.concatenate(displacements)
+    center = (all_displacements.max(0) + all_displacements.min(0)) / 2
+    span = np.ptp(all_displacements, axis=0).max() * 1.1
+    ax.set_xlim(center[0] - span / 2, center[0] + span / 2)
+    ax.set_ylim(center[1] - span / 2, center[1] + span / 2)
+    ax.set_zlim(center[2] - span / 2, center[2] + span / 2)
     save(
         fig,
         "G1_B2_wall_event",
@@ -287,7 +302,7 @@ def g5():
     labels = [
         "Contact-solver\nsource only",
         "500 / 10 µs\ncutoff clock",
-        "CPU / GPU\nsetting",
+        "Auto / GPU\npair setting",
         "Refined legacy / R3\n(first 10 µs)",
     ]
     arrays = {}
