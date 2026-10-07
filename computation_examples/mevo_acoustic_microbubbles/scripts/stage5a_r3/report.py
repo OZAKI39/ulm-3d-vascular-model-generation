@@ -98,6 +98,20 @@ def main():
         "| Case | Complete new / reference 5 ms repeats | New wall samples (s) | Reference wall samples (s) | Median completion speedup | Verdict |",
         "|---|---|---|---|---:|---|",
     ]
+    prefix_notes = []
+    for case in ["B2", "B3"]:
+        path = BASE / "final" / (case + "_FULL_FRESH_PREFIX_REPLAY_AUDIT.json")
+        if path.exists():
+            audit = read(path)
+            prefix_notes.append(
+                f"{case}: all {audit['frames_checked']} stored old-reference frames through {audit['actual_interval_s'][-1]:.12f} s were compared with the complete new reference prefix; saved-state replay status **{audit['status']}**."
+            )
+    if prefix_notes:
+        insert = lines.index("## Measured performance and resources")
+        lines[insert:insert] = prefix_notes + [
+            "This exhaustive saved-frame check covers time, full coordinates, active masks, IDs and radii. It establishes reference replay consistency over the old recorded interval, not physical trajectory accuracy.",
+            "",
+        ]
     for p in gate["performance"]:
         lines.append(
             f"| {p['case']} | {p['complete_new_repeats']} / {p['complete_reference_repeats']} | {', '.join(value(v) for v in p['new_wall_s'])} | {', '.join(value(v) for v in p['reference_wall_s'])} | {value(p['median_completion_speedup'])} | {p['status']} |"
