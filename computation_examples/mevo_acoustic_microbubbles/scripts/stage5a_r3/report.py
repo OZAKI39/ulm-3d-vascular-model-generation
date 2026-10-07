@@ -129,6 +129,22 @@ def main():
         )
     lines += [
         "",
+        "| Case, +1 ms | R3 wall (s) | Frozen Stage4L wall (s) | Frozen / R3 ratio, non-regression | R2 wall (s) | R2 / R3 ratio, non-regression |",
+        "|---|---:|---:|---|---:|---|",
+    ]
+    for r in gate["rows"]:
+        if r["method"] != "nominal" or r["duration_s"] != 0.001:
+            continue
+        frozen, old = r["performance_vs_frozen"], r["performance_vs_R2"]
+        lines.append(
+            f"| {r['case']} | {value(r['charged_wall_s'])} | {value(frozen.get('reference_wall_s'))} | {value(frozen.get('speedup'))}, {frozen.get('non_regression_status', 'NOT_EVALUABLE')} | {value(old.get('reference_wall_s'))} | {value(old.get('speedup'))}, {old.get('non_regression_status', 'NOT_EVALUABLE')} |"
+        )
+    lines += [
+        "",
+        "The +1 ms table uses one complete sample per method. Non-regression means a measured baseline/R3 ratio ≥1; it does not establish timing variability or statistical significance. A small single-sample difference must not be described as a stable speed advantage or disadvantage.",
+    ]
+    lines += [
+        "",
         "Per-repeat comparisons against R2 and fresh Stage4L appear in MOTION_SOLVER_R3_GATE.json. Only complete equal-duration runs with verified identical initial arrays enter a speedup. Incomplete R2 B2 +5 ms is never extrapolated. Three repeats are required for the final performance gate; 5× is the target, not a promised result.",
         "",
         "The initial 50 ns layout benchmark did not represent B3's full-task cost. Complete 5 µs full/half1/half2 trials at +1.5/+2.5 ms gave global medians 1.618/1.321 s versus serial-component 0.351/0.288 s, with fixed-ID differences ≤2.43e−17 m. Persistent threaded component layouts were slower. The actual full tasks determine the final speedup; layout microbenchmarks do not.",
