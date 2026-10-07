@@ -161,6 +161,8 @@ def g6():
         arrays.update(
             {
                 case + "_actual_time_s": d["time_s"],
+                case + "_accepted_time_s": np.array([r["time_s"] for r in accepted]),
+                case + "_accepted_method": np.array([r["substep_method"] for r in accepted]),
                 case + "_displacement_um": displacement,
                 case + "_pair_swept_gap_m": pair,
                 case + "_wall_swept_lower_bound_m": wall,
@@ -169,7 +171,7 @@ def g6():
     save(
         fig,
         "G6_full_motion_continuous_safety",
-        "Real all-active displacements and every accepted continuous certificate. Negative tolerance-band gaps retained. S0 endpoint nonlinear KKT is absent, not zero. Rejected candidates are excluded from accepted residuals.",
+        "Real all-active displacements and every accepted continuous certificate. Negative tolerance-band gaps retained. S0 endpoint nonlinear KKT is absent, not zero, and omitted from its curve. Residuals below 1e-18 (including exact zeros) are plotted at 1e-18 only for logarithmic display; the supplied data retain original values. Rejected candidates are excluded from accepted residuals.",
         arrays,
     )
 

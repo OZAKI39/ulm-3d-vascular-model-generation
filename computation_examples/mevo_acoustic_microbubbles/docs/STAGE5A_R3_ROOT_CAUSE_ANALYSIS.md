@@ -79,7 +79,9 @@ are separate from these local repairs and appear in the final report and gate.
 
 S1 evaluates resistance at the endpoint and uses the actual frozen start forcing
 and contact protocol. S0 evaluates resistance at the start. The mixed method is
-not described as fully implicit. The R2 recovery burst/count limits stay fixed.
+not described as fully implicit. The R2 recovery limits stay fixed at eight
+accepted S0 macro steps per invocation and 1024 invocations. Each adopted macro
+step stores two half steps; acceptance tables count these saved half steps.
 S0 has a start-equation certificate and **NOT_APPLICABLE** endpoint nonlinear KKT,
 represented by null, never zero.
 

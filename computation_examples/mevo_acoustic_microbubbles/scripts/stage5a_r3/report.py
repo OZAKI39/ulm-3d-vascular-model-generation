@@ -54,7 +54,9 @@ def main():
         "",
         "S1 uses endpoint resistance with the frozen forcing/contact discretization. S0 uses start resistance and has no endpoint nonlinear KKT: NOT_APPLICABLE/null. QP KKT ≤1e−9, resistance residual ≤1e−11, pair/WALL tolerance 1e−11 m and zero projection remain unchanged. Rejected candidate residuals are separate from accepted maxima. HDF5 active IDs, finite coordinates, strict time increase and accepted-log correspondence are audited independently of the run summary.",
         "",
-        "| Case / run | S0 accepted / duration (µs) | S1 accepted / duration (ms) | State integrity |",
+        "Accepted counts below refer to saved half steps: each successful step-doubling macro step adopts two half steps. The unchanged recovery controller allows eight accepted S0 macro steps per invocation and at most 1024 invocations. Consecutive S0 sequences in the audit are measured from the adopted history, separately from controller invocation counts.",
+        "",
+        "| Case / run | S0 half steps / duration (µs) | S1 half steps / duration (ms) | State integrity |",
         "|---|---:|---:|---|",
     ]
     for r in usage:
