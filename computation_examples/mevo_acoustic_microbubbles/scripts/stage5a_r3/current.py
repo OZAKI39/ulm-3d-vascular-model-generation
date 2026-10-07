@@ -17,5 +17,5 @@ def campaign():
 
 
 def protocol_path():
-    v2 = BASE / "final/VALIDATION_PROTOCOL_R3_V2.json"
-    return v2 if v2.exists() else BASE / "final/VALIDATION_PROTOCOL_R3_V1.json"
+    version = campaign().get("version", "R3_V1")
+    return BASE / f"final/VALIDATION_PROTOCOL_{version}.json"

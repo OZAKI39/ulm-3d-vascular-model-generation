@@ -133,8 +133,11 @@ fallback behavior are retained. Isolated changing-state tests compare global,
 component serial and persistent component parallel layouts; full-task results
 must determine whether their short-window advantage carries over.
 
-Formal execution is source-frozen at
+V1 formal execution is source-frozen at
 `fa2fba5608037ed45143c8ede501cadf415e9180` in an immutable server execution tree.
+V2 uses `b5079ad19be81ffe9e3d4f5b7c548717b3d43d67`; only B3 resource layout and
+versioned protocol selection change. Its source-bound tests and new holdouts
+precede execution. Completed equivalent B2 V1 runs retain their original identity.
 Postprocessing/documentation commits are not relabeled as execution commits.
 One early local diagnostic campaign imported V1 before two later source ZIPs
 captured a deployed V2 driver. Numerical kernels matched, but driver provenance
@@ -146,3 +149,43 @@ The strict bitwise restart check failed by one coordinate ULP (2.1684e−19 m).
 Its failure is retained. A separate predeclared-resolution restart check passes,
 as does exact accepted-cache serialization. These are distinct claims. All
 failed candidates, budget terminations and test invocations remain auditable.
+
+## The earlier all-ID accuracy failure is distinct from the wall stall
+
+The complete B2 nominal/refined pair has endpoint all-active RMS **31.088 nm**
+and maximum **233.979 nm**. Its largest sampled difference is **669.608 nm** at
+absolute time **3.00007 s**, ID **211**. The first 89 nm target crossing is bracketed
+by actual **3.00003/3.00004 s** frames, with ID **82** the worst at the latter.
+The original 75-ID group's cluster metrics pass, demonstrating why group
+agreement cannot stand in for per-bubble precision. The predeclared all-ID
+resolution comparison fails; independent accuracy remains NOT_EVALUABLE.
+
+Six bounded local replays start from the two actual +30 µs states, each at
+three precision levels and retaining all 186 particles. All six complete the
+next 20 µs, pass the unchanged numerical checks, and use no projection.
+The adjacent L1/L2 endpoint RMS/max differences are **11.004/50.914 nm** from
+the nominal state and **11.430/82.315 nm** from the refined state. Observed RMS
+orders are approximately **0.613** and **1.607**, respectively. These are local
+observations, not established asymptotic orders or global error bounds.
+
+The two real initial states already differ by RMS/max **4.888/32.172 nm**.
+Using the finest settings from each state gives RMS/max **48.655/322.375 nm**
+at +50 µs. Removal of a common translation or rigid fit does not remove the
+dominant discrepancy. This shows sensitivity during early rearrangement; it
+does not identify a preferred true trajectory or justify relaxing the target.
+
+CONFIRMED: both accepted histories show repeated near-contact neighbor/band
+changes in this interval. REFUTED for this interval: an S0 or fallback trigger,
+because neither appears in the +30..80 µs accepted histories. The selected
+IDs 82/211 remain associated with WALL face 4880 throughout; their minimum
+unsigned surface gaps exceed 7.5/12.6 µm. Thus their local WALL feature switching
+is also ruled out as the direct event. A coupled influence through other bubbles
+is not ruled out. These unsigned gap observations are read-only feature
+diagnostics, not replacements for signed continuous safety certificates.
+
+UNRESOLVED: a quantitative global bound through the sensitive contact sequence,
+and the full archived/fresh/new trajectory discrepancy. The cold local starts
+are identified explicitly, so their comparison with a warm formal continuation
+does not isolate cache versus time-controller effects. The same-QP, rollback
+and restart audits address different questions and are not overextended here.
+See `B2_EARLY_PRECISION_AUDIT.json` and G5b for actual-frame data and correlations.

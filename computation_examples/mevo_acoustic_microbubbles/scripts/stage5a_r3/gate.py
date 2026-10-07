@@ -78,6 +78,7 @@ def main():
     old = read(R2 / "final/CAMPAIGN_V4A/RESULT.json")["ledger"]
     tests = read(BASE / f"final/TEST_GATE_{version}.json")
     holdout = read(BASE / f"final/HOLDOUT_{version}.json")
+    audits = {str(local(r["run"])): r for r in read(BASE / "final/FORMAL_RUN_AUDIT.json")["rows"]}
     rows = []
     for entry in ledger:
         case, duration, kind, repeat = [entry[k] for k in ["case", "duration_s", "kind", "repeat"]]
@@ -94,6 +95,15 @@ def main():
             if current in ["RUNNING", "INCOMPLETE"]
             else "FAIL"
         )
+        state_audit = audits.get(str(local(entry["run"]))) if entry.get("run") else None
+        if numerical_status == "PASS" and kind in ["nominal", "refined"]:
+            if not state_audit or "state_integrity" not in state_audit:
+                numerical_status = "NOT_EVALUABLE"
+            elif (
+                state_audit["state_integrity"]["status"] != "PASS"
+                or not state_audit["continuous_certificate_all_pass"]
+            ):
+                numerical_status = "FAIL"
         comp = [
             r
             for r in comparisons
@@ -148,6 +158,7 @@ def main():
                     reason="Frozen accepted-state KKT/resistance, pair/WALL sweeps and zero projection; full requested duration required"
                     if kind != "reference"
                     else "Legacy benchmark has different projection/contact audit semantics",
+                    state_integrity=state_audit.get("state_integrity") if state_audit else None,
                 ),
                 all_active_accuracy=dict(
                     status="NOT_EVALUABLE",

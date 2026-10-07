@@ -3,6 +3,7 @@
 from collections import Counter
 from pathlib import Path
 import shutil
+import h5py
 import numpy as np
 from scipy.spatial.distance import pdist
 from scripts.stage5a_r3.common import BASE, R2, read, write, sha
@@ -125,6 +126,36 @@ def method_usage(folder):
     accepted = read(folder / "ACCEPTED.jsonl")
     rejected = read(folder / "REJECTED.jsonl")
     summary = read(folder / "SUMMARY.json")
+    with h5py.File(folder / "trajectories.h5") as h:
+        times = h["time_s"][:]
+        masks = h["active"][:]
+        ids, radii = h["particle_id"][:], h["radii_m"][:]
+        finite_active = all(np.isfinite(h["positions_m"][i][mask]).all() for i, mask in enumerate(masks))
+        actual_clock = bool(
+            len(times) == len(accepted) + 1
+            and np.all(np.diff(times) > 0)
+            and np.array_equal(times[1:], [r["time_s"] for r in accepted])
+            and abs(sum(r["dt_s"] for r in accepted) - (times[-1] - times[0])) < 2e-12
+        )
+        checks = dict(
+            finite_active_positions=bool(finite_active),
+            strictly_increasing_actual_time=bool(np.all(np.diff(times) > 0)),
+            accepted_time_ledger_matches=actual_clock,
+            fixed_active_mask=bool(np.all(masks == masks[0])),
+            unique_particle_ids=bool(len(np.unique(ids)) == len(ids)),
+            positive_finite_radii=bool(np.isfinite(radii).all() and np.all(radii > 0)),
+            full_expected_active_count=int(masks[0].sum()) == {"B2": 186, "B3": 189}[summary["case"]],
+            nonempty_accepted_history=bool(accepted),
+        )
+        integrity = dict(
+            status="PASS" if all(checks.values()) else "FAIL",
+            checks=checks,
+            active_count=int(masks[0].sum()),
+            actual_start_s=float(times[0]),
+            actual_end_s=float(times[-1]),
+            trajectory_sha256=sha(folder / "trajectories.h5"),
+            inactive_sentinels="Inactive NaN positions are not active-state failures",
+        )
     counts = []
     for method in ["S0", "S1"]:
         rows = [r for r in accepted if r["substep_method"] == method]
@@ -168,6 +199,7 @@ def method_usage(folder):
         target_s=summary["target_s"],
         status=summary["status"],
         methods=counts,
+        state_integrity=integrity,
         continuous_certificate_all_pass=all(r["safety"]["pass_gate"] for r in accepted),
         accepted_count=len(accepted),
         rejected_count=len(rejected),
@@ -182,6 +214,7 @@ def method_usage(folder):
             projection_max_m=summary["projection_max_m"],
         ),
         rejected_scope="Rejected candidates excluded from all accepted-state residual and safety maxima",
+        failed_trial_candidates=[r for r in rejected if r["reason"] != "LOCAL_ERROR"],
         cost=dict(
             full_run_wall_s=summary["wall_s"],
             exclusive_s=summary["timings_exclusive_s"],

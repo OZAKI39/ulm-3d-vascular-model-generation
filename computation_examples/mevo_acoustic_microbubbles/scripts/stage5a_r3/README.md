@@ -8,9 +8,10 @@ The project extends R2; no inputs or earlier result directories are regenerated.
 
 - Actual R2 archive base: `07db8ed35f3a460a4ba315e42b15d257f8518b0a`.
 - Branch: `dev/stage5a-r3-wall-accuracy-performance`.
-- Frozen formal executable: `fa2fba5608037ed45143c8ede501cadf415e9180`.
+- V1 formal executable: `fa2fba5608037ed45143c8ede501cadf415e9180`.
+- V2 formal executable: `b5079ad19be81ffe9e3d4f5b7c548717b3d43d67`.
 - Server: `/workspace/mevo_acoustic_microbubbles_stage5a_r3`.
-- Formal immutable tree: `.execution/fa2fba5608037ed45143c8ede501cadf415e9180`.
+- Formal immutable trees: `.execution/<execution SHA>`.
 - Outputs: `results/stage5/motion_solver_r3` (shared by immutable execution trees).
 - Dependencies: `requirements-stage5a-r3.lock.txt`; environment and package-license
   inventories are in `results/stage5/motion_solver_r3/environment`.
@@ -47,21 +48,26 @@ identifies exact finite features, raw gaps, continuous bounds and classification
 ## Source-bound tests and formal protocol
 
 ```bash
-bash scripts/stage5a_r3/python.sh -m scripts.stage5a_r3.freeze --verify
+bash scripts/stage5a_r3/python.sh -m scripts.stage5a_r3.freeze_v2 --verify
 bash scripts/stage5a_r3/python.sh -m pytest -q \
   tests/test_stage5a_r2.py tests/test_stage5a_r2_entry.py \
   tests/test_stage5a_r3_geometry.py tests/test_stage5a_r3_qp.py \
-  tests/test_stage4l_lubrication.py tests/test_stage2_translation.py
+  tests/test_stage4l_lubrication.py tests/test_stage2_translation.py \
+  tests/test_stage5a_r3_accounting.py tests/test_stage5a_r3_reporting.py
 ```
 
-Formal nominal settings are global QP, one worker, BLAS=1, CuPy pair force,
+V2 nominal settings are B2 global QP / B3 component serial, one worker, BLAS=1, CuPy pair force,
 quasi-Newton S1, bounded S0, initial dt 10 ns, maximum dt 5 µs, tolerance factor
 0.25, S0 cap 50 ns, and output clock 10 µs. Refined settings are maximum dt
 2.5 µs, tolerance factor 0.0625, and independently reduced S0 cap 25 ns.
 All runs start from the original t0=3 s snapshots. Native calls and subprocesses
 are watchdog-bound. The finite group and per-run budgets are sealed in the
 protocol. A new reproduction campaign requires a new version/output directory;
-the driver refuses to overwrite `CAMPAIGN_R3_V1`.
+the drivers refuse to overwrite their `CAMPAIGN_R3_V1` / `CAMPAIGN_R3_V2` directories.
+V2 reuses the completed B2 V1 results with their original identities and carries
+all prior charges forward. V1's untouched original scheduler ledger is resolved
+by `CAMPAIGN_R3_V1/CLOSED_RESULT.json`; it is not an ongoing job. V2 follows a
+separate source-bound 124-test gate and six newly selected numerical holdouts.
 
 ## Postprocessing
 
@@ -73,19 +79,29 @@ altering source identities or trajectory coordinates.
 ```bash
 python -m scripts.stage5a_r3.resource_report
 python -m scripts.stage5a_r3.formal_analysis
+python -m scripts.stage5a_r3.analyze_early
 python -m scripts.stage5a_r3.gate
 python -m scripts.stage5a_r3.figures
 python -m scripts.stage5a_r3.formal_figures
+python -m scripts.stage5a_r3.early_figures
 python -m scripts.stage5a_r3.event_video
 python -m scripts.stage5a_r3.full_video --case B2
 python -m scripts.stage5a_r3.full_video --case B3
 ```
 
-`dynamic_audit --window initial|stable|S0|event` is an additional **post-campaign**
+`dynamic_audit --window initial|stable|S0|event|B3_global_costly|B3_serial_costly` is an additional **post-campaign**
 instrumented diagnostic. It refuses to run while formal timing is active. Its
 exclusive cost partition, full/half1/half2 records and native-candidate records
 are separate from completion timing. The accounting wrappers preserve solver
 return values and exceptions; they do not modify scientific kernel files.
+The extra B3 windows replay the actual +1.5 ms full-system state at the 5 µs
+formal macro horizon to account for full/half1/half2 work at the costly state.
+
+`early_precision` is the separately budgeted six-run diagnostic around the
+first B2 resolution-target crossing. It uses each actual nominal/refined
++30 µs state and three levels, with explicit cold-cache initialization. It
+does not replace an original-start formal run, and cross-lineage starts differ.
+`B2_EARLY_PRECISION_AUDIT.json` retains this distinction and all 186 IDs.
 
 Videos use physical sphere radii, identical old/new cameras, a uniform requested
 physical clock and last actual stored states. They do not interpolate accepted

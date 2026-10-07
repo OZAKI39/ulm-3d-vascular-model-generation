@@ -78,6 +78,40 @@ def main():
         limits="No claim of 5x trajectory speedup from force-only or independent-task throughput. Per-process CPU/wall and actual worker execution are used; host heatmaps are not evidence of this solver parallelism.",
         accounting="Cold import/setup separate from warm changing-state samples. Formal end-to-end timing includes initialization and all output.",
     )
+    full_path = BASE / "benchmarks/LAYOUT_FULL_TRIAL.json"
+    if full_path.exists():
+        full = read(full_path)
+        grouped = defaultdict(list)
+        for row in full["rows"]:
+            grouped[(row["case"], row["source_time_s"], row["layout"])].append(row)
+        result["full_trial_layouts"] = [
+            dict(
+                case=case,
+                source_time_s=t,
+                layout=layout,
+                warm_median_wall_s=float(np.median([r["wall_s"] for r in rows if r["repeat"] > 0])),
+                cold_wall_s=rows[0]["wall_s"],
+                macro_dt_s=rows[0]["macro_dt_s"],
+                status="PASS" if all(r["status"] == "PASS" for r in rows) else "FAIL",
+                process_CPU_over_wall=sum(r["CPU_s"] for r in rows) / sum(r["wall_s"] for r in rows),
+                QP_calls=sum(r["QP_calls"] for r in rows),
+            )
+            for (case, t, layout), rows in grouped.items()
+        ]
+        result["full_trial_comparisons"] = full["comparisons"]
+        result["full_trial_source_sha256"] = sha(full_path)
+        result["earlier_layout_selection"] = result["selected"]
+        result["selected"] = dict(
+            B2="global QP",
+            B3="component serial",
+            component_workers=1,
+            BLAS_threads=1,
+            pair_force="cupy",
+            reason="B3 full-task regression and complete-trial replays at +1.5/+2.5 ms favor component serial. B2 initial compression and completed full-task evidence support retaining global.",
+        )
+        result["selection_revision"] = (
+            "Short 50 ns substeps did not predict cost across complete formal trajectories; both old and new evidence retained."
+        )
     write(BASE / "final/RESOURCE_LAYOUT_BENCHMARK.json", result)
     print(dict(layouts=len(layouts), pair=gpu, throughput=result["independent_throughput"]))
 

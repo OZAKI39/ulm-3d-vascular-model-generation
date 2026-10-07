@@ -74,13 +74,45 @@ class Accounting:
 
 def main(window):
     from mevo_mb.bubbles.tracker import ParticleTracker
+    from scripts.stage5a_r3.current import campaign as current_campaign
 
     # Must remain isolated from all formal trajectory timings.
     campaign = BASE / "final/CAMPAIGN_R3_V1/RESULT.json"
     from scripts.stage5a_r3.common import read
 
     if campaign.exists():
-        assert read(campaign)["complete"], "Do not contaminate formal campaign timings"
+        assert current_campaign()["complete"], "Do not contaminate formal campaign timings"
+    b3 = window.startswith("B3_")
+    b3_fixture = None
+    if b3:
+        import h5py
+        import numpy as np
+        from pathlib import Path
+        from mevo_mb.bubbles.constrained_motion import AcceptedCache
+
+        ledger = read(BASE / "final/CAMPAIGN_R3_V1/CLOSED_RESULT.json")["ledger"]
+        item = next(
+            r for r in ledger if r["case"] == "B3" and r["kind"] == "nominal" and r["duration_s"] == 0.005
+        )
+        path = Path(item["run"]) / "trajectories.h5"
+        with h5py.File(path) as h:
+            k = int(np.argmin(abs(h["time_s"][:] - 3.0015)))
+            x, r, ids, mask, t = (
+                h["positions_m"][k],
+                h["radii_m"][:],
+                h["particle_id"][:],
+                h["active"][k],
+                float(h["time_s"][k]),
+            )
+        b3_fixture = BASE / "fixtures/B3_costly_actual_3p0015.npz"
+        if not b3_fixture.exists():
+            meta = dict(
+                source=str(path),
+                source_sha256=sha(path),
+                actual_index=k,
+                cache="Explicit cold diagnostic start; every original active particle retained",
+            )
+            driver.checkpoint(b3_fixture, x, np.zeros_like(x), r, ids, mask, t, meta, AcceptedCache(), meta)
     audit = Accounting()
     patches = []
     for cls, name, label, table in [
@@ -162,26 +194,30 @@ def main(window):
             return original_checkpoint(*args, **kwargs)
 
     driver.checkpoint = measured_checkpoint
-    fixture = {
-        "initial": None,
-        "stable": BASE / "fixtures/B2_actual_3.00300000.npz",
-        "S0": BASE / "diagnosis/reproduction_v1/nominal/terminal.npz",
-        "event": BASE / "diagnosis/reproduction_v1/nominal/before_persistent_sweep.npz",
-    }[window]
+    fixture = (
+        b3_fixture
+        if b3
+        else {
+            "initial": None,
+            "stable": BASE / "fixtures/B2_actual_3.00300000.npz",
+            "S0": BASE / "diagnosis/reproduction_v1/nominal/terminal.npz",
+            "event": BASE / "diagnosis/reproduction_v1/nominal/before_persistent_sweep.npz",
+        }[window]
+    )
     begin = perf_counter()
     try:
         with audit.scope("driver_initialization_IO_monitoring_other"):
             out, summary = driver.run(
-                "B2",
-                4e-7 if window == "S0" else 1e-5,
+                "B3" if b3 else "B2",
+                15e-6 if b3 else 4e-7 if window == "S0" else 1e-5,
                 method="S0" if window == "S0" else "S1",
                 max_dt=50e-9 if window == "S0" else 5e-6,
                 tol_factor=0.25,
                 pair="cupy",
                 budget=300,
                 label="dynamic_audit_" + window,
-                initial_dt=1e-8,
-                components=False,
+                initial_dt=5e-6 if b3 else 1e-8,
+                components=window == "B3_serial_costly",
                 nonlinear_strategy="quasi_newton",
                 nonsmooth_recovery=window != "S0",
                 fixture=fixture,
@@ -239,5 +275,9 @@ def main(window):
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("--window", choices=["initial", "stable", "S0", "event"], required=True)
+    p.add_argument(
+        "--window",
+        choices=["initial", "stable", "S0", "event", "B3_global_costly", "B3_serial_costly"],
+        required=True,
+    )
     main(p.parse_args().window)

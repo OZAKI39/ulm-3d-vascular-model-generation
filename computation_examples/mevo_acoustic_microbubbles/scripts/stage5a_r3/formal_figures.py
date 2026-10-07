@@ -64,11 +64,18 @@ def g4():
         nb = np.load(local(r["worst_neighborhood"]))
         main = int(np.flatnonzero(nb["particle_id"] == nb["worst_particle_id"])[0])
         origin = nb["left_positions_m"][0, main]
+        union = np.concatenate([nb[k].reshape(-1, 3) for k in ["left_positions_m", "right_positions_m"]])
+        extent = (union - origin) * 1e6
+        center = (extent.min(0) + extent.max(0)) / 2
+        half = max(np.ptp(extent, axis=0)) * 0.55
+        arrays[case + "_neighbor_particle_id"] = nb["particle_id"]
+        arrays[case + "_neighbor_origin_m"] = origin
         for key, color, label in [
             ("left_positions_m", RED, "Refined"),
             ("right_positions_m", BLUE, "Nominal"),
         ]:
             x = (nb[key] - origin) * 1e6
+            arrays[case + "_neighbor_" + key] = nb[key]
             for k in range(x.shape[1]):
                 ax.plot(
                     *x[:, k].T,
@@ -85,6 +92,9 @@ def g4():
         )
         ax.legend(fontsize=8)
         ax.set_box_aspect((1, 1, 1))
+        ax.set_xlim(center[0] - half, center[0] + half)
+        ax.set_ylim(center[1] - half, center[1] + half)
+        ax.set_zlim(center[2] - half, center[2] + half)
     save(
         fig,
         "G4_all_active_formal_precision",
@@ -136,6 +146,7 @@ def g6():
             ("linear_residual", GOLD, "Resistance residual"),
         ]:
             values = np.array([r[key] if r[key] is not None else np.nan for r in accepted])
+            arrays[case + "_accepted_" + key] = values
             axs[row, 2].semilogy(ts, np.maximum(values, 1e-18), color=color, lw=0.7, label=label)
         axs[row, 2].axhline(1e-9, color=GRAY, ls="--")
         axs[row, 2].axhline(1e-11, color=GRAY, ls=":")
@@ -287,25 +298,25 @@ def g8():
         title="No incomplete-reference extrapolation",
     )
     axs[0, 1].legend()
-    names = [("B2", "initial"), ("B2", "event"), ("B3", "initial"), ("B3", "late")]
-    x = np.arange(4)
+    names = sorted(set((r["case"], r["source_time_s"]) for r in resource["full_trial_layouts"]))
+    x = np.arange(len(names))
     for n, (layout, color) in enumerate(
         [("global", BLUE), ("serial", PURPLE), ("parallel2", GOLD), ("parallel4", GRAY)]
     ):
         values = [
             next(
                 r["warm_median_wall_s"]
-                for r in resource["layouts"]
-                if r["case"] == c and r["window"] == w and r["layout"] == layout and r["optimized"]
+                for r in resource["full_trial_layouts"]
+                if r["case"] == c and r["source_time_s"] == w and r["layout"] == layout
             )
             for c, w in names
         ]
         axs[1, 0].bar(x + (n - 1.5) * 0.19, np.array(values) * 1e3, 0.18, color=color, label=layout)
     axs[1, 0].set(
         xticks=x,
-        xticklabels=[c + " " + w for c, w in names],
-        ylabel="Warm changing-state substep (ms)",
-        title="Measured QP layouts",
+        xticklabels=[f"{c}\n+{(w - 3) * 1e3:.1f} ms" for c, w in names],
+        ylabel="Complete 5 µs trial wall time (ms)",
+        title="Changing full/half1/half2 work",
     )
     axs[1, 0].legend(fontsize=8)
     for n, key, color, label in [
