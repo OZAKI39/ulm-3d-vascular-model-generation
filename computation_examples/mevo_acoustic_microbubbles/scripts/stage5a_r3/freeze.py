@@ -173,6 +173,7 @@ def main():
             new_5ms_run_s=2400,
             reference_total_s=28800,
             reference_run_s=4500,
+            reference_1ms_run_s=1200,
             r2_protected_total_s=5400,
         ),
         formal_policy="One trajectory process at a time; complete duration only for speedup. Numerical continuation may be evaluated while all-active reference accuracy remains NOT_EVALUABLE. No promotion without all gates.",

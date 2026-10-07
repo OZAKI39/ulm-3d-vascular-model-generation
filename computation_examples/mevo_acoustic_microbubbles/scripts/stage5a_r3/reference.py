@@ -80,10 +80,11 @@ def run(case, duration, pair="cupy", repeat=0):
         output_clock_s=1e-5,
         clock_alignment_cost_included=True,
         reference_lineage="fresh frozen Stage4L source, as separately audited; not claimed identical to archived reference",
-        wall_budget_s=4500,
+        wall_budget_s=4500 if duration == 0.005 else 1200,
         threads=1,
     )
     write(out / "IDENTITY.json", identity)
+    budget = 4500 if duration == 0.005 else 1200
     initialization = time.perf_counter() - start
     h = h5py.File(out / "trajectories.h5", "x")
     for key, value in [
@@ -114,12 +115,12 @@ def run(case, duration, pair="cupy", repeat=0):
         raise TimeoutError("REFERENCE_NATIVE_WATCHDOG_4500S")
 
     prior = signal.signal(signal.SIGALRM, alarm)
-    signal.setitimer(signal.ITIMER_REAL, 4500)
+    signal.setitimer(signal.ITIMER_REAL, budget)
     try:
         f = tracker.evaluate(x, rr, t)
         with (out / "ACCEPTED.jsonl").open("x") as log:
             while elapsed < duration - 1e-14:
-                if time.perf_counter() - start > 4500 or len(dtvalues) >= 100000:
+                if time.perf_counter() - start > budget or len(dtvalues) >= 100000:
                     raise TimeoutError("REFERENCE_BUDGET")
                 end = min((np.floor((elapsed + 1e-14) / 1e-5) + 1) * 1e-5, duration)
                 dt = tracker.select_timestep(x, rr, f, end - elapsed)

@@ -49,7 +49,13 @@ def main():
     def execute(kind, case, duration, repeat=0):
         verify()
         group = "reference" if kind == "reference" else "r2" if kind == "r2" else "new"
-        cap = 4500 if group == "reference" else 2400 if duration == 0.005 else 1200
+        cap = (
+            (4500 if duration == 0.005 else 1200)
+            if group == "reference"
+            else 2400
+            if duration == 0.005
+            else 1200
+        )
         available = (
             protocol["budget"][
                 {"new": "new_total_s", "reference": "reference_total_s", "r2": "r2_protected_total_s"}[group]
