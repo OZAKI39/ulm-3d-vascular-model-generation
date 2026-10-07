@@ -142,10 +142,16 @@ own explicitly labeled nanometre axes.
 3. `final/REFERENCE_LINEAGE_AUDIT.json`, all-active comparison NPZs, worst-ID
    neighborhood paths and same-clock sampling bounds.
 4. `final/S0_S1_USAGE_AND_REFINEMENT.json` and `final/FORMAL_RUN_AUDIT.json`.
+
 5. `final/DYNAMIC_COST_PROFILE.json`, `final/RESOURCE_LAYOUT_BENCHMARK.json` and
    full process wall times, excluding incomplete references from speedup.
 6. `final/MOTION_SOLVER_R3_GATE.json`, source-bound JUnit, holdouts, manifest,
    source provenance correction and final delivery identity.
+
+For +5 ms repetitions, all-active comparisons retain both repeat-0 versus later
+R3 runs and each later R3 run versus its matching frozen/protected reference
+repeat when available. Each gate row links only comparisons containing that exact
+run; evidence is never copied from another repeat merely because the case matches.
 
 No figure or smooth animation supersedes the quantitative precision gate.
 

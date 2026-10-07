@@ -365,6 +365,30 @@ def main():
                                 group,
                             )
                         )
+                        for kind in ["reference", "r2"]:
+                            paired = next(
+                                (
+                                    r
+                                    for r in ledger
+                                    if r["case"] == case
+                                    and r["duration_s"] == duration
+                                    and r["repeat"] == repeat
+                                    and r["kind"] == kind
+                                    and r.get("run")
+                                ),
+                                None,
+                            )
+                            if paired:
+                                label = "protected_R2" if kind == "r2" else kind
+                                comparisons.append(
+                                    add_comparison(
+                                        case,
+                                        prefix + f"_repeat{repeat}_{label}",
+                                        local(paired["run"]) / "trajectories.h5",
+                                        local(other["run"]) / "trajectories.h5",
+                                        group,
+                                    )
+                                )
     for entry in ledger:
         if entry.get("run") and entry["kind"] in ["nominal", "refined"]:
             folder = local(entry["run"])
