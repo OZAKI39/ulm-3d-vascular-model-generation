@@ -1,0 +1,106 @@
+# Stage 5A-R3 reproduction and review
+
+Read `docs/STAGE5A_R3_PLAN.md`, `docs/STAGE5A_R3_ROOT_CAUSE_ANALYSIS.md`, and the
+final machine-readable gate before interpreting motion as an accuracy result.
+The project extends R2; no inputs or earlier result directories are regenerated.
+
+## Execution identity
+
+- Actual R2 archive base: `07db8ed35f3a460a4ba315e42b15d257f8518b0a`.
+- Branch: `dev/stage5a-r3-wall-accuracy-performance`.
+- Frozen formal executable: `fa2fba5608037ed45143c8ede501cadf415e9180`.
+- Server: `/workspace/mevo_acoustic_microbubbles_stage5a_r3`.
+- Formal immutable tree: `.execution/fa2fba5608037ed45143c8ede501cadf415e9180`.
+- Outputs: `results/stage5/motion_solver_r3` (shared by immutable execution trees).
+- Dependencies: `requirements-stage5a-r3.lock.txt`; environment and package-license
+  inventories are in `results/stage5/motion_solver_r3/environment`.
+
+The final Git archive SHA and the formal execution SHA have different meanings.
+Do not run `bootstrap.py` against developed R3 sources: it is the once-only
+pre-development R2 identity check and intentionally asserts baseline hashes.
+Do not overwrite an existing frozen protocol, holdout selection or campaign.
+
+## Bounded local reproduction
+
+On the existing server environment, from an isolated execution tree with the
+verified R2 and Stage4L inputs available:
+
+```bash
+bash scripts/stage5a_r3/python.sh -m scripts.stage5a_r3.reproduce
+bash scripts/stage5a_r3/python.sh -m scripts.stage5a_r3.wall_audit
+bash scripts/stage5a_r3/python.sh -m scripts.stage5a_r3.run \
+  --case B2 --duration 0.00001 --optimized --global-qp --pair cupy \
+  --fixture results/stage5/motion_solver_r3/diagnosis/reproduction_v1/nominal/terminal.npz \
+  --max-dt 0.000005 --tol-factor 0.25 --initial-dt 0.00000001 \
+  --nonlinear-strategy quasi_newton --nonsmooth-recovery \
+  --s0-dt 0.00000005 --budget 300 --label review_local_terminal
+```
+
+The local run is a full-system fixture continuation, not an original 3 s start.
+The raw candidate NPZs contain full positions and QP arrays; `RESULT.json`
+identifies exact finite features, raw gaps, continuous bounds and classifications.
+
+## Source-bound tests and formal protocol
+
+```bash
+bash scripts/stage5a_r3/python.sh -m scripts.stage5a_r3.freeze --verify
+bash scripts/stage5a_r3/python.sh -m pytest -q \
+  tests/test_stage5a_r2.py tests/test_stage5a_r2_entry.py \
+  tests/test_stage5a_r3_geometry.py tests/test_stage5a_r3_qp.py \
+  tests/test_stage4l_lubrication.py tests/test_stage2_translation.py
+```
+
+Formal nominal settings are global QP, one worker, BLAS=1, CuPy pair force,
+quasi-Newton S1, bounded S0, initial dt 10 ns, maximum dt 5 µs, tolerance factor
+0.25, S0 cap 50 ns, and output clock 10 µs. Refined settings are maximum dt
+2.5 µs, tolerance factor 0.0625, and independently reduced S0 cap 25 ns.
+All runs start from the original t0=3 s snapshots. Native calls and subprocesses
+are watchdog-bound. The finite group and per-run budgets are sealed in the
+protocol. A new reproduction campaign requires a new version/output directory;
+the driver refuses to overwrite `CAMPAIGN_R3_V1`.
+
+## Postprocessing
+
+Postprocessing can run locally after syncing the completed artifacts. Set
+`PYTHONPATH=src:.` and use an environment with NumPy/SciPy/HDF5/Matplotlib/PyVista
+and imageio-ffmpeg. `paths.py` translates preserved server references without
+altering source identities or trajectory coordinates.
+
+```bash
+python -m scripts.stage5a_r3.resource_report
+python -m scripts.stage5a_r3.formal_analysis
+python -m scripts.stage5a_r3.gate
+python -m scripts.stage5a_r3.figures
+python -m scripts.stage5a_r3.formal_figures
+python -m scripts.stage5a_r3.event_video
+python -m scripts.stage5a_r3.full_video --case B2
+python -m scripts.stage5a_r3.full_video --case B3
+```
+
+`dynamic_audit --window initial|stable|S0|event` is an additional **post-campaign**
+instrumented diagnostic. It refuses to run while formal timing is active. Its
+exclusive cost partition, full/half1/half2 records and native-candidate records
+are separate from completion timing. The accounting wrappers preserve solver
+return values and exceptions; they do not modify scientific kernel files.
+
+Videos use physical sphere radii, identical old/new cameras, a uniform requested
+physical clock and last actual stored states. They do not interpolate accepted
+positions. Every encoded frame is decoded and its timestamp checked with the
+available FFmpeg binary. Repeated actual-state frames are distinguished from
+dropped or irregularly timed video frames. The local displacement plot has its
+own explicitly labeled nanometre axes.
+
+## Review priorities
+
+1. `final/B2_EVENT_ROOT_CAUSE.json` and `final/WALL_CERTIFICATE_AUDIT.json`.
+2. Full B2 nominal/refined fixtures and key accepted/rejected evidence in the
+   lightweight review package; retain original source hashes.
+3. `final/REFERENCE_LINEAGE_AUDIT.json`, all-active comparison NPZs, worst-ID
+   neighborhood paths and same-clock sampling bounds.
+4. `final/S0_S1_USAGE_AND_REFINEMENT.json` and `final/FORMAL_RUN_AUDIT.json`.
+5. `final/DYNAMIC_COST_PROFILE.json`, `final/RESOURCE_LAYOUT_BENCHMARK.json` and
+   full process wall times, excluding incomplete references from speedup.
+6. `final/MOTION_SOLVER_R3_GATE.json`, source-bound JUnit, holdouts, manifest,
+   source provenance correction and final delivery identity.
+
+No figure or smooth animation supersedes the quantitative precision gate.

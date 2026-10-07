@@ -7,10 +7,10 @@ import numpy as np
 from scripts.stage5a_r3.common import BASE, read, write, sha
 
 
-def audit():
-    folder = BASE / "videos"
-    path = folder / "B2_actual_wall_stall_crossing_60fps.mp4"
-    mapping = read(folder / "B2_actual_wall_stall_crossing_FRAME_MAP.json")
+def audit(stem="B2_actual_wall_stall_crossing", folder=None, render_source="B2_RENDER_SOURCE.py"):
+    folder = BASE / "videos" if folder is None else folder
+    path = folder / (stem + "_60fps.mp4")
+    mapping = read(folder / (stem + "_FRAME_MAP.json"))
     decoded = subprocess.check_output(
         [
             imageio_ffmpeg.get_ffmpeg_exe(),
@@ -26,7 +26,7 @@ def audit():
         ],
         text=True,
     )
-    (folder / "B2_actual_wall_stall_crossing_DECODED_FRAME_MD5.txt").write_text(decoded)
+    (folder / (stem + "_DECODED_FRAME_MD5.txt")).write_text(decoded)
     records = [line.split(",") for line in decoded.splitlines() if line and not line.startswith("#")]
     timebase = (
         next(line for line in decoded.splitlines() if line.startswith("#tb 0:")).split(":", 1)[1].strip()
@@ -38,7 +38,7 @@ def audit():
     metadata = reader.get_meta_data()
     for fraction in [0, 0.5, 1.0]:
         index = int(fraction * (len(records) - 1))
-        imageio.imwrite(folder / f"B2_video_frame_{index:04d}.png", reader.get_data(index))
+        imageio.imwrite(folder / f"{stem}_frame_{index:04d}.png", reader.get_data(index))
     reader.close()
     result = dict(
         status="PASS" if constant and len(records) == len(mapping["frames"]) else "FAIL",
@@ -48,15 +48,13 @@ def audit():
         timebase=timebase,
         dimensions=metadata["size"],
         video_sha256=sha(path),
-        frame_map_sha256=sha(folder / "B2_actual_wall_stall_crossing_FRAME_MAP.json"),
-        rendered_source_sha256=sha(folder / "B2_RENDER_SOURCE.py")
-        if (folder / "B2_RENDER_SOURCE.py").exists()
-        else None,
+        frame_map_sha256=sha(folder / (stem + "_FRAME_MAP.json")),
+        rendered_source_sha256=sha(folder / render_source) if (folder / render_source).exists() else None,
         decoder=imageio_ffmpeg.get_ffmpeg_exe(),
         no_interpolation=mapping["trajectory_interpolation"] is False,
         note="Uniform decoded timestamps; repeated frames correspond to real stored-state holds, not dropped video frames",
     )
-    write(folder / "B2_actual_wall_stall_crossing_VIDEO_AUDIT.json", result)
+    write(folder / (stem + "_VIDEO_AUDIT.json"), result)
     print(result, flush=True)
     assert result["status"] == "PASS"
 
