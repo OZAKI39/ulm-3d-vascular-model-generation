@@ -271,9 +271,31 @@ def main():
         outcome.append("CONTINUATION_RECOVERED_ACCURACY_UNRESOLVED")
         if any(r["status"] != "PASS" for r in performance):
             outcome.append("NUMERICAL_RECOVERED_PERFORMANCE_PENDING")
+    diagnostics = []
+    for window in ["initial", "stable", "S0", "event", "B3_global_costly", "B3_serial_costly"]:
+        path = BASE / "diagnosis" / f"DYNAMIC_INSTRUMENTED_{window}.json"
+        d = read(path) if path.exists() else None
+        diagnostics.append(
+            dict(
+                window=window,
+                status="NOT_RUN"
+                if d is None
+                else "PASS"
+                if d["summary"]["status"] == "COMPLETE"
+                else "INCOMPLETE",
+                source=str(path) if d else None,
+                sha256=sha(path) if d else None,
+                reason="Post-campaign instrumented evidence is separate from formal completion timing",
+            )
+        )
+    pipeline_path = BASE / "diagnosis/finish_pipeline/RESULT.json"
+    pipeline = read(pipeline_path) if pipeline_path.exists() else None
+    pipeline_closed = bool(pipeline and pipeline["complete"])
     result = dict(
         campaign_complete=campaign["complete"],
-        delivery_state="FINAL" if campaign["complete"] else "INTERIM",
+        delivery_state="FINAL" if campaign["complete"] and pipeline_closed else "INTERIM",
+        post_campaign_diagnostics=diagnostics,
+        post_campaign_pipeline_closed=pipeline_closed,
         outcome=outcome or ["INCOMPLETE"],
         promotion=dict(status="FAIL", reason="Independent all-active global accuracy unavailable"),
         rows=rows,

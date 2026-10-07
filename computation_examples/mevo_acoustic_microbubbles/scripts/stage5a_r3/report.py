@@ -13,6 +13,7 @@ def main():
     c = campaign()
     gate = read(BASE / "final/MOTION_SOLVER_R3_GATE.json")
     assert c["complete"] and gate["campaign_complete"]
+    assert gate["delivery_state"] == "FINAL", "Post-campaign diagnostics must be accounted for"
     comparisons = read(BASE / "final/FORMAL_COMPARISONS.json")["rows"]
     usage = read(BASE / "final/FORMAL_RUN_AUDIT.json")["rows"]
     resources = read(BASE / "final/RESOURCE_LAYOUT_BENCHMARK.json")

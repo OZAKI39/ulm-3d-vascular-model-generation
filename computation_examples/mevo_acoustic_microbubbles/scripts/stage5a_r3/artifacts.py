@@ -148,6 +148,8 @@ def selected(path):
 
 def main(server=False):
     assert campaign()["complete"], "Do not hash or package mutable campaign outputs"
+    pipeline = BASE / "diagnosis/finish_pipeline/RESULT.json"
+    assert pipeline.exists() and read(pipeline)["complete"], "Wait for managed post-campaign diagnostics"
     if not server:
         compress_ledgers()
         compact_comparisons()
