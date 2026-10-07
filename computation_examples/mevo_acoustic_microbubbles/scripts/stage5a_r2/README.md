@@ -70,8 +70,15 @@ equations and complete the audits:
 
 ```bash
 bash scripts/stage5a_r2/python.sh -m scripts.stage5a_r2.endpoint_audit
+bash scripts/stage5a_r2/python.sh -m scripts.stage5a_r2.manufactured_final
+bash scripts/stage5a_r2/python.sh -m scripts.stage5a_r2.partial_comparisons
 bash scripts/stage5a_r2/python.sh -m scripts.stage5a_r2.artifacts --server
 ```
+
+The two independent scientific audits may run concurrently (three CPU workers
+each, six in total, BLAS=1) after formal timings end. The endpoint audit includes
+the last accepted state of incomplete/failed prefixes and labels that scope;
+passing this local equation check never changes a failed full-duration status.
 
 The figures/video were rendered in the recorded local environment; its separate
 identity is `environment/RENDER_ENVIRONMENT.json`. With the exact HDF5 files

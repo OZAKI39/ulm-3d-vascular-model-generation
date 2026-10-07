@@ -196,3 +196,22 @@ The label correction is explicit; raw historical counters are retained.
     numerical settings are unchanged. Executed V4A source: 7f83f802c. No further
     algorithm or parameter tuning is allowed after this validation. The new
     deeper-refinement trajectories are running; final 1/5 ms gates remain pending.
+
+24. V4A completes both deeper 1 ms refinements: B2 3842 accepted / 169 rejected,
+    B3 3542 / 135. All six selected-vs-refined / selected-vs-legacy /
+    refined-vs-legacy comparisons pass. B2's largest registered quartile
+    difference is 1.85457%; B3's is approximately 0.22390%. The actual accepted
+    grids are finer, with median half-step dt 36.475 / 44.744 ns. Both refined
+    runs use S1 only. The campaign therefore opens its 5 ms stage.
+
+25. The selected B2 5 ms run `20261007T004943915783Z` stops at
+    **4.314234468079 ms**, with `MINIMUM_PHYSICAL_PROGRESS`; it is **FAIL**, not a
+    complete 5 ms trajectory. It has 3908 accepted substeps (3516 S1, 392 S0),
+    202 rejected trials, 25 bounded S0 bursts, and approximately 775.08 s driver
+    wall time. The last rejected intervals are `SWEEP_NOT_CERTIFIED`, not a
+    native QP failure. At the final trial the WALL endpoint gap is
+    -9.9999005491e-12 m, but the conservative continuous lower bound is
+    -1.0000006237e-11 m after its ~1.05688e-16 m roundoff guard. Shrinking the
+    macro interval below 1e-12 s is prohibited. The rejected candidate is never
+    committed; original tolerance, geometry and guard are not relaxed. Remaining
+    B3/refinement/reference runs continue under the same frozen protocol.

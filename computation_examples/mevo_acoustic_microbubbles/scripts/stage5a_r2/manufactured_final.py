@@ -30,7 +30,7 @@ def main():
         },
         environment_sha256=sha(BASE / "environment/IDENTITY.json"),
         method="S1 endpoint resistance, explicit constant forcing, start contact tangents; no S0 needed for smooth manufactured geometry",
-        workers=4,
+        workers=3,
         blas_threads=1,
         role="Post-campaign verification only; not tuning or performance evidence",
     )
@@ -41,7 +41,7 @@ def main():
         for wall in [False, True]
         for f, g in [(1.0, 1.0), (0.25, 1.0), (0.0625, 1.0), (1.0, 0.5), (1.0, 0.25)]
     ]
-    with ProcessPoolExecutor(max_workers=4) as pool:
+    with ProcessPoolExecutor(max_workers=3) as pool:
         rows = list(pool.map(partial(experiment, output=out), tasks))
     write(out / "SUMMARY.json", rows)
     orders = {}

@@ -325,7 +325,14 @@ def metrics():
         ):
             ax.set(xlabel="Physical time since 3 s (ms)", ylabel=y)
             ax.legend(fontsize=7)
-        axes[0, 0].set_title("Registered metric comparison: " + report["status"], fontsize=10)
+        title_prefix = (
+            "Partial-prefix metrics: "
+            if report.get("eligible_for_target_gate") is False
+            else "Registered metric comparison: "
+        )
+        axes[0, 0].set_title(title_prefix + report["status"], fontsize=10)
+        if report.get("eligible_for_target_gate") is False:
+            FIGURE_CONTEXT["scope"] = "Partial overlap; complete 5 ms target NOT MET"
         max_age = max(float(np.max(abs(d["sample_age_s"]))) for d in arrays)
         if max_age < 1e-15:
             axes[1, 2].set_ylim(-0.01, 0.01)

@@ -1,4 +1,4 @@
-"""Reconstruct complete runs' final original equations from atomic checkpoints.
+"""Reconstruct accepted endpoints' original equations from atomic checkpoints.
 
 Run only after isolated timing jobs finish. NumPy force evaluation is an additional
 CPU/GPU cross-check; original recorded online certificates are kept separately.
@@ -72,6 +72,8 @@ def audit(path):
         )
     return dict(
         run=str(path),
+        run_status=summary["status"],
+        completed_duration_s=summary["completed_duration_s"],
         method=method,
         checkpoint_sha256=sha(path / "CHECKPOINT.npz"),
         time_s=t1,
@@ -83,7 +85,7 @@ def audit(path):
         recorded_online_original_kkt=last["nonlinear_kkt"] if method == "S1" else last["kkt"],
         gap_distributions=gaps,
         pass_gate=bool(proof["pass_gate"] and safety["pass_gate"]),
-        scope="Final actual substep only; independently rebuilt original matrix and all constraint rows. S0 audits start matrix; S1 audits endpoint matrix.",
+        scope="Final actual accepted substep only, including preserved prefixes of failed runs; not a whole-duration completion gate. Independently rebuilt original matrix and all constraint rows. S0 audits start matrix; S1 audits endpoint matrix.",
     )
 
 
@@ -93,7 +95,7 @@ if __name__ == "__main__":
     paths = [
         e["run"]
         for e in campaign["ledger"]
-        if e.get("summary") and e["kind"] != "reference" and e["summary"]["status"] == "COMPLETE"
+        if e.get("summary") and e["kind"] != "reference" and e["summary"].get("accepted_steps", 0) > 0
     ]
     with ProcessPoolExecutor(max_workers=3) as pool:
         rows = list(pool.map(audit, paths))

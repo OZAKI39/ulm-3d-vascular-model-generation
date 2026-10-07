@@ -86,3 +86,16 @@ and the complete two-tolerance table remains in `native_v1/SUMMARY.json`.
 This is evidence for selecting certified ProxQP, not a general claim that
 Clarabel cannot solve such problems or that tighter requested tolerances always
 produce more accurate candidates.
+
+The later B2 5 ms validation exposes a remaining finite-precision progress
+blocker, distinct from the original failed QPs. At elapsed 4.314234468079 ms,
+repeated S0 candidates have endpoint WALL gaps inside the original tolerance,
+but the continuous certificate's conservative roundoff guard places its lower
+bound just below -1e-11 m. The last bound misses by about 6.24e-18 m. The driver
+correctly refuses the candidate and stops at its minimum physical-progress
+limit. This proves an inability to certify continued motion under the frozen
+protocol; it does **not** prove an accepted path penetrated WALL beyond tolerance.
+Compatibility between displacement constraints, finite-precision safety margin
+and the continuous certificate remains unresolved for longer motion. No guard
+or tolerance is weakened to make this run pass. The 5 ms run's complete accepted
+and rejected ledgers, checkpoint and terminal error are retained.

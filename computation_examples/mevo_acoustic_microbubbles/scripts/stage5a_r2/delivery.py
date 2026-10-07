@@ -228,6 +228,7 @@ def main():
     write(BASE / "final/RUN_AUDIT.json", audits)
     perf = performance(entries)
     write(BASE / "final/PERFORMANCE.json", dict(rows=perf, budget_spent_s=campaign["spent_s"]))
+    partial = read(BASE / "final/PARTIAL_COMPARISONS.json")
     stages = {}
     blockers = []
     endpoint = read(BASE / "final/INDEPENDENT_ENDPOINT_AUDIT.json")
@@ -353,6 +354,7 @@ def main():
         holdout_status=holdout["status"],
         independent_endpoint_audit_status=endpoint["status"] if endpoint else "NOT_RUN",
         performance=perf,
+        partial_prefix_comparisons=partial,
         timing_limitations=[
             f"{r['case']} {r['duration_s'] * 1e3:g} ms has fewer than three complete repeats per method"
             for r in perf
@@ -457,6 +459,7 @@ def report(gate, entries):
         "Passing aggregate group metrics does not mean every individual trajectory is identical. The reports also retain maximum same-ID position difference, rigid-fit residual and neighbor-graph changes; R6/R7 display them without geometric smoothing.",
         "",
         "V3 ordinary B2 remains BASELINE_DISAGREEMENT (1 ms Q1 difference 2.20205%). V4/V4A use a documented tighter time-error configuration of the unchanged kernel. V4's rejected entry launches remain recorded; V4A fixes entry routing, with fresh bound tests and explicitly reused V4 holdouts. Earlier results are never relabelled as later configuration runs.",
+        "Optional [partial-prefix comparisons](PARTIAL_COMPARISONS.json) describe actual common intervals when a 5 ms run stops early. They retain exact source frames and sampling uncertainty, and never upgrade a complete-duration gate.",
         "",
         "## Performance",
         "",
