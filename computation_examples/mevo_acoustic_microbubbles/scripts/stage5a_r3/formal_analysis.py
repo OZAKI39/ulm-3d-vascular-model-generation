@@ -260,12 +260,12 @@ def main():
                 continue
             candidate = local(entries["nominal"]["run"]) / "trajectories.h5"
             prefix = f"{campaign.get('version', 'R3_V1')}_{duration:g}"
-            for kind in ["refined", "reference"]:
+            for kind in ["refined", "reference", "r2"]:
                 if kind in entries:
                     comparisons.append(
                         add_comparison(
                             case,
-                            prefix + "_" + kind,
+                            prefix + "_" + ("protected_R2" if kind == "r2" else kind),
                             local(entries[kind]["run"]) / "trajectories.h5",
                             candidate,
                             group,

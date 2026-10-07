@@ -30,6 +30,14 @@ def completed(row, duration):
     return s.get("status") == "COMPLETE" and abs(s.get("completed_duration_s", -1) - duration) < 1e-13
 
 
+def comparison_uses_run(comparison, entry):
+    """Do not attach repeat-0 precision evidence to a different executable run."""
+    if not entry.get("run"):
+        return False
+    folder = local(entry["run"])
+    return any(local(comparison[key]).parent == folder for key in ["left", "right"] if comparison.get(key))
+
+
 def ratio(reference, candidate, duration):
     if (
         not reference
@@ -111,6 +119,7 @@ def main():
             if r["case"] == case
             and r["name"].startswith(f"{version}_{duration:g}_")
             and r.get("cluster_consistency")
+            and comparison_uses_run(r, entry)
         ]
         ref = next(
             (
@@ -166,6 +175,7 @@ def main():
                     status="NOT_EVALUABLE",
                     reason="Independent global trajectory error bound not established",
                     comparisons=[r["samples"] for r in comp],
+                    comparison_scope="Only comparisons containing this exact run; an empty list means no completed comparison for this run",
                 ),
                 cluster_accuracy=dict(
                     status="NOT_EVALUABLE",
@@ -249,10 +259,10 @@ def main():
     recovered = all(
         any(
             r["case"] == case
-            and r["kind"] == "nominal"
+            and r["method"] == "nominal"
             and r["duration_s"] == 0.005
-            and numerical(r.get("summary"))
-            for r in ledger
+            and r["continuous_motion"]["status"] == "PASS"
+            for r in rows
         )
         for case in ["B2", "B3"]
     )
