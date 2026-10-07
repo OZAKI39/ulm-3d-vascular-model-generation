@@ -15,12 +15,13 @@ SSH=['ssh','-o','ConnectTimeout=20','-o','ServerAliveInterval=15','-o','ServerAl
 
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument('module'); ap.add_argument('--label',required=True)
-    ap.add_argument('--timeout',type=int,default=240); ap.add_argument('args',nargs=argparse.REMAINDER); a=ap.parse_args()
+    ap.add_argument('--timeout',type=int,default=240); a,extra=ap.parse_known_args()
     if any(c not in 'abcdefghijklmnopqrstuvwxyz0123456789_' for c in a.label): raise ValueError('Safe unique label required')
     head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
     dirty=subprocess.check_output(['git','diff','--name-only','HEAD','--','src/mevo_mb/fast_sim','scripts/fast_pzt'],cwd=ROOT,text=True)
     if dirty: raise ValueError('Commit F1 executable sources before deployment: '+dirty)
-    raw=subprocess.check_output(['git','archive',head,*[PREFIX+p for p in ['src','scripts/fast_pzt','configs','docs/FAST_PZT_F1_PLAN.md']]],cwd=ROOT)
+    repo=subprocess.check_output(['git','rev-parse','--show-toplevel'],cwd=ROOT,text=True).strip()
+    raw=subprocess.check_output(['git','archive',head,*[PREFIX+p for p in ['src','scripts/fast_pzt','configs','docs/FAST_PZT_F1_PLAN.md']]],cwd=repo)
     packed=io.BytesIO()
     with tarfile.open(fileobj=io.BytesIO(raw)) as source,tarfile.open(fileobj=packed,mode='w:gz') as target:
         for member in source:
@@ -34,7 +35,7 @@ def main():
     if not exists:
         subprocess.run(SSH+[command],input=packed.getvalue(),check=True)
     name='mevo_fast_pzt_f1_'+a.label
-    extra=a.args[1:] if a.args[:1]==['--'] else a.args
+    extra=extra[1:] if extra[:1]==['--'] else extra
     args=['/usr/bin/timeout',str(a.timeout),'/bin/bash','scripts/fast_pzt/python.sh','-m','scripts.fast_pzt.'+a.module,'--label',a.label,*extra]
     script="""
 from pathlib import Path
