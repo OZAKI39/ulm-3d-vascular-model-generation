@@ -114,6 +114,10 @@ before allowing 4096 KiB/s transfers. The default remains 512 KiB/s for interim
 copies. Neither mode reads growing run files or subtracts transfer overhead from
 formal timing.
 
+`environment/POSTPROCESS_IDENTITY.json` records the actual local analysis and
+rendering tools. It is distinct from the frozen numerical server environment and
+its dependency lock; local reporting tests do not replace source-bound server tests.
+
 `dynamic_audit --window initial|stable|S0|event|B3_global_costly|B3_serial_costly` is an additional **post-campaign**
 instrumented diagnostic. It refuses to run while formal timing is active. Its
 exclusive cost partition, full/half1/half2 records and native-candidate records

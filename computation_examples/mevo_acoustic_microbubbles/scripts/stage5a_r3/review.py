@@ -123,6 +123,7 @@ For executable reproduction commands, see scripts/stage5a_r3/README.md.
     )
     selected.update((BASE / "final").glob("*PRECISION*.json"))
     selected.update((BASE / "environment").glob("JUNIT*.xml"))
+    selected.update(p for p in (BASE / "environment").rglob("*.json") if p.stat().st_size <= 4 * 2**20)
     selected.update((BASE / "figures").glob("G*.png"))
     selected.update((BASE / "figures").glob("G*.pdf"))
     selected.update((BASE / "figures").glob("G*_SOURCES.json"))
