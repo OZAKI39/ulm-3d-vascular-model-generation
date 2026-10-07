@@ -8,7 +8,7 @@ import imageio.v2 as imageio
 import numpy as np
 import pyvista as pv
 from scripts.stage5a_r3.common import BASE, write, sha
-from scripts.stage5a_r3.figures import event_data, BLUE, RED
+from scripts.stage5a_r3.figures import event_data, event_camera, BLUE, RED
 from scripts.stage5a_r2.motion_visuals import wall_path, glyph, decorate
 
 
@@ -46,7 +46,7 @@ def trace_grid(plot, low, high):
         [0, 0, 1],
     ]
     plot.enable_parallel_projection()
-    plot.camera.parallel_scale = 0.85 * span
+    plot.camera.parallel_scale = 1.02 * span
 
 
 def main():
@@ -83,6 +83,7 @@ def main():
         target = glyph(
             plot, (data["positions_m"][0, indices[col]][None] - origin) * 1e6, radius * 1e6, "#75a8ce"
         )
+        event_camera(plot, wall, origin)
         actors.append((global_points, points, target))
     plot.subplot(0, 2)
     plot.set_background("#080b12")

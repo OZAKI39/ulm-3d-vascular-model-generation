@@ -79,6 +79,17 @@ def event_data():
     return old, new, p
 
 
+def event_camera(plot, wall, origin, span=10.0):
+    """View from the WALL side so the responsible sphere is not hidden by peers."""
+    _, point = wall.find_closest_cell(origin, return_closest_point=True)
+    inward = (origin - point) / np.linalg.norm(origin - point)
+    tangent = np.cross(inward, np.array([0.0, 0.0, 1.0]))
+    tangent /= max(np.linalg.norm(tangent), 1e-30)
+    plot.camera_position = [span * (-inward + 0.2 * tangent), np.zeros(3), [0, 0, 1]]
+    plot.enable_parallel_projection()
+    plot.camera.parallel_scale = 0.92 * span
+
+
 def g1():
     import pyvista as pv
 
@@ -93,6 +104,7 @@ def g1():
     positions = new["positions_m"][0][new["active"][0] & (new["particle_id"] != 152)]
     glyph(plot, (positions - origin) * 1e6, radius * 1e6, BLUE)
     glyph(plot, np.zeros((1, 3)), radius * 1e6, "#75a8ce")
+    event_camera(plot, wall, origin)
     plot.add_text(
         "Bubble 152: light blue\nWALL facets 3178 / 13018",
         position="lower_left",
