@@ -151,6 +151,9 @@ def main(server=False):
     if not server:
         compress_ledgers()
         compact_comparisons()
+        from scripts.stage5a_r3.recompute_review import main as verify_compact
+
+        verify_compact()
     rows, invalid, checked = [], [], 0
     for p in sorted(BASE.rglob("*")):
         if not p.is_file() or p.name in EXCLUDED or "__pycache__" in p.parts:

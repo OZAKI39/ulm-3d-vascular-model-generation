@@ -27,6 +27,9 @@ def main():
 
     compress_ledgers()
     compact_comparisons()
+    from scripts.stage5a_r3.recompute_review import main as verify_compact
+
+    verify_compact()
     review = BASE / "review"
     review.mkdir(exist_ok=True)
     rows = []
@@ -116,6 +119,7 @@ For executable reproduction commands, see scripts/stage5a_r3/README.md.
     selected.update((BASE / "environment").glob("JUNIT*.xml"))
     selected.update((BASE / "figures").glob("G*.png"))
     selected.update((BASE / "figures").glob("G*.pdf"))
+    selected.update((BASE / "figures").glob("G*_SOURCES.json"))
     selected.update((BASE / "figures/data").glob("G*.npz"))
     selected.update((ROOT / "docs").glob("STAGE5A_R3*.md"))
     selected.update((ROOT / "scripts/stage5a_r3").glob("*.py"))

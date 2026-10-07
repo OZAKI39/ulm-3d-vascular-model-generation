@@ -48,6 +48,8 @@ def main():
         BASE / "review/COMPACT_DATA_REPRODUCTION.json",
         dict(
             status="PASS",
+            compact_index_sha256=sha(BASE / "review/ALL_ACTIVE_COMPACT_INDEX.json"),
+            analysis_script_sha256=sha(__file__),
             rows=rows,
             scope="Data/statistics reproduction only. No claim of an independent physical trajectory error bound.",
         ),

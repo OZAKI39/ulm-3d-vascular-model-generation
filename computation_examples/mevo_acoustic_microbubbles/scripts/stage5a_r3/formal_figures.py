@@ -302,6 +302,7 @@ def g7():
     axs[0, 0].legend(fontsize=6, ncol=2)
     x = np.arange(4)
     stages = ["full", "half1", "half2"]
+    stage_counts = []
     for n, stage in enumerate(stages):
         accepted = []
         rejected = []
@@ -322,6 +323,7 @@ def g7():
             hatch="///",
             alpha=0.5,
         )
+        stage_counts.append([accepted, rejected])
     axs[0, 1].set(
         xticks=x,
         xticklabels=windows,
@@ -336,12 +338,14 @@ def g7():
     axs[1, 0].set(xticks=x, xticklabels=windows, ylabel="Call count", title="Changing-state QP work")
     axs[1, 0].legend(fontsize=8)
     bottom = np.zeros(4)
+    native_phases = []
     for key, color in [("setup_s", GOLD), ("update_s", PURPLE), ("solve_s", BLUE), ("polish_s", GRAY)]:
         values = np.array(
             [sum((q["diagnostics"] or {}).get(key, 0) for q in r["native_candidates"]) for r in rows]
         )
         axs[1, 1].bar(windows, values, bottom=bottom, color=color, label=key)
         bottom += values
+        native_phases.append(values)
     axs[1, 1].set(ylabel="Native recorded time (s)", title="Native solver phases | separate timing view")
     axs[1, 1].legend(fontsize=8)
     save(
@@ -354,6 +358,61 @@ def g7():
             categories=np.array(categories),
             qp_calls=qps,
             native_candidates=candidates,
+            stages=np.array(stages),
+            stage_accept_reject_counts=np.array(stage_counts),
+            native_phase_names=np.array(["setup_s", "update_s", "solve_s", "polish_s"]),
+            native_phase_time_s=np.array(native_phases),
+        ),
+    )
+
+
+def g7b():
+    windows = ["B3_global_costly", "B3_serial_costly"]
+    rows = [source(BASE / "diagnosis" / f"DYNAMIC_INSTRUMENTED_{w}.json") for w in windows]
+    labels = ["Global QP", "Component serial"]
+    fig, axs = plt.subplots(1, 3, figsize=(14, 4.8), layout="constrained")
+    categories = sorted(set().union(*(r["exclusive_s"] for r in rows)))
+    cost = np.array([[r["exclusive_s"].get(k, 0) for r in rows] for k in categories])
+    bottom = np.zeros(2)
+    for key, color, values in zip(categories, plt.cm.tab20(np.linspace(0, 1, len(categories))), cost):
+        axs[0].bar(labels, values, bottom=bottom, color=color, label=key.replace("_", " "))
+        bottom += values
+    axs[0].set(ylabel="Instrumented wall time (s)", title="B3 +1.5 ms | exclusive cost")
+    axs[0].legend(fontsize=5.5, ncol=1, loc="upper left")
+    stage_counts, stage_cost, nonlinear = [], [], []
+    for stage in ["full", "half1", "half2"]:
+        stage_counts.append([sum(s["count"] for s in r["stage_totals"] if s["stage"] == stage) for r in rows])
+        stage_cost.append([sum(s["wall_s"] for s in r["stage_totals"] if s["stage"] == stage) for r in rows])
+        nonlinear.append(
+            [sum(s["nonlinear_iterations"] for s in r["stage_totals"] if s["stage"] == stage) for r in rows]
+        )
+    bottom = np.zeros(2)
+    for stage, color, values in zip(["full", "half1", "half2"], [BLUE, PURPLE, GOLD], stage_cost):
+        axs[1].bar(labels, values, bottom=bottom, color=color, label=stage)
+        bottom += values
+    axs[1].set(ylabel="Advance-call inclusive wall time (s)", title="Step-doubling work | separate view")
+    axs[1].legend(fontsize=8)
+    qps = np.array([len(r["qp_calls"]) for r in rows])
+    native = np.array([len(r["native_candidates"]) for r in rows])
+    axs[2].bar(np.arange(2) - 0.18, qps, 0.35, color=BLUE, label="QP adapter")
+    axs[2].bar(np.arange(2) + 0.18, native, 0.35, color=PURPLE, label="Native candidate")
+    axs[2].set(xticks=[0, 1], xticklabels=labels, ylabel="Actual call count", title="Partitioned QP calls")
+    axs[2].legend(fontsize=8)
+    save(
+        fig,
+        "G7b_B3_global_and_component_dynamic_cost",
+        "Same actual all-active initial state and requested +15 microsecond interval, with explicit cold cache. Adaptive work and component call counts can differ. Instrumented timings include diagnostic overhead and are not formal completion speedups. Exclusive cost, inclusive stage times and native counts are separate views, not additive totals.",
+        dict(
+            windows=np.array(windows),
+            categories=np.array(categories),
+            exclusive_cost_s=cost,
+            stages=np.array(["full", "half1", "half2"]),
+            stage_counts=np.array(stage_counts),
+            stage_wall_s=np.array(stage_cost),
+            nonlinear_iterations=np.array(nonlinear),
+            qp_calls=qps,
+            native_candidates=native,
+            actual_elapsed_s=np.array([r["summary"]["segment_completed_duration_s"] for r in rows]),
         ),
     )
 
@@ -414,6 +473,9 @@ def g8():
             for c, w in names
         ]
         axs[1, 0].bar(x + (n - 1.5) * 0.19, np.array(values) * 1e3, 0.18, color=color, label=layout)
+        arrays["layout_" + layout + "_warm_wall_s"] = np.array(values)
+    arrays["layout_cases"] = np.array([c for c, _ in names])
+    arrays["layout_source_time_s"] = np.array([w for _, w in names])
     axs[1, 0].set(
         xticks=x,
         xticklabels=[f"{c}\n+{(w - 3) * 1e3:.1f} ms" for c, w in names],
@@ -427,6 +489,7 @@ def g8():
     ]:
         v = [r["median"][key] * 1e3 for r in resource["pair_force"]]
         axs[1, 1].bar(np.arange(2) + (n - 0.5) * 0.3, v, 0.28, color=color, label=label)
+        arrays["pair_force_" + key] = np.array(v) * 1e-3
     axs[1, 1].set(
         xticks=[0, 1],
         xticklabels=["B2: 186 bubbles", "B3: 189 bubbles"],
@@ -442,10 +505,74 @@ def g8():
     )
 
 
+def g8b():
+    gate = source(BASE / "final/MOTION_SOLVER_R3_GATE.json")
+    fig, axs = plt.subplots(1, 2, figsize=(12.5, 5), layout="constrained")
+    arrays = {}
+    for i, r in enumerate(gate["protected_R2_repeat_performance"]):
+        for offset, key, color, label in [
+            (-0.12, "new_wall_s", BLUE, "R3"),
+            (0.12, "protected_R2_wall_s", PURPLE, "Protected R2"),
+        ]:
+            v = np.array(r[key])
+            axs[0].scatter(np.full(len(v), i + offset), v, color=color, label=label if i == 1 else None, s=42)
+            if len(v):
+                axs[0].plot([i + offset - 0.06, i + offset + 0.06], [np.median(v)] * 2, color=color, lw=2)
+            arrays[r["case"] + "_5ms_" + key] = v
+        if not r["protected_R2_wall_s"]:
+            axs[0].text(
+                i,
+                0.9,
+                "No complete R2 baseline",
+                transform=axs[0].get_xaxis_transform(),
+                ha="center",
+                fontsize=8,
+            )
+    axs[0].set(
+        xticks=[0, 1],
+        xticklabels=["B2", "B3"],
+        ylabel="Complete +5 ms process wall time (s)",
+        title="R3 / R2 | every complete timing repeat",
+    )
+    axs[0].legend(fontsize=8)
+    for i, case in enumerate(["B2", "B3"]):
+        r = next(
+            r
+            for r in gate["rows"]
+            if r["case"] == case and r["duration_s"] == 0.001 and r["method"] == "nominal"
+        )
+        values = [
+            r["charged_wall_s"],
+            r["performance_vs_frozen"].get("reference_wall_s"),
+            r["performance_vs_R2"].get("reference_wall_s"),
+        ]
+        for k, (v, color, label) in enumerate(
+            zip(values, [BLUE, RED, PURPLE], ["R3", "Fresh Stage4L", "R2"])
+        ):
+            if v is not None:
+                axs[1].bar(i + (k - 1) * 0.24, v, width=0.22, color=color, label=label if i == 0 else None)
+        arrays[case + "_1ms_wall_s"] = np.array([np.nan if v is None else v for v in values])
+    axs[1].set(
+        xticks=[0, 1],
+        xticklabels=["B2", "B3"],
+        ylabel="Complete +1 ms process wall time (s)",
+        title="One completed sample per method",
+    )
+    axs[1].legend(fontsize=8)
+    save(
+        fig,
+        "G8b_R2_protection_and_1ms_regression",
+        "Only complete equal-duration same-initial-state runs are shown. R2 B2 +5 ms remains incomplete and is not extrapolated. At 1 ms, B2 R2 uses the preserved historical execution, while B3 R2 is rerun in the protected campaign; single-sample timing variation is not established. NaN in the standalone plot-data NPZ denotes unavailable timing, not zero; strict audit JSON uses null.",
+        arrays,
+    )
+
+
 if __name__ == "__main__":
     g4()
     g4b()
     g5c()
     g6()
     g7()
+    g7b()
     g8()
+    g8b()

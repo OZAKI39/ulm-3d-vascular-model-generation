@@ -19,6 +19,11 @@ def main(host="vast4090"):
         cmd + [host + ":" + REMOTE + "final/CAMPAIGN_R3_V2/RESULT.json", str(folder) + "/"], check=True
     )
     ledger = read(folder / "RESULT.json")["ledger"]
+    supplement = "final/CAMPAIGN_R2_PROTECTED_REPEATS/RESULT.json"
+    if subprocess.run(["ssh", host, "test", "-f", REMOTE + supplement]).returncode == 0:
+        (BASE / supplement).parent.mkdir(exist_ok=True)
+        subprocess.run(cmd + [host + ":" + REMOTE + supplement, str(BASE / supplement)], check=True)
+        ledger += read(BASE / supplement)["ledger"]
     selected = []
     for row in ledger:
         if not row.get("run") or not row.get("summary") or row["status"] == "RUNNING":
