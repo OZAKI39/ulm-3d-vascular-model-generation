@@ -1,10 +1,9 @@
 """Uniform 60 fps video of actual accepted B2 states; real radii, no interpolation."""
 
 import os
+from pathlib import Path
 
 os.environ.setdefault("PYVISTA_OFF_SCREEN", "true")
-import json
-import subprocess
 import imageio.v2 as imageio
 import numpy as np
 import pyvista as pv
@@ -168,29 +167,10 @@ def main():
             old_stop_policy="Hold last recorded R2 state and explicitly display stopped status",
         ),
     )
-    raw = subprocess.check_output(
-        [
-            "ffprobe",
-            "-v",
-            "error",
-            "-count_frames",
-            "-select_streams",
-            "v:0",
-            "-show_entries",
-            "stream=width,height,r_frame_rate,nb_read_frames,pix_fmt,duration",
-            "-of",
-            "json",
-            str(movie),
-        ],
-        text=True,
-    )
-    probe = json.loads(raw)
-    stream = probe["streams"][0]
-    assert stream["r_frame_rate"] == "60/1" and int(stream["nb_read_frames"]) == len(clock)
-    write(
-        out / "B2_actual_wall_stall_crossing_VIDEO_AUDIT.json",
-        dict(status="PASS", ffprobe=probe, sha256=sha(movie), source_script_sha256=sha(__file__)),
-    )
+    from scripts.stage5a_r3.video_audit import audit
+
+    (out / "B2_RENDER_SOURCE.py").write_bytes(Path(__file__).read_bytes())
+    audit()
     print(movie, flush=True)
 
 
