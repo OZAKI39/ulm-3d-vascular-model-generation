@@ -136,8 +136,20 @@ def selected(path):
         and path.stat().st_size <= 16 * 2**20
     ):
         return True  # Necessary underlying G1–G8 data, not redundant raw HDF5.
-    if relative.parts[0] == "review" and path.suffix == ".h5" and path.stat().st_size <= 4 * 2**20:
+    if (
+        relative.parts[0] == "review"
+        and path.suffix in [".h5", ".gz", ".jsonl"]
+        and path.stat().st_size <= 4 * 2**20
+    ):
         return True
+    if (
+        relative.parts[0] == "comparisons"
+        and path.name.endswith("_all_active.npz")
+        and (BASE / "review/all_active_inputs" / path.name).is_file()
+    ):
+        # The verified review copy retains every actual coordinate, clock and ID;
+        # this original also contains redundant, reproducible error arrays.
+        return False
     if path.stat().st_size > 4 * 2**20 or path.suffix in [".h5", ".mp4", ".zip", ".pstats"]:
         return False
     if path.name in RAW_LEDGER_NAMES or path.name == "SOURCE.zip":
@@ -224,7 +236,7 @@ def main(server=False):
             external_input_files=remote["external_input_files"],
             excluded_from_self_hash=sorted(EXCLUDED),
             remote_manifest_sha256=sha(remote_path),
-            policy="Raw trajectories, complete rejected-candidate arrays, source ZIPs and videos stay at verified actual paths. Lightweight fixtures, audit JSON and losslessly compressed full accepted/rejected ledgers use a 4 MiB per-file cap; necessary figure-data NPZs use 16 MiB. Compact comparison coordinates retain every common-frame value while omitting recomputable error arrays. No scientific record is downsampled in place.",
+            policy="Raw trajectories, complete rejected-candidate arrays, source ZIPs and videos stay at verified actual paths. Lightweight fixtures, audit JSON and losslessly compressed full accepted/rejected and diagnostic ledgers use a 4 MiB per-file cap; necessary figure-data NPZs use 16 MiB. Compact comparison coordinates retain every common-frame value while omitting recomputable error arrays; duplicate original comparison NPZs remain indexed but are not added to Git. No scientific record is downsampled in place.",
         ),
     )
     files = [r["relative_path"] for r in rows if r["git_selected"]]
