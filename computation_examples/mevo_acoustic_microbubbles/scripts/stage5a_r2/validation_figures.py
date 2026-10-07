@@ -24,6 +24,7 @@ plt.rcParams.update(
     }
 )
 SOURCES = {}
+FIGURE_CONTEXT = {}
 
 
 def local(path):
@@ -40,12 +41,26 @@ def read(path, lines=False):
 
 def save(fig, name, description):
     fig.suptitle(name.replace("_", " "), fontweight="bold")
+    commit = (ROOT / "SOURCE_COMMIT_R2.txt").read_text().strip()
+    fig.text(
+        0.01,
+        -0.012,
+        f"R2 S1/S0 V6 | executed source {commit[:12]} | "
+        + "; ".join(f"{k}: {v}" for k, v in FIGURE_CONTEXT.items()),
+        fontsize=6.5,
+    )
     for suffix in ["png", "pdf"]:
         fig.savefig(BASE / "figures" / f"{name}.{suffix}", dpi=240, bbox_inches="tight")
     plt.close(fig)
     write(
         BASE / "figures" / f"{name}_SOURCES.json",
-        dict(definition=description, files=SOURCES.copy(), script_sha256=sha(Path(__file__))),
+        dict(
+            definition=description,
+            files=SOURCES.copy(),
+            script_sha256=sha(Path(__file__)),
+            executed_source_commit=commit,
+            selected_runs=FIGURE_CONTEXT.copy(),
+        ),
     )
 
 
@@ -58,6 +73,7 @@ def select():
     for case in ["B2", "B3"]:
         items = [e for e in entries if e["case"] == case and e["kind"] == "nominal" and e["repeat"] == 0]
         chosen[case] = max(items, key=lambda e: e["duration"])
+        FIGURE_CONTEXT[case] = Path(chosen[case]["run"]).name
     return campaign, entries, chosen
 
 
@@ -121,6 +137,7 @@ def progress(entries, chosen):
 def error_and_safety(chosen):
     fig, axes = plt.subplots(3, 2, figsize=(12, 9), layout="constrained")
     safe, saxes = plt.subplots(3, 2, figsize=(12, 9), layout="constrained")
+    rejfig, raxes = plt.subplots(2, 2, figsize=(12, 6.5), layout="constrained")
     timing_audit = {}
     for column, (case, e) in enumerate(chosen.items()):
         folder = local(e["run"])
@@ -144,6 +161,27 @@ def error_and_safety(chosen):
         axes[1, column].set(ylabel="Accepted trial error / budget", yscale="log")
         axes[1, column].legend(fontsize=8, ncol=2)
         reasons = sorted({r["reason"] for r in rejected})
+        for key, color in zip(["position", "relative", "pair", "wall"], [BLUE, GRAY, PURPLE, RED]):
+            rr = [
+                (j, r["diagnostics"]["error_terms"][key])
+                for j, r in enumerate(rejected)
+                if "error_terms" in r["diagnostics"]
+            ]
+            raxes[0, column].scatter([j for j, v in rr], [v for j, v in rr], s=8, color=color, label=key)
+        raxes[0, column].axhline(1, color="black", ls="--", lw=1)
+        raxes[0, column].set(title=case, yscale="log", ylabel="Completed rejected error / budget")
+        raxes[0, column].legend(fontsize=7, ncol=2)
+        for key, label, color in [
+            ("original_equilibrium_kkt", "Completed trial: original equilibrium", BLUE),
+            ("terminal_original_nonlinear_kkt", "Failed nonlinear final candidate", RED),
+        ]:
+            rr = [(j, r["diagnostics"][key]) for j, r in enumerate(rejected) if key in r["diagnostics"]]
+            raxes[1, column].scatter([j for j, v in rr], [v for j, v in rr], s=10, color=color, label=label)
+        raxes[1, column].axhline(1e-9, color="black", ls="--", lw=1)
+        raxes[1, column].set(yscale="log", ylabel="Original-equation KKT")
+        raxes[1, column].legend(fontsize=7)
+        for ax in raxes[:, column]:
+            ax.set_xlabel("Rejected-trial index (not physical time)")
         for i, reason in enumerate(reasons):
             rr = [(j, r) for j, r in enumerate(rejected) if r["reason"] == reason]
             axes[2, column].scatter([j for j, _ in rr], [r["dt_s"] * 1e6 for _, r in rr], s=12, label=reason)
@@ -191,13 +229,16 @@ def error_and_safety(chosen):
         q = s["timings_exclusive_s"]
         partition = {key: q[key] for key in ["forcing", "assembly", "qp"]}
         partition["I/O"] = s["io_seconds"]
-        partition["Geometry, control and other overhead"] = s["wall_s"] - sum(partition.values())
+        partition["Geometry, control and other overhead"] = e["wall_s_with_process_start"] - sum(
+            partition.values()
+        )
         assert partition["Geometry, control and other overhead"] >= 0
         timing_audit[case] = dict(
             run=e["run"],
             exclusive_partition_s=partition,
             correction="Raw timings_exclusive_s.error includes three calls also counted in wall. Do not stack error and wall. These overlapping raw counters are excluded from this partition; their union and monitoring/control/init are in the measured remainder.",
             monitoring_inclusive_s=s["monitor_inclusive_seconds"],
+            process_start_and_outer_wrapper_s=e["wall_s_with_process_start"] - s["wall_s"],
         )
     save(
         fig,
@@ -208,6 +249,11 @@ def error_and_safety(chosen):
         safe,
         "R5_GEOMETRY_SAFETY",
         "Certified minima along every adopted straight half-step; true endpoint gap and conservative sweep bound are distinguished. Symmetric logarithmic gap axis is linear within the unchanged tolerance band. Complete values are in ACCEPTED.jsonl.",
+    )
+    save(
+        rejfig,
+        "R2b_REJECTED_TRIALS",
+        "Completed rejected LOCAL_ERROR trials retain four error components; failed nonlinear candidates have separate final original-equation residuals. Missing uncompleted error estimates are not plotted as zero.",
     )
     write(BASE / "figures/TIMING_AUDIT.json", timing_audit)
 
@@ -278,7 +324,7 @@ def performance(entries, chosen):
     for j, case in enumerate(["B2", "B3"]):
         for k, kind in enumerate(["reference", "nominal"]):
             samples = [
-                e["summary"]["wall_s"]
+                e["wall_s_with_process_start"]
                 for e in entries
                 if e["case"] == case
                 and e["duration"] == duration

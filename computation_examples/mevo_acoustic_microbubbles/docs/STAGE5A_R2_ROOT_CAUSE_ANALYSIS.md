@@ -38,3 +38,41 @@ V1's complete B2 1 ms run spends 466.39 of 559.59 s in QP calls. Late-state
 substep benchmarks confirm that the initial global-layout timing did not predict
 the full trajectory: component serial is faster on the later development states.
 This is an execution-layout finding, not a change to any physical force.
+
+New nonlinear diagnosis (V4/V2 failed states): the earlier trigger is now directly
+observed. At original-ID 152, closest-feature WALL normals differ by 0.1343 for
+trial coordinates separated by approximately 3.9e-19 m; the nonzero wall
+lubrication block changes and the full resistance matrix differs by about 1.2%.
+The native QPs remain certified. At tiny dt the nonlinear map can oscillate across
+that geometry discontinuity. This confirms a non-smooth coefficient trigger;
+mathematical nonexistence or uniqueness of the implicit step is **UNRESOLVED**.
+The actual WALL mesh and original gradient evaluator are unchanged.
+
+Endpoint wall contact updates (V5) did not resolve these states. V6 uses explicitly
+labelled, bounded S0 start-state recovery only after such a failed nonlinear solve
+in the wall-lubrication activation band. This restores the two known short probes
+under the new hybrid protocol without claiming that their S1 equation converged.
+Every adopted segment still passes original-QP, time-error and continuous geometry
+checks. Six newly sealed independent probes also pass. Whole-trajectory scientific
+and performance gates are separate and cannot be inferred from these local probes.
+
+The supplementary `diagnosis/polish_parts/` audit applies the exact old saddle
+polish equations to the immutable saved OSQP candidates. Before polishing,
+B2/B3 KKT are 1.07494e-9 / 7.84371e-10; after polishing they are approximately
+0.85746 / 0.13004. The dominant post-polish failure is **dual feasibility**:
+the guessed equality set yields negative multipliers. A small saddle residual
+therefore does not certify the unilateral QP. Local SciPy pivoting changes a few
+last digits in this ill-conditioned solve; the original server replay is kept.
+
+Evidence correction: the early `benchmarks/changing_qp/RESULTS.json` used an
+adapter whose default unit scales were 1. Its fields labelled as N or m/s are
+normalized quantities, not SI. `AUDITED_SI.json` independently reconstructs the
+120 archived candidates with the saved velocity/resistance scales, retains the
+original file hash, and compares U, objective and G^T lambda across solvers.
+No original record is overwritten, and no multiplier uniqueness is assumed.
+
+The raw summary field `qp_calls` counts whole constrained-stage calls, not every
+native component solve. Accepted-substep component solves, workspace hits and
+native iterations are counted separately in `final/RUN_AUDIT.json`. Completed
+full/half trials include rejected time-error work; unavailable terminal native
+iteration histories remain explicitly unavailable rather than fabricated.

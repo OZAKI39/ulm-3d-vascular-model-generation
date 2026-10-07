@@ -7,7 +7,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from scripts.stage5a_r2.seal import BASE
+from scripts.stage5a_r2.seal import BASE, ROOT
 from scripts.stage4l.dense_probe import write, sha
 
 plt.rcParams.update(
@@ -27,6 +27,8 @@ def qp_figure():
     rows = json.loads(raw.read_text())
     replay_path = BASE / "diagnosis/reconstruction_v1/REPLAY.json"
     replay = json.loads(replay_path.read_text())
+    polish_path = BASE / "diagnosis/polish_parts/SUMMARY.json"
+    polish = json.loads(polish_path.read_text())
     fixtures = sorted({r["fixture"] for r in rows})
     fig, axes = plt.subplots(3, 3, figsize=(13.5, 9.2), layout="constrained")
     labels = ["OSQP", "ProxQP dense", "ProxQP sparse", "Clarabel"]
@@ -91,9 +93,8 @@ def qp_figure():
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.3), layout="constrained")
     terms = ["stationarity", "feasibility", "dual_feasibility", "active_slack", "complementarity"]
     for ax, fixture in zip(axes, fixtures[1:]):
-        rec = next(r for r in replay if r["fixture"] == fixture and "reconstruction" in r)
-        attempt = rec["diagnostics"]["attempts"][-1]
-        original = [max(1e-17, attempt["kkt_terms"][k]) for k in terms]
+        parts = next(r for r in polish["rows"] if r["fixture"] == fixture)
+        original = [max(1e-17, parts["before"]["kkt_terms"][k]) for k in terms]
         recovered = next(
             r for r in rows if r["fixture"] == fixture and r["solver"] == "prox_dense" and r["eps"] == 1e-12
         )
@@ -105,8 +106,12 @@ def qp_figure():
             label="R2 ProxQP",
             color="#315f89",
         )
-        ax.axhline(
-            attempt["external_sparse_polish"]["kkt"], color="#af3737", ls=":", label="Old polish: full KKT"
+        ax.plot(
+            range(5),
+            [max(1e-17, parts["after"]["kkt_terms"][k]) for k in terms],
+            "s:",
+            color="#af3737",
+            label="Old one-shot polish: replayed",
         )
         ax.axhline(1e-9, color="black", ls="--", label="Unchanged gate")
         ax.set_yscale("log")
@@ -114,8 +119,40 @@ def qp_figure():
         ax.set_ylabel("Independent residual")
         ax.legend(fontsize=8)
         ax.set_title(fixture.split("_")[-2])
+    fig.suptitle("R3b | Immutable candidates before and after old saddle polish")
+    fig.text(
+        0.01,
+        -0.06,
+        "Original Stage5A base 7c39828d9350; reconstruction_v1 / polish_parts. Zeros drawn at 1e-17 only on this log plot.\n"
+        "Supplementary local SciPy polish replay; all original residual values and server results remain in source data.",
+        fontsize=7,
+    )
     for suffix in ["png", "pdf"]:
         fig.savefig(out / f"R3b_KKT_TERMS.{suffix}", dpi=240, bbox_inches="tight")
+    plt.close(fig)
+    fig, axes = plt.subplots(1, 3, figsize=(12, 4.5), layout="constrained")
+    for ax, fixture in zip(axes, fixtures):
+        selected = [
+            next(r for r in rows if r["fixture"] == fixture and r["solver"] == name and r["eps"] == 1e-12)
+            for name in names
+        ]
+        ax.bar(range(4), [r["iterations"] for r in selected], color="#43678f")
+        ax.set_xticks(range(4), labels, rotation=25, ha="right")
+        ax.set_yscale("log")
+        ax.set_ylabel("Native reported iterations")
+        ax.set_title(fixture.split("_")[-2])
+        for i, r in enumerate(selected):
+            ax.text(i, r["iterations"] * 1.08, str(r["iterations"]), ha="center", fontsize=8)
+    fig.suptitle("R3c | Native iteration counts on the three unchanged failed QPs")
+    fig.text(
+        0.01,
+        -0.07,
+        "native_v1 / original matrices from Stage5A base 7c39828d9350. Counts describe different algorithms and are not equal work units.\n"
+        "Native statuses are retained in SUMMARY.json; full internal iteration histories are unavailable and are not reconstructed.",
+        fontsize=7,
+    )
+    for suffix in ["png", "pdf"]:
+        fig.savefig(out / f"R3c_NATIVE_ITERATIONS.{suffix}", dpi=240, bbox_inches="tight")
     plt.close(fig)
     write(
         out / "R3_DATA_SOURCES.json",
@@ -124,6 +161,10 @@ def qp_figure():
             raw_sha256=sha(raw),
             reconstruction=str(replay_path),
             reconstruction_sha256=sha(replay_path),
+            polish_parts=str(polish_path),
+            polish_parts_sha256=sha(polish_path),
+            original_failed_code_commit="7c39828d93509fff5551b7a16537ca3aa4ee9c23",
+            native_replay_script_sha256=sha(ROOT / "scripts/stage5a_r2/qp_explore.py"),
             script_sha256=sha(Path(__file__)),
             definitions="Fixed Stage5A normalization, every original inequality. Timing is parallel native API diagnostic, never end-to-end speedup.",
         ),

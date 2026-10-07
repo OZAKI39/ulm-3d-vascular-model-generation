@@ -105,3 +105,63 @@ queries also counted by `wall`. The final mutually exclusive plot uses only
 forcing, assembly, QP, I/O and the measured remainder. It never stacks the
 overlapping wall/error counters or adds inclusive monitor time to 100% costs.
 The label correction is explicit; raw historical counters are retained.
+
+14. V2 component execution was frozen at bac62b1d1; 169 tests pass and the same
+    old xfail remains. A probe-script configuration error first evaluated the new
+    sealed states with global motion again. Its `HOLDOUT_V2.json` is retained as
+    a global-layout diagnostic. The corrected `HOLDOUT_V2_COMPONENT.json` uses
+    component serial and yields the same result: all six QPs pass, five 1 us
+    motion probes pass, and B2 frame 15472 stalls at 0.8810724 us. The earlier B2
+    frame 17384 also still stalls. No V2 formal campaign was launched. New V3
+    holdouts (13/46/83% of both old trajectories) were sealed before further
+    algorithm work; earlier failed states are now explicitly development inputs.
+
+15. Direct failed-state replay confirms a non-smooth numerical geometry trigger:
+    particle 152's closest-WALL normal changes by 0.1343 while trial positions
+    differ by about 3.9e-19 m. Its nonzero wall lubrication coefficient is
+    3.3247e-5 N s/m and the resistance matrix changes by about 1.2%. At 1e-12 s,
+    shrinking dt can therefore leave the fixed-point map oscillating. This is
+    measured discontinuity, not a proof that the original QP is infeasible or a
+    proof that the nonlinear equation has no solution. See `nonlinear_v4/`.
+
+16. Integrator V5 (not selected) updated only wall contact tangents at the endpoint
+    while retaining start pair tangents and full endpoint resistance. Six true
+    trial probes on the two stalled states fail to converge. The opt-in experiment
+    and failures are retained. No normal smoothing or geometry changes were made.
+
+17. Integrator V6 is a **hybrid first-order method**, not an assertion that every
+    step is implicit. Its main S1 method is V4. After a failed nonlinear iteration
+    with a >0.01 jump of a WALL normal inside the lubrication activation band,
+    it tries a burst of at most eight S0 macro steps capped at 100 ns (50 ns in
+    refinement), then returns to S1. At most 1024 bursts and all original run,
+    accepted/rejected-count and time budgets apply. S0 solves the original
+    **start-state** QP; its endpoint nonlinear certificate is NOT_APPLICABLE,
+    never fabricated as zero or a converged S1 result. Every S0 trial still
+    undergoes independent full-vs-two-half error estimation and continuous pair/
+    real WALL sweeps. Failed S1 work remains charged and recorded. No force,
+    tolerance, floor, radius, position projection or particle identity changes.
+    The numerical recovery state is included in the atomic controller checkpoint.
+
+18. V6 fresh B2/B3 1/10/100 us continuations all complete. B3's 10->100 us segment
+    has 408 accepted S1 half steps, 32 time-error rejections, and no S0 recovery;
+    its elapsed cost is 157.16 s. Development tests_dev09 has 48 passes, including
+    budget interruption preserving the zero-step checkpoint/null certificates.
+    V6 exhausts the preregistered six integrator revisions; no further algorithm
+    revision will be hidden after the final independent validation.
+
+19. Validation V3 freezes the numerical kernel at 07958c962. Fresh source-bound
+    JUnit: **171 PASS, one retained old xfail**. All six new independent V3 states
+    pass original-QP and 1 us motion checks. Both previously failed B2 states
+    also pass a separate *known-failure regression*, with explicit S0 recovery.
+    Those previous failures stay FAIL under their original V1/V2 protocols.
+    The real WALL audit confirms exact triangle-subset correspondence to the
+    closed geometry, positive triangle areas and three open boundary loops.
+    The V3 campaign driver/GPU timing evidence is committed at 5198d3c70; its
+    numerical-kernel hashes exactly match the 07958c962 frozen protocol.
+
+20. V3 formal work begins from the original 3 s states, not prefix endpoints.
+    The 3 h aggregate new-run allocation includes V1's 559.59 s B2 run and its
+    safely interrupted B3 work; the budget is not reset. Each complete accepted
+    ledger distinguishes S1 endpoint-matrix and S0 start-matrix equilibrium.
+    End-to-end speedup, 1/5 ms scientific results and promotion remain pending
+    until their actual runs and comparisons complete.

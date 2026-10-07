@@ -55,37 +55,105 @@ def decorate(plotter, wall, bounds, origin, dark, title):
     plotter.set_background("#080b12" if dark else "white")
     w = wall.copy()
     w.points = (w.points - origin) * 1e6
-    patch = w.clip_box(bounds, invert=False)
+    # Clip by six linear planes. A composite box scalar can miss a large WALL
+    # triangle whose vertices all lie outside this microscopic field of view.
+    patch = w
+    for axis in range(3):
+        normal = np.eye(3)[axis]
+        lo = np.zeros(3)
+        lo[axis] = bounds[2 * axis]
+        hi = np.zeros(3)
+        hi[axis] = bounds[2 * axis + 1]
+        patch = patch.clip(normal=normal, origin=lo, invert=False)
+        patch = patch.clip(normal=normal, origin=hi, invert=True)
     if patch.n_cells:
         plotter.add_mesh(
             patch,
             color="#a15050",
-            opacity=0.18 if dark else 0.14,
+            opacity=0.24 if dark else 0.18,
             smooth_shading=True,
             ambient=0.4,
             specular=0.18,
         )
     plotter.add_text(title, position="upper_left", font_size=13, color=color, name="title")
-    plotter.show_bounds(
-        bounds=bounds,
-        grid="back",
-        location="outer",
-        all_edges=False,
-        xtitle="X (µm)",
-        ytitle="Y (µm)",
-        ztitle="Z (µm)",
-        font_size=11,
-        color=color,
-        n_xlabels=3,
-        n_ylabels=3,
-        n_zlabels=3,
-    )
     center = np.array([(bounds[i] + bounds[i + 1]) / 2 for i in [0, 2, 4]])
     span = max(bounds[i + 1] - bounds[i] for i in [0, 2, 4])
+    axes_grid(plotter, bounds, color, dark)
     plotter.camera_position = [center + span * np.array([0.9, -1.55, 0.8]), center, [0, 0, 1]]
     plotter.enable_parallel_projection()
-    plotter.camera.parallel_scale = span * 0.69
-    plotter.enable_depth_peeling(number_of_peels=12, occlusion_ratio=0)
+    plotter.camera.parallel_scale = span * 0.86
+    # Standard alpha rendering is reliable for this single cropped wall sheet.
+    # The local software EGL depth-peeling path suppresses translucent actors.
+
+
+def axes_grid(plotter, bounds, color, dark):
+    lo = np.array(bounds)[::2]
+    hi = np.array(bounds)[1::2]
+    span = max(hi - lo)
+    segments = []
+    for axis in range(3):
+        for value in np.linspace(lo[axis], hi[axis], 3):
+            # A floor grid plus a back grid; no surrounding box.
+            if axis in [0, 1]:
+                a = lo.copy()
+                b = lo.copy()
+                a[axis] = b[axis] = value
+                other = 1 - axis
+                b[other] = hi[other]
+                segments.extend([a, b])
+            if axis in [0, 2]:
+                a = lo.copy()
+                b = lo.copy()
+                a[1] = b[1] = hi[1]
+                a[axis] = b[axis] = value
+                other = 2 - axis
+                b[other] = hi[other]
+                segments.extend([a, b])
+    plotter.add_lines(np.array(segments), color="#465160" if dark else "#b8bec6", width=0.7, connected=False)
+    points = []
+    labels = []
+    for axis in range(3):
+        a = lo.copy()
+        b = lo.copy()
+        b[axis] = hi[axis]
+        if axis == 1:
+            a[0] = b[0] = hi[0]
+        plotter.add_lines(np.array([a, b]), color=color, width=1.2)
+        for fraction in [0, 0.5, 1]:
+            p = a + (b - a) * fraction
+            if axis == 0:
+                p[1] -= 0.035 * span
+                p[2] -= 0.035 * span
+            elif axis == 1:
+                p[0] += 0.085 * span
+                p[2] -= 0.025 * span
+            else:
+                p[0] -= 0.055 * span
+            points.append(p)
+            labels.append(f"{lo[axis] + fraction * (hi[axis] - lo[axis]):.1f}")
+        p = (a + b) / 2
+        if axis == 0:
+            p[1] -= 0.16 * span
+            p[2] -= 0.08 * span
+        elif axis == 1:
+            p[0] += 0.15 * span
+            p[2] -= 0.08 * span
+        else:
+            p[0] -= 0.19 * span
+        points.append(p)
+        labels.append("XYZ"[axis] + " (um)")
+    plotter.add_point_labels(
+        np.array(points),
+        labels,
+        font_size=11,
+        text_color=color,
+        font_family="arial",
+        shape=None,
+        show_points=False,
+        always_visible=True,
+        shadow=False,
+        margin=0,
+    )
 
 
 def context(report):
@@ -124,6 +192,7 @@ def main(video=False):
         wall=str(wallfile),
         wall_sha256=sha(wallfile),
         script_sha256=sha(Path(__file__)),
+        executed_source_commit=(ROOT / "SOURCE_COMMIT_R2.txt").read_text().strip(),
         cases={},
         geometry="Actual finite spheres at physical radius, uniform m-to-µm units, no group remapping or particle enlargement; real open WALL patch.",
         view="Fixed parallel camera and equal XYZ scales shared by old/new, fixed common origin per case.",
@@ -151,8 +220,9 @@ def main(video=False):
         fig.text(
             0.01,
             0.008,
-            f"Common time since t = 3 s. Comparison: {report['status']}. Real-wall patch, physical bubble radius, fixed camera; no coordinate interpolation.",
-            fontsize=9,
+            f"Common time since t = 3 s. Comparison: {report['status']}. Physical radii; no coordinate interpolation. Source {provenance['executed_source_commit'][:12]}.\n"
+            f"Old: {Path(report['reference']).parent.name}; R2: {Path(report['candidate']).parent.name}",
+            fontsize=7,
         )
         for suffix in ["png", "pdf"]:
             fig.savefig(out / f"R7_ACTUAL_MOTION_{case}.{suffix}", dpi=200, bbox_inches="tight")
