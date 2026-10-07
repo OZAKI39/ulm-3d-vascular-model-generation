@@ -427,8 +427,9 @@ def g8():
         new = np.array(row["new_wall_s"])
         old = np.array(row["reference_wall_s"])
         for values, offset, color, label in [(new, -0.14, BLUE, "R3"), (old, 0.14, RED, "Frozen Stage4L")]:
+            spread = np.linspace(-0.05, 0.05, len(values)) if len(values) > 1 else np.zeros(len(values))
             axs[0, 0].scatter(
-                np.full(len(values), i + offset),
+                i + offset + spread,
                 values / 60,
                 color=color,
                 label=label if i == 0 else None,
@@ -439,7 +440,8 @@ def g8():
                     [i + offset - 0.08, i + offset + 0.08], [np.median(values) / 60] * 2, color=color, lw=2
                 )
         ratios = [r["speedup"] for r in row["paired"] if r["speedup"] is not None]
-        axs[0, 1].scatter(np.full(len(ratios), i), ratios, color=BLUE, s=45)
+        spread = np.linspace(-0.045, 0.045, len(ratios)) if len(ratios) > 1 else np.zeros(len(ratios))
+        axs[0, 1].scatter(i + spread, ratios, color=BLUE, s=45)
         axs[0, 1].text(
             i, 0.04, row["status"], ha="center", transform=axs[0, 1].get_xaxis_transform(), fontsize=9
         )
@@ -460,6 +462,8 @@ def g8():
         title="No incomplete-reference extrapolation",
     )
     axs[0, 1].legend()
+    axs[0, 1].set_xlim(-0.5, 1.5)
+    axs[0, 1].set_ylim(0, max(5.5, axs[0, 1].get_ylim()[1]))
     names = sorted(set((r["case"], r["source_time_s"]) for r in resource["full_trial_layouts"]))
     x = np.arange(len(names))
     for n, (layout, color) in enumerate(
@@ -498,10 +502,11 @@ def g8():
         title="Force-only timing, not trajectory speedup",
     )
     axs[1, 1].legend(fontsize=8)
+    axs[1, 1].set_ylim(0, 1.25 * max(r["median"]["CPU_s"] * 1e3 for r in resource["pair_force"]))
     save(
         fig,
         "G8_completion_and_resource_performance",
-        "Completion ratios require identical initial states and complete equal physical duration. At least three completed repeats per method required for final performance PASS. Layout and pair-force timings are separate microbenchmarks.",
+        "Completion ratios require identical initial states and complete equal physical duration. At least three completed repeats per method required for final performance PASS. Deterministic horizontal spreading distinguishes overlapping repeat markers without changing measured times. Layout and pair-force timings are separate microbenchmarks.",
         arrays,
     )
 
@@ -516,7 +521,8 @@ def g8b():
             (0.12, "protected_R2_wall_s", PURPLE, "Protected R2"),
         ]:
             v = np.array(r[key])
-            axs[0].scatter(np.full(len(v), i + offset), v, color=color, label=label if i == 1 else None, s=42)
+            spread = np.linspace(-0.04, 0.04, len(v)) if len(v) > 1 else np.zeros(len(v))
+            axs[0].scatter(i + offset + spread, v, color=color, label=label if i == 1 else None, s=42)
             if len(v):
                 axs[0].plot([i + offset - 0.06, i + offset + 0.06], [np.median(v)] * 2, color=color, lw=2)
             arrays[r["case"] + "_5ms_" + key] = v
