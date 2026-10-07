@@ -173,12 +173,14 @@ def context(report):
     return arrays, origin, bounds, radius
 
 
-def main(video=False):
+def main(video=False, requested_duration=None):
     candidates = [
         json.loads(p.read_text())
         for p in (BASE / "comparisons").glob("*_legacy.json")
         if "refined_" not in p.stem
     ]
+    if requested_duration is not None:
+        candidates = [r for r in candidates if abs(r["compared_duration_s"] - requested_duration) <= 1e-12]
     selected = {
         case: max(
             [r for r in candidates if r["label"].startswith(case)], key=lambda r: r["compared_duration_s"]
@@ -300,5 +302,8 @@ def main(video=False):
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--video", action="store_true")
+    p.add_argument(
+        "--duration", type=float, help="Select an already completed comparison duration in seconds."
+    )
     a = p.parse_args()
-    main(a.video)
+    main(a.video, a.duration)

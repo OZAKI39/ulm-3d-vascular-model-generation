@@ -259,10 +259,13 @@ def error_and_safety(chosen):
 
 
 def metrics():
+    original_context = FIGURE_CONTEXT.copy()
     for p in sorted((BASE / "comparisons").glob("*_legacy.json")):
         if "refined_" in p.stem:
             continue
         report = read(p)
+        FIGURE_CONTEXT.clear()
+        FIGURE_CONTEXT.update({k: Path(report[k]).parent.name for k in ["reference", "candidate"]})
         label = p.stem
         files = [p.with_name(label + "_" + key + ".npz") for key in ["reference", "candidate"]]
         arrays = [dict(np.load(f)) for f in files]
@@ -301,6 +304,9 @@ def metrics():
             f"R6_MOTION_METRICS_{label}",
             f"Fixed original IDs {report['same_ID_particles']}. Actual sampled positions, no coordinate interpolation. Comparison status: {report['status']}; compared duration {report['compared_duration_s']} s.",
         )
+
+    FIGURE_CONTEXT.clear()
+    FIGURE_CONTEXT.update(original_context)
 
 
 def performance(entries, chosen):

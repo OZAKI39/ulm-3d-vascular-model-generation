@@ -484,7 +484,7 @@ def index():
         '<h1>Stage 5A-R2: evidence index</h1><p><a href="../final/REPORT.md">Measured report</a> · <a href="../final/MOTION_SOLVER_R2_GATE.json">Separated gates</a></p>'
     ]
     for p, metadata, script in rows:
-        link = "../../../../../scripts/stage5a_r2/" + script
+        link = "../../../../scripts/stage5a_r2/" + script
         md.extend(
             [
                 f"## {p.stem}",
