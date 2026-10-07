@@ -98,6 +98,7 @@ def main(window):
     class MeasuredStep(SemiImplicitR3):
         def advance(self, x, r, ids, t, dt, stage):
             before = dict(audit.exclusive)
+            before_qp_calls = self.calls
             start = perf_counter()
             audit.stage = stage
             result, error = None, None
@@ -120,6 +121,7 @@ def main(window):
                         error=error,
                         exclusive_s={k: v - before.get(k, 0) for k, v in audit.exclusive.items()},
                         diagnostics=result[-1] if result is not None else None,
+                        attempted_nonlinear_QP_iterations=self.calls - before_qp_calls,
                     )
                 )
                 audit.stage = None
@@ -208,9 +210,7 @@ def main(window):
                         trial_accepted=accept,
                         count=len(rows),
                         wall_s=sum(r["wall_s"] for r in rows),
-                        nonlinear_iterations=sum(
-                            r["diagnostics"]["iterations"] for r in rows if r["diagnostics"]
-                        ),
+                        nonlinear_iterations=sum(r["attempted_nonlinear_QP_iterations"] for r in rows),
                         failed_calls=sum(r["error"] is not None for r in rows),
                     )
                 )

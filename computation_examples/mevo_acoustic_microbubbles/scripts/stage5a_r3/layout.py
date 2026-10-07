@@ -12,13 +12,15 @@ from mevo_mb.bubbles.motion_sweep_r3 import WallSweepR3
 
 
 def benchmark(task):
-    case, window, layout, optimized, phase = task
+    case, window, layout, optimized, phase, *requested_dt = task
     tracker, sweep0, cfg, state, inputs = load(case)
     fixture = None
     if window == "event":
         fixture = BASE / "diagnosis/reproduction_v1/nominal/terminal.npz"
     elif window == "late":
         fixture = BASE / "fixtures/B3_actual_3.00490000.npz"
+    elif window == "stable":
+        fixture = BASE / "fixtures/B2_actual_3.00300000.npz"
     if fixture:
         state, meta, cache = restore(fixture)
     x = state["positions_m"][state["active"]]
@@ -32,7 +34,7 @@ def benchmark(task):
     step = SemiImplicitR3(
         backend, tracker.cylinder, tracker.evaluate, sweep, nonlinear_strategy="quasi_newton"
     )
-    dt = 2e-9 if window == "initial" else 5e-8
+    dt = requested_dt[0] if requested_dt else 2e-9 if window == "initial" else 5e-8
     out = BASE / "benchmarks/layout_v2" / phase
     out.mkdir(parents=True, exist_ok=True)
     label = f"{case}_{window}_{layout}_{'optimized' if optimized else 'v1'}"

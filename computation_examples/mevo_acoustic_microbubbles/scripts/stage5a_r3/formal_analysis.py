@@ -222,6 +222,29 @@ def main():
                             group,
                         )
                     )
+            if "reference" in entries:
+                previous_fresh = next(
+                    (
+                        r
+                        for r in old
+                        if r["case"] == case
+                        and r["duration"] == duration
+                        and r["kind"] == "reference"
+                        and r.get("repeat") == 0
+                        and r.get("run")
+                    ),
+                    None,
+                )
+                if previous_fresh:
+                    comparisons.append(
+                        add_comparison(
+                            case,
+                            prefix + "_old_fresh_vs_new_fresh",
+                            Path(previous_fresh["run"]) / "trajectories.h5",
+                            local(entries["reference"]["run"]) / "trajectories.h5",
+                            group,
+                        )
+                    )
             # Both legacy lineages retained. Archived 5 ms is compared only to 5 ms.
             if duration == 0.005:
                 comparisons.append(add_comparison(case, prefix + "_archived", archived, candidate, group))
@@ -307,12 +330,20 @@ def main():
             raw_sha256=sha(path),
             qp_count=len(row["qp_calls"]),
             native_candidate_count=len(row["native_candidates"]),
+            mean_QP_adapter_wall_s=float(np.mean([q["wall_s"] for q in row["qp_calls"]]))
+            if row["qp_calls"]
+            else None,
+            QP_adapter_wall_sum_s=sum(q["wall_s"] for q in row["qp_calls"]),
+            native_candidate_wall_sum_s=sum(q["wall_s"] for q in row["native_candidates"]),
         )
     cost["instrumented_windows"] = instrumented
     write(cost_path, cost)
     write(
         BASE / "final/FORMAL_COMPARISONS.json", dict(campaign_complete=campaign["complete"], rows=comparisons)
     )
+    lineage["formal_comparisons"] = comparisons
+    lineage["formal_campaign_complete"] = campaign["complete"]
+    write(BASE / "final/REFERENCE_LINEAGE_AUDIT.json", lineage)
     print(
         dict(comparisons=len(comparisons), audited_runs=len(usages), complete=campaign["complete"]),
         flush=True,
