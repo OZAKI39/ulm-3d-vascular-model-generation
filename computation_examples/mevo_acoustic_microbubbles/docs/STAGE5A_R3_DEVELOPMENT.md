@@ -117,6 +117,11 @@ performance acceptance requirement; this sample alone is not a final gate.
 The earlier R2 fresh reference has zero fixed-ID differences at their common
 stored comparison frames through +3.926405 ms (10 µs comparison clock plus the
 actual shared endpoint); this does not assert a check of every intermediate frame.
+The subsequent `reference_prefix --case B2` audit explicitly checks every one of
+the **13,855 saved frames** in that old interval, including time, full positions,
+active masks, IDs and radii. All arrays exactly match the new reference prefix.
+This additional replay check establishes saved-state consistency over that
+partial interval, without promoting the legacy method as physical truth.
 
 At +5 ms, R3/fresh all-active raw RMS/max differences are **1057.410/3890.946 nm**;
 archived/fresh are **1051.929/3894.183 nm**. R3/archived endpoint RMS/max are

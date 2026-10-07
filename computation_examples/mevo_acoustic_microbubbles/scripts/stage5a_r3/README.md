@@ -87,6 +87,8 @@ altering source identities or trajectory coordinates.
 ```bash
 python -m scripts.stage5a_r3.resource_report
 python -m scripts.stage5a_r3.formal_analysis
+python -m scripts.stage5a_r3.reference_prefix --case B2
+python -m scripts.stage5a_r3.reference_prefix --case B3
 python -m scripts.stage5a_r3.analyze_early
 python -m scripts.stage5a_r3.gate
 python -m scripts.stage5a_r3.figures
