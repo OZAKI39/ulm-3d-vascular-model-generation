@@ -11,6 +11,8 @@ from scripts.stage5a_r3.common import BASE, R2, read, write, sha, identity
 def sample_all(path, clock):
     with h5py.File(path) as h:
         times = h["time_s"][:]
+        if np.any(np.asarray(clock) < times[0] - 1e-14) or np.any(np.asarray(clock) > times[-1] + 1e-14):
+            raise ValueError("Requested comparison clock exceeds actual stored interval")
         ids = h["particle_id"][:]
         radii = h["radii_m"][:]
         masks = h["active"][:]
@@ -27,11 +29,19 @@ def sample_all(path, clock):
         unique, inverse = np.unique(indices, return_inverse=True)
         positions = h["positions_m"][unique][:, mask][inverse]
         uncertainty = np.zeros(len(indices))
+        # A neighboring stored-frame chord is a rigorous hold-last-state bound
+        # only for the explicitly recorded straight accepted path. Legacy
+        # projection trajectories do not supply that continuous-path guarantee.
+        straight = bool(h.attrs.get("all_accepted_substeps_recorded", False)) and str(
+            h.attrs.get("actual_path", "")
+        ).startswith("piecewise linear accepted half steps")
+        certified = np.ones(len(indices), bool)
         for k, j in enumerate(indices):
             if j + 1 < len(times) and clock[k] - times[j] > 1e-14:
                 uncertainty[k] = np.linalg.norm(
                     h["positions_m"][j + 1][mask] - h["positions_m"][j][mask], axis=1
                 ).max()
+                certified[k] = straight
         return dict(
             positions=positions,
             ids=ids[mask],
@@ -39,6 +49,7 @@ def sample_all(path, clock):
             time=times[indices],
             index=indices,
             uncertainty_m=uncertainty,
+            uncertainty_is_bound=certified,
             initial_full=h["positions_m"][0],
             active=mask,
             all_ids=ids,
@@ -102,6 +113,8 @@ def compare_all(case, name, left, right, group):
         right_frame_index=b["index"],
         left_sampling_bound_m=a["uncertainty_m"],
         right_sampling_bound_m=b["uncertainty_m"],
+        left_sampling_bound_certified=a["uncertainty_is_bound"],
+        right_sampling_bound_certified=b["uncertainty_is_bound"],
     )
     for label, mask in subsets.items():
         errors = metrics(a["positions"][:, mask], b["positions"][:, mask])
@@ -146,6 +159,9 @@ def compare_all(case, name, left, right, group):
         sample_sha256=sha(output),
         sample_age_max_s=[float(np.max(clock - a["time"])), float(np.max(clock - b["time"]))],
         sampling_bound_max_m=[float(a["uncertainty_m"].max()), float(b["uncertainty_m"].max())],
+        sampling_audit_version=2,
+        sampling_bound_certified=bool(a["uncertainty_is_bound"].all() and b["uncertainty_is_bound"].all()),
+        sampling_semantics="Exact stored common times need no hold error. At unmatched times, the neighboring-frame chord is a bound only for explicitly stored straight accepted paths; otherwise it is a descriptive displacement scale, not a rigorous legacy-path bound.",
         status="NOT_EVALUABLE",
         reason="Descriptive pre-R3 lineage audit; no independent all-active trajectory error bound established",
         no_coordinate_interpolation=True,

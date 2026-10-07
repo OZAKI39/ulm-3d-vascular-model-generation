@@ -39,7 +39,9 @@ def cluster_report(comparison, original_group):
         limits = np.r_[np.full(5, 0.02), budget]
         # A conservative unknown sampling interval never silently passes a boundary.
         status = (
-            "PASS"
+            "NOT_EVALUABLE"
+            if not comparison.get("sampling_bound_certified", False)
+            else "PASS"
             if np.all(observed + uncertainties <= limits)
             else "FAIL"
             if np.any(observed - uncertainties > limits)
@@ -74,7 +76,9 @@ def add_comparison(case, name, left, right, group):
     hashes = [sha(left), sha(right)]
     if cache.exists():
         previous = read(cache)
-        if [previous["left_sha256"], previous["right_sha256"]] == hashes:
+        if [previous["left_sha256"], previous["right_sha256"]] == hashes and previous.get(
+            "sampling_audit_version"
+        ) == 2:
             return previous
     result = compare_all(case, name, left, right, group)
     result["reason"] = (
@@ -340,6 +344,9 @@ def main():
             reason="Independent all-active global bound not established; no automatic promotion",
             pre_R3=read(prior),
             formal=comparisons,
+            early_B2_local_precision=read(BASE / "final/B2_EARLY_PRECISION_AUDIT.json")
+            if (BASE / "final/B2_EARLY_PRECISION_AUDIT.json").exists()
+            else None,
             campaign_complete=campaign["complete"],
         ),
     )
@@ -377,6 +384,9 @@ def main():
     )
     lineage["formal_comparisons"] = comparisons
     lineage["formal_campaign_complete"] = campaign["complete"]
+    lineage["historical_sampling_bound_clarification"] = (
+        "Pre-R3 reports retain their original values and identities. Their neighboring-frame displacement labeled sampling bound is not a proven bound for unmatched legacy times with projection; treat it as a displacement scale. V2 postprocessing records a certification flag and withholds consistency gates when that guarantee is absent. Exact common-frame comparisons are unaffected."
+    )
     write(BASE / "final/REFERENCE_LINEAGE_AUDIT.json", lineage)
     print(
         dict(comparisons=len(comparisons), audited_runs=len(usages), complete=campaign["complete"]),
