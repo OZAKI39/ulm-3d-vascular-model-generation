@@ -139,6 +139,7 @@ def main():
     lines += [
         f"- Independent two-job throughput speedup: {resources['independent_throughput']['speedup']:.4g}×, separately labeled.",
         "- CPU affinity/cgroup, per-process CPU time, actual worker threads, memory and GPU transfer/kernel/synchronization records are retained. Device/host-wide utilization is not evidence of solver parallelism.",
+        "- Formal scientific jobs run sequentially with fixed case-specific layout, worker and BLAS limits. Some jobs overlap disclosed read-only transfers of closed artifacts (nice=19, idle I/O, ≤512 KiB/s); this is not perfect I/O isolation. Transfer intervals are retained in diagnosis/*SYNC*.json, and no time is subtracted from measured completion wall. Host scheduling and transfer variability remain timing limitations.",
         "- G7 and DYNAMIC_COST_PROFILE.json partition actual force/geometry/assembly/QP/nonlinear/full-half work without summing overlapping timers. Instrumented diagnostics are separate from formal completion timing.",
         "",
         "## Tests, budgets and provenance",
