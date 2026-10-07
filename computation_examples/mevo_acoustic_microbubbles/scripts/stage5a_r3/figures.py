@@ -90,7 +90,7 @@ def g1():
     wall = pv.read(wall_path())
     bounds = [-5.0, 5.0, -5.0, 5.0, -5.0, 5.0]
     decorate(plot, wall, bounds, origin, False, "Actual finite WALL and bubble 152")
-    positions = new["positions_m"][0][new["active"][0]]
+    positions = new["positions_m"][0][new["active"][0] & (new["particle_id"] != 152)]
     glyph(plot, (positions - origin) * 1e6, radius * 1e6, BLUE)
     glyph(plot, np.zeros((1, 3)), radius * 1e6, "#75a8ce")
     plot.add_text(

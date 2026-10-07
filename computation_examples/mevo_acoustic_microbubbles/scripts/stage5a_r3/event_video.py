@@ -78,7 +78,8 @@ def main():
             True,
             "R2: original stall" if col == 0 else "R3: continued motion",
         )
-        points = glyph(plot, (data["positions_m"][0][data["active"][0]] - origin) * 1e6, radius * 1e6, BLUE)
+        other = data["active"][0] & (data["particle_id"] != 152)
+        points = glyph(plot, (data["positions_m"][0][other] - origin) * 1e6, radius * 1e6, BLUE)
         target = glyph(
             plot, (data["positions_m"][0, indices[col]][None] - origin) * 1e6, radius * 1e6, "#75a8ce"
         )
@@ -125,7 +126,7 @@ def main():
                 mask = data["active"][k]
                 assert np.array_equal(mask, data["active"][0])
                 actors[col][0].points = x[mask] * 1e6
-                actors[col][1].points = (x[mask] - origin) * 1e6
+                actors[col][1].points = (x[mask & (data["particle_id"] != 152)] - origin) * 1e6
                 actors[col][2].points = (x[indices[col]][None] - origin) * 1e6
                 markers[col].points = trace[col][k : k + 1]
                 plot.subplot(1, col)
