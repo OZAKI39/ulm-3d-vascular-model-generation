@@ -69,6 +69,14 @@ all prior charges forward. V1's untouched original scheduler ledger is resolved
 by `CAMPAIGN_R3_V1/CLOSED_RESULT.json`; it is not an ongoing job. V2 follows a
 separate source-bound 124-test gate and six newly selected numerical holdouts.
 
+`PROTECTED_REPEAT_PLAN.json` separately preregisters two more protected B3 R2
++5 ms repeats within the existing 5400 s R2 group cap. The original V2 scheduler
+ledger remains intact; `current.py` merges the separately closed supplement for
+reporting and does not declare overall completion while it is pending. The
+immutable follow-through executable is `248623f9ea7242d8ed938ef191217c98f036a625`.
+Its managed watcher only reads completion state until all formal work closes,
+then runs the supplement and six finite diagnostic windows sequentially.
+
 ## Postprocessing
 
 Postprocessing can run locally after syncing the completed artifacts. Set
@@ -87,7 +95,17 @@ python -m scripts.stage5a_r3.early_figures
 python -m scripts.stage5a_r3.event_video
 python -m scripts.stage5a_r3.full_video --case B2
 python -m scripts.stage5a_r3.full_video --case B3
+python -m scripts.stage5a_r3.budget_ledger
+python -m scripts.stage5a_r3.report
+python -m scripts.stage5a_r3.review
 ```
+
+Use `artifacts --server` only after scientific jobs finish, synchronize the server
+manifest, then run `artifacts` locally. It validates strict JSON, inventories
+large assets and original reference paths/hashes, and writes the size-bounded
+`GIT_ARTIFACTS.txt` selection. The review directory retains full B2 fixtures and
+complete lossless failed-run ledgers. `sync_completed` transfers only closed
+run files with low-priority bounded I/O and records the transfer timing conditions.
 
 `dynamic_audit --window initial|stable|S0|event|B3_global_costly|B3_serial_costly` is an additional **post-campaign**
 instrumented diagnostic. It refuses to run while formal timing is active. Its
@@ -124,3 +142,10 @@ own explicitly labeled nanometre axes.
    source provenance correction and final delivery identity.
 
 No figure or smooth animation supersedes the quantitative precision gate.
+
+Common-clock comparisons never interpolate positions. At unmatched legacy
+times the neighboring-frame displacement is a scale, not a rigorous bound for
+unrecorded projection motion. A certification flag now withholds a consistency
+PASS when that guarantee is absent; original historical records are preserved
+with an explicit clarification. Worst-neighbor figures use every stored
+accepted state, with all physical axes on the same scale.

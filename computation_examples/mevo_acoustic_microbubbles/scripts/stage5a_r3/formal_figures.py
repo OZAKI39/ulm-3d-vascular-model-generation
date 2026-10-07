@@ -64,15 +64,16 @@ def g4():
         nb = np.load(local(r["worst_neighborhood"]))
         main = int(np.flatnonzero(nb["particle_id"] == nb["worst_particle_id"])[0])
         origin = nb["left_positions_m"][0, main]
-        union = np.concatenate([nb[k].reshape(-1, 3) for k in ["left_positions_m", "right_positions_m"]])
+        trace_keys = ["left_all_accepted_positions_m", "right_all_accepted_positions_m"]
+        union = np.concatenate([nb[k].reshape(-1, 3) for k in trace_keys])
         extent = (union - origin) * 1e6
         center = (extent.min(0) + extent.max(0)) / 2
         half = max(np.ptp(extent, axis=0)) * 0.55
         arrays[case + "_neighbor_particle_id"] = nb["particle_id"]
         arrays[case + "_neighbor_origin_m"] = origin
         for key, color, label in [
-            ("left_positions_m", RED, "Refined"),
-            ("right_positions_m", BLUE, "Nominal"),
+            (trace_keys[0], RED, "Refined"),
+            (trace_keys[1], BLUE, "Nominal"),
         ]:
             x = (nb[key] - origin) * 1e6
             arrays[case + "_neighbor_" + key] = nb[key]
@@ -82,6 +83,7 @@ def g4():
                     color=color,
                     alpha=1 if k == main else 0.24,
                     lw=1.5 if k == main else 0.5,
+                    ls="--" if label == "Refined" else "-",
                     label=label if k == main else None,
                 )
         ax.set(
@@ -98,7 +100,7 @@ def g4():
     save(
         fig,
         "G4_all_active_formal_precision",
-        "All active IDs preserved, no rematching. Actual stored frames at common clock; sampling bounds retained in comparison report. Independent global error bound is NOT_EVALUABLE.",
+        "All active IDs preserved, no rematching. Error statistics use actual stored frames at common clock, with sampling certification retained. Worst-neighbor paths use every stored accepted state at original coordinates, equal physical axis scales, and no coordinate interpolation. Independent global error bound is NOT_EVALUABLE.",
         arrays,
     )
 
@@ -168,6 +170,53 @@ def g6():
         fig,
         "G6_full_motion_continuous_safety",
         "Real all-active displacements and every accepted continuous certificate. Negative tolerance-band gaps retained. S0 endpoint nonlinear KKT is absent, not zero. Rejected candidates are excluded from accepted residuals.",
+        arrays,
+    )
+
+
+def g4b():
+    rows = source(BASE / "final/FORMAL_COMPARISONS.json")["rows"]
+    fig, axs = plt.subplots(2, 2, figsize=(12, 8), layout="constrained")
+    arrays = {}
+    modes = [
+        ("raw", BLUE, "Raw"),
+        ("translation_removed", RED, "Translation removed"),
+        ("rigid_fit", PURPLE, "Rigid fit"),
+    ]
+    names = ["all_active", "original_group", "complement"]
+    for col, case in enumerate(["B2", "B3"]):
+        r = next(
+            x for x in rows if x["case"] == case and x["name"].endswith("_0.005_refined") and x.get("samples")
+        )
+        x = np.arange(3)
+        labels = [
+            label + f"\nn = {r['groups'][name]['count']}"
+            for name, label in zip(names, ["All active", "Original group", "Complement"])
+        ]
+        for row, metric, target in [(0, "rms", 17.8), (1, "max", 89.0)]:
+            ax = axs[row, col]
+            for k, (mode, color, label) in enumerate(modes):
+                values = (
+                    np.array([r["groups"][name]["errors_m"][mode]["endpoint"][metric] for name in names])
+                    * 1e9
+                )
+                ax.bar(x + (k - 1) * 0.24, values, width=0.22, color=color, label=label)
+                arrays[f"{case}_{metric}_{mode}_nm"] = values
+            ax.axhline(target, color=GRAY, ls="--", label="Frozen all-active target")
+            ax.set(
+                xticks=x,
+                xticklabels=labels,
+                yscale="log",
+                ylabel=f"Endpoint {metric.upper()} difference (nm)",
+                title=f"{case}: nominal / refined | +5 ms",
+            )
+            if row == 0:
+                ax.legend(fontsize=8)
+        arrays[case + "_groups"] = np.array(names)
+    save(
+        fig,
+        "G4b_original_group_and_complement",
+        "Every active particle is included exactly once in the original group or its complement. Raw/translation-removed/rigid-fit endpoint errors are descriptive fixed-ID comparisons. The frozen all-active resolution targets are shown as guides; small original-group or centroid errors do not establish all-active accuracy. No independent global error bound is available.",
         arrays,
     )
 
@@ -395,6 +444,7 @@ def g8():
 
 if __name__ == "__main__":
     g4()
+    g4b()
     g5c()
     g6()
     g7()

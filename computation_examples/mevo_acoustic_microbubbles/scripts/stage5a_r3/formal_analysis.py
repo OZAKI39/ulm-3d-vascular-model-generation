@@ -76,9 +76,11 @@ def add_comparison(case, name, left, right, group):
     hashes = [sha(left), sha(right)]
     if cache.exists():
         previous = read(cache)
-        if [previous["left_sha256"], previous["right_sha256"]] == hashes and previous.get(
-            "sampling_audit_version"
-        ) == 2:
+        if (
+            [previous["left_sha256"], previous["right_sha256"]] == hashes
+            and previous.get("sampling_audit_version") == 2
+            and previous.get("neighbor_trace_version") == 2
+        ):
             return previous
     result = compare_all(case, name, left, right, group)
     result["reason"] = (
@@ -98,6 +100,12 @@ def add_comparison(case, name, left, right, group):
         ]
     )
     output = BASE / "comparisons" / f"{case}_{name}_WORST_NEIGHBORS.npz"
+    full_traces = {}
+    for label, path in [("left", left), ("right", right)]:
+        with h5py.File(path) as h:
+            index = np.array([int(np.flatnonzero(h["particle_id"][:] == pid)[0]) for pid in ids[near]])
+            full_traces[label + "_all_accepted_time_s"] = h["time_s"][:]
+            full_traces[label + "_all_accepted_positions_m"] = h["positions_m"][:, index]
     np.savez_compressed(
         output,
         particle_id=ids[near],
@@ -108,8 +116,11 @@ def add_comparison(case, name, left, right, group):
         left_positions_m=a[:, near],
         right_positions_m=b[:, near],
         radii_m=arrays["radii_m"][near],
+        **full_traces,
     )
     result["worst_neighborhood"] = str(output)
+    result["neighbor_trace_version"] = 2
+    result["worst_neighborhood_sha256"] = sha(output)
     radius = float(arrays["radii_m"][0])
     targets = dict(RMS_m=0.01 * radius, max_m=0.05 * radius)
     series_rms = np.sqrt(np.mean(errors**2, axis=1))

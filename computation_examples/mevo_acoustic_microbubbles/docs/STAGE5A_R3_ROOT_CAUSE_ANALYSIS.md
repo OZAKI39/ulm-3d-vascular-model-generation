@@ -189,3 +189,17 @@ are identified explicitly, so their comparison with a warm formal continuation
 does not isolate cache versus time-controller effects. The same-QP, rollback
 and restart audits address different questions and are not overextended here.
 See `B2_EARLY_PRECISION_AUDIT.json` and G5b for actual-frame data and correlations.
+
+The completed B3 nominal/refined +5 ms pair likewise does not establish
+all-active accuracy: endpoint RMS/max **112.894/540.454 nm**, and sampled maximum
+**662.128 nm** at +210 µs (ID 117). The original 91-ID group's endpoint RMS is
+**3.263 nm**, whereas the remaining 98 IDs have endpoint RMS **156.748 nm**.
+The time of the worst transient and the worst endpoint particle need not match.
+For B2, the original 75-ID group's endpoint RMS is **48.956 nm**, despite its
+aggregate Rg/quartile/centroid checks passing; its 111-ID complement is **0.332 nm**.
+These observations reinforce why all-active, fixed-ID errors are a separate gate.
+
+The B3 V1-global / V2-component-serial +5 ms endpoint comparison is much smaller:
+RMS/max **2.248/8.673 nm**, with sampled maximum **33.633 nm** and maximum sampled
+RMS **3.133 nm**. This resource-layout consistency passes the frozen numerical
+resolution targets, but is not bitwise identity or an independent accuracy bound.

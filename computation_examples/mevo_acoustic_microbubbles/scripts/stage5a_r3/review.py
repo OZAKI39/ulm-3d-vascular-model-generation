@@ -23,9 +23,10 @@ REQUIRED = [
 
 def main():
     assert campaign()["complete"]
-    from scripts.stage5a_r3.artifacts import compress_ledgers
+    from scripts.stage5a_r3.artifacts import compress_ledgers, compact_comparisons
 
     compress_ledgers()
+    compact_comparisons()
     review = BASE / "review"
     review.mkdir(exist_ok=True)
     rows = []

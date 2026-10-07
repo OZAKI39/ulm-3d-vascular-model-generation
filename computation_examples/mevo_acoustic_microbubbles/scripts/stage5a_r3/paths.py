@@ -12,6 +12,14 @@ def local(path):
     for marker, root in [
         ("/workspace/mevo_acoustic_microbubbles_stage5a_r3/", ROOT),
         ("/workspace/mevo_acoustic_microbubbles_stage5a_r2/", R2ROOT),
+        (
+            "/home/lzy/projects/computation_examples/_archives/mevo_stage5a_r3_20261007/computation_examples/mevo_acoustic_microbubbles/",
+            ROOT,
+        ),
+        (
+            "/home/lzy/projects/computation_examples/_archives/mevo_stage5a_r2_20261006/computation_examples/mevo_acoustic_microbubbles/",
+            R2ROOT,
+        ),
     ]:
         if text.startswith(marker):
             relative = text[len(marker) :]

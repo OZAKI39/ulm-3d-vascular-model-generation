@@ -51,11 +51,59 @@ def compress_ledgers():
                     out.write_bytes(encoded)
 
 
+def compact_comparisons():
+    """Keep every actual common-frame coordinate; omit only recomputable errors."""
+    import numpy as np
+    from scripts.stage5a_r3.paths import local
+
+    rows = []
+    for report in read(BASE / "final/FORMAL_COMPARISONS.json")["rows"]:
+        if not report.get("samples"):
+            continue
+        source = local(report["samples"])
+        target = BASE / "review/all_active_inputs" / source.name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with np.load(source) as z:
+            values = {k: z[k] for k in z.files if not k.endswith("errors_m")}
+        values["original_group_particle_id"] = np.array(report["groups"]["original_group"]["particle_ids"])
+        np.savez_compressed(target, **values)
+        rows.append(
+            dict(
+                case=report["case"],
+                name=report["name"],
+                original=str(source),
+                original_sha256=sha(source),
+                compact=str(target.relative_to(ROOT)),
+                compact_sha256=sha(target),
+                retained_keys=sorted(values),
+                expected_groups=report["groups"],
+                bytes=target.stat().st_size,
+            )
+        )
+    write(
+        BASE / "review/ALL_ACTIVE_COMPACT_INDEX.json",
+        dict(
+            rows=rows,
+            policy="Every original stored common-frame coordinate, ID, radius and clock retained bit-for-bit. Only derived error arrays are omitted and can be recomputed. This is not a downsampled replacement of full accepted trajectories.",
+            reproduce="python -m scripts.stage5a_r3.recompute_review",
+        ),
+    )
+
+
 def external_inputs():
     references = {}
     for p in BASE.rglob("IDENTITY.json"):
         for name, digest in read(p).get("input_sha256", {}).items():
             references.setdefault(name, {}).setdefault(digest, []).append(str(p))
+    lineage_path = BASE / "final/REFERENCE_LINEAGE_AUDIT.json"
+    for row in read(lineage_path)["rows"]:
+        for comparison in row["comparisons"]:
+            for side in ["left", "right"]:
+                name, digest = comparison[side], comparison[side + "_sha256"]
+                assert name.startswith("/workspace/"), (
+                    "Original lineage should retain actual server source paths"
+                )
+                references.setdefault(name, {}).setdefault(digest, []).append(str(lineage_path))
     rows = []
     for name, hashes in sorted(references.items()):
         p = Path(name)
@@ -76,6 +124,12 @@ def external_inputs():
 
 def selected(path):
     relative = path.relative_to(BASE)
+    if (
+        relative.parts[:2] == ("figures", "data")
+        and path.suffix == ".npz"
+        and path.stat().st_size <= 16 * 2**20
+    ):
+        return True  # Necessary underlying G1–G8 data, not redundant raw HDF5.
     if relative.parts[0] == "review" and path.suffix == ".h5" and path.stat().st_size <= 4 * 2**20:
         return True
     if path.stat().st_size > 4 * 2**20 or path.suffix in [".h5", ".mp4", ".zip", ".pstats"]:
@@ -96,6 +150,7 @@ def main(server=False):
     assert campaign()["complete"], "Do not hash or package mutable campaign outputs"
     if not server:
         compress_ledgers()
+        compact_comparisons()
     rows, invalid, checked = [], [], 0
     for p in sorted(BASE.rglob("*")):
         if not p.is_file() or p.name in EXCLUDED or "__pycache__" in p.parts:
@@ -158,7 +213,7 @@ def main(server=False):
             external_input_files=remote["external_input_files"],
             excluded_from_self_hash=sorted(EXCLUDED),
             remote_manifest_sha256=sha(remote_path),
-            policy="Raw trajectories, complete rejected-candidate arrays, source ZIPs and videos stay at verified actual paths. Lightweight fixtures, audit JSON, figures/data and losslessly compressed full accepted/rejected ledgers are selected. No scientific record is downsampled in place.",
+            policy="Raw trajectories, complete rejected-candidate arrays, source ZIPs and videos stay at verified actual paths. Lightweight fixtures, audit JSON and losslessly compressed full accepted/rejected ledgers use a 4 MiB per-file cap; necessary figure-data NPZs use 16 MiB. Compact comparison coordinates retain every common-frame value while omitting recomputable error arrays. No scientific record is downsampled in place.",
         ),
     )
     files = [r["relative_path"] for r in rows if r["git_selected"]]

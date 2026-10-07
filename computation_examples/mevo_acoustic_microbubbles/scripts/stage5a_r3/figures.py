@@ -1,6 +1,7 @@
 """G1–G8 from actual states and retained diagnostics; PNG/PDF plus source arrays."""
 
 import h5py
+import inspect
 import numpy as np
 import matplotlib
 
@@ -46,6 +47,9 @@ def history(path):
 
 
 def save(fig, name, caption, arrays=None):
+    from pathlib import Path
+
+    caller = Path(inspect.currentframe().f_back.f_code.co_filename).resolve()
     OUT.mkdir(parents=True, exist_ok=True)
     DATA.mkdir(parents=True, exist_ok=True)
     if arrays:
@@ -58,7 +62,9 @@ def save(fig, name, caption, arrays=None):
         dict(
             caption=caption,
             sources=SOURCES.copy(),
-            script_sha256=sha(__file__),
+            rendering_script=str(caller),
+            script_sha256=sha(caller),
+            shared_plot_helper_sha256=sha(__file__),
             array_file=str(DATA / (name + ".npz")) if arrays else None,
             units="SI in stored trajectories; axes state display unit conversions",
         ),
