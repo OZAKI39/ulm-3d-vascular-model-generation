@@ -106,3 +106,11 @@ matched dt and unchanged quality criteria. Do not implement another contact
 variant or tune the force to recover 20 us. One contact-diagnostic mature branch
 may be retained as explicitly unqualified evidence, not in the control effect
 claim or qualified dataset. The seven-branch limit is unchanged.
+
+Field-only eligibility repair: the three initial phase patterns changed ROI RMS
+pressure by 16.7–27.5%, exceeding the unchanged 10% matching bound. Preserve those
+records. Before the phase-only trajectory, set Y+ to +30 degrees and solve the
+single trigonometric RMS equation for Y−, choosing the root nearest zero. Source
+amplitudes/enables remain exactly unchanged. This adds one analytic field control,
+not a morphology-driven search, and keeps the same mature state and observation
+criteria. Record it in a separate run rather than rewriting the original selection.
