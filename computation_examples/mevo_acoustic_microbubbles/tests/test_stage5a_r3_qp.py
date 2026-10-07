@@ -68,3 +68,36 @@ def test_finite_wall_feature_rows_do_not_add_lubrication_terms():
     assert np.array_equal(before.matrix.toarray(), after.matrix.toarray())
     assert sum(k[0] == "wall_feature" for k in c.ids) == 2
     assert np.allclose(c.matrix.toarray()[-2:], [[1, 0, 0], [0, 1, 0]])
+
+
+def test_checkpoint_roundtrip_keeps_exact_accepted_cache(tmp_path):
+    from mevo_mb.bubbles.constrained_motion import AcceptedCache
+    from scripts.stage5a_r3.run import checkpoint, restore
+
+    cache = AcceptedCache(
+        (7, 152),
+        {7: np.array([1.0, 2.0, 3.0]), 152: np.array([4.0, 5.0, 6.0])},
+        {("pair", 7, 152): 1e-10, ("wall_feature", 152, 3178): 2e-11},
+        (("pair", 7, 152),),
+        "shape-key",
+    )
+    x = np.array([[0.0, 1.0, 2.0], [3.0, 4.0, 5.0]])
+    p = tmp_path / "checkpoint.npz"
+    controller = dict(next_dt=50e-9, recovery_steps_left=3, elapsed_s=1e-6)
+    checkpoint(
+        p,
+        x,
+        np.zeros_like(x),
+        np.full(2, 1.78e-6),
+        np.array([7, 152]),
+        np.ones(2, bool),
+        3.000001,
+        controller,
+        cache,
+        "identity",
+    )
+    data, meta, new = restore(p)
+    assert np.array_equal(data["positions_m"], x)
+    assert meta["controller"] == controller
+    assert new.dual == cache.dual and new.active == cache.active and new.particle_ids == cache.particle_ids
+    assert all(np.array_equal(new.primal[k], cache.primal[k]) for k in cache.primal)
