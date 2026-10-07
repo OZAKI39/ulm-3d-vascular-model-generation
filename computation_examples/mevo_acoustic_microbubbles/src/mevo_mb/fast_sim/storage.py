@@ -17,10 +17,13 @@ def save_run(path,result,physics,identity,config):
                        identity_json=json.dumps(identity),config_json=json.dumps(config),
                        cluster_definitions_json=json.dumps(DEFINITIONS))
         h['time_s']=result['time_s']; h['control_index']=result['control_index']
+        if 'edge_event_ids' in result:
+            h['edge_events/batch_i_j_linked']=result['edge_event_ids']; h['edge_events/time_s']=result['edge_event_time_s']
+            h['edge_events'].attrs['scope']='Every accepted substep adjacency change; sorted by actual physical time; no interpolation'
         h['particle_id']=np.arange(positions.shape[2]); h['radii_m']=np.full(positions.shape[2],physics.radius_m)
         h.create_dataset('positions_m',data=positions,compression='gzip',compression_opts=1)
         for key,values in metrics.items(): h.create_dataset('metrics/'+key,data=values,compression='gzip',compression_opts=1)
-        h.attrs['sampled_lineage_json']=json.dumps(events)
+        h.create_dataset('sampled_lineage_json',data=json.dumps(events),dtype=h5py.string_dtype())
         h.attrs['controls_json']=json.dumps(result['summary']['controls'])
     result['summary'].update(metrics_wall_s=metrics_s,hdf5_wall_s=perf_counter()-start,
         dataset_wall_s=result['summary']['wall_s']+metrics_s+perf_counter()-start,

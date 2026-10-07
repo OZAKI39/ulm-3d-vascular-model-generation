@@ -33,6 +33,12 @@ class FastSimulator:
         self.valid=arr(response.valid,wp.int32); self.kv=arr(complex_vectors(response.knot_values),wp.vec2d)
         self.kval=arr(response.knot_valid,wp.int32)
         self.error=wp.zeros(1,dtype=wp.int32,device=self.device)
+        self.adjacency=wp.zeros((self.total,self.n),dtype=wp.int32,device=self.device)
+        self.event_count=wp.zeros(1,dtype=wp.int32,device=self.device)
+        self.event_ids=wp.zeros((200000,4),dtype=wp.int32,device=self.device)
+        self.event_time=wp.zeros(200000,dtype=wp.float64,device=self.device)
+        self.step_count=wp.zeros(1,dtype=wp.int32,device=self.device)
+        self.time_origin=wp.zeros(1,dtype=wp.float64,device=self.device)
         self.diag=wp.zeros((self.total,10),dtype=wp.float64,device=self.device)
         self.uniform_p=wp.zeros(1,dtype=wp.vec2d,device=self.device)
         self.shape=(2,2,2) if basis is None else basis.shape
@@ -47,6 +53,9 @@ class FastSimulator:
         self.x.assign(self.initial.reshape(-1,3))
         diag=np.zeros((self.total,10)); diag[:,0]=np.inf
         self.diag.assign(diag); self.error.zero_()
+        delta=self.initial[:,:,None,:]-self.initial[:,None,:,:]
+        self.adjacency.assign((np.linalg.norm(delta,axis=-1)<=2.1*self.p.radius_m).astype(np.int32).reshape(self.total,self.n))
+        self.event_count.zero_(); self.step_count.zero_(); self.time_origin.zero_()
 
     def control(self, event):
         if self.basis is None:
@@ -89,7 +98,9 @@ class FastSimulator:
             out=self.tmp2 if it%2==0 else self.tmp1
             self.launch(k.contact,self.total,[x,out,self.n,p.radius_m,p.contact_relaxation,self.diag,self.error])
             x=out
-        self.launch(k.accept,self.total,[x,self.x,self.n,p.radius_m,self.diag,self.error])
+        self.launch(k.accept,self.total,[x,self.x,self.n,p.radius_m,self.diag,self.error,self.adjacency,
+            self.event_count,self.event_ids,self.event_time,self.step_count,self.time_origin,dt])
+        self.launch(k.advance_clock,1,[self.step_count])
 
     def graph(self,dt,count):
         key=(float(dt),int(count))
@@ -110,7 +121,7 @@ class FastSimulator:
 
     def state(self):
         code=int(self.error.numpy()[0])
-        if code: raise RuntimeError(f'GPU validity error bits={code}: field=1 table=2 coincident=4 nonfinite=8')
+        if code: raise RuntimeError(f'GPU validity error bits={code}: field=1 table=2 coincident=4 nonfinite=8 event_capacity=16 classical_domain=32')
         return self.x.numpy().reshape(self.batch,self.n,3)
 
     def quality(self):
@@ -137,6 +148,7 @@ class FastSimulator:
         try:
             for seg,event in enumerate(events):
                 start=float(event['time_s']); end=float(events[seg+1]['time_s']) if seg+1<len(events) else duration_s
+                self.time_origin.assign(np.array([start])); self.step_count.zero_()
                 t0=perf_counter(); controls.append(self.control(event)); control_cost+=perf_counter()-t0
                 if times[-1]==start: control_index[-1]=seg
                 steps=int(np.floor((end-start)/dt_s+1e-10)); stride=max(1,int(round(sample_interval_s/dt_s)))
@@ -152,13 +164,18 @@ class FastSimulator:
                         raise RuntimeError('Severe overlap: stop, retain failed attempt')
                 remaining=end-(start+steps*dt_s)
                 if remaining>max(1e-15,dt_s*1e-10):
+                    self.time_origin.assign(np.array([start+steps*dt_s])); self.step_count.zero_()
                     self.advance(remaining/substeps,substeps,graphs); macro+=1; actual+=substeps
                     frames.append(self.state()); times.append(end); control_index.append(seg)
                 else: times[-1]=end
         except (RuntimeError,TimeoutError) as exc:
             status='FAILED'; reason=str(exc)
         wp.synchronize_device(self.device); elapsed=perf_counter()-started
+        count=min(int(self.event_count.numpy()[0]),self.event_time.shape[0])
+        edge_ids=self.event_ids.numpy()[:count]; edge_times=self.event_time.numpy()[:count]
+        order=np.lexsort((edge_ids[:,2],edge_ids[:,1],edge_ids[:,0],edge_times))
         return dict(time_s=np.array(times),positions_m=np.array(frames),control_index=np.array(control_index),
+                    edge_event_ids=edge_ids[order],edge_event_time_s=edge_times[order],
                     summary=dict(status=status,reason=reason,completed_physical_s=float(times[-1]),wall_s=elapsed,
                     macro_step_count=macro,actual_substep_count=actual,effective_steps_per_physical_second=actual/times[-1] if times[-1]>0 else None,
                     nominal_dt_s=dt_s,substeps_per_macro=substeps,compile_s=self.compile_s,graph_capture_s=self.capture_s,

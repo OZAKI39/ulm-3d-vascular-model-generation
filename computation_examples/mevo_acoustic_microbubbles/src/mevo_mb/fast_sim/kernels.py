@@ -82,6 +82,8 @@ def pair_force(x: wp.array(dtype=wp.vec3d), v: wp.array2d(dtype=wp.vec2d),
         if d2<=wp.float64(0.0):
             wp.atomic_or(error,0,4)
         else:
+            if regularize==0 and wp.sqrt(d2)<wp.float64(10.0)*radius:
+                wp.atomic_or(error,0,32)
             if regularize==1:
                 q=wp.min(wp.sqrt(d2)/(transition*wp.float64(2.0)*radius),wp.float64(1.0))
                 core=soft_core*wp.float64(2.0)*radius*(wp.float64(1.0)-q)*(wp.float64(1.0)-q)
@@ -155,12 +157,33 @@ def contact(x: wp.array(dtype=wp.vec3d), out: wp.array(dtype=wp.vec3d), n: int,
 
 @wp.kernel
 def accept(x: wp.array(dtype=wp.vec3d), out: wp.array(dtype=wp.vec3d), n: int,
-           radius: wp.float64, diag: wp.array2d(dtype=wp.float64), error: wp.array(dtype=int)):
+           radius: wp.float64, diag: wp.array2d(dtype=wp.float64), error: wp.array(dtype=int),
+           adjacency: wp.array2d(dtype=int), event_count: wp.array(dtype=int),
+           event_ids: wp.array2d(dtype=int), event_time: wp.array(dtype=wp.float64),
+           step_count: wp.array(dtype=int), time_origin: wp.array(dtype=wp.float64),dt: wp.float64):
     i=wp.tid(); start=(i//n)*n; penetration=wp.float64(0.0)
     for j in range(start,start+n):
         if i!=j:
-            penetration=wp.max(penetration,wp.float64(2.0)*radius-wp.length(x[i]-x[j]))
+            gap=wp.length(x[i]-x[j])-wp.float64(2.0)*radius
+            penetration=wp.max(penetration,-gap)
+            if j>i:
+                linked=int(0)
+                if gap<=wp.float64(0.1)*radius: linked=1
+                if linked!=adjacency[i,j-start]:
+                    idx=wp.atomic_add(event_count,0,1)
+                    if idx<event_time.shape[0]:
+                        event_ids[idx,0]=i//n; event_ids[idx,1]=i-start
+                        event_ids[idx,2]=j-start; event_ids[idx,3]=linked
+                        event_time[idx]=time_origin[0]+wp.float64(step_count[0]+1)*dt
+                    else:
+                        wp.atomic_or(error,0,16)
+                    adjacency[i,j-start]=linked
     if not wp.isfinite(x[i][0]) or not wp.isfinite(x[i][1]) or not wp.isfinite(x[i][2]):
         wp.atomic_or(error,0,8)
     diag[i,3]=wp.max(diag[i,3],penetration)
     out[i]=x[i]
+
+
+@wp.kernel
+def advance_clock(step_count: wp.array(dtype=int)):
+    step_count[0]=step_count[0]+1
