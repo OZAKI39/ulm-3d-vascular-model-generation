@@ -61,8 +61,8 @@ def field_response(x: wp.array(dtype=wp.vec3d), grid: wp.array2d(dtype=wp.vec2d)
             if knot>=0:
                 v=kv[knot,h]
             else:
-                w=(amp-knots[cell])/(knots[cell+1]-knots[cell])
-                v=(wp.float64(1.0)-w)*values[cell,0,h]+w*values[cell,1,h]
+                fraction=(amp-knots[cell])/(knots[cell+1]-knots[cell])
+                v=(wp.float64(1.0)-fraction)*values[cell,0,h]+fraction*values[cell,1,h]
             angle=wp.float64(h+1)*theta
             v=cmul(v,wp.vec2d(wp.cos(angle),wp.sin(angle)))
         harmonics[i,h]=v
