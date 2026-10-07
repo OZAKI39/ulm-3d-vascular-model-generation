@@ -65,7 +65,7 @@ def save(fig, name, description):
             definition=description,
             files=SOURCES.copy(),
             script_sha256=sha(Path(__file__)),
-            orchestration_checkout_at_render_time=commit,
+            executed_orchestration_commit=commit,
             numerical_kernel_commit=kernel,
             selected_runs=FIGURE_CONTEXT.copy(),
         ),

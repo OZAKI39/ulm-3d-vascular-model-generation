@@ -214,7 +214,7 @@ def main(video=False, requested_duration=None):
         wall=str(wallfile),
         wall_sha256=sha(wallfile),
         script_sha256=sha(Path(__file__)),
-        orchestration_checkout_at_render_time=(ROOT / "SOURCE_COMMIT_R2.txt").read_text().strip(),
+        executed_orchestration_commit=(ROOT / "SOURCE_COMMIT_R2.txt").read_text().strip(),
         cases={},
         geometry="Actual finite spheres at physical radius, uniform m-to-µm units, no group remapping or particle enlargement; real open WALL patch.",
         view="Fixed parallel camera and equal XYZ scales shared by old/new, fixed common origin per case.",
