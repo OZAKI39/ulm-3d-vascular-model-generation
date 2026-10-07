@@ -142,6 +142,23 @@ def axes_grid(plotter, bounds, color, dark):
             p[2] -= 0.08 * span
         else:
             p[0] -= 0.19 * span
+        if not dark and axis == 2:
+            # A separate actor avoids VTK's label-priority suppression of the
+            # vertical-axis title by the nearby midpoint tick in static panels.
+            p[2] += 0.12 * span
+            plotter.add_point_labels(
+                np.array([p]),
+                ["Z (um)"],
+                font_size=18,
+                text_color=color,
+                font_family="arial",
+                shape=None,
+                show_points=False,
+                always_visible=True,
+                shadow=False,
+                margin=0,
+            )
+            continue
         points.append(p)
         labels.append("XYZ"[axis] + " (um)")
     plotter.add_point_labels(
@@ -317,7 +334,7 @@ def main(video=False, requested_duration=None):
                     "render_script_sha256", previous["script_sha256"]
                 ),
                 render_source_snapshot=str(out / "R7_VIDEO_RENDER_SOURCE.py"),
-                note="Existing actual-motion video retained. This pass only increases static figure tick-label sizes; video rendering code and data are unchanged.",
+                note="Existing actual-motion video retained. Static figure tick sizes and axis-label placement were improved; the archived video's exact rendering code and data are unchanged.",
             )
     write(out / "R7_DATA_SOURCES.json", provenance)
 
