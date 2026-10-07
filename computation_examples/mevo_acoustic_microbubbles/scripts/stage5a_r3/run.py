@@ -92,11 +92,16 @@ def run(
     stop_after_macros=None,
 ):
     if label.startswith("formal"):
-        from scripts.stage5a_r3.freeze import verify
+        if label.startswith("formal_R3_V2"):
+            from scripts.stage5a_r3.freeze_v2 import verify
+        else:
+            from scripts.stage5a_r3.freeze import verify
 
         protocol = verify()
         chosen = protocol["method"]["refined" if "refined" in label else "nominal"]
-        assert optimized and not components and workers == 1 and pair == "cupy"
+        layout = protocol["method"].get("layouts", {}).get(case, dict(components=False, component_workers=1))
+        assert optimized and components == layout["components"]
+        assert workers == layout["component_workers"] and pair == "cupy"
         assert method == "S1" and nonlinear_strategy == "quasi_newton" and nonsmooth_recovery
         assert not fixture and not resume and stop_after_macros is None
         assert max_dt == chosen["max_dt_s"] and tol_factor == chosen["tolerance_factor"]
