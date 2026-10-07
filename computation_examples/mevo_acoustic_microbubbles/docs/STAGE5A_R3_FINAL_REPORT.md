@@ -10,7 +10,7 @@ B2 continuous motion has been repaired without changing forces, radii, the WALL 
 - Actual R2 archive base: `07db8ed35f3a460a4ba315e42b15d257f8518b0a`.
 - V1 executable: `fa2fba5608037ed45143c8ede501cadf415e9180`.
 - V2 executable: `b5079ad19be81ffe9e3d4f5b7c548717b3d43d67`.
-- Report generation source: `a968985b564c957c54e3370a52c5e2d0d1a2cf12`; resolve the containing Git commit for the final archive SHA.
+- Report generation source: `b97da4bd408d60ae623d8ca3c87d3b4e2144dc49`; resolve the containing Git commit for the final archive SHA.
 - Server: `/workspace/mevo_acoustic_microbubbles_stage5a_r3`; immutable executable trees are `.execution/<SHA>`.
 - Results: `results/stage5/motion_solver_r3`; no old branch, checkpoint, failed gate or stopped service is resumed or overwritten.
 
@@ -151,7 +151,7 @@ The initial 50 ns layout benchmark did not represent B3's full-task cost. Comple
 
 Source-bound formal tests: **PASS**, counts `{'tests': 124, 'failures': 0, 'errors': 0, 'skipped': 0}`. Six new numerical-state holdouts: **PASS**. Later reporting/sampling tests have a separate JUnit file; they do not relabel the frozen test executable.
 
-Development conservative budget charge: 7734.838 s / 14400 s. Formal carried charges: `{'new': 9936.771708892658, 'reference': 18984.07657995168, 'r2': 2882.373643346131}`. Overall charged: 39538.060 s / 63000 s. Development allowances and the unmetered exploration reserve are budget accounting, not measured performance. No reset follows a failed candidate.
+Development conservative budget charge: 7745.227 s / 14400 s. Formal carried charges: `{'new': 9936.771708892658, 'reference': 18984.07657995168, 'r2': 2882.373643346131}`. Overall charged: 39548.449 s / 63000 s. Development allowances and the unmetered exploration reserve are budget accounting, not measured performance. No reset follows a failed candidate.
 
 The original strict bitwise restart failure (one coordinate ULP, 2.1684e−19 m) is retained alongside the separate resolution-based PASS and exact cache serialization PASS. Missing-fixture/import failed test invocations remain recorded. Two early local source ZIPs captured a later deployed driver after workers had loaded V1; original snapshots plus LOCAL_V1_PROVENANCE_CORRECTION.json and a reconstructed loaded-source archive remain. Later formal execution uses immutable trees.
 
