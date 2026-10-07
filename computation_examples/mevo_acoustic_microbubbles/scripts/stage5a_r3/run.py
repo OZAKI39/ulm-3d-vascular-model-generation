@@ -89,6 +89,7 @@ def run(
     s0_dt=50e-9,
     workers=1,
     optimized=False,
+    stop_after_macros=None,
 ):
     if label.startswith("formal"):
         raise ValueError("R3 formal protocol is not frozen yet")
@@ -159,13 +160,16 @@ def run(
             or old_identity["tolerance_factor"] != tol_factor
             or old_identity.get("nonlinear_strategy", "picard") != nonlinear_strategy
             or old_identity.get("nonsmooth_recovery", False) != nonsmooth_recovery
+            or old_identity.get("optimized", False) != optimized
+            or old_identity["max_dt_s"] != max_dt
+            or old_identity.get("S0_macro_ceiling_s", 50e-9) != s0_dt
         ):
             raise ValueError("CONFIG_ERROR: exact continuation configuration differs")
         t = float(data["time_s"])
         controller = meta["controller"]
         elapsed = controller.get("elapsed_s", t - t0)
         tracker.translation.cache = cache
-    if fixture_cache is not None:
+    if fixture_cache is not None and not resume:
         tracker.translation.cache = fixture_cache
         controller["fixture_original_controller"] = fixture_metadata["controller"]
         controller["new_method_restart"] = (
@@ -214,6 +218,7 @@ def run(
         resume=str(resume) if resume else None,
         fixture=str(fixture) if fixture else None,
         fixture_metadata=fixture_metadata,
+        development_stop_after_macros=stop_after_macros,
         S0_macro_ceiling_s=s0_dt,
         component_workers=workers,
         wall_budget_s=budget,
@@ -281,6 +286,8 @@ def run(
     ):
         try:
             while elapsed < duration - 1e-15:
+                if stop_after_macros is not None and len(accepted) >= 2 * stop_after_macros:
+                    raise RuntimeError("DEVELOPMENT_INTENTIONAL_SAFE_STOP")
                 check_budget()
                 next_clock = (np.floor((elapsed + 1e-14) / 1e-5) + 1) * 1e-5
                 dt = min(controller["next_dt"], max_dt, duration - elapsed, next_clock - elapsed)
@@ -557,6 +564,7 @@ if __name__ == "__main__":
     p.add_argument("--s0-dt", type=float, default=50e-9)
     p.add_argument("--workers", type=int, default=1)
     p.add_argument("--optimized", action="store_true")
+    p.add_argument("--stop-after-macros", type=int)
     p.add_argument("--nonsmooth-recovery", action="store_true")
     p.add_argument("--nonlinear-strategy", choices=["picard", "quasi_newton"], default="picard")
     a = p.parse_args()
@@ -578,4 +586,5 @@ if __name__ == "__main__":
         a.s0_dt,
         a.workers,
         a.optimized,
+        a.stop_after_macros,
     )
