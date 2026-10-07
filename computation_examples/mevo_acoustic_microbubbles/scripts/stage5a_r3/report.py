@@ -40,13 +40,13 @@ def main():
         "",
         "## Actual completion and accepted numerical safety",
         "",
-        "| Case | Duration (ms) | Method | Repeat | Status | Process-inclusive wall (s) | QP KKT max | Pair / WALL minimum (m) |",
+        "| Case | Duration (ms) | Method | Repeat | Status | Process-inclusive wall (s) | QP / endpoint KKT max | Pair / WALL certified bounds (m) |",
         "|---|---:|---|---:|---|---:|---:|---|",
     ]
     for r in c["ledger"]:
         s = r.get("summary") or {}
         lines.append(
-            f"| {r['case']} | {r['duration_s'] * 1000:g} | {r['kind']} | {r['repeat']} | {r['status']} | {value(r.get('charged_wall_s'))} | {value(s.get('accepted_kkt_max'))} | {value(s.get('accepted_pair_swept_gap_min_m'))} / {value(s.get('accepted_wall_swept_gap_bound_min_m'))} |"
+            f"| {r['case']} | {r['duration_s'] * 1000:g} | {r['kind']} | {r['repeat']} | {r['status']} | {value(r.get('charged_wall_s'))} | {value(s.get('accepted_kkt_max'))} / {value(s.get('accepted_nonlinear_kkt_max'))} | {value(s.get('accepted_pair_swept_gap_min_m'))} / {value(s.get('accepted_wall_swept_gap_bound_min_m'))} |"
         )
     lines += [
         "",
