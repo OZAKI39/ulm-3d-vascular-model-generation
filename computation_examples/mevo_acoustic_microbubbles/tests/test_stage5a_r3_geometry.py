@@ -92,3 +92,40 @@ def test_all_pair_directed_bounds_cover_exact_relative_motion():
         d, _, _ = point_segment((F(0),) * 3, sub(vector(x[j]), vector(x[i])), sub(vector(y[j]), vector(y[i])))
         dist = F(float(lower[k])) + F(float(r[i])) + F(float(r[j]))
         assert dist <= 0 or dist * dist <= d
+
+
+def test_open_finite_wall_and_initial_side(tmp_path):
+    import pyvista as pv
+    from mevo_mb.bubbles.motion_sweep_r3 import WallSweepR3
+
+    # An open channel side ending at x=1. No cap is supplied as WALL. A sphere
+    # may continue beyond that opening while staying above the finite side.
+    points = np.array([[0.0, -1.0, 0.0], [1.0, -1.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0]])
+    path = tmp_path / "wall.vtp"
+    pv.PolyData(points, np.array([3, 0, 1, 2, 3, 1, 3, 2])).save(path)
+
+    class Geometry:
+        def wall_gap_and_normal(self, x, r):
+            return x[:, 2] - r, np.tile([0.0, 0.0, -1.0], (len(x), 1)), np.ones(len(x), bool)
+
+    sweep = WallSweepR3(Geometry(), path)
+    radius = np.array([0.125])
+    assert sweep(np.array([[0.75, 0.0, 0.125]]), np.array([[1.5, 0.0, 0.125]]), radius, 1e-11)["pass_gate"]
+    assert not sweep(np.array([[0.5, 0.0, 0.5]]), np.array([[0.5, 0.0, -0.5]]), radius, 1e-11)["pass_gate"]
+    assert (
+        sweep(np.array([[0.5, 0.0, -0.5]]), np.array([[0.5, 0.0, -0.4]]), radius, 1e-11)["reason"]
+        == "INITIAL_SIDE_NOT_CERTIFIED"
+    )
+
+
+@pytest.mark.parametrize("height", [0.0, 0.25, -0.25])
+def test_coplanar_and_non_coplanar_feature_transition(height):
+    from mevo_mb.bubbles.motion_sweep_r3 import finite_triangle_lower_bound
+
+    triangles = np.array([[[0, 0, 0], [1, 0, 0], [0, 1, 0]], [[1, 0, 0], [1, 1, height], [0, 1, 0]]], float)
+    p = np.array([0.25, 0.25, 1.0])
+    q = np.array([0.75, 0.75, 1.0])
+    for tri in triangles:
+        value = finite_triangle_lower_bound(p, q, tri)
+        exact = segment_triangle(p, q, *tri)["distance2"]
+        assert F(float(value)) ** 2 <= exact

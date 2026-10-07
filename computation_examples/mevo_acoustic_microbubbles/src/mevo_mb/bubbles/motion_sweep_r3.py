@@ -211,7 +211,10 @@ class WallSweepR3(WallSweep):
             pair = -tolerance
         return dict(
             pass_gate=bool(wall_safe and min(pair, bound.min()) >= -tolerance),
-            minimum_pair_swept_gap_m=float(pair),
+            minimum_pair_swept_gap_m=float(pair) if np.isfinite(pair) else None,
+            pair_gap_semantics="certified continuous lower bound, not a clipped raw gap"
+            if len(x) > 1
+            else "NOT_APPLICABLE: fewer than two particles",
             minimum_wall_swept_gap_bound_m=float(bound.min()),
             minimum_wall_endpoint_gap_m=float(final.min()),
             wall_certificate="signed initial membership; expanded-AABB coverage / outward-rounded separating bound / exact rational finite-triangle predicate",
