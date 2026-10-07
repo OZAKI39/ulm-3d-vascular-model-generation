@@ -7,6 +7,21 @@ from scripts.stage5a_r3.paths import local
 from scripts.stage5a_r3.current import campaign as current_campaign
 from scripts.stage5a_r3.figures import save, source, history, BLUE, RED, PURPLE, GRAY, GOLD
 
+COST_LABELS = {
+    "qp_native_candidate": "Native QP",
+    "qp_adapter_and_fallback": "QP adapter / fallback",
+    "qp_partition_and_global_certificate": "QP grouping / certificate",
+    "resistance_assembly": "Resistance assembly",
+    "force_response_flow": "Force / response / flow",
+    "wall_query": "Wall query",
+    "finite_feature_constraints": "Finite contact features",
+    "continuous_geometry": "Continuous geometry",
+    "nonlinear_and_substep_other": "Nonlinear remainder",
+    "step_doubling_error_and_other": "Step-doubling remainder",
+    "checkpoint_IO": "Checkpoint I/O",
+    "driver_initialization_IO_monitoring_other": "Initialization / other I/O",
+}
+
 
 def formal():
     return current_campaign()["ledger"]
@@ -280,29 +295,18 @@ def g5c():
 def g7():
     windows = ["initial", "stable", "S0", "event"]
     rows = [source(BASE / "diagnosis" / f"DYNAMIC_INSTRUMENTED_{w}.json") for w in windows]
-    fig, axs = plt.subplots(2, 2, figsize=(13, 8), layout="constrained")
-    categories = [
-        "qp_native_candidate",
-        "qp_adapter_and_fallback",
-        "qp_partition_and_global_certificate",
-        "resistance_assembly",
-        "force_response_flow",
-        "wall_query",
-        "finite_feature_constraints",
-        "continuous_geometry",
-        "nonlinear_and_substep_other",
-        "step_doubling_error_and_other",
-        "checkpoint_IO",
-        "driver_initialization_IO_monitoring_other",
-    ]
+    durations = np.array([r["summary"]["segment_completed_duration_s"] for r in rows])
+    labels = [f"{w if w == 'S0' else w.capitalize()}\n{dt * 1e6:.3g} µs" for w, dt in zip(windows, durations)]
+    fig, axs = plt.subplots(2, 2, figsize=(13, 9.2), layout="constrained")
+    categories = list(COST_LABELS)
     colors = plt.cm.tab20(np.linspace(0, 1, len(categories)))
     bottom = np.zeros(4)
     cost = np.array([[r["exclusive_s"].get(k, 0) for r in rows] for k in categories])
     for k, c, v in zip(categories, colors, cost):
-        axs[0, 0].bar(windows, v, bottom=bottom, color=c, label=k.replace("_", " "))
+        axs[0, 0].bar(labels, v, bottom=bottom, color=c, label=COST_LABELS[k])
         bottom += v
     axs[0, 0].set(ylabel="Exclusive instrumented wall time (s)", title="Mutually exclusive dynamic cost")
-    axs[0, 0].legend(fontsize=6, ncol=2)
+    fig.legend(*axs[0, 0].get_legend_handles_labels(), fontsize=8, ncol=3, loc="outside lower center")
     x = np.arange(4)
     stages = ["full", "half1", "half2"]
     stage_counts = []
@@ -329,7 +333,7 @@ def g7():
         stage_counts.append([accepted, rejected])
     axs[0, 1].set(
         xticks=x,
-        xticklabels=windows,
+        xticklabels=labels,
         ylabel="Executed advance calls",
         title="Step doubling | hatched: rejected trial",
     )
@@ -338,7 +342,7 @@ def g7():
     candidates = np.array([len(r["native_candidates"]) for r in rows])
     axs[1, 0].bar(x - 0.18, qps, 0.35, color=BLUE, label="QP adapter calls")
     axs[1, 0].bar(x + 0.18, candidates, 0.35, color=PURPLE, label="Native candidates (incl. fallback)")
-    axs[1, 0].set(xticks=x, xticklabels=windows, ylabel="Call count", title="Changing-state QP work")
+    axs[1, 0].set(xticks=x, xticklabels=labels, ylabel="Call count", title="Changing-state QP work")
     axs[1, 0].legend(fontsize=8)
     bottom = np.zeros(4)
     native_phases = []
@@ -346,7 +350,7 @@ def g7():
         values = np.array(
             [sum((q["diagnostics"] or {}).get(key, 0) for q in r["native_candidates"]) for r in rows]
         )
-        axs[1, 1].bar(windows, values, bottom=bottom, color=color, label=key)
+        axs[1, 1].bar(labels, values, bottom=bottom, color=color, label=key)
         bottom += values
         native_phases.append(values)
     axs[1, 1].set(ylabel="Native recorded time (s)", title="Native solver phases | separate timing view")
@@ -354,10 +358,11 @@ def g7():
     save(
         fig,
         "G7_dynamic_QP_and_exclusive_cost",
-        "All four windows use real changing full-system states. Full/half1/half2 and rejected trials counted separately. Diagnostic instrumentation overhead included; these times are never used for end-to-end speedup. Native phase view overlaps the exclusive partition.",
+        "All four windows use real changing full-system states. Initial/stable/event windows span 10 µs each; the separately defined S0 window spans 0.4 µs. Raw costs and counts are not normalized by window duration. Full/half1/half2 and rejected trials counted separately. Diagnostic instrumentation overhead included; these times are never used for end-to-end speedup. Native phase view overlaps the exclusive partition.",
         dict(
             exclusive_cost_s=cost,
             windows=np.array(windows),
+            actual_elapsed_s=durations,
             categories=np.array(categories),
             qp_calls=qps,
             native_candidates=candidates,
@@ -373,15 +378,16 @@ def g7b():
     windows = ["B3_global_costly", "B3_serial_costly"]
     rows = [source(BASE / "diagnosis" / f"DYNAMIC_INSTRUMENTED_{w}.json") for w in windows]
     labels = ["Global QP", "Component serial"]
-    fig, axs = plt.subplots(1, 3, figsize=(14, 4.8), layout="constrained")
-    categories = sorted(set().union(*(r["exclusive_s"] for r in rows)))
+    fig, axs = plt.subplots(1, 3, figsize=(14, 6.0), layout="constrained")
+    categories = list(COST_LABELS)
+    assert set().union(*(r["exclusive_s"] for r in rows)) <= set(categories)
     cost = np.array([[r["exclusive_s"].get(k, 0) for r in rows] for k in categories])
     bottom = np.zeros(2)
     for key, color, values in zip(categories, plt.cm.tab20(np.linspace(0, 1, len(categories))), cost):
-        axs[0].bar(labels, values, bottom=bottom, color=color, label=key.replace("_", " "))
+        axs[0].bar(labels, values, bottom=bottom, color=color, label=COST_LABELS[key])
         bottom += values
     axs[0].set(ylabel="Instrumented wall time (s)", title="B3 +1.5 ms | exclusive cost")
-    axs[0].legend(fontsize=5.5, ncol=1, loc="upper left")
+    fig.legend(*axs[0].get_legend_handles_labels(), fontsize=8, ncol=3, loc="outside lower center")
     stage_counts, stage_cost, nonlinear = [], [], []
     for stage in ["full", "half1", "half2"]:
         stage_counts.append([sum(s["count"] for s in r["stage_totals"] if s["stage"] == stage) for r in rows])
