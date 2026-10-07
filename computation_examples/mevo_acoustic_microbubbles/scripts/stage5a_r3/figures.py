@@ -215,7 +215,7 @@ def g3():
     r2 = source(R2 / "runs" / B2_RUNS["nominal"] / "ACCEPTED.jsonl")
     r3 = source(path.parent / "ACCEPTED.jsonl")
     reject = source(R2 / "runs" / B2_RUNS["nominal"] / "REJECTED.jsonl")
-    fig, ax = plt.subplots(3, 1, figsize=(10, 8), sharex=True, layout="constrained")
+    fig, ax = plt.subplots(4, 1, figsize=(10, 10), sharex=True, layout="constrained")
     arrays = {}
     for name, rows, color in [("R2", r2, RED), ("R3", r3, BLUE)]:
         rows = [r for r in rows if r["time_s"] >= new["time_s"][0] - 1e-15]
@@ -249,19 +249,28 @@ def g3():
     ax[1].legend(fontsize=8)
     ax[2].axhline(-10, color="black", ls="--", lw=0.8)
     ax[2].set(ylabel="Continuous WALL lower bound (pm)", xlabel="Time relative to R2 terminal state (µs)")
+    jumps = [r for r in rejects if "wall_normal_jump" in r["diagnostics"]]
+    jt = np.array([(r["time_s"] - terminal) * 1e6 for r in jumps])
+    jv = np.array([r["diagnostics"]["wall_normal_jump"] for r in jumps])
+    ax[3].scatter(jt, jv, marker="x", color=RED, label="Rejected S1 iteration: nearest-WALL normal change")
+    ax[3].set(ylabel="Normal-vector jump (dimensionless)", xlabel="Time relative to R2 terminal state (µs)")
+    ax[3].legend(fontsize=8)
+    arrays["rejected_normal_jump_time_us"] = jt
+    arrays["rejected_normal_jump"] = jv
     for a in ax:
         a.axvline(0, color=GRAY, ls=":", lw=0.8)
     fig.suptitle("Local continuation through the original WALL feature switch", fontweight="bold")
     save(
         fig,
         "G3_S0_S1_event_diagnostics",
-        "Accepted half-step sizes, bounded S0 usage, rejected trials and independent QP residuals. The feature switch occurs at the original R2 terminal time (vertical dotted line); rejection points are diagnostic candidates only.",
+        "Accepted half-step sizes, bounded S0 usage, rejected trials and independent QP residuals. Vertical dotted line marks the original R2 termination. Normal jumps are recorded within rejected S1 iterations, not invented accepted feature-switch frames. Nearest-feature identity 3178/13018 and absence of cache error are independently audited.",
         arrays,
     )
 
 
 def g4():
     report = source(BASE / "final/ALL_ACTIVE_TRAJECTORY_AUDIT.json")
+    report = report.get("pre_R3", report)
     fig, axes = plt.subplots(2, 2, figsize=(12, 8), layout="constrained")
     arrays = {}
     for col, case in enumerate(["B2", "B3"]):

@@ -16,7 +16,6 @@ from mevo_mb.bubbles.motion_backend_r3 import MotionR3Optimized
 from mevo_mb.bubbles.motion_qp_r3 import NativeQPR3
 from mevo_mb.bubbles.motion_qp_r2 import NativeQP
 from mevo_mb.bubbles.motion_sweep_r3 import WallSweepR3
-from mevo_mb.bubbles.tracker import ParticleTracker
 
 
 class Accounting:
@@ -74,6 +73,8 @@ class Accounting:
 
 
 def main(window):
+    from mevo_mb.bubbles.tracker import ParticleTracker
+
     # Must remain isolated from all formal trajectory timings.
     campaign = BASE / "final/CAMPAIGN_R3_V1/RESULT.json"
     from scripts.stage5a_r3.common import read
