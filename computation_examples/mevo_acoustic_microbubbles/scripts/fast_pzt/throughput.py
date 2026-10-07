@@ -67,8 +67,7 @@ def main(label, performance):
     serial_wall = sum(r["dataset_wall_s"] for r in rows)
     batch_wall = batched["dataset_wall_s"]
     serial_valid = sum(r["numerical_quality"] == "PASS" for r in rows)
-    # Batch aggregate maximum is conservative: any failed sample prevents certifying all eight.
-    batch_valid = 8 if batched["numerical_quality"] == "PASS" else 0
+    batch_valid = sum(status == "PASS" for status in batched["sample_numerical_quality"])
     write(
         out / "RESULT.json",
         dict(

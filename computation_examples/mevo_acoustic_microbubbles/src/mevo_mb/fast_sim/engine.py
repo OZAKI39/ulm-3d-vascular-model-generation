@@ -68,7 +68,10 @@ class FastSimulator:
         self.event_time = wp.zeros(200000, dtype=wp.float64, device=self.device)
         self.step_count = wp.zeros(1, dtype=wp.int32, device=self.device)
         self.time_origin = wp.zeros(1, dtype=wp.float64, device=self.device)
-        self.diag = wp.zeros((self.total, 10), dtype=wp.float64, device=self.device)
+        self.diag = wp.zeros((self.total, 11), dtype=wp.float64, device=self.device)
+        self.component_parent = wp.zeros(self.total, dtype=wp.int32, device=self.device)
+        self.component_delta = wp.zeros_like(self.x)
+        self.component_count = wp.zeros(self.total, dtype=wp.int32, device=self.device)
         self.uniform_p = wp.zeros(1, dtype=wp.vec2d, device=self.device)
         self.shape = (2, 2, 2) if basis is None else basis.shape
         self.origin = wp.vec3d(0.0) if basis is None else wp.vec3d(*basis.origin)
@@ -82,7 +85,7 @@ class FastSimulator:
 
     def reset(self):
         self.x.assign(self.initial.reshape(-1, 3))
-        diag = np.zeros((self.total, 10))
+        diag = np.zeros((self.total, 11))
         diag[:, 0] = np.inf
         self.diag.assign(diag)
         self.error.zero_()
@@ -191,7 +194,34 @@ class FastSimulator:
                     ],
                 )
                 velocity = out
-        self.launch(k.predict, self.total, [self.x, velocity, self.tmp1, dt, self.diag])
+        self.launch(
+            k.component_init, self.total, [self.component_parent, self.component_delta, self.component_count]
+        )
+        if p.local_lubrication:
+            self.launch(
+                k.component_links,
+                (self.batch, self.n, self.n),
+                [self.x, self.component_parent, self.n, (2 + p.lubrication_activation) * p.radius_m],
+            )
+        self.launch(
+            k.component_balance,
+            self.total,
+            [self.component_parent, self.free, velocity, self.component_delta, self.component_count],
+        )
+        self.launch(
+            k.predict,
+            self.total,
+            [
+                self.x,
+                velocity,
+                self.tmp1,
+                dt,
+                self.diag,
+                self.component_parent,
+                self.component_delta,
+                self.component_count,
+            ],
+        )
         x = self.tmp1
         for it in range(p.contact_iterations):
             out = self.tmp2 if it % 2 == 0 else self.tmp1
@@ -251,8 +281,10 @@ class FastSimulator:
             )
         return self.x.numpy().reshape(self.batch, self.n, 3)
 
-    def quality(self):
+    def quality(self, sample=None):
         d = self.diag.numpy()
+        if sample is not None:
+            d = d[sample * self.n : (sample + 1) * self.n]
         return dict(
             pressure_min_Pa=float(d[:, 0].min()),
             pressure_max_Pa=float(d[:, 1].max()),
@@ -265,6 +297,7 @@ class FastSimulator:
             max_physical_substep_displacement_m=float(d[:, 9].max()),
             error_bits=int(self.error.numpy()[0]),
             correction_fraction=float(d[:, 4].sum() / max(d[:, 5].sum(), 1e-300)),
+            max_component_balance_velocity_m_s=float(d[:, 10].max()),
         )
 
     def run(
@@ -375,6 +408,7 @@ class FastSimulator:
                 batch_size=self.batch,
                 particle_count_per_sample=self.n,
                 quality=self.quality(),
+                quality_per_sample=[self.quality(b) for b in range(self.batch)],
                 controls=controls,
                 backend="NVIDIA Warp",
                 dtype="float64",

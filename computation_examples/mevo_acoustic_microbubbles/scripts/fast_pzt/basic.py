@@ -175,6 +175,37 @@ def main(label, checks_only=False):
         result["positions_m"][:, 1] - np.array([1e-4, 0, 0]), layout_states[1][:, 0], rtol=0, atol=1e-18
     )
     checks.append(dict(check="independent_batch_no_cross_sample_force", status="PASS"))
+    near_x = p.radius_m * np.array([[0.0, 0, 0], [2.01, 0, 0], [0, 2.015, 0], [15, 10, 0]])
+    probe = FastSimulator(near_x, p, response)
+    probe.control({"time_s": 0, "pressure_Pa": 1000})
+    probe.fields()
+    probe.pairs()
+    wp.synchronize()
+    initial_force = probe.force.numpy()
+    probe.step(1e-9)
+    wp.synchronize()
+    updated = probe.state()[0]
+    drag = 6 * np.pi * p.viscosity_Pa_s * p.radius_m
+    np.testing.assert_allclose(
+        (updated[:3] - near_x[:3]).mean(axis=0),
+        1e-9 * initial_force[:3].mean(axis=0) / drag,
+        rtol=0,
+        atol=1e-20,
+    )
+    np.testing.assert_allclose(updated[3] - near_x[3], 1e-9 * initial_force[3] / drag, rtol=0, atol=1e-20)
+    probe.reset()
+    result = probe.run(50e-6, 1e-6, [{"time_s": 0, "pressure_Pa": 1000}], sample_interval_s=10e-6)
+    com = result["positions_m"][:, 0].mean(axis=1)
+    drift = float(np.linalg.norm(com - com[0], axis=1).max())
+    assert drift < 1e-19
+    checks.append(
+        dict(
+            check="component_force_balance_and_uniform_field_centroid",
+            status="PASS",
+            maximum_centroid_drift_m=drift,
+            scope="Connected three-bubble lubrication component plus isolated fourth bubble; no full-system recentering",
+        )
+    )
     write(out / "GPU_CHECKS.json", dict(status="PASS", checks=checks, source=source_identity()))
     if checks_only:
         write(out / "RESULT.json", dict(complete=True, checks=checks, rows=[]))

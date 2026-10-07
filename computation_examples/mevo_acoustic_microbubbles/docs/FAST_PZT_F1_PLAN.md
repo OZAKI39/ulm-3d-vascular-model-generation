@@ -61,3 +61,11 @@ References: [Warp installation](https://nvidia.github.io/warp/latest/user_guide/
 [Doinikov & Bouakaz 2015](https://doi.org/10.1103/PhysRevE.92.043001),
 [Fan et al. 2020](https://doi.org/10.1016/j.ultsonch.2019.104790).
 The near-field regularization is not a calibrated implementation of either paper.
+
+Prototype correction: finite local block-Jacobi iterations can violate the
+net Stokes force balance of a lubrication component. F1 v2 adds GPU union-find
+and a common velocity residual correction per current component, preserving
+all within-component relative velocities. This is a three-component force
+balance, not locking or a QP. Keep v1 records as superseded evidence; verify
+the invariant and only the 1/20 microsecond representative endpoints again.
+The original numerical-quality thresholds remain unchanged.

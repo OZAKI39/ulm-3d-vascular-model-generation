@@ -7,6 +7,7 @@ import numpy as np
 
 from mevo_mb.acoustics.basis import AcousticBasisDatabase
 from mevo_mb.bubbles.adaptive_table import AdaptiveResponseTableBubbleModel, CORNERS
+from . import MODEL_VERSION
 
 
 def sha(path):
@@ -46,12 +47,14 @@ class Physics:
     def metadata(self):
         return dict(
             asdict(self),
+            model_version=MODEL_VERSION,
             physics_scope="EXPLORATORY",
             harmonic_convention="Re[P exp(+i omega t)]",
             force_direction="e_ij=(x_j-x_i)/d; positive correlation attracts",
             near_field_formula="F=C*dx/[d^2+(s*Rsum*(1-q)^2)^2]^(3/2), q=clip(d/(transition*Rsum),0,1); classical above transition",
             near_field_calibration="none; signed smooth exploratory regularization, not a Doinikov solution",
-            mobility="Two relaxed block-Jacobi local normal-resistance passes, initialized at free Stokes velocity; no global solve",
+            mobility=f"{self.mobility_iterations} relaxed block-Jacobi local normal-resistance passes, initialized at free Stokes velocity; no global solve",
+            mobility_force_balance="Each current lubrication component receives only the common velocity shift mean(U_free-U_local), enforcing sum(zeta*U)=sum(F). Relative velocities remain unchanged; no particle or group is locked.",
             contact="Jacobi PBD in diagonal Stokes mobility metric, weight mu_i/(mu_i+mu_j); monodisperse F1 weights 1/2",
             contact_vs_hydrodynamics="PBD uses baseline mobility, not the full coupled hydrodynamic metric",
             wall="none",

@@ -78,6 +78,17 @@ def run_case(out, config):
         else "FAIL"
     )
     summary["edge_events_recorded"] = len(result.get("edge_event_time_s", []))
+    summary["sample_numerical_quality"] = [
+        "PASS"
+        if summary["status"] == "COMPLETE"
+        and item["error_bits"] == 0
+        and item["max_accepted_penetration_m"]
+        <= bounds["max_accepted_penetration_over_radius"] * physics.radius_m
+        and item["max_contact_pass_correction_m"]
+        <= bounds["max_contact_pass_correction_over_radius"] * physics.radius_m
+        else "FAIL"
+        for item in summary["quality_per_sample"]
+    ]
     write(out / "SUMMARY.json", summary)
     print(
         json.dumps(

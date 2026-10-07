@@ -194,19 +194,75 @@ def local_mobility(
 
 
 @wp.kernel
+def component_init(parent: wp.array(dtype=int), delta: wp.array(dtype=wp.vec3d), count: wp.array(dtype=int)):
+    i = wp.tid()
+    parent[i] = i
+    delta[i] = wp.vec3d(wp.float64(0.0))
+    count[i] = 0
+
+
+@wp.func
+def root_of(parent: wp.array(dtype=int), i: int):
+    root = i
+    while parent[root] != root:
+        root = parent[root]
+    return root
+
+
+@wp.kernel
+def component_links(x: wp.array(dtype=wp.vec3d), parent: wp.array(dtype=int), n: int, reach: wp.float64):
+    b, i, j = wp.tid()
+    if j > i:
+        ii = b * n + i
+        jj = b * n + j
+        if wp.length(x[ii] - x[jj]) < reach:
+            ri = root_of(parent, ii)
+            rj = root_of(parent, jj)
+            while ri != rj:
+                high = wp.max(ri, rj)
+                low = wp.min(ri, rj)
+                previous = wp.atomic_cas(parent, high, high, low)
+                if previous == high:
+                    break
+                ri = root_of(parent, ii)
+                rj = root_of(parent, jj)
+
+
+@wp.kernel
+def component_balance(
+    parent: wp.array(dtype=int),
+    free: wp.array(dtype=wp.vec3d),
+    velocity: wp.array(dtype=wp.vec3d),
+    delta: wp.array(dtype=wp.vec3d),
+    count: wp.array(dtype=int),
+):
+    i = wp.tid()
+    root = root_of(parent, i)
+    wp.atomic_add(delta, root, free[i] - velocity[i])
+    wp.atomic_add(count, root, 1)
+
+
+@wp.kernel
 def predict(
     x: wp.array(dtype=wp.vec3d),
     velocity: wp.array(dtype=wp.vec3d),
     out: wp.array(dtype=wp.vec3d),
     dt: wp.float64,
     diag: wp.array2d(dtype=wp.float64),
+    parent: wp.array(dtype=int),
+    correction: wp.array(dtype=wp.vec3d),
+    count: wp.array(dtype=int),
 ):
     i = wp.tid()
-    dx = dt * velocity[i]
+    root = root_of(parent, i)
+    shift = correction[root] / wp.float64(count[root])
+    balanced = velocity[i] + shift
+    dx = dt * balanced
     out[i] = x[i] + dx
     diag[i, 5] = diag[i, 5] + wp.length(dx)
-    diag[i, 7] = wp.max(diag[i, 7], wp.length(velocity[i]))
+    diag[i, 7] = wp.max(diag[i, 7], wp.length(balanced))
     diag[i, 9] = wp.max(diag[i, 9], wp.length(dx))
+    diag[i, 10] = wp.max(diag[i, 10], wp.length(shift))
 
 
 @wp.kernel
