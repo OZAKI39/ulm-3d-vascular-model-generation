@@ -9,7 +9,7 @@ from .models import Physics
 class F2Physics(Physics):
     contact_iterations: int = 12
     force_model: str = "f2_near_field_candidate"
-    contact_model: str = "f2_mobility_aware_contact"
+    contact_model: str = "f1_pbd_contact"
     feedback_end_over_sum: float = 4.0
 
     def __post_init__(self):

@@ -92,3 +92,17 @@ References: https://doi.org/10.1103/PhysRevE.92.043001 (publisher abstract inspe
 full PDF unavailable through tool), https://doi.org/10.1016/j.ultsonch.2019.104790
 (scope reference, not implemented), https://mmacklin.com/xpbd.pdf (constraint
 metric concept; inertial mass weights are not imported into the overdamped model).
+
+## Contact candidate disposition after the first bounded comparison
+
+The tensor pair metric fails the original overlap budget at 20/10 us and passes
+at 5 us. A subsequent algebraic check exposes a nonzero angular moment of its
+position correction (equal/opposite anisotropic shifts need not be central).
+This invariant defect is independent of the desired morphology. Preserve the
+candidate and its data for sensitivity analysis, but reject it for causal PZT
+experiments. Adopt the new near-field force with F1 central PBD at the first
+qualified 10 us step. Compare near fields at 10 us and contacts at 5 us, each with
+matched dt and unchanged quality criteria. Do not implement another contact
+variant or tune the force to recover 20 us. One contact-diagnostic mature branch
+may be retained as explicitly unqualified evidence, not in the control effect
+claim or qualified dataset. The seven-branch limit is unchanged.

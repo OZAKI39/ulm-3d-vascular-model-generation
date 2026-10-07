@@ -1,7 +1,9 @@
 """One seed, sequential single-factor comparisons; smaller steps only on quality failure."""
 
-import argparse, json
-import h5py, numpy as np
+import argparse
+import json
+import h5py
+import numpy as np
 from .common import BASE, F1, PROTOCOL, write
 from .experiment import run_case
 
