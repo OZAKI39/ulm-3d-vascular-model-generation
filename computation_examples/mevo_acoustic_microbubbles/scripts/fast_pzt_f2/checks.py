@@ -3,7 +3,6 @@
 import argparse
 from dataclasses import replace
 import numpy as np
-import warp as wp
 from mevo_mb.fast_sim.models import Physics, ResponseSection, random_cloud
 from mevo_mb.fast_sim.nearfield import F2Physics, pair_reference, coupled_fundamental
 from mevo_mb.fast_sim.contact_models import mobility_tensors, contact_pass
