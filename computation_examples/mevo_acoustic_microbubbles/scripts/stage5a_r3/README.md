@@ -116,6 +116,10 @@ are separate from completion timing. The accounting wrappers preserve solver
 return values and exceptions; they do not modify scientific kernel files.
 The extra B3 windows replay the actual +1.5 ms full-system state at the 5 µs
 formal macro horizon to account for full/half1/half2 work at the costly state.
+The review package retains complete losslessly compressed diagnostic JSON in
+`review/compact_dynamics/`, including individual QP/native candidates and
+full/half-step records. Decompress a file to its original `diagnosis/` name to
+reproduce G7 directly; `DYNAMIC_COST_PROFILE.json` records the original hashes.
 
 `early_precision` is the separately budgeted six-run diagnostic around the
 first B2 resolution-target crossing. It uses each actual nominal/refined

@@ -49,6 +49,12 @@ def compress_ledgers():
                 encoded = gzip.compress(raw, mtime=0)
                 if not out.exists() or out.read_bytes() != encoded:
                     out.write_bytes(encoded)
+    for p in (BASE / "diagnosis").glob("DYNAMIC_INSTRUMENTED_*.json"):
+        out = BASE / "review/compact_dynamics" / (p.name + ".gz")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        encoded = gzip.compress(p.read_bytes(), mtime=0)
+        if not out.exists() or out.read_bytes() != encoded:
+            out.write_bytes(encoded)
 
 
 def compact_comparisons():
