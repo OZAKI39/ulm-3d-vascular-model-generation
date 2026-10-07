@@ -114,8 +114,9 @@ The first B2 fresh frozen Stage4L +5 ms reference completes in **2472.194 s**
 of process-inclusive wall time, compared with **728.034 s** for R3. The paired
 single-run completion ratio is **3.3957×**. Three complete repeats remain the
 performance acceptance requirement; this sample alone is not a final gate.
-The earlier R2 fresh reference is bitwise identical on their shared actual
-stored interval ending at +3.926405 ms.
+The earlier R2 fresh reference has zero fixed-ID differences at their common
+stored comparison frames through +3.926405 ms (10 µs comparison clock plus the
+actual shared endpoint); this does not assert a check of every intermediate frame.
 
 At +5 ms, R3/fresh all-active raw RMS/max differences are **1057.410/3890.946 nm**;
 archived/fresh are **1051.929/3894.183 nm**. R3/archived endpoint RMS/max are
