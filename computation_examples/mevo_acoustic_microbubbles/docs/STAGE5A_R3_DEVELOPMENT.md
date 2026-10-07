@@ -55,8 +55,8 @@ These factors require common-state attribution; neither reference is promoted.
 
 All-active same-ID descriptive comparisons cover 186/189 particles, the original
 75/91-ID groups and their complements. At their common partial endpoints, B2
-archived/fresh RMS is about 1.02 um, much larger than the 1.78 um bubble-radius
-resolution target. R2 nominal/refined maxima are about 234 nm (B2) and 540 nm
+archived/fresh RMS is about 1.02 um, much larger than the 17.8 nm RMS resolution target
+(0.01 of the 1.78 um bubble radius). R2 nominal/refined maxima are about 234 nm (B2) and 540 nm
 (B3), so original-group agreement alone does not establish per-bubble accuracy.
 Last-actual-frame timing uncertainty is retained; these are not interpolated
 trajectories and all-active accuracy remains NOT_EVALUABLE pending refinement.

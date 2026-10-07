@@ -13,7 +13,7 @@ import zipfile
 import h5py
 import numpy as np
 from scripts.stage4l.dense_probe import sha, write
-from scripts.stage5a_r2.resources import ResourceMonitor
+from scripts.stage5a_r3.resources import ResourceMonitor
 from scripts.stage5a_r3.common import ROOT, BASE, load as load_base
 from mevo_mb.bubbles.motion_r3 import SemiImplicitR3 as SemiImplicit, MotionR3
 from mevo_mb.bubbles.motion_recovery_r2 import (
@@ -88,6 +88,7 @@ def run(
     fixture=None,
     s0_dt=50e-9,
     workers=1,
+    optimized=False,
 ):
     if label.startswith("formal"):
         raise ValueError("R3 formal protocol is not frozen yet")
@@ -100,7 +101,14 @@ def run(
     error = None
     failure = None
     tracker, old_sweep, config, state, inputs = load_base(case, pair, components, workers)
-    tracker.translation = MotionR3(
+    if optimized:
+        from mevo_mb.bubbles.motion_backend_r3 import MotionR3Optimized
+
+        backend_class = MotionR3Optimized
+    else:
+        backend_class = MotionR3
+    variant = "R3_V2_SAME_INPUT_REUSE" if optimized else "R3_V1_FINITE_WALL_FEATURE_CONTACT"
+    tracker.translation = backend_class(
         config["medium"]["viscosity_Pa_s"],
         **config["particles"]["lubrication"],
         **config["particles"]["constrained_solver"],
@@ -189,7 +197,8 @@ def run(
         case=case,
         method=method,
         duration_s=duration,
-        integrator_variant="R3_V1_FINITE_WALL_FEATURE_CONTACT",
+        integrator_variant=variant,
+        optimized=optimized,
         config=config,
         max_dt_s=max_dt,
         tolerance_factor=tol_factor,
@@ -266,7 +275,7 @@ def run(
     prior = signal.signal(signal.SIGALRM, alarm)
     signal.setitimer(signal.ITIMER_REAL, budget + 10)
     with (
-        ResourceMonitor() as monitor,
+        ResourceMonitor(workers) as monitor,
         (out / "ACCEPTED.jsonl").open("x") as al,
         (out / "REJECTED.jsonl").open("x") as rl,
     ):
@@ -478,7 +487,7 @@ def run(
         case=case,
         method=method,
         target_s=duration,
-        integrator_variant="R3_V1_FINITE_WALL_FEATURE_CONTACT",
+        integrator_variant=variant,
         completed_duration_s=elapsed,
         accepted_steps=len(accepted),
         rejected_trials=len(rejected),
@@ -547,6 +556,7 @@ if __name__ == "__main__":
     p.add_argument("--fixture")
     p.add_argument("--s0-dt", type=float, default=50e-9)
     p.add_argument("--workers", type=int, default=1)
+    p.add_argument("--optimized", action="store_true")
     p.add_argument("--nonsmooth-recovery", action="store_true")
     p.add_argument("--nonlinear-strategy", choices=["picard", "quasi_newton"], default="picard")
     a = p.parse_args()
@@ -567,4 +577,5 @@ if __name__ == "__main__":
         a.fixture,
         a.s0_dt,
         a.workers,
+        a.optimized,
     )
