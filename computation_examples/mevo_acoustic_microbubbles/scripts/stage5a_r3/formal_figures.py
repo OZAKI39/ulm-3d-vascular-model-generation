@@ -130,7 +130,7 @@ def g6():
         pair = np.array([r["safety"]["minimum_pair_swept_gap_m"] for r in accepted])
         wall = np.array([r["safety"]["minimum_wall_swept_gap_bound_m"] for r in accepted])
         for values, color, label in [
-            (pair, BLUE, "Pair continuous minimum"),
+            (pair, BLUE, "Pair certified lower bound"),
             (wall, RED, "WALL certified lower bound"),
         ]:
             axs[row, 1].plot(ts, values * 1e12, color=color, lw=0.8, label=label)
