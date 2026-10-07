@@ -16,6 +16,10 @@ The project extends R2; no inputs or earlier result directories are regenerated.
   inventories are in `results/stage5/motion_solver_r3/environment`.
 
 The final Git archive SHA and the formal execution SHA have different meanings.
+The validated R3 time-integration entry point is `scripts.stage5a_r3.run`.
+Registering `translation_backend=constrained_lubrication_r3` supplies the R3 QP
+adapter but does not by itself select this standalone R3 integration protocol in
+an unrelated production driver. No production/reference promotion is implied.
 Do not run `bootstrap.py` against developed R3 sources: it is the once-only
 pre-development R2 identity check and intentionally asserts baseline hashes.
 Do not overwrite an existing frozen protocol, holdout selection or campaign.
