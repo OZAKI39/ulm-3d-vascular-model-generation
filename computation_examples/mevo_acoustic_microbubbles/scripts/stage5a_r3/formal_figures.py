@@ -172,6 +172,59 @@ def g6():
     )
 
 
+def g5c():
+    rows = source(BASE / "final/FORMAL_COMPARISONS.json")["rows"]
+    fig, axs = plt.subplots(1, 2, figsize=(14, 5.5), layout="constrained")
+    data = {}
+    for ax, case in zip(axs, ["B2", "B3"]):
+        chosen, labels = [], []
+        for suffix, label in [
+            ("refined", "R3 / refined"),
+            ("reference", "R3 / fresh"),
+            ("archived", "R3 / archived"),
+            ("archived_vs_fresh", "Archived / fresh"),
+            ("R2", "R3 / R2"),
+        ]:
+            r = next(
+                x
+                for x in rows
+                if x["case"] == case and x["name"].endswith("_0.005_" + suffix) and x.get("samples")
+            )
+            chosen.append(r)
+            labels.append(label + f"\n{r['duration_s'] * 1000:.3f} ms common")
+        x = np.arange(len(chosen))
+        for n, mode, color, label in [
+            (0, "raw", BLUE, "Raw"),
+            (1, "translation_removed", RED, "Translation removed"),
+            (2, "rigid_fit", PURPLE, "Rigid fit"),
+        ]:
+            values = (
+                np.array([r["groups"]["all_active"]["errors_m"][mode]["endpoint"]["rms"] for r in chosen])
+                * 1e9
+            )
+            ax.bar(x + (n - 1) * 0.25, values, width=0.23, color=color, label=label)
+            data[case + "_" + mode + "_endpoint_RMS_nm"] = values
+        ax.axhline(17.8, color=GRAY, ls="--", label="0.01 R resolution target")
+        ax.set(
+            xticks=x,
+            xticklabels=labels,
+            yscale="log",
+            ylabel="Endpoint all-active RMS difference (nm)",
+            title=case + " | named numerical lineages",
+        )
+        ax.tick_params(axis="x", labelsize=8)
+        ax.legend(fontsize=8)
+        data[case + "_names"] = np.array([r["name"] for r in chosen])
+        data[case + "_duration_s"] = np.array([r["duration_s"] for r in chosen])
+        data[case + "_sampling_bound_certified"] = np.array([r["sampling_bound_certified"] for r in chosen])
+    save(
+        fig,
+        "G5c_full_reference_lineage",
+        "Original IDs and all active bubbles. Each bar is a descriptive difference against its named numerical lineage, not a physical accuracy estimate. Shared actual duration is labeled; the incomplete historical B2 R2 path is not extrapolated. Sampling certification and separate raw/translation/rigid errors are retained in the source reports. BASELINE_DISAGREEMENT and NOT_EVALUABLE global accuracy remain.",
+        data,
+    )
+
+
 def g7():
     windows = ["initial", "stable", "S0", "event"]
     rows = [source(BASE / "diagnosis" / f"DYNAMIC_INSTRUMENTED_{w}.json") for w in windows]
@@ -342,6 +395,7 @@ def g8():
 
 if __name__ == "__main__":
     g4()
+    g5c()
     g6()
     g7()
     g8()

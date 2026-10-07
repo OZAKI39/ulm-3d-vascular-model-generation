@@ -286,6 +286,32 @@ def main():
             # Both legacy lineages retained. Archived 5 ms is compared only to 5 ms.
             if duration == 0.005:
                 comparisons.append(add_comparison(case, prefix + "_archived", archived, candidate, group))
+                if "reference" in entries:
+                    comparisons.append(
+                        add_comparison(
+                            case,
+                            prefix + "_archived_vs_fresh",
+                            archived,
+                            local(entries["reference"]["run"]) / "trajectories.h5",
+                            group,
+                        )
+                    )
+            if case == "B3" and campaign.get("version") == "R3_V2":
+                previous = read(BASE / "final/CAMPAIGN_R3_V1/CLOSED_RESULT.json")["ledger"]
+                former = next(
+                    r
+                    for r in previous
+                    if r["case"] == case and r["kind"] == "nominal" and r["duration_s"] == duration
+                )
+                comparisons.append(
+                    add_comparison(
+                        case,
+                        prefix + "_V1_global_vs_V2_serial",
+                        local(former["run"]) / "trajectories.h5",
+                        candidate,
+                        group,
+                    )
+                )
             oldrow = next(
                 (
                     r
