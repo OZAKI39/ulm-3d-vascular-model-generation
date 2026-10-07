@@ -108,6 +108,11 @@ large assets and original reference paths/hashes, and writes the size-bounded
 `GIT_ARTIFACTS.txt` selection. The review directory retains full B2 fixtures and
 complete lossless failed-run ledgers. `sync_completed` transfers only closed
 run files with low-priority bounded I/O and records the transfer timing conditions.
+After all managed scientific work closes, use `sync_completed --closed-delivery`
+to freshly verify the campaign, protected repeats and diagnostic pipeline records
+before allowing 4096 KiB/s transfers. The default remains 512 KiB/s for interim
+copies. Neither mode reads growing run files or subtracts transfer overhead from
+formal timing.
 
 `dynamic_audit --window initial|stable|S0|event|B3_global_costly|B3_serial_costly` is an additional **post-campaign**
 instrumented diagnostic. It refuses to run while formal timing is active. Its
