@@ -320,6 +320,7 @@ def main():
         and endpoint
         and endpoint["status"] == "PASS"
         and holdout["status"] == "PASS"
+        and tests.get("status") == "PASS"
     )
     native = read(BASE / "diagnosis/native_v1/SUMMARY.json")
     fixed = sorted(
@@ -329,6 +330,7 @@ def main():
             if r["solver"] == "prox_dense" and r["eps"] == 1e-12 and r["kkt"] <= 1e-9
         }
     )
+    promoted = bool(promoted and len(fixed) == 3)
     identity = read(BASE / f"final/VALIDATION_PROTOCOL_{version}.json")
     gate = dict(
         schema_version=1,
@@ -396,6 +398,10 @@ def report(gate, entries):
         "",
         f"Executed source: `{gate['executed_source_commit']}`. Final archive commit is the commit containing this report; it is not the executed source identity.",
         "",
+        f"Fresh bound tests: {gate['tests']['passed']} passed, {gate['tests']['skipped_or_xfail']} retained old xfail. Original-QP regressions: {gate['qp_regression_status']}; holdout: {gate['holdout_status']}; independent final-equation audit: {gate['independent_endpoint_audit_status']}.",
+        "",
+        "Native packages: proxsuite/ProxQP 0.7.2, OSQP 1.1.3, Clarabel 0.11.1; float64. The selected solver is bounded component ProxQP, with certified native alternatives. Internal status never replaces the fixed original KKT check.",
+        "",
         "The final method uses explicit acoustic/flow forcing and endpoint implicit resistance (S1), with bounded start-state S0 recovery at nonsmooth near-wall normal transitions. Every adopted substep has step-doubling and continuous pair/WALL checks. The old tolerance remains 1e-11 m; no projection is applied.",
         "",
         "| Case | Kind | Target (ms) | Completed (ms) | Accepted / rejected | Min / median dt (s) | Total wall (s) | Status |",
@@ -408,6 +414,28 @@ def report(gate, entries):
         text.append(
             f"| {e['case']} | {e['kind']} repeat {e['repeat']} | {e['duration'] * 1e3:g} | {s.get('completed_duration_s', s.get('elapsed_s', 0)) * 1e3:.8g} | {s.get('accepted_steps', '—')} / {s.get('rejected_trials', '—')} | {dts} | {e['wall_s_with_process_start']:.3f} | {s['status']} |"
         )
+    text += [
+        "",
+        "## Accepted-state numerical evidence",
+        "",
+        "| Case / target / kind | QP / original S1 KKT max | Resistance residual max | Force residual max (N) | Pair / WALL swept minimum (m) | Projection (m) |",
+        "|---|---|---|---|---|---|",
+    ]
+
+    def fmt(v):
+        return f"{v:.6g}" if v is not None else "null / not applicable"
+
+    for e in entries:
+        if e["kind"] == "reference" or e["repeat"] != 0:
+            continue
+        s = e["summary"]
+        text.append(
+            f"| {e['case']} / {e['duration'] * 1e3:g} ms / {e['kind']} | {fmt(s['accepted_kkt_max'])} / {fmt(s['accepted_nonlinear_kkt_max'])} | {fmt(s['accepted_linear_residual_max'])} | {fmt(s['accepted_force_residual_l2_max_N'])} | {fmt(s['accepted_pair_swept_gap_min_m'])} / {fmt(s['accepted_wall_swept_gap_bound_min_m'])} | {fmt(s['projection_max_m'])} |"
+        )
+    text += [
+        "",
+        "These are accepted states only. Complete LOCAL_ERROR rejections and terminal/nonconverged candidates are separately tabulated in RUN_AUDIT.json; failed candidates never contribute to accepted-state maxima. S0, if used, has a start-equation certificate and no endpoint nonlinear KKT. Raw negative gaps inside the unchanged 1e-11 m tolerance are retained.",
+    ]
     text += [
         "",
         "## Scientific comparison",
@@ -426,6 +454,9 @@ def report(gate, entries):
     text += [
         "",
         "The original group membership and all particles are preserved. Rg and centroid have different units/thresholds. Comparisons use actual states at the common clock, with explicit sample-age bounds; no coordinate interpolation. Frozen Stage4L is a numerical reference, not experimental truth.",
+        "Passing aggregate group metrics does not mean every individual trajectory is identical. The reports also retain maximum same-ID position difference, rigid-fit residual and neighbor-graph changes; R6/R7 display them without geometric smoothing.",
+        "",
+        "V3 ordinary B2 remains BASELINE_DISAGREEMENT (1 ms Q1 difference 2.20205%). V4/V4A use a documented tighter time-error configuration of the unchanged kernel. V4's rejected entry launches remain recorded; V4A fixes entry routing, with fresh bound tests and explicitly reused V4 holdouts. Earlier results are never relabelled as later configuration runs.",
         "",
         "## Performance",
         "",
@@ -448,9 +479,10 @@ def report(gate, entries):
         "",
         "- [Machine-readable gate](MOTION_SOLVER_R2_GATE.json), [all run audits](RUN_AUDIT.json), [performance](PERFORMANCE.json).",
         "- [Figure and data index](../figures/index.md). Actual accepted/rejected ledgers, source snapshots and checkpoint files retain each run ID.",
-        "- Numerical code and environment are sealed by VALIDATION_PROTOCOL_V3.json and TEST_GATE_V3.json; old failed V1/V2 holdouts and trials remain unchanged.",
-        "- Formal reproduction uses the exact commands in CAMPAIGN_V3/RESULT.json, in a separate output root with the recorded scientific inputs and dependency lock. Do not rerun the freeze writer over an existing protocol or overwrite immutable run directories.",
-        "- Postprocessing: `PYTHONPATH=src:. python -m scripts.stage5a_r2.validation_figures`, `PYTHONPATH=src:. python -m scripts.stage5a_r2.motion_visuals --video`, `PYTHONPATH=src:. python -m scripts.stage5a_r2.delivery`.",
+        f"- Numerical code and environment are sealed by VALIDATION_PROTOCOL_{gate['validation_version']}.json and TEST_GATE_{gate['validation_version']}.json; earlier failed holdouts and campaigns remain unchanged.",
+        f"- Formal reproduction uses the exact commands in CAMPAIGN_{gate['validation_version']}/RESULT.json, in a separate output root with the recorded scientific inputs and dependency lock. Explicitly reused runs keep their earlier commands, run IDs and source commits. Do not rerun the freeze writer over an existing protocol or overwrite immutable run directories.",
+        "- Postprocessing: `PYTHONPATH=src:. python -m scripts.stage5a_r2.validation_figures`, `PYTHONPATH=src:. python -m scripts.stage5a_r2.motion_visuals --video --duration 0.001`, `PYTHONPATH=src:. python -m scripts.stage5a_r2.delivery`.",
+        "- [Reproduction details](../../../../scripts/stage5a_r2/README.md), including exact source identities, external input files and the immutable-output policy.",
         "- Large scientific input fields, full HDF5 trajectories, source snapshots and MP4 exports are indexed by actual path, bytes and SHA256 in ARTIFACT_MANIFEST.json; they are not all embedded in Git.",
         "",
         "Known root causes and bounded revisions are documented in `docs/STAGE5A_R2_ROOT_CAUSE_ANALYSIS.md` and `docs/STAGE5A_R2_MOTION_DEVELOPMENT.md`. Passing numerical checks would not validate the dense classical secondary-force model or a physical aggregation mechanism.",
@@ -510,9 +542,14 @@ def index():
             "",
             f"[60 fps MP4]({video.name}) · [actual frame data](R7_VIDEO_ACTUAL_FRAMES.npz) · [sampling and camera provenance](R7_DATA_SOURCES.json)",
             "",
+            "[Decoded-frame and coordinate audit](R7_VIDEO_VALIDATION.json). The MP4 and full frame archive are external exports when excluded by the size policy; local links work in the complete export folder. For GitHub readers, retrieve the actual paths, sizes and SHA256 from the [artifact manifest](../final/ARTIFACT_MANIFEST.json).",
+            "",
         ]
         body.append(
             f'<h2>Same-clock actual motion</h2><video controls preload="metadata" src="{video.name}"></video>'
+            "<p>The video is an external export when absent from the Git checkout. "
+            '<a href="../final/ARTIFACT_MANIFEST.json">Actual file paths and SHA256</a> · '
+            '<a href="R7_VIDEO_VALIDATION.json">Decoded-frame and coordinate audit</a></p>'
         )
     (out / "index.md").write_text("\n".join(md))
     (out / "index.html").write_text(

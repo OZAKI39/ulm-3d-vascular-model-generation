@@ -165,3 +165,34 @@ The label correction is explicit; raw historical counters are retained.
     ledger distinguishes S1 endpoint-matrix and S0 start-matrix equilibrium.
     End-to-end speedup, 1/5 ms scientific results and promotion remain pending
     until their actual runs and comparisons complete.
+
+21. Formal V3 completes both ordinary and refined 1 ms cases. Ordinary B2/B3
+    have 1036/996 accepted substeps, 94/63 rejections, and inclusive process-start
+    wall times 322.005/333.424 s. Refined cases have 1988/1872 accepted substeps
+    (see raw summaries for final values) and wall times 481.754/532.820 s. Frozen
+    Stage4L same-environment 1 ms runs complete at 355.096/508.933 s. All new
+    accepted intervals pass numerical/path gates with zero projection; no S0
+    recovery occurs in these four trajectories. Both self comparisons pass.
+    B2 ordinary vs legacy fails Q1 at 2.20205%; refined B2 passes at 1.75363%.
+    Both B3 comparisons pass. Therefore V3 closes its own 5 ms gate and keeps
+    B2 `BASELINE_DISAGREEMENT`; it is not marked fully successful.
+
+22. V4 registers one stricter configuration of the **unchanged V6 kernel**:
+    selected max macro dt 5 us / original error factors 0.25, independent
+    refinement 2.5 us / factors 0.0625. All V1/V3 experimental costs carry forward.
+    Reuse of completed V3 refined trajectories and references is explicit and
+    never counted as reexecution or another repetition. Six fresh states at
+    7/31/66% of both old trajectories are sealed; both parameter configurations
+    pass on every state (12 probes). Fresh V4 tests: 171 pass, same old xfail.
+    V4's new formal launches encounter the still-frozen V3 entry whitelist and
+    are rejected before initialization, approximately 0.464 s each. Those logs
+    and costs remain under `CAMPAIGN_V4`.
+
+23. V4A fixes only entry routing, with an explicit versioned formal wrapper
+    enforcing source, backend, parameters and budget before invoking the unchanged
+    integration loop. It preserves the old whitelist. Seven new entry-contract
+    tests bring fresh JUnit to 178 pass and one old xfail. The 12 V4 holdout probes
+    are reused with their original source identities because the kernel and all
+    numerical settings are unchanged. Executed V4A source: 7f83f802c. No further
+    algorithm or parameter tuning is allowed after this validation. The new
+    deeper-refinement trajectories are running; final 1/5 ms gates remain pending.

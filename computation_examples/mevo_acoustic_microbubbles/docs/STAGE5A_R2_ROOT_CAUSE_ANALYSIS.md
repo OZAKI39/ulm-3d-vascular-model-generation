@@ -76,3 +76,13 @@ native component solve. Accepted-substep component solves, workspace hits and
 native iterations are counted separately in `final/RUN_AUDIT.json`. Completed
 full/half trials include rejected time-error work; unavailable terminal native
 iteration histories remain explicitly unavailable rather than fabricated.
+
+Clarabel's native tolerance does not monotonically determine the fixed audit.
+At 1e-10, its three fixture statuses are Solved, with original KKT
+1.079e-3 / 6.964e-10 / 4.610e-9. At 1e-12 all three return
+InsufficientProgress; the large audit term is active slack, despite small
+stationarity. R3 deliberately labels its plotted internal tolerance (1e-12),
+and the complete two-tolerance table remains in `native_v1/SUMMARY.json`.
+This is evidence for selecting certified ProxQP, not a general claim that
+Clarabel cannot solve such problems or that tighter requested tolerances always
+produce more accurate candidates.

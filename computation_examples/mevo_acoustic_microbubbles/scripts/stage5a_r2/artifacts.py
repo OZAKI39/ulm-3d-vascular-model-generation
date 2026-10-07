@@ -24,6 +24,7 @@ HEAVY_NAMES = {
     "RESOURCE_SAMPLES.json",
     "ACCEPTED.jsonl",
     "REJECTED.jsonl",
+    "TRANSLATION_SOLVES.jsonl",
 }
 
 
@@ -140,7 +141,9 @@ def main(server=False):
             final_archive_commit="Resolve the commit containing this file; no recursive self-commit hash.",
             branch=subprocess.check_output(["git", "branch", "--show-current"], cwd=ROOT, text=True).strip(),
             base_commit="7c39828d93509fff5551b7a16537ca3aa4ee9c23",
-            protocol_sha256=sha(BASE / "final/VALIDATION_PROTOCOL_V3.json"),
+            protocol_sha256=json.loads((BASE / "final/MOTION_SOLVER_R2_GATE.json").read_text())[
+                "frozen_protocol_sha256"
+            ],
             environment_sha256=sha(BASE / "environment/IDENTITY.json"),
         ),
     )

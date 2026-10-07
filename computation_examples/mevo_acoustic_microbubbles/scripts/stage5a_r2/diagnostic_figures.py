@@ -80,7 +80,8 @@ def qp_figure():
     fig.text(
         0.02,
         0.005,
-        "Original matrices retained; internal tolerance 1e−12. Red = independent certificate rejected. Parallel diagnostic timing; not trajectory speedup.",
+        "Original Stage5A base 7c39828d9350; native_v1 / reconstruction_v1. Internal tolerance 1e−12.\n"
+        "Original matrices retained. Red = independent certificate rejected. Parallel diagnostic timing; not trajectory speedup.",
         fontsize=8,
     )
     fig.get_layout_engine().set(rect=(0, 0.045, 1, 0.955))
@@ -172,7 +173,9 @@ def qp_figure():
 
 
 def convergence_figure():
-    folder = BASE / "diagnosis/manufactured_v2"
+    folder = BASE / "diagnosis/manufactured_final"
+    if not (folder / "SUMMARY.json").exists():
+        folder = BASE / "diagnosis/manufactured_v2"
     rows = json.loads((folder / "SUMMARY.json").read_text())
     fig, axes = plt.subplots(2, 3, figsize=(13, 7.5), layout="constrained")
     colors = ["#72869b", "#43678f", "#2d3c69"]
@@ -220,7 +223,18 @@ def convergence_figure():
         axes[i, 2].set_xlabel("Maximum accepted half-step dt (µs)")
         axes[i, 2].set_ylabel("Terminal gap error (nm)")
         axes[i, 2].legend(fontsize=8)
-    fig.suptitle("R4 | S1 V4: continuous stiff motion and actual grid refinement", fontweight="bold")
+    fig.suptitle("R4 | S1: continuous stiff motion and actual grid refinement", fontweight="bold")
+    fig.text(
+        0.01,
+        -0.055,
+        f"{folder.name} | S1 endpoint resistance, explicit forcing, start tangents; actual 20/40/80 accepted steps.\n"
+        + (
+            "Final frozen kernel 07958c962; source/environment identity in manufactured_final/IDENTITY.json."
+            if folder.name == "manufactured_final"
+            else "Development code archived at a22b208f9; formal trajectory validation is separate."
+        ),
+        fontsize=7,
+    )
     out = BASE / "figures"
     for suffix in ["png", "pdf"]:
         fig.savefig(out / f"R4_CONVERGENCE.{suffix}", dpi=240, bbox_inches="tight")
@@ -233,7 +247,10 @@ def convergence_figure():
             script_sha256=sha(Path(__file__)),
             model="Frozen Stage4L self drag + normal lubrication; constant imposed flow; float64",
             reference="Independent scalar solve_ivp, rtol=2e-12, atol=1e-20; no coordinate interpolation in simulated trajectory",
-            source_note="Development manufactured_v2 diagnostic; formal B2/B3 gates are separate. Explicit max-dt refinement uses 20/40/80 actual accepted steps.",
+            source_note=f"{folder.name} diagnostic; formal B2/B3 gates are separate. Explicit max-dt refinement uses 20/40/80 actual accepted steps.",
+            executed_identity=json.loads((folder / "IDENTITY.json").read_text())
+            if (folder / "IDENTITY.json").exists()
+            else None,
         ),
     )
 

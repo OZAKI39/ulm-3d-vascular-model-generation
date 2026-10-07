@@ -1,5 +1,13 @@
 # MEVO acoustic–microbubble simulator
 
+## Stage 5A-R2 — motion recovery and measured validation
+
+本分支从已审查提交 `7c39828d93509fff5551b7a16537ca3aa4ee9c23` 独立开发。R2 的实际推进、科学量与性能结论分别见 [最终报告](results/stage5/motion_solver_r2/final/REPORT.md) 和 [机器可读 gate](results/stage5/motion_solver_r2/final/MOTION_SOLVER_R2_GATE.json)。下方 Stage 5A 失败结论保留其原始含义，不由 R2 回写。
+
+- [复核与复现入口](scripts/stage5a_r2/README.md)
+- [预注册计划](docs/STAGE5A_R2_MOTION_PLAN.md)、[根因证据](docs/STAGE5A_R2_ROOT_CAUSE_ANALYSIS.md)、[开发记录](docs/STAGE5A_R2_MOTION_DEVELOPMENT.md)
+- [R1–R8 图表和实际运动视频](results/stage5/motion_solver_r2/figures/index.md)
+
 ## Stage 5A — experimental constrained motion
 
 **FAILED_WITH_EVIDENCE / MOTION_SOLVER_NUMERICAL_GATE_FAILED.** 本轮只开发平移数值算法；原 `lubrication_coupled`、Stage 4L 物理与归档结果保持冻结。新 `constrained_lubrication_v1` 尚未通过连续密集微泡算例，不能用于 production。5 ms 及更长计算未启动。

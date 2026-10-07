@@ -38,7 +38,7 @@ class Geometry:
         )
 
 
-def experiment(task):
+def experiment(task, output=None):
     wall, factor, grid = task
     v = 0.001
     duration = 0.001
@@ -113,7 +113,7 @@ def experiment(task):
         model.cache = states[-1][2]
         t += dt
         dt *= min(2.0, max(0.5, 0.85 / max(d["error_ratio"], 1e-8) ** 0.5))
-    out = BASE / "diagnosis/manufactured_v2"
+    out = Path(output) if output is not None else BASE / "diagnosis/manufactured_v2"
     out.mkdir(exist_ok=True)
     name = f"{'wall' if wall else 'pair'}_tol{factor:g}_grid{grid:g}"
     np.savez_compressed(

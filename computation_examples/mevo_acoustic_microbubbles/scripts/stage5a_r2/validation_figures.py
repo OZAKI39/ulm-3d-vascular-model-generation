@@ -1,6 +1,7 @@
 """R1/R2/R5/R6/R8 from recorded trajectories, ledgers and process observations."""
 
 import json
+import textwrap
 from pathlib import Path
 import numpy as np
 import matplotlib
@@ -42,11 +43,17 @@ def read(path, lines=False):
 def save(fig, name, description):
     fig.suptitle(name.replace("_", " "), fontweight="bold")
     commit = (ROOT / "SOURCE_COMMIT_R2.txt").read_text().strip()
+    kernel = json.loads((BASE / "final/VALIDATION_PROTOCOL_V3.json").read_text())["source_commit"]
     fig.text(
         0.01,
-        -0.012,
-        f"R2 S1/S0 V6 | executed source {commit[:12]} | "
-        + "; ".join(f"{k}: {v}" for k, v in FIGURE_CONTEXT.items()),
+        -0.055,
+        "\n".join(
+            textwrap.wrap(
+                f"R2 S1/S0 V6 | kernel freeze {kernel[:12]} | "
+                + "; ".join(f"{k}: {v}" for k, v in FIGURE_CONTEXT.items()),
+                width=170,
+            )
+        ),
         fontsize=6.5,
     )
     for suffix in ["png", "pdf"]:
@@ -58,7 +65,8 @@ def save(fig, name, description):
             definition=description,
             files=SOURCES.copy(),
             script_sha256=sha(Path(__file__)),
-            executed_source_commit=commit,
+            orchestration_checkout_at_render_time=commit,
+            numerical_kernel_commit=kernel,
             selected_runs=FIGURE_CONTEXT.copy(),
         ),
     )
@@ -80,6 +88,7 @@ def select():
 def progress(entries, chosen):
     fig, axes = plt.subplots(1, 2, figsize=(11.5, 4.3), layout="constrained")
     for ax, (case, e) in zip(axes, chosen.items()):
+        stopped = []
         for kind, color in [("nominal", BLUE), ("refined", PURPLE), ("reference", GRAY)]:
             row = next(
                 (
@@ -94,6 +103,12 @@ def progress(entries, chosen):
             )
             if not row:
                 continue
+            summary = row["summary"]
+            if summary["status"] != "COMPLETE":
+                failure = summary.get("failure")
+                reason = failure.get("reason") if isinstance(failure, dict) else failure
+                reason = reason or summary.get("error") or "See terminal log"
+                stopped.append(f"{kind}: {str(reason)[:85]}")
             folder = local(row["run"])
             a = read(folder / "ACCEPTED.jsonl", True)
             ax.plot(
@@ -127,6 +142,17 @@ def progress(entries, chosen):
         ax.axhline(e["duration"] * 1e3, ls="--", lw=1, color="black", label="Requested duration")
         ax.set(xlabel="Elapsed wall time (s)", ylabel="Accepted physical duration (ms)", title=case)
         ax.legend(fontsize=8)
+        if stopped:
+            ax.text(
+                0.02,
+                0.02,
+                "\n".join(stopped),
+                transform=ax.transAxes,
+                fontsize=7,
+                va="bottom",
+                color=RED,
+                bbox=dict(facecolor="white", alpha=0.9, edgecolor="none"),
+            )
     save(
         fig,
         "R1_PROGRESS",
@@ -299,6 +325,18 @@ def metrics():
         ):
             ax.set(xlabel="Physical time since 3 s (ms)", ylabel=y)
             ax.legend(fontsize=7)
+        axes[0, 0].set_title("Registered metric comparison: " + report["status"], fontsize=10)
+        max_age = max(float(np.max(abs(d["sample_age_s"]))) for d in arrays)
+        if max_age < 1e-15:
+            axes[1, 2].set_ylim(-0.01, 0.01)
+            axes[1, 2].text(
+                0.03,
+                0.95,
+                f"Max |age| = {max_age:.2g} s (roundoff)",
+                transform=axes[1, 2].transAxes,
+                va="top",
+                fontsize=8,
+            )
         save(
             fig,
             f"R6_MOTION_METRICS_{label}",
@@ -364,6 +402,10 @@ def performance(entries, chosen):
         bottom += values
     axes[0, 1].set_xticks(range(2), ["B2 R2", "B3 R2"])
     axes[0, 1].set_ylabel("Mutually exclusive elapsed cost (s)")
+    axes[0, 1].set_title(
+        "Selected run costs: " + ", ".join(f"{c} {e['duration'] * 1e3:g} ms" for c, e in chosen.items()),
+        fontsize=10,
+    )
     axes[0, 1].legend(fontsize=7)
     for case, color in [("B2", BLUE), ("B3", PURPLE)]:
         e = chosen[case]

@@ -120,6 +120,8 @@ def axes_grid(plotter, bounds, color, dark):
             a[0] = b[0] = hi[0]
         plotter.add_lines(np.array([a, b]), color=color, width=1.2)
         for fraction in [0, 0.5, 1]:
+            if not dark and axis > 0 and fraction == 0:
+                continue  # shared corners otherwise collide at print-size labels
             p = a + (b - a) * fraction
             if axis == 0:
                 p[1] -= 0.035 * span
@@ -145,7 +147,7 @@ def axes_grid(plotter, bounds, color, dark):
     plotter.add_point_labels(
         np.array(points),
         labels,
-        font_size=11,
+        font_size=11 if dark else 18,
         text_color=color,
         font_family="arial",
         shape=None,
@@ -183,7 +185,8 @@ def main(video=False, requested_duration=None):
         candidates = [r for r in candidates if abs(r["compared_duration_s"] - requested_duration) <= 1e-12]
     selected = {
         case: max(
-            [r for r in candidates if r["label"].startswith(case)], key=lambda r: r["compared_duration_s"]
+            [r for r in candidates if r["label"].startswith(case)],
+            key=lambda r: (r["compared_duration_s"], "_v4a_" in r["label"], "_v4_" in r["label"]),
         )
         for case in ["B2", "B3"]
     }
@@ -194,12 +197,13 @@ def main(video=False, requested_duration=None):
         wall=str(wallfile),
         wall_sha256=sha(wallfile),
         script_sha256=sha(Path(__file__)),
-        executed_source_commit=(ROOT / "SOURCE_COMMIT_R2.txt").read_text().strip(),
+        orchestration_checkout_at_render_time=(ROOT / "SOURCE_COMMIT_R2.txt").read_text().strip(),
         cases={},
         geometry="Actual finite spheres at physical radius, uniform m-to-µm units, no group remapping or particle enlargement; real open WALL patch.",
         view="Fixed parallel camera and equal XYZ scales shared by old/new, fixed common origin per case.",
     )
     for case, report in selected.items():
+        candidate_identity = json.loads((local(report["candidate"]).parent / "IDENTITY.json").read_text())
         arrays, origin, bounds, radius = context(report)
         indices = np.rint(np.linspace(0, len(arrays[0]["time_s"]) - 1, 4)).astype(int)
         plotter = pv.Plotter(shape=(2, 4), window_size=(2560, 1280), off_screen=True, border=False)
@@ -222,7 +226,7 @@ def main(video=False, requested_duration=None):
         fig.text(
             0.01,
             0.008,
-            f"Common time since t = 3 s. Comparison: {report['status']}. Physical radii; no coordinate interpolation. Source {provenance['executed_source_commit'][:12]}.\n"
+            f"Common time since t = 3 s. Comparison: {report['status']}. Physical radii; no coordinate interpolation. R2 source {candidate_identity['source_commit'][:12]}.\n"
             f"Old: {Path(report['reference']).parent.name}; R2: {Path(report['candidate']).parent.name}",
             fontsize=7,
         )
@@ -230,7 +234,11 @@ def main(video=False, requested_duration=None):
             fig.savefig(out / f"R7_ACTUAL_MOTION_{case}.{suffix}", dpi=200, bbox_inches="tight")
         plt.close(fig)
         provenance["cases"][case] = dict(
-            report=report, origin_m=origin.tolist(), bounds_um=bounds, selected_indices=indices.tolist()
+            report=report,
+            origin_m=origin.tolist(),
+            bounds_um=bounds,
+            selected_indices=indices.tolist(),
+            candidate_identity=candidate_identity,
         )
     if video:
         duration = min(r["compared_duration_s"] for r in selected.values())
@@ -283,6 +291,8 @@ def main(video=False, requested_duration=None):
                 writer.append_data(plotter.screenshot(return_img=True))
         plotter.close()
         np.savez_compressed(out / "R7_VIDEO_ACTUAL_FRAMES.npz", requested_time_s=clock, **archive)
+        snapshot = out / "R7_VIDEO_RENDER_SOURCE.py"
+        snapshot.write_bytes(Path(__file__).read_bytes())
         provenance["video"] = dict(
             path=str(target),
             sha256=sha(target),
@@ -291,11 +301,24 @@ def main(video=False, requested_duration=None):
             physical_duration_s=duration,
             max_sample_age_s=maxage,
             coordinate_interpolation=False,
+            render_script_sha256=sha(snapshot),
+            render_source_snapshot=str(snapshot),
             frame_clock="uniform; last actual accepted state held when no newer accepted state exists",
             actual_motion=all(
                 np.max(abs(v[1:] - v[:1])) > 0 for k, v in archive.items() if k.endswith("positions_m")
             ),
         )
+    if not video and (out / "R7_DATA_SOURCES.json").exists():
+        previous = json.loads((out / "R7_DATA_SOURCES.json").read_text())
+        if "video" in previous:
+            provenance["video"] = dict(
+                previous["video"],
+                render_script_sha256=previous.get("video", {}).get(
+                    "render_script_sha256", previous["script_sha256"]
+                ),
+                render_source_snapshot=str(out / "R7_VIDEO_RENDER_SOURCE.py"),
+                note="Existing actual-motion video retained. This pass only increases static figure tick-label sizes; video rendering code and data are unchanged.",
+            )
     write(out / "R7_DATA_SOURCES.json", provenance)
 
 
