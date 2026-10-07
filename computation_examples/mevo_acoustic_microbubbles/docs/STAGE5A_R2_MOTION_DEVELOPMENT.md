@@ -215,3 +215,31 @@ The label correction is explicit; raw historical counters are retained.
     macro interval below 1e-12 s is prohibited. The rejected candidate is never
     committed; original tolerance, geometry and guard are not relaxed. Remaining
     B3/refinement/reference runs continue under the same frozen protocol.
+
+26. Selected B3 `20261007T010239725262Z` completes the entire 5 ms: 3478
+    accepted S1 substeps, 140 LOCAL_ERROR rejections, no S0 bursts and zero
+    projection. Minimum/median accepted dt are 4.81493 ns / 2.5 us. QP KKT
+    <=9.98751e-10, original endpoint KKT <=9.98104e-10, resistance residual
+    <=4.401e-14 and force residual <=5.332e-16 N. Continuous pair/WALL minima
+    remain inside the unchanged tolerance. Total process-start wall time is
+    794.075 s. Refinement and old-reference science are separate pending checks;
+    B3 completion does not erase B2's long-run failure.
+
+27. B2 refinement `20261007T011553819251Z` also stops at minimum physical
+    progress, elapsed **4.311149113464 ms**, only 3.08535 us before the selected
+    configuration. It accepts 6918 substeps (6768 S1, 150 S0), rejects 248 trials
+    (179 LOCAL_ERROR, 10 nonlinear, 59 sweep), and uses ten bounded S0 bursts.
+    Last accepted half-step dt reaches 7.62939e-13 s; the controller's minimum
+    is on the full macro interval, whose accepted half-steps are separately
+    recorded. Driver wall time is 1230.04 s. Every adopted interval retains
+    its numerical/path checks and zero projection. Tightening the time-error
+    budget therefore does not remove the longer-run certification blocker.
+28. B3 independently refined 5 ms validation completes with 6730 adopted S1
+    substeps and 135 LOCAL_ERROR rejections; no S0 recovery is used. Minimum /
+    median adopted dt are 2.02543 ns / 1.25 us, compared with 4.81493 ns /
+    2.5 us and 3478 substeps in its nominal 5 ms run. Maximum original S1 KKT
+    is 9.98044e-10, resistance residual 4.64963e-14, and physical force residual
+    5.37355e-16 N. Minimum continuous pair / WALL bounds are -9.94990e-12 /
+    -9.99960e-12 m, with zero projection. Total process wall time is 1292.45 s.
+    This establishes a completed finer numerical trajectory; full-duration
+    reference science and same-environment timing remain separate checks.

@@ -333,6 +333,11 @@ def metrics():
         axes[0, 0].set_title(title_prefix + report["status"], fontsize=10)
         if report.get("eligible_for_target_gate") is False:
             FIGURE_CONTEXT["scope"] = "Partial overlap; complete 5 ms target NOT MET"
+        if report.get("reference_kind") == "ARCHIVED_STAGE4L":
+            axes[0, 0].set_title("Archived Stage4L science: " + report["status"], fontsize=10)
+            FIGURE_CONTEXT["scope"] = (
+                "Full-duration archived reference; excluded from fresh timing and formal campaign gates"
+            )
         max_age = max(float(np.max(abs(d["sample_age_s"]))) for d in arrays)
         if max_age < 1e-15:
             axes[1, 2].set_ylim(-0.01, 0.01)
@@ -407,10 +412,16 @@ def performance(entries, chosen):
         values = [audit[c]["exclusive_partition_s"][key] for c in ["B2", "B3"]]
         axes[0, 1].bar(range(2), values, bottom=bottom, label=key)
         bottom += values
-    axes[0, 1].set_xticks(range(2), ["B2 R2", "B3 R2"])
+    axes[0, 1].set_xticks(
+        range(2),
+        [
+            f"{c}: {e['summary']['completed_duration_s'] * 1e3:.3f}/{e['duration'] * 1e3:g} ms\n{e['summary']['status']}"
+            for c, e in chosen.items()
+        ],
+    )
     axes[0, 1].set_ylabel("Mutually exclusive elapsed cost (s)")
     axes[0, 1].set_title(
-        "Selected run costs: " + ", ".join(f"{c} {e['duration'] * 1e3:g} ms" for c, e in chosen.items()),
+        "Selected attempt costs (including incomplete runs)",
         fontsize=10,
     )
     axes[0, 1].legend(fontsize=7)
@@ -456,12 +467,14 @@ def performance(entries, chosen):
     ]:
         ax.set(xlabel="Elapsed wall time (s)", ylabel=y)
         ax.legend(fontsize=7)
+    axes[0, 2].set_yscale("symlog", linthresh=100)
+    axes[0, 2].set_ylabel("CPU usage (%)\nLogarithmic scale above 100%")
     axes[1, 2].set(xlabel="Accepted physical time since 3 s (ms)", ylabel="Particles in connected component")
     axes[1, 2].legend(fontsize=7)
     save(
         fig,
         "R8_PERFORMANCE_RESOURCES",
-        "Only complete equal-duration runs enter performance samples; all retries and setup included. One scientific worker, BLAS=1. Actual final solve layout is component serial; component graph is diagnostic. Host/GPU readings are device-wide. Cost partition excludes overlapping wall/error subcounters; see TIMING_AUDIT.json.",
+        "Only complete equal-duration runs enter performance samples; all retries and setup included. Cost/resource panels show the longest selected attempts, including failures, with actual/target duration and status labeled. One scientific worker, BLAS=1. Actual final solve layout is component serial; component graph is diagnostic. Host/GPU readings are device-wide. The first process CPU sample follows immediate psutil priming and has a very short averaging interval; its raw spike is retained, not interpreted as sustained worker usage. Cost partition excludes overlapping wall/error subcounters; see TIMING_AUDIT.json.",
     )
     # Full per-core evidence is plotted separately, not replaced by host mean.
     fig, axes = plt.subplots(1, 2, figsize=(12, 4), layout="constrained")

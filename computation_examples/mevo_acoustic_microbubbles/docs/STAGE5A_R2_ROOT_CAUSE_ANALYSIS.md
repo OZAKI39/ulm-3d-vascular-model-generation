@@ -18,6 +18,17 @@ feature indices. Physical velocity/resistance/force scales are recorded.
 | G: known feasible predictor ignored | CONFIRMED | Reconstructed predictor minimum slack: -2.57e-16 / -4.61e-19 / -4.34e-18 on all original rows. Zero violates lower bounds by 1.69e-4 / 2.84e-7 / 2.02e-5 (normalized). Old OSQP ignores its feasible parameter. |
 | H: continuous wall certificate absent | CONFIRMED | Old source checks wall endpoints only. New test has endpoint-clear path crossing a triangle, plus finite-radius edge graze. R2 uses full swept finite sphere–WALL certification. This confirms missing coverage, not proof an old accepted path actually crossed WALL. |
 
+Direct evidence: [reconstructed original trials and feasible predictors](../results/stage5/motion_solver_r2/diagnosis/reconstruction_v1/REPLAY.json),
+[native solver comparison](../results/stage5/motion_solver_r2/diagnosis/native_v1/SUMMARY.json),
+[pre/post polish residuals](../results/stage5/motion_solver_r2/diagnosis/polish_parts/SUMMARY.json),
+[old exception and workspace handling](../src/mevo_mb/bubbles/osqp_motion.py),
+[old interval driver](../scripts/stage5a/run_probe.py), and
+[new continuous geometry regressions](../tests/test_stage5a_r2.py).
+The numerical WALL discontinuity is recorded in
+[nonlinear reconstruction](../results/stage5/motion_solver_r2/diagnosis/nonlinear_v4/SUMMARY.json);
+the independent final validation remains in the
+[separated outcome gate](../results/stage5/motion_solver_r2/final/MOTION_SOLVER_R2_GATE.json).
+
 The initial checkpoints have strong transient motion and many near-contact
 switches. The old 20 us PC trial changes hundreds of pair states and is far from
 the accepted time-error budget. A faster frozen QP therefore cannot alone repair
@@ -99,3 +110,7 @@ Compatibility between displacement constraints, finite-precision safety margin
 and the continuous certificate remains unresolved for longer motion. No guard
 or tolerance is weakened to make this run pass. The 5 ms run's complete accepted
 and rejected ledgers, checkpoint and terminal error are retained.
+The independently finer B2 trajectory stops by the same mechanism at
+4.311149113464 ms. Its stop differs by only 3.08535 us despite 6918 instead of
+3908 accepted substeps. This supplies refinement evidence that the remaining
+progress limit is not removed by the current time-error refinement alone.

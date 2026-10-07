@@ -64,10 +64,16 @@ def audit(path):
     for name, points in [("initial", initial), ("final", x1)]:
         pg = cdist(points, points) - r[:, None] - r[None, :]
         np.fill_diagonal(pg, np.inf)
-        wg = tr.cylinder.wall_gap_and_normal(points, r)[0]
+        wg, wn, _ = tr.cylinder.wall_gap_and_normal(points, r)
+        i, j = np.unravel_index(np.argmin(pg), pg.shape)
+        wall_index = int(np.argmin(wg))
         gaps[name] = dict(
             nearest_pair_signed_gap_quantiles_m=np.quantile(pg.min(0), [0, 0.25, 0.5, 0.75, 1]).tolist(),
             wall_signed_gap_quantiles_m=np.quantile(wg, [0, 0.25, 0.5, 0.75, 1]).tolist(),
+            minimum_pair_original_ids=[int(ids[i]), int(ids[j])],
+            minimum_wall_original_id=int(ids[wall_index]),
+            minimum_wall_position_m=points[wall_index].tolist(),
+            minimum_wall_normal=wn[wall_index].tolist(),
             scope="All active original IDs, raw signed gaps; negative values preserved.",
         )
     return dict(

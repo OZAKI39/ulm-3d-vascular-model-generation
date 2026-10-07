@@ -8,6 +8,7 @@ import argparse
 import gzip
 import json
 import subprocess
+from pathlib import Path
 from scripts.stage5a_r2.seal import ROOT, BASE
 from scripts.stage4l.dense_probe import sha, write
 
@@ -56,6 +57,44 @@ def compact_ledgers():
                 out.write_bytes(compressed)
 
 
+def external_inputs():
+    references = {}
+    for p in BASE.rglob("IDENTITY.json"):
+        data = json.loads(p.read_text())
+        for name, digest in data.get("input_sha256", {}).items():
+            references.setdefault(name, {}).setdefault(digest, []).append(str(p))
+    for p in (BASE / "fixtures").glob("*.json"):
+        data = json.loads(p.read_text())
+        if not isinstance(data, list):
+            continue
+        for row in data:
+            if (
+                isinstance(row, dict)
+                and str(row.get("source", "")).startswith("/workspace/")
+                and row.get("source_sha256")
+            ):
+                references.setdefault(row["source"], {}).setdefault(row["source_sha256"], []).append(str(p))
+    rows = []
+    for name, expected in sorted(references.items()):
+        path = Path(name)
+        if path.is_relative_to(BASE):
+            continue
+        assert path.is_file(), f"Missing actual scientific input: {path}"
+        digest = sha(path)
+        assert set(expected) == {digest}, f"Scientific input hash changed: {path}"
+        rows.append(
+            dict(
+                actual_server_path=str(path),
+                bytes=path.stat().st_size,
+                sha256=digest,
+                referenced_by=sorted(set(expected[digest])),
+                git_selected=False,
+                role="External scientific input / archived reference",
+            )
+        )
+    return rows
+
+
 def main(server=False):
     if not server:
         compact_ledgers()
@@ -99,7 +138,10 @@ def main(server=False):
     )
     assert not invalid, invalid[:3]
     if server:
-        write(BASE / "final/SERVER_ARTIFACT_MANIFEST.json", dict(root=str(ROOT), files=rows))
+        write(
+            BASE / "final/SERVER_ARTIFACT_MANIFEST.json",
+            dict(root=str(ROOT), files=rows, external_input_files=external_inputs()),
+        )
         print("Server files:", len(rows))
         return
     remote_path = BASE / "final/SERVER_ARTIFACT_MANIFEST.json"
@@ -121,6 +163,7 @@ def main(server=False):
             root=str(ROOT),
             files=rows,
             server_only_files=external,
+            external_input_files=remote.get("external_input_files", []) if remote else [],
             excluded_from_self_hash=sorted(EXCLUDED),
             large_asset_policy="Full HDF5/source ZIP/MP4/per-step raw ledgers stay at real paths. Losslessly compressed ledgers, checkpoints, fixtures, sampled actual frames and figures are included when <=4 MiB each. Scientific input fields remain external, with identities in each run.",
             source_of_remote_inventory=str(remote_path) if remote else None,

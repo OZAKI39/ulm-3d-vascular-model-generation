@@ -79,6 +79,11 @@ The two independent scientific audits may run concurrently (three CPU workers
 each, six in total, BLAS=1) after formal timings end. The endpoint audit includes
 the last accepted state of incomplete/failed prefixes and labels that scope;
 passing this local equation check never changes a failed full-duration status.
+`partial_comparisons` also writes a separate `ARCHIVED_SCIENCE.json` if a new
+5 ms trajectory completes but its fresh reference does not: it verifies the
+sealed original Stage4L trajectory hash and initial IDs/coordinates, then reports
+full-duration scientific metrics. This supplementary result neither changes
+the frozen formal gates nor imports historical runtime into speedup.
 
 The figures/video were rendered in the recorded local environment; its separate
 identity is `environment/RENDER_ENVIRONMENT.json`. With the exact HDF5 files
@@ -105,3 +110,6 @@ uses the bounded S1/S0 V6 driver with endpoint implicit resistance and explicit
 external forces; it is not a fully implicit acoustic-force integrator. Promotion
 requires both 5 ms numerical/scientific gates and comparable complete-run 5x
 speedup. Passing a numerical gate does not validate dense secondary-force physics.
+Changing only the translation-backend name in a generic RK configuration does
+not install the V6 time integrator: `ParticleTracker.step` remains guarded for
+constrained backends. Use the versioned `run_v4a`/campaign entry for this protocol.

@@ -159,6 +159,10 @@ def run_audit(e):
             ),
         ),
         terminal_run_failure=s["failure"],
+        terminal_run_error=s.get("error"),
+        terminal_status=s["status"],
+        last_rejected_reason=r[-1]["reason"] if r else None,
+        failed_candidate_residual_limitations="Sweep-rejected exceptions preserve their continuous geometry bounds and dt, but do not retain native-candidate KKT/force fields. Those residuals remain unavailable, not zero. Nonlinear failures retain their recorded final original-equation residuals.",
         trial_cost=trial_cost,
         geometry=dict(
             finite_active_states=bool(active_finite),
@@ -180,6 +184,7 @@ def run_audit(e):
                 "active_workers",
             ]
         },
+        resource_sampling_note="Raw first CPU sample follows immediate psutil priming (very short interval); an initial spike is not sustained parallel usage. Report median/whole-process CPU time alongside extrema. Host/GPU utilization is device-wide.",
         note="Inactive NaN sentinel positions are excluded from finite-active-state check; IDs/radii/active masks are retained.",
     )
 
@@ -301,6 +306,7 @@ def main():
         )
     tests = read(BASE / f"final/TEST_GATE_{version}.json")
     holdout = read(BASE / f"final/HOLDOUT_{version}.json")
+    manufactured = read(BASE / "diagnosis/manufactured_final/GATE.json")
     five = stages["0.005"]
     p5 = [r for r in perf if r["duration_s"] == 0.005]
     pstatus = (
@@ -312,6 +318,8 @@ def main():
         blockers.append("Both 5 ms comparable >=5x timing gates are not established")
     if not endpoint or endpoint["status"] != "PASS":
         blockers.append("Independent endpoint audit incomplete or failed")
+    if not manufactured or manufactured["status"] != "PASS":
+        blockers.append("Final-kernel manufactured convergence audit incomplete or failed")
     motion_pass = five["continuous_motion_status"] == "PASS"
     science_pass = five["scientific_status"] == "PASS"
     promoted = (
@@ -322,6 +330,8 @@ def main():
         and endpoint["status"] == "PASS"
         and holdout["status"] == "PASS"
         and tests.get("status") == "PASS"
+        and manufactured
+        and manufactured["status"] == "PASS"
     )
     native = read(BASE / "diagnosis/native_v1/SUMMARY.json")
     fixed = sorted(
@@ -353,8 +363,10 @@ def main():
         tests=tests,
         holdout_status=holdout["status"],
         independent_endpoint_audit_status=endpoint["status"] if endpoint else "NOT_RUN",
+        manufactured_convergence_status=manufactured["status"] if manufactured else "NOT_RUN",
         performance=perf,
         partial_prefix_comparisons=partial,
+        archived_full_duration_science=read(BASE / "final/ARCHIVED_SCIENCE.json"),
         timing_limitations=[
             f"{r['case']} {r['duration_s'] * 1e3:g} ms has fewer than three complete repeats per method"
             for r in perf
@@ -400,7 +412,7 @@ def report(gate, entries):
         "",
         f"Executed source: `{gate['executed_source_commit']}`. Final archive commit is the commit containing this report; it is not the executed source identity.",
         "",
-        f"Fresh bound tests: {gate['tests']['passed']} passed, {gate['tests']['skipped_or_xfail']} retained old xfail. Original-QP regressions: {gate['qp_regression_status']}; holdout: {gate['holdout_status']}; independent final-equation audit: {gate['independent_endpoint_audit_status']}.",
+        f"Fresh bound tests: {gate['tests']['passed']} passed, {gate['tests']['skipped_or_xfail']} retained old xfail. Original-QP regressions: {gate['qp_regression_status']}; holdout: {gate['holdout_status']}; independent final-equation audit: {gate['independent_endpoint_audit_status']}; final-kernel manufactured convergence: {gate['manufactured_convergence_status']}.",
         "",
         "Native packages: proxsuite/ProxQP 0.7.2, OSQP 1.1.3, Clarabel 0.11.1; float64. The selected solver is bounded component ProxQP, with certified native alternatives. Internal status never replaces the fixed original KKT check.",
         "",
@@ -460,10 +472,27 @@ def report(gate, entries):
         "",
         "V3 ordinary B2 remains BASELINE_DISAGREEMENT (1 ms Q1 difference 2.20205%). V4/V4A use a documented tighter time-error configuration of the unchanged kernel. V4's rejected entry launches remain recorded; V4A fixes entry routing, with fresh bound tests and explicitly reused V4 holdouts. Earlier results are never relabelled as later configuration runs.",
         "Optional [partial-prefix comparisons](PARTIAL_COMPARISONS.json) describe actual common intervals when a 5 ms run stops early. They retain exact source frames and sampling uncertainty, and never upgrade a complete-duration gate.",
-        "",
-        "## Performance",
-        "",
+        "When a fresh reference cannot finish within budget, [archived full-duration science](ARCHIVED_SCIENCE.json) separately compares complete new 5 ms trajectories against the immutable original Stage4L data. These supplementary comparisons do not change the frozen campaign or use historical runtime as a speedup denominator.",
     ]
+    for field, title in [
+        ("partial_prefix_comparisons", "Supplementary actual common prefixes (not complete 5 ms gates)"),
+        ("archived_full_duration_science", "Supplementary archived-reference science (not fresh timing)"),
+    ]:
+        extra = gate.get(field)
+        if not extra or not extra["rows"]:
+            continue
+        text += [
+            "",
+            f"### {title}",
+            "",
+            "| Comparison | Actual common duration (ms) | Rg endpoint / series (%) | Q1 / Q2 / Q3 (%) | Centroid / budget (nm) | Scoped status |",
+            "|---|---:|---|---|---|---|",
+        ]
+        for r in extra["rows"]:
+            text.append(
+                f"| {r['label']} | {r['compared_duration_s'] * 1e3:.8g} | {r['Rg_endpoint_relative'] * 100:.5g} / {r['Rg_series_relative_L2'] * 100:.5g} | {' / '.join(f'{x * 100:.5g}' for x in r['pair_quartiles_relative'])} | {r['centroid_difference_m'] * 1e9:.5g} / {r['centroid_budget_m'] * 1e9:.5g} | {r['status']} |"
+            )
+    text += ["", "## Performance", ""]
     for r in gate["performance"]:
         text.append(
             f"- {r['case']} {r['duration_s'] * 1e3:g} ms: completion speedup {r['completion_speedup']}; new/reference repetitions {len(r['nominal_wall_s'])}/{len(r['reference_wall_s'])}; three-repeat sufficiency {r['repeatability_sufficient']}."
