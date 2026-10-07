@@ -5,15 +5,16 @@ from pathlib import Path
 import imageio.v2 as imageio
 import numpy as np
 import pyvista as pv
-from scripts.stage5a_r3.common import BASE, R2, read, write, sha
+from scripts.stage5a_r3.common import BASE, R2, write, sha
 from scripts.stage5a_r3.paths import local
+from scripts.stage5a_r3.current import campaign as current_campaign
 from scripts.stage5a_r3.figures import history, BLUE
 from scripts.stage5a_r3.video_audit import audit
 from scripts.stage5a_r2.motion_visuals import wall_path, glyph, decorate
 
 
 def main(case):
-    ledger = read(BASE / "final/CAMPAIGN_R3_V1/RESULT.json")["ledger"]
+    ledger = current_campaign()["ledger"]
     chosen = [
         next(
             r

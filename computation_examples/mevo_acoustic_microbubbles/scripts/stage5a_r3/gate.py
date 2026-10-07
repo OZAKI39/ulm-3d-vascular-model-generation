@@ -5,6 +5,7 @@ import numpy as np
 from scripts.stage5a_r3.common import BASE, R2, read, write, sha
 from scripts.stage5a_r3.paths import local
 from scripts.stage5a_r3.campaign import numerical
+from scripts.stage5a_r3.current import campaign as current_campaign, protocol_path
 
 
 def same_initial(left, right):
@@ -70,12 +71,13 @@ def ratio(reference, candidate, duration):
 
 
 def main():
-    campaign = read(BASE / "final/CAMPAIGN_R3_V1/RESULT.json")
+    campaign = current_campaign()
+    version = campaign.get("version", "R3_V1")
     ledger = campaign["ledger"]
     comparisons = read(BASE / "final/FORMAL_COMPARISONS.json")["rows"]
     old = read(R2 / "final/CAMPAIGN_V4A/RESULT.json")["ledger"]
-    tests = read(BASE / "final/TEST_GATE_R3_V1.json")
-    holdout = read(BASE / "final/HOLDOUT_R3_V1.json")
+    tests = read(BASE / f"final/TEST_GATE_{version}.json")
+    holdout = read(BASE / f"final/HOLDOUT_{version}.json")
     rows = []
     for entry in ledger:
         case, duration, kind, repeat = [entry[k] for k in ["case", "duration_s", "kind", "repeat"]]
@@ -96,7 +98,7 @@ def main():
             r
             for r in comparisons
             if r["case"] == case
-            and r["name"].startswith(f"R3_{duration:g}_")
+            and r["name"].startswith(f"{version}_{duration:g}_")
             and r.get("cluster_consistency")
         ]
         ref = next(
@@ -257,7 +259,7 @@ def main():
         holdout_status=holdout["status"],
         holdout_scope="Six preselected full-system numerical states; trajectory-level lineage was previously inspected",
         spent_formal_s=campaign["spent_s"],
-        protocol_sha256=sha(BASE / "final/VALIDATION_PROTOCOL_R3_V1.json"),
+        protocol_sha256=sha(protocol_path()),
         preserved_failures="R2 nominal/refined B2 failures; R3 finest initial local budgets; strict bitwise restart FAIL with separate 1-ULP resolution audit; early loaded-source correction; original failed test invocation",
         no_extrapolated_speedup=True,
         no_automatic_promotion=True,

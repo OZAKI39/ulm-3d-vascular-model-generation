@@ -8,6 +8,7 @@ from scipy.spatial.distance import pdist
 from scripts.stage5a_r3.common import BASE, R2, read, write, sha
 from scripts.stage5a_r3.paths import local
 from scripts.stage5a_r3.lineage import compare_all
+from scripts.stage5a_r3.current import campaign as current_campaign
 
 
 def cluster_report(comparison, original_group):
@@ -192,7 +193,7 @@ def method_usage(folder):
 
 
 def main():
-    campaign = read(BASE / "final/CAMPAIGN_R3_V1/RESULT.json")
+    campaign = current_campaign()
     old = read(R2 / "final/CAMPAIGN_V4A/RESULT.json")["ledger"]
     lineage = read(BASE / "final/REFERENCE_LINEAGE_AUDIT.json")
     ledger = campaign["ledger"]
@@ -210,7 +211,7 @@ def main():
             if "nominal" not in entries:
                 continue
             candidate = local(entries["nominal"]["run"]) / "trajectories.h5"
-            prefix = f"R3_{duration:g}"
+            prefix = f"{campaign.get('version', 'R3_V1')}_{duration:g}"
             for kind in ["refined", "reference"]:
                 if kind in entries:
                     comparisons.append(

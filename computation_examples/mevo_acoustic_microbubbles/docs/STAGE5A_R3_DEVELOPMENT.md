@@ -60,3 +60,50 @@ archived/fresh RMS is about 1.02 um, much larger than the 17.8 nm RMS resolution
 (B3), so original-group agreement alone does not establish per-bubble accuracy.
 Last-actual-frame timing uncertainty is retained; these are not interpolated
 trajectories and all-active accuracy remains NOT_EVALUABLE pending refinement.
+
+## Confirmations and original-start V1 campaign
+
+The later exact/cold-query audit resolves H3 as CONFIRMED and the cache-artifact
+explanation as REFUTED. See `B2_EVENT_ROOT_CAUSE.json` and the root-cause report.
+Both terminal full-system fixtures advance without rejection/projection.
+Original-start V1 nominal +1 ms and +5 ms runs complete for both cases and pass
+the unchanged numerical gates. Process-inclusive +5 ms times are 728.034 s for
+B2 and 1477.759 s for B3. B2 refined +5 ms also completes; its measured run-body
+time is 1152.959 s. No independent global per-bubble error bound is claimed.
+
+## Resource revision after measured full-task regression
+
+V1 global QP was selected from isolated short changing-state substeps, where it
+was fastest. The full B3 run exposes an unrepresented workload: 29,810 QP calls
+cost 1196.99 s, versus 29,795 calls and 560.46 s in R2 component serial. R3/R2
+all-active endpoint maximum difference is approximately 15.36 pm; different
+physics or radically different motion does not explain this time difference.
+
+The V1 **orchestrator only** was held while its current B2 refined science child
+continued unmodified to completion. The scheduler was then closed before any
+further tasks launched. Original `RESULT.json` remains untouched; separately
+sealed `CLOSED_RESULT.json` records the complete child result and closure. Its
+missing orchestrator process-latency measurement is not invented: for budget
+accounting the measured run-body time plus a conservative 50 s is charged.
+All V1 charges carry into the successor budget, totaling 4404.494 s in the
+new-method group. No budget reset occurs.
+
+The first adopted-horizon diagnostic overlapped an artifact transfer and is
+retained as `LAYOUT_ADOPTED_HORIZON_WITH_SYNC.json`; a second isolated run resolves
+that timing concern. All mathematical checks pass. A further complete-trial
+benchmark uses actual formal states, all active bubbles and actual 5 µs
+full/half1/half2 work, with three changing macrosteps per layout. It passes all
+60 trials and all fixed-ID comparisons. At B3 +1.5/+2.5 ms, global medians are
+1.618/1.321 s per trial, versus 0.351/0.288 s for component serial. Parallel
+component layouts are slower than serial. Maximum layout trajectory difference
+is 2.43e−17 m. Earlier isolated 50 ns tests did not cover these costly states.
+
+V2 therefore keeps B2 global, where initial compression dominates the measured
+task time, and changes **only B3 resource layout to component serial**. BLAS and
+QP workers remain one; pair forces remain on the GPU. The scientific source
+hashes and numerical driver AST are unchanged. The driver modification selects
+and verifies the versioned resource protocol. Tolerances, full-system physics,
+time-error settings, S0 policy and predeclared accuracy budgets are unchanged.
+Equivalent B2 executions keep their actual V1 execution identities and are not
+described as newly rerun. New numerical-state holdouts and source-bound tests
+precede V2 formal B3 runs and repeated timing.

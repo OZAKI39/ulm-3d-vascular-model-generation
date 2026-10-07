@@ -4,11 +4,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scripts.stage5a_r3.common import BASE
 from scripts.stage5a_r3.paths import local
+from scripts.stage5a_r3.current import campaign as current_campaign
 from scripts.stage5a_r3.figures import save, source, history, BLUE, RED, PURPLE, GRAY, GOLD
 
 
 def formal():
-    return source(BASE / "final/CAMPAIGN_R3_V1/RESULT.json")["ledger"]
+    return current_campaign()["ledger"]
 
 
 def nominal(case):
@@ -29,7 +30,7 @@ def g4():
     arrays = {}
     for row, case in enumerate(["B2", "B3"]):
         r = next(
-            x for x in rows if x["case"] == case and x["name"] == "R3_0.005_refined" and x.get("samples")
+            x for x in rows if x["case"] == case and x["name"].endswith("_0.005_refined") and x.get("samples")
         )
         a = np.load(local(r["samples"]))
         errors = a["all_active_raw_errors_m"] * 1e9
