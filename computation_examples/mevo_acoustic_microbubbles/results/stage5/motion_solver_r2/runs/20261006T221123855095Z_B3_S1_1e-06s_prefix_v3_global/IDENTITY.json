@@ -1,0 +1,432 @@
+{
+  "case": "B3",
+  "method": "S1",
+  "duration_s": 1e-06,
+  "config": {
+    "name": "stage4_Y_homogeneous_water",
+    "seed": 20261002,
+    "grid": {
+      "shape": [
+        256,
+        192,
+        128
+      ],
+      "spacing_m": [
+        0.0001,
+        0.0001,
+        0.0001
+      ]
+    },
+    "medium": {
+      "density_kg_m3": 1000.0,
+      "viscosity_Pa_s": 0.001,
+      "sound_speed_m_s": 1500.0,
+      "radial_effective_viscosity_Pa_s": 0.002
+    },
+    "acoustics": {
+      "frequency_Hz": 2500000.0,
+      "backend": "python",
+      "device": "gpu",
+      "allow_python_gpu_fallback": true,
+      "BonA": null,
+      "CFL": 0.25,
+      "ramp_periods": 4,
+      "recording_periods": 4,
+      "transit_multiples": 2.0,
+      "pml_size": 16,
+      "pml_alpha": 2.0,
+      "pml_inside": false,
+      "roi_half_width_m": [
+        0.0102,
+        0.0062,
+        0.0016
+      ],
+      "basis_source_amplitude_Pa": 10000.0,
+      "source_implementation": "kwave_array",
+      "bli_tolerance": 0.01,
+      "upsampling_rate": 10,
+      "superposition_amplitudes": [
+        1.0,
+        0.8,
+        0.6,
+        1.0
+      ],
+      "superposition_phases_rad": [
+        0.0,
+        1.5707963267948966,
+        3.141592653589793,
+        -1.5707963267948966
+      ],
+      "validation_relative_L2_max": 0.001,
+      "phase_mask_relative_amplitude": 0.01,
+      "geometry_hash": "9e0200544a5ba14112fd53a790ffb94fec92bcc43f818a62d5fac94eeebd8110"
+    },
+    "pzt": [
+      {
+        "id": "y_plus",
+        "position_m": [
+          0.0,
+          0.004,
+          0.0
+        ],
+        "normal": [
+          0.0,
+          -1.0,
+          0.0
+        ],
+        "geometry": "disc",
+        "size_m": [
+          0.006
+        ],
+        "amplitude_Pa": 15293.899163512331,
+        "phase_rad": 0.0,
+        "enabled": true
+      },
+      {
+        "id": "y_minus",
+        "position_m": [
+          0.0,
+          -0.004,
+          0.0
+        ],
+        "normal": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "geometry": "disc",
+        "size_m": [
+          0.006
+        ],
+        "amplitude_Pa": 3823.474790878083,
+        "phase_rad": 3.141592653589793,
+        "enabled": true
+      },
+      {
+        "id": "z_plus",
+        "position_m": [
+          0.0,
+          0.0,
+          0.004
+        ],
+        "normal": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "geometry": "disc",
+        "size_m": [
+          0.006
+        ],
+        "amplitude_Pa": 3823.474790878083,
+        "phase_rad": 3.141592653589793,
+        "enabled": true
+      },
+      {
+        "id": "z_minus",
+        "position_m": [
+          0.0,
+          0.0,
+          -0.004
+        ],
+        "normal": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "geometry": "disc",
+        "size_m": [
+          0.006
+        ],
+        "amplitude_Pa": 3823.474790878083,
+        "phase_rad": 3.141592653589793,
+        "enabled": true
+      }
+    ],
+    "bubble_response": {
+      "model": "adaptive_response_table",
+      "resonance_frequency_Hz": 2500000.0,
+      "damping_ratio": 0.15,
+      "provenance": "Demo assumptions; not calibrated SonoVue shell parameters",
+      "path": "/workspace/mevo_acoustic_microbubbles/results/stage4/performance_refactor/gold_baseline/inputs/results/stage4/acoustic/response_extension/20261002T144654140341Z/adaptive_response.h5",
+      "shell_model": "lipid_marmottant"
+    },
+    "particles": {
+      "count": 256,
+      "dt_s": 0.0005,
+      "duration_s": 6.0,
+      "integrator": "RK2",
+      "primary_enabled": true,
+      "secondary_enabled": true,
+      "max_displacement_per_radius": 5.0,
+      "max_substeps": 10000,
+      "initialization": {
+        "kind": "cloud",
+        "x_half_width_m": 0.0015,
+        "radial_fraction": 0.8,
+        "cloud_radius_m": 7.5e-05,
+        "cloud_center_m": [
+          0.0,
+          8e-05,
+          4e-05
+        ]
+      },
+      "size_distribution": {
+        "kind": "monodisperse",
+        "radius_m": 1.78e-06,
+        "minimum_radius_m": 1.6e-06,
+        "maximum_radius_m": 1.96e-06,
+        "lognormal_sigma": 0.2,
+        "samples_m": []
+      },
+      "minimum_separation_m": 2e-05,
+      "collision_regularization_m": 1e-08,
+      "secondary_force_cutoff_m": 0.0005,
+      "contact_tolerance_m": 1e-11,
+      "contact_max_iterations": 3000,
+      "pair_backend": "cupy",
+      "near_field_policy": "simulator",
+      "contact_search_backend": "ckdtree",
+      "response_backend": "numpy",
+      "pair_benchmark_path": "/workspace/mevo_acoustic_microbubbles/results/stage4/performance_refactor/protocol/PAIR_BACKEND_STATE.json",
+      "translation_backend": "constrained_lubrication_r2",
+      "lubrication": {
+        "activation": 0.1,
+        "floor": 0.001,
+        "residual_tolerance": 1e-11
+      },
+      "constrained_solver": {
+        "solver": "prox",
+        "components": false,
+        "component_workers": 1
+      }
+    },
+    "flow": {
+      "backend": "vtk",
+      "snapshot": "/workspace/mevo_acoustic_microbubbles/results/stage4/performance_refactor/gold_baseline/inputs/results/stage4/simvascular/steady/20261002T141810826990Z/run/8-procs/result_121.vtu",
+      "velocity_array": "Velocity",
+      "coordinate_scale_to_m": 1.0,
+      "velocity_scale_to_m_s": 1.0,
+      "spatial_method": "tetra_p1",
+      "time_unit": "s"
+    },
+    "metrics": {
+      "cluster_threshold_m": 1e-05,
+      "near_contact_gap_m": 5e-07,
+      "pair_histogram_bins": 40,
+      "pair_histogram_max_m": 0.004
+    },
+    "output": {
+      "vtk_stride": 10,
+      "figure_dpi": 300,
+      "save_interval_s": 0.02
+    },
+    "controls": {
+      "phase_patterns_rad": {
+        "baseline": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "shifted": [
+          0.0,
+          1.5707963267948966,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "physics_validity": {
+      "regime": {
+        "far_field_over_sum": 5.0,
+        "transition_over_sum": 2.0,
+        "contact_relative_tolerance": 1e-05
+      }
+    },
+    "validation_gates": {
+      "stage": "Stage4",
+      "baseline_tag": "stage3-minimal-validated",
+      "geometry": "results/stage4/geometry/STATE.json",
+      "flow_import": "results/stage4/simvascular/import/STATE.json",
+      "acoustic": "results/stage4/acoustic/STATE.json",
+      "controls": "results/stage4/phase_screening/STATE.json"
+    },
+    "geometry": {
+      "parent_length_m": 0.014,
+      "parent_radius_m": 0.0013,
+      "daughter_length_m": 0.012,
+      "daughter_radius_m": 0.001,
+      "branch_angle_deg": 30.0,
+      "blending_length_m": 0.0002,
+      "surface_spacing_m": 0.00012,
+      "mesh_edge_size_m": 0.00025,
+      "classification_distance_m": 0.01,
+      "classification_tolerance_m": 1e-09,
+      "bifurcation_plane_x_m": 0.0,
+      "concentration_roi_start_m": 0.001,
+      "concentration_roi_end_m": 0.003,
+      "kind": "bifurcation",
+      "mesh_surface": "/workspace/mevo_acoustic_microbubbles/results/stage4/performance_refactor/gold_baseline/inputs/results/stage4/simvascular/mesh/20261002T141441884393Z/SV_MESH/mesh-complete.exterior.vtp"
+    },
+    "classification_tolerance_m": 1e-09,
+    "experiment_scope": "Stage4 finite initial ensemble, homogeneous water, geometric walls; no clinical concentration or patient calibration",
+    "performance_execution": {
+      "wall_projection": "per_particle_interior_certificate_v1",
+      "distance_roundoff_margin_m": 1e-10,
+      "changed_force_or_timestep": false,
+      "helper_sha256": "c439d5e17deecc0a66cedf3221611830fb774189d104fbc69579d180364a477f",
+      "equivalence_evidence": "results/stage4/performance/later_particle_geometry_certificate/20261003T131349331620Z"
+    },
+    "sampling": {
+      "count": 256,
+      "radius_m": 1.78e-06,
+      "seed": 20261002,
+      "sampling_policy": "flux_weighted",
+      "initialization_x_m": -0.002,
+      "cross_section_radius_fraction": 0.9,
+      "minimum_separation_m": 8e-06,
+      "seeds": [
+        20261002,
+        20261003,
+        20261004,
+        20261005,
+        20261006,
+        20261007,
+        20261008,
+        20261009,
+        20261010,
+        20261011
+      ]
+    },
+    "pzt_control": {
+      "field": "results/stage4/phase_screening/20261002T144847677887Z/B3_field.h5",
+      "field_sha256": "ab14d3b6a5a2383e26cd5d66737ea953da8f5d9d05bfb516faacfd23767f6c6a",
+      "amplitudes_Pa": [
+        15293.899163512331,
+        3823.474790878083,
+        3823.474790878083,
+        3823.474790878083
+      ],
+      "phases_rad": [
+        0.0,
+        3.141592653589793,
+        3.141592653589793,
+        3.141592653589793
+      ],
+      "enabled": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "lumen_pressure_range_Pa": [
+        8.03319929997087,
+        39000.0
+      ],
+      "lumen_fraction_below_table": 0.0,
+      "lumen_fraction_above_table": 0.0
+    },
+    "effective_acoustic_field": {
+      "path": "/workspace/mevo_acoustic_microbubbles/results/stage4/performance_refactor/gold_baseline/inputs/results/stage4/phase_screening/20261002T144847677887Z/B3_field.h5",
+      "basis_override": false,
+      "roi_grid_shape": [
+        205,
+        125,
+        33
+      ],
+      "roi_grid_spacing_m": [
+        9.99999999999994e-05,
+        0.00010000000000000026,
+        0.00010000000000000005
+      ],
+      "scope": "Loaded field is authoritative for interpolation; base grid config identifies the original basis. Overrides retain their own field grid and direct-solver metadata."
+    }
+  },
+  "max_dt_s": 2e-05,
+  "tolerance_factor": 1.0,
+  "initial_dt_s": 1e-08,
+  "active_count": 189,
+  "source_sha256": {
+    "src/mevo_mb/__init__.py": "9b5ebe1010b0489dd7840dbbdd8d62cf188ae9edfbdb58ecf66059684112faa0",
+    "src/mevo_mb/__main__.py": "6d8b7d7846a845059d7a3107143f11131f63c5511d669b44085b15ec5e3d2279",
+    "src/mevo_mb/cli.py": "54d571536868f37c490c4ff3b0ab647113889a4715a81e8beb84ce5a898ba935",
+    "src/mevo_mb/acoustics/basis.py": "28e7a833052113395852aaa3f517eb752d04fcf32d6287c219ca12b98118999a",
+    "src/mevo_mb/acoustics/convergence.py": "55de1f4b4976ff2e44f5683798d2eba0976d5ec9c97256ff7e739949a749c92b",
+    "src/mevo_mb/acoustics/kwave_backend.py": "046ffd4bd4ffe09d2c165135cd4fa94562ad9828c1e17aa66a8a953e7001627d",
+    "src/mevo_mb/acoustics/validation.py": "fbc557bce367e3fdb0be6c69f8778c70e521be2635b324f1062b7edb50285fd0",
+    "src/mevo_mb/bubbles/adaptive_table.py": "13027e17bbbe8f47075d51364723f48b9dc35eb6ebf7259306d01975b1f45b9f",
+    "src/mevo_mb/bubbles/apecss.py": "959429dd3beafc240fb3a5a07cd9133d7a34c521da2b3579eb4492eb31531096",
+    "src/mevo_mb/bubbles/auto_backend.py": "ba24197d0c3d22147ec8af6dd1ced6f59d2a90c1d65eb14ff3779f714e348a61",
+    "src/mevo_mb/bubbles/constrained_motion.py": "97e4b52d10e94b4a6ce9900e3d3d7385c5fd040fc7bc64d3b5fe72ca54925f03",
+    "src/mevo_mb/bubbles/contact.py": "0da1cff45ec710f750d2d72009c5d532f2f8626823bf88eab5e3acca7dc337af",
+    "src/mevo_mb/bubbles/forces.py": "9868c1f64c82d8bfba2c0eef1bfc52779a1a0f99695e453ea96833a74dc723e7",
+    "src/mevo_mb/bubbles/inlet_sampling.py": "fe015b21413063affb6c12da7e80fdeef44dfb695063e2cb83f21819538658f7",
+    "src/mevo_mb/bubbles/metrics.py": "3330e876fd08878018eb752a88932468e86c6fa683853e6e6b1e1d00038691bd",
+    "src/mevo_mb/bubbles/neighbor_cache.py": "cdad41b24a0c8fabdc45d38af5f60a1e2dc3dd366aae8c8622b93478eb7b3651",
+    "src/mevo_mb/bubbles/ordered_contact_sweep.py": "07a9c94877bea063832a6ab855f11ea9e58b65049693693ec9d112e98a1b1890",
+    "src/mevo_mb/bubbles/osqp_motion.py": "7ff5de4de652b38ff9044f024346a50a749a14489abacaa089c1be9311d037cd",
+    "src/mevo_mb/bubbles/parameters.py": "332d7993d217c1a33b07fc036e0fc22c4e56eb757ee213a482e177def131234c",
+    "src/mevo_mb/bubbles/population.py": "e693e8f14c755017af54ff8b3ad16fef2934eb41c52d9795373cccb960fb21ad",
+    "src/mevo_mb/bubbles/response.py": "e619547af188ee08c8fb3c838f24e39e2bce242b7317375417b83fcdf2f1f2f5",
+    "src/mevo_mb/bubbles/response_table.py": "57e248edd459659d582a01be1ccffd9780c7e38740c015c371c7842ec8afa011",
+    "src/mevo_mb/bubbles/secondary_ablation.py": "ecb751e40546bc29e63f21176b8507dcefad357f8d766fd0cb851c0cf792208b",
+    "src/mevo_mb/bubbles/tracker.py": "506ec65edc05fba54995e54fc6897412340356056d5fb62299c212276a9d0474",
+    "src/mevo_mb/bubbles/translation.py": "9b995d56721c46ff7133f5b3dac4bf73b386280c44388829c6a68fa74b7cdf5f",
+    "src/mevo_mb/bubbles/translation_backends.py": "7f31aa6bb7093e4420746ff24f9463735ce623aacd98ae069f12d3087664666c",
+    "src/mevo_mb/bubbles/validity.py": "b30ba380ea05c5b306741836b3e2b491d2ebae96b0046108efbec5640544b6e5",
+    "src/mevo_mb/bubbles/wall.py": "2b5f92edccf13dc182b28413ee5eb990de78ff42be479275bab268948e72f0df",
+    "src/mevo_mb/bubbles/motion_qp_r2.py": "f871f0addb3cab3cf29694c5d6d508d4547ce1c801cd2f091ad6f4addfa0bed0",
+    "src/mevo_mb/bubbles/motion_r2.py": "8b1d48973aee48a440e6b55bc7d5d531d5b3413254c4a13eea0c99d165c71114",
+    "src/mevo_mb/bubbles/motion_sweep_r2.py": "3837a4da9934131aebcfacec78806dc625eb99a5be0a54ec0f6fa25b9fbffd4a",
+    "src/mevo_mb/control/pzt.py": "d55b504ac0f9e88857aa6fb3a8a232258d3389189d74ba6a319a42ccc02be6a7",
+    "src/mevo_mb/coupling/bifurcation.py": "77022f1594fd849767c488c278f66bcb3690bd0bc00a7f9af0789349290b4716",
+    "src/mevo_mb/coupling/bifurcation_experiment.py": "52de0ea70525cc502020eb523aead0ae575208a8c23ded3e69ea3566087deab1",
+    "src/mevo_mb/coupling/campaign.py": "ef0c6dfbb5607f220d214b00060e2efe6ba79f52e67131f8af2a70acfffdac7a",
+    "src/mevo_mb/coupling/experiment.py": "51020bea1e29518b897f0cccb98db259657da7079195ea764aaf3f8143793613",
+    "src/mevo_mb/coupling/geometry.py": "d06ec4c43454e433ef3dd94b5fde2d6e9f17a29a86f8636c8cefcba0a27ec84f",
+    "src/mevo_mb/coupling/integrators.py": "8c8221039fe32eec5acbae7ae3c593947cbb62bc614ff66e6f82088be7fefddb",
+    "src/mevo_mb/coupling/termination.py": "c367ba8981e0d07feb11fa14634677be9f71f5d4df89d7e65fb8fafbca355599",
+    "src/mevo_mb/coupling/wall_backends.py": "2cb67170eb407e0ce657d4c6dd32f11eacc93333b8e3f46e771ad5e75e037871",
+    "src/mevo_mb/coupling/warp_wall.py": "3602ab8bfbeb7f0816182d3667f2be115db6f65053087f233e2faa35d7750054",
+    "src/mevo_mb/coupling/warp_wall_kernel.py": "675fc03ebd332241ad6c066a15253fa756ccde9072e7a14c45d4032f9e4d93b0",
+    "src/mevo_mb/flow/bifurcation.py": "cc1ff17c0565d72f68228bc330e362965c0d78bcb19aabb32bdb60007dc9c4b5",
+    "src/mevo_mb/flow/fields.py": "16a7461d11f7a49e132e284df32556a9334b6110de73eb8d4ed29558f92d8ab0",
+    "src/mevo_mb/flow/tetra.py": "fe76312f9f41c1fadfb83e820f0f698fb1ab020354a231b6c5175d374478df30",
+    "src/mevo_mb/io/artifacts.py": "78221ace570b585a271d4352e7d252574a3e9b9ac9201ddaba1e0e1c9c22fa72",
+    "src/mevo_mb/io/vtk_export.py": "e27805fb12aa739b24a608a49dc2f4a0c58e20ebde3955886abfa6685bcd101f",
+    "src/mevo_mb/utils/config.py": "0fb4124132aa336826fe2d02e476b1d64176ad720ca1f103b599211b608c5fa2",
+    "src/mevo_mb/utils/doctor.py": "93e3ab19bceb062149354ec91ad21071b56431f0f75ff3577257bd34cee913f5",
+    "src/mevo_mb/validation/doinikov_bouakaz_pair.py": "c9e100b736bbaa279369495e4593707059544c362cbee29190f8c3cad73f911f",
+    "src/mevo_mb/validation/doinikov_dayton.py": "292f2629ed8e10f9100a0a58f5bfdc73fc6617e06b712766a0e9449daeaba679",
+    "src/mevo_mb/validation/gates.py": "7f00631887565331eb995e8f52f302d07de4f131acbcbf7a33600d25dd6036e1",
+    "src/mevo_mb/validation/pair_policy.py": "7bc8c6c85589c6ac749ba740c81a8f11a0de75d5116d0b2d2f16a4bc6c0e4fdf",
+    "src/mevo_mb/validation/regime_maps.py": "2bacbb90eca13d537ff2c657d61f0b6babd359b5325f9405b8fbcf96860d097a",
+    "src/mevo_mb/validation/zhang2011.py": "1797474aefced0db7391e2b855bf12fb305677cfb6143d9e2328ffd39ac0a20b",
+    "src/mevo_mb/visualization/plots.py": "5d1886dfa2d9db6895435d1c6eaef02f93c7dcde0d9d50ba75ce02492ea8adbb",
+    "scripts/stage5a_r2/qp_explore.py": "92aebe777fc14f069e89c95659dfefd7c089f902d89c624f05269b5af1e4947d",
+    "scripts/stage5a_r2/seal.py": "6fe6681d6d51654c42d30eda39d22b8ebdca05dceaae344b121fe6b39a7d8172",
+    "scripts/stage5a_r2/run.py": "0138c0ed7d270e78f2e1706b3bb22bb31ae64a7939efcc1f9a70cdbda9ecec78",
+    "scripts/stage5a_r2/prefix_v2.py": "7a9b7e85148030d4a9135d1aa920b0d15d819ebb6e1f2f37a8a120edd0c043be",
+    "scripts/stage5a_r2/reconstruct.py": "0a2b4ed8d7a0a19571313d167efef0dbe69c71ee440001c93d0a758f480f2b6e",
+    "scripts/stage5a_r2/prefix_v3.py": "df7b168f497c369a036a071f4a666c182f5e90233fbf025ff91648d19eb835b8",
+    "scripts/stage5a_r2/benchmark_development.py": "489e64ec66b8603014da98f0d15096a7f2a0002192814a1f173dd8b1515255a6",
+    "scripts/stage5a_r2/prefix_v3_global.py": "851d3303be72eba7e2b10722200dcfdeb0e8713632b9fdf1fbed401b412b02ce"
+  },
+  "input_sha256": {
+    "/workspace/mevo_acoustic_microbubbles/results/stage4/performance_refactor/gold_baseline/inputs/results/stage4/simvascular/mesh/20261002T141441884393Z/SV_MESH/mesh-complete.exterior.vtp": "57b41899d2faa1953b20953d8583398debec4fdf89cceebff65e68ac5fae0933",
+    "/workspace/mevo_acoustic_microbubbles/results/stage4/performance_refactor/gold_baseline/inputs/results/stage4/acoustic/response_extension/20261002T144654140341Z/adaptive_response.h5": "5d53cb2ef42fa64591f45e3e7de5db106d6cbe74794c8a9abfa88a3354bec983",
+    "/workspace/mevo_acoustic_microbubbles/results/stage4/performance_refactor/gold_baseline/inputs/results/stage4/phase_screening/20261002T144847677887Z/B3_field.h5": "ab14d3b6a5a2383e26cd5d66737ea953da8f5d9d05bfb516faacfd23767f6c6a",
+    "/workspace/mevo_acoustic_microbubbles/results/stage4/performance_refactor/gold_baseline/inputs/results/stage4/simvascular/steady/20261002T141810826990Z/run/8-procs/result_121.vtu": "131f7cb9b3e4ac9887bb0aa344d0eb2c0a2c8ac1d3b19fafb093ecd9a1045620",
+    "/workspace/mevo_acoustic_microbubbles/results/stage4/performance_refactor/protocol/PAIR_BACKEND_STATE.json": "37dac3ffde66fab18a9617c44e9e049e00a415ff5e9ce27460a8ed146415b424",
+    "/workspace/mevo_acoustic_microbubbles_stage4l/results/stage4/lubrication_upgrade/dense_probe/20261005T213544165765Z_B3_lubrication_coupled_1ms/INPUT_SNAPSHOT.npz": "f1e1a7893922c193820ea926d13ed7a834e3620e3fca17c900ea2bf37ccf13d0",
+    "/workspace/mevo_acoustic_microbubbles/results/stage4/simvascular/mesh/20261002T141441884393Z/SV_MESH/mesh-surfaces/WALL.vtp": "ab68f8568c5af0ec5032b0404653404395b29f613a5b73ad130ea7c37a9ced69"
+  },
+  "environment_sha256": "37a87eadaaa876257c80b2037602a51beb84171ca5ed55d9b75919db2b1b7dde",
+  "plan_sha256": "e40a587c6975fa293ddcae2a8e5be0c543672162fd5191875026bcb94a4fd92b",
+  "source_commit": "2f2ffcde5755edc8654fa04932c0a08f41c33ab9",
+  "resume": null,
+  "wall_budget_s": 600,
+  "pair_backend": "cupy",
+  "components": false
+}

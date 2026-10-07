@@ -1,0 +1,4069 @@
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/benchmark_development.py:14:29
+   |
+12 |     for case in ['B2','B3']:
+13 |         tracker,sweep,cfg,state,inputs=load(case,'S1')
+14 |         mask=state['active'];x=state['positions_m'][mask];r=state['radii_m'][mask];ids=state['particle_id'][mask]
+   |                             ^
+15 |         t=float(state['time_s']);f=tracker.evaluate(x,r,t);wall=tracker.cylinder.wall_gap_and_normal(x,r)
+16 |         answers={}
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/benchmark_development.py:14:58
+   |
+12 |     for case in ['B2','B3']:
+13 |         tracker,sweep,cfg,state,inputs=load(case,'S1')
+14 |         mask=state['active'];x=state['positions_m'][mask];r=state['radii_m'][mask];ids=state['particle_id'][mask]
+   |                                                          ^
+15 |         t=float(state['time_s']);f=tracker.evaluate(x,r,t);wall=tracker.cylinder.wall_gap_and_normal(x,r)
+16 |         answers={}
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/benchmark_development.py:14:83
+   |
+12 |     for case in ['B2','B3']:
+13 |         tracker,sweep,cfg,state,inputs=load(case,'S1')
+14 |         mask=state['active'];x=state['positions_m'][mask];r=state['radii_m'][mask];ids=state['particle_id'][mask]
+   |                                                                                   ^
+15 |         t=float(state['time_s']);f=tracker.evaluate(x,r,t);wall=tracker.cylinder.wall_gap_and_normal(x,r)
+16 |         answers={}
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/benchmark_development.py:15:33
+   |
+13 |         tracker,sweep,cfg,state,inputs=load(case,'S1')
+14 |         mask=state['active'];x=state['positions_m'][mask];r=state['radii_m'][mask];ids=state['particle_id'][mask]
+15 |         t=float(state['time_s']);f=tracker.evaluate(x,r,t);wall=tracker.cylinder.wall_gap_and_normal(x,r)
+   |                                 ^
+16 |         answers={}
+17 |         for mode,components,workers in [('global',False,1),('components',True,1),('parallel',True,6)]:
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/benchmark_development.py:15:59
+   |
+13 |         tracker,sweep,cfg,state,inputs=load(case,'S1')
+14 |         mask=state['active'];x=state['positions_m'][mask];r=state['radii_m'][mask];ids=state['particle_id'][mask]
+15 |         t=float(state['time_s']);f=tracker.evaluate(x,r,t);wall=tracker.cylinder.wall_gap_and_normal(x,r)
+   |                                                           ^
+16 |         answers={}
+17 |         for mode,components,workers in [('global',False,1),('components',True,1),('parallel',True,6)]:
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/benchmark_development.py:22:37
+   |
+20 |             c=anchored_constraints(x,x,r,wall,wall,1e-7,ids,1e-11,a.velocity)
+21 |             for rep in range(5):
+22 |                 start=perf_counter();u,cache,d=m.constrained_stage(a,c,ids,'benchmark');m.cache=cache
+   |                                     ^
+23 |                 rows.append(dict(case=case,kind='qp',mode=mode,repeat=rep,seconds=perf_counter()-start,
+24 |                                  kkt=d['kkt'],iterations=d['iterations'],components=d['component_sizes']))
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/benchmark_development.py:22:88
+   |
+20 |             c=anchored_constraints(x,x,r,wall,wall,1e-7,ids,1e-11,a.velocity)
+21 |             for rep in range(5):
+22 |                 start=perf_counter();u,cache,d=m.constrained_stage(a,c,ids,'benchmark');m.cache=cache
+   |                                                                                        ^
+23 |                 rows.append(dict(case=case,kind='qp',mode=mode,repeat=rep,seconds=perf_counter()-start,
+24 |                                  kkt=d['kkt'],iterations=d['iterations'],components=d['component_sizes']))
+   |
+
+E701 Multiple statements on one line (colon)
+  --> scripts/stage5a_r2/benchmark_development.py:26:26
+   |
+24 |                                  kkt=d['kkt'],iterations=d['iterations'],components=d['component_sizes']))
+25 |             answers[mode]=u
+26 |             if m.executor:m.executor.shutdown()
+   |                          ^
+27 |         for mode in answers:
+28 |             np.testing.assert_allclose(answers['global'],answers[mode],atol=1e-9,rtol=1e-8)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/benchmark_development.py:31:37
+   |
+29 |         pressure=tracker.field.interpolate_complex_pressure(x)
+30 |         response=tracker.response.harmonic_response(r,tracker.field.frequency_Hz,pressure)
+31 |         vol=response['harmonics_m3'];vol=vol.get() if hasattr(vol,'get') else vol
+   |                                     ^
+32 |         force={}
+33 |         for backend in ['numpy','cupy']:
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/benchmark_development.py:36:37
+   |
+34 |             engine=ClassicalFarFieldBjerknes(backend,enforce_far_field=False)
+35 |             for rep in range(20):
+36 |                 start=perf_counter();value=engine.forces(x,r,vol,tracker.field.frequency_Hz,cfg['medium']['density_kg_m3'])
+   |                                     ^
+37 |                 value=value.get() if hasattr(value,'get') else value
+38 |                 rows.append(dict(case=case,kind='pair',mode=backend,repeat=rep,seconds=perf_counter()-start))
+   |
+
+E701 Multiple statements on one line (colon)
+  --> scripts/stage5a_r2/benchmark_development.py:46:24
+   |
+44 |             print(kind,mode,np.median([r['seconds'] for r in rows if r['kind']==kind and r['mode']==mode and r['repeat']>0]),flush=Tru…
+45 |
+46 | if __name__=='__main__':main()
+   |                        ^
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/compare.py:11:13
+   |
+10 | def stitch(paths,out):
+11 |     times=[];positions=[];active=[];identity=None
+   |             ^
+12 |     for path in paths:
+13 |         with h5py.File(path) as h:
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/compare.py:11:26
+   |
+10 | def stitch(paths,out):
+11 |     times=[];positions=[];active=[];identity=None
+   |                          ^
+12 |     for path in paths:
+13 |         with h5py.File(path) as h:
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/compare.py:11:36
+   |
+10 | def stitch(paths,out):
+11 |     times=[];positions=[];active=[];identity=None
+   |                                    ^
+12 |     for path in paths:
+13 |         with h5py.File(path) as h:
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/compare.py:14:29
+   |
+12 |     for path in paths:
+13 |         with h5py.File(path) as h:
+14 |             t=h['time_s'][:];x=h['positions_m'][:];m=h['active'][:]
+   |                             ^
+15 |             current=(h['particle_id'][:],h['radii_m'][:])
+16 |             if identity is None:identity=current
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/compare.py:14:51
+   |
+12 |     for path in paths:
+13 |         with h5py.File(path) as h:
+14 |             t=h['time_s'][:];x=h['positions_m'][:];m=h['active'][:]
+   |                                                   ^
+15 |             current=(h['particle_id'][:],h['radii_m'][:])
+16 |             if identity is None:identity=current
+   |
+
+E701 Multiple statements on one line (colon)
+  --> scripts/stage5a_r2/compare.py:16:32
+   |
+14 |             t=h['time_s'][:];x=h['positions_m'][:];m=h['active'][:]
+15 |             current=(h['particle_id'][:],h['radii_m'][:])
+16 |             if identity is None:identity=current
+   |                                ^
+17 |             else:
+18 |                 assert all(np.array_equal(a,b) for a,b in zip(identity,current))
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/compare.py:22:28
+   |
+20 |                 assert np.array_equal(x[0],positions[-1][-1],equal_nan=True)
+21 |                 t,x,m=t[1:],x[1:],m[1:]
+22 |             times.append(t);positions.append(x);active.append(m)
+   |                            ^
+23 |     with h5py.File(out,'x') as h:
+24 |         h['time_s']=np.concatenate(times)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/compare.py:22:48
+   |
+20 |                 assert np.array_equal(x[0],positions[-1][-1],equal_nan=True)
+21 |                 t,x,m=t[1:],x[1:],m[1:]
+22 |             times.append(t);positions.append(x);active.append(m)
+   |                                                ^
+23 |     with h5py.File(out,'x') as h:
+24 |         h['time_s']=np.concatenate(times)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/compare.py:27:37
+   |
+25 |         h.create_dataset('positions_m',data=np.concatenate(positions),compression='gzip')
+26 |         h.create_dataset('active',data=np.concatenate(active),compression='gzip')
+27 |         h['particle_id']=identity[0];h['radii_m']=identity[1]
+   |                                     ^
+28 |         h.attrs['segments']=json.dumps([dict(path=str(p),sha256=sha(p)) for p in paths])
+29 |         h.attrs['coordinate_interpolation']=False
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/compare.py:49:18
+   |
+48 | def compare(reference,candidate,out,label):
+49 |     out=Path(out);out.mkdir(exist_ok=True,parents=True)
+   |                  ^
+50 |     with h5py.File(reference) as h, h5py.File(candidate) as k:
+51 |         t0=max(float(h['time_s'][0]),float(k['time_s'][0]));end=min(float(h['time_s'][-1]),float(k['time_s'][-1]))
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/compare.py:51:60
+   |
+49 |     out=Path(out);out.mkdir(exist_ok=True,parents=True)
+50 |     with h5py.File(reference) as h, h5py.File(candidate) as k:
+51 |         t0=max(float(h['time_s'][0]),float(k['time_s'][0]));end=min(float(h['time_s'][-1]),float(k['time_s'][-1]))
+   |                                                            ^
+52 |     clock=t0+np.arange(int(np.floor((end-t0)/1e-5+1e-7))+1)*1e-5
+53 |     if end-t0>1e-15 and end-clock[-1]>1e-14:clock=np.r_[clock,end]
+   |
+
+E701 Multiple statements on one line (colon)
+  --> scripts/stage5a_r2/compare.py:53:44
+   |
+51 |         t0=max(float(h['time_s'][0]),float(k['time_s'][0]));end=min(float(h['time_s'][-1]),float(k['time_s'][-1]))
+52 |     clock=t0+np.arange(int(np.floor((end-t0)/1e-5+1e-7))+1)*1e-5
+53 |     if end-t0>1e-15 and end-clock[-1]>1e-14:clock=np.r_[clock,end]
+   |                                            ^
+54 |     a=actual_sample(reference,clock);b=actual_sample(candidate,clock,a['particle_ids'])
+55 |     meaningful=len(clock)>1
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/compare.py:54:37
+   |
+52 |     clock=t0+np.arange(int(np.floor((end-t0)/1e-5+1e-7))+1)*1e-5
+53 |     if end-t0>1e-15 and end-clock[-1]>1e-14:clock=np.r_[clock,end]
+54 |     a=actual_sample(reference,clock);b=actual_sample(candidate,clock,a['particle_ids'])
+   |                                     ^
+55 |     meaningful=len(clock)>1
+56 |     rg_end=float(abs(b['rg_m'][-1]/a['rg_m'][-1]-1))
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/compare.py:66:30
+   |
+64 |     def sampling_bound(path,data):
+65 |         with h5py.File(path) as h:
+66 |             ts=h['time_s'][:];ids=h['particle_id'][:]
+   |                              ^
+67 |             idx=np.array([np.flatnonzero(ids==i)[0] for i in a['particle_ids']])
+68 |             bounds=[]
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/compare.py:70:55
+   |
+68 |             bounds=[]
+69 |             for time_actual,time_requested in zip(data['actual_time_s'],clock):
+70 |                 j=int(np.searchsorted(ts,time_actual));j=min(j,len(ts)-1)
+   |                                                       ^
+71 |                 if j==len(ts)-1 or time_requested-time_actual<1e-14:bounds.append(0.);continue
+72 |                 displacement=h['positions_m'][j+1][idx]-h['positions_m'][j][idx]
+   |
+
+E701 Multiple statements on one line (colon)
+  --> scripts/stage5a_r2/compare.py:71:68
+   |
+69 |             for time_actual,time_requested in zip(data['actual_time_s'],clock):
+70 |                 j=int(np.searchsorted(ts,time_actual));j=min(j,len(ts)-1)
+71 |                 if j==len(ts)-1 or time_requested-time_actual<1e-14:bounds.append(0.);continue
+   |                                                                    ^
+72 |                 displacement=h['positions_m'][j+1][idx]-h['positions_m'][j][idx]
+73 |                 bounds.append(float(np.linalg.norm(displacement,axis=1).max()))
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/compare.py:71:86
+   |
+69 |             for time_actual,time_requested in zip(data['actual_time_s'],clock):
+70 |                 j=int(np.searchsorted(ts,time_actual));j=min(j,len(ts)-1)
+71 |                 if j==len(ts)-1 or time_requested-time_actual<1e-14:bounds.append(0.);continue
+   |                                                                                      ^
+72 |                 displacement=h['positions_m'][j+1][idx]-h['positions_m'][j][idx]
+73 |                 bounds.append(float(np.linalg.norm(displacement,axis=1).max()))
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/compare.py:75:35
+   |
+73 |                 bounds.append(float(np.linalg.norm(displacement,axis=1).max()))
+74 |         return np.array(bounds)
+75 |     ab=sampling_bound(reference,a);bb=sampling_bound(candidate,b)
+   |                                   ^
+76 |     uncertainty=float(ab[-1]+bb[-1])
+77 |     passed=meaningful and rg_end<=.02 and rg_l2<=.02 and max(quart)<=.02 and centroid<=budget
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/diagnostic_figures.py:17:37
+   |
+15 | def qp_figure():
+16 |     raw=BASE/'diagnosis/native_v1/SUMMARY.json'
+17 |     rows=json.loads(raw.read_text());replay_path=BASE/'diagnosis/reconstruction_v1/REPLAY.json'
+   |                                     ^
+18 |     replay=json.loads(replay_path.read_text());fixtures=sorted({r['fixture'] for r in rows})
+19 |     fig,axes=plt.subplots(3,3,figsize=(13.5,9.2),layout='constrained')
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/diagnostic_figures.py:18:47
+   |
+16 |     raw=BASE/'diagnosis/native_v1/SUMMARY.json'
+17 |     rows=json.loads(raw.read_text());replay_path=BASE/'diagnosis/reconstruction_v1/REPLAY.json'
+18 |     replay=json.loads(replay_path.read_text());fixtures=sorted({r['fixture'] for r in rows})
+   |                                               ^
+19 |     fig,axes=plt.subplots(3,3,figsize=(13.5,9.2),layout='constrained')
+20 |     labels=['OSQP','ProxQP dense','ProxQP sparse','Clarabel'];names=['osqp','prox_dense','prox_sparse','clarabel']
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/diagnostic_figures.py:20:62
+   |
+18 |     replay=json.loads(replay_path.read_text());fixtures=sorted({r['fixture'] for r in rows})
+19 |     fig,axes=plt.subplots(3,3,figsize=(13.5,9.2),layout='constrained')
+20 |     labels=['OSQP','ProxQP dense','ProxQP sparse','Clarabel'];names=['osqp','prox_dense','prox_sparse','clarabel']
+   |                                                              ^
+21 |     for k,fixture in enumerate(fixtures):
+22 |         selected=[next(r for r in rows if r['fixture']==fixture and r['solver']==name and r['eps']==1e-12) for name in names]
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/diagnostic_figures.py:23:46
+   |
+21 |     for k,fixture in enumerate(fixtures):
+22 |         selected=[next(r for r in rows if r['fixture']==fixture and r['solver']==name and r['eps']==1e-12) for name in names]
+23 |         residual=[r['kkt'] for r in selected];seconds=[r['seconds'] for r in selected]
+   |                                              ^
+24 |         colors=['#365f91' if v<=1e-9 else '#ad4d49' for v in residual]
+25 |         ax=axes[k,0];ax.bar(np.arange(4),residual,color=colors);ax.set_yscale('log');ax.axhline(1e-9,color='black',ls='--',lw=1,label=…
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/diagnostic_figures.py:25:21
+   |
+23 | …     residual=[r['kkt'] for r in selected];seconds=[r['seconds'] for r in selected]
+24 | …     colors=['#365f91' if v<=1e-9 else '#ad4d49' for v in residual]
+25 | …     ax=axes[k,0];ax.bar(np.arange(4),residual,color=colors);ax.set_yscale('log');ax.axhline(1e-9,color='black',ls='--',lw=1,label='K…
+   |                   ^
+26 | …     ax.set_xticks(range(4),labels,rotation=22,ha='right');ax.set_ylabel('Original KKT residual');ax.legend(fontsize=8)
+27 | …     ax=axes[k,1];ax.bar(np.arange(4),np.array(seconds)*1e3,color=colors);ax.set_yscale('log')
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/diagnostic_figures.py:25:64
+   |
+23 | …     residual=[r['kkt'] for r in selected];seconds=[r['seconds'] for r in selected]
+24 | …     colors=['#365f91' if v<=1e-9 else '#ad4d49' for v in residual]
+25 | …     ax=axes[k,0];ax.bar(np.arange(4),residual,color=colors);ax.set_yscale('log');ax.axhline(1e-9,color='black',ls='--',lw=1,label='K…
+   |                                                              ^
+26 | …     ax.set_xticks(range(4),labels,rotation=22,ha='right');ax.set_ylabel('Original KKT residual');ax.legend(fontsize=8)
+27 | …     ax=axes[k,1];ax.bar(np.arange(4),np.array(seconds)*1e3,color=colors);ax.set_yscale('log')
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/diagnostic_figures.py:25:85
+   |
+23 | …     residual=[r['kkt'] for r in selected];seconds=[r['seconds'] for r in selected]
+24 | …     colors=['#365f91' if v<=1e-9 else '#ad4d49' for v in residual]
+25 | …     ax=axes[k,0];ax.bar(np.arange(4),residual,color=colors);ax.set_yscale('log');ax.axhline(1e-9,color='black',ls='--',lw=1,label='K…
+   |                                                                                   ^
+26 | …     ax.set_xticks(range(4),labels,rotation=22,ha='right');ax.set_ylabel('Original KKT residual');ax.legend(fontsize=8)
+27 | …     ax=axes[k,1];ax.bar(np.arange(4),np.array(seconds)*1e3,color=colors);ax.set_yscale('log')
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/diagnostic_figures.py:26:62
+   |
+24 | …     colors=['#365f91' if v<=1e-9 else '#ad4d49' for v in residual]
+25 | …     ax=axes[k,0];ax.bar(np.arange(4),residual,color=colors);ax.set_yscale('log');ax.axhline(1e-9,color='black',ls='--',lw=1,label='K…
+26 | …     ax.set_xticks(range(4),labels,rotation=22,ha='right');ax.set_ylabel('Original KKT residual');ax.legend(fontsize=8)
+   |                                                            ^
+27 | …     ax=axes[k,1];ax.bar(np.arange(4),np.array(seconds)*1e3,color=colors);ax.set_yscale('log')
+28 | …     ax.set_xticks(range(4),labels,rotation=22,ha='right');ax.set_ylabel('Setup + solve wall time (ms)')
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/diagnostic_figures.py:26:101
+   |
+24 | …     colors=['#365f91' if v<=1e-9 else '#ad4d49' for v in residual]
+25 | …     ax=axes[k,0];ax.bar(np.arange(4),residual,color=colors);ax.set_yscale('log');ax.axhline(1e-9,color='black',ls='--',lw=1,label='K…
+26 | …     ax.set_xticks(range(4),labels,rotation=22,ha='right');ax.set_ylabel('Original KKT residual');ax.legend(fontsize=8)
+   |                                                                                                   ^
+27 | …     ax=axes[k,1];ax.bar(np.arange(4),np.array(seconds)*1e3,color=colors);ax.set_yscale('log')
+28 | …     ax.set_xticks(range(4),labels,rotation=22,ha='right');ax.set_ylabel('Setup + solve wall time (ms)')
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/diagnostic_figures.py:27:21
+   |
+25 | …     ax=axes[k,0];ax.bar(np.arange(4),residual,color=colors);ax.set_yscale('log');ax.axhline(1e-9,color='black',ls='--',lw=1,label='K…
+26 | …     ax.set_xticks(range(4),labels,rotation=22,ha='right');ax.set_ylabel('Original KKT residual');ax.legend(fontsize=8)
+27 | …     ax=axes[k,1];ax.bar(np.arange(4),np.array(seconds)*1e3,color=colors);ax.set_yscale('log')
+   |                   ^
+28 | …     ax.set_xticks(range(4),labels,rotation=22,ha='right');ax.set_ylabel('Setup + solve wall time (ms)')
+29 | …     record=next(r for r in replay if r['fixture']==fixture and 'spectrum' in r)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/diagnostic_figures.py:27:77
+   |
+25 | …     ax=axes[k,0];ax.bar(np.arange(4),residual,color=colors);ax.set_yscale('log');ax.axhline(1e-9,color='black',ls='--',lw=1,label='K…
+26 | …     ax.set_xticks(range(4),labels,rotation=22,ha='right');ax.set_ylabel('Original KKT residual');ax.legend(fontsize=8)
+27 | …     ax=axes[k,1];ax.bar(np.arange(4),np.array(seconds)*1e3,color=colors);ax.set_yscale('log')
+   |                                                                           ^
+28 | …     ax.set_xticks(range(4),labels,rotation=22,ha='right');ax.set_ylabel('Setup + solve wall time (ms)')
+29 | …     record=next(r for r in replay if r['fixture']==fixture and 'spectrum' in r)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/diagnostic_figures.py:28:62
+   |
+26 |         ax.set_xticks(range(4),labels,rotation=22,ha='right');ax.set_ylabel('Original KKT residual');ax.legend(fontsize=8)
+27 |         ax=axes[k,1];ax.bar(np.arange(4),np.array(seconds)*1e3,color=colors);ax.set_yscale('log')
+28 |         ax.set_xticks(range(4),labels,rotation=22,ha='right');ax.set_ylabel('Setup + solve wall time (ms)')
+   |                                                              ^
+29 |         record=next(r for r in replay if r['fixture']==fixture and 'spectrum' in r)
+30 |         near=record['spectrum']['near_rows'];ax=axes[k,2]
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/diagnostic_figures.py:30:45
+   |
+28 |         ax.set_xticks(range(4),labels,rotation=22,ha='right');ax.set_ylabel('Setup + solve wall time (ms)')
+29 |         record=next(r for r in replay if r['fixture']==fixture and 'spectrum' in r)
+30 |         near=record['spectrum']['near_rows'];ax=axes[k,2]
+   |                                             ^
+31 |         ax.scatter([max(1e-17,r['row_difference_l2']) for r in near],
+32 |                    [max(1e-17,abs(r['lower_difference'])) for r in near],s=14,alpha=.7,color='#704f95')
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/diagnostic_figures.py:33:29
+   |
+31 |         ax.scatter([max(1e-17,r['row_difference_l2']) for r in near],
+32 |                    [max(1e-17,abs(r['lower_difference'])) for r in near],s=14,alpha=.7,color='#704f95')
+33 |         ax.set_xscale('log');ax.set_yscale('log');ax.set_xlabel('Row difference, L2');ax.set_ylabel('Absolute lower-bound difference')
+   |                             ^
+34 |         title=['Earlier active set (114 variables)','B2 OSQP failure (51 variables)','B3 OSQP failure (18 variables)'][k]
+35 |         axes[k,0].set_title(title,loc='left',fontweight='bold')
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/diagnostic_figures.py:33:50
+   |
+31 |         ax.scatter([max(1e-17,r['row_difference_l2']) for r in near],
+32 |                    [max(1e-17,abs(r['lower_difference'])) for r in near],s=14,alpha=.7,color='#704f95')
+33 |         ax.set_xscale('log');ax.set_yscale('log');ax.set_xlabel('Row difference, L2');ax.set_ylabel('Absolute lower-bound difference')
+   |                                                  ^
+34 |         title=['Earlier active set (114 variables)','B2 OSQP failure (51 variables)','B3 OSQP failure (18 variables)'][k]
+35 |         axes[k,0].set_title(title,loc='left',fontweight='bold')
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/diagnostic_figures.py:33:86
+   |
+31 |         ax.scatter([max(1e-17,r['row_difference_l2']) for r in near],
+32 |                    [max(1e-17,abs(r['lower_difference'])) for r in near],s=14,alpha=.7,color='#704f95')
+33 |         ax.set_xscale('log');ax.set_yscale('log');ax.set_xlabel('Row difference, L2');ax.set_ylabel('Absolute lower-bound difference')
+   |                                                                                      ^
+34 |         title=['Earlier active set (114 variables)','B2 OSQP failure (51 variables)','B3 OSQP failure (18 variables)'][k]
+35 |         axes[k,0].set_title(title,loc='left',fontweight='bold')
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/diagnostic_figures.py:39:23
+   |
+37 |     fig.suptitle('R3 | Original failed QPs: solver recovery and near-dependent inequalities',fontweight='bold')
+38 |     fig.text(.02,.005,'Original matrices retained; internal tolerance 1e−12. Red = independent certificate rejected. Parallel diagnost…
+39 |     out=BASE/'figures';out.mkdir(exist_ok=True)
+   |                       ^
+40 |     for suffix in ['png','pdf']:fig.savefig(out/f'R3_QP_DIAGNOSTIC.{suffix}',dpi=240,bbox_inches='tight')
+41 |     plt.close(fig)
+   |
+
+E701 Multiple statements on one line (colon)
+  --> scripts/stage5a_r2/diagnostic_figures.py:40:32
+   |
+38 |     fig.text(.02,.005,'Original matrices retained; internal tolerance 1e−12. Red = independent certificate rejected. Parallel diagnost…
+39 |     out=BASE/'figures';out.mkdir(exist_ok=True)
+40 |     for suffix in ['png','pdf']:fig.savefig(out/f'R3_QP_DIAGNOSTIC.{suffix}',dpi=240,bbox_inches='tight')
+   |                                ^
+41 |     plt.close(fig)
+42 |     # Separate KKT terms retain native and failed polishing candidates.
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/diagnostic_figures.py:54:29
+   |
+52 |         ax.axhline(attempt['external_sparse_polish']['kkt'],color='#af3737',ls=':',label='Old polish: full KKT')
+53 |         ax.axhline(1e-9,color='black',ls='--',label='Unchanged gate')
+54 |         ax.set_yscale('log');ax.set_xticks(range(5),terms,rotation=25,ha='right');ax.set_ylabel('Independent residual');ax.legend(font…
+   |                             ^
+55 |         ax.set_title(fixture.split('_')[-2])
+56 |     for suffix in ['png','pdf']:fig.savefig(out/f'R3b_KKT_TERMS.{suffix}',dpi=240,bbox_inches='tight')
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/diagnostic_figures.py:54:82
+   |
+52 |         ax.axhline(attempt['external_sparse_polish']['kkt'],color='#af3737',ls=':',label='Old polish: full KKT')
+53 |         ax.axhline(1e-9,color='black',ls='--',label='Unchanged gate')
+54 |         ax.set_yscale('log');ax.set_xticks(range(5),terms,rotation=25,ha='right');ax.set_ylabel('Independent residual');ax.legend(font…
+   |                                                                                  ^
+55 |         ax.set_title(fixture.split('_')[-2])
+56 |     for suffix in ['png','pdf']:fig.savefig(out/f'R3b_KKT_TERMS.{suffix}',dpi=240,bbox_inches='tight')
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/diagnostic_figures.py:54:120
+   |
+52 |         ax.axhline(attempt['external_sparse_polish']['kkt'],color='#af3737',ls=':',label='Old polish: full KKT')
+53 |         ax.axhline(1e-9,color='black',ls='--',label='Unchanged gate')
+54 |         ax.set_yscale('log');ax.set_xticks(range(5),terms,rotation=25,ha='right');ax.set_ylabel('Independent residual');ax.legend(font…
+   |                                                                                                                        ^
+55 |         ax.set_title(fixture.split('_')[-2])
+56 |     for suffix in ['png','pdf']:fig.savefig(out/f'R3b_KKT_TERMS.{suffix}',dpi=240,bbox_inches='tight')
+   |
+
+E701 Multiple statements on one line (colon)
+  --> scripts/stage5a_r2/diagnostic_figures.py:56:32
+   |
+54 |         ax.set_yscale('log');ax.set_xticks(range(5),terms,rotation=25,ha='right');ax.set_ylabel('Independent residual');ax.legend(font…
+55 |         ax.set_title(fixture.split('_')[-2])
+56 |     for suffix in ['png','pdf']:fig.savefig(out/f'R3b_KKT_TERMS.{suffix}',dpi=240,bbox_inches='tight')
+   |                                ^
+57 |     plt.close(fig)
+58 |     write(out/'R3_DATA_SOURCES.json',dict(raw=str(raw),raw_sha256=sha(raw),reconstruction=str(replay_path),
+   |
+
+E701 Multiple statements on one line (colon)
+  --> scripts/stage5a_r2/diagnostic_figures.py:62:24
+   |
+60 |         definitions='Fixed Stage5A normalization, every original inequality. Timing is parallel native API diagnostic, never end-to-en…
+61 |
+62 | if __name__=='__main__':qp_figure()
+   |                        ^
+
+E402 Module level import not at top of file
+  --> scripts/stage5a_r2/frozen_reference.py:12:1
+   |
+10 | FROZEN=Path('/workspace/mevo_acoustic_microbubbles_stage4l')
+11 | sys.path[:0]=[str(FROZEN/'src'),str(FROZEN)]
+12 | import argparse
+   | ^^^^^^^^^^^^^^^
+13 | from datetime import datetime,timezone
+14 | import json
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> scripts/stage5a_r2/frozen_reference.py:13:1
+   |
+11 | sys.path[:0]=[str(FROZEN/'src'),str(FROZEN)]
+12 | import argparse
+13 | from datetime import datetime,timezone
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+14 | import json
+15 | import time
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> scripts/stage5a_r2/frozen_reference.py:14:1
+   |
+12 | import argparse
+13 | from datetime import datetime,timezone
+14 | import json
+   | ^^^^^^^^^^^
+15 | import time
+16 | import traceback
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> scripts/stage5a_r2/frozen_reference.py:15:1
+   |
+13 | from datetime import datetime,timezone
+14 | import json
+15 | import time
+   | ^^^^^^^^^^^
+16 | import traceback
+17 | import h5py
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> scripts/stage5a_r2/frozen_reference.py:16:1
+   |
+14 | import json
+15 | import time
+16 | import traceback
+   | ^^^^^^^^^^^^^^^^
+17 | import h5py
+18 | import numpy as np
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> scripts/stage5a_r2/frozen_reference.py:17:1
+   |
+15 | import time
+16 | import traceback
+17 | import h5py
+   | ^^^^^^^^^^^
+18 | import numpy as np
+19 | from mevo_mb.coupling.integrators import GlobalSynchronousIntegrator
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> scripts/stage5a_r2/frozen_reference.py:18:1
+   |
+16 | import traceback
+17 | import h5py
+18 | import numpy as np
+   | ^^^^^^^^^^^^^^^^^^
+19 | from mevo_mb.coupling.integrators import GlobalSynchronousIntegrator
+20 | from mevo_mb.bubbles.ordered_contact_sweep import OrderedContactSweep
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> scripts/stage5a_r2/frozen_reference.py:19:1
+   |
+17 | import h5py
+18 | import numpy as np
+19 | from mevo_mb.coupling.integrators import GlobalSynchronousIntegrator
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+20 | from mevo_mb.bubbles.ordered_contact_sweep import OrderedContactSweep
+21 | import mevo_mb.bubbles.tracker as tracking
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> scripts/stage5a_r2/frozen_reference.py:20:1
+   |
+18 | import numpy as np
+19 | from mevo_mb.coupling.integrators import GlobalSynchronousIntegrator
+20 | from mevo_mb.bubbles.ordered_contact_sweep import OrderedContactSweep
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+21 | import mevo_mb.bubbles.tracker as tracking
+22 | from scripts.stage4l.dense_probe import load_case,sha,write
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> scripts/stage5a_r2/frozen_reference.py:21:1
+   |
+19 | from mevo_mb.coupling.integrators import GlobalSynchronousIntegrator
+20 | from mevo_mb.bubbles.ordered_contact_sweep import OrderedContactSweep
+21 | import mevo_mb.bubbles.tracker as tracking
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+22 | from scripts.stage4l.dense_probe import load_case,sha,write
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> scripts/stage5a_r2/frozen_reference.py:22:1
+   |
+20 | from mevo_mb.bubbles.ordered_contact_sweep import OrderedContactSweep
+21 | import mevo_mb.bubbles.tracker as tracking
+22 | from scripts.stage4l.dense_probe import load_case,sha,write
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: Move module level imports to top of file
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:31:30
+   |
+29 |     out=base/'benchmarks/frozen_reference'/f'{stamp}_{case}_{duration:g}s_{pair}_repeat{repeat}'
+30 |     out.mkdir(parents=True)
+31 |     start=time.perf_counter();cpu=time.process_time()
+   |                              ^
+32 |     cfg,field,flow,gold,inputs=load_case(Path('/workspace/mevo_acoustic_microbubbles'),case)
+33 |     cfg['particles'].update(translation_backend='lubrication_coupled',pair_backend=pair,response_backend='numpy',
+   |
+
+E701 Multiple statements on one line (colon)
+  --> scripts/stage5a_r2/frozen_reference.py:38:27
+   |
+36 |     src=Path(next(r['run'] for r in selected if r['key']==case+'_1ms'))/'INPUT_SNAPSHOT.npz'
+37 |     inputs[str(src)]=sha(src)
+38 |     with np.load(src) as f:state={k:f[k] for k in f.files}
+   |                           ^
+39 |     full=state['positions_m'].copy();mask=state['active'];r=state['radii_m'];ids=state['particle_id'];t0=float(state['time_s'])
+40 |     x=full[mask].copy();rr=r[mask];t=t0;elapsed=0.
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:39:37
+   |
+37 |     inputs[str(src)]=sha(src)
+38 |     with np.load(src) as f:state={k:f[k] for k in f.files}
+39 |     full=state['positions_m'].copy();mask=state['active'];r=state['radii_m'];ids=state['particle_id'];t0=float(state['time_s'])
+   |                                     ^
+40 |     x=full[mask].copy();rr=r[mask];t=t0;elapsed=0.
+41 |     tracker=GlobalSynchronousIntegrator(cfg,field,flow)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:39:58
+   |
+37 |     inputs[str(src)]=sha(src)
+38 |     with np.load(src) as f:state={k:f[k] for k in f.files}
+39 |     full=state['positions_m'].copy();mask=state['active'];r=state['radii_m'];ids=state['particle_id'];t0=float(state['time_s'])
+   |                                                          ^
+40 |     x=full[mask].copy();rr=r[mask];t=t0;elapsed=0.
+41 |     tracker=GlobalSynchronousIntegrator(cfg,field,flow)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:39:77
+   |
+37 |     inputs[str(src)]=sha(src)
+38 |     with np.load(src) as f:state={k:f[k] for k in f.files}
+39 |     full=state['positions_m'].copy();mask=state['active'];r=state['radii_m'];ids=state['particle_id'];t0=float(state['time_s'])
+   |                                                                             ^
+40 |     x=full[mask].copy();rr=r[mask];t=t0;elapsed=0.
+41 |     tracker=GlobalSynchronousIntegrator(cfg,field,flow)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:39:102
+   |
+37 |     inputs[str(src)]=sha(src)
+38 |     with np.load(src) as f:state={k:f[k] for k in f.files}
+39 |     full=state['positions_m'].copy();mask=state['active'];r=state['radii_m'];ids=state['particle_id'];t0=float(state['time_s'])
+   |                                                                                                      ^
+40 |     x=full[mask].copy();rr=r[mask];t=t0;elapsed=0.
+41 |     tracker=GlobalSynchronousIntegrator(cfg,field,flow)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:40:24
+   |
+38 |     with np.load(src) as f:state={k:f[k] for k in f.files}
+39 |     full=state['positions_m'].copy();mask=state['active'];r=state['radii_m'];ids=state['particle_id'];t0=float(state['time_s'])
+40 |     x=full[mask].copy();rr=r[mask];t=t0;elapsed=0.
+   |                        ^
+41 |     tracker=GlobalSynchronousIntegrator(cfg,field,flow)
+42 |     ordered=OrderedContactSweep(out/'compiled_ordered_contact')
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:40:35
+   |
+38 |     with np.load(src) as f:state={k:f[k] for k in f.files}
+39 |     full=state['positions_m'].copy();mask=state['active'];r=state['radii_m'];ids=state['particle_id'];t0=float(state['time_s'])
+40 |     x=full[mask].copy();rr=r[mask];t=t0;elapsed=0.
+   |                                   ^
+41 |     tracker=GlobalSynchronousIntegrator(cfg,field,flow)
+42 |     ordered=OrderedContactSweep(out/'compiled_ordered_contact')
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:40:40
+   |
+38 |     with np.load(src) as f:state={k:f[k] for k in f.files}
+39 |     full=state['positions_m'].copy();mask=state['active'];r=state['radii_m'];ids=state['particle_id'];t0=float(state['time_s'])
+40 |     x=full[mask].copy();rr=r[mask];t=t0;elapsed=0.
+   |                                        ^
+41 |     tracker=GlobalSynchronousIntegrator(cfg,field,flow)
+42 |     ordered=OrderedContactSweep(out/'compiled_ordered_contact')
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:54:25
+   |
+52 |     for key,value in [('time_s',np.array([t])),('positions_m',np.array([full])),('active',np.array([mask]))]:
+53 |         h.create_dataset(key,data=value,maxshape=(None,*value.shape[1:]),chunks=(1,*value.shape[1:]),compression='gzip')
+54 |     h['particle_id']=ids;h['radii_m']=r;h.attrs['complete']=False;h.flush()
+   |                         ^
+55 |     dtvalues=[];error=None;status='INCOMPLETE';last_report=time.perf_counter();io=0.
+56 |     tracker.translation_log=(out/'TRANSLATION_SOLVES.jsonl').open('x')
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:54:40
+   |
+52 |     for key,value in [('time_s',np.array([t])),('positions_m',np.array([full])),('active',np.array([mask]))]:
+53 |         h.create_dataset(key,data=value,maxshape=(None,*value.shape[1:]),chunks=(1,*value.shape[1:]),compression='gzip')
+54 |     h['particle_id']=ids;h['radii_m']=r;h.attrs['complete']=False;h.flush()
+   |                                        ^
+55 |     dtvalues=[];error=None;status='INCOMPLETE';last_report=time.perf_counter();io=0.
+56 |     tracker.translation_log=(out/'TRANSLATION_SOLVES.jsonl').open('x')
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:54:66
+   |
+52 |     for key,value in [('time_s',np.array([t])),('positions_m',np.array([full])),('active',np.array([mask]))]:
+53 |         h.create_dataset(key,data=value,maxshape=(None,*value.shape[1:]),chunks=(1,*value.shape[1:]),compression='gzip')
+54 |     h['particle_id']=ids;h['radii_m']=r;h.attrs['complete']=False;h.flush()
+   |                                                                  ^
+55 |     dtvalues=[];error=None;status='INCOMPLETE';last_report=time.perf_counter();io=0.
+56 |     tracker.translation_log=(out/'TRANSLATION_SOLVES.jsonl').open('x')
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:55:16
+   |
+53 |         h.create_dataset(key,data=value,maxshape=(None,*value.shape[1:]),chunks=(1,*value.shape[1:]),compression='gzip')
+54 |     h['particle_id']=ids;h['radii_m']=r;h.attrs['complete']=False;h.flush()
+55 |     dtvalues=[];error=None;status='INCOMPLETE';last_report=time.perf_counter();io=0.
+   |                ^
+56 |     tracker.translation_log=(out/'TRANSLATION_SOLVES.jsonl').open('x')
+57 |     try:
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:55:27
+   |
+53 |         h.create_dataset(key,data=value,maxshape=(None,*value.shape[1:]),chunks=(1,*value.shape[1:]),compression='gzip')
+54 |     h['particle_id']=ids;h['radii_m']=r;h.attrs['complete']=False;h.flush()
+55 |     dtvalues=[];error=None;status='INCOMPLETE';last_report=time.perf_counter();io=0.
+   |                           ^
+56 |     tracker.translation_log=(out/'TRANSLATION_SOLVES.jsonl').open('x')
+57 |     try:
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:55:47
+   |
+53 |         h.create_dataset(key,data=value,maxshape=(None,*value.shape[1:]),chunks=(1,*value.shape[1:]),compression='gzip')
+54 |     h['particle_id']=ids;h['radii_m']=r;h.attrs['complete']=False;h.flush()
+55 |     dtvalues=[];error=None;status='INCOMPLETE';last_report=time.perf_counter();io=0.
+   |                                               ^
+56 |     tracker.translation_log=(out/'TRANSLATION_SOLVES.jsonl').open('x')
+57 |     try:
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:55:79
+   |
+53 |         h.create_dataset(key,data=value,maxshape=(None,*value.shape[1:]),chunks=(1,*value.shape[1:]),compression='gzip')
+54 |     h['particle_id']=ids;h['radii_m']=r;h.attrs['complete']=False;h.flush()
+55 |     dtvalues=[];error=None;status='INCOMPLETE';last_report=time.perf_counter();io=0.
+   |                                                                               ^
+56 |     tracker.translation_log=(out/'TRANSLATION_SOLVES.jsonl').open('x')
+57 |     try:
+   |
+
+E701 Multiple statements on one line (colon)
+  --> scripts/stage5a_r2/frozen_reference.py:61:75
+   |
+59 |         with (out/'ACCEPTED.jsonl').open('x') as log:
+60 |             while elapsed<duration-1e-14:
+61 |                 if time.perf_counter()-start>1800 or len(dtvalues)>=100000:raise TimeoutError('REFERENCE_BUDGET')
+   |                                                                           ^
+62 |                 end=min((np.floor((elapsed+1e-14)/1e-5)+1)*1e-5,duration)
+63 |                 dt=tracker.select_timestep(x,rr,f,end-elapsed)
+   |
+
+E701 Multiple statements on one line (colon)
+  --> scripts/stage5a_r2/frozen_reference.py:64:25
+   |
+62 |                 end=min((np.floor((elapsed+1e-14)/1e-5)+1)*1e-5,duration)
+63 |                 dt=tracker.select_timestep(x,rr,f,end-elapsed)
+64 |                 if dt<=0:raise RuntimeError('TIMESTEP_COLLAPSE')
+   |                         ^
+65 |                 x,wall,contacts,correction,iterations=tracker.step(x,rr,t,dt,f)
+66 |                 elapsed=min(elapsed+dt,end);t=t0+elapsed;f=tracker.evaluate(x,rr,t)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:66:44
+   |
+64 |                 if dt<=0:raise RuntimeError('TIMESTEP_COLLAPSE')
+65 |                 x,wall,contacts,correction,iterations=tracker.step(x,rr,t,dt,f)
+66 |                 elapsed=min(elapsed+dt,end);t=t0+elapsed;f=tracker.evaluate(x,rr,t)
+   |                                            ^
+67 |                 full[mask]=x;dtvalues.append(dt)
+68 |                 row=dict(time_s=t,elapsed_s=elapsed,dt_s=dt,wall_s=time.perf_counter()-start,
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:66:57
+   |
+64 |                 if dt<=0:raise RuntimeError('TIMESTEP_COLLAPSE')
+65 |                 x,wall,contacts,correction,iterations=tracker.step(x,rr,t,dt,f)
+66 |                 elapsed=min(elapsed+dt,end);t=t0+elapsed;f=tracker.evaluate(x,rr,t)
+   |                                                         ^
+67 |                 full[mask]=x;dtvalues.append(dt)
+68 |                 row=dict(time_s=t,elapsed_s=elapsed,dt_s=dt,wall_s=time.perf_counter()-start,
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:67:29
+   |
+65 |                 x,wall,contacts,correction,iterations=tracker.step(x,rr,t,dt,f)
+66 |                 elapsed=min(elapsed+dt,end);t=t0+elapsed;f=tracker.evaluate(x,rr,t)
+67 |                 full[mask]=x;dtvalues.append(dt)
+   |                             ^
+68 |                 row=dict(time_s=t,elapsed_s=elapsed,dt_s=dt,wall_s=time.perf_counter()-start,
+69 |                          projection_max_m=tracker.projection_diagnostics['max_correction_m'],
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:72:42
+   |
+70 |                          final_projection_m=correction,**tracker.last_translation.diagnostics)
+71 |                 log.write(json.dumps(row,allow_nan=False,default=lambda v:v.item())+'\n')
+72 |                 begin=time.perf_counter();n=len(h['time_s'])
+   |                                          ^
+73 |                 for key,value in [('time_s',t),('positions_m',full),('active',mask)]:
+74 |                     h[key].resize(n+1,axis=0);h[key][n]=value
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:74:46
+   |
+72 |                 begin=time.perf_counter();n=len(h['time_s'])
+73 |                 for key,value in [('time_s',t),('positions_m',full),('active',mask)]:
+74 |                     h[key].resize(n+1,axis=0);h[key][n]=value
+   |                                              ^
+75 |                 h.flush();log.flush();io+=time.perf_counter()-begin
+76 |                 if time.perf_counter()-last_report>10:
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:75:26
+   |
+73 | …     for key,value in [('time_s',t),('positions_m',full),('active',mask)]:
+74 | …         h[key].resize(n+1,axis=0);h[key][n]=value
+75 | …     h.flush();log.flush();io+=time.perf_counter()-begin
+   |                ^
+76 | …     if time.perf_counter()-last_report>10:
+77 | …         progress=dict(run=out.name,elapsed_s=elapsed,target_s=duration,accepted=len(dtvalues),wall_s=time.perf_counter()-start)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:75:38
+   |
+73 | …     for key,value in [('time_s',t),('positions_m',full),('active',mask)]:
+74 | …         h[key].resize(n+1,axis=0);h[key][n]=value
+75 | …     h.flush();log.flush();io+=time.perf_counter()-begin
+   |                            ^
+76 | …     if time.perf_counter()-last_report>10:
+77 | …         progress=dict(run=out.name,elapsed_s=elapsed,target_s=duration,accepted=len(dtvalues),wall_s=time.perf_counter()-start)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:78:56
+   |
+76 |                 if time.perf_counter()-last_report>10:
+77 |                     progress=dict(run=out.name,elapsed_s=elapsed,target_s=duration,accepted=len(dtvalues),wall_s=time.perf_counter()-s…
+78 |                     write(out/'PROGRESS.json',progress);print(json.dumps(progress),flush=True);last_report=time.perf_counter()
+   |                                                        ^
+79 |             status='COMPLETE'
+80 |     except (Exception,KeyboardInterrupt) as exc:
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:78:95
+   |
+76 |                 if time.perf_counter()-last_report>10:
+77 |                     progress=dict(run=out.name,elapsed_s=elapsed,target_s=duration,accepted=len(dtvalues),wall_s=time.perf_counter()-s…
+78 |                     write(out/'PROGRESS.json',progress);print(json.dumps(progress),flush=True);last_report=time.perf_counter()
+   |                                                                                               ^
+79 |             status='COMPLETE'
+80 |     except (Exception,KeyboardInterrupt) as exc:
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:81:24
+   |
+79 |             status='COMPLETE'
+80 |     except (Exception,KeyboardInterrupt) as exc:
+81 |         error=repr(exc);(out/'ERROR.txt').write_text(traceback.format_exc())
+   |                        ^
+82 |     finally:
+83 |         h.attrs['complete']=status=='COMPLETE';h.close();tracker.translation_log.close()
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:83:47
+   |
+81 |         error=repr(exc);(out/'ERROR.txt').write_text(traceback.format_exc())
+82 |     finally:
+83 |         h.attrs['complete']=status=='COMPLETE';h.close();tracker.translation_log.close()
+   |                                               ^
+84 |     summary=dict(status=status,error=error,case=case,target_s=duration,completed_duration_s=elapsed,accepted_steps=len(dtvalues),
+85 |                  wall_s=time.perf_counter()-start,initialization_s=initialization,process_cpu_s=time.process_time()-cpu,
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:83:57
+   |
+81 |         error=repr(exc);(out/'ERROR.txt').write_text(traceback.format_exc())
+82 |     finally:
+83 |         h.attrs['complete']=status=='COMPLETE';h.close();tracker.translation_log.close()
+   |                                                         ^
+84 |     summary=dict(status=status,error=error,case=case,target_s=duration,completed_duration_s=elapsed,accepted_steps=len(dtvalues),
+85 |                  wall_s=time.perf_counter()-start,initialization_s=initialization,process_cpu_s=time.process_time()-cpu,
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:90:38
+   |
+88 |                  translation=tracker.translation_summary,projection=tracker.projection_diagnostics,
+89 |                  tracker_timings_inclusive_s=tracker.timings,input_unchanged=all(sha(p)==s for p,s in inputs.items()))
+90 |     write(out/'SUMMARY.json',summary);print(json.dumps(summary),flush=True)
+   |                                      ^
+91 |     return summary
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:94:32
+   |
+93 | if __name__=='__main__':
+94 |     p=argparse.ArgumentParser();p.add_argument('--case',required=True);p.add_argument('--duration',type=float,required=True)
+   |                                ^
+95 |     p.add_argument('--pair',default='cupy');p.add_argument('--repeat',type=int,default=0)
+96 |     a=p.parse_args();run(a.case,a.duration,a.pair,a.repeat)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:94:71
+   |
+93 | if __name__=='__main__':
+94 |     p=argparse.ArgumentParser();p.add_argument('--case',required=True);p.add_argument('--duration',type=float,required=True)
+   |                                                                       ^
+95 |     p.add_argument('--pair',default='cupy');p.add_argument('--repeat',type=int,default=0)
+96 |     a=p.parse_args();run(a.case,a.duration,a.pair,a.repeat)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:95:44
+   |
+93 | if __name__=='__main__':
+94 |     p=argparse.ArgumentParser();p.add_argument('--case',required=True);p.add_argument('--duration',type=float,required=True)
+95 |     p.add_argument('--pair',default='cupy');p.add_argument('--repeat',type=int,default=0)
+   |                                            ^
+96 |     a=p.parse_args();run(a.case,a.duration,a.pair,a.repeat)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/frozen_reference.py:96:21
+   |
+94 |     p=argparse.ArgumentParser();p.add_argument('--case',required=True);p.add_argument('--duration',type=float,required=True)
+95 |     p.add_argument('--pair',default='cupy');p.add_argument('--repeat',type=int,default=0)
+96 |     a=p.parse_args();run(a.case,a.duration,a.pair,a.repeat)
+   |                     ^
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/prefix_v2.py:10:23
+   |
+ 8 |     for case in ['B2','B3']:
+ 9 |         p,s=run(case,1e-6,method='S0',label='S0_diagnostic_v2',budget=180)
+10 |         rows.append(s);write(BASE/'diagnosis/PREFIX_V2_SUMMARY.json',rows)
+   |                       ^
+11 |         prior=None
+12 |         for end in [1e-6,1e-5,1e-4]:
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/prefix_v2.py:14:27
+   |
+12 |         for end in [1e-6,1e-5,1e-4]:
+13 |             p,s=run(case,end,method='S1',label='prefix_v2',budget=600,resume=prior)
+14 |             rows.append(s);write(BASE/'diagnosis/PREFIX_V2_SUMMARY.json',rows)
+   |                           ^
+15 |             if s['status']!='COMPLETE':break
+16 |             prior=p/'CHECKPOINT.npz'
+   |
+
+E701 Multiple statements on one line (colon)
+  --> scripts/stage5a_r2/prefix_v2.py:15:39
+   |
+13 |             p,s=run(case,end,method='S1',label='prefix_v2',budget=600,resume=prior)
+14 |             rows.append(s);write(BASE/'diagnosis/PREFIX_V2_SUMMARY.json',rows)
+15 |             if s['status']!='COMPLETE':break
+   |                                       ^
+16 |             prior=p/'CHECKPOINT.npz'
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/prefix_v3.py:12:27
+   |
+10 |         for end in [1e-6,1e-5,1e-4]:
+11 |             p,s=run(case,end,method='S1',label='prefix_v3',budget=600,resume=prior)
+12 |             rows.append(s);write(BASE/'diagnosis/PREFIX_V3_SUMMARY.json',rows)
+   |                           ^
+13 |             if s['status']!='COMPLETE':break
+14 |             prior=p/'CHECKPOINT.npz'
+   |
+
+E701 Multiple statements on one line (colon)
+  --> scripts/stage5a_r2/prefix_v3.py:13:39
+   |
+11 |             p,s=run(case,end,method='S1',label='prefix_v3',budget=600,resume=prior)
+12 |             rows.append(s);write(BASE/'diagnosis/PREFIX_V3_SUMMARY.json',rows)
+13 |             if s['status']!='COMPLETE':break
+   |                                       ^
+14 |             prior=p/'CHECKPOINT.npz'
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/prefix_v3_global.py:13:27
+   |
+11 |             p,s=run(case,end,method='S1',label='prefix_v3_global',budget=600,resume=prior,
+12 |                     components=False,pair='cupy')
+13 |             rows.append(s);write(BASE/'diagnosis/PREFIX_V3_GLOBAL_SUMMARY.json',rows)
+   |                           ^
+14 |             if s['status']!='COMPLETE':break
+15 |             prior=p/'CHECKPOINT.npz'
+   |
+
+E701 Multiple statements on one line (colon)
+  --> scripts/stage5a_r2/prefix_v3_global.py:14:39
+   |
+12 |                     components=False,pair='cupy')
+13 |             rows.append(s);write(BASE/'diagnosis/PREFIX_V3_GLOBAL_SUMMARY.json',rows)
+14 |             if s['status']!='COMPLETE':break
+   |                                       ^
+15 |             prior=p/'CHECKPOINT.npz'
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/prefix_v4.py:13:27
+   |
+11 |             p,s=run(case,end,method='S1',label='prefix_v4',budget=600,resume=prior,
+12 |                     components=False,pair='cupy',nonlinear_strategy='quasi_newton')
+13 |             rows.append(s);write(BASE/'diagnosis/PREFIX_V4_SUMMARY.json',rows)
+   |                           ^
+14 |             if s['status']!='COMPLETE':break
+15 |             prior=p/'CHECKPOINT.npz'
+   |
+
+E701 Multiple statements on one line (colon)
+  --> scripts/stage5a_r2/prefix_v4.py:14:39
+   |
+12 |                     components=False,pair='cupy',nonlinear_strategy='quasi_newton')
+13 |             rows.append(s);write(BASE/'diagnosis/PREFIX_V4_SUMMARY.json',rows)
+14 |             if s['status']!='COMPLETE':break
+   |                                       ^
+15 |             prior=p/'CHECKPOINT.npz'
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_explore.py:17:33
+   |
+15 |     a,g=sparse.load_npz(p/'A.npz'),sparse.load_npz(p/'G.npz')
+16 |     data=dict(np.load(next(x for x in p.glob('*.npz') if x.name not in ['A.npz','G.npz'])))
+17 |     b,lo=data['b'],data['lower']; m,n=g.shape
+   |                                 ^
+18 |     begin=perf_counter()
+19 |     if name == 'osqp':
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_explore.py:21:22
+   |
+19 |     if name == 'osqp':
+20 |         import osqp
+21 |         q=osqp.OSQP(); q.setup(P=a,q=-b,A=g,l=lo,u=np.full(m,np.inf),verbose=False,
+   |                      ^
+22 |                              eps_abs=eps,eps_rel=0,max_iter=300000,polishing=True,
+23 |                              polish_refine_iter=10, time_limit=10.)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_explore.py:24:35
+   |
+22 |                              eps_abs=eps,eps_rel=0,max_iter=300000,polishing=True,
+23 |                              polish_refine_iter=10, time_limit=10.)
+24 |         setup=perf_counter()-begin; result=q.solve(raise_error=False)
+   |                                   ^
+25 |         u,lam=result.x,-result.y; status=result.info.status; it=result.info.iter
+26 |     elif name.startswith('prox'):
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_explore.py:25:33
+   |
+23 |                              polish_refine_iter=10, time_limit=10.)
+24 |         setup=perf_counter()-begin; result=q.solve(raise_error=False)
+25 |         u,lam=result.x,-result.y; status=result.info.status; it=result.info.iter
+   |                                 ^
+26 |     elif name.startswith('prox'):
+27 |         import proxsuite as ps
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_explore.py:25:60
+   |
+23 |                              polish_refine_iter=10, time_limit=10.)
+24 |         setup=perf_counter()-begin; result=q.solve(raise_error=False)
+25 |         u,lam=result.x,-result.y; status=result.info.status; it=result.info.iter
+   |                                                            ^
+26 |     elif name.startswith('prox'):
+27 |         import proxsuite as ps
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_explore.py:30:31
+   |
+28 |         dense=name=='prox_dense'
+29 |         q=(ps.proxqp.dense if dense else ps.proxqp.sparse).QP(n,0,m)
+30 |         q.settings.eps_abs=eps;q.settings.eps_rel=0;q.settings.max_iter=1000
+   |                               ^
+31 |         q.settings.max_iter_in=1500;q.settings.nb_iterative_refinement=10;q.settings.compute_timings=True
+32 |         q.init(a.toarray() if dense else a,-b,None,None,g.toarray() if dense else g,lo,np.full(m,np.inf))
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_explore.py:30:52
+   |
+28 |         dense=name=='prox_dense'
+29 |         q=(ps.proxqp.dense if dense else ps.proxqp.sparse).QP(n,0,m)
+30 |         q.settings.eps_abs=eps;q.settings.eps_rel=0;q.settings.max_iter=1000
+   |                                                    ^
+31 |         q.settings.max_iter_in=1500;q.settings.nb_iterative_refinement=10;q.settings.compute_timings=True
+32 |         q.init(a.toarray() if dense else a,-b,None,None,g.toarray() if dense else g,lo,np.full(m,np.inf))
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_explore.py:31:36
+   |
+29 |         q=(ps.proxqp.dense if dense else ps.proxqp.sparse).QP(n,0,m)
+30 |         q.settings.eps_abs=eps;q.settings.eps_rel=0;q.settings.max_iter=1000
+31 |         q.settings.max_iter_in=1500;q.settings.nb_iterative_refinement=10;q.settings.compute_timings=True
+   |                                    ^
+32 |         q.init(a.toarray() if dense else a,-b,None,None,g.toarray() if dense else g,lo,np.full(m,np.inf))
+33 |         setup=perf_counter()-begin;q.solve()
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_explore.py:31:74
+   |
+29 |         q=(ps.proxqp.dense if dense else ps.proxqp.sparse).QP(n,0,m)
+30 |         q.settings.eps_abs=eps;q.settings.eps_rel=0;q.settings.max_iter=1000
+31 |         q.settings.max_iter_in=1500;q.settings.nb_iterative_refinement=10;q.settings.compute_timings=True
+   |                                                                          ^
+32 |         q.init(a.toarray() if dense else a,-b,None,None,g.toarray() if dense else g,lo,np.full(m,np.inf))
+33 |         setup=perf_counter()-begin;q.solve()
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_explore.py:33:35
+   |
+31 |         q.settings.max_iter_in=1500;q.settings.nb_iterative_refinement=10;q.settings.compute_timings=True
+32 |         q.init(a.toarray() if dense else a,-b,None,None,g.toarray() if dense else g,lo,np.full(m,np.inf))
+33 |         setup=perf_counter()-begin;q.solve()
+   |                                   ^
+34 |         u,lam=q.results.x,-q.results.z;status=str(q.results.info.status);it=q.results.info.iter
+35 |     else:
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_explore.py:34:39
+   |
+32 |         q.init(a.toarray() if dense else a,-b,None,None,g.toarray() if dense else g,lo,np.full(m,np.inf))
+33 |         setup=perf_counter()-begin;q.solve()
+34 |         u,lam=q.results.x,-q.results.z;status=str(q.results.info.status);it=q.results.info.iter
+   |                                       ^
+35 |     else:
+36 |         import clarabel
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_explore.py:34:73
+   |
+32 |         q.init(a.toarray() if dense else a,-b,None,None,g.toarray() if dense else g,lo,np.full(m,np.inf))
+33 |         setup=perf_counter()-begin;q.solve()
+34 |         u,lam=q.results.x,-q.results.z;status=str(q.results.info.status);it=q.results.info.iter
+   |                                                                         ^
+35 |     else:
+36 |         import clarabel
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_explore.py:37:44
+   |
+35 |     else:
+36 |         import clarabel
+37 |         settings=clarabel.DefaultSettings();settings.verbose=False;settings.max_iter=500
+   |                                            ^
+38 |         settings.tol_gap_abs=eps;settings.tol_gap_rel=eps;settings.tol_feas=eps
+39 |         settings.time_limit=10.
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_explore.py:37:67
+   |
+35 |     else:
+36 |         import clarabel
+37 |         settings=clarabel.DefaultSettings();settings.verbose=False;settings.max_iter=500
+   |                                                                   ^
+38 |         settings.tol_gap_abs=eps;settings.tol_gap_rel=eps;settings.tol_feas=eps
+39 |         settings.time_limit=10.
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_explore.py:38:33
+   |
+36 |         import clarabel
+37 |         settings=clarabel.DefaultSettings();settings.verbose=False;settings.max_iter=500
+38 |         settings.tol_gap_abs=eps;settings.tol_gap_rel=eps;settings.tol_feas=eps
+   |                                 ^
+39 |         settings.time_limit=10.
+40 |         q=clarabel.DefaultSolver(sparse.triu(a,format='csc'),-b,-g,-lo,[clarabel.NonnegativeConeT(m)],settings)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_explore.py:38:58
+   |
+36 |         import clarabel
+37 |         settings=clarabel.DefaultSettings();settings.verbose=False;settings.max_iter=500
+38 |         settings.tol_gap_abs=eps;settings.tol_gap_rel=eps;settings.tol_feas=eps
+   |                                                          ^
+39 |         settings.time_limit=10.
+40 |         q=clarabel.DefaultSolver(sparse.triu(a,format='csc'),-b,-g,-lo,[clarabel.NonnegativeConeT(m)],settings)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_explore.py:41:35
+   |
+39 |         settings.time_limit=10.
+40 |         q=clarabel.DefaultSolver(sparse.triu(a,format='csc'),-b,-g,-lo,[clarabel.NonnegativeConeT(m)],settings)
+41 |         setup=perf_counter()-begin;result=q.solve()
+   |                                   ^
+42 |         u,lam=np.array(result.x),np.array(result.z);status=str(result.status);it=result.iterations
+43 |     seconds=perf_counter()-begin
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_explore.py:42:52
+   |
+40 |         q=clarabel.DefaultSolver(sparse.triu(a,format='csc'),-b,-g,-lo,[clarabel.NonnegativeConeT(m)],settings)
+41 |         setup=perf_counter()-begin;result=q.solve()
+42 |         u,lam=np.array(result.x),np.array(result.z);status=str(result.status);it=result.iterations
+   |                                                    ^
+43 |     seconds=perf_counter()-begin
+44 |     k,terms=kkt_residual(a,b,g,lo,u,lam)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_explore.py:42:78
+   |
+40 |         q=clarabel.DefaultSolver(sparse.triu(a,format='csc'),-b,-g,-lo,[clarabel.NonnegativeConeT(m)],settings)
+41 |         setup=perf_counter()-begin;result=q.solve()
+42 |         u,lam=np.array(result.x),np.array(result.z);status=str(result.status);it=result.iterations
+   |                                                                              ^
+43 |     seconds=perf_counter()-begin
+44 |     k,terms=kkt_residual(a,b,g,lo,u,lam)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_explore.py:45:35
+   |
+43 |     seconds=perf_counter()-begin
+44 |     k,terms=kkt_residual(a,b,g,lo,u,lam)
+45 |     out=BASE/'diagnosis/native_v1';out.mkdir(exist_ok=True)
+   |                                   ^
+46 |     np.savez_compressed(out/f'{p.name}_{name}_{eps:g}.npz',u=u,lam=lam)
+47 |     return dict(fixture=p.name,solver=name,eps=eps,status=status,kkt=k,terms=terms,
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_sequences.py:19:45
+   |
+18 | def generate():
+19 |     out=BASE/'fixtures/development_sequence';out.mkdir(exist_ok=False)
+   |                                             ^
+20 |     selection=json.loads((ROOT/'results/stage5/motion_solver/audit_v2/BASELINE_SELECTION.json').read_text())
+21 |     records=[]
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_sequences.py:30:40
+   |
+28 |         with h5py.File(source) as h:
+29 |             for frame in [0,1,2,3,4]:
+30 |                 mask=h['active'][frame];x=h['positions_m'][frame][mask];r=h['radii_m'][:][mask];ids=h['particle_id'][:][mask]
+   |                                        ^
+31 |                 t=float(h['time_s'][frame]);f=tracker.evaluate(x,r,t);w=tracker.cylinder.wall_gap_and_normal(x,r)
+32 |                 m=tracker.translation;a=m.solve(x,r,f['primary_force_N']+f['secondary_force_N'],f['flow_velocity_m_s'],w)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_sequences.py:30:72
+   |
+28 |         with h5py.File(source) as h:
+29 |             for frame in [0,1,2,3,4]:
+30 |                 mask=h['active'][frame];x=h['positions_m'][frame][mask];r=h['radii_m'][:][mask];ids=h['particle_id'][:][mask]
+   |                                                                        ^
+31 |                 t=float(h['time_s'][frame]);f=tracker.evaluate(x,r,t);w=tracker.cylinder.wall_gap_and_normal(x,r)
+32 |                 m=tracker.translation;a=m.solve(x,r,f['primary_force_N']+f['secondary_force_N'],f['flow_velocity_m_s'],w)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_sequences.py:30:96
+   |
+28 |         with h5py.File(source) as h:
+29 |             for frame in [0,1,2,3,4]:
+30 |                 mask=h['active'][frame];x=h['positions_m'][frame][mask];r=h['radii_m'][:][mask];ids=h['particle_id'][:][mask]
+   |                                                                                                ^
+31 |                 t=float(h['time_s'][frame]);f=tracker.evaluate(x,r,t);w=tracker.cylinder.wall_gap_and_normal(x,r)
+32 |                 m=tracker.translation;a=m.solve(x,r,f['primary_force_N']+f['secondary_force_N'],f['flow_velocity_m_s'],w)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_sequences.py:31:44
+   |
+29 |             for frame in [0,1,2,3,4]:
+30 |                 mask=h['active'][frame];x=h['positions_m'][frame][mask];r=h['radii_m'][:][mask];ids=h['particle_id'][:][mask]
+31 |                 t=float(h['time_s'][frame]);f=tracker.evaluate(x,r,t);w=tracker.cylinder.wall_gap_and_normal(x,r)
+   |                                            ^
+32 |                 m=tracker.translation;a=m.solve(x,r,f['primary_force_N']+f['secondary_force_N'],f['flow_velocity_m_s'],w)
+33 |                 c=anchored_constraints(x,x,r,w,w,1e-7,ids,1e-11,a.velocity)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_sequences.py:31:70
+   |
+29 |             for frame in [0,1,2,3,4]:
+30 |                 mask=h['active'][frame];x=h['positions_m'][frame][mask];r=h['radii_m'][:][mask];ids=h['particle_id'][:][mask]
+31 |                 t=float(h['time_s'][frame]);f=tracker.evaluate(x,r,t);w=tracker.cylinder.wall_gap_and_normal(x,r)
+   |                                                                      ^
+32 |                 m=tracker.translation;a=m.solve(x,r,f['primary_force_N']+f['secondary_force_N'],f['flow_velocity_m_s'],w)
+33 |                 c=anchored_constraints(x,x,r,w,w,1e-7,ids,1e-11,a.velocity)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_sequences.py:32:38
+   |
+30 |                 mask=h['active'][frame];x=h['positions_m'][frame][mask];r=h['radii_m'][:][mask];ids=h['particle_id'][:][mask]
+31 |                 t=float(h['time_s'][frame]);f=tracker.evaluate(x,r,t);w=tracker.cylinder.wall_gap_and_normal(x,r)
+32 |                 m=tracker.translation;a=m.solve(x,r,f['primary_force_N']+f['secondary_force_N'],f['flow_velocity_m_s'],w)
+   |                                      ^
+33 |                 c=anchored_constraints(x,x,r,w,w,1e-7,ids,1e-11,a.velocity)
+34 |                 vs=float(np.max(abs(a.velocity)));an=a.matrix/a.scale;bn=an@(a.velocity.ravel()/vs)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_sequences.py:34:50
+   |
+32 |                 m=tracker.translation;a=m.solve(x,r,f['primary_force_N']+f['secondary_force_N'],f['flow_velocity_m_s'],w)
+33 |                 c=anchored_constraints(x,x,r,w,w,1e-7,ids,1e-11,a.velocity)
+34 |                 vs=float(np.max(abs(a.velocity)));an=a.matrix/a.scale;bn=an@(a.velocity.ravel()/vs)
+   |                                                  ^
+35 |                 prefix=out/f'{case}_{frame:02d}'
+36 |                 sparse.save_npz(str(prefix)+'_A.npz',an);sparse.save_npz(str(prefix)+'_G.npz',c.matrix)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_sequences.py:34:70
+   |
+32 |                 m=tracker.translation;a=m.solve(x,r,f['primary_force_N']+f['secondary_force_N'],f['flow_velocity_m_s'],w)
+33 |                 c=anchored_constraints(x,x,r,w,w,1e-7,ids,1e-11,a.velocity)
+34 |                 vs=float(np.max(abs(a.velocity)));an=a.matrix/a.scale;bn=an@(a.velocity.ravel()/vs)
+   |                                                                      ^
+35 |                 prefix=out/f'{case}_{frame:02d}'
+36 |                 sparse.save_npz(str(prefix)+'_A.npz',an);sparse.save_npz(str(prefix)+'_G.npz',c.matrix)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_sequences.py:36:57
+   |
+34 |                 vs=float(np.max(abs(a.velocity)));an=a.matrix/a.scale;bn=an@(a.velocity.ravel()/vs)
+35 |                 prefix=out/f'{case}_{frame:02d}'
+36 |                 sparse.save_npz(str(prefix)+'_A.npz',an);sparse.save_npz(str(prefix)+'_G.npz',c.matrix)
+   |                                                         ^
+37 |                 np.savez_compressed(str(prefix)+'_data.npz',b=bn,lower=c.lower/vs,ids=ids,x=x,r=r)
+38 |                 records.append(dict(case=case,frame=frame,time_s=t,source=str(source),source_sha256=sha(source),
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_sequences.py:47:49
+   |
+45 |     case,solver,mode=task
+46 |     manifest=json.loads((BASE/'fixtures/development_sequence/MANIFEST.json').read_text())
+47 |     seq=[r for r in manifest if r['case']==case];rows=[];q=NativeQP(solver,1e-12 if solver!='clarabel' else 1e-10)
+   |                                                 ^
+48 |     prior_u=prior_l=prior_keys=None
+49 |     for index in range(5):
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_sequences.py:47:57
+   |
+45 |     case,solver,mode=task
+46 |     manifest=json.loads((BASE/'fixtures/development_sequence/MANIFEST.json').read_text())
+47 |     seq=[r for r in manifest if r['case']==case];rows=[];q=NativeQP(solver,1e-12 if solver!='clarabel' else 1e-10)
+   |                                                         ^
+48 |     prior_u=prior_l=prior_keys=None
+49 |     for index in range(5):
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_sequences.py:50:51
+   |
+48 |     prior_u=prior_l=prior_keys=None
+49 |     for index in range(5):
+50 |         item=seq[index if mode=='adjacent' else 0];p=item['prefix']
+   |                                                   ^
+51 |         a,g=sparse.load_npz(p+'_A.npz'),sparse.load_npz(p+'_G.npz');d=dict(np.load(p+'_data.npz'))
+52 |         b=d['b'].copy();lo=d['lower'];keys=[tuple(k) for k in item['contact_ids']]
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_sequences.py:51:68
+   |
+49 |     for index in range(5):
+50 |         item=seq[index if mode=='adjacent' else 0];p=item['prefix']
+51 |         a,g=sparse.load_npz(p+'_A.npz'),sparse.load_npz(p+'_G.npz');d=dict(np.load(p+'_data.npz'))
+   |                                                                    ^
+52 |         b=d['b'].copy();lo=d['lower'];keys=[tuple(k) for k in item['contact_ids']]
+53 |         if mode=='perturbed':b*=1+index*1e-5
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_sequences.py:52:24
+   |
+50 |         item=seq[index if mode=='adjacent' else 0];p=item['prefix']
+51 |         a,g=sparse.load_npz(p+'_A.npz'),sparse.load_npz(p+'_G.npz');d=dict(np.load(p+'_data.npz'))
+52 |         b=d['b'].copy();lo=d['lower'];keys=[tuple(k) for k in item['contact_ids']]
+   |                        ^
+53 |         if mode=='perturbed':b*=1+index*1e-5
+54 |         warm_u=prior_u if mode!='cold' else None
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_sequences.py:52:38
+   |
+50 |         item=seq[index if mode=='adjacent' else 0];p=item['prefix']
+51 |         a,g=sparse.load_npz(p+'_A.npz'),sparse.load_npz(p+'_G.npz');d=dict(np.load(p+'_data.npz'))
+52 |         b=d['b'].copy();lo=d['lower'];keys=[tuple(k) for k in item['contact_ids']]
+   |                                      ^
+53 |         if mode=='perturbed':b*=1+index*1e-5
+54 |         warm_u=prior_u if mode!='cold' else None
+   |
+
+E701 Multiple statements on one line (colon)
+  --> scripts/stage5a_r2/qp_sequences.py:53:29
+   |
+51 |         a,g=sparse.load_npz(p+'_A.npz'),sparse.load_npz(p+'_G.npz');d=dict(np.load(p+'_data.npz'))
+52 |         b=d['b'].copy();lo=d['lower'];keys=[tuple(k) for k in item['contact_ids']]
+53 |         if mode=='perturbed':b*=1+index*1e-5
+   |                             ^
+54 |         warm_u=prior_u if mode!='cold' else None
+55 |         warm_l=np.array([dict(zip(prior_keys,prior_l)).get(k,0.) for k in keys]) if prior_keys is not None and mode!='cold' else None
+   |
+
+E701 Multiple statements on one line (colon)
+  --> scripts/stage5a_r2/qp_sequences.py:61:24
+   |
+59 | …         warm_u=warm_u*seq[index-1]['velocity_scale_m_s']/item['velocity_scale_m_s']
+60 | …         warm_l=warm_l*(seq[index-1]['velocity_scale_m_s']*seq[index-1]['resistance_scale_N_s_m'])/(item['velocity_scale_m_s']*item['…
+61 | …     if mode=='cold':q=NativeQP(solver,q.eps)
+   |                      ^
+62 | …     start=perf_counter();u,l,audit=q.candidate(a,b,g,lo,warm_u,warm_l)
+63 | …     row=dict(case=case,solver=solver,mode=mode,index=index,frame=item['frame'],time_s=item['time_s'],
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_sequences.py:62:29
+   |
+60 | …         warm_l=warm_l*(seq[index-1]['velocity_scale_m_s']*seq[index-1]['resistance_scale_N_s_m'])/(item['velocity_scale_m_s']*item['…
+61 | …     if mode=='cold':q=NativeQP(solver,q.eps)
+62 | …     start=perf_counter();u,l,audit=q.candidate(a,b,g,lo,warm_u,warm_l)
+   |                           ^
+63 | …     row=dict(case=case,solver=solver,mode=mode,index=index,frame=item['frame'],time_s=item['time_s'],
+64 | …              wall_s=perf_counter()-start,diagnostics=audit)
+   |
+
+E741 Ambiguous variable name: `l`
+  --> scripts/stage5a_r2/qp_sequences.py:62:32
+   |
+60 | …         warm_l=warm_l*(seq[index-1]['velocity_scale_m_s']*seq[index-1]['resistance_scale_N_s_m'])/(item['velocity_scale_m_s']*item['…
+61 | …     if mode=='cold':q=NativeQP(solver,q.eps)
+62 | …     start=perf_counter();u,l,audit=q.candidate(a,b,g,lo,warm_u,warm_l)
+   |                              ^
+63 | …     row=dict(case=case,solver=solver,mode=mode,index=index,frame=item['frame'],time_s=item['time_s'],
+64 | …              wall_s=perf_counter()-start,diagnostics=audit)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_sequences.py:65:45
+   |
+63 |         row=dict(case=case,solver=solver,mode=mode,index=index,frame=item['frame'],time_s=item['time_s'],
+64 |                  wall_s=perf_counter()-start,diagnostics=audit)
+65 |         folder=BASE/'benchmarks/changing_qp';folder.mkdir(exist_ok=True)
+   |                                             ^
+66 |         target=folder/f'{case}_{solver}_{mode}_{index}.npz'
+67 |         np.savez_compressed(target,u=u,lambda_=l,reaction=g.T@l)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_sequences.py:68:42
+   |
+66 |         target=folder/f'{case}_{solver}_{mode}_{index}.npz'
+67 |         np.savez_compressed(target,u=u,lambda_=l,reaction=g.T@l)
+68 |         row['candidate_file']=str(target);rows.append(row)
+   |                                          ^
+69 |         prior_u,prior_l,prior_keys=u,l,keys
+70 |     return rows
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/qp_sequences.py:80:33
+   |
+78 |     with ProcessPoolExecutor(max_workers=6) as pool:
+79 |         for rows in pool.map(replay,tasks):
+80 |             results.extend(rows);print(rows[0]['case'],rows[0]['solver'],rows[0]['mode'],
+   |                                 ^
+81 |                 max(r['diagnostics']['kkt'] for r in rows),flush=True)
+82 |     write(BASE/'benchmarks/changing_qp/RESULTS.json',dict(rows=results,
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/reconstruct.py:14:43
+   |
+13 | def main():
+14 |     out=BASE/'diagnosis/reconstruction_v1';out.mkdir(exist_ok=False)
+   |                                           ^
+15 |     reports=[]
+16 |     old=ROOT/'results/stage5/motion_solver'
+   |
+
+E701 Multiple statements on one line (colon)
+  --> scripts/stage5a_r2/reconstruct.py:18:32
+   |
+16 |     old=ROOT/'results/stage5/motion_solver'
+17 |     for fixture in sorted((BASE/'fixtures').iterdir()):
+18 |         if not fixture.is_dir():continue
+   |                                ^
+19 |         prior=json.loads((old/'diagnostics'/fixture.name/'DIAGNOSTIC.json').read_text())
+20 |         original=Path(prior['source_run']);case=prior.get('case','B2')
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/reconstruct.py:20:43
+   |
+18 |         if not fixture.is_dir():continue
+19 |         prior=json.loads((old/'diagnostics'/fixture.name/'DIAGNOSTIC.json').read_text())
+20 |         original=Path(prior['source_run']);case=prior.get('case','B2')
+   |                                           ^
+21 |         cfg=json.loads((original/'CONFIG.json').read_text())
+22 |         _,field,flow,_,_=load_case(Path('/workspace/mevo_acoustic_microbubbles'),case)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/reconstruct.py:26:29
+   |
+24 |         step=PredictorCorrector(tracker.translation,tracker.cylinder,tracker.evaluate)
+25 |         with np.load(original/'LAST_ACCEPTED_STATE.npz') as h:
+26 |             mask=h['active'];x=h['positions_m'][mask];r=h['radii_m'][mask];ids=h['particle_id'][mask];t=float(h['time_s'])
+   |                             ^
+27 |         if 'failure_replay' in fixture.name:
+28 |             import h5py
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/reconstruct.py:26:54
+   |
+24 |         step=PredictorCorrector(tracker.translation,tracker.cylinder,tracker.evaluate)
+25 |         with np.load(original/'LAST_ACCEPTED_STATE.npz') as h:
+26 |             mask=h['active'];x=h['positions_m'][mask];r=h['radii_m'][mask];ids=h['particle_id'][mask];t=float(h['time_s'])
+   |                                                      ^
+27 |         if 'failure_replay' in fixture.name:
+28 |             import h5py
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/reconstruct.py:26:75
+   |
+24 |         step=PredictorCorrector(tracker.translation,tracker.cylinder,tracker.evaluate)
+25 |         with np.load(original/'LAST_ACCEPTED_STATE.npz') as h:
+26 |             mask=h['active'];x=h['positions_m'][mask];r=h['radii_m'][mask];ids=h['particle_id'][mask];t=float(h['time_s'])
+   |                                                                           ^
+27 |         if 'failure_replay' in fixture.name:
+28 |             import h5py
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/reconstruct.py:26:102
+   |
+24 |         step=PredictorCorrector(tracker.translation,tracker.cylinder,tracker.evaluate)
+25 |         with np.load(original/'LAST_ACCEPTED_STATE.npz') as h:
+26 |             mask=h['active'];x=h['positions_m'][mask];r=h['radii_m'][mask];ids=h['particle_id'][mask];t=float(h['time_s'])
+   |                                                                                                      ^
+27 |         if 'failure_replay' in fixture.name:
+28 |             import h5py
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/reconstruct.py:30:46
+   |
+28 |             import h5py
+29 |             with h5py.File(original/'trajectories.h5') as h:
+30 |                 xp=h['positions_m'][-2][mask];tp=float(h['time_s'][-2])
+   |                                              ^
+31 |             _,_,cache,_=step.trial(xp,r,ids,tp,t-tp)
+32 |             tracker.translation.cache=cache
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/reconstruct.py:37:32
+   |
+35 |             rejections=[json.loads(s) for s in (original/'REJECTED.jsonl').read_text().splitlines()]
+36 |             intervals=[z['end_s']-z['time_s'] for z in rejections]+[prior['dt_s']]
+37 |         folder=out/fixture.name;folder.mkdir()
+   |                                ^
+38 |         for index,dt in enumerate(intervals):
+39 |             row=dict(fixture=fixture.name,case=case,time_s=t,dt_s=dt,original_run=str(original),index=index)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/reconstruct.py:45:26
+   |
+43 |             except Exception as exc:
+44 |                 row.update(status=type(exc).__name__,diagnostics=getattr(exc,'diagnostics',{}))
+45 |                 frames={};tb=exc.__traceback__
+   |                          ^
+46 |                 while tb:
+47 |                     frames[tb.tb_frame.f_code.co_name]=tb.tb_frame.f_locals.copy();tb=tb.tb_next
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/reconstruct.py:47:83
+   |
+45 |                 frames={};tb=exc.__traceback__
+46 |                 while tb:
+47 |                     frames[tb.tb_frame.f_code.co_name]=tb.tb_frame.f_locals.copy();tb=tb.tb_next
+   |                                                                                   ^
+48 |                 tr=frames.get('trial',{});co=frames.get('component',{});cg=frames.get('constrained',{});qp=frames.get('solve',{})
+49 |                 if 'xp' in tr:
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/reconstruct.py:48:42
+   |
+46 |                 while tb:
+47 |                     frames[tb.tb_frame.f_code.co_name]=tb.tb_frame.f_locals.copy();tb=tb.tb_next
+48 |                 tr=frames.get('trial',{});co=frames.get('component',{});cg=frames.get('constrained',{});qp=frames.get('solve',{})
+   |                                          ^
+49 |                 if 'xp' in tr:
+50 |                     pairs=np.unique(np.vstack([tr['c0'].pairs,tr['cp'].pairs]),axis=0)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/reconstruct.py:48:72
+   |
+46 |                 while tb:
+47 |                     frames[tb.tb_frame.f_code.co_name]=tb.tb_frame.f_locals.copy();tb=tb.tb_next
+48 |                 tr=frames.get('trial',{});co=frames.get('component',{});cg=frames.get('constrained',{});qp=frames.get('solve',{})
+   |                                                                        ^
+49 |                 if 'xp' in tr:
+50 |                     pairs=np.unique(np.vstack([tr['c0'].pairs,tr['cp'].pairs]),axis=0)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/reconstruct.py:48:104
+   |
+46 |                 while tb:
+47 |                     frames[tb.tb_frame.f_code.co_name]=tb.tb_frame.f_locals.copy();tb=tb.tb_next
+48 |                 tr=frames.get('trial',{});co=frames.get('component',{});cg=frames.get('constrained',{});qp=frames.get('solve',{})
+   |                                                                                                        ^
+49 |                 if 'xp' in tr:
+50 |                     pairs=np.unique(np.vstack([tr['c0'].pairs,tr['cp'].pairs]),axis=0)
+   |
+
+F841 Local variable `qp` is assigned to but never used
+  --> scripts/stage5a_r2/reconstruct.py:48:105
+   |
+46 |                 while tb:
+47 |                     frames[tb.tb_frame.f_code.co_name]=tb.tb_frame.f_locals.copy();tb=tb.tb_next
+48 |                 tr=frames.get('trial',{});co=frames.get('component',{});cg=frames.get('constrained',{});qp=frames.get('solve',{})
+   |                                                                                                         ^^
+49 |                 if 'xp' in tr:
+50 |                     pairs=np.unique(np.vstack([tr['c0'].pairs,tr['cp'].pairs]),axis=0)
+   |
+help: Remove assignment to unused variable `qp`
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/reconstruct.py:51:59
+   |
+49 |                 if 'xp' in tr:
+50 |                     pairs=np.unique(np.vstack([tr['c0'].pairs,tr['cp'].pairs]),axis=0)
+51 |                     h0,n0=_gap_vectors(tr['x'],pairs,r[0]);hp,npred=_gap_vectors(tr['xp'],pairs,r[0])
+   |                                                           ^
+52 |                     hc,nc=_gap_vectors(tr.get('xc',tr['xp']),pairs,r[0])
+53 |                     denom=.002*r[0]+.02*np.maximum(h0,.001*r[0]);pe=abs(hc-hp)/denom
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/reconstruct.py:53:65
+   |
+51 |                     h0,n0=_gap_vectors(tr['x'],pairs,r[0]);hp,npred=_gap_vectors(tr['xp'],pairs,r[0])
+52 |                     hc,nc=_gap_vectors(tr.get('xc',tr['xp']),pairs,r[0])
+53 |                     denom=.002*r[0]+.02*np.maximum(h0,.001*r[0]);pe=abs(hc-hp)/denom
+   |                                                                 ^
+54 |                     winner=int(np.argmax(pe)) if len(pe) else None
+55 |                     row['responsible_pair']=dict(ids=ids[pairs[winner]].tolist(),error_ratio=float(pe[winner]),
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/reconstruct.py:64:42
+   |
+62 |                     row['position_responsible_id']=int(ids[np.argmax(np.linalg.norm(tr.get('xc',tr['xp'])-tr['xp'],axis=1))])
+63 |                 if index==len(intervals)-1 and 'aa' in co:
+64 |                     a,g=co['aa'],co['gg'];saved_a=sparse.load_npz(fixture/'A.npz');saved_g=sparse.load_npz(fixture/'G.npz')
+   |                                          ^
+65 |                     row['reconstruction']=dict(A_exact=bool((a!=saved_a).nnz==0),G_exact=bool((g!=saved_g).nnz==0),
+66 |                         A_max_difference=float(np.max(abs((a-saved_a).data),initial=0)),
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/reconstruct.py:64:83
+   |
+62 |                     row['position_responsible_id']=int(ids[np.argmax(np.linalg.norm(tr.get('xc',tr['xp'])-tr['xp'],axis=1))])
+63 |                 if index==len(intervals)-1 and 'aa' in co:
+64 |                     a,g=co['aa'],co['gg'];saved_a=sparse.load_npz(fixture/'A.npz');saved_g=sparse.load_npz(fixture/'G.npz')
+   |                                                                                   ^
+65 |                     row['reconstruction']=dict(A_exact=bool((a!=saved_a).nnz==0),G_exact=bool((g!=saved_g).nnz==0),
+66 |                         A_max_difference=float(np.max(abs((a-saved_a).data),initial=0)),
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/reconstruct.py:72:57
+   |
+70 | …         full_row_indices=co['rr'].tolist(),full_column_indices=co['cols'].tolist(),
+71 | …         warm_start='reconstructed preceding accepted trial' if 'failure_replay' in fixture.name else 'empty accepted cache')
+72 | …     lower=cg['lower'][co['rr']]/cg['vs'];up=tr['up'].ravel()[co['cols']]/cg['vs']
+   |                                           ^
+73 | …     row['predictor_feasibility']=dict(min_slack=float(np.min(saved_g@up-lower)),
+74 | …         zero_min_slack=float(np.min(-lower)),positive_lower_rows=int(np.sum(lower>0)),
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/reconstruct.py:79:36
+   |
+77 |                     np.savez_compressed(folder/'RECONSTRUCTED_CONTEXT.npz',x=x,xp=tr['xp'],r=r,ids=ids,up=tr['up'],
+78 |                         predictor_normalized_component=up,lower=lower,cols=co['cols'],rows=co['rr'])
+79 |                     keys=co['keys'];meta=[];id_to_local={int(k):i for i,k in enumerate(ids)}
+   |                                    ^
+80 |                     for j,key in enumerate(keys):
+81 |                         stage,kind,*particle=key;anchor=tr['x'] if stage=='start' else tr['xp']
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/reconstruct.py:79:44
+   |
+77 |                     np.savez_compressed(folder/'RECONSTRUCTED_CONTEXT.npz',x=x,xp=tr['xp'],r=r,ids=ids,up=tr['up'],
+78 |                         predictor_normalized_component=up,lower=lower,cols=co['cols'],rows=co['rr'])
+79 |                     keys=co['keys'];meta=[];id_to_local={int(k):i for i,k in enumerate(ids)}
+   |                                            ^
+80 |                     for j,key in enumerate(keys):
+81 |                         stage,kind,*particle=key;anchor=tr['x'] if stage=='start' else tr['xp']
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/reconstruct.py:81:49
+   |
+79 |                     keys=co['keys'];meta=[];id_to_local={int(k):i for i,k in enumerate(ids)}
+80 |                     for j,key in enumerate(keys):
+81 |                         stage,kind,*particle=key;anchor=tr['x'] if stage=='start' else tr['xp']
+   |                                                 ^
+82 |                         locals_=[id_to_local[k] for k in particle]
+83 |                         if kind=='pair':
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/reconstruct.py:84:68
+   |
+82 |                         locals_=[id_to_local[k] for k in particle]
+83 |                         if kind=='pair':
+84 |                             v=anchor[locals_[1]]-anchor[locals_[0]];norm=v/np.linalg.norm(v);gap=np.linalg.norm(v)-2*r[0]
+   |                                                                    ^
+85 |                             feature=None
+86 |                         else:
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/reconstruct.py:84:93
+   |
+82 |                         locals_=[id_to_local[k] for k in particle]
+83 |                         if kind=='pair':
+84 |                             v=anchor[locals_[1]]-anchor[locals_[0]];norm=v/np.linalg.norm(v);gap=np.linalg.norm(v)-2*r[0]
+   |                                                                                             ^
+85 |                             feature=None
+86 |                         else:
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/reconstruct.py:87:74
+   |
+85 |                             feature=None
+86 |                         else:
+87 |                             wall=tr['w0'] if stage=='start' else tr['wp'];gap=wall[0][locals_[0]];norm=wall[1][locals_[0]]
+   |                                                                          ^
+88 |                             import pyvista as pv
+89 |                             surface=pv.read(cfg['geometry']['mesh_surface'])
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/reconstruct.py:87:98
+   |
+85 |                             feature=None
+86 |                         else:
+87 |                             wall=tr['w0'] if stage=='start' else tr['wp'];gap=wall[0][locals_[0]];norm=wall[1][locals_[0]]
+   |                                                                                                  ^
+88 |                             import pyvista as pv
+89 |                             surface=pv.read(cfg['geometry']['mesh_surface'])
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/reconstruct.py:96:41
+   |
+94 |                             row_scaling=1.,working_set_row_mapping='native solver internal, not exposed'))
+95 |                     write(folder/'ROW_METADATA.json',meta)
+96 |                     gd=saved_g.toarray();s=np.linalg.svd(gd,compute_uv=False);th=max(gd.shape)*np.finfo(float).eps*s[0]
+   |                                         ^
+97 |                     cos=gd@gd.T/np.outer(np.linalg.norm(gd,axis=1),np.linalg.norm(gd,axis=1));np.fill_diagonal(cos,0)
+98 |                     near=np.argwhere(np.triu(cos>1-1e-8,1))
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/reconstruct.py:96:78
+   |
+94 |                             row_scaling=1.,working_set_row_mapping='native solver internal, not exposed'))
+95 |                     write(folder/'ROW_METADATA.json',meta)
+96 |                     gd=saved_g.toarray();s=np.linalg.svd(gd,compute_uv=False);th=max(gd.shape)*np.finfo(float).eps*s[0]
+   |                                                                              ^
+97 |                     cos=gd@gd.T/np.outer(np.linalg.norm(gd,axis=1),np.linalg.norm(gd,axis=1));np.fill_diagonal(cos,0)
+98 |                     near=np.argwhere(np.triu(cos>1-1e-8,1))
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/reconstruct.py:97:94
+   |
+95 |                     write(folder/'ROW_METADATA.json',meta)
+96 |                     gd=saved_g.toarray();s=np.linalg.svd(gd,compute_uv=False);th=max(gd.shape)*np.finfo(float).eps*s[0]
+97 |                     cos=gd@gd.T/np.outer(np.linalg.norm(gd,axis=1),np.linalg.norm(gd,axis=1));np.fill_diagonal(cos,0)
+   |                                                                                              ^
+98 |                     near=np.argwhere(np.triu(cos>1-1e-8,1))
+99 |                     row['spectrum']=dict(scaling='original saved normalized G; no row renormalization',threshold=th,
+   |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/reconstruct.py:103:32
+    |
+101 |                         near_rows=[dict(i=int(i),j=int(j),cosine=float(cos[i,j]),lower_difference=float(lower[i]-lower[j]),
+102 |                                        row_difference_l2=float(np.linalg.norm(gd[i]-gd[j]))) for i,j in near])
+103 |             reports.append(row);write(out/'REPLAY.json',reports)
+    |                                ^
+104 |             print(fixture.name,index,row['status'],flush=True)
+105 |     write(out/'IDENTITY.json',dict(source_sha256=sha(Path(__file__)),fixture_manifest_sha256=sha(BASE/'fixtures/MANIFEST.json')))
+    |
+
+E701 Multiple statements on one line (colon)
+   --> scripts/stage5a_r2/reconstruct.py:107:24
+    |
+105 |     write(out/'IDENTITY.json',dict(source_sha256=sha(Path(__file__)),fixture_manifest_sha256=sha(BASE/'fixtures/MANIFEST.json')))
+106 |
+107 | if __name__=='__main__':main()
+    |                        ^
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/resources.py:10:21
+   |
+ 8 | class ResourceMonitor:
+ 9 |     def __init__(self):
+10 |         self.rows=[];self.overhead_s=0.;self.stop=threading.Event();self.process=psutil.Process()
+   |                     ^
+11 |         self.thread=threading.Thread(target=self.collect,daemon=True)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/resources.py:10:40
+   |
+ 8 | class ResourceMonitor:
+ 9 |     def __init__(self):
+10 |         self.rows=[];self.overhead_s=0.;self.stop=threading.Event();self.process=psutil.Process()
+   |                                        ^
+11 |         self.thread=threading.Thread(target=self.collect,daemon=True)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/resources.py:10:68
+   |
+ 8 | class ResourceMonitor:
+ 9 |     def __init__(self):
+10 |         self.rows=[];self.overhead_s=0.;self.stop=threading.Event();self.process=psutil.Process()
+   |                                                                    ^
+11 |         self.thread=threading.Thread(target=self.collect,daemon=True)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/resources.py:14:35
+   |
+13 |     def collect(self):
+14 |         self.process.cpu_percent();psutil.cpu_percent(percpu=True)
+   |                                   ^
+15 |         while not self.stop.is_set():
+16 |             start=time.perf_counter()
+   |
+
+E701 Multiple statements on one line (colon)
+  --> scripts/stage5a_r2/resources.py:27:36
+   |
+25 |                                                   '--format=csv,noheader,nounits'],text=True,timeout=2).strip().split(',')
+26 |                 row.update(gpu_percent=float(values[0]),gpu_memory_MiB=float(values[1]))
+27 |             except Exception as exc:row['gpu_observation_error']=type(exc).__name__
+   |                                    ^
+28 |             self.overhead_s+=time.perf_counter()-start;self.rows.append(row);self.stop.wait(.5)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/resources.py:28:55
+   |
+26 |                 row.update(gpu_percent=float(values[0]),gpu_memory_MiB=float(values[1]))
+27 |             except Exception as exc:row['gpu_observation_error']=type(exc).__name__
+28 |             self.overhead_s+=time.perf_counter()-start;self.rows.append(row);self.stop.wait(.5)
+   |                                                       ^
+29 |
+30 |     def __enter__(self):self.thread.start();return self
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/resources.py:28:77
+   |
+26 |                 row.update(gpu_percent=float(values[0]),gpu_memory_MiB=float(values[1]))
+27 |             except Exception as exc:row['gpu_observation_error']=type(exc).__name__
+28 |             self.overhead_s+=time.perf_counter()-start;self.rows.append(row);self.stop.wait(.5)
+   |                                                                             ^
+29 |
+30 |     def __enter__(self):self.thread.start();return self
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/resources.py:30:44
+   |
+28 |             self.overhead_s+=time.perf_counter()-start;self.rows.append(row);self.stop.wait(.5)
+29 |
+30 |     def __enter__(self):self.thread.start();return self
+   |                                            ^
+31 |     def __exit__(self,*args):self.stop.set();self.thread.join(timeout=3)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/resources.py:31:45
+   |
+30 |     def __enter__(self):self.thread.start();return self
+31 |     def __exit__(self,*args):self.stop.set();self.thread.join(timeout=3)
+   |                                             ^
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/run.py:32:39
+   |
+30 |     tmp=path.with_suffix('.tmp')
+31 |     with tmp.open('wb') as f:
+32 |         np.savez_compressed(f,**value);f.flush();os.fsync(f.fileno())
+   |                                       ^
+33 |     os.replace(tmp,path)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/run.py:32:49
+   |
+30 |     tmp=path.with_suffix('.tmp')
+31 |     with tmp.open('wb') as f:
+32 |         np.savez_compressed(f,**value);f.flush();os.fsync(f.fileno())
+   |                                                 ^
+33 |     os.replace(tmp,path)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/run.py:50:41
+   |
+48 |     selected=json.loads((ROOT/'results/stage5/motion_solver/audit_v2/BASELINE_SELECTION.json').read_text())
+49 |     source=Path(next(r['run'] for r in selected if r['key']==case+'_1ms'))
+50 |     snapshot=source/'INPUT_SNAPSHOT.npz';inputs[str(snapshot)]=sha(snapshot)
+   |                                         ^
+51 |     with np.load(snapshot) as f:
+52 |         state={k:f[k] for k in f.files}
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/run.py:68:69
+   |
+66 |         initial_dt=1e-8,components=True,resume=None,nonlinear_strategy='picard'):
+67 |     stamp=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
+68 |     out=BASE/'runs'/f'{stamp}_{case}_{method}_{duration:g}s_{label}';out.mkdir(parents=True)
+   |                                                                     ^
+69 |     start=time.perf_counter();cpu=time.process_time();status='INCOMPLETE';error=None;failure=None
+70 |     tracker,sweep,config,state,inputs=load(case,method,pair,components)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/run.py:69:30
+   |
+67 |     stamp=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
+68 |     out=BASE/'runs'/f'{stamp}_{case}_{method}_{duration:g}s_{label}';out.mkdir(parents=True)
+69 |     start=time.perf_counter();cpu=time.process_time();status='INCOMPLETE';error=None;failure=None
+   |                              ^
+70 |     tracker,sweep,config,state,inputs=load(case,method,pair,components)
+71 |     initialization=time.perf_counter()-start
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/run.py:69:54
+   |
+67 |     stamp=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
+68 |     out=BASE/'runs'/f'{stamp}_{case}_{method}_{duration:g}s_{label}';out.mkdir(parents=True)
+69 |     start=time.perf_counter();cpu=time.process_time();status='INCOMPLETE';error=None;failure=None
+   |                                                      ^
+70 |     tracker,sweep,config,state,inputs=load(case,method,pair,components)
+71 |     initialization=time.perf_counter()-start
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/run.py:69:74
+   |
+67 |     stamp=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
+68 |     out=BASE/'runs'/f'{stamp}_{case}_{method}_{duration:g}s_{label}';out.mkdir(parents=True)
+69 |     start=time.perf_counter();cpu=time.process_time();status='INCOMPLETE';error=None;failure=None
+   |                                                                          ^
+70 |     tracker,sweep,config,state,inputs=load(case,method,pair,components)
+71 |     initialization=time.perf_counter()-start
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/run.py:69:85
+   |
+67 |     stamp=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
+68 |     out=BASE/'runs'/f'{stamp}_{case}_{method}_{duration:g}s_{label}';out.mkdir(parents=True)
+69 |     start=time.perf_counter();cpu=time.process_time();status='INCOMPLETE';error=None;failure=None
+   |                                                                                     ^
+70 |     tracker,sweep,config,state,inputs=load(case,method,pair,components)
+71 |     initialization=time.perf_counter()-start
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/run.py:73:30
+   |
+71 |     initialization=time.perf_counter()-start
+72 |     full,rfull,ids,mask=state['positions_m'].copy(),state['radii_m'],state['particle_id'],state['active']
+73 |     t0=float(state['time_s']);t=t0;elapsed=0.;ufull=np.zeros_like(full)
+   |                              ^
+74 |     controller=dict(next_dt=initial_dt,last_error=None,last_reason=None,consecutive_rejections=0,elapsed_s=0.)
+75 |     if resume:
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/run.py:73:35
+   |
+71 |     initialization=time.perf_counter()-start
+72 |     full,rfull,ids,mask=state['positions_m'].copy(),state['radii_m'],state['particle_id'],state['active']
+73 |     t0=float(state['time_s']);t=t0;elapsed=0.;ufull=np.zeros_like(full)
+   |                                   ^
+74 |     controller=dict(next_dt=initial_dt,last_error=None,last_reason=None,consecutive_rejections=0,elapsed_s=0.)
+75 |     if resume:
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/run.py:73:46
+   |
+71 |     initialization=time.perf_counter()-start
+72 |     full,rfull,ids,mask=state['positions_m'].copy(),state['radii_m'],state['particle_id'],state['active']
+73 |     t0=float(state['time_s']);t=t0;elapsed=0.;ufull=np.zeros_like(full)
+   |                                              ^
+74 |     controller=dict(next_dt=initial_dt,last_error=None,last_reason=None,consecutive_rejections=0,elapsed_s=0.)
+75 |     if resume:
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/run.py:76:46
+   |
+74 |     controller=dict(next_dt=initial_dt,last_error=None,last_reason=None,consecutive_rejections=0,elapsed_s=0.)
+75 |     if resume:
+76 |         data,meta,cache=restore(Path(resume));full=data['positions_m'];ufull=data['velocity_m_s']
+   |                                              ^
+77 |         if not all(np.array_equal(data[k],state[k],equal_nan=True) for k in ['radii_m','particle_id','active']):
+78 |             raise ValueError('CONFIG_ERROR: restart particle identity differs')
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/run.py:76:71
+   |
+74 |     controller=dict(next_dt=initial_dt,last_error=None,last_reason=None,consecutive_rejections=0,elapsed_s=0.)
+75 |     if resume:
+76 |         data,meta,cache=restore(Path(resume));full=data['positions_m'];ufull=data['velocity_m_s']
+   |                                                                       ^
+77 |         if not all(np.array_equal(data[k],state[k],equal_nan=True) for k in ['radii_m','particle_id','active']):
+78 |             raise ValueError('CONFIG_ERROR: restart particle identity differs')
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/run.py:85:32
+   |
+83 |         if old_identity['config']!=config or old_identity['method']!=method or old_identity['tolerance_factor']!=tol_factor:
+84 |             raise ValueError('CONFIG_ERROR: exact continuation configuration differs')
+85 |         t=float(data['time_s']);controller=meta['controller'];elapsed=controller.get('elapsed_s',t-t0)
+   |                                ^
+86 |         tracker.translation.cache=cache
+87 |     x=full[mask].copy();r=rfull[mask];active=ids[mask]
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/run.py:85:62
+   |
+83 |         if old_identity['config']!=config or old_identity['method']!=method or old_identity['tolerance_factor']!=tol_factor:
+84 |             raise ValueError('CONFIG_ERROR: exact continuation configuration differs')
+85 |         t=float(data['time_s']);controller=meta['controller'];elapsed=controller.get('elapsed_s',t-t0)
+   |                                                              ^
+86 |         tracker.translation.cache=cache
+87 |     x=full[mask].copy();r=rfull[mask];active=ids[mask]
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/run.py:87:24
+   |
+85 |         t=float(data['time_s']);controller=meta['controller'];elapsed=controller.get('elapsed_s',t-t0)
+86 |         tracker.translation.cache=cache
+87 |     x=full[mask].copy();r=rfull[mask];active=ids[mask]
+   |                        ^
+88 |     step=SemiImplicit(tracker.translation,tracker.cylinder,tracker.evaluate,sweep,method=method,
+89 |                       atol_R=.002*tol_factor,rtol=.01*tol_factor,gap_rtol=.02*tol_factor,
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> scripts/stage5a_r2/run.py:87:38
+   |
+85 |         t=float(data['time_s']);controller=meta['controller'];elapsed=controller.get('elapsed_s',t-t0)
+86 |         tracker.translation.cache=cache
+87 |     x=full[mask].copy();r=rfull[mask];active=ids[mask]
+   |                                      ^
+88 |     step=SemiImplicit(tracker.translation,tracker.cylinder,tracker.evaluate,sweep,method=method,
+89 |                       atol_R=.002*tol_factor,rtol=.01*tol_factor,gap_rtol=.02*tol_factor,
+   |
+
+E701 Multiple statements on one line (colon)
+  --> scripts/stage5a_r2/run.py:93:28
+   |
+91 |     sources={str(p.relative_to(ROOT)):sha(p) for folder in ['src','scripts/stage5a_r2'] for p in (ROOT/folder).rglob('*.py')}
+92 |     with zipfile.ZipFile(out/'SOURCE.zip','x',zipfile.ZIP_DEFLATED) as z:
+93 |         for name in sources:z.write(ROOT/name,name)
+   |                            ^
+94 |     identity=dict(case=case,method=method,duration_s=duration,config=config,max_dt_s=max_dt,tolerance_factor=tol_factor,
+95 |        initial_dt_s=initial_dt,active_count=len(r),source_sha256=sources,input_sha256=inputs,
+   |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:105:14
+    |
+103 |     statepath=out/'CHECKPOINT.npz'
+104 |     checkpoint(statepath,full,ufull,rfull,ids,mask,t,controller,tracker.translation.cache,sha(out/'IDENTITY.json'))
+105 |     times=[t];positions=[full.copy()];accepted=[];rejected=[];trials=[];io_seconds=0.;interrupted=False
+    |              ^
+106 |     history=h5py.File(out/'trajectories.h5','x')
+107 |     history.attrs.update(complete=False,method=method,all_accepted_substeps_recorded=True,
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:105:38
+    |
+103 |     statepath=out/'CHECKPOINT.npz'
+104 |     checkpoint(statepath,full,ufull,rfull,ids,mask,t,controller,tracker.translation.cache,sha(out/'IDENTITY.json'))
+105 |     times=[t];positions=[full.copy()];accepted=[];rejected=[];trials=[];io_seconds=0.;interrupted=False
+    |                                      ^
+106 |     history=h5py.File(out/'trajectories.h5','x')
+107 |     history.attrs.update(complete=False,method=method,all_accepted_substeps_recorded=True,
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:105:50
+    |
+103 |     statepath=out/'CHECKPOINT.npz'
+104 |     checkpoint(statepath,full,ufull,rfull,ids,mask,t,controller,tracker.translation.cache,sha(out/'IDENTITY.json'))
+105 |     times=[t];positions=[full.copy()];accepted=[];rejected=[];trials=[];io_seconds=0.;interrupted=False
+    |                                                  ^
+106 |     history=h5py.File(out/'trajectories.h5','x')
+107 |     history.attrs.update(complete=False,method=method,all_accepted_substeps_recorded=True,
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:105:62
+    |
+103 |     statepath=out/'CHECKPOINT.npz'
+104 |     checkpoint(statepath,full,ufull,rfull,ids,mask,t,controller,tracker.translation.cache,sha(out/'IDENTITY.json'))
+105 |     times=[t];positions=[full.copy()];accepted=[];rejected=[];trials=[];io_seconds=0.;interrupted=False
+    |                                                              ^
+106 |     history=h5py.File(out/'trajectories.h5','x')
+107 |     history.attrs.update(complete=False,method=method,all_accepted_substeps_recorded=True,
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:105:72
+    |
+103 |     statepath=out/'CHECKPOINT.npz'
+104 |     checkpoint(statepath,full,ufull,rfull,ids,mask,t,controller,tracker.translation.cache,sha(out/'IDENTITY.json'))
+105 |     times=[t];positions=[full.copy()];accepted=[];rejected=[];trials=[];io_seconds=0.;interrupted=False
+    |                                                                        ^
+106 |     history=h5py.File(out/'trajectories.h5','x')
+107 |     history.attrs.update(complete=False,method=method,all_accepted_substeps_recorded=True,
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:105:86
+    |
+103 |     statepath=out/'CHECKPOINT.npz'
+104 |     checkpoint(statepath,full,ufull,rfull,ids,mask,t,controller,tracker.translation.cache,sha(out/'IDENTITY.json'))
+105 |     times=[t];positions=[full.copy()];accepted=[];rejected=[];trials=[];io_seconds=0.;interrupted=False
+    |                                                                                      ^
+106 |     history=h5py.File(out/'trajectories.h5','x')
+107 |     history.attrs.update(complete=False,method=method,all_accepted_substeps_recorded=True,
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:112:31
+    |
+110 |     history.create_dataset('positions_m',data=[full],maxshape=(None,*full.shape),chunks=(1,*full.shape),compression='gzip')
+111 |     history.create_dataset('active',data=[mask],maxshape=(None,len(mask)),chunks=(1,len(mask)),compression='gzip')
+112 |     history['particle_id']=ids;history['radii_m']=rfull;history.flush()
+    |                               ^
+113 |     last_report=time.perf_counter()
+114 |     def check_budget():
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:112:56
+    |
+110 |     history.create_dataset('positions_m',data=[full],maxshape=(None,*full.shape),chunks=(1,*full.shape),compression='gzip')
+111 |     history.create_dataset('active',data=[mask],maxshape=(None,len(mask)),chunks=(1,len(mask)),compression='gzip')
+112 |     history['particle_id']=ids;history['radii_m']=rfull;history.flush()
+    |                                                        ^
+113 |     last_report=time.perf_counter()
+114 |     def check_budget():
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:119:46
+    |
+117 |     def alarm(signum,frame):
+118 |         raise TimeoutError('WATCHDOG_WALL_BUDGET')
+119 |     prior=signal.signal(signal.SIGALRM,alarm);signal.setitimer(signal.ITIMER_REAL,budget+10)
+    |                                              ^
+120 |     with ResourceMonitor() as monitor, (out/'ACCEPTED.jsonl').open('x') as al, (out/'REJECTED.jsonl').open('x') as rl:
+121 |         try:
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:135:41
+    |
+133 |                     row=dict(time_s=t,elapsed_s=elapsed,dt_s=dt,reason=reason,diagnostics=exc.diagnostics,
+134 |                              wall_s=time.perf_counter()-start,trial_wall_s=time.perf_counter()-trial_start)
+135 |                     rejected.append(row);rl.write(json.dumps(row,allow_nan=False)+'\n');rl.flush()
+    |                                         ^
+136 |                     if reason in ['NONFINITE_INPUT','INVALID_MODEL','CONFIG_ERROR','GEOMETRY_DATA_CORRUPTED']:
+137 |                         raise
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:135:88
+    |
+133 |                     row=dict(time_s=t,elapsed_s=elapsed,dt_s=dt,reason=reason,diagnostics=exc.diagnostics,
+134 |                              wall_s=time.perf_counter()-start,trial_wall_s=time.perf_counter()-trial_start)
+135 |                     rejected.append(row);rl.write(json.dumps(row,allow_nan=False)+'\n');rl.flush()
+    |                                                                                        ^
+136 |                     if reason in ['NONFINITE_INPUT','INVALID_MODEL','CONFIG_ERROR','GEOMETRY_DATA_CORRUPTED']:
+137 |                         raise
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:146:33
+    |
+144 |                 for k,(y,u,cache,sub) in enumerate(states):
+145 |                     time_sub=t+dt*(k+1)/2
+146 |                     full[mask]=y;ufull[mask]=u
+    |                                 ^
+147 |                     row=dict(time_s=time_sub,elapsed_s=elapsed+dt*(k+1)/2,dt_s=dt/2,
+148 |                        wall_s=time.perf_counter()-start,error_ratio=d['error_ratio'],error_terms=d['error_terms'],
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:156:41
+    |
+154 |                        qp_timings=sub['qp_timings'],workspace_hits=sub['workspace_hits'],component_solves=sub['component_solves'],
+155 |                        component_sizes=sub['qp']['component_sizes'],safety=sub['safety'])
+156 |                     accepted.append(row);al.write(json.dumps(row,allow_nan=False)+'\n')
+    |                                         ^
+157 |                     times.append(time_sub);positions.append(full.copy())
+158 |                     count=len(history['time_s'])
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:157:43
+    |
+155 |                        component_sizes=sub['qp']['component_sizes'],safety=sub['safety'])
+156 |                     accepted.append(row);al.write(json.dumps(row,allow_nan=False)+'\n')
+157 |                     times.append(time_sub);positions.append(full.copy())
+    |                                           ^
+158 |                     count=len(history['time_s'])
+159 |                     for key,value in [('time_s',time_sub),('positions_m',full),('active',mask)]:
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:160:45
+    |
+158 |                     count=len(history['time_s'])
+159 |                     for key,value in [('time_s',time_sub),('positions_m',full),('active',mask)]:
+160 |                         dataset=history[key];dataset.resize(count+1,axis=0);dataset[count]=value
+    |                                             ^
+161 |                 x=states[-1][0];tracker.translation.cache=states[-1][2]
+162 |                 elapsed+=dt;t=t0+elapsed
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:160:76
+    |
+158 |                     count=len(history['time_s'])
+159 |                     for key,value in [('time_s',time_sub),('positions_m',full),('active',mask)]:
+160 |                         dataset=history[key];dataset.resize(count+1,axis=0);dataset[count]=value
+    |                                                                            ^
+161 |                 x=states[-1][0];tracker.translation.cache=states[-1][2]
+162 |                 elapsed+=dt;t=t0+elapsed
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:161:32
+    |
+159 |                     for key,value in [('time_s',time_sub),('positions_m',full),('active',mask)]:
+160 |                         dataset=history[key];dataset.resize(count+1,axis=0);dataset[count]=value
+161 |                 x=states[-1][0];tracker.translation.cache=states[-1][2]
+    |                                ^
+162 |                 elapsed+=dt;t=t0+elapsed
+163 |                 factor=min(2.,max(.5,.85/max(d['error_ratio'],1e-8)**.5))
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:162:28
+    |
+160 |                         dataset=history[key];dataset.resize(count+1,axis=0);dataset[count]=value
+161 |                 x=states[-1][0];tracker.translation.cache=states[-1][2]
+162 |                 elapsed+=dt;t=t0+elapsed
+    |                            ^
+163 |                 factor=min(2.,max(.5,.85/max(d['error_ratio'],1e-8)**.5))
+164 |                 controller.update(next_dt=min(max_dt,dt*factor),last_error=d['error_ratio'],last_reason='ACCEPTED',
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:168:32
+    |
+166 |                 controller['total_accepted_steps']=controller.get('total_accepted_steps',0)+2
+167 |                 checkpoint(statepath,full,ufull,rfull,ids,mask,t,controller,tracker.translation.cache,sha(out/'IDENTITY.json'))
+168 |                 history.flush();al.flush();rl.flush();io_seconds+=time.perf_counter()-io_start
+    |                                ^
+169 |                 if time.perf_counter()-last_report>5:
+170 |                     checkpoint(statepath,full,ufull,rfull,ids,mask,t,controller,tracker.translation.cache,sha(out/'IDENTITY.json'))
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:168:43
+    |
+166 |                 controller['total_accepted_steps']=controller.get('total_accepted_steps',0)+2
+167 |                 checkpoint(statepath,full,ufull,rfull,ids,mask,t,controller,tracker.translation.cache,sha(out/'IDENTITY.json'))
+168 |                 history.flush();al.flush();rl.flush();io_seconds+=time.perf_counter()-io_start
+    |                                           ^
+169 |                 if time.perf_counter()-last_report>5:
+170 |                     checkpoint(statepath,full,ufull,rfull,ids,mask,t,controller,tracker.translation.cache,sha(out/'IDENTITY.json'))
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:168:54
+    |
+166 |                 controller['total_accepted_steps']=controller.get('total_accepted_steps',0)+2
+167 |                 checkpoint(statepath,full,ufull,rfull,ids,mask,t,controller,tracker.translation.cache,sha(out/'IDENTITY.json'))
+168 |                 history.flush();al.flush();rl.flush();io_seconds+=time.perf_counter()-io_start
+    |                                                      ^
+169 |                 if time.perf_counter()-last_report>5:
+170 |                     checkpoint(statepath,full,ufull,rfull,ids,mask,t,controller,tracker.translation.cache,sha(out/'IDENTITY.json'))
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:171:31
+    |
+169 |                 if time.perf_counter()-last_report>5:
+170 |                     checkpoint(statepath,full,ufull,rfull,ids,mask,t,controller,tracker.translation.cache,sha(out/'IDENTITY.json'))
+171 |                     al.flush();rl.flush()
+    |                               ^
+172 |                     progress=dict(run=out.name,case=case,elapsed_s=elapsed,target_s=duration,accepted=len(accepted),
+173 |                                   rejected=len(rejected),last_dt_s=dt,wall_s=time.perf_counter()-start)
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:174:56
+    |
+172 |                     progress=dict(run=out.name,case=case,elapsed_s=elapsed,target_s=duration,accepted=len(accepted),
+173 |                                   rejected=len(rejected),last_dt_s=dt,wall_s=time.perf_counter()-start)
+174 |                     write(out/'PROGRESS.json',progress);print(json.dumps(progress),flush=True)
+    |                                                        ^
+175 |                     last_report=time.perf_counter()
+176 |             status='COMPLETE'
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:178:28
+    |
+176 |             status='COMPLETE'
+177 |         except (Exception,KeyboardInterrupt) as exc:
+178 |             error=repr(exc);failure=getattr(exc,'diagnostics',None)
+    |                            ^
+179 |             status='INCOMPLETE' if isinstance(exc,(TimeoutError,KeyboardInterrupt)) else 'FAIL'
+180 |             interrupted=isinstance(exc,KeyboardInterrupt)
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:183:51
+    |
+181 |             (out/'ERROR.txt').write_text(traceback.format_exc())
+182 |         finally:
+183 |             signal.setitimer(signal.ITIMER_REAL,0);signal.signal(signal.SIGALRM,prior)
+    |                                                   ^
+184 |             checkpoint(statepath,full,ufull,rfull,ids,mask,t,controller,tracker.translation.cache,sha(out/'IDENTITY.json'))
+185 |     history.attrs['complete']=status=='COMPLETE';history.flush();history.close()
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:185:49
+    |
+183 |             signal.setitimer(signal.ITIMER_REAL,0);signal.signal(signal.SIGALRM,prior)
+184 |             checkpoint(statepath,full,ufull,rfull,ids,mask,t,controller,tracker.translation.cache,sha(out/'IDENTITY.json'))
+185 |     history.attrs['complete']=status=='COMPLETE';history.flush();history.close()
+    |                                                 ^
+186 |     write(out/'RESOURCE_SAMPLES.json',monitor.rows)
+187 |     write(out/'COMPLETED_TRIALS.json',trials)
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:185:65
+    |
+183 |             signal.setitimer(signal.ITIMER_REAL,0);signal.signal(signal.SIGALRM,prior)
+184 |             checkpoint(statepath,full,ufull,rfull,ids,mask,t,controller,tracker.translation.cache,sha(out/'IDENTITY.json'))
+185 |     history.attrs['complete']=status=='COMPLETE';history.flush();history.close()
+    |                                                                 ^
+186 |     write(out/'RESOURCE_SAMPLES.json',monitor.rows)
+187 |     write(out/'COMPLETED_TRIALS.json',trials)
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:208:38
+    |
+206 |        cumulative_accepted_steps=controller.get('total_accepted_steps',len(accepted)),
+207 |        source_inputs_unchanged=all(sha(p)==s for p,s in inputs.items()))
+208 |     write(out/'SUMMARY.json',summary);print(json.dumps(summary),flush=True)
+    |                                      ^
+209 |     if interrupted:raise KeyboardInterrupt('Safe checkpoint and evidence saved; stop campaign chain')
+210 |     return out,summary
+    |
+
+E701 Multiple statements on one line (colon)
+   --> scripts/stage5a_r2/run.py:209:19
+    |
+207 |        source_inputs_unchanged=all(sha(p)==s for p,s in inputs.items()))
+208 |     write(out/'SUMMARY.json',summary);print(json.dumps(summary),flush=True)
+209 |     if interrupted:raise KeyboardInterrupt('Safe checkpoint and evidence saved; stop campaign chain')
+    |                   ^
+210 |     return out,summary
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:214:32
+    |
+213 | if __name__=='__main__':
+214 |     p=argparse.ArgumentParser();p.add_argument('--case',choices=['B2','B3'],required=True)
+    |                                ^
+215 |     p.add_argument('--duration',type=float,required=True);p.add_argument('--method',choices=['S0','S1'],default='S1')
+216 |     p.add_argument('--max-dt',type=float,default=20e-6);p.add_argument('--tol-factor',type=float,default=1.)
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:215:58
+    |
+213 | if __name__=='__main__':
+214 |     p=argparse.ArgumentParser();p.add_argument('--case',choices=['B2','B3'],required=True)
+215 |     p.add_argument('--duration',type=float,required=True);p.add_argument('--method',choices=['S0','S1'],default='S1')
+    |                                                          ^
+216 |     p.add_argument('--max-dt',type=float,default=20e-6);p.add_argument('--tol-factor',type=float,default=1.)
+217 |     p.add_argument('--pair',default='numpy');p.add_argument('--budget',type=float,default=1800)
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:216:56
+    |
+214 |     p=argparse.ArgumentParser();p.add_argument('--case',choices=['B2','B3'],required=True)
+215 |     p.add_argument('--duration',type=float,required=True);p.add_argument('--method',choices=['S0','S1'],default='S1')
+216 |     p.add_argument('--max-dt',type=float,default=20e-6);p.add_argument('--tol-factor',type=float,default=1.)
+    |                                                        ^
+217 |     p.add_argument('--pair',default='numpy');p.add_argument('--budget',type=float,default=1800)
+218 |     p.add_argument('--label',default='development');p.add_argument('--initial-dt',type=float,default=1e-8)
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:217:45
+    |
+215 |     p.add_argument('--duration',type=float,required=True);p.add_argument('--method',choices=['S0','S1'],default='S1')
+216 |     p.add_argument('--max-dt',type=float,default=20e-6);p.add_argument('--tol-factor',type=float,default=1.)
+217 |     p.add_argument('--pair',default='numpy');p.add_argument('--budget',type=float,default=1800)
+    |                                             ^
+218 |     p.add_argument('--label',default='development');p.add_argument('--initial-dt',type=float,default=1e-8)
+219 |     p.add_argument('--global-qp',action='store_true');p.add_argument('--resume')
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:218:52
+    |
+216 |     p.add_argument('--max-dt',type=float,default=20e-6);p.add_argument('--tol-factor',type=float,default=1.)
+217 |     p.add_argument('--pair',default='numpy');p.add_argument('--budget',type=float,default=1800)
+218 |     p.add_argument('--label',default='development');p.add_argument('--initial-dt',type=float,default=1e-8)
+    |                                                    ^
+219 |     p.add_argument('--global-qp',action='store_true');p.add_argument('--resume')
+220 |     p.add_argument('--nonlinear-strategy',choices=['picard','quasi_newton'],default='picard')
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:219:54
+    |
+217 |     p.add_argument('--pair',default='numpy');p.add_argument('--budget',type=float,default=1800)
+218 |     p.add_argument('--label',default='development');p.add_argument('--initial-dt',type=float,default=1e-8)
+219 |     p.add_argument('--global-qp',action='store_true');p.add_argument('--resume')
+    |                                                      ^
+220 |     p.add_argument('--nonlinear-strategy',choices=['picard','quasi_newton'],default='picard')
+221 |     a=p.parse_args();run(a.case,a.duration,a.method,a.max_dt,a.tol_factor,a.pair,a.budget,a.label,a.initial_dt,
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> scripts/stage5a_r2/run.py:221:21
+    |
+219 |     p.add_argument('--global-qp',action='store_true');p.add_argument('--resume')
+220 |     p.add_argument('--nonlinear-strategy',choices=['picard','quasi_newton'],default='picard')
+221 |     a=p.parse_args();run(a.case,a.duration,a.method,a.max_dt,a.tol_factor,a.pair,a.budget,a.label,a.initial_dt,
+    |                     ^
+222 |                          not a.global_qp,a.resume,a.nonlinear_strategy)
+    |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_qp_r2.py:54:29
+   |
+53 |     def candidate(self,a,b,g,lower,warm_primal=None,warm_dual=None):
+54 |         start=perf_counter();a,g=a.tocsc(),g.tocsc();n=len(b);m=len(lower)
+   |                             ^
+55 |         key=pattern(a,g); reused=key==self.key and self.workspace is not None
+56 |         setup=update=0.
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_qp_r2.py:54:53
+   |
+53 |     def candidate(self,a,b,g,lower,warm_primal=None,warm_dual=None):
+54 |         start=perf_counter();a,g=a.tocsc(),g.tocsc();n=len(b);m=len(lower)
+   |                                                     ^
+55 |         key=pattern(a,g); reused=key==self.key and self.workspace is not None
+56 |         setup=update=0.
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_qp_r2.py:54:62
+   |
+53 |     def candidate(self,a,b,g,lower,warm_primal=None,warm_dual=None):
+54 |         start=perf_counter();a,g=a.tocsc(),g.tocsc();n=len(b);m=len(lower)
+   |                                                              ^
+55 |         key=pattern(a,g); reused=key==self.key and self.workspace is not None
+56 |         setup=update=0.
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_qp_r2.py:55:25
+   |
+53 |     def candidate(self,a,b,g,lower,warm_primal=None,warm_dual=None):
+54 |         start=perf_counter();a,g=a.tocsc(),g.tocsc();n=len(b);m=len(lower)
+55 |         key=pattern(a,g); reused=key==self.key and self.workspace is not None
+   |                         ^
+56 |         setup=update=0.
+57 |         if self.name.startswith('prox'):
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_qp_r2.py:63:44
+   |
+61 |             if not reused:
+62 |                 q=(ps.proxqp.dense if dense else ps.proxqp.sparse).QP(n,0,m)
+63 |                 q.settings.eps_abs=self.eps;q.settings.eps_rel=0
+   |                                            ^
+64 |                 q.settings.max_iter=1000;q.settings.max_iter_in=1500
+65 |                 q.settings.nb_iterative_refinement=10;q.settings.compute_timings=True
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_qp_r2.py:64:41
+   |
+62 |                 q=(ps.proxqp.dense if dense else ps.proxqp.sparse).QP(n,0,m)
+63 |                 q.settings.eps_abs=self.eps;q.settings.eps_rel=0
+64 |                 q.settings.max_iter=1000;q.settings.max_iter_in=1500
+   |                                         ^
+65 |                 q.settings.nb_iterative_refinement=10;q.settings.compute_timings=True
+66 |                 q.init(aa,-b,None,None,gg,lower,np.full(m,np.inf))
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_qp_r2.py:65:54
+   |
+63 |                 q.settings.eps_abs=self.eps;q.settings.eps_rel=0
+64 |                 q.settings.max_iter=1000;q.settings.max_iter_in=1500
+65 |                 q.settings.nb_iterative_refinement=10;q.settings.compute_timings=True
+   |                                                      ^
+66 |                 q.init(aa,-b,None,None,gg,lower,np.full(m,np.inf))
+67 |                 self.workspace=q;self.key=key;setup=perf_counter()-start
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_qp_r2.py:67:33
+   |
+65 |                 q.settings.nb_iterative_refinement=10;q.settings.compute_timings=True
+66 |                 q.init(aa,-b,None,None,gg,lower,np.full(m,np.inf))
+67 |                 self.workspace=q;self.key=key;setup=perf_counter()-start
+   |                                 ^
+68 |             else:
+69 |                 q=self.workspace
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_qp_r2.py:67:46
+   |
+65 |                 q.settings.nb_iterative_refinement=10;q.settings.compute_timings=True
+66 |                 q.init(aa,-b,None,None,gg,lower,np.full(m,np.inf))
+67 |                 self.workspace=q;self.key=key;setup=perf_counter()-start
+   |                                              ^
+68 |             else:
+69 |                 q=self.workspace
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_qp_r2.py:79:46
+   |
+77 |                 q.solve(warm_primal,np.empty(0),-warm_dual if warm_dual is not None else np.zeros(m))
+78 |             u,lam=q.results.x.copy(),-q.results.z.copy()
+79 |             status=str(q.results.info.status);iterations=int(q.results.info.iter)
+   |                                              ^
+80 |             version=ps.__version__;backend='dense' if dense else 'sparse'
+81 |             native_time=q.results.info.solve_time/1e6
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_qp_r2.py:80:35
+   |
+78 |             u,lam=q.results.x.copy(),-q.results.z.copy()
+79 |             status=str(q.results.info.status);iterations=int(q.results.info.iter)
+80 |             version=ps.__version__;backend='dense' if dense else 'sparse'
+   |                                   ^
+81 |             native_time=q.results.info.solve_time/1e6
+82 |         elif self.name=='osqp':
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_qp_r2.py:90:33
+   |
+88 |                         eps_abs=self.eps,eps_rel=0,max_iter=300000,polishing=True,
+89 |                         polish_refine_iter=10,time_limit=5.,adaptive_rho_interval=50)
+90 |                 self.workspace=q;self.key=key;setup=perf_counter()-start
+   |                                 ^
+91 |             else:
+92 |                 q=self.workspace;q.update(Px=p.data,q=-b,Ax=g.data,l=lower,u=np.full(m,np.inf))
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_qp_r2.py:90:46
+   |
+88 |                         eps_abs=self.eps,eps_rel=0,max_iter=300000,polishing=True,
+89 |                         polish_refine_iter=10,time_limit=5.,adaptive_rho_interval=50)
+90 |                 self.workspace=q;self.key=key;setup=perf_counter()-start
+   |                                              ^
+91 |             else:
+92 |                 q=self.workspace;q.update(Px=p.data,q=-b,Ax=g.data,l=lower,u=np.full(m,np.inf))
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_qp_r2.py:92:33
+   |
+90 |                 self.workspace=q;self.key=key;setup=perf_counter()-start
+91 |             else:
+92 |                 q=self.workspace;q.update(Px=p.data,q=-b,Ax=g.data,l=lower,u=np.full(m,np.inf))
+   |                                 ^
+93 |                 update=perf_counter()-start
+94 |             q.warm_start(x=np.zeros(n) if warm_primal is None else warm_primal,
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_qp_r2.py:97:37
+   |
+95 |                          y=np.zeros(m) if warm_dual is None else -warm_dual)
+96 |             result=q.solve(raise_error=False)
+97 |             u,lam=result.x,-result.y;status=result.info.status;iterations=int(result.info.iter)
+   |                                     ^
+98 |             version=osqp.__version__;backend='sparse';native_time=result.info.solve_time
+99 |         elif self.name=='clarabel':
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_qp_r2.py:97:63
+   |
+95 |                          y=np.zeros(m) if warm_dual is None else -warm_dual)
+96 |             result=q.solve(raise_error=False)
+97 |             u,lam=result.x,-result.y;status=result.info.status;iterations=int(result.info.iter)
+   |                                                               ^
+98 |             version=osqp.__version__;backend='sparse';native_time=result.info.solve_time
+99 |         elif self.name=='clarabel':
+   |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_qp_r2.py:98:37
+    |
+ 96 |             result=q.solve(raise_error=False)
+ 97 |             u,lam=result.x,-result.y;status=result.info.status;iterations=int(result.info.iter)
+ 98 |             version=osqp.__version__;backend='sparse';native_time=result.info.solve_time
+    |                                     ^
+ 99 |         elif self.name=='clarabel':
+100 |             import clarabel
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_qp_r2.py:98:54
+    |
+ 96 |             result=q.solve(raise_error=False)
+ 97 |             u,lam=result.x,-result.y;status=result.info.status;iterations=int(result.info.iter)
+ 98 |             version=osqp.__version__;backend='sparse';native_time=result.info.solve_time
+    |                                                      ^
+ 99 |         elif self.name=='clarabel':
+100 |             import clarabel
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_qp_r2.py:101:48
+    |
+ 99 |         elif self.name=='clarabel':
+100 |             import clarabel
+101 |             settings=clarabel.DefaultSettings();settings.verbose=False;settings.max_iter=300
+    |                                                ^
+102 |             settings.tol_gap_abs=self.eps;settings.tol_gap_rel=self.eps;settings.tol_feas=self.eps
+103 |             settings.time_limit=5.
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_qp_r2.py:101:71
+    |
+ 99 |         elif self.name=='clarabel':
+100 |             import clarabel
+101 |             settings=clarabel.DefaultSettings();settings.verbose=False;settings.max_iter=300
+    |                                                                       ^
+102 |             settings.tol_gap_abs=self.eps;settings.tol_gap_rel=self.eps;settings.tol_feas=self.eps
+103 |             settings.time_limit=5.
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_qp_r2.py:102:42
+    |
+100 |             import clarabel
+101 |             settings=clarabel.DefaultSettings();settings.verbose=False;settings.max_iter=300
+102 |             settings.tol_gap_abs=self.eps;settings.tol_gap_rel=self.eps;settings.tol_feas=self.eps
+    |                                          ^
+103 |             settings.time_limit=5.
+104 |             # This installed API has no user-provided primal/dual warm start.
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_qp_r2.py:102:72
+    |
+100 |             import clarabel
+101 |             settings=clarabel.DefaultSettings();settings.verbose=False;settings.max_iter=300
+102 |             settings.tol_gap_abs=self.eps;settings.tol_gap_rel=self.eps;settings.tol_feas=self.eps
+    |                                                                        ^
+103 |             settings.time_limit=5.
+104 |             # This installed API has no user-provided primal/dual warm start.
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_qp_r2.py:107:39
+    |
+105 |             q=clarabel.DefaultSolver(sparse.triu(a,format='csc'),-b,-g,-lower,
+106 |                                      [clarabel.NonnegativeConeT(m)],settings)
+107 |             setup=perf_counter()-start;result=q.solve()
+    |                                       ^
+108 |             u,lam=np.array(result.x),np.array(result.z);status=str(result.status)
+109 |             iterations=int(result.iterations);version=clarabel.__version__;backend='sparse'
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_qp_r2.py:108:56
+    |
+106 |                                      [clarabel.NonnegativeConeT(m)],settings)
+107 |             setup=perf_counter()-start;result=q.solve()
+108 |             u,lam=np.array(result.x),np.array(result.z);status=str(result.status)
+    |                                                        ^
+109 |             iterations=int(result.iterations);version=clarabel.__version__;backend='sparse'
+110 |             native_time=result.solve_time;reused=False
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_qp_r2.py:109:46
+    |
+107 |             setup=perf_counter()-start;result=q.solve()
+108 |             u,lam=np.array(result.x),np.array(result.z);status=str(result.status)
+109 |             iterations=int(result.iterations);version=clarabel.__version__;backend='sparse'
+    |                                              ^
+110 |             native_time=result.solve_time;reused=False
+111 |         else:
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_qp_r2.py:109:75
+    |
+107 |             setup=perf_counter()-start;result=q.solve()
+108 |             u,lam=np.array(result.x),np.array(result.z);status=str(result.status)
+109 |             iterations=int(result.iterations);version=clarabel.__version__;backend='sparse'
+    |                                                                           ^
+110 |             native_time=result.solve_time;reused=False
+111 |         else:
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_qp_r2.py:110:42
+    |
+108 |             u,lam=np.array(result.x),np.array(result.z);status=str(result.status)
+109 |             iterations=int(result.iterations);version=clarabel.__version__;backend='sparse'
+110 |             native_time=result.solve_time;reused=False
+    |                                          ^
+111 |         else:
+112 |             raise ValueError(self.name)
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_qp_r2.py:130:37
+    |
+128 |         free=splu(a).solve(b)
+129 |         if np.min(g@free-lower,initial=0)>=0:
+130 |             lam=np.zeros(len(lower));d=certificate(a,b,g,lower,free,lam)
+    |                                     ^
+131 |             if d['pass_gate']:
+132 |                 return free,lam,dict(d,setup_s=perf_counter()-start,update_s=0.,solve_s=0.,polish_s=0.,
+    |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_r2.py:31:34
+   |
+29 |         super().__init__(viscosity_Pa_s, **kwargs)
+30 |         self.qp_factory=lambda: NativeQP(solver)
+31 |         self.qp=self.qp_factory();self.qp_solver=solver
+   |                                  ^
+32 |         self.method='STAGE5A_R2_S1_SEMI_IMPLICIT_EULER_V3'
+33 |         self.stage_workspaces=OrderedDict()
+   |
+
+E701 Multiple statements on one line (colon)
+  --> src/mevo_mb/bubbles/motion_r2.py:42:35
+   |
+40 |         accepted=self.cache
+41 |         try:
+42 |             if scratch is not None:self.cache=scratch
+   |                                   ^
+43 |             answer=super().constrained(result,constraints,ids,feasible=feasible)
+44 |         finally:
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_r2.py:71:23
+   |
+69 |     hk,nk=_gap_vectors(xk,pairs,radius)
+70 |     h0,_=_gap_vectors(x0,pairs,radius)
+71 |     wg0,_,valid0=wall0;wg,nw,valid=wallk
+   |                       ^
+72 |     if not valid.all() or not valid0.all():
+73 |         raise MotionSolverFailure(dict(reason='GEOMETRY_DATA_CORRUPTED'))
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_r2.py:76:30
+   |
+74 |     wi=np.flatnonzero(np.minimum(wg,wg0)<=np.maximum(.1*radius,np.linalg.norm(reach_velocity,axis=1)*dt))
+75 |     g=sparse_rows(pairs,nk,wi,nw[wi],len(r))
+76 |     initial=np.r_[h0,wg0[wi]];current=np.r_[hk,wg[wi]]
+   |                              ^
+77 |     allowed=np.where(initial<=tolerance,initial,0.)
+78 |     lower=(allowed-current+g@(xk-x0).ravel())/dt
+   |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_r2.py:98:29
+    |
+ 97 |     def wall(self,x,r):
+ 98 |         start=perf_counter();w=self.geometry.wall_gap_and_normal(x,r)
+    |                             ^
+ 99 |         self.timings['wall']+=perf_counter()-start
+100 |         return w
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_r2.py:103:29
+    |
+102 |     def advance(self,x,r,ids,t,dt,stage):
+103 |         start=perf_counter();f=self.forcing(x,r,t)
+    |                             ^
+104 |         self.timings['forcing']+=perf_counter()-start
+105 |         force=f['primary_force_N']+f['secondary_force_N'];flow=f['flow_velocity_m_s']
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_r2.py:105:58
+    |
+103 |         start=perf_counter();f=self.forcing(x,r,t)
+104 |         self.timings['forcing']+=perf_counter()-start
+105 |         force=f['primary_force_N']+f['secondary_force_N'];flow=f['flow_velocity_m_s']
+    |                                                          ^
+106 |         w0=self.wall(x,r);xk=x.copy();uk=np.zeros_like(x)
+107 |         diagnostics=[];last_delta=None;history_x=[];history_f=[];fixed_c=None;scratch=None
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_r2.py:106:26
+    |
+104 |         self.timings['forcing']+=perf_counter()-start
+105 |         force=f['primary_force_N']+f['secondary_force_N'];flow=f['flow_velocity_m_s']
+106 |         w0=self.wall(x,r);xk=x.copy();uk=np.zeros_like(x)
+    |                          ^
+107 |         diagnostics=[];last_delta=None;history_x=[];history_f=[];fixed_c=None;scratch=None
+108 |         for iteration in range(1 if self.method=='S0' else self.max_iterations):
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_r2.py:106:38
+    |
+104 |         self.timings['forcing']+=perf_counter()-start
+105 |         force=f['primary_force_N']+f['secondary_force_N'];flow=f['flow_velocity_m_s']
+106 |         w0=self.wall(x,r);xk=x.copy();uk=np.zeros_like(x)
+    |                                      ^
+107 |         diagnostics=[];last_delta=None;history_x=[];history_f=[];fixed_c=None;scratch=None
+108 |         for iteration in range(1 if self.method=='S0' else self.max_iterations):
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_r2.py:107:23
+    |
+105 |         force=f['primary_force_N']+f['secondary_force_N'];flow=f['flow_velocity_m_s']
+106 |         w0=self.wall(x,r);xk=x.copy();uk=np.zeros_like(x)
+107 |         diagnostics=[];last_delta=None;history_x=[];history_f=[];fixed_c=None;scratch=None
+    |                       ^
+108 |         for iteration in range(1 if self.method=='S0' else self.max_iterations):
+109 |             wk=self.wall(xk,r)
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_r2.py:107:39
+    |
+105 |         force=f['primary_force_N']+f['secondary_force_N'];flow=f['flow_velocity_m_s']
+106 |         w0=self.wall(x,r);xk=x.copy();uk=np.zeros_like(x)
+107 |         diagnostics=[];last_delta=None;history_x=[];history_f=[];fixed_c=None;scratch=None
+    |                                       ^
+108 |         for iteration in range(1 if self.method=='S0' else self.max_iterations):
+109 |             wk=self.wall(xk,r)
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_r2.py:107:52
+    |
+105 |         force=f['primary_force_N']+f['secondary_force_N'];flow=f['flow_velocity_m_s']
+106 |         w0=self.wall(x,r);xk=x.copy();uk=np.zeros_like(x)
+107 |         diagnostics=[];last_delta=None;history_x=[];history_f=[];fixed_c=None;scratch=None
+    |                                                    ^
+108 |         for iteration in range(1 if self.method=='S0' else self.max_iterations):
+109 |             wk=self.wall(xk,r)
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_r2.py:107:65
+    |
+105 |         force=f['primary_force_N']+f['secondary_force_N'];flow=f['flow_velocity_m_s']
+106 |         w0=self.wall(x,r);xk=x.copy();uk=np.zeros_like(x)
+107 |         diagnostics=[];last_delta=None;history_x=[];history_f=[];fixed_c=None;scratch=None
+    |                                                                 ^
+108 |         for iteration in range(1 if self.method=='S0' else self.max_iterations):
+109 |             wk=self.wall(xk,r)
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_r2.py:107:78
+    |
+105 |         force=f['primary_force_N']+f['secondary_force_N'];flow=f['flow_velocity_m_s']
+106 |         w0=self.wall(x,r);xk=x.copy();uk=np.zeros_like(x)
+107 |         diagnostics=[];last_delta=None;history_x=[];history_f=[];fixed_c=None;scratch=None
+    |                                                                              ^
+108 |         for iteration in range(1 if self.method=='S0' else self.max_iterations):
+109 |             wk=self.wall(xk,r)
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_r2.py:110:33
+    |
+108 |         for iteration in range(1 if self.method=='S0' else self.max_iterations):
+109 |             wk=self.wall(xk,r)
+110 |             start=perf_counter();a=self.backend.solve(xk,r,force,flow,wk)
+    |                                 ^
+111 |             self.timings['assembly']+=perf_counter()-start
+112 |             if fixed_c is None:
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_r2.py:122:43
+    |
+120 |                 begin=perf_counter()
+121 |                 def derivative(gap,kind):
+122 |                     e=np.asarray(gap)/r[0];v=np.clip(e,.001,.1)
+    |                                           ^
+123 |                     raw=(3*np.pi*self.backend.mu*(-.5/v**2-.45/v-(3/56)*(np.log(v)+1))
+124 |                          if kind=='pair' else 6*np.pi*self.backend.mu*(-1/v**2-.2/v-(1/21)*(np.log(v)+1)))
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_r2.py:142:57
+    |
+140 |                 scratch=cache
+141 |             finally:
+142 |                 self.timings['qp']+=perf_counter()-start;self.calls+=1
+    |                                                         ^
+143 |             y=x+dt*u
+144 |             delta=np.max(np.linalg.norm(u-uk,axis=1),initial=0)
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_r2.py:152:38
+    |
+150 |                 # multipliers and the SAME fixed Stage5A normalization.
+151 |                 if self.method=='S1':
+152 |                     we=self.wall(y,r);beg=perf_counter();ae=self.backend.solve(y,r,force,flow,we)
+    |                                      ^
+153 |                     self.timings['assembly']+=perf_counter()-beg
+154 |                     ce=c
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_r2.py:152:57
+    |
+150 |                 # multipliers and the SAME fixed Stage5A normalization.
+151 |                 if self.method=='S1':
+152 |                     we=self.wall(y,r);beg=perf_counter();ae=self.backend.solve(y,r,force,flow,we)
+    |                                                         ^
+153 |                     self.timings['assembly']+=perf_counter()-beg
+154 |                     ce=c
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_r2.py:156:42
+    |
+154 |                     ce=c
+155 |                     vs=max(float(np.max(abs(ae.velocity))),1e-30)
+156 |                     an=ae.matrix/ae.scale;bn=an@(ae.velocity.ravel()/vs)
+    |                                          ^
+157 |                     lam=np.array([cache.dual.get(key,0.)/(ae.scale*vs) for key in ce.ids])
+158 |                     k,terms=kkt_residual(an,bn,ce.matrix,ce.lower/vs,u.ravel()/vs,lam)
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_r2.py:159:44
+    |
+157 |                     lam=np.array([cache.dual.get(key,0.)/(ae.scale*vs) for key in ce.ids])
+158 |                     k,terms=kkt_residual(an,bn,ce.matrix,ce.lower/vs,u.ravel()/vs,lam)
+159 |                     diag['nonlinear_kkt']=k;diag['nonlinear_kkt_terms']=terms
+    |                                            ^
+160 |                     if k>self.nonlinear_rtol:
+161 |                         uk=u;xk=y
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_r2.py:161:29
+    |
+159 |                     diag['nonlinear_kkt']=k;diag['nonlinear_kkt_terms']=terms
+160 |                     if k>self.nonlinear_rtol:
+161 |                         uk=u;xk=y
+    |                             ^
+162 |                         continue
+163 |                     diag['endpoint_linear_residual']=ae.diagnostics['relative_residual']
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_r2.py:165:63
+    |
+163 |                     diag['endpoint_linear_residual']=ae.diagnostics['relative_residual']
+164 |                     physical_lambda=np.array([cache.dual.get(key,0.) for key in ce.ids])
+165 |                     physical_rhs=ae.matrix@ae.velocity.ravel();reaction=ce.matrix.T@physical_lambda
+    |                                                               ^
+166 |                     force_residual=ae.matrix@u.ravel()-physical_rhs-reaction
+167 |                     diag['physical_force_residual_l2_N']=float(np.linalg.norm(force_residual))
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_r2.py:171:37
+    |
+169 |                 else:
+170 |                     diag['nonlinear_kkt']=None
+171 |                 begin=perf_counter();safety=self.sweep(x,y,r,self.tolerance)
+    |                                     ^
+172 |                 self.timings['geometry']+=perf_counter()-begin
+173 |                 if not safety['pass_gate']:
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_r2.py:189:48
+    |
+187 |                 alpha=min(alpha,.5)
+188 |             residual=(u-uk).ravel()
+189 |             history_x.append(uk.ravel().copy());history_f.append(residual)
+    |                                                ^
+190 |             if len(history_x)>7:
+191 |                 history_x.pop(0);history_f.pop(0)
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_r2.py:191:33
+    |
+189 |             history_x.append(uk.ravel().copy());history_f.append(residual)
+190 |             if len(history_x)>7:
+191 |                 history_x.pop(0);history_f.pop(0)
+    |                                 ^
+192 |             candidate=(1-alpha)*uk+alpha*u
+193 |             if len(history_x)>1:
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_r2.py:202:25
+    |
+200 |                 if np.isfinite(accelerated).all() and np.linalg.norm(accelerated-uk.ravel())<=4*max(np.linalg.norm(residual),1e-30):
+201 |                     candidate=accelerated.reshape(uk.shape)
+202 |             uk=candidate;xk=x+dt*uk;last_delta=delta
+    |                         ^
+203 |         raise SubdivideInterval('NONLINEAR_NOT_CONVERGED',dict(dt_s=dt,iterations=len(diagnostics),
+204 |                                     last_delta=diagnostics[-1]['nonlinear_delta']))
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_r2.py:202:36
+    |
+200 |                 if np.isfinite(accelerated).all() and np.linalg.norm(accelerated-uk.ravel())<=4*max(np.linalg.norm(residual),1e-30):
+201 |                     candidate=accelerated.reshape(uk.shape)
+202 |             uk=candidate;xk=x+dt*uk;last_delta=delta
+    |                                    ^
+203 |         raise SubdivideInterval('NONLINEAR_NOT_CONVERGED',dict(dt_s=dt,iterations=len(diagnostics),
+204 |                                     last_delta=diagnostics[-1]['nonlinear_delta']))
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_r2.py:216:27
+    |
+214 |         displacement=np.linalg.norm(fine-x,axis=1).max(initial=0)
+215 |         posbudget=self.atol_R*r[0]+self.rtol*displacement
+216 |         h0=pdist(x)-2*r[0];hf=pdist(full)-2*r[0];hh=pdist(fine)-2*r[0]
+    |                           ^
+217 |         pairratio=abs(hh-hf)/(self.atol_R*r[0]+self.gap_rtol*np.maximum(h0,.001*r[0]))
+218 |         w0=self.wall(x,r)[0];wf=self.wall(full,r)[0];wh=self.wall(fine,r)[0];valid=np.isfinite(w0)
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_r2.py:216:49
+    |
+214 |         displacement=np.linalg.norm(fine-x,axis=1).max(initial=0)
+215 |         posbudget=self.atol_R*r[0]+self.rtol*displacement
+216 |         h0=pdist(x)-2*r[0];hf=pdist(full)-2*r[0];hh=pdist(fine)-2*r[0]
+    |                                                 ^
+217 |         pairratio=abs(hh-hf)/(self.atol_R*r[0]+self.gap_rtol*np.maximum(h0,.001*r[0]))
+218 |         w0=self.wall(x,r)[0];wf=self.wall(full,r)[0];wh=self.wall(fine,r)[0];valid=np.isfinite(w0)
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_r2.py:218:29
+    |
+216 |         h0=pdist(x)-2*r[0];hf=pdist(full)-2*r[0];hh=pdist(fine)-2*r[0]
+217 |         pairratio=abs(hh-hf)/(self.atol_R*r[0]+self.gap_rtol*np.maximum(h0,.001*r[0]))
+218 |         w0=self.wall(x,r)[0];wf=self.wall(full,r)[0];wh=self.wall(fine,r)[0];valid=np.isfinite(w0)
+    |                             ^
+219 |         wallratio=abs(wf[valid]-wh[valid])/(self.atol_R*r[0]+self.gap_rtol*np.maximum(w0[valid],.001*r[0]))
+220 |         ratios=dict(position=position/posbudget,relative=relative/posbudget,
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_r2.py:218:53
+    |
+216 |         h0=pdist(x)-2*r[0];hf=pdist(full)-2*r[0];hh=pdist(fine)-2*r[0]
+217 |         pairratio=abs(hh-hf)/(self.atol_R*r[0]+self.gap_rtol*np.maximum(h0,.001*r[0]))
+218 |         w0=self.wall(x,r)[0];wf=self.wall(full,r)[0];wh=self.wall(fine,r)[0];valid=np.isfinite(w0)
+    |                                                     ^
+219 |         wallratio=abs(wf[valid]-wh[valid])/(self.atol_R*r[0]+self.gap_rtol*np.maximum(w0[valid],.001*r[0]))
+220 |         ratios=dict(position=position/posbudget,relative=relative/posbudget,
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_r2.py:218:77
+    |
+216 |         h0=pdist(x)-2*r[0];hf=pdist(full)-2*r[0];hh=pdist(fine)-2*r[0]
+217 |         pairratio=abs(hh-hf)/(self.atol_R*r[0]+self.gap_rtol*np.maximum(h0,.001*r[0]))
+218 |         w0=self.wall(x,r)[0];wf=self.wall(full,r)[0];wh=self.wall(fine,r)[0];valid=np.isfinite(w0)
+    |                                                                             ^
+219 |         wallratio=abs(wf[valid]-wh[valid])/(self.atol_R*r[0]+self.gap_rtol*np.maximum(w0[valid],.001*r[0]))
+220 |         ratios=dict(position=position/posbudget,relative=relative/posbudget,
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_r2.py:222:35
+    |
+220 |         ratios=dict(position=position/posbudget,relative=relative/posbudget,
+221 |                     pair=float(pairratio.max(initial=0)),wall=float(wallratio.max(initial=0)))
+222 |         error=max(ratios.values());self.timings['error']+=perf_counter()-begin
+    |                                   ^
+223 |         diag=dict(error_ratio=error,error_terms=ratios,position_error_m=position,
+224 |                   kkt=max(q['kkt'] for q in [df,dh,d]),
+    |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_sweep_r2.py:13:10
+   |
+11 | @njit(cache=True)
+12 | def point_segment2(p,a,b):
+13 |     d=b-a; den=np.dot(d,d)
+   |          ^
+14 |     f=max(0.,min(1.,np.dot(p-a,d)/den)) if den>0 else 0.
+15 |     v=p-a-f*d
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_sweep_r2.py:21:11
+   |
+19 | @njit(cache=True)
+20 | def point_triangle2(p,a,b,c):
+21 |     ab=b-a;ac=c-a;n=np.cross(ab,ac);nn=np.dot(n,n)
+   |           ^
+22 |     if nn>0:
+23 |         q=p-n*(np.dot(p-a,n)/nn)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_sweep_r2.py:21:18
+   |
+19 | @njit(cache=True)
+20 | def point_triangle2(p,a,b,c):
+21 |     ab=b-a;ac=c-a;n=np.cross(ab,ac);nn=np.dot(n,n)
+   |                  ^
+22 |     if nn>0:
+23 |         q=p-n*(np.dot(p-a,n)/nn)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_sweep_r2.py:21:36
+   |
+19 | @njit(cache=True)
+20 | def point_triangle2(p,a,b,c):
+21 |     ab=b-a;ac=c-a;n=np.cross(ab,ac);nn=np.dot(n,n)
+   |                                    ^
+22 |     if nn>0:
+23 |         q=p-n*(np.dot(p-a,n)/nn)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_sweep_r2.py:25:25
+   |
+23 |         q=p-n*(np.dot(p-a,n)/nn)
+24 |         v=q-a
+25 |         aa=np.dot(ab,ab);bb=np.dot(ab,ac);cc=np.dot(ac,ac)
+   |                         ^
+26 |         determinant=aa*cc-bb*bb
+27 |         if determinant>0:
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_sweep_r2.py:25:42
+   |
+23 |         q=p-n*(np.dot(p-a,n)/nn)
+24 |         v=q-a
+25 |         aa=np.dot(ab,ab);bb=np.dot(ab,ac);cc=np.dot(ac,ac)
+   |                                          ^
+26 |         determinant=aa*cc-bb*bb
+27 |         if determinant>0:
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_sweep_r2.py:38:10
+   |
+36 | def segment_segment2(p,q,a,b):
+37 |     # Interior stationary point plus all four boundary optima of [0,1]^2.
+38 |     u=q-p;v=b-a;w=p-a
+   |          ^
+39 |     aa=np.dot(u,u);bb=np.dot(u,v);cc=np.dot(v,v);dd=np.dot(u,w);ee=np.dot(v,w)
+40 |     result=min(point_segment2(p,a,b),point_segment2(q,a,b),
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_sweep_r2.py:38:16
+   |
+36 | def segment_segment2(p,q,a,b):
+37 |     # Interior stationary point plus all four boundary optima of [0,1]^2.
+38 |     u=q-p;v=b-a;w=p-a
+   |                ^
+39 |     aa=np.dot(u,u);bb=np.dot(u,v);cc=np.dot(v,v);dd=np.dot(u,w);ee=np.dot(v,w)
+40 |     result=min(point_segment2(p,a,b),point_segment2(q,a,b),
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_sweep_r2.py:39:19
+   |
+37 |     # Interior stationary point plus all four boundary optima of [0,1]^2.
+38 |     u=q-p;v=b-a;w=p-a
+39 |     aa=np.dot(u,u);bb=np.dot(u,v);cc=np.dot(v,v);dd=np.dot(u,w);ee=np.dot(v,w)
+   |                   ^
+40 |     result=min(point_segment2(p,a,b),point_segment2(q,a,b),
+41 |                point_segment2(a,p,q),point_segment2(b,p,q))
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_sweep_r2.py:39:34
+   |
+37 |     # Interior stationary point plus all four boundary optima of [0,1]^2.
+38 |     u=q-p;v=b-a;w=p-a
+39 |     aa=np.dot(u,u);bb=np.dot(u,v);cc=np.dot(v,v);dd=np.dot(u,w);ee=np.dot(v,w)
+   |                                  ^
+40 |     result=min(point_segment2(p,a,b),point_segment2(q,a,b),
+41 |                point_segment2(a,p,q),point_segment2(b,p,q))
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_sweep_r2.py:39:49
+   |
+37 |     # Interior stationary point plus all four boundary optima of [0,1]^2.
+38 |     u=q-p;v=b-a;w=p-a
+39 |     aa=np.dot(u,u);bb=np.dot(u,v);cc=np.dot(v,v);dd=np.dot(u,w);ee=np.dot(v,w)
+   |                                                 ^
+40 |     result=min(point_segment2(p,a,b),point_segment2(q,a,b),
+41 |                point_segment2(a,p,q),point_segment2(b,p,q))
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_sweep_r2.py:39:64
+   |
+37 |     # Interior stationary point plus all four boundary optima of [0,1]^2.
+38 |     u=q-p;v=b-a;w=p-a
+39 |     aa=np.dot(u,u);bb=np.dot(u,v);cc=np.dot(v,v);dd=np.dot(u,w);ee=np.dot(v,w)
+   |                                                                ^
+40 |     result=min(point_segment2(p,a,b),point_segment2(q,a,b),
+41 |                point_segment2(a,p,q),point_segment2(b,p,q))
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_sweep_r2.py:44:28
+   |
+42 |     det=aa*cc-bb*bb
+43 |     if det>1e-15*aa*cc:
+44 |         s=(bb*ee-cc*dd)/det;t=(aa*ee-bb*dd)/det
+   |                            ^
+45 |         if 0<=s<=1 and 0<=t<=1:
+46 |             d=w+s*u-t*v;result=min(result,np.dot(d,d))
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_sweep_r2.py:46:24
+   |
+44 |         s=(bb*ee-cc*dd)/det;t=(aa*ee-bb*dd)/det
+45 |         if 0<=s<=1 and 0<=t<=1:
+46 |             d=w+s*u-t*v;result=min(result,np.dot(d,d))
+   |                        ^
+47 |     return result
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_sweep_r2.py:52:24
+   |
+50 | @njit(cache=True)
+51 | def segment_triangle2(p,q,a,b,c):
+52 |     n=np.cross(b-a,c-a);d=q-p;den=np.dot(n,d)
+   |                        ^
+53 |     if den!=0:
+54 |         t=np.dot(n,a-p)/den
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_sweep_r2.py:52:30
+   |
+50 | @njit(cache=True)
+51 | def segment_triangle2(p,q,a,b,c):
+52 |     n=np.cross(b-a,c-a);d=q-p;den=np.dot(n,d)
+   |                              ^
+53 |     if den!=0:
+54 |         t=np.dot(n,a-p)/den
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_sweep_r2.py:76:22
+   |
+74 | def pair_sweep(x,y,r):
+75 |     ii,jj=np.triu_indices(len(x),1)
+76 |     delta=x[jj]-x[ii];change=(y-x)[jj]-(y-x)[ii]
+   |                      ^
+77 |     denom=np.einsum('ij,ij->i',change,change)
+78 |     fraction=np.clip(-np.einsum('ij,ij->i',delta,change)/np.maximum(denom,np.finfo(float).tiny),0,1)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_sweep_r2.py:93:48
+   |
+91 |             raise ValueError('GEOMETRY_DATA_CORRUPTED')
+92 |         self.triangles=np.asarray(self.mesh.points,dtype=np.float64)[faces[:,1:]]
+93 |         self.locator=vtk.vtkStaticCellLocator();self.locator.SetDataSet(self.mesh);self.locator.BuildLocator()
+   |                                                ^
+94 |         self.ids=vtk.vtkIdList();self.path=str(wall_path)
+95 |         self.calls=self.exact_particles=0
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_sweep_r2.py:93:83
+   |
+91 |             raise ValueError('GEOMETRY_DATA_CORRUPTED')
+92 |         self.triangles=np.asarray(self.mesh.points,dtype=np.float64)[faces[:,1:]]
+93 |         self.locator=vtk.vtkStaticCellLocator();self.locator.SetDataSet(self.mesh);self.locator.BuildLocator()
+   |                                                                                   ^
+94 |         self.ids=vtk.vtkIdList();self.path=str(wall_path)
+95 |         self.calls=self.exact_particles=0
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> src/mevo_mb/bubbles/motion_sweep_r2.py:94:33
+   |
+92 |         self.triangles=np.asarray(self.mesh.points,dtype=np.float64)[faces[:,1:]]
+93 |         self.locator=vtk.vtkStaticCellLocator();self.locator.SetDataSet(self.mesh);self.locator.BuildLocator()
+94 |         self.ids=vtk.vtkIdList();self.path=str(wall_path)
+   |                                 ^
+95 |         self.calls=self.exact_particles=0
+96 |         # Compile outside measured scientific advance.
+   |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_sweep_r2.py:107:18
+    |
+105 |         length=np.linalg.norm(y-x,axis=1)
+106 |         bound=initial-length
+107 |         queried=0;triangle_count=0
+    |                  ^
+108 |         for i in np.flatnonzero(bound < -tolerance):
+109 |             # Closed exterior distance is a conservative lower bound on distance
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> src/mevo_mb/bubbles/motion_sweep_r2.py:118:23
+    |
+116 |             # Omitted triangles lie outside expanded AABB, distance > R+tol.
+117 |             bound[i]=min(minimum-r[i],tolerance)
+118 |             queried+=1;triangle_count+=len(cells)
+    |                       ^
+119 |         # Floating-point guard subtracted from the computed certificate, never
+120 |         # added to the physical tolerance. SI coordinates here are millimetres.
+    |
+
+E702 Multiple statements on one line (semicolon)
+  --> tests/test_stage5a_r2.py:20:18
+   |
+18 |     d=dict(np.load(next(z for z in p.glob('*.npz') if z.name not in ['A.npz','G.npz'])))
+19 |     a,g=sparse.load_npz(p/'A.npz'),sparse.load_npz(p/'G.npz')
+20 |     qp=NativeQP();u,l,diag=qp.solve(a,d['b'],g,d['lower'],feasible=d.get('feasible'))
+   |                  ^
+21 |     assert diag['pass_gate'] and diag['kkt']<=1e-9
+22 |     v,m,w=qp.solve(a,d['b'],g,d['lower'],warm_primal=u,warm_dual=l)
+   |
+
+E741 Ambiguous variable name: `l`
+  --> tests/test_stage5a_r2.py:20:21
+   |
+18 |     d=dict(np.load(next(z for z in p.glob('*.npz') if z.name not in ['A.npz','G.npz'])))
+19 |     a,g=sparse.load_npz(p/'A.npz'),sparse.load_npz(p/'G.npz')
+20 |     qp=NativeQP();u,l,diag=qp.solve(a,d['b'],g,d['lower'],feasible=d.get('feasible'))
+   |                     ^
+21 |     assert diag['pass_gate'] and diag['kkt']<=1e-9
+22 |     v,m,w=qp.solve(a,d['b'],g,d['lower'],warm_primal=u,warm_dual=l)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> tests/test_stage5a_r2.py:30:33
+   |
+28 | @pytest.mark.parametrize('solver',['prox','prox_sparse','osqp','clarabel'])
+29 | def test_native_lower_sign_and_bound(solver):
+30 |     a=sparse.eye(2,format='csc');g=sparse.csc_matrix([[1.,0.]])
+   |                                 ^
+31 |     u,l,d=NativeQP(solver,1e-10).candidate(a,np.array([-1.,2.]),g,np.array([.5]))
+32 |     np.testing.assert_allclose(u,[.5,2.],atol=1e-8)
+   |
+
+E741 Ambiguous variable name: `l`
+  --> tests/test_stage5a_r2.py:31:7
+   |
+29 | def test_native_lower_sign_and_bound(solver):
+30 |     a=sparse.eye(2,format='csc');g=sparse.csc_matrix([[1.,0.]])
+31 |     u,l,d=NativeQP(solver,1e-10).candidate(a,np.array([-1.,2.]),g,np.array([.5]))
+   |       ^
+32 |     np.testing.assert_allclose(u,[.5,2.],atol=1e-8)
+33 |     np.testing.assert_allclose(l,[1.5],atol=1e-8)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> tests/test_stage5a_r2.py:39:33
+   |
+37 | @pytest.mark.parametrize('epsilon',[0.,1e-12,1e-8])
+38 | def test_parallel_different_bounds_and_nonunique_dual(epsilon):
+39 |     a=sparse.eye(2,format='csc');g=sparse.csc_matrix([[1.,0.],[1.,epsilon],[1.,0.]])
+   |                                 ^
+40 |     lo=np.array([.1,.2,.2]);b=np.array([-1.,1.])
+41 |     u,l,d=NativeQP().solve(a,b,g,lo)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> tests/test_stage5a_r2.py:40:28
+   |
+38 | def test_parallel_different_bounds_and_nonunique_dual(epsilon):
+39 |     a=sparse.eye(2,format='csc');g=sparse.csc_matrix([[1.,0.],[1.,epsilon],[1.,0.]])
+40 |     lo=np.array([.1,.2,.2]);b=np.array([-1.,1.])
+   |                            ^
+41 |     u,l,d=NativeQP().solve(a,b,g,lo)
+42 |     assert d['pass_gate'] and np.min(g@u-lo)>-1e-9
+   |
+
+E741 Ambiguous variable name: `l`
+  --> tests/test_stage5a_r2.py:41:7
+   |
+39 |     a=sparse.eye(2,format='csc');g=sparse.csc_matrix([[1.,0.],[1.,epsilon],[1.,0.]])
+40 |     lo=np.array([.1,.2,.2]);b=np.array([-1.,1.])
+41 |     u,l,d=NativeQP().solve(a,b,g,lo)
+   |       ^
+42 |     assert d['pass_gate'] and np.min(g@u-lo)>-1e-9
+43 |     np.testing.assert_allclose(u,[.2,1.],atol=1e-7)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> tests/test_stage5a_r2.py:50:25
+   |
+48 | def test_objective_units_row_scaling(objective_scale,row_scale):
+49 |     a=sparse.csc_matrix([[2.,.2],[.2,3.]])
+50 |     b=np.array([-1.,2.]);g=sparse.eye(2,format='csc');lo=np.array([0.,0.])
+   |                         ^
+51 |     u,l,d=NativeQP().solve(a*objective_scale,b*objective_scale,g*row_scale,lo*row_scale)
+52 |     audit=certificate(a,b,g,lo,u,l*row_scale/objective_scale)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> tests/test_stage5a_r2.py:50:54
+   |
+48 | def test_objective_units_row_scaling(objective_scale,row_scale):
+49 |     a=sparse.csc_matrix([[2.,.2],[.2,3.]])
+50 |     b=np.array([-1.,2.]);g=sparse.eye(2,format='csc');lo=np.array([0.,0.])
+   |                                                      ^
+51 |     u,l,d=NativeQP().solve(a*objective_scale,b*objective_scale,g*row_scale,lo*row_scale)
+52 |     audit=certificate(a,b,g,lo,u,l*row_scale/objective_scale)
+   |
+
+E741 Ambiguous variable name: `l`
+  --> tests/test_stage5a_r2.py:51:7
+   |
+49 |     a=sparse.csc_matrix([[2.,.2],[.2,3.]])
+50 |     b=np.array([-1.,2.]);g=sparse.eye(2,format='csc');lo=np.array([0.,0.])
+51 |     u,l,d=NativeQP().solve(a*objective_scale,b*objective_scale,g*row_scale,lo*row_scale)
+   |       ^
+52 |     audit=certificate(a,b,g,lo,u,l*row_scale/objective_scale)
+53 |     assert audit['pass_gate']
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> tests/test_stage5a_r2.py:77:28
+   |
+75 | def test_endpoint_safe_midpath_wall():
+76 |     tri=np.array([[-2.,-2.,0.],[2.,-2.,0.],[0.,2.,0.]])
+77 |     p=np.array([0.,0.,-1.]);q=np.array([0.,0.,1.])
+   |                            ^
+78 |     assert segment_triangle2(p,p,*tri)==pytest.approx(1.)
+79 |     assert segment_triangle2(q,q,*tri)==pytest.approx(1.)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> tests/test_stage5a_r2.py:82:30
+   |
+80 |     assert segment_triangle2(p,q,*tri)==0.
+81 |     # Finite radius detects an edge graze even without centerline intersection.
+82 |     p=np.array([2.1,-2.,-1.]);q=np.array([2.1,-2.,1.])
+   |                              ^
+83 |     assert triangle_minimum(p,q,tri[None])==pytest.approx(.1)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> tests/test_stage5a_r2.py:88:29
+   |
+86 | def analytic_sweep(geometry):
+87 |     def sweep(x,y,r,tol):
+88 |         pg=pair_sweep(x,y,r);w=min(geometry.wall_gap_and_normal(x,r)[0].min(),geometry.wall_gap_and_normal(y,r)[0].min())
+   |                             ^
+89 |         return dict(pass_gate=min(pg,w)>=-tol,minimum_pair_swept_gap_m=pg,
+90 |                     minimum_wall_swept_gap_bound_m=w)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> tests/test_stage5a_r2.py:97:12
+   |
+95 | @pytest.mark.parametrize('strategy',['picard','quasi_newton'])
+96 | def test_whole_integrator_squeeze_wall_refinement(wall,strategy):
+97 |     R=old.R;v=.001;model=MotionR2(old.MU)
+   |            ^
+98 |     geometry=old.Plane() if wall else old.NoWall()
+99 |     x0=np.array([[0.,0.,-1.05*R]]) if wall else old.pair(.05)
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> tests/test_stage5a_r2.py:97:19
+   |
+95 | @pytest.mark.parametrize('strategy',['picard','quasi_newton'])
+96 | def test_whole_integrator_squeeze_wall_refinement(wall,strategy):
+97 |     R=old.R;v=.001;model=MotionR2(old.MU)
+   |                   ^
+98 |     geometry=old.Plane() if wall else old.NoWall()
+99 |     x0=np.array([[0.,0.,-1.05*R]]) if wall else old.pair(.05)
+   |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests/test_stage5a_r2.py:111:20
+    |
+109 |     for dt in [5e-6,2.5e-6,1.25e-6]:
+110 |         step=SemiImplicit(MotionR2(old.MU),geometry,forcing,analytic_sweep(geometry),nonlinear_strategy=strategy)
+111 |         x=x0.copy();r=np.full(len(x),R)
+    |                    ^
+112 |         for i in range(round(duration/dt)):
+113 |             x,_,_,_=step.advance(x,r,np.arange(len(x)),i*dt,dt,'test')
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests/test_stage5a_r2.py:120:26
+    |
+119 | def test_negative_initial_band_release_and_cache_rollback():
+120 |     geometry=old.NoWall();x=old.pair();x[1,0]-=5e-12;r=np.full(2,old.R)
+    |                          ^
+121 |     def forcing(x,r,t):
+122 |         return dict(primary_force_N=np.zeros_like(x),secondary_force_N=np.zeros_like(x),
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests/test_stage5a_r2.py:120:39
+    |
+119 | def test_negative_initial_band_release_and_cache_rollback():
+120 |     geometry=old.NoWall();x=old.pair();x[1,0]-=5e-12;r=np.full(2,old.R)
+    |                                       ^
+121 |     def forcing(x,r,t):
+122 |         return dict(primary_force_N=np.zeros_like(x),secondary_force_N=np.zeros_like(x),
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests/test_stage5a_r2.py:120:53
+    |
+119 | def test_negative_initial_band_release_and_cache_rollback():
+120 |     geometry=old.NoWall();x=old.pair();x[1,0]-=5e-12;r=np.full(2,old.R)
+    |                                                     ^
+121 |     def forcing(x,r,t):
+122 |         return dict(primary_force_N=np.zeros_like(x),secondary_force_N=np.zeros_like(x),
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests/test_stage5a_r2.py:124:27
+    |
+122 |         return dict(primary_force_N=np.zeros_like(x),secondary_force_N=np.zeros_like(x),
+123 |                     flow_velocity_m_s=np.array([[-.001,0.,0.],[.001,0.,0.]]))
+124 |     model=MotionR2(old.MU);prior=AcceptedCache((5,9),{}, {},(), 'accepted');model.cache=prior
+    |                           ^
+125 |     step=SemiImplicit(model,geometry,forcing,analytic_sweep(geometry))
+126 |     y,u,cache,d=step.advance(x,r,np.array([5,9]),0,1e-8,'test')
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests/test_stage5a_r2.py:124:76
+    |
+122 |         return dict(primary_force_N=np.zeros_like(x),secondary_force_N=np.zeros_like(x),
+123 |                     flow_velocity_m_s=np.array([[-.001,0.,0.],[.001,0.,0.]]))
+124 |     model=MotionR2(old.MU);prior=AcceptedCache((5,9),{}, {},(), 'accepted');model.cache=prior
+    |                                                                            ^
+125 |     step=SemiImplicit(model,geometry,forcing,analytic_sweep(geometry))
+126 |     y,u,cache,d=step.advance(x,r,np.array([5,9]),0,1e-8,'test')
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests/test_stage5a_r2.py:134:32
+    |
+132 |     from scripts.stage5a_r2.run import checkpoint,restore
+133 |     c=AcceptedCache((3,),{3:np.ones(3)},{('wall',3):2.},(('wall',3),),'test')
+134 |     p=tmp_path/'checkpoint.npz';x=np.zeros((1,3));r=np.array([old.R]);ids=np.array([3]);mask=np.ones(1,bool)
+    |                                ^
+135 |     checkpoint(p,x,x,r,ids,mask,3.,dict(next_dt=1e-6),c,'identity')
+136 |     d,m,recovered=restore(p)
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests/test_stage5a_r2.py:134:50
+    |
+132 |     from scripts.stage5a_r2.run import checkpoint,restore
+133 |     c=AcceptedCache((3,),{3:np.ones(3)},{('wall',3):2.},(('wall',3),),'test')
+134 |     p=tmp_path/'checkpoint.npz';x=np.zeros((1,3));r=np.array([old.R]);ids=np.array([3]);mask=np.ones(1,bool)
+    |                                                  ^
+135 |     checkpoint(p,x,x,r,ids,mask,3.,dict(next_dt=1e-6),c,'identity')
+136 |     d,m,recovered=restore(p)
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests/test_stage5a_r2.py:134:70
+    |
+132 |     from scripts.stage5a_r2.run import checkpoint,restore
+133 |     c=AcceptedCache((3,),{3:np.ones(3)},{('wall',3):2.},(('wall',3),),'test')
+134 |     p=tmp_path/'checkpoint.npz';x=np.zeros((1,3));r=np.array([old.R]);ids=np.array([3]);mask=np.ones(1,bool)
+    |                                                                      ^
+135 |     checkpoint(p,x,x,r,ids,mask,3.,dict(next_dt=1e-6),c,'identity')
+136 |     d,m,recovered=restore(p)
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests/test_stage5a_r2.py:134:88
+    |
+132 |     from scripts.stage5a_r2.run import checkpoint,restore
+133 |     c=AcceptedCache((3,),{3:np.ones(3)},{('wall',3):2.},(('wall',3),),'test')
+134 |     p=tmp_path/'checkpoint.npz';x=np.zeros((1,3));r=np.array([old.R]);ids=np.array([3]);mask=np.ones(1,bool)
+    |                                                                                        ^
+135 |     checkpoint(p,x,x,r,ids,mask,3.,dict(next_dt=1e-6),c,'identity')
+136 |     d,m,recovered=restore(p)
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests/test_stage5a_r2.py:149:30
+    |
+147 |         calls.append(self.name)
+148 |         if self.name=='prox':
+149 |             a,b,g,lo=args[:4];u=np.ones(len(b));l=np.zeros(len(lo))
+    |                              ^
+150 |             return u,l,dict(certificate(a,b,g,lo,u,l),status='QPSolverOutput.PROXQP_SOLVED',
+151 |                             setup_s=0.,update_s=0.,solve_s=0.,polish_s=0.,iterations=1)
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests/test_stage5a_r2.py:149:48
+    |
+147 |         calls.append(self.name)
+148 |         if self.name=='prox':
+149 |             a,b,g,lo=args[:4];u=np.ones(len(b));l=np.zeros(len(lo))
+    |                                                ^
+150 |             return u,l,dict(certificate(a,b,g,lo,u,l),status='QPSolverOutput.PROXQP_SOLVED',
+151 |                             setup_s=0.,update_s=0.,solve_s=0.,polish_s=0.,iterations=1)
+    |
+
+E741 Ambiguous variable name: `l`
+   --> tests/test_stage5a_r2.py:149:49
+    |
+147 |         calls.append(self.name)
+148 |         if self.name=='prox':
+149 |             a,b,g,lo=args[:4];u=np.ones(len(b));l=np.zeros(len(lo))
+    |                                                 ^
+150 |             return u,l,dict(certificate(a,b,g,lo,u,l),status='QPSolverOutput.PROXQP_SOLVED',
+151 |                             setup_s=0.,update_s=0.,solve_s=0.,polish_s=0.,iterations=1)
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests/test_stage5a_r2.py:154:33
+    |
+152 |         return original(self,*args,**kwargs)
+153 |     monkeypatch.setattr(NativeQP,'candidate',injected)
+154 |     a=sparse.eye(1,format='csc');g=a.copy()
+    |                                 ^
+155 |     u,l,d=NativeQP().solve(a,np.array([-1.]),g,np.array([0.]))
+156 |     assert calls==['prox','osqp'] and d['fallbacks']==1
+    |
+
+E741 Ambiguous variable name: `l`
+   --> tests/test_stage5a_r2.py:155:7
+    |
+153 |     monkeypatch.setattr(NativeQP,'candidate',injected)
+154 |     a=sparse.eye(1,format='csc');g=a.copy()
+155 |     u,l,d=NativeQP().solve(a,np.array([-1.]),g,np.array([0.]))
+    |       ^
+156 |     assert calls==['prox','osqp'] and d['fallbacks']==1
+157 |     assert d['kkt']<=1e-9 and u[0]<1e-9
+    |
+
+E741 Ambiguous variable name: `l`
+   --> tests/test_stage5a_r2.py:163:11
+    |
+161 |     original=NativeQP.candidate
+162 |     def inaccurate(self,*args,**kwargs):
+163 |         u,l,d=original(self,*args,**kwargs)
+    |           ^
+164 |         if self.name=='prox':d['status']='solved inaccurate'
+165 |         return u,l,d
+    |
+
+E701 Multiple statements on one line (colon)
+   --> tests/test_stage5a_r2.py:164:29
+    |
+162 |     def inaccurate(self,*args,**kwargs):
+163 |         u,l,d=original(self,*args,**kwargs)
+164 |         if self.name=='prox':d['status']='solved inaccurate'
+    |                             ^
+165 |         return u,l,d
+166 |     monkeypatch.setattr(NativeQP,'candidate',inaccurate)
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests/test_stage5a_r2.py:175:25
+    |
+173 | def test_velocity_unit_equivalence(scale):
+174 |     a=sparse.csc_matrix([[2.,.2],[.2,3.]])
+175 |     b=np.array([-1.,2.]);g=sparse.eye(2,format='csc');lo=np.zeros(2)
+    |                         ^
+176 |     z,l,d=NativeQP().solve(a*scale**2,b*scale,g*scale,lo)
+177 |     assert certificate(a,b,g,lo,z*scale,l)['pass_gate']
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests/test_stage5a_r2.py:175:54
+    |
+173 | def test_velocity_unit_equivalence(scale):
+174 |     a=sparse.csc_matrix([[2.,.2],[.2,3.]])
+175 |     b=np.array([-1.,2.]);g=sparse.eye(2,format='csc');lo=np.zeros(2)
+    |                                                      ^
+176 |     z,l,d=NativeQP().solve(a*scale**2,b*scale,g*scale,lo)
+177 |     assert certificate(a,b,g,lo,z*scale,l)['pass_gate']
+    |
+
+E741 Ambiguous variable name: `l`
+   --> tests/test_stage5a_r2.py:176:7
+    |
+174 |     a=sparse.csc_matrix([[2.,.2],[.2,3.]])
+175 |     b=np.array([-1.,2.]);g=sparse.eye(2,format='csc');lo=np.zeros(2)
+176 |     z,l,d=NativeQP().solve(a*scale**2,b*scale,g*scale,lo)
+    |       ^
+177 |     assert certificate(a,b,g,lo,z*scale,l)['pass_gate']
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests/test_stage5a_r2.py:182:20
+    |
+180 | def test_exact_continuation_equivalence(tmp_path):
+181 |     from scripts.stage5a_r2.run import checkpoint,restore
+182 |     x=old.pair(.05);r=np.full(2,old.R);ids=np.array([5,9]);geometry=old.NoWall()
+    |                    ^
+183 |     def forcing(x,r,t):
+184 |         return dict(primary_force_N=np.zeros_like(x),secondary_force_N=np.zeros_like(x),
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests/test_stage5a_r2.py:182:39
+    |
+180 | def test_exact_continuation_equivalence(tmp_path):
+181 |     from scripts.stage5a_r2.run import checkpoint,restore
+182 |     x=old.pair(.05);r=np.full(2,old.R);ids=np.array([5,9]);geometry=old.NoWall()
+    |                                       ^
+183 |     def forcing(x,r,t):
+184 |         return dict(primary_force_N=np.zeros_like(x),secondary_force_N=np.zeros_like(x),
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests/test_stage5a_r2.py:182:59
+    |
+180 | def test_exact_continuation_equivalence(tmp_path):
+181 |     from scripts.stage5a_r2.run import checkpoint,restore
+182 |     x=old.pair(.05);r=np.full(2,old.R);ids=np.array([5,9]);geometry=old.NoWall()
+    |                                                           ^
+183 |     def forcing(x,r,t):
+184 |         return dict(primary_force_N=np.zeros_like(x),secondary_force_N=np.zeros_like(x),
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests/test_stage5a_r2.py:186:27
+    |
+184 |         return dict(primary_force_N=np.zeros_like(x),secondary_force_N=np.zeros_like(x),
+185 |                     flow_velocity_m_s=np.array([[.001,0.,0.],[-.001,0.,0.]]))
+186 |     model=MotionR2(old.MU);step=SemiImplicit(model,geometry,forcing,analytic_sweep(geometry))
+    |                           ^
+187 |     dt=1e-6
+188 |     y,u,c,d=step.advance(x,r,ids,0.,dt,'restart');model.cache=c
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests/test_stage5a_r2.py:188:50
+    |
+186 |     model=MotionR2(old.MU);step=SemiImplicit(model,geometry,forcing,analytic_sweep(geometry))
+187 |     dt=1e-6
+188 |     y,u,c,d=step.advance(x,r,ids,0.,dt,'restart');model.cache=c
+    |                                                  ^
+189 |     p=tmp_path/'state.npz';checkpoint(p,y,u,r,ids,np.ones(2,bool),dt,dict(next_dt=dt),c,'identity')
+190 |     full,_,_,_=step.advance(y,r,ids,dt,dt,'restart')
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests/test_stage5a_r2.py:189:27
+    |
+187 |     dt=1e-6
+188 |     y,u,c,d=step.advance(x,r,ids,0.,dt,'restart');model.cache=c
+189 |     p=tmp_path/'state.npz';checkpoint(p,y,u,r,ids,np.ones(2,bool),dt,dict(next_dt=dt),c,'identity')
+    |                           ^
+190 |     full,_,_,_=step.advance(y,r,ids,dt,dt,'restart')
+191 |     data,meta,cache=restore(p)
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests/test_stage5a_r2.py:192:27
+    |
+190 |     full,_,_,_=step.advance(y,r,ids,dt,dt,'restart')
+191 |     data,meta,cache=restore(p)
+192 |     fresh=MotionR2(old.MU);fresh.cache=cache
+    |                           ^
+193 |     restarted,_,_,_=SemiImplicit(fresh,geometry,forcing,analytic_sweep(geometry)).advance(
+194 |         data['positions_m'],r,ids,float(data['time_s']),meta['controller']['next_dt'],'restart')
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests/test_stage5a_r2.py:199:27
+    |
+198 | def test_trial_scratch_never_committed_and_workspace_bound():
+199 |     model=MotionR2(old.MU);x=old.pair(.05);r=np.full(2,old.R);ids=np.array([7,9])
+    |                           ^
+200 |     wall=old.NoWall().wall_gap_and_normal(x,r)
+201 |     from mevo_mb.bubbles.motion_r2 import anchored_constraints
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests/test_stage5a_r2.py:199:43
+    |
+198 | def test_trial_scratch_never_committed_and_workspace_bound():
+199 |     model=MotionR2(old.MU);x=old.pair(.05);r=np.full(2,old.R);ids=np.array([7,9])
+    |                                           ^
+200 |     wall=old.NoWall().wall_gap_and_normal(x,r)
+201 |     from mevo_mb.bubbles.motion_r2 import anchored_constraints
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests/test_stage5a_r2.py:199:62
+    |
+198 | def test_trial_scratch_never_committed_and_workspace_bound():
+199 |     model=MotionR2(old.MU);x=old.pair(.05);r=np.full(2,old.R);ids=np.array([7,9])
+    |                                                              ^
+200 |     wall=old.NoWall().wall_gap_and_normal(x,r)
+201 |     from mevo_mb.bubbles.motion_r2 import anchored_constraints
+    |
+
+Found 384 errors (10 fixed, 374 remaining).
+No fixes available (1 hidden fix can be enabled with the `--unsafe-fixes` option).

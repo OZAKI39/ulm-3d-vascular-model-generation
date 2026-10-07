@@ -1,0 +1,21 @@
+.......................................F.                                [100%]
+=================================== FAILURES ===================================
+____________ test_trial_scratch_never_committed_and_workspace_bound ____________
+
+    def test_trial_scratch_never_committed_and_workspace_bound():
+        model=MotionR2(old.MU);x=old.pair(.05);r=np.full(2,old.R);ids=np.array([7,9])
+        wall=old.NoWall().wall_gap_and_normal(x,r)
+        from mevo_mb.bubbles.motion_r2 import anchored_constraints
+        flow=np.array([[.001,0.,0.],[-.001,0.,0.]])
+        a=model.solve(x,r,np.zeros_like(x),flow,wall)
+        c=anchored_constraints(x,x,r,wall,wall,1e-6,ids,1e-11,a.velocity)
+        accepted=model.cache
+        u,scratch,_=model.constrained_stage(a,c,ids,'first')
+>       _,_,_=model.constrained_stage(a,c,ids,'second',scratch=scratch)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: MotionR2.constrained_stage() got an unexpected keyword argument 'scratch'
+
+.dev_validation/test_stage5a_r2.py:208: TypeError
+=========================== short test summary info ============================
+FAILED .dev_validation/test_stage5a_r2.py::test_trial_scratch_never_committed_and_workspace_bound
+1 failed, 40 passed in 1.01s
