@@ -72,6 +72,7 @@ equations and complete the audits:
 bash scripts/stage5a_r2/python.sh -m scripts.stage5a_r2.endpoint_audit
 bash scripts/stage5a_r2/python.sh -m scripts.stage5a_r2.manufactured_final
 bash scripts/stage5a_r2/python.sh -m scripts.stage5a_r2.partial_comparisons
+bash scripts/stage5a_r2/python.sh -m scripts.stage5a_r2.repeat_audit
 bash scripts/stage5a_r2/python.sh -m scripts.stage5a_r2.artifacts --server
 ```
 
@@ -84,6 +85,10 @@ passing this local equation check never changes a failed full-duration status.
 sealed original Stage4L trajectory hash and initial IDs/coordinates, then reports
 full-duration scientific metrics. This supplementary result neither changes
 the frozen formal gates nor imports historical runtime into speedup.
+The post-timing `repeat_audit` checks repeated trajectories with the same
+registered scientific thresholds. It retains every timing sample, records
+adaptive-grid differences, and can flag an additional delivery failure without
+rewriting the original frozen campaign outcome.
 
 The figures/video were rendered in the recorded local environment; its separate
 identity is `environment/RENDER_ENVIRONMENT.json`. With the exact HDF5 files

@@ -243,3 +243,25 @@ The label correction is explicit; raw historical counters are retained.
     -9.99960e-12 m, with zero projection. Total process wall time is 1292.45 s.
     This establishes a completed finer numerical trajectory; full-duration
     reference science and same-environment timing remain separate checks.
+29. Fresh same-environment Stage4L 5 ms references stop at their preregistered
+    1800 s per-run budgets, not at a solver exception: B2 completes
+    3.926404948744 ms in 13854 accepted steps; B3 completes 2.894642631625 ms
+    in 11724 steps. Status is INCOMPLETE with REFERENCE_BUDGET, and process
+    wall times are 1800.7434 / 1800.7977 s. Neither is a completion-speedup
+    denominator. B2's frozen reference retains one original projection of
+    7.61918e-12 m; B3 retains zero. These reference corrections are distinct
+    from the R2 trajectories' zero projection.
+30. B3's complete 5 ms nominal/refined comparison passes on the actual finer
+    grid: endpoint Rg relative difference 6.21772e-9, series relative L2
+    3.10658e-5, largest pair-quartile relative difference 3.22298e-6,
+    centroid difference 5.47148e-11 m against a 1.78e-7 m budget. Maximum
+    same-ID endpoint position difference is 2.45247e-10 m. This self-convergence
+    result does not fill the missing fresh full-duration legacy comparison.
+31. The repeated 1 ms B2 runs show different adaptive grids (1988, 2002,
+    1986 accepted substeps) under the same frozen configuration. Similar timing
+    alone is therefore not treated as scientific repeatability. A post-timing
+    audit compares each completed repeat to the first same-method trajectory,
+    and each new repeat to the first fresh legacy reference, using the unchanged
+    registered metrics and exact original initial identities. All timing samples
+    remain visible; this additional audit cannot improve the frozen campaign's
+    status, and no solver or parameter change follows the observation.

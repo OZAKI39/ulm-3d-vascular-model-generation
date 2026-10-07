@@ -234,6 +234,7 @@ def main():
     perf = performance(entries)
     write(BASE / "final/PERFORMANCE.json", dict(rows=perf, budget_spent_s=campaign["spent_s"]))
     partial = read(BASE / "final/PARTIAL_COMPARISONS.json")
+    repetitions = read(BASE / "final/REPEAT_AUDIT.json")
     stages = {}
     blockers = []
     endpoint = read(BASE / "final/INDEPENDENT_ENDPOINT_AUDIT.json")
@@ -280,16 +281,42 @@ def main():
                     else "NOT_EVALUABLE"
                 )
             )
+            repeat_rows = (
+                [
+                    r
+                    for r in repetitions["rows"]
+                    if r["case"] == case and abs(r["compared_duration_s"] - duration) < 1e-12
+                ]
+                if repetitions
+                else []
+            )
+            repeated_science = (
+                (
+                    "PASS"
+                    if all(r["pass_scientific"] for r in repeat_rows)
+                    else "FAIL"
+                    if any(r["status"] == "FAIL" for r in repeat_rows)
+                    else "INCOMPLETE"
+                )
+                if repeat_rows
+                else "NOT_RUN"
+            )
+            if repeated_science == "FAIL":
+                sci = "FAIL"
+            elif repeated_science == "INCOMPLETE" and sci == "PASS":
+                sci = "INCOMPLETE"
             cases[case] = dict(
                 continuous_motion_status=motion_status,
                 scientific_status=sci,
                 interpretation=check["status"],
+                interpretation_scope="Original frozen campaign status; additional post-timing audits may add a delivery failure without rewriting that campaign.",
                 actual_grid_refined=check.get("actual_grid_refined"),
                 comparisons={k: check.get(k) for k in science_keys},
+                repeated_scientific_status=repeated_science,
             )
             if motion_status != "PASS" or sci != "PASS":
                 blockers.append(
-                    f"{case} {duration * 1e3:g} ms: numerical={num}, science={sci}, {check['status']}"
+                    f"{case} {duration * 1e3:g} ms: numerical={num}, science={sci}, frozen campaign={check['status']}, repeated science={repeated_science}"
                 )
         stages[str(duration)] = dict(
             cases=cases,
@@ -320,6 +347,8 @@ def main():
         blockers.append("Independent endpoint audit incomplete or failed")
     if not manufactured or manufactured["status"] != "PASS":
         blockers.append("Final-kernel manufactured convergence audit incomplete or failed")
+    if not repetitions or repetitions["status"] != "PASS":
+        blockers.append("Post-timing scientific repeatability audit incomplete or failed")
     motion_pass = five["continuous_motion_status"] == "PASS"
     science_pass = five["scientific_status"] == "PASS"
     promoted = (
@@ -332,6 +361,8 @@ def main():
         and tests.get("status") == "PASS"
         and manufactured
         and manufactured["status"] == "PASS"
+        and repetitions
+        and repetitions["status"] == "PASS"
     )
     native = read(BASE / "diagnosis/native_v1/SUMMARY.json")
     fixed = sorted(
@@ -364,6 +395,7 @@ def main():
         holdout_status=holdout["status"],
         independent_endpoint_audit_status=endpoint["status"] if endpoint else "NOT_RUN",
         manufactured_convergence_status=manufactured["status"] if manufactured else "NOT_RUN",
+        repeated_scientific_status=repetitions["status"] if repetitions else "NOT_RUN",
         performance=perf,
         partial_prefix_comparisons=partial,
         archived_full_duration_science=read(BASE / "final/ARCHIVED_SCIENCE.json"),
@@ -492,7 +524,13 @@ def report(gate, entries):
             text.append(
                 f"| {r['label']} | {r['compared_duration_s'] * 1e3:.8g} | {r['Rg_endpoint_relative'] * 100:.5g} / {r['Rg_series_relative_L2'] * 100:.5g} | {' / '.join(f'{x * 100:.5g}' for x in r['pair_quartiles_relative'])} | {r['centroid_difference_m'] * 1e9:.5g} / {r['centroid_budget_m'] * 1e9:.5g} | {r['status']} |"
             )
-    text += ["", "## Performance", ""]
+    text += [
+        "",
+        "## Performance",
+        "",
+        f"[Post-timing scientific repeatability](REPEAT_AUDIT.json): **{gate['repeated_scientific_status']}**. All measured repeats remain in the timing ledger. Adaptive step counts alone are not evidence of identical trajectories; repeated runs are compared against the first same-method run and, for new trajectories, the fresh first legacy reference under the unchanged scientific thresholds.",
+        "",
+    ]
     for r in gate["performance"]:
         text.append(
             f"- {r['case']} {r['duration_s'] * 1e3:g} ms: completion speedup {r['completion_speedup']}; new/reference repetitions {len(r['nominal_wall_s'])}/{len(r['reference_wall_s'])}; three-repeat sufficiency {r['repeatability_sufficient']}."
