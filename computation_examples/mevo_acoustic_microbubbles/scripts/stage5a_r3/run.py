@@ -92,7 +92,16 @@ def run(
     stop_after_macros=None,
 ):
     if label.startswith("formal"):
-        raise ValueError("R3 formal protocol is not frozen yet")
+        from scripts.stage5a_r3.freeze import verify
+
+        protocol = verify()
+        chosen = protocol["method"]["refined" if "refined" in label else "nominal"]
+        assert optimized and not components and workers == 1 and pair == "cupy"
+        assert method == "S1" and nonlinear_strategy == "quasi_newton" and nonsmooth_recovery
+        assert not fixture and not resume and stop_after_macros is None
+        assert max_dt == chosen["max_dt_s"] and tol_factor == chosen["tolerance_factor"]
+        assert s0_dt == chosen["S0_cap_s"] and initial_dt == protocol["method"]["initial_dt_s"]
+        assert duration in [0.001, 0.005]
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     out = BASE / "runs" / f"{stamp}_{case}_{method}_{duration:g}s_{label}"
     out.mkdir(parents=True)
