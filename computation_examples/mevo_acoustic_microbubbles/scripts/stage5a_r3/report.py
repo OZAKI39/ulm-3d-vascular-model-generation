@@ -75,15 +75,15 @@ def main():
         "",
         "Every comparison preserves original IDs and all 186/189 active particles, with the original 75/91-ID group and its complement also reported. Raw, translation-removed and rigid-fit errors are retained. Independent global trajectory bounds are NOT_ESTABLISHED, so these comparisons cannot promote a per-bubble reference.",
         "",
-        "| Case / named comparison | Common duration (ms) | Endpoint raw RMS / max (nm) | Worst sampled ID / time (s) | Common-time bound available |",
-        "|---|---:|---|---|---|",
+        "| Case / named comparison | Common duration (ms) | Endpoint raw RMS / max (nm) | Sampled maximum (nm) | Worst sampled ID / time (s) | Common-time bound available |",
+        "|---|---:|---|---:|---|---|",
     ]
     for r in comparisons:
         if not r.get("samples"):
             continue
         a = r["groups"]["all_active"]["errors_m"]["raw"]
         lines.append(
-            f"| {r['case']} / {r['name']} | {r['duration_s'] * 1000:.6g} | {value(a['endpoint']['rms'], 1e9)} / {value(a['endpoint']['max'], 1e9)} | {a['worst_particle_id']} / {a['worst_time_s']:.9f} | {r.get('sampling_bound_certified', False)} |"
+            f"| {r['case']} / {r['name']} | {r['duration_s'] * 1000:.6g} | {value(a['endpoint']['rms'], 1e9)} / {value(a['endpoint']['max'], 1e9)} | {value(a['whole_sampled_interval']['max'], 1e9)} | {a['worst_particle_id']} / {a['worst_time_s']:.9f} | {r.get('sampling_bound_certified', False)} |"
         )
     lines += [
         "",

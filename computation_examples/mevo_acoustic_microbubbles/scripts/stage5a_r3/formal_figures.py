@@ -223,7 +223,7 @@ def g4b():
 
 def g5c():
     rows = source(BASE / "final/FORMAL_COMPARISONS.json")["rows"]
-    fig, axs = plt.subplots(1, 2, figsize=(14, 5.5), layout="constrained")
+    fig, axs = plt.subplots(1, 2, figsize=(14, 5.5), sharey=True, layout="constrained")
     data = {}
     for ax, case in zip(axs, ["B2", "B3"]):
         chosen, labels = [], []
@@ -262,10 +262,11 @@ def g5c():
             title=case + " | named numerical lineages",
         )
         ax.tick_params(axis="x", labelsize=8)
-        ax.legend(fontsize=8)
         data[case + "_names"] = np.array([r["name"] for r in chosen])
         data[case + "_duration_s"] = np.array([r["duration_s"] for r in chosen])
         data[case + "_sampling_bound_certified"] = np.array([r["sampling_bound_certified"] for r in chosen])
+    handles, labels = axs[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="outside upper center", ncol=4, fontsize=9)
     save(
         fig,
         "G5c_full_reference_lineage",
