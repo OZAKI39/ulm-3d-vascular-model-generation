@@ -1,4 +1,4 @@
-"""Deploy committed source only; run bounded F1 jobs under server supervisor."""
+"""Deploy committed source only; run bounded F2 jobs under server supervisor."""
 
 import argparse
 from pathlib import Path
@@ -37,7 +37,7 @@ def main():
         text=True,
     )
     if dirty:
-        raise ValueError("Commit F1 executable sources before deployment: " + dirty)
+        raise ValueError("Commit F2 executable sources before deployment: " + dirty)
     repo = subprocess.check_output(["git", "rev-parse", "--show-toplevel"], cwd=ROOT, text=True).strip()
     raw = subprocess.check_output(
         [
