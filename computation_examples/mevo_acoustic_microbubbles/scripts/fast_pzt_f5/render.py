@@ -89,23 +89,46 @@ def flow_scene(x):
     p.camera_position = [cam["camera_eye_mm"], cam["camera_focal_mm"], cam["camera_up"]]
     p.enable_parallel_projection()
     p.camera.parallel_scale = 10.7
-    p.show_bounds(
-        bounds=(-14.5, 11.5, -7.5, 7.5, -2, 2),
-        grid="back",
-        location="outer",
-        all_edges=False,
-        xtitle="X (mm)",
-        ytitle="Y (mm)",
-        ztitle="Z (mm)",
-        color="#44505e",
-        font_size=17,
-        n_xlabels=4,
-        n_ylabels=4,
-        n_zlabels=3,
-        show_zlabels=True,
+    segments = []
+    for xx in [-14.5, -10, -5, 0, 5, 10, 11.5]:
+        segments.extend([[[xx, -7.5, -2], [xx, 7.5, -2]], [[xx, 7.5, -2], [xx, 7.5, 2]]])
+    for yy in [-7.5, -4, 0, 4, 7.5]:
+        segments.extend([[[-14.5, yy, -2], [11.5, yy, -2]], [[-14.5, yy, -2], [-14.5, yy, 2]]])
+    for zz in [-2, 0, 2]:
+        segments.extend([[[-14.5, -7.5, zz], [-14.5, 7.5, zz]], [[-14.5, 7.5, zz], [11.5, 7.5, zz]]])
+    mesh = pv.PolyData(
+        np.array(segments).reshape(-1, 3),
+        lines=np.array([[2, 2 * i, 2 * i + 1] for i in range(len(segments))]),
     )
+    p.add_mesh(mesh, color="#a8b3be", lighting=False, line_width=0.7)
     p.show(auto_close=False)
     im = Image.fromarray(p.screenshot(return_img=True))
+    draw = ImageDraw.Draw(im)
+    labels = []
+    for xx in [-10, 0, 10]:
+        labels.append(([xx, -7.5, -2], str(xx), (0, 20)))
+    for yy in [-4, 0, 4]:
+        labels.append(([11.5, yy, -2], str(yy), (24, 12)))
+    for zz in [-2, 0, 2]:
+        labels.append(([-14.5, -7.5, zz], str(zz), (-28, 0)))
+    labels.extend(
+        [
+            ([-1.5, -7.5, -2], "X (mm)", (0, 60)),
+            ([11.5, 0, -2], "Y (mm)", (76, 43)),
+            ([-14.5, -7.5, 2], "Z (mm)", (16, -45)),
+        ]
+    )
+    for point, label, offset in labels:
+        p.renderer.SetWorldPoint(*point, 1)
+        p.renderer.WorldToDisplay()
+        xx, yy, _ = p.renderer.GetDisplayPoint()
+        draw.text(
+            (xx + offset[0], im.height - 1 - yy + offset[1]),
+            label,
+            font=style.font(24),
+            fill="#364b5d",
+            anchor="mm",
+        )
     p.close()
     return im
 
@@ -210,6 +233,9 @@ def figures(out, d, cfg, analysis):
         ax.grid(alpha=0.17)
     axes[0, 0].legend(fontsize=9, loc="upper left")
     axes[0, 0].text(0.04, 0.62, "Solid: X; dotted: transverse", transform=axes[0, 0].transAxes, fontsize=9)
+    axes[0, 2].text(
+        0.04, 0.91, "λ1: solid   λ2: dashed   λ3: dotted", transform=axes[0, 2].transAxes, fontsize=9
+    )
     axes[1, 2].text(
         0.04, 0.90, "Solid: largest group; dotted: clusters", transform=axes[1, 2].transAxes, fontsize=9
     )
@@ -220,6 +246,7 @@ def figures(out, d, cfg, analysis):
         f"Persistent split events: {A['split_persistent']} (≥ 2 ms)",
         transform=axes[1, 2].transAxes,
         fontsize=9,
+        bbox=dict(facecolor="white", edgecolor="none", alpha=0.85, pad=2),
     )
     save(fig, out, "Fig_F5_3_release_comparison")
 
