@@ -85,11 +85,11 @@ def main(label):
     assert np.dot(moved, tangent) > 0.99 * 1e-4 * 0.001
     pair = np.array(
         [
-            anchor - normal * (r + 2e-9) - tangent * (r + 0.15e-6),
-            anchor - normal * (r + 2e-9) + tangent * (r + 0.15e-6),
+            anchor - normal * (r + 0.2e-6) - tangent * (r + 0.15e-6),
+            anchor - normal * (r + 0.2e-6) + tangent * (r + 0.15e-6),
         ]
     )
-    velocities = np.array([normal * 5e-5 + tangent * 3e-4, normal * 5e-5 - tangent * 3e-4])
+    velocities = np.array([normal * 3e-4 + tangent * 3e-4, normal * 3e-4 - tangent * 3e-4])
     run("pair_wall_coupling", pair, velocities)
     angle = np.pi / 6
     cloud = np.array([[0.004 * np.cos(angle), -0.004 * np.sin(angle), 0]])
