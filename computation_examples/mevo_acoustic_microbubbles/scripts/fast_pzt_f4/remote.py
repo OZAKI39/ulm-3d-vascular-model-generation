@@ -25,6 +25,7 @@ SSH = [
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("module")
+    ap.add_argument("--deploy-only", action="store_true")
     ap.add_argument("--label", required=True)
     ap.add_argument("--timeout", type=int, default=240)
     a, extra = ap.parse_known_args()
@@ -54,6 +55,7 @@ def main():
                     "scripts/fast_pzt_f4",
                     "configs",
                     "docs/FAST_PZT_F4_PLAN.md",
+                    "docs/FAST_PZT_F4_Y_GEOMETRY_DEVELOPMENT.md",
                 ]
             ],
         ],
@@ -98,6 +100,8 @@ for target in ['results','.venv']:
 p=execution/'SOURCE_F4_COMMIT.txt'
 if p.exists(): assert p.read_text().strip()==d['head']
 else: p.write_text(d['head']+'\\n')
+if d['deploy_only']:
+ print(json.dumps(d)); raise SystemExit(0)
 conf=Path('/etc/supervisor/conf.d')/(d['name']+'.conf'); assert not conf.exists(),'Use a new run label'
 out=root/'results/fast_pzt/f4'
 conf.write_text('[program:'+d['name']+']\\ncommand='+d['command']+'\\ndirectory='+str(execution)+'\\nautostart=false\\nautorestart=false\\nstartsecs=0\\nstopasgroup=true\\nkillasgroup=true\\nstdout_logfile='+str(out/(d['label']+'.log'))+'\\nstderr_logfile='+str(out/(d['label']+'.stderr.log'))+'\\nstdout_logfile_maxbytes=0\\nstderr_logfile_maxbytes=0\\nenvironment=PYTHONUNBUFFERED="1"\\n')
@@ -105,7 +109,13 @@ for args in [['reread'],['update',d['name']],['start',d['name']]]: subprocess.ru
 print(json.dumps(d))
 """
     data = dict(
-        root=SERVER, execution=execution, head=head, name=name, label=a.label, command=shlex.join(args)
+        root=SERVER,
+        execution=execution,
+        head=head,
+        name=name,
+        label=a.label,
+        command=shlex.join(args),
+        deploy_only=a.deploy_only,
     )
     script = script.replace("DATA", repr(data))
     subprocess.run(SSH + ["python3 -"], input=script, text=True, check=True)

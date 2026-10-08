@@ -461,9 +461,7 @@ def video(preview=False):
     write(
         VIS / "VIDEO_IDENTITY.json",
         dict(
-            sources={
-                n: hashlib.sha256((BASE / n / "trajectory.h5").read_bytes()).hexdigest() for n in sources
-            },
+            sources={n: js(BASE / n / "SAVED_METADATA.json")["original_sha256"] for n in sources},
             frame_count=len(idx),
             fps=60,
             physical_interval_s=0.001,
@@ -494,20 +492,20 @@ if __name__ == "__main__":
     ap.add_argument("--video", action="store_true")
     ap.add_argument("--preview", action="store_true")
     args = ap.parse_args()
+    launch_identity = dict(
+        render_execution_commit=subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
+        ).strip(),
+        source_sha256={
+            str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in [ROOT / "scripts/fast_pzt_f4/visualize.py", ROOT / "scripts/fast_pzt_f4/analyze.py"]
+        },
+        pyvista=pv.__version__,
+        vtk=pv.vtk_version_info,
+        scope="Offline source identity captured before rendering; scientific execution identities remain in original runs",
+    )
     if args.video or args.preview:
         video(args.preview)
     else:
         figures()
-    write(
-        BASE / "OFFLINE_RENDER_IDENTITY.json",
-        dict(
-            commit=subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
-            source_sha256={
-                str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest()
-                for p in [ROOT / "scripts/fast_pzt_f4/visualize.py", ROOT / "scripts/fast_pzt_f4/analyze.py"]
-            },
-            pyvista=pv.__version__,
-            vtk=pv.vtk_version_info,
-            scope="Offline rendering only; original execution identities remain in each run",
-        ),
-    )
+    write(BASE / "OFFLINE_RENDER_IDENTITY.json", launch_identity)

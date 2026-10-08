@@ -29,6 +29,9 @@ def read(path):
 
 
 def compact(path):
+    if not (path / "trajectory.h5").exists():
+        assert (path / "SAVED_METADATA.json").exists()
+        return
     d = read(path)
     parts = {"STATE": {}, "METRICS": {}, "DIAGNOSTICS": {}}
     for k, v in d.items():
@@ -80,7 +83,7 @@ def summarize(path):
     return dict(
         status=s["status"],
         numerical_quality=s["numerical_quality"],
-        source_sha256=hashlib.sha256((path / "trajectory.h5").read_bytes()).hexdigest(),
+        source_sha256=js(path / "SAVED_METADATA.json")["original_sha256"],
         wall_s=s["wall_s"],
         process_body_wall_s=s["process_body_wall_s"],
         physical_duration_s=float(d["time_s"][-1]),
