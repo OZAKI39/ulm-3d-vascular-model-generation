@@ -415,9 +415,10 @@ def video(preview=False):
                 actor.position = pos
             for actor, pos in zip(ga, x[i] * 1000):
                 actor.position = pos
-            title.SetInput(
+            title.SetText(
+                3,
                 f"t = {t[i] * 1000:.1f} ms | Nmax = {nc[i]}\n"
-                + ("Y+ phase +30 deg" if t[i] >= 0.6 else "Fixed PZT control")
+                + ("Y+ phase +30 deg" if t[i] >= 0.6 else "Fixed PZT control"),
             )
             p.render()
             p.screenshot(VIS / f"preview_{i:04d}.png")
@@ -441,9 +442,10 @@ def video(preview=False):
             actor.position = pos
         for actor, pos in zip(ga, x[i] * 1000):
             actor.position = pos
-        title.SetInput(
+        title.SetText(
+            3,
             f"t = {t[i] * 1000:.1f} ms | Nmax = {nc[i]}\n"
-            + ("Y+ phase +30 deg" if t[i] >= 0.6 else "Fixed PZT control")
+            + ("Y+ phase +30 deg" if t[i] >= 0.6 else "Fixed PZT control"),
         )
         p.render()
         img = p.screenshot(return_img=True)
