@@ -98,7 +98,7 @@ p=execution/'SOURCE_F3_COMMIT.txt'
 if p.exists(): assert p.read_text().strip()==d['head']
 else: p.write_text(d['head']+'\\n')
 conf=Path('/etc/supervisor/conf.d')/(d['name']+'.conf'); assert not conf.exists(),'Use a new run label'
-out=root/'results/fast_pzt/f2'
+out=root/'results/fast_pzt/f3'
 conf.write_text('[program:'+d['name']+']\\ncommand='+d['command']+'\\ndirectory='+str(execution)+'\\nautostart=false\\nautorestart=false\\nstartsecs=0\\nstopasgroup=true\\nkillasgroup=true\\nstdout_logfile='+str(out/(d['label']+'.log'))+'\\nstderr_logfile='+str(out/(d['label']+'.stderr.log'))+'\\nstdout_logfile_maxbytes=0\\nstderr_logfile_maxbytes=0\\nenvironment=PYTHONUNBUFFERED="1"\\n')
 for args in [['reread'],['update',d['name']],['start',d['name']]]: subprocess.run(['supervisorctl',*args],check=True)
 print(json.dumps(d))

@@ -2,6 +2,7 @@ from pathlib import Path
 import json
 import hashlib
 import numpy as np
+from scripts.fast_pzt_f2.common import write as write
 
 ROOT = Path(__file__).resolve().parents[2]
 BASE = ROOT / "results/fast_pzt/f3"
