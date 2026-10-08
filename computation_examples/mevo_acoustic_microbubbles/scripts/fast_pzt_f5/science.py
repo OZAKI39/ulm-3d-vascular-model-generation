@@ -129,6 +129,10 @@ def main(label, checks):
     timings["secondary_pair_force_32"] = measure(sim, on, sim.pairs)
 
     def contact():
+        # Benchmark one contact pass with its scheduled F4 wall pass. F4's
+        # physical step initializes this counter; a component-only timing must
+        # initialize it explicitly too.
+        sim._pair_contact_pass = 2
         sim.launch(
             k.contact,
             sim.total,
