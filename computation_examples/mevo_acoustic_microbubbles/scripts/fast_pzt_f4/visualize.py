@@ -250,7 +250,7 @@ def figures():
             ax.imshow(img)
             ax.axis("off")
             ax.set_title(
-                f"{region.title()} | t = {d['time_s'][idx] * 1000:.1f} ms | Nmax = {d['largest_size'][idx, 0]}",
+                f"{region.title()} | t = {d['time_s'][idx] * 1000:.1f} ms; Nmax = {d['largest_size'][idx, 0]}",
                 fontsize=11,
             )
         plot_data[region + "_snapshots_m"] = states
@@ -377,7 +377,7 @@ def video(preview=False):
     p = pv.Plotter(off_screen=True, shape=(1, 2), window_size=size, lighting="three lights", border=False)
     p.subplot(0, 0)
     global_scene(p, white=False, initial=False)
-    p.camera.parallel_scale = 18.0
+    p.camera.parallel_scale = 20.0
     ga = bubbles(p, x[0] * 1000, R * 1000, False)
     roi = x[0].mean(axis=0) * 1000
     p.add_mesh(
@@ -388,22 +388,24 @@ def video(preview=False):
         reset_camera=False,
     )
     p.add_text(
-        "Original Y vessel | global view\nRed: supported WALL | purple: stored field\nOutline: location of the local view",
+        "Original Y vessel, global view\nRed: supported WALL; purple: stored field\nOutline: location of the local view",
         position=(20, 970),
         font_size=15,
         color="#e0e9f5",
     )
     p.add_text(
-        "GEOMETRIC_WALL_ONLY / EXPLORATORY\nNo flow | R = 1.78 um | N = 32\nDaughters extend beyond the stored field",
+        "GEOMETRIC_WALL_ONLY / EXPLORATORY\nNo flow; R = 1.78 um; N = 32\nDaughters extend beyond the stored field",
         position=(20, 20),
         font_size=14,
         color="#b5c1d0",
     )
     p.subplot(0, 1)
     aa, origin, meta = local_scene(p, "parent", x, white=False)
+    p.camera.parallel_scale *= 1.12
+    meta["parallel_scale_um"] = p.camera.parallel_scale
     title = p.add_text("", position=(20, 970), font_size=18, color="#edf3fd")
     p.add_text(
-        "Local view | actual sphere radius\nSame physical time as global view\n1 ms physical time per video frame",
+        "Local view, actual sphere radius\nSame physical time as global view\n1 ms physical time per video frame",
         position=(20, 20),
         font_size=14,
         color="#bac6d8",
@@ -417,7 +419,7 @@ def video(preview=False):
             for actor, pos in zip(ga, x[i] * 1000):
                 actor.position = pos
             title.SetInput(
-                f"t = {t[i] * 1000:.1f} ms | Nmax = {nc[i]}\n"
+                f"t = {t[i] * 1000:.1f} ms; Nmax = {nc[i]}\n"
                 + ("Y+ phase +30 deg" if t[i] >= 0.6 else "Fixed PZT control"),
             )
             p.render()
@@ -443,7 +445,7 @@ def video(preview=False):
         for actor, pos in zip(ga, x[i] * 1000):
             actor.position = pos
         title.SetInput(
-            f"t = {t[i] * 1000:.1f} ms | Nmax = {nc[i]}\n"
+            f"t = {t[i] * 1000:.1f} ms; Nmax = {nc[i]}\n"
             + ("Y+ phase +30 deg" if t[i] >= 0.6 else "Fixed PZT control"),
         )
         p.render()
