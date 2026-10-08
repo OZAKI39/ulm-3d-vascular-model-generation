@@ -38,7 +38,7 @@ def mesh():
     return m, m.extract_cells(m["ModelFaceID"] == 1).extract_surface(algorithm="dataset_surface")
 
 
-def axes(p, bounds, unit, white, font=13):
+def axes(p, bounds, unit, white, font=20):
     p.show_bounds(
         bounds=bounds,
         grid="back",
@@ -105,7 +105,7 @@ def global_scene(p, white=True, initial=True):
         p.add_point_labels(
             [center + [0, 0, 1.6]],
             [label],
-            font_size=15,
+            font_size=23,
             text_color="#303741" if white else "#d4deeb",
             shape=None,
             show_points=False,
@@ -128,7 +128,7 @@ def global_scene(p, white=True, initial=True):
             p.add_point_labels(
                 [center + [0, 0, 1.3]],
                 [region.title() + " ROI"],
-                font_size=14,
+                font_size=22,
                 text_color=COLORS[region],
                 shape=None,
                 show_points=False,
@@ -165,10 +165,10 @@ def local_scene(p, region, states, white=True, extent=None):
         reset_camera=False,
     )
     actors = bubbles(p, coords[0], R * 1e6, white)
-    axes(p, bounds, "um", white, font=13)
+    axes(p, bounds, "um", white, font=20)
     p.camera_position = [center + extent * np.array([0.85, -1.1, 1.5]), center, [0, 0, 1]]
     p.enable_parallel_projection()
-    p.camera.parallel_scale = extent * 0.72
+    p.camera.parallel_scale = extent * 0.93
     return (
         actors,
         origin,
@@ -377,6 +377,7 @@ def video(preview=False):
     p = pv.Plotter(off_screen=True, shape=(1, 2), window_size=size, lighting="three lights", border=False)
     p.subplot(0, 0)
     global_scene(p, white=False, initial=False)
+    p.camera.parallel_scale = 18.0
     ga = bubbles(p, x[0] * 1000, R * 1000, False)
     roi = x[0].mean(axis=0) * 1000
     p.add_mesh(
@@ -388,22 +389,22 @@ def video(preview=False):
     )
     p.add_text(
         "Original Y vessel | global view\nRed: supported WALL | purple: stored field\nOutline: location of the local view",
-        position="upper_left",
+        position=(20, 970),
         font_size=15,
         color="#e0e9f5",
     )
     p.add_text(
         "GEOMETRIC_WALL_ONLY / EXPLORATORY\nNo flow | R = 1.78 um | N = 32\nDaughters extend beyond the stored field",
-        position="lower_left",
+        position=(20, 20),
         font_size=14,
         color="#b5c1d0",
     )
     p.subplot(0, 1)
     aa, origin, meta = local_scene(p, "parent", x, white=False)
-    title = p.add_text("", position="upper_left", font_size=18, color="#edf3fd")
+    title = p.add_text("", position=(20, 970), font_size=18, color="#edf3fd")
     p.add_text(
         "Local view | actual sphere radius\nSame physical time as global view\n1 ms physical time per video frame",
-        position="lower_left",
+        position=(20, 20),
         font_size=14,
         color="#bac6d8",
     )
@@ -415,8 +416,7 @@ def video(preview=False):
                 actor.position = pos
             for actor, pos in zip(ga, x[i] * 1000):
                 actor.position = pos
-            title.SetText(
-                3,
+            title.SetInput(
                 f"t = {t[i] * 1000:.1f} ms | Nmax = {nc[i]}\n"
                 + ("Y+ phase +30 deg" if t[i] >= 0.6 else "Fixed PZT control"),
             )
@@ -442,8 +442,7 @@ def video(preview=False):
             actor.position = pos
         for actor, pos in zip(ga, x[i] * 1000):
             actor.position = pos
-        title.SetText(
-            3,
+        title.SetInput(
             f"t = {t[i] * 1000:.1f} ms | Nmax = {nc[i]}\n"
             + ("Y+ phase +30 deg" if t[i] >= 0.6 else "Fixed PZT control"),
         )

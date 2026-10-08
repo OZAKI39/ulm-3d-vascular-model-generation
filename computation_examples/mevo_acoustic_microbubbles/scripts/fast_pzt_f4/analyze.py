@@ -164,7 +164,7 @@ def main():
             definitions=dict(
                 cluster_link="center separation <= 2.1 R",
                 wall_contact="saved gap <= 0.01 R; count of bubbles",
-                pair_hard_contact="inherited metric definition; see metrics.py",
+                pair_hard_contact="pair gap <= 0.001 R, counted once per unordered pair",
                 Rg="all 32 fixed IDs",
             ),
             interpretation="Actual PZT, zero flow, no prescribed velocity. WALL OFF is the unconfined F3 comparator; its negative physical wall gaps are expected and are not a wall-validation pass.",
