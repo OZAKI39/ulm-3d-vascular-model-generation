@@ -48,3 +48,15 @@ a synchronized local view at true sphere radii. The original mesh is parametric,
 not patient-specific. All claims remain EXPLORATORY and GEOMETRIC_WALL_ONLY.
 Execution SHAs, source/mesh/input hashes, failures, logs and closed evidence are
 preserved separately from the final archive commit and pushed on the new branch.
+
+Pre-trajectory field preflight amendment: the inherited zero-phase F3 drive gives
+only 124 Pa RMS at the actual parent patch and 50 Pa at the junction patch, versus
+860 Pa at the old central mature state. Before any acoustic trajectory, select
+the analytic conjugate basis phase at each fixed initial cloud center, using all
+four source amplitudes at the existing 291.2376877 Pa campaign cap. This produces
+296/688 Pa RMS without a new field or force formula. The formation window is
+fixed at 600 ms. The continuation changes only Y+ phase by +30 degrees; source
+amplitudes/enables remain unchanged. Both local RMS changes (~2%) are recorded.
+This supersedes the earlier F3-control/120ms formation choice above using measured
+field evidence alone; there is no trajectory-driven search. The 120ms continuation
+and all physics, quality budgets and initialization coordinates remain unchanged.
