@@ -41,9 +41,9 @@ def main(label):
     cross = np.mean(a * np.conj(b))
     offset = np.mean(abs(a) ** 2 + abs(b) ** 2)
     cosine = float((target - offset) / (2 * abs(cross)))
-    assert -1 <= cosine <= 1, "Analytic phase candidate unavailable; retain failure, no search"
-    roots = [float(np.angle(cross) + s * np.arccos(cosine)) for s in [-1, 1]]
-    phase_z = dict(base, phase_rad=[0, 0, float(np.pi / 6), min(roots, key=abs)])
+    phase_z_available = -1 <= cosine <= 1
+    roots = [float(np.angle(cross) + s * np.arccos(cosine)) for s in [-1, 1]] if phase_z_available else []
+    phase_z = dict(base, phase_rad=[0, 0, float(np.pi / 6), (min(roots, key=abs) if roots else 0.0)])
     candidates = [
         ("unchanged", "baseline", base),
         ("phase_F2", "phase", phase),
@@ -161,6 +161,11 @@ def main(label):
             <= PROTOCOL["screening"]["pressure_RMS_relative_tolerance"]
             and row["control_difference"]["mobility_kinematics"]["status"] == "IDENTIFIABLE"
         )
+        if name == "phase_Z" and not phase_z_available:
+            row["eligible"] = False
+            row["ineligible_reason"] = (
+                "No exact ROI RMS-matching root with Z+ fixed at 30 degrees; Z-=0 is retained only as the declared unavailable-slot field diagnostic, not a replacement search"
+            )
         row["score_per_s"] = row["control_difference"]["mobility_kinematics"].get(
             "deviatoric_strain_norm_per_s", 0.0
         )
@@ -208,6 +213,7 @@ def main(label):
         candidate_rows=rows,
         selected=selected,
         phase_Z_analytic_roots_rad=roots,
+        phase_Z_cosine_constraint=cosine,
         differential_driving_status="FIELD_DIFFERENTIAL_DRIVE_LIMITED"
         if limited
         else "DIFFERENTIAL_DRIVE_MEASURED",

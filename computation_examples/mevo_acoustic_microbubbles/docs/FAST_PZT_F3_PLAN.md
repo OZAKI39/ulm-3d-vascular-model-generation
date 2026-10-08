@@ -50,3 +50,9 @@ campaign. Four English figures use actual spheres and fixed camera/scale, with e
 force-vector scaling. A short actual-frame comparison movie may illustrate a negative
 or non-identifiable result. Closed raw trajectories, execution identities, failed runs,
 logs, hashes, report and module gates are archived; old F1/F2 files are read-only.
+
+The Z-pair analytic RMS equation has no feasible root on the actual small ROI in
+the initial field attempt. That candidate slot is marked ineligible, with Z−=0
+retained only for field diagnostics. No extra control replaces it; the six-slot
+budget and original F2 phase candidate are retained. Failed startup/field attempts
+remain logged. No dynamic result was observed before this disposition.
