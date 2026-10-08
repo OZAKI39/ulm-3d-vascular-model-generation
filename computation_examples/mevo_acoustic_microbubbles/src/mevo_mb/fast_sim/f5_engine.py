@@ -93,6 +93,7 @@ class F5FlowSimulator(F4VesselSimulator):
             )
         self.flow_query = QueryBuffers(self.total, self.device)
         self.flow_observation = QueryBuffers(self.total, self.device)
+        self.observation_error = wp.zeros(1, dtype=int, device=self.device)
         self._f5_ready = True
 
     def reset(self):
@@ -277,32 +278,39 @@ class F5FlowSimulator(F4VesselSimulator):
         return super().launch(kernel, dim, args)
 
     def state(self):
-        try:
-            x = super().state()
-        except RuntimeError as exc:
-            raise RuntimeError(str(exc) + "; F5 bit 16384=FLOW_DOMAIN_INVALID (no extrapolation)") from exc
+        observation = None
         if self._f5_ready and self._flow_frames is not None:
             if self.flow is not None:
-                self.flow.launch(self.x, self.active, self.pending, self.flow_observation, self.error)
-                code = int(self.error.numpy()[0])
-                if code:
+                # Disabled flow diagnostics must not restrict F4's physical
+                # domain. Invalid diagnostic samples remain explicitly invalid.
+                self.observation_error.zero_()
+                self.flow.launch(
+                    self.x, self.active, self.pending, self.flow_observation, self.observation_error
+                )
+                code = int(self.observation_error.numpy()[0])
+                if code and self.flow_enabled:
+                    self.error.assign(np.array([code], dtype=np.int32))
                     raise RuntimeError("Invalid saved flow query, bit=" + str(code))
             b = self.flow_observation
             u = b.velocity.numpy()
             valid = b.valid.numpy().astype(bool)
             u[~valid] = np.nan
-            self._flow_frames.append(
-                dict(
-                    velocity_m_s=u.reshape(self.batch, self.n, 3),
-                    gradient_s_inv=b.gradient.numpy().reshape(self.batch, self.n, 3, 3),
-                    valid=valid.reshape(self.batch, self.n),
-                    tetra_id=b.cache.numpy().reshape(self.batch, self.n),
-                    stats=self.flow_query.stats.numpy().reshape(self.batch, self.n, 4),
-                    flow_enabled=self.flow_enabled,
-                    acoustic_enabled=self.acoustic_enabled,
-                    secondary_enabled=self.secondary_enabled,
-                )
+            observation = dict(
+                velocity_m_s=u.reshape(self.batch, self.n, 3),
+                gradient_s_inv=b.gradient.numpy().reshape(self.batch, self.n, 3, 3),
+                valid=valid.reshape(self.batch, self.n),
+                tetra_id=b.cache.numpy().reshape(self.batch, self.n),
+                stats=self.flow_query.stats.numpy().reshape(self.batch, self.n, 4),
+                flow_enabled=self.flow_enabled,
+                acoustic_enabled=self.acoustic_enabled,
+                secondary_enabled=self.secondary_enabled,
             )
+        try:
+            x = super().state()
+        except RuntimeError as exc:
+            raise RuntimeError(str(exc) + "; F5 bit 16384=FLOW_DOMAIN_INVALID (no extrapolation)") from exc
+        if observation is not None:
+            self._flow_frames.append(observation)
         return x
 
     def run(self, *args, **kwargs):
@@ -339,7 +347,10 @@ class F5FlowSimulator(F4VesselSimulator):
                 particle_failure_count=self.flow_query.stats.numpy()[:, 3],
                 time_bracket_s=[
                     float(result["time_s"][-1]),
-                    float(result["time_s"][-1] + kwargs.get("sample_interval_s", 0.0005)),
+                    float(
+                        result["time_s"][-1]
+                        + kwargs.get("sample_interval_s", args[3] if len(args) > 3 else 1e-4)
+                    ),
                 ],
             )
         self._flow_frames = None

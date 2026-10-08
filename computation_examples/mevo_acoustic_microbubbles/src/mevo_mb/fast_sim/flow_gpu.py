@@ -60,6 +60,11 @@ def tetra_query(
     if error[0] != 0:
         return
     stats[i, 0] = stats[i, 0] + 1
+    if not wp.isfinite(x[i][0]) or not wp.isfinite(x[i][1]) or not wp.isfinite(x[i][2]):
+        stats[i, 3] = stats[i, 3] + 1
+        failed_x[i] = x[i]
+        wp.atomic_or(error, 0, 16384)
+        return
     found = int(-1)
     w = wp.vec4d(wp.float64(0.0))
     previous = cache[i]

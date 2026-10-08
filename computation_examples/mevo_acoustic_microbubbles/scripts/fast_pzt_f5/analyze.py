@@ -94,6 +94,11 @@ def series(d):
         final_cluster_count=int(out["cluster_count"][-1]),
         initial_largest_size=int(out["largest_size"][0]),
         final_largest_size=int(out["largest_size"][-1]),
+        first_full_cluster_saved_time_s=(
+            float(time[np.flatnonzero(out["largest_size"] == n)[0]])
+            if np.any(out["largest_size"] == n)
+            else None
+        ),
         initial_nearest_neighbor_mean_m=float(nearest[0].mean()),
         final_nearest_neighbor_mean_m=float(nearest[-1].mean()),
         final_neighbor_pair_changes=int(changed[-1]),
@@ -159,6 +164,9 @@ def main(label, f4_reference):
             largest_size=int(h["metrics/largest_size"][frame, 0]),
             cluster_count=int(h["metrics/cluster_count"][frame, 0]),
             rg_m=float(h["metrics/global_rg_m"][frame, 0]),
+            first_full_cluster_saved_time_s=float(
+                h["time_s"][np.flatnonzero(h["metrics/largest_size"][: frame + 1, 0] == 32)[0]]
+            ),
         )
         np.savez_compressed(
             run / "F4_ON_NO_FLOW_REFERENCE.npz",
@@ -188,6 +196,8 @@ def main(label, f4_reference):
             B="Same physical state, all acoustics and background flow zero; residual numerical contact relaxation may remain",
             topology="Distance-based connected components (gap <= 0.1R), persistent after 2 ms; split/merge does not mean bubble fragmentation/fusion",
             strain="Gradient of prescribed CFD P1 flow, distinct from measured bubble deformation; no wall hydrodynamic lubrication",
+            disabled_flow_diagnostics="B stores the original prescribed field as diagnostic values at saved positions, but its applied flow is exactly zero. See flow_enabled.",
+            nearest_neighbor_caution="Nearest-ID changes alone are sensitive to ties at contact. B changes some nearest IDs through sub-nanometre numerical contact relaxation, while graph-neighbor changes and persistent splits remain zero.",
         ),
     )
     write(BASE / "ON_OFF_FLOW_COMPARISON.json", comparison)

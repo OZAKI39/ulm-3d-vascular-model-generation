@@ -56,12 +56,15 @@ def main(label):
         np.savez_compressed(out / (name + "_interpolation.npz"), positions_m=x, CPU_velocity_m_s=ref, **gpu)
     outside = flow.sample(np.array([[0.0, 0.0, 0.003]]))
     assert not outside["valid"].any() and outside["error"] & 16384
+    nonfinite = flow.sample(np.array([[np.nan, 0.0, 0.0]]))
+    assert not nonfinite["valid"].any() and nonfinite["error"] & 16384
     validation = dict(
         status="PASS",
         identity=identity(),
         flow=flow.metadata,
         groups=interpolation,
         outside_rejected=True,
+        nonfinite_rejected=True,
         scope="Interpolation of stored CFD values, not CFD mesh/physical validation",
     )
     write(out / "FLOW_GPU_VALIDATION.json", validation)
@@ -203,6 +206,15 @@ def main(label):
     r5 = f5.run(0.001, 1e-5, [base_event], 0.0001, 30)
     np.testing.assert_array_equal(r4["positions_m"], r5["positions_m"])
     rows["flow_disabled_F4_compatibility"] = dict(bitwise_positions=True, steps=100)
+    no_driving = dict(zero, flow_enabled=False, mode="ULTRASOUND_OFF_FLOW_OFF")
+    _, r = execute(
+        "flow_disabled_outside_CFD", np.array([[0.0, 0.0, 0.003]]), flow, [no_driving], duration=0.0001
+    )
+    np.testing.assert_array_equal(r["positions_m"][-1], r["positions_m"][0])
+    assert not r["flow"]["valid"].any()
+    rows["flow_disabled_outside_CFD"].update(
+        invalid_diagnostics_preserved=True, disabled_field_does_not_restrict_motion=True
+    )
     write(out / "RESULT.json", dict(status="PASS", rows=rows, identity=identity(), warp=wp.__version__))
     print("F5 basic checks PASS", flush=True)
 
