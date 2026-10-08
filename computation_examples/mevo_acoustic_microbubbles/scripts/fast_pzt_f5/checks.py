@@ -1,6 +1,7 @@
 """Small preregistered interpolation, coupling, and domain-semantics checks."""
 
 import argparse
+import h5py
 import numpy as np
 from scipy.linalg import expm
 import warp as wp
@@ -215,6 +216,24 @@ def main(label):
     rows["flow_disabled_outside_CFD"].update(
         invalid_diagnostics_preserved=True, disabled_field_does_not_restrict_motion=True
     )
+    archive = BASE / "science_v1/main/trajectory.h5"
+    if archive.exists():
+        # Diagnostic-only fixes must preserve the completed scientific data.
+        with h5py.File(archive) as h:
+            for name, start, event in [("ON", 0, on), ("OFF", 600, off)]:
+                x0 = h["positions_m"][start, 0]
+                reference = h["positions_m"][start : start + 3]
+                _, rr = execute(
+                    "archived_" + name + "_prefix",
+                    x0,
+                    flow,
+                    [event],
+                    duration=0.001,
+                    real_basis=True,
+                    vessel=True,
+                )
+                np.testing.assert_array_equal(rr["positions_m"][::5], reference)
+                rows["archived_" + name + "_prefix"]["bitwise_equal_to_archived_physics"] = True
     write(out / "RESULT.json", dict(status="PASS", rows=rows, identity=identity(), warp=wp.__version__))
     print("F5 basic checks PASS", flush=True)
 
