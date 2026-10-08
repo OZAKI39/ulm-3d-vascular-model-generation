@@ -60,3 +60,8 @@ amplitudes/enables remain unchanged. Both local RMS changes (~2%) are recorded.
 This supersedes the earlier F3-control/120ms formation choice above using measured
 field evidence alone; there is no trajectory-driven search. The 120ms continuation
 and all physics, quality budgets and initialization coordinates remain unchanged.
+
+Continuation uses a bounded 2×2 comparison (WALL OFF/ON × unchanged/switched PZT)
+from the exact same final formation state. This separates wall and control effects
+without treating different initial clouds as a control contrast. It adds no seeds,
+parameter search, force changes or high-fidelity solver.
