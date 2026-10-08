@@ -12,6 +12,7 @@ from mevo_mb.fast_sim.f3_engine import F3Simulator
 from mevo_mb.fast_sim.storage import save_run
 from .common import BASE, ROOT, PROTOCOL, identity, write
 from scripts.fast_pzt_f2.common import quality_pass
+from .snapshot import evaluate
 
 
 def run_case(out, cfg):
@@ -45,6 +46,8 @@ def run_case(out, cfg):
         execution_mode=cfg.get("execution_mode", "stable_reduction"),
         particle_block_dim=cfg.get("particle_block_dim", 32),
     )
+    if cfg.get("capture_initial_force", False):
+        np.savez_compressed(out / "INITIAL_STATE_FORCE.npz", **evaluate(sim, cfg["events"][0]))
     result = sim.run(
         cfg["duration_s"],
         cfg.get("dt_s", PROTOCOL["dt_s"]),
