@@ -1,0 +1,13 @@
+# Frozen size and lifetime policy
+
+Reference volume V_node = dx^3 = 125000 um^3. d_eq=(6 N dx^3/pi)^(1/3), the volume-equivalent sphere diameter, not a longest dimension or measured biological particle diameter. Threshold node counts are ceil(pi d^3/(6 dx^3)): >=200 um requires 34 nodes; >=300 um requires 114, not 113.
+
+Only DETACHED clot-only components count for these thresholds. Any surviving interface bond to a fixed anchor makes its entire bulk component ATTACHED. Wall nodes are excluded from all clot mass and size statistics. COM displacement from reference and from first detachment is recorded separately; topological release does not imply physical clearance from the wall.
+
+The 200 um scale is a literature reporting reference: Chueh et al. used >200 um; this round reports >=200 um. The 300 um scale is a project engineering display threshold for this dx, not a published rupture/embolism threshold. One/two-node debris remains NUMERICALLY_UNRESOLVED_DEBRIS. The historical >=3-node classifier is unchanged and never renamed a large-fragment classifier.
+
+Track exact sets of original clot particle IDs. Reuse identity only if membership is unchanged between consecutive saved frames. At every split, all daughters start new membership episodes, with overlap counts and parent links recorded. No largest-daughter relabeling as an unchanged whole fragment. Deletion-only bonds imply no mergers; any multi-parent assignment is explicitly ambiguous and fails this round's normality gate. Episode counts are not counts of independent emboli. Also report maximum simultaneous count and mass, which avoid episode double counting.
+
+For each >=114-node candidate use reference-position PCA axes; record both center-point spans and spans including the projected support of the original dx-wide cubic nodal cells (dx * sum(abs(axis))). Apply the 2dx shortest-axis flag to the latter physical cell extent. This avoids labeling a one-cell-thick chain as a three-dimensional large block. Degenerate PCA directions may be nonunique; axes and both span definitions are retained. Candidates are never filtered out.
+
+Persistence label: >=3 consecutive native saved frames with unchanged membership while detached and above the chosen threshold. Exact observed span = last_seen - first_seen; left-hold duration extends to the next saved observation when an episode ends. Right-censored episodes do not extend beyond the fixed end. Also report total frame count and presence duration for the threshold as a whole. PERSISTENT_LARGE_DETACHED_FRAGMENT uses >=300 um, with separate >=200 persistence data. These are engineering labels, not biological time thresholds.

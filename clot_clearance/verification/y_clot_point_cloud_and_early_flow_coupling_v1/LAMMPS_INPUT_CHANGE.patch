@@ -1,0 +1,31 @@
+--- old_C1/in.lammps
++++ early_flow_C1/in.lammps
+@@ -496,9 +496,10 @@
+ variable load_fy atom d_area*780.23222477803051*v_amp*v_spatial*d_ty
+ variable load_fz atom d_area*780.23222477803051*v_amp*v_spatial*d_tz
+ fix stream surface addforce v_load_fx v_load_fy v_load_fz
+-fix drag clot viscous 6.250000000000001e-08
+ fix wallprops all property/atom d_wclear d_wpen d_wtri
+ fix nativewall clot external pf/callback 1 1
++fix flowprops all property/atom d_dragx d_dragy d_dragz d_numx d_numy d_numz
++fix earlyflow clot external pf/callback 1 1
+ fix fixed anchors setforce 0 0 0
+ fix integrate clot nve
+ timestep 4.9999999999999998e-07
+@@ -510,12 +511,12 @@
+ fix force_history all ave/time 1 1 1 v_actual_budget c_peak_tau c_force_budget[1] c_force_budget[2] c_force_budget[3] c_force_budget[4] file force_history.dat
+ thermo 100
+ thermo_style custom step time atoms bonds v_amp v_actual_budget ke
+-thermo_modify lost error lost/bond error flush yes format float %.15g
++thermo_modify lost error lost/bond error flush yes format float %.17g
+ timer full
+-dump trajectory all custom 20 trajectory.lammpstrj id type x y z vx vy vz fx fy fz d_damage v_load_fx v_load_fy v_load_fz d_wclear d_wpen d_wtri f_nativewall[1] f_nativewall[2] f_nativewall[3]
+-dump_modify trajectory sort id format float %.15g
++dump trajectory all custom 20 trajectory.lammpstrj id type x y z vx vy vz fx fy fz d_damage v_load_fx v_load_fy v_load_fz d_wclear d_wpen d_wtri f_nativewall[1] f_nativewall[2] f_nativewall[3] d_dragx d_dragy d_dragz d_numx d_numy d_numz
++dump_modify trajectory sort id format float %.17g
+ dump broken all local 20 broken_bonds.local index f_breaks[1] f_breaks[2] f_breaks[3] f_breaks[4] f_breaks[5] f_breaks[6] f_breaks[7] f_breaks[8] f_breaks[9]
+-dump_modify broken format float %.15g
++dump_modify broken format float %.17g
+ compute topology all property/local batom1 batom2 btype
+ dump topology all local 4660 surviving_bonds.local index c_topology[1] c_topology[2] c_topology[3]
+ run 4660

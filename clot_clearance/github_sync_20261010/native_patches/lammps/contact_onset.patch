@@ -1,0 +1,180 @@
+diff --git a/doc/src/pair_bpm_peri.rst b/doc/src/pair_bpm_peri.rst
+index 115731f..163161a 100644
+--- a/doc/src/pair_bpm_peri.rst
++++ b/doc/src/pair_bpm_peri.rst
+@@ -8,7 +8,7 @@ Syntax
+ 
+ .. code-block:: LAMMPS
+ 
+-   pair_style bpm/peri
++   pair_style bpm/peri [contact_distance_factor value]
+ 
+ Examples
+ """"""""
+@@ -17,6 +17,8 @@ Examples
+ 
+    pair_style bpm/peri
+    pair_coeff * * 1.6863e22 0.0015001
++   pair_style bpm/peri contact_distance_factor 1.0
++   pair_coeff * * 1.6863e22 0.0015001
+ 
+ Description
+ """""""""""
+@@ -34,7 +36,7 @@ bonded (for example new contacts that form after fracture or large
+ deformation).
+ 
+ For a pair of non-bonded nodes within the contact distance
+-:math:`d = 1.35\, l_c` (where :math:`l_c` is the lattice spacing) the
++:math:`d = f_c\, l_c` (where :math:`l_c` is the lattice spacing) the
+ force has magnitude
+ 
+ .. math::
+@@ -47,6 +49,15 @@ mean nodal volume of the two nodes (read from the per-atom *vfrac*
+ property declared for the bond style).  The factor 15 follows the EMU
+ Theory Manual convention used by the legacy peridynamic styles.
+ 
++.. versionadded:: TBD
++
++The optional *contact_distance_factor* sets the finite positive factor
++:math:`f_c`, whose default is 1.35. A value of 1.0 starts repulsion below
++one lattice spacing. It changes neither the contact stiffness nor any
++bond coefficient. The pair cutoff still limits the neighbor range, so
++choose the onset within that range. This option is an engineering model
++choice, not a measured material contact radius.
++
+ The following coefficients must be defined for each pair of atom types
+ via the :doc:`pair_coeff <pair_coeff>` command as in the example above,
+ or in the restart files read by the :doc:`read_restart <read_restart>`
+@@ -73,6 +84,10 @@ This pair style writes its information to :doc:`binary restart files
+ <restart>`, so pair_style and pair_coeff commands do not need to be
+ specified in an input script that reads a restart file.
+ 
++Restart files using the default factor retain the original layout.
++Restart files with a nondefault factor store that value and require a
++LAMMPS executable supporting *contact_distance_factor* when read.
++
+ This pair style can only be used via the *pair* keyword of the
+ :doc:`run_style respa <run_style>` command.  It does not support the
+ *inner*, *middle*, *outer* keywords.
+@@ -101,4 +116,4 @@ Related commands
+ Default
+ """""""
+ 
+-none
++contact_distance_factor = 1.35
+diff --git a/src/BPM/pair_bpm_peri.cpp b/src/BPM/pair_bpm_peri.cpp
+index 4ca388b..e2e221b 100644
+--- a/src/BPM/pair_bpm_peri.cpp
++++ b/src/BPM/pair_bpm_peri.cpp
+@@ -41,7 +41,8 @@ using namespace LAMMPS_NS;
+ 
+ /* ---------------------------------------------------------------------- */
+ 
+-PairBPMPeri::PairBPMPeri(LAMMPS *_lmp) : Pair(_lmp), kspring(nullptr), cut(nullptr), index_vfrac(-1)
++PairBPMPeri::PairBPMPeri(LAMMPS *_lmp) :
++    Pair(_lmp), kspring(nullptr), cut(nullptr), index_vfrac(-1), contact_distance_factor(1.35)
+ {
+   writedata = 1;
+   single_enable = 1;
+@@ -84,10 +85,8 @@ void PairBPMPeri::compute(int eflag, int vflag)
+   double *vfrac = atom->dvector[index_vfrac];
+ 
+   const double lc = domain->lattice->xlattice;
+-  // contact onset distance. Legacy uses min(0.9*r0_ref, 1.35*lc).
+-  // For non-bonded atoms (reference separation exceeds the horizon) this is always 1.35*lc,
+-  // => the dropped reference positions (x0) are not needed here
+-  const double d_ij = 1.35 * lc;
++  // The default retains the native onset; only an explicit option changes it.
++  const double d_ij = contact_distance_factor * lc;
+ 
+   inum = list->inum;
+   ilist = list->ilist;
+@@ -178,9 +177,18 @@ void PairBPMPeri::allocate()
+    global settings
+ ------------------------------------------------------------------------- */
+ 
+-void PairBPMPeri::settings(int narg, char ** /*arg*/)
++void PairBPMPeri::settings(int narg, char **arg)
+ {
+-  if (narg != 0) error->all(FLERR, "Illegal pair_style bpm/peri command");
++  contact_distance_factor = 1.35;
++  if (narg == 0) return;
++  if (narg != 2)
++    error->all(FLERR, Error::NOLASTLINE,
++               "Pair style bpm/peri expects contact_distance_factor followed by a number");
++  if (strcmp(arg[0], "contact_distance_factor") != 0)
++    error->all(FLERR, Error::ARGZERO, "Unknown pair style bpm/peri option {}", arg[0]);
++  contact_distance_factor = utils::numeric(FLERR, arg[1], false, lmp);
++  if ((!std::isfinite(contact_distance_factor)) || (contact_distance_factor <= 0.0))
++    error->all(FLERR, 1, "Pair style bpm/peri contact distance factor must be finite and positive");
+ }
+ 
+ /* ----------------------------------------------------------------------
+@@ -268,6 +276,13 @@ double PairBPMPeri::init_one(int i, int j)
+ 
+ void PairBPMPeri::write_restart(FILE *fp)
+ {
++  // Preserve the original restart layout for the original default.
++  // Nondefault restarts carry a marker and require this implementation to read.
++  if (contact_distance_factor != 1.35) {
++    const int marker = -1350100;
++    fwrite(&marker, sizeof(int), 1, fp);
++    fwrite(&contact_distance_factor, sizeof(double), 1, fp);
++  }
+   for (int i = 1; i <= atom->ntypes; i++)
+     for (int j = i; j <= atom->ntypes; j++) {
+       fwrite(&setflag[i][j], sizeof(int), 1, fp);
+@@ -287,10 +302,30 @@ void PairBPMPeri::read_restart(FILE *fp)
+   allocate();
+ 
+   int me = comm->me;
++  int first_flag;
++  if (me == 0) utils::sfread(FLERR, &first_flag, sizeof(int), 1, fp, nullptr, error);
++  MPI_Bcast(&first_flag, 1, MPI_INT, 0, world);
++  contact_distance_factor = 1.35;
++  if (first_flag == -1350100) {
++    if (me == 0) {
++      utils::sfread(FLERR, &contact_distance_factor, sizeof(double), 1, fp, nullptr, error);
++      utils::sfread(FLERR, &first_flag, sizeof(int), 1, fp, nullptr, error);
++    }
++    MPI_Bcast(&contact_distance_factor, 1, MPI_DOUBLE, 0, world);
++    MPI_Bcast(&first_flag, 1, MPI_INT, 0, world);
++    if ((!std::isfinite(contact_distance_factor)) || (contact_distance_factor <= 0.0))
++      error->all(FLERR, Error::NOLASTLINE, "Invalid bpm/peri contact distance factor in restart");
++  }
++  if ((first_flag != 0) && (first_flag != 1))
++    error->all(FLERR, Error::NOLASTLINE, "Invalid bpm/peri pair coefficients in restart");
+   for (int i = 1; i <= atom->ntypes; i++)
+     for (int j = i; j <= atom->ntypes; j++) {
+-      if (me == 0) utils::sfread(FLERR, &setflag[i][j], sizeof(int), 1, fp, nullptr, error);
+-      MPI_Bcast(&setflag[i][j], 1, MPI_INT, 0, world);
++      if ((i == 1) && (j == 1)) {
++        setflag[i][j] = first_flag;
++      } else {
++        if (me == 0) utils::sfread(FLERR, &setflag[i][j], sizeof(int), 1, fp, nullptr, error);
++        MPI_Bcast(&setflag[i][j], 1, MPI_INT, 0, world);
++      }
+       if (setflag[i][j]) {
+         if (me == 0) {
+           utils::sfread(FLERR, &kspring[i][j], sizeof(double), 1, fp, nullptr, error);
+@@ -308,7 +343,7 @@ double PairBPMPeri::single(int i, int j, int itype, int jtype, double rsq,
+                            double /*factor_coul*/, double /*factor_lj*/, double &fforce)
+ {
+   double *vfrac = atom->dvector[index_vfrac];
+-  const double d_ij = 1.35 * domain->lattice->xlattice;
++  const double d_ij = contact_distance_factor * domain->lattice->xlattice;
+ 
+   double r = sqrt(rsq);
+   if (r >= d_ij) {
+diff --git a/src/BPM/pair_bpm_peri.h b/src/BPM/pair_bpm_peri.h
+index 4e8179e..e77ea5e 100644
+--- a/src/BPM/pair_bpm_peri.h
++++ b/src/BPM/pair_bpm_peri.h
+@@ -41,6 +41,7 @@ class PairBPMPeri : public Pair {
+   double **kspring;    // short-range contact stiffness per type pair
+   double **cut;        // horizon (also the neighbor cutoff) per type pair
+   int index_vfrac;     // per-atom d_vfrac (nodal volume) index
++  double contact_distance_factor;    // contact onset divided by lattice spacing
+ 
+   void allocate();
+ };

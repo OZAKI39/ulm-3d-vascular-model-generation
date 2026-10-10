@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "status": "READY",
+  "applied_load": false,
+  "CLOT_PRESENT_CFD_SOLVED": "NOT_RUN",
+  "provider_status": {
+    "BACKGROUND_Y_FLOW": "REQUIRES_CLOT_PRESENT_CFD_FOR_TRACTION",
+    "ANALYTIC_STREAMING": "SCHEMA_ONLY_NOT_APPLIED",
+    "BUBBLE_STREAMING": "NOT_YET",
+    "CFD_STREAMING": "NOT_YET"
+  },
+  "required": [
+    "load_source",
+    "surface_node_id",
+    "position_xyz_m",
+    "time_s",
+    "source_geometry_id",
+    "source_flow_id",
+    "coordinate_frame",
+    "source_units",
+    "validity_domain"
+  ],
+  "load_alternatives": [
+    [
+      "force_xyz_N"
+    ],
+    [
+      "traction_xyz_Pa",
+      "nodal_area_m2"
+    ]
+  ],
+  "conversion": "force_xyz_N = traction_xyz_Pa * nodal_area_m2; use initial surface node IDs in existing LAMMPS addforce provider",
+  "coordinate_frame": "Y_SOURCE_GLOBAL_XYZ_SI",
+  "transform_to_source": [
+    [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      1.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      1.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "geometry_id": "CURVED_MURAL_MULTILOBE_CLOT_V3",
+  "source_geometry_id": "9e0200544a5ba14112fd53a790ffb94fec92bcc43f818a62d5fac94eeebd8110",
+  "source_flow_id": "131f7cb9b3e4ac9887bb0aa344d0eb2c0a2c8ac1d3b19fafb093ecd9a1045620",
+  "surface_area_method": "Actual exposed triangulation area assigned once to nearest free-boundary material node; attachment triangles excluded",
+  "exposed_area_sum_m2": 1.8223166726848543e-06,
+  "attachment_area_excluded_m2": 1.3282599033098078e-06,
+  "local_tangents": "Project global axial e_x to nearest actual wall triangle tangent; circumferential = outward_wall_normal cross axial; wall-to-lumen = negative wall normal",
+  "initial_exposed_surface_supported": true,
+  "attachment_surface_loadable": false,
+  "new_fracture_surface_update": "NOT_SUPPORTED",
+  "node_tag_overlap": "A volume node can be near both boundaries at a thin rim. Exposed and attachment triangle areas are disjoint; only exposed triangle areas enter A_i.",
+  "validity_domain": "One frozen initial mural geometry; no motion or fracture surface tracking. Provider must reject mismatched identities, non-SI units, nonfinite or outside-domain values.",
+  "CURVED_INTERFACE_STRENGTH_VALIDATION": "NOT_ESTABLISHED"
+}

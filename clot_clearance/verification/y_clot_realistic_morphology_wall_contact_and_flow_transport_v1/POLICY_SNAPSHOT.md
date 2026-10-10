@@ -1,0 +1,1 @@
+One frozen V3; C0 zero-load then C1 Gaussian200 only; no new fracture law/calibration/CFD/bubble/PD2/B1/B2/scaling. Native-Y WALL force during LAMMPS time integration and separate one-way background-CFD transport. Original binaries and outputs immutable. At most one justified wall-contact correction; retain failures. No fabricated fragments/branch choices.

@@ -1,0 +1,20 @@
+[
+  {
+    "path": "deps/y_workflow/configs/stage4/workflow.yaml",
+    "before_sha256": "faed4c277694c5405cc83b491c3f7ba3b9ee66c526ae403af0d3b12ec127d54a",
+    "after_sha256": "0fe9b837ff91bf865304bae945a541c35deb538f7d8e2333555495e44557e8f9",
+    "diff": "--- deps/y_workflow/configs/stage4/workflow.yaml (original)\n+++ deps/y_workflow/configs/stage4/workflow.yaml\n@@ -1,8 +1,9 @@\n-local_meshing_workflow: /home/lzy/projects/computation_examples/_shared/formal_3D_flow_solver/FEM_SimVascular\n-simvascular_launcher: /home/lzy/projects/computation_examples/_shared/formal_3D_flow_solver/FEM_SimVascular/external/SimVascularDistribution/usr/local/sv/simvascular/2023-05-31/simvascular\n-solver_build_manifest: /workspace/formal_3D_flow_solver_FEM_SimVascular_lzy/sv1_3q/reports/svmp_reuse_build.json\n-solver_executable: /workspace/brava_flow_roi_18mlmin_20260928/gpu_solver_fix/svmultiphysics\n-solver_sha256: 43cd7d7b9ae9bde91275982225c6bf084859141cdaf2ec1030e1b83c3b94691d\n-solver_backend_validation: /workspace/brava_flow_roi_18mlmin_20260928/gpu_solver_fix/backend_equivalence.json\n-solver_xml_template: /workspace/brava_flow_roi_18mlmin_20260928/cases/balanced_pressure_final/run/solver.xml\n-petsc_options_template: /workspace/brava_flow_roi_18mlmin_20260928/cases/balanced_pressure_final/run/PETSC_OPTIONS.txt\n+local_meshing_workflow: /workspace/y_clot/deps/meshing_workflow\n+simvascular_launcher: /workspace/y_clot/bin/y-clot-simvascular\n+solver_build_manifest: /workspace/y_clot/migration/NEW_SERVER_BUILD.json\n+solver_executable: /workspace/y_clot/deps/svMultiPhysics-build/svMultiPhysics-build/bin/svmultiphysics\n+solver_sha256: a7b21f4bf4569ddd128e9a765e1779e3749bdbbd5e3e6c6b64f6d71b8081f161\n+solver_backend_validation: /workspace/y_clot/validation/CFD_BACKEND_VERIFICATION.json\n+solver_xml_template: /workspace/y_clot/deps/y_workflow/results/stage4/simvascular/steady/20261002T141810826990Z/run/solver.xml\n+petsc_options_template: /workspace/y_clot/deps/y_workflow/results/stage4/simvascular/steady/20261002T141810826990Z/run/PETSC_OPTIONS.txt\n+solver_vendor: /workspace/y_clot/deps/y_cfd_vendor\n"
+  },
+  {
+    "path": "deps/y_workflow/scripts/stage4/cfd.py",
+    "before_sha256": "233396bc0cb43172d58093d18624ef13c04e6afdd73111f46387db85b9fe7b55",
+    "after_sha256": "edadf988fab2602ff13b8d7b96b8386d069b5e041dd479ec23b3e22e2168d0ea",
+    "diff": "--- deps/y_workflow/scripts/stage4/cfd.py (original)\n+++ deps/y_workflow/scripts/stage4/cfd.py\n@@ -19,7 +19,7 @@\n     w = yaml.safe_load((ROOT / \"configs/stage4/workflow.yaml\").read_text())\n     mesh = require(\"simvascular/mesh\")\n     out = new_run(\"simvascular/steady\", dict(config=c, workflow=w), [\"simvascular/mesh\"])\n-    sys.path.insert(0, str(Path(w[\"solver_executable\"]).parents[1] / \"vendor\"))\n+    sys.path.insert(0, w[\"solver_vendor\"])\n     from vascular_validation.postprocess import SolutionMeasurements\n     from vascular_validation.validation import triangle_flux\n     from flow_solver_support.steady_monitor import SteadyStopMonitor\n@@ -58,7 +58,7 @@\n     build = json.loads(Path(w[\"solver_build_manifest\"]).read_text())\n     stack = build[\"PETSc_build\"]\n     library = Path(stack[\"prefix\"]) / \"lib/libpetsc.so\"\n-    assert sha(library) == \"b79e98d278e105aa8a1848bd08d66ef36a3e2425458610f97213d3fc8e45c5ef\"\n+    assert sha(library) == build[\"PETSc_library_sha256\"]\n     source_mesh = (ROOT / mesh[\"mesh\"]).parent\n     (out / \"SV_MESH\").symlink_to(source_mesh, target_is_directory=True)\n     run = out / \"run\"\n"
+  },
+  {
+    "path": "deps/petsc-source/lib/petsc/conf/petscvariables",
+    "before_sha256": "a506505d2f945c1dc950cda0a4b24fd4b127e7143e2aa3e7ed769305321a442e",
+    "after_sha256": "2bbe1181ee5d66172b28f3dccbe49f211db79521947834f77ce19c1de7f3b319",
+    "reason": "PETSc configure generated only the new PETSC_DIR and PETSC_ARCH selector"
+  }
+]
