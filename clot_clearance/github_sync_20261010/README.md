@@ -49,3 +49,7 @@ python github_sync_20261010/replay_compact.py --output /tmp/clot_replay_new
 `Y_CLOT_DEPENDENCY_ROOT` 可覆盖依赖路径。默认使用本 checkout 的 `github_dependencies`，正常部署仍支持原 `/workspace/y_clot/deps` 布局。`Y_CLOT_FONT_DIR` 可指定合法 Arial 字体目录；缺少 Arial 时若系统安装 Liberation Sans，会使用对应替代字体。原始上传图片/视频保持原字体和字节不变。
 
 [迁移验证](migration/) 包括 MPI、LAMMPS run 0、原生网格 API、CPU/GPU 各两步流场对照和 4K 可视化。两步验证只确认环境/后端一致性，未重新认证稳态收敛或物理精度。构建脚本记录新服务器的实际路径与构建参数，外部源码/运行库需要另行准备。
+
+## GitHub 推送与本地备份清理
+
+科学快照提交 `eadd653f2c686ae8d5e699d542238d86611aa6b0` 已推送，并通过 GitHub 远端提交/树核验（[记录](REMOTE_SNAPSHOT_VERIFICATION.json)）。随后按用户要求删除本地完整迁移备份和迁移暂存副本，合计约 40.7 GB（[删除记录](LOCAL_BACKUP_DELETION.json)）。原本地开发目录、新分支 checkout、新服务器完整项目及轻量审计记录保留。此删除记录作为后续小型提交附在同一分支。
