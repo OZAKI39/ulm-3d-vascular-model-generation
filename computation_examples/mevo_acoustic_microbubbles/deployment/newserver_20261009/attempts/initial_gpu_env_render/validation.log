@@ -1,0 +1,54 @@
+BEGIN integrity_before
+END integrity_before PASS
+BEGIN environment
+Warp 1.18.0 initialized:
+   CUDA Toolkit 12.9, Driver 12.4
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /workspace/mevo_acoustic_microbubbles/.cache/warp/1.18.0
+END environment PASS
+BEGIN saved_data
+END saved_data PASS
+BEGIN cpu_regression
+END cpu_regression PASS
+BEGIN f5_gpu_checks
+Module mevo_mb.fast_sim.flow_gpu c2e01d4 load on device 'cuda:0' took 741.74 ms  (compiled)
+Module mevo_mb.fast_sim.flow_gpu c3fc328 load on device 'cuda:0' took 739.04 ms  (compiled)
+Module mevo_mb.fast_sim.kernels b0e31a4 load on device 'cuda:0' took 1989.52 ms  (compiled)
+Module mevo_mb.fast_sim.f2_kernels 9579545 load on device 'cuda:0' took 971.87 ms  (compiled)
+Module mevo_mb.fast_sim.f3_kernels a60cc75 load on device 'cuda:0' took 711.75 ms  (compiled)
+Module mevo_mb.fast_sim.f5_engine 5ed172a load on device 'cuda:0' took 186.08 ms  (compiled)
+Module mevo_mb.fast_sim.kernels 12b0cd6 load on device 'cuda:0' took 1959.52 ms  (compiled)
+Module mevo_mb.fast_sim.f3_kernels 5374a04 load on device 'cuda:0' took 709.22 ms  (compiled)
+Module mevo_mb.fast_sim.vessel_active_kernels 72dc74b load on device 'cuda:0' took 2690.07 ms  (compiled)
+Module mevo_mb.fast_sim.vessel_kernels e9d3486 load on device 'cuda:0' took 3779.42 ms  (compiled)
+Module mevo_mb.fast_sim.vessel_active_kernels 6a4dfca load on device 'cuda:0' took 2703.61 ms  (compiled)
+Module mevo_mb.fast_sim.vessel_kernels f016076 load on device 'cuda:0' took 3776.52 ms  (compiled)
+Module mevo_mb.fast_sim.f2_kernels df2ebf7 load on device 'cuda:0' took 977.70 ms  (compiled)
+F5 basic checks PASS
+END f5_gpu_checks PASS
+BEGIN render_video
+2026-10-09 15:49:37.892 (  27.806s) [    74B681327300]vtkXOpenGLRenderWindow.:1458  WARN| bad X server connection. DISPLAY=
+Traceback (most recent call last):
+  File "/workspace/mevo_acoustic_microbubbles/migration/tools/verify_migration.py", line 185, in main
+    detail=fn()
+           ^^^^
+  File "/workspace/mevo_acoustic_microbubbles/migration/tools/verify_migration.py", line 142, in render_and_video
+    global_image = style.global_image(protocol['events'][0], states[0].mean(0), white=True, size=(900,740))
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/mevo_acoustic_microbubbles/repo/computation_examples/mevo_acoustic_microbubbles/scripts/fast_pzt_f5/style.py", line 62, in global_image
+    wall = vessel()
+           ^^^^^^^^
+  File "/workspace/mevo_acoustic_microbubbles/repo/computation_examples/mevo_acoustic_microbubbles/scripts/fast_pzt_f5/style.py", line 44, in vessel
+    return mesh.extract_cells(mesh["ModelFaceID"] == 1).extract_surface(algorithm="dataset_surface")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/mevo_acoustic_microbubbles/.venv/lib/python3.12/site-packages/pyvista/_deprecate_positional_args.py", line 245, in inner_f
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+TypeError: DataSetFilters.extract_surface() got an unexpected keyword argument 'algorithm'
+
+END render_video FAIL
+BEGIN integrity_after
+END integrity_after PASS

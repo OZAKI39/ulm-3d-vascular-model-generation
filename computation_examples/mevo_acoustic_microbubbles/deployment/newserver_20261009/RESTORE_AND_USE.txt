@@ -1,0 +1,95 @@
+LOCAL BACKUP STATUS UPDATE — 2026-10-10
+At the user's explicit request, the old complete backup directory and the local
+wheels/ and references/ copies were deleted. The new server files and local
+active project remain in place. This directory now retains small migration
+records, not a complete restorable backup. See LOCAL_BACKUP_DELETION.json.
+
+MEVO — NEW SERVER HANDOFF (2026-10-09)
+
+Connection and directories
+  New server: root@95.3.33.46, port 15283.
+  Local SSH alias: mevo-new (uses the existing authorized key; no private key uploaded).
+  Root: /workspace/mevo_acoustic_microbubbles
+  Project shortcut: /workspace/mevo_acoustic_microbubbles/project
+  Actual Git project: /workspace/mevo_acoustic_microbubbles/repo/computation_examples/mevo_acoustic_microbubbles
+  Repository: https://github.com/OZAKI39/ulm-3d-vascular-model-generation
+  Branch: dev/fast-pzt-f5-flow-release-20261008
+  Delivery HEAD: 66d4cebec18555a26bc9a8035cc3082756d0e76f
+  Original scientific run commit: ee6b35dce83bd3583457a7e85c163b6886e59ce5
+
+Enter the isolated COMPUTE environment
+  ssh mevo-new
+  source /workspace/mevo_acoustic_microbubbles/activate.sh
+
+This enters the project with CPython 3.12.3, NumPy 2.2.6, SciPy 1.15.3,
+h5py 3.16.0, Warp 1.18.0+cu12, PyVista 0.46.5, VTK 9.5.2. It does not
+inherit /venv/main or the previous server's F1 virtual environment.
+The project's .venv link supports the existing scripts/fast_pzt/python.sh.
+The new host is RTX 4090 with driver 550.120. The normal Warp 1.18.0 PyPI
+wheel requires a newer driver and failed GPU initialization. The official
+same-version CUDA12 compatibility wheel resolved this; its URL and SHA-256
+are saved in migration/inventory/WARP_CUDA12_RELEASE.json and the environment lock.
+Host drivers and the global Python environment were not changed.
+
+Enter the isolated RENDER environment
+  source /workspace/mevo_acoustic_microbubbles/activate-render.sh
+
+Rendering uses CPython 3.13.11 and the original local render stack:
+PyVista 0.49.0 / VTK 9.7.0 / NumPy 2.5.3 / SciPy 1.18.1.
+The old compute PyVista cannot accept extract_surface(algorithm=...), so
+rendering is separated rather than changing the scientific compute stack.
+The original v6 PZT reference sources, image and Arial font are under references/.
+
+For a later requested render, use the relocation wrapper and a NEW output label:
+  python /workspace/mevo_acoustic_microbubbles/migration/tools/render_f5.py --mode preview --output-label NEW_LABEL
+The wrapper preserves the original renderer, directs output to renders/NEW_LABEL,
+and uses the preserved Arial font. Full videos should run as bounded supervisor jobs.
+Migration itself only renders smoke images and a three-frame encoder test;
+the delivered scientific video is preserved unchanged.
+
+Validation and identity
+  migration/validation/VALIDATION.json is the final environment-validation authority.
+  migration/validation/f5/checks_newserver_20261009/RESULT.json contains the original
+  bounded F5 checks on the new GPU. Original assertions and tolerances are unchanged.
+  migration/validation/saved_data.json records complete HDF5 dataset reads and
+  an independent CPU recheck of 672 saved F5 particle-flow samples.
+  migration/inventory/SOURCE_FILES.json + SOURCE_SHA256SUMS list exact local-source hashes.
+  migration/inventory/REFERENCE_FILES.json covers the local-only style reference files.
+  migration/attempts/initial_gpu_env_render retains the first render failure and log.
+  Logs and environment locks are in migration/logs and migration/inventory.
+
+Scope
+The sparse Git checkout carries current mevo source, scripts, configs, docs, tests
+and the delivered F1-F5 baseline results (1434 files, 172050040 logical bytes), plus
+five local style/font references (1995787 bytes). This includes the original Y
+surface, stored CFD snapshot, acoustic basis, radial response table, F5 main and
+same-state branch trajectories, diagnostics, gates and figures/videos. F1/F4 input
+links point to SHA-identical F5 copies inside this folder; no old server is needed.
+
+No historical Stage2.5 raw-node cache, old virtual environments, duplicate execution
+trees, obsolete supervisor jobs or unrelated projects were copied. Historical
+native CFD/APECSS/k-Wave builds and older Stage1-5A bulk data remain in the verified
+local backup; the current fixed-field F5 workflow uses their stored outputs and
+does not need these solvers rebuilt. This migration does not certify a fresh CFD
+or acoustic solver campaign. The sparse checkout does not download unrelated
+repository content/history; expand it deliberately only when required.
+
+Historical absolute paths inside result JSON/HDF5 are retained as provenance.
+Do not rewrite their science commit or relabel archived results as new-server runs.
+Original scripts/fast_pzt_f5/remote.py still describes the OLD vast4090 deployment.
+Do not invoke that legacy deployment helper for this server. Use mevo-new and the
+new root explicitly. The old SSH alias remains unchanged.
+
+The two migration supervisor jobs have autostart=false and autorestart=false.
+No historical job was resumed, and no new long scientific trajectory was launched.
+Numerical checks validate migration/software behavior only; they do not add
+physical validation to the exploratory prescribed-flow/contact model.
+
+Storage and local recovery
+The new /workspace is NOT backed by a persistent volume. Stop/start preserves it;
+recycle/destroy does not. Former complete old-server backup (deleted by user request on 2026-10-10):
+  /home/lzy/projects/server_migration/vast4090_20261009
+New migration reports, validation outputs, helpers and environment records are
+also kept locally under:
+  /home/lzy/projects/server_migration/mevo_newserver_20261009
+This folder now retains migration records only; it is not a complete data backup.
