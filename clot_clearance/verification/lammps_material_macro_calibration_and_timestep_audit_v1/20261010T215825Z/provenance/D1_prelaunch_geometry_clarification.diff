@@ -1,0 +1,20 @@
+--- phase1
++++ phase2
+@@ -21,7 +21,7 @@
+     if kind=='M6':g=attach_wall(g,dict(dx_m=dx,delta_m=DELTA,rho_kg_m3=RHO,anchor_layers=3))
+     removed=np.empty((0,2),int)
+     if kind=='M5':
+-        a,c=X[b[:,0]],X[b[:,1]];cross=(a[:,2]*c[:,2]<0)
++        a,c=X[b[:,0]],X[b[:,1]];cross=((a[:,2]<-1e-12)!=(c[:,2]<-1e-12))
+         frac=np.divide(-a[:,2],c[:,2]-a[:,2],out=np.zeros(len(b)),where=c[:,2]!=a[:,2])
+         xx=a[:,0]+frac*(c[:,0]-a[:,0]);cut=cross&(xx<-.0001)
+         removed=b[cut];g['bonds']=b[~cut];g['bond_types']=g['bond_types'][~cut]
+@@ -61,7 +61,7 @@
+     H=float(X[high,2].mean()-(0 if kind=='M6' else X[low,2].mean()))
+     # Interface origin is the anchor/clot midplane, z=-0.5 mm.
+     if kind=='M6':H=float(X[high,2].mean()+.0005)
+-    small=kind in ['M1','M2','M3'];amp=(-.008 if kind in ['M1','M3'] else .008 if kind=='M2' else .8)*H
++    small=kind in ['M1','M2','M3'];amp=(-.008 if kind in ['M1','M3'] else .008 if kind=='M2' else .8)*(.00085 if kind in ['M4','M5'] else H)
+     ramp=(.010 if small else .024)*slow;duration=2*ramp if small else ramp;steps=0 if static else round(duration/dt)
+     roi=(np.abs(X[:,0])<.0003-DELTA)&(np.abs(X[:,1])<.0003-DELTA)&(np.abs(X[:,2])<.0005-grip-DELTA)&~g['anchors']
+     centered=X[roi]-X[roi].mean(0);roi_pinv=np.linalg.pinv(centered)

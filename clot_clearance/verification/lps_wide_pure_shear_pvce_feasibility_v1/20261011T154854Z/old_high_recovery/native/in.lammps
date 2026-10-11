@@ -1,0 +1,36 @@
+units si
+ dimension 3
+ boundary m m m
+ atom_style bond
+ atom_modify map array sort 0 0
+ newton on off
+ special_bonds lj 0 1 1 coul 1 1 1
+ lattice sc 5.0000000000000002e-05
+ read_data /workspace/y_clot/project/verification/lps_wide_pure_shear_pvce_feasibility_v1/20261011T154854Z/old_high_recovery/native/body.data extra/bond/per/atom 320 extra/special/per/atom 360
+ neighbor 0.0001 bin
+ neigh_modify every 1 delay 0 check no
+ comm_modify cutoff 0.00045149999999999997
+ fix props all property/atom d_vfrac d_theta d_damage ghost yes
+ set group all d_vfrac 1.2500000000000002e-13
+ pair_style bpm/peri contact_distance_factor 1.0
+ pair_coeff * * 3.7226771877469815e+20 0.0001505
+ bond_style bpm/peri break no
+ bond_coeff 1 lps 33333.333333333336 940.0 0.0001505 .15 0
+ bond_coeff 2 lps 33333.333333333336 940.0 0.0001505 .140624859375 0
+ bond_coeff 3 lps 33333.333333333336 940.0 0.0001505 1 0
+ velocity all set 0 0 0 units box
+ # Official BPM peri accumulates N/m^3: convert to nodal N BEFORE external forces.
+variable si_fx atom fx*d_vfrac
+variable si_fy atom fy*d_vfrac
+variable si_fz atom fz*d_vfrac
+fix si_force all setforce v_si_fx v_si_fy v_si_fz
+
+ timestep 5e-7
+ compute contactPE all pe pair
+ compute bondPE all pe bond
+ thermo 1
+ thermo_style custom step atoms bonds ke c_contactPE c_bondPE
+ thermo_modify lost error lost/bond error
+ run 0
+ 
+# Python virtual-cut arrays, then run 1 pre no post no per force evaluation. No time integration fix.

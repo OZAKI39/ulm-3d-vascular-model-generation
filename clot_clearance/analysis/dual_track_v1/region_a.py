@@ -1,0 +1,9 @@
+"""Saved-candidate spatial audit only; does not change frozen gates or acceptance."""
+from analysis.dual_track_v1.core_a import *
+s=np.load(A/'lps/wide_A0_search_1/equilibrium.npz');X=s['X'];x=s['x_m'];b=s['bonds'];alive=s['alive'].astype(bool);mid=X[b[:,0]]+.5*delta_y(X,b);mid[:,1]=(mid[:,1]+PERIOD/2)%PERIOD-PERIOD/2
+stretch=(np.linalg.norm(delta_y(x,b),axis=1)-s['r'])/s['r'];front=np.hypot(mid[:,0]+.001,mid[:,2])<=DELTA;mouth=(mid[:,0]+.0025<=DELTA)&(abs(mid[:,2])<=DELTA);grip=.000475-abs(mid[:,2])<=DELTA;xsurface=.0025-abs(mid[:,0])<=DELTA
+labels=np.full(len(b),'free_interior',dtype='U48');labels[xsurface]='other_X_free_surface';labels[grip]='grip';labels[mouth]='notch_mouth_at_finite_X_boundary';labels[front]='notch_front_periodic_layer';regions={}
+for name in ['notch_front_periodic_layer','notch_mouth_at_finite_X_boundary','grip','other_X_free_surface','free_interior']:
+ ids=np.flatnonzero(alive&(labels==name));k=ids[np.argmax(stretch[ids])];regions[name]=dict(bonds=len(ids),max_utilization=float(stretch[k]/.15),reference_bond_id=int(k+1),atom_ids=(b[k]+1).tolist(),reference_midpoint_m=mid[k].tolist())
+assert sum(v['bonds'] for v in regions.values())==int(alive.sum())
+save(A/'SAVED_CANDIDATE_SPATIAL_REGIONS.json',dict(scope='Post-run read-only spatial reporting on the same unaccepted state. Original frozen acceptance/risk record unchanged. Not a new onset or equilibrium.',regions=regions,reference_region_width_m=DELTA,classification='Mutually exclusive horizon-wide reference bands: notch tip; notch mouth at negative-X boundary; grips; remaining X surface; remaining interior. Fixed Y cell: no Y free surface.',front_finite_X_intersection='Empty by geometry: front x=-1 mm is 1.5 mm from negative-X boundary. The crack mouth is reported separately.',state_sha256=sha(A/'lps/wide_A0_search_1/equilibrium.npz')))

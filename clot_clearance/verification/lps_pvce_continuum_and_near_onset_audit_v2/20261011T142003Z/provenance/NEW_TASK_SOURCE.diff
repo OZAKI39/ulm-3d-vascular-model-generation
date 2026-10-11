@@ -1,0 +1,523 @@
+--- /dev/null
++++ analysis/lps_pvce_v2/analyze.py
+@@ -0,0 +1,36 @@
++"""Read-only recomputation and separately graded results; never solve/retry."""
++from analysis.lps_pvce_v2.common import *
++import csv,subprocess,importlib.metadata as md
++
++def main():
++ ca=json.loads((BASE/'CONTINUUM_REFERENCE_AUDIT.json').read_text());ss=json.loads((BASE/'A0_FIRST_FAILURE_SEARCH.json').read_text());v1=json.loads((OLD/'PVCE_ENERGY_RELEASE_RESULTS.json').read_text());rows=[]
++ for kind,obj in [('LPS_V1',v1)]+[(f'FEM_{k}',v) for k,v in ca['levels'].items()]:
++  U=obj['U_J'] if kind=='LPS_V1' else [s['U_J'] for s in obj['states']];rows.append(dict(model=kind,U0_J=U[0],U1_J=U[1],U2_J=U[2],G_two_J_m2=(U[0]-U[1])/3e-8,G_three_J_m2=(3*U[0]-4*U[1]+U[2])/6e-8))
++ for r in rows:r['LPS_minus_reference_over_reference_three']=rows[0]['G_three_J_m2']/r['G_three_J_m2']-1
++ with (BASE/'CONTINUUM_PVCE_COMPARISON.csv').open('w') as fp:w=csv.DictWriter(fp,fieldnames=list(rows[0]));w.writeheader();w.writerows(rows)
++ fem=[s for v in ca['levels'].values() for s in v['states']];lps=[json.loads(p.read_text()) for p in sorted((BASE/'lps').glob('*/RESULT.json'))];checks=[]
++ for r in lps:
++  z=np.load(BASE/'lps'/r['name']/'equilibrium.npz');g,e,a,mask,lo,hi,*_=model([-100e-6,-50e-6,0][int(r['case'][-1])]);U,f=e.eval(np.ascontiguousarray(z['x_m']),a,True);rr=risk(z);old=np.load(OLD/r['case']/'reference.npz');assert np.array_equal(a,old['alive']) and np.array_equal(e.m,old['m']) and np.array_equal(e.b,old['bonds']);assert abs(U-r['U_J'])<1e-25;assert np.max(abs(f-z['independent_force_N']))<1e-25
++  assert abs((z['x_m'][hi,2]-g['X'][hi,2]).mean()-(z['x_m'][lo,2]-g['X'][lo,2]).mean()-r['opening_m'])<1e-18
++  checks.append(dict(case=r['name'],energy_recomputed_exact=True,force_recomputed_exact=True,common_m_unchanged=True,full_reference_ids_unchanged=True,opening_exact=True,maximum_stretch_recomputed=rr['max_stretch'],accepted=r['accepted']))
++ # Extra read-only face/edge independence: matching geometric DOFs on opposing slit must have different global indices except the front.
++ facechecks=[]
++ for level in ca['levels']:
++  for case in ['A0','A1','A2']:
++   z=np.load(BASE/'continuum'/level/case/'equilibrium.npz');X=z['vertices_m'];t=z['tetrahedra'];pair=z['split_original'];du=z['split_duplicate'];nd=z['nodal_dofs'];assert len(set(nd[:,pair].ravel())&set(nd[:,du].ravel()))==0;assert np.array_equal(X[pair],X[du]);assert (z['crack_vertex_gap_m']>=-1e-12).all();assert len(z['gauge_dofs'])==3
++   facechecks.append(dict(level=level,case=case,duplicated_coincident_vertices=len(pair),distinct_displacement_dofs=True,crack_gap_positive=True,minimal_transverse_gauges=3))
++ candidate=lps[-1];scale=candidate['opening_m']/2e-6;Uquad=v1['U_J'][0]*scale**2;scaling=dict(kind='A0_ENERGY_ONLY_UNACCEPTED_HIGH_CANDIDATE',opening_m=candidate['opening_m'],candidate_U_J=candidate['U_J'],quadratic_extrapolated_A0_U_J=Uquad,relative_difference=candidate['U_J']/Uquad-1,stretch_relative_difference=candidate['risk']['max_stretch']/(ss['samples'][0]['risk']['max_stretch']*scale)-1,G_high_actual=None,G_high_vs_quadratic_difference=None,scope='A0 candidate energy comparison only; not a new high-load PVCE G and not an accepted equilibrium result.')
++ # Mixed volumetric projection diagnostic prevents overclaiming mesh convergence even if G increment is stable.
++ projection={level:[r['primal_vs_mixed_energy_relative'] for r in ca['levels'][level]['states']] for level in ca['levels']}
++ status=dict(CONTINUUM_REFERENCE_VALIDITY=ca['status'],CONTINUUM_MESH_SCOPE=ca['mesh_scope']+'; MIXED_VOLUMETRIC_FIELD_RESOLUTION_NOT_CERTIFIED',LOW_LOAD_PVCE_COMPARISON='FINITE_MESH_MIXED_CONTINUUM_REFERENCE_WITH_EXPLICIT_MAPPING_LIMITS',A0_FIRST_FAILURE_LOCATION='UNDETERMINED; UNACCEPTED_CANDIDATE_MAXIMUM_AT_GRIP',A0_CRITICAL_OPENING_SCOPE='NOT_BRACKETED_STOPPED_AT_FROZEN_STATIC_GATE',NEAR_ONSET_STATIC_EQUILIBRIUM='FAILED_ABSOLUTE_RESIDUAL_FORCE_GATE',NEAR_ONSET_PVCE_G_DRIVE='NOT_RUN_STATIC_ADMISSION_FAILED',LINEAR_SCALING_VALIDITY='NOT_VALIDATED_FOR_HIGH_G; A0_UNACCEPTED_ENERGY_DIAGNOSTIC_ONLY',MATERIAL_GC='NOT_IDENTIFIED',PRODUCTION_PARAMETERS_UNCHANGED=None,DOCUMENT_UPDATE='PENDING')
++ save(BASE/'FINAL_STATUS.json',status)
++ save(BASE/'ENERGY_AND_EQUILIBRIUM_AUDIT.json',dict(continuum=fem,lps=lps,comparison=rows,scaling=scaling,mixed_projection_energy_excess=projection,static_error='FEM residual/work balance checked; LPS empirical residual-work estimate is not a rigorous bound. Candidate misses1e-13N absolute gate despite relative gate passing. This is numerical acceptance failure, not proof of physical instability.',finite_increment_error='Two-vs-three differences are not spatial convergence.',model_error='Only one dx/horizon; internal-plane continuum vs nodal half-cells, nonlocal boundary, crack singularity and finite geometric response remain unseparated. Mixed volumetric projection remains substantial and is disclosed; this is a finite-mesh benchmark, not certified continuum exact solution.'))
++ protected=json.loads((BASE/'provenance/PROTECTED_START.json').read_text());changed=[p for p,h in protected.items() if sha(ROOT/p)!=h];assert not changed;save(BASE/'provenance/PROTECTED_FINAL.json',dict(checked=len(protected),changed=changed))
++ before=json.loads((BASE/'provenance/ENVIRONMENT_BEFORE.json').read_text())['packages'];after={d.metadata['Name']:d.version for d in md.distributions()};assert before==after;save(BASE/'provenance/ENVIRONMENT_DIFF.json',dict(base_environment_unchanged=True,private_addition='scikit-fem12.0.2 in /workspace/y_clot/envs/pvce_v2_packages only',packages_after=after))
++ attemptsA=list((BASE/'continuum').glob('*/*/ATTEMPT.json'));attemptsB=list((BASE/'lps').glob('*/ATTEMPT.json'));assert len(attemptsA)<=6 and len(attemptsB)<=8
++ resource=dict(FEM_static_attempts=len(attemptsA),LPS_static_attempts=len(attemptsB),LPS_accepted_new=sum(r['accepted'] for r in lps),old_V1_states_reused=3,native_baseline_force_only_checks=2,no_repeated_equilibria=True,FEM_case_wall_seconds_sum=sum(r['wall_seconds'] for r in fem),FEM_cpu_seconds_sum=sum(r['cpu_seconds'] for r in fem),LPS_case_wall_seconds_sum=sum(r['wall_seconds'] for r in lps),LPS_cpu_seconds_sum=sum(r['cpu_seconds'] for r in lps),peak_single_process_RSS_MiB=max(r['peak_RSS_MiB'] for r in fem+lps),GPU=False,threads_per_process=1,maximum_active_solver_processes=2,FEM_final_process_wall_seconds=ca['wall_seconds'],stop='Six FEM states completed; one LPS candidate failed frozen absolute force gate; no high A1/A2; no automatic next task.')
++ save(BASE/'RUN_RESOURCES.json',resource)
++ save(BASE/'IMPLEMENTATION_CHECKS.json',dict(LPS_readonly_recomputation=checks,FEM_face_checks=facechecks,protected_files_unchanged=len(protected),no_production_change=True,native_source_criterion='bond_bpm_peri.cpp: allow_breaks && stretch > s0; alpha0 makes s0=s00=.15; static break no only suppresses deletion in new adapter',native_adapter_diff='V1 Native implementation body differs only in bond_style bpm/peri break no; finite native-force/gradient check proves force unaffected in accepted baseline and new candidate.',budgets=resource,numerical_issue='L-BFGS-B stopped at zero/roundoff relative objective reduction (ftol0) before maximum absolute residual<1e-13N. Stored native and independent force independently confirm1.129107e-12N. No tolerance relaxation/restart.',postprocess_fixes=json.loads((BASE/'provenance/POSTPROCESS_FIXES.json').read_text())))
++ status['PRODUCTION_PARAMETERS_UNCHANGED']=True;save(BASE/'FINAL_STATUS.json',status)
++ print(json.dumps(dict(comparison=rows,refinement=ca['relative_G_change'],projection=projection,scaling=scaling,resources=resource),indent=2))
++if __name__=='__main__':main()
+--- /dev/null
++++ analysis/lps_pvce_v2/campaign.py
+@@ -0,0 +1,56 @@
++from analysis.lps_pvce_v2.common import *
++import subprocess,sys,traceback
++
++def continuum():
++ results={};start=time.perf_counter()
++ for level in ['coarse','refined']:
++  rows=[]
++  for case in ['A0','A1','A2']:
++   out=BASE/'continuum'/level/case;out.mkdir(parents=True,exist_ok=True)
++   if (out/'RESULT.json').exists():
++    # Resume only a completed stored result after stdout serialization failure; never re-solve it.
++    returncode=0
++   else:
++    with (out/'stdout.log').open('w') as so,(out/'stderr.log').open('w') as se:p=subprocess.run([sys.executable,'-m','analysis.lps_pvce_v2.fem',level,case],stdout=so,stderr=se)
++    returncode=p.returncode
++   if returncode!=0 or not (out/'RESULT.json').exists():save(BASE/'CONTINUUM_REFERENCE_AUDIT.json',dict(status='FAILED_REFERENCE',failed=str(out),levels=results,wall_seconds=time.perf_counter()-start));return
++   r=json.loads((out/'RESULT.json').read_text());rows.append(r);print('FEM',level,case,r['accepted'],r['U_J'],flush=True)
++   if not r['accepted']:save(BASE/'CONTINUUM_REFERENCE_AUDIT.json',dict(status='FAILED_REFERENCE',levels={**results,level:rows},wall_seconds=time.perf_counter()-start));return
++  U=np.array([r['U_J'] for r in rows]);results[level]=dict(states=rows,G_two_J_m2=float((U[0]-U[1])/3e-8),G_three_J_m2=float((3*U[0]-4*U[1]+U[2])/6e-8))
++  save(BASE/'CONTINUUM_REFERENCE_PROGRESS.json',results)
++ changes={k:results['refined'][k]/results['coarse'][k]-1 for k in ['G_two_J_m2','G_three_J_m2']};mesh_ok=max(abs(v) for v in changes.values())<=.05
++ save(BASE/'CONTINUUM_REFERENCE_AUDIT.json',dict(status='VALID_COMPATIBLE_REFERENCE',mesh_scope='ONE_REFINEMENT_5PCT_SCREEN_PASSED' if mesh_ok else 'MESH_UNRESOLVED_WITHIN_BUDGET',levels=results,relative_G_change=changes,wall_seconds=time.perf_counter()-start,mesh_limit='Only one x-z tip-band refinement through full thickness; no asymptotic convergence or y-resolution certification.'))
++
++def onset():
++ from analysis.lps_pvce_v2.lps import run
++ cfg=json.loads((BASE/'V2_DESIGN_FREEZE.json').read_text())['B'];base=json.loads((BASE/'BASELINE_STATE_AUDIT.json').read_text());old=json.loads((OLD/'A0/EQUILIBRIUM.json').read_text());samples=[dict(name='V1_A0_reused',opening_m=2e-6,accepted=True,risk=base,U_J=old['U_J'],last=old['last'],state_path=str(OLD/'A0/equilibrium.npz'))];lo=samples[0];hi=None;stop=None
++ for i in range(6):
++  if i==0:amp=cfg['search']['initial_m']
++  elif hi is None:amp=samples[-1]['opening_m']*1.25
++  else:
++   low=lo['opening_m'];high=hi['opening_m'];root=low+(1-lo['risk']['max_utilization'])*(high-low)/(hi['risk']['max_utilization']-lo['risk']['max_utilization']);target=root*(.99 if i%2==0 else 1.01);amp=float(np.clip(target,low+.1*(high-low),high-.1*(high-low)))
++  warm=min(samples,key=lambda s:abs(s['opening_m']-amp));r=run(f'A0_search_{i+1:02d}',amp,warm=warm['state_path'],warm_amp=warm['opening_m']);r['state_path']=str(BASE/'lps'/r['name']/'equilibrium.npz');samples.append(r)
++  if not r['accepted']:stop='STOPPED_STATIC_OR_CONSISTENCY_GATE';break
++  ordered=sorted(samples,key=lambda s:s['opening_m']);util=[s['risk']['max_utilization'] for s in ordered];reaction=[s['last']['top_reaction_N'] for s in ordered]
++  if np.any(np.diff(util)<=0) or np.any(np.diff(reaction)<=0):stop='STOPPED_NONMONOTONE_SAMPLED_BRANCH';break
++  if r['risk']['max_utilization']<1:lo=r
++  else:hi=r
++  width=(hi['opening_m']-lo['opening_m'])/lo['opening_m'] if hi else None
++  save(BASE/'A0_SEARCH_PROGRESS.json',dict(samples=samples,lower=lo['opening_m'],upper=hi['opening_m'] if hi else None,relative_width=width))
++  if hi and width<=.03:stop='RESOLVED_3PCT_BRACKET';break
++ if stop is None:stop='BUDGET_REACHED_BRACKET_UNRESOLVED'
++ location=hi['risk']['location'] if hi and stop=='RESOLVED_3PCT_BRACKET' else 'UNDETERMINED';lowloc=lo['risk']['location'];admit=stop=='RESOLVED_3PCT_BRACKET' and location==lowloc and location in ['NOTCH_INTERIOR_FIRST','NOTCH_SIDE_SURFACE_FIRST'];decision=dict(admitted=admit,reason='MEANINGFUL_NOTCH_FIRST_AND_STATIC_GATES' if admit else ('BOUNDARY_CONTROLLED_FIRST_FAILURE' if location=='GRIP_FIRST' else 'STATIC_GATE_NOT_MET' if stop=='STOPPED_STATIC_OR_CONSISTENCY_GATE' else 'ADMISSION_GATE_NOT_MET'),high_A1_A2='NOT_RUN',G_high_two_J_m2=None,G_high_three_J_m2=None)
++ if admit:
++  high=[lo]
++  for case in ['A1','A2']:
++   r=run(case+'_high',lo['opening_m'],case);high.append(r)
++   if not r['accepted']:break
++  decision['high_A1_A2']='COMPLETED' if len(high)==3 and all(s['accepted'] for s in high) else 'INCOMPLETE_STATIC_FAILURE'
++  if decision['high_A1_A2']=='COMPLETED':
++   U=np.array([s['U_J'] for s in high]);rr=dict(status='NEAR_ONSET_SPECIMEN_PVCE_G_DRIVE',opening_m=lo['opening_m'],states=high,G_high_two_J_m2=float((U[0]-U[1])/3e-8),G_high_three_J_m2=float((3*U[0]-4*U[1]+U[2])/6e-8),scope='Frozen-topology hypothetical branch if any virtual state exceeds native threshold; not materialGc');save(BASE/'NEAR_ONSET_PVCE_RESULTS.json',rr);decision.update({k:rr[k] for k in ['G_high_two_J_m2','G_high_three_J_m2']})
++ search=dict(status=stop,new_A0_states=len(samples)-1,samples=samples,critical_opening_bracket_m=[lo['opening_m'],hi['opening_m']] if hi else None,relative_bracket_width=(hi['opening_m']-lo['opening_m'])/lo['opening_m'] if hi else None,lower_state=lo['name'],upper_state=hi['name'] if hi else None,first_location=location,admission=decision,critical_scope='First sampled monotone fixed-topology elastic-branch threshold interval, not dynamic rupture or a uniqueness proof; upper state is above criterion and hypothetical.')
++ save(BASE/'A0_FIRST_FAILURE_SEARCH.json',search);save(BASE/'FIRST_FAILURE_LOCATION_AUDIT.json',dict(label=location,interpretation=decision['reason'],lower=lo['risk'],upper=hi['risk'] if hi else None,lower_reaction_N=lo['last']['top_reaction_N'],upper_reaction_N=hi['last']['top_reaction_N'] if hi else None,geometry_source='V1 own reference and m; V3 spatial definitions only, not its load/time values.'))
++ print('ONSET FINISHED',stop,search['critical_opening_bracket_m'],location,decision,flush=True)
++if __name__=='__main__':
++ try:globals()[sys.argv[1]]()
++ except BaseException:(BASE/(sys.argv[1]+'_ERROR.txt')).write_text(traceback.format_exc());raise
+--- /dev/null
++++ analysis/lps_pvce_v2/collect.py
+@@ -0,0 +1,16 @@
++"""Pull only this new run and its four figures; never mirror/delete old data."""
++from pathlib import Path
++import json,subprocess,shlex,hashlib
++C=json.loads(Path('/home/lzy/projects/.pvce_v2_current.json').read_text());root=Path(C['root']);base=Path(C['local']);SSH=['ssh','-p','15283','-i','/home/lzy/.ssh/vast_step3b_ed25519','-o','IdentitiesOnly=yes','-o','BatchMode=yes','root@95.3.33.46']
++script='''from pathlib import Path
++import json
++r=Path('/workspace/y_clot/project');bases=[r/'verification/lps_pvce_continuum_and_near_onset_audit_v2/20261011T142003Z',r/'results/lps_pvce_continuum_and_near_onset_audit_v2/20261011T142003Z'];items=[]
++for b in bases:
++ for p in b.rglob('*'):
++  if p.is_file() and p.name!='body.data':items.append(str(p.relative_to(r)))
++print(json.dumps(sorted(items)))'''
++files=json.loads(subprocess.check_output(SSH+['python3 -'],input=script.encode()))
++with subprocess.Popen(SSH+['cd /workspace/y_clot/project && '+shlex.join(['tar','-cf','-','--',*files])],stdout=subprocess.PIPE) as src:
++ subprocess.run(['tar','-xf','-','-C',str(root)],stdin=src.stdout,check=True);src.stdout.close();assert src.wait()==0
++receipt=[dict(path=f,bytes=(root/f).stat().st_size,sha256=hashlib.sha256((root/f).read_bytes()).hexdigest()) for f in files]
++(base/'provenance/WSL_COMPACT_COLLECTION.json').write_text(json.dumps(dict(files=receipt,total_bytes=sum(r['bytes'] for r in receipt),excluded='Three text body.data files (full intact reference table) remain on server; compressed full reference arrays + exact writer + actual native inputs collected. No unrelated historical data copied.'),indent=2));print('collected',len(files),'files',sum(r['bytes'] for r in receipt),'bytes')
+--- /dev/null
++++ analysis/lps_pvce_v2/common.py
+@@ -0,0 +1,30 @@
++"""New-run paths and read-only imports; production code is never changed."""
++from analysis.lps_pvce_v1.core import ROOT,DX,DELTA,G,K,RHO,model
++from pathlib import Path
++import numpy as np,json,hashlib,time
++RUN='20261011T142003Z'
++BASE=ROOT/'verification/lps_pvce_continuum_and_near_onset_audit_v2'/RUN
++OLD=ROOT/'verification/lps_pvce_energy_release_feasibility_v1/20261011T132103Z'
++FIG=ROOT/'results/lps_pvce_continuum_and_near_onset_audit_v2'/RUN
++NAMES=['NOTCH_INTERIOR_FIRST','NOTCH_SIDE_SURFACE_FIRST','GRIP_FIRST','OTHER_SURFACE_FIRST','FREE_INTERIOR_FIRST']
++def sha(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()
++def regions(X,b,tip=-100e-6):
++ m=X[b].mean(1);dt=np.hypot(m[:,0]-tip,m[:,2]);dg=np.minimum(abs(m[:,2]-350e-6),abs(m[:,2]+350e-6));ds=np.min(np.array([300,300,500])*1e-6-abs(m),axis=1)
++ # Identical V2/V3 notch>grip>surface>interior priority; notch split by y-side distance.
++ reg=np.full(len(b),4,dtype=np.int8);reg[ds<=DELTA]=3;reg[dg<=DELTA]=2;reg[dt<=DELTA]=0;reg[(dt<=DELTA)&(300e-6-abs(m[:,1])<=DELTA)]=1
++ return reg
++
++def risk(z):
++ b=z['bonds'];X=z['X'];x=z['x_m'];alive=z['alive'].astype(bool);r=z['r'];reg=regions(X,b)
++ st=(np.linalg.norm(x[b[:,1]]-x[b[:,0]],axis=1)-r)/r;ids=np.flatnonzero(alive);k=ids[np.argmax(st[ids])];mx=float(st[k]);rm={n:float(st[alive&(reg==j)].max()/.15) for j,n in enumerate(NAMES)}
++ # Competing event if distinct spatial classes lie within 2% of global utilization.
++ competitors=[n for n,v in rm.items() if v>=.98*mx/.15];label='COMPETING_FIRST' if len(competitors)>1 else NAMES[int(reg[k])]
++ near=ids[st[ids]>=mx*(1-1e-5)]
++ return dict(max_stretch=mx,max_utilization=mx/.15,location=label,highest_region=NAMES[int(reg[k])],competing_regions=competitors,regional_utilization=rm,maximum_reference_bond_id=int(k+1),maximum_atom_ids=(b[k]+1).tolist(),maximum_midpoint_um=(X[b[k]].mean(0)*1e6).tolist(),symmetric_tie_reference_ids=(near+1).tolist(),symmetric_tie_atom_ids=(b[near]+1).tolist(),symmetric_tie_midpoints_um=(X[b[near]].mean(1)*1e6).tolist())
++
++def save(p,obj):
++ def cv(v):
++  if isinstance(v,np.ndarray):return v.tolist()
++  if isinstance(v,np.generic):return v.item()
++  raise TypeError(type(v).__name__)
++ Path(p).write_text(json.dumps(obj,indent=2,default=cv,allow_nan=False))
+--- /dev/null
++++ analysis/lps_pvce_v2/deliver.py
+@@ -0,0 +1,14 @@
++from analysis.lps_pvce_v2.common import *
++
++def main():
++ E=json.loads((BASE/'ENERGY_AND_EQUILIBRIUM_AUDIT.json').read_text());S=json.loads((BASE/'A0_FIRST_FAILURE_SEARCH.json').read_text());F=json.loads((BASE/'CONTINUUM_REFERENCE_AUDIT.json').read_text());R=json.loads((BASE/'RUN_RESOURCES.json').read_text());C=E['lps'][0];V=E['comparison'];D=json.loads((BASE/'V2_DESIGN_FREEZE.json').read_text());mat=D['material'];young=9*K*G/(3*K+G);nu=(3*K-2*G)/(2*(3*K+G));two_diff=V[0]['G_two_J_m2']/V[2]['G_two_J_m2']-1
++ lines=['# LPS_PVCE_CONTINUUM_AND_NEAR_ONSET_AUDIT_V2 科研审查','', '**已完成有限范围的连续体参考；近临界 LPS 在首个高载候选的静态门槛处停止，未得到临界开度区间或高载 PVCE。** 六个 FEM 状态通过弱式平衡、反力、能量功和裂面拓扑检查；一次加密的 G 变化小，但体积应变投影误差仍显著，不能认证连续体解已充分分辨。两模块分别验收，材料 Gc 仍未识别。','',f'Run ID：`{RUN}`。服务器 `/workspace/y_clot/project`，分支 `migration-20261009`，HEAD `cc5ee77149f55e58d715bb5a4660c6467231a826`。实际 WSL 回收位置与本报告一致。[四组审查图](OPEN_RESULTS.html) · [分项状态](FINAL_STATUS.json) · [冻结方案](V2_DESIGN_FREEZE.json)。','', '## 1. 独立连续体：几何、边界与混合离散','',f'采用三维小应变各向同性线弹性：G={G:g} Pa，K={K:.12g} Pa，E={young:.12g} Pa，ν={nu:.12g}。名义实体 x、y=±300 µm，z=±500 µm，体积3.6×10⁻¹⁰ m³，与2880个LPS节点体积总和一致。裂纹从x=−300µm到−100/−50/0µm，在z=0贯穿y厚度；B=600µm，Δa=50µm，单个推进面ΔA=3.0×10⁻⁸m²。两个自由裂面的面积之和不作为PVCE分母。','', 'LPS节点中心z范围为±475µm，实际端面控制跨度950µm。FEM保留完整1000µm实体，在内部z=±475µm平面施加uz=±1µm；两外侧25µm端帽的外表面无牵引。横向仅用三个点自由度消除Tx、Ty、Rz，其余横向自由。这是明确的相容映射，**连续控制面加弹性端帽并不等于非局部节点的半单元体积/传力分布**，相关差异没有被单独隔离。没有把950µm偷偷改作1000µm。','', '每个z=0且x<裂尖的网格顶点复制为上下两侧独立编号，裂尖线上保持连接。四面体与P2边自由度据此分离；裂面是边界三角面，未施加任何牵引或跨面约束。保存实际网格、裂面编号、复制节点映射、全精度P2自由度和P1压力。裂面开度非负，最小规范约束反力通过检查；裂尖奇异处不宣称点值应力牵引精确为零。','', '采用P2位移/P1体积应力混合Taylor–Hood四面体，以避免只用低阶位移罚形式处理ν≈0.5。令λ=K−2G/3，离散块为 [[A,Bᵀ],[B,−M/λ]]，A=∫2Gε(u):ε(v)，B=∫q div(u)。混合变分能U=½uᵀAu+½pᵀ(M/λ)p与反力功一致。以L=1mm、应力G无量纲化后用SciPy SuperLU求解；无非线性本构、相场、软化或新增断裂机制。','', '初始网格6048个四面体；唯一一次加密在共同裂尖带x∈[−150,50]µm、z∈[−100,100]µm插入中点，并贯穿y，得到10368个四面体。y间隔仍100µm，没有厚度分辨率扫描。','', '## 2. 2µm低载能量与G','', '| 模型 | U0 (J) | U1 (J) | U2 (J) | G_two (J/m²) | G_three (J/m²) |','|---|---:|---:|---:|---:|---:|']
++ for r in V:lines.append(f"| {r['model']} | {r['U0_J']:.12e} | {r['U1_J']:.12e} | {r['U2_J']:.12e} | {r['G_two_J_m2']:.12e} | {r['G_three_J_m2']:.12e} |")
++ lines+=['',f'LPS相对加密FEM：两点高{two_diff*100:.6f}%，三点高{V[2]["LPS_minus_reference_over_reference_three"]*100:.6f}%；绝对三点差{V[0]["G_three_J_m2"]-V[2]["G_three_J_m2"]:.12e} J/m²。FEM局部加密两点/三点变化分别{100*F["relative_G_change"]["G_two_J_m2"]:.6f}% / {100*F["relative_G_change"]["G_three_J_m2"]:.6f}%，通过预注册5%差分稳定性筛查。加密FEM两点/三点差异为{100*abs(V[2]["G_two_J_m2"]-V[2]["G_three_J_m2"])/abs(V[2]["G_three_J_m2"]):.6f}%。','', '**重要的分辨率限制：** 若用同一位移场的未投影div(u)重建纯位移应变能，其值比混合变分能高：粗网格30.05%–31.72%，加密26.86%–27.39%。这是额外的体积应变投影/场分辨率警示，既不是材料误差，也不是已知的G误差界。不能因为能差加密变化只有0.22%，就宣称完整连续体能量或裂尖场已经收敛；这也限制了“LPS与连续体只差2.66%”的物理解读。当前只能报告**有限网格混合连续体参考值**，不是精确连续体解或真实血栓答案。达到六态预算后不再加密。','', f'六态最大相对自由力残差{max(r["relative_free_force"] for r in E["continuum"]):.6e}；最大反力功—能量差{max(r["work_energy_relative"] for r in E["continuum"]):.6e}。各态反力、裂面开度、自由力和投影诊断详见[连续体审计](CONTINUUM_REFERENCE_AUDIT.json)和[能量审计](ENERGY_AND_EQUILIBRIUM_AUDIT.json)。','', '误差分开处理：(1)线性方程残差/反力功及LPS残差功经验尺度；(2)两点/三点有限裂纹增量差异；(3)FEM场分辨率、LPS dx/δ积分与非局部边界、控制面/半体积映射、有限几何伸长差异。δ/600µm≈0.251，δ/950µm≈0.158；当前只有一个dx和horizon，不能把这几类效应分别定量归因。','', '## 3. A0阈值搜索：严格停止的实际结果','', '重新读取V1最终平衡态：最大伸长为0.004078272506310458，位置在端面角点；0.005344723940918671是V1优化试探历史最大值，不能当作最终值。按实际最终值计算u_est=2µm×0.15/s_max=73.56055769588697µm，只有初值预测身份。','', '新A0保持原完整参考ID、2536条预删除键、相同full-intact m、节点体积、950µm控制跨度和能量公式。没有给优化器增删存活键。原生核对仅在本轮适配器使用`bond_style bpm/peri break no`，生产原生源码与s00不变；alpha=0时锁定源码自然断键条件是stretch>s00。诊断保留拓扑并离线逐条核对该条件，不执行动态自然断裂。与V1基线的原生力相对差9.63×10⁻¹⁶。','',f'唯一新增候选：总开度{C["opening_m"]*1e6:.12f}µm，U={C["U_J"]:.12e}J，顶部反力{C["last"]["top_reaction_N"]*1e6:.9f}µN，最大伸长{C["risk"]["max_stretch"]:.12f}，最大利用率{C["risk"]["max_utilization"]:.12f}。**它不是通过验收的静态平衡态，反力也不是临界拉力。**','', '| 检查 | 实际值 | 冻结门槛/结果 |','|---|---:|---|',f'| 相对自由力L2 | {C["native_free_force_relative"]:.9e} | ≤1e−6，通过 |',f'| 原生最大自由力分量 | {C["max_native_free_force_N"]:.9e} N | ≤1e−13 N，未通过（11.29倍） |',f'| 最近10态能量跨度/U | {C["last"]["energy_span_relative"]:.9e} | ≤1e−8，通过 |',f'| 最近10态坐标变化 | {C["last"]["position_change_m"]:.9e} m | ≤1e−10 m，通过 |',f'| 反力不平衡 | {C["last"]["reaction_imbalance"]:.9e} | ≤1e−6，通过 |',f'| 原生力—能量梯度相对差 | {C["native_force_energy_relative"]:.9e} | ≤1e−9，通过 |',f'| 有限差分误差/最大原生力 | {C["finite_difference_scaled_error"]:.9e} | ≤1e−6，通过 |','| 接触能量/接触力 | 0 / 0 | 通过 |','', f'L-BFGS-B在{C["iterations"]}次迭代、{C["evaluations"]}次函数调用后，以`{C["optimizer_message"]}`结束。ftol=0仍可能在目标差进入浮点分辨率后触发相对下降停止。保存的原生力与独立力都确认绝对力未达标；不能把“能量不再变化”替代完整力验收。这是**数值停止/验收失败，不是已经证明高载弹性分支存在物理失稳**。预注册停止条件优先于尚未用完的6次候选预算，因此没有重启、放宽门槛或继续采点。','', '## 4. 空间诊断与高载PVCE准入','', '继承V2/V3参考键中点分区，缺口优先于夹具、其他表面和内部。缺口距离hypot(x+100µm,z)≤150.5µm；再按距y=±300µm是否≤150.5µm分侧表面与中央。夹具沿用z=±350µm过渡面周围150.5µm带，覆盖实际±475µm控制面。两类最大利用率相差≤2%才判竞争；同一类的对称角点不是不同机制竞争。只复用空间定义，不混用旧M5C的加载、m或临界值。','', '| 区域 | 73.56µm未验收候选最大利用率 |','|---|---:|']
++ for n,v in C['risk']['regional_utilization'].items():lines.append(f'| {n} | {v:.12f} |')
++ lines+=['', '四条近对称最危险键的完整参考bond ID（1-based）为132379、132624、135127、135180；原子对分别2641–2642、2659–2660、2861–2862、2879–2880，中点为(275,±275,±450)µm。缺口侧表面利用率约0.8321，中央约0.6942，夹具约0.9535。这里只能说**候选状态的最大伸长位于夹具角点**。由于候选未通过静态验收且没有形成阈值上下界，首次阈值位置必须标为`UNDETERMINED`，不能标成已证实`BOUNDARY_CONTROLLED_FIRST_FAILURE`。','', '**实际临界开度区间：未建立。最后严格有效的A0仍是V1的2µm状态。高载A1/A2：NOT_RUN（STATIC_GATE_NOT_MET）。G_high_two / G_high_three：不可用，不是0。** 本轮不生成`NEAR_ONSET_PVCE_RESULTS.json`。','', f'仅供数值诊断：73.56µm候选A0能量比V1 A0平方外推高{100*E["scaling"]["relative_difference"]:.6f}%，最大伸长比线性预测低4.650106%。这不是高载PVCE G，也不是经过静态验收的几何非线性结论。高载三态G相对平方缩放的误差无法计算，不能拿A0能量差代替它。','', '## 5. 科研解释边界','', '低载约6×10⁻⁶J/m²说明的是2µm位移下当前微型试样的能量驱动力量级。临界状态尚未建立，因此不能推断接近起裂的撕裂能量驱动力很低，更不能识别材料固有Gc。即使今后得到接近起裂G，也仍须区分边界先断、缺口侧表面先断、内部连续裂面推进和材料阻力。','', 'Liu 2024的18.27±1.45J/m²是低速Pure-Shear总断裂能；6–8J/m²是附加强度条件下Yeoh/Mullins/CZM内禀断裂功反演范围。当前LPS小试样及线弹性连续体不同于这些定义、几何、本构与耗能机制，不得直接做“脆1000倍”的比值结论。复用已验证原论文和用户原始补充材料SHA，不重新下载。','', '尚缺少与实验匹配的边界/尺度/速率、可信缺口首达阈值、可追踪连续新裂面、宏观力学与耗能约束、离散/非局部收敛等证据。因此本轮不足以证明LPS过脆，也不足以支持修改s00或直接升级耗能机制。Y血栓细小碎屑还与局部加载、界面竞争、几何拓扑、断后接触、流体阻力及50µm分辨率有关，不能将因果归结到一个尚未测出的Gc。','', '## 6. 资源、保护与复现','',f'实际新增{R["FEM_static_attempts"]}个FEM静态求解及{R["LPS_static_attempts"]}个LPS静态候选，共7个；FEM全部通过其冻结弱式数值门槛，LPS新增接受态0个。FEM求解状态墙钟累计{R["FEM_case_wall_seconds_sum"]:.3f}s、CPU累计{R["FEM_cpu_seconds_sum"]:.3f}s；LPS{R["LPS_case_wall_seconds_sum"]:.3f}s、CPU{R["LPS_cpu_seconds_sum"]:.3f}s；最大单进程RSS{R["peak_single_process_RSS_MiB"]:.2f}MiB。每进程单线程/原生单rank，GPU未参与；两模块最多同时占用2个CPU进程。墙钟累计不是开发或全部会话总时长。','', '已有私有环境不升级。只用uv --no-deps在`/workspace/y_clot/envs/pvce_v2_packages`新增scikit-fem12.0.2，FEM进程临时加入其路径。正式数值计算由两个独立Supervisor任务管理，autostart=false、autorestart=false。初次FEM A0数值结果已保存后，stdout的NumPy布尔序列化失败；修复纯日志输出并复用已接受A0，只继续剩余5态，未重复求解。预检查也修复一次NumPy标量JSON回执；仅重复原有坐标的力核对，不是新增平衡态。保留原错误及修复前记录。','', '生产材料卡、原生LAMMPS、独立能量库和旧V1–V3数据按启动前后SHA核对无修改；没有git清理、覆盖历史、commit/push、全局环境升级或新动态扫描。新任务源码、冻结设计、实际启动版本、后处理修复diff、完整结果、精简回收及SHA清单全部留存。','', '最小复核（不再求解）：','```bash','source /workspace/y_clot/env.sh','cd /workspace/y_clot/project','python -m analysis.lps_pvce_v2.replay --verify-only','```','需要新求解时须明确新run目录并重新冻结预算；不得直接覆盖本轮ATTEMPT/接受态。`provenance/*_launch.sh`保留实际计算命令，`REPLAY.md`说明依赖与安全复核。','', '## 7. 21项问题对应答案','']
++ answers=[('几何/边界相容？','已建立明确映射：1000µm实体、950µm内控制面、真实分离裂面；连续面与非局部节点半单元仍有差异。'),('低载连续体G？',f'加密两点{V[2]["G_two_J_m2"]:.9e}、三点{V[2]["G_three_J_m2"]:.9e}J/m²，有限网格混合参考。'),('LPS差多少？',f'两点高{100*two_diff:.4f}%，三点高{100*V[2]["LPS_minus_reference_over_reference_three"]:.4f}%。'),('差异原因能分离？','残差、有限差分和一次网格变化已量化；非局部/离散积分、边界映射及几何非线性尚未独立分离。'),('网格充分分辨？','仅G加密5%筛查通过；体积投影能量差仍26.86%–27.39%，完整场与厚度方向未认证收敛。'),('真实临界开度区间？','未建立；73.56µm首候选未通过绝对力门槛，按冻结规则停止。'),('首次阈值键位置？','UNDETERMINED；候选最大伸长位于四个夹具角点，尚不是已证实首断。'),('有资格称缺口起裂？','没有。'),('高载三态实际运行？','只有1个A0候选；高载A1/A2未运行。'),('G_high两点/三点？','均不可用，未伪造为0。'),('与平方缩放差多少？','高载G差不可算；未验收A0能量比平方外推高5.6908%，仅作候选诊断。'),('可说明较低试样撕裂驱动力？','只能描述2µm低载量级；近起裂量级未确认。'),('为何不是Gc？','驱动力不是阻力，且临界状态、有效裂面/机制与实验可识别约束均不足。'),('证明过脆？','不能；缺匹配实验、可靠起裂/裂面、耗能及离散收敛证据。'),('解释Y小碎屑？','不能单因果归因；加载、界面、拓扑、接触、阻力和分辨率仍未隔离。'),('可改s00或引入耗能？','没有充分证据，本轮不改。'),('数量/成本？',f'6FEM+1LPS；状态墙钟累计{R["FEM_case_wall_seconds_sum"]+R["LPS_case_wall_seconds_sum"]:.2f}s，单进程峰值{R["peak_single_process_RSS_MiB"]:.1f}MiB，无GPU。'),('生产和旧结果不变？','是，逐文件SHA保护检查通过。'),('交付？','四组PNG/SVG、静态索引、分项审计、全精度状态/网格、输入日志、源码diff与清单。'),('WSL文档实际更新？','以provenance/DOCUMENT_UPDATE.json的真实路径、前后SHA、diff和读回回执为准。'),('下一轮唯一优先？','保持材料、原生力和验收门槛不变，修复并验证A0高载静态求解器的浮点停机问题；达标后再恢复首达阈值区间搜索。本轮不自动启动。')]
++ for i,(q,a) in enumerate(answers,1):lines.append(f'{i}. **{q}** {a}')
++ lines+=['', '## 8. 原文与软件身份','', '- [Zhang & Qiao 2020 PVCE](https://doi.org/10.1016/j.cma.2020.112883)：复用V1原文阅读与SHA，当前LPS参考m适配不声称逐式完整复现。','- [Liu 2024](https://doi.org/10.1016/j.jmps.2024.105858)：原PDF与用户`1-s2.0-S0022509624003247-mmc1.docx`身份沿用V1，补充材料SHA3212fc141629c72b857af4a30946001e17b36eda82ce404f319ef7b2bc6df9df。','- [scikit-fem官方混合单元示例](https://raw.githubusercontent.com/kinnala/scikit-fem/master/docs/examples/ex36.py)：仅参考P2/P1空间和装配API，本轮实现上述小应变线性弱式，未采用该示例的Neo-Hookean本构。','- [scikit-fem文档](https://scikit-fem.readthedocs.io/)；实际使用12.0.2，隔离安装。','- LAMMPS以服务器锁定源码与库SHA为准，不采用在线最新版替换。源文件保护清单及启动SHA见provenance。','']
++ (BASE/'REVIEW_LPS_PVCE_CONTINUUM_AND_NEAR_ONSET_AUDIT_V2.md').write_text('\n'.join(lines));print('review written')
++if __name__=='__main__':main()
+--- /dev/null
++++ analysis/lps_pvce_v2/design.py
+@@ -0,0 +1,12 @@
++from analysis.lps_pvce_v2.common import *
++def main():
++ assert not (BASE/'V2_DESIGN_FREEZE.json').exists()
++ old=json.loads((OLD/'PVCE_DESIGN_FREEZE.json').read_text());z=np.load(OLD/'A0/equilibrium.npz');r=risk(z);trial=json.loads((OLD/'A0/EQUILIBRIUM.json').read_text())['max_stretch_all_optimizer_evaluations'];r.update(opening_m=2e-6,linear_initial_estimate_m=2e-6*.15/r['max_stretch'],historical_max_over_optimizer_trials=trial,correction='0.00535 was a trial-history maximum, not final equilibrium maximum; actual final coordinates govern this prediction.')
++ save(BASE/'BASELINE_STATE_AUDIT.json',r)
++ inputs=json.loads((BASE/'provenance/INPUT_IDENTITIES.json').read_text())
++ freeze=dict(task='LPS_PVCE_CONTINUUM_AND_NEAR_ONSET_AUDIT_V2',run_id=RUN,frozen_utc=time.strftime('%FT%TZ',time.gmtime()),inputs=inputs,material=old['material'],reference=old['reference'],production_parameters='UNCHANGED',source_ids={str(p.relative_to(ROOT)):sha(p) for p in (ROOT/'analysis/lps_pvce_v2').glob('*.py')},
++ A=dict(name='LOW_LOAD_CONTINUUM_BENCHMARK',question='Finite-increment low-load G of compatible 3D local elasticity vs existing LPS; not material Gc',method='scikit-fem 12.0.2 P2 displacement/P1 volumetric stress mixed Taylor-Hood tetrahedra; Herrmann form A=2G eps:eps, B=q div(u), C=-p q/lambda; lambda=K-2G/3. Coordinates/unknowns scaled by L=1mm,stress by G. Sparse direct SciPy SuperLU.',geometry='Physical box x,y=+/-300um,z=+/-500um; internal axial control planes z=+/-475um, total opening2um, outer25um caps traction-free. Duplicated z0 vertices strictly x<tip, continuous front x=tip. All face displacement DOFs independent except common front; no applied crack tractions.',mapping_limit='LPS discrete nodal cell volume includes half cells; continuum internal plane control approximates nodal force/volume distribution but cannot exactly reproduce it. 950um control span is not1000um nominal height; continuous outer caps differ from half-cell nodal representation.',gauges='Only ux,uy at(-300,-300,-475)um and uy at(+300,-300,-475)um; remove Tx,Ty,Rz. All other transverse DOFs free.',mesh=dict(coarse_x_um=list(range(-300,301,50)),y_um=list(range(-300,301,100)),coarse_z_um=[-500,-475,-400,-300,-200,-100,-50,0,50,100,200,300,400,475,500],refinement='One common x-z front band for all cracks: insert midpoints x intervals within[-150,50]um and z intervals within[-100,100]um, extruded through y; no further refinement.'),criteria=dict(relative_free_force=1e-8,relative_mixed_residual=1e-8,relative_work_energy=1e-8,relative_reaction_balance=1e-8,gauge_reaction_over_Q=1e-7,minimum_crack_gap_m=-1e-12,relative_volume_error=1e-12,mesh_G_change=0.05),budget=dict(coarse=3,refined=3,total=6),stop='Stop A if any coarse validity gate fails; otherwise exactly one triplet refinement. If either G changes>5%, mark mesh scope unresolved; do not refine again.',labels=['VALID_COMPATIBLE_REFERENCE','FAILED_REFERENCE','ONE_REFINEMENT_5PCT_SCREEN_PASSED','MESH_UNRESOLVED_WITHIN_BUDGET']),
++ B=dict(name='NEAR_ONSET_PVCE_DIAGNOSTIC',question='First native stretch criterion on A0 frozen-topology elastic equilibrium branch; meaningful notch onset is a separate admission condition for high PVCE.',baseline=r,method='Locked energy.so, L-BFGS-B with existing supplied force gradient; keep all preset alive bonds, full intact reference m. Native one-rank force check uses task-only bond_style bpm/peri break no to suppress natural break during diagnostic evaluation. s00=.15 alpha0 unchanged and source criterion stretch>s00 classified offline; no dynamic integration.',optimizer=old['optimizer'],criteria=old['criteria'],search=dict(max_new_A0=6,total_LPS_max=8,relative_bracket_width=0.03,initial_m=r['linear_initial_estimate_m'],unbracketed_upper_factor=1.25,bracket_step='Secant for utilization=1; alternate 0.99 and1.01 times root estimate, clipped to10%-90% of current bracket; last step may choose needed side. Accepted points only; stop on nonmonotone utilization/reaction, static failure, force-energy mismatch, contact, or budget.',safe_eval='Highest actually solved subcritical A0 within the accepted<=3% bracket; report its exact utilization and gap rather than call it0.98 if not0.98. No extra A0 beyond6.'),regions=dict(inherited='V2/V3 reference midpoint; priority notch > grip > other surface > interior',notch='hypot(mid_x+100um,mid_z)<=150.5um',notch_side='notch AND distance to y=+/-300um <=150.5um',notch_interior='notch AND y-side distance>150.5um',grip='min(abs(mid_z-350um),abs(mid_z+350um))<=150.5um, inherited V3 transition envelope covering axial control planes+/-475um',other_surface='minimum midpoint distance to nominal box face<=150.5um after notch/grip exclusion',competition='Two or more classes within2% of maximum utilization. Symmetric ties within same class are not competing mechanisms.'),high_admission='Only resolved bracket, valid equilibrium/native/contact, monotone branch and unique NOTCH_INTERIOR_FIRST or NOTCH_SIDE_SURFACE_FIRST. Side-surface label never certifies full internal3D front. Any GRIP/COMPETING/OTHER/FREE class => no A1/A2. A1/A2 if admitted at identical safe A0 opening, retain hypothetical-branch label if criterion exceeded.',stops=['6newA0 or8newLPS','Any equilibrium/native/contact failure','Nonmonotone sampled utilization or reaction','Resolved bracket and completed admission decision'],labels=['BOUNDARY_CONTROLLED_FIRST_FAILURE','COMPETING_FIRST','NOTCH_SIDE_SURFACE_FIRST','NOTCH_INTERIOR_FIRST','CRITICAL_BRACKET_UNRESOLVED','NEAR_ONSET_SPECIMEN_PVCE_G_DRIVE','FROZEN_TOPOLOGY_HYPOTHETICAL_ELASTIC_BRANCH','NEAR_ONSET_PVCE_NOT_RUN']),
++ errors='Report static residual/work uncertainty, finite-increment two/three-point difference, mesh-refinement difference, and unseparated nonlocal/geometry/model effects separately.',independent_acceptance=True,literature_reused=str(OLD/'literature/SOURCES.json'),GC='NOT_IDENTIFIED')
++ save(BASE/'V2_DESIGN_FREEZE.json',freeze);print(json.dumps(r,indent=2))
++if __name__=='__main__':main()
+--- /dev/null
++++ analysis/lps_pvce_v2/fem.py
+@@ -0,0 +1,52 @@
++"""Conforming slit, genuine independent crack faces, mixed 3D linear elasticity."""
++import sys
++sys.path.insert(0,'/workspace/y_clot/envs/pvce_v2_packages')
++from skfem import MeshTet,Basis,ElementVector,ElementTetP2,ElementTetP1,BilinearForm,asm
++from skfem.helpers import sym_grad,ddot,div
++from scipy.sparse import bmat
++from scipy.sparse.linalg import spsolve
++from analysis.lps_pvce_v2.common import *
++import resource,traceback
++L=1e-3
++@BilinearForm
++def shear(u,v,w):return 2*ddot(sym_grad(u),sym_grad(v))
++@BilinearForm
++def coupling(u,q,w):return div(u)*q
++@BilinearForm
++def mass(p,q,w):return p*q
++
++def mesh(level,case):
++ f=json.loads((BASE/'V2_DESIGN_FREEZE.json').read_text())['A']['mesh'];xx=np.array(f['coarse_x_um'],float);yy=np.array(f['y_um'],float);zz=np.array(f['coarse_z_um'],float)
++ if level=='refined':
++  mids=(xx[1:]+xx[:-1])/2;xx=np.sort(np.r_[xx,mids[(mids>-150)&(mids<50)]]);mids=(zz[1:]+zz[:-1])/2;zz=np.sort(np.r_[zz,mids[(mids>-100)&(mids<100)]])
++ tip=[-100,-50,0][int(case[-1])]*1e-3
++ orig=MeshTet.init_tensor(xx*1e-3,yy*1e-3,zz*1e-3);p=orig.p.copy();t=orig.t.copy();ids=np.flatnonzero((abs(p[2])<1e-12)&(p[0]<tip-1e-12));dup=np.arange(len(ids))+p.shape[1];mapping=np.arange(p.shape[1]);mapping[ids]=dup;upper=p[2,t].mean(0)>0;t[:,upper]=mapping[t[:,upper]];p=np.c_[p,p[:,ids]];m=MeshTet(p,t,sort_t=False)
++ faces=m.boundary_facets();fc=m.p[:,m.facets[:,faces]].mean(1);cr=faces[(abs(fc[2])<1e-12)&(fc[0]<tip-1e-12)];coords=m.p[:,m.facets[:,cr]];areas=np.linalg.norm(np.cross((coords[:,1]-coords[:,0]).T,(coords[:,2]-coords[:,0]).T),axis=1)/2
++ vol=abs(np.linalg.det(np.moveaxis(m.p[:,m.t[1:]]-m.p[:,m.t[0]][:,None,:],2,0))).sum()/6
++ assert len(cr)>0 and abs(areas.sum()-2*(tip+.3)*.6)<1e-12
++ assert abs(vol-.36)<1e-12
++ # Each split vertex belongs only to its respective half; front remains shared.
++ for k,d in zip(ids,dup):
++  assert np.all(m.p[2,m.t[:,np.any(m.t==k,axis=0)]].mean(0)<0)
++  assert np.all(m.p[2,m.t[:,np.any(m.t==d,axis=0)]].mean(0)>0)
++ return m,ids,dup,cr,dict(vertices=m.nvertices,tetrahedra=m.nelements,split_vertices=len(ids),crack_face_triangles=len(cr),two_face_area_m2=float(areas.sum()*L**2),volume_m3=float(vol*L**3),tip_m=tip*L)
++
++def run(level,case):
++ out=BASE/'continuum'/level/case;out.mkdir(parents=True,exist_ok=True);assert not (out/'ATTEMPT.json').exists();save(out/'ATTEMPT.json',dict(utc=time.strftime('%FT%TZ',time.gmtime()),independent_equilibrium_attempt=1));start=time.perf_counter();cpu=time.process_time();cfg=json.loads((BASE/'V2_DESIGN_FREEZE.json').read_text())['A'];m,ids,dup,cr,ma=mesh(level,case)
++ bu=Basis(m,ElementVector(ElementTetP2()),intorder=4);bp=Basis(m,ElementTetP1(),intorder=4);A=asm(shear,bu).tocsr();B=asm(coupling,bu,bp).tocsr();M=asm(mass,bp).tocsr();lam=K/G-2/3;C=M/lam;H=bmat([[A,B.T],[B,-C]],format='csr')
++ # Vector P2 dofs are interleaved by component; locate ALL nodal+edge control DOFs.
++ idx=np.arange(bu.N);zdof=idx[idx%3==2];lo=zdof[np.isclose(bu.doflocs[2,zdof],-.475,atol=1e-12,rtol=0)];hi=zdof[np.isclose(bu.doflocs[2,zdof],.475,atol=1e-12,rtol=0)]
++ na=np.flatnonzero(np.all(np.isclose(m.p.T,[-.3,-.3,-.475],atol=1e-12,rtol=0),axis=1))[0];nb=np.flatnonzero(np.all(np.isclose(m.p.T,[.3,-.3,-.475],atol=1e-12,rtol=0),axis=1))[0];gauge=np.array([bu.nodal_dofs[0,na],bu.nodal_dofs[1,na],bu.nodal_dofs[1,nb]]);D=np.unique(np.r_[lo,hi,gauge]);free=np.setdiff1d(np.arange(H.shape[0]),D);q=np.zeros(H.shape[0]);q[lo]=-.001;q[hi]=.001
++ assembly_seconds=time.perf_counter()-start;ts=time.perf_counter();q[free]=spsolve(H[free][:,free].tocsc(),-H[free][:,D]@q[D],permc_spec='COLAMD');solve_seconds=time.perf_counter()-ts
++ assert np.all(np.isfinite(q));u=q[:bu.N];p=q[bu.N:];res=H@q;Fscale=G*L**2;Uscale=G*L**3;U=.5*(u@(A@u)+p@(C@p))*Uscale;top=res[hi].sum()*Fscale;bottom=res[lo].sum()*Fscale;Q=(top-bottom)/2;ud=bu.nodal_dofs;gap=(u[ud[2,dup]]-u[ud[2,ids]])*L
++ ctrl=np.r_[lo,hi];ufree=np.setdiff1d(np.arange(bu.N),D);frel=np.linalg.norm(res[ufree])/np.linalg.norm(res[ctrl]);mixed=np.linalg.norm(res[free])/np.linalg.norm(res[D]);work=q[D]@res[D]*Uscale;volerr=abs(ma['volume_m3']/3.6e-10-1)
++ # Physical unprojected energy is an additional locking/projection diagnostic, not the mixed discrete variational energy used for reaction consistency.
++ field=bu.interpolate(u);dv=div(field);pv=bp.interpolate(p);vol_mismatch=float(np.sqrt(np.sum((dv-pv/lam)**2*bu.dx)/np.sum(dv**2*bu.dx)));U_primal=U+.5*lam*np.sum((dv-pv/lam)**2*bu.dx)*Uscale
++ c=cfg['criteria'];gates=dict(free_force=frel<c['relative_free_force'],mixed_residual=mixed<c['relative_mixed_residual'],work_energy=abs(work/(2*U)-1)<c['relative_work_energy'],reaction_balance=abs(top+bottom)/abs(Q)<c['relative_reaction_balance'],minimal_gauge_force=np.linalg.norm(res[gauge])*Fscale/abs(Q)<c['gauge_reaction_over_Q'],positive_crack_opening=gap.min()>=c['minimum_crack_gap_m'],physical_volume=volerr<c['relative_volume_error'],independent_faces=len(ids)>0,pressure_coercivity=lam>0)
++ result=dict(level=level,case=case,accepted=all(gates.values()),gates=gates,U_J=float(U),top_reaction_N=float(top),bottom_reaction_N=float(bottom),relative_free_force=float(frel),max_free_force_N=float(abs(res[ufree]).max()*Fscale),relative_mixed_residual=float(mixed),work_energy_relative=float(abs(work/(2*U)-1)),gauge_force_over_reaction=float(np.linalg.norm(res[gauge])*Fscale/abs(Q)),crack_vertex_gap_range_m=[float(gap.min()),float(gap.max())],mesh=ma,displacement_dofs=bu.N,pressure_dofs=bp.N,axial_control_dofs_each=len(lo),transverse_gauge_dofs=gauge.tolist(),pressure_projection_relative_L2=vol_mismatch,primal_energy_J=float(U_primal),primal_vs_mixed_energy_relative=float(U_primal/U-1),energy_scope='Mixed variational stored energy .5uAu+.5pCp, consistent with reaction; unprojected lambda*div(u)^2 energy also reported to expose approximation.',crack_traction='Zero applied natural traction on distinct boundary facets. Discrete weak equilibrium verified; pointwise stress traction at singular front is not claimed zero.',wall_seconds=time.perf_counter()-start,assembly_seconds=assembly_seconds,sparse_solve_seconds=solve_seconds,cpu_seconds=time.process_time()-cpu,peak_RSS_MiB=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024,threads=1,GPU=False)
++ np.savez_compressed(out/'equilibrium.npz',vertices_m=m.p.T*L,tetrahedra=m.t.T,facets=m.facets.T,crack_facets=cr,split_original=ids,split_duplicate=dup,displacement_dof_coordinates_m=bu.doflocs.T*L,displacement_dofs_m=u*L,vertex_displacement_m=u[ud].T*L,pressure_Pa=p*G,nodal_dofs=ud,low_dofs=lo,high_dofs=hi,gauge_dofs=gauge,residual_N=res[:bu.N]*Fscale,crack_vertex_gap_m=gap)
++ save(out/'RESULT.json',result);print((out/'RESULT.json').read_text(),flush=True);return result
++if __name__=='__main__':
++ try:run(sys.argv[1],sys.argv[2])
++ except BaseException:
++  p=BASE/'continuum'/sys.argv[1]/sys.argv[2];p.mkdir(parents=True,exist_ok=True);(p/'ERROR.txt').write_text(traceback.format_exc());raise
+--- /dev/null
++++ analysis/lps_pvce_v2/finalize.py
+@@ -0,0 +1,39 @@
++"""Read-only final checks, exact source diffs and task-only manifest; no solves."""
++from analysis.lps_pvce_v2.common import *
++import subprocess,difflib,os,re
++
++def main():
++ p=BASE/'provenance';s=json.loads((BASE/'FINAL_STATUS.json').read_text());assert s['DOCUMENT_UPDATE']=='ACTUAL_WSL_UPDATED_AND_READ_BACK';prot=json.loads((p/'PROTECTED_START.json').read_text());changed=[n for n,h in prot.items() if sha(ROOT/n)!=h];assert not changed;save(p/'PROTECTED_FINAL.json',dict(checked=len(prot),changed=changed))
++ source=(ROOT/'tools/lammps-contact-onset-v1/src/BPM/bond_bpm_peri.cpp').read_text();assert 'const bool allow_breaks = (update->setupflag == 0) && break_flag' in source;assert 'stretch > s00[type] - alpha[type] * MAX(smin[i1], smin[i2])' in source
++ save(p/'NATIVE_CRITERION_AUDIT.json',dict(source='tools/lammps-contact-onset-v1/src/BPM/bond_bpm_peri.cpp',sha256=sha(ROOT/'tools/lammps-contact-onset-v1/src/BPM/bond_bpm_peri.cpp'),exact_criterion='allow_breaks && (stretch > s00[type] - alpha[type] * MAX(smin[i1], smin[i2]))',allow_breaks='update->setupflag == 0 && break_flag',alpha=0,s00=.15,all_reference_bonds_type=1,scope='Native forces checked with task-only break no; offline threshold diagnosis is exact for current alpha0 bulk-only states, not a dynamic event.'))
++ nativeold=(ROOT/'analysis/lps_pvce_v1/core.py').read_text().split('class Native:')[1];nativenew=(ROOT/'analysis/lps_pvce_v2/native.py').read_text().split('class Native:')[1];assert nativeold.replace('bond_style bpm/peri\n','bond_style bpm/peri break no\n')==nativenew
++ (p/'NATIVE_ADAPTER.diff').write_text(''.join(difflib.unified_diff(nativeold.splitlines(True),nativenew.splitlines(True),fromfile='V1 Native',tofile='V2 Native (task only)')))
++ diffs=[]
++ for fn in ['fem.py','campaign.py','lps.py']:
++  before=(p/('launch_'+fn)).read_text();after=(ROOT/'analysis/lps_pvce_v2'/fn).read_text();diffs.extend(difflib.unified_diff(before.splitlines(True),after.splitlines(True),fromfile='launch/'+fn,tofile='final/'+fn))
++ (p/'POST_LAUNCH_SOURCE.diff').write_text(''.join(diffs));new=[]
++ for f in sorted((ROOT/'analysis/lps_pvce_v2').glob('*.py')):new.extend(difflib.unified_diff([],f.read_text().splitlines(True),fromfile='/dev/null',tofile=str(f.relative_to(ROOT))))
++ (p/'NEW_TASK_SOURCE.diff').write_text(''.join(new));save(p/'FINAL_SOURCE_IDENTITY.json',{str(f.relative_to(ROOT)):sha(f) for f in sorted((ROOT/'analysis/lps_pvce_v2').glob('*.py'))})
++ checks=json.loads((BASE/'IMPLEMENTATION_CHECKS.json').read_text());checks['native_source_criterion']='allow_breaks && stretch > s00[type] - alpha[type]*MAX(smin_i,smin_j); alpha0 bulk-only gives stretch>.15';save(BASE/'IMPLEMENTATION_CHECKS.json',checks)
++ # Capture the isolated installed package identity without copying the environment.
++ pkg=Path('/workspace/y_clot/envs/pvce_v2_packages');save(p/'ISOLATED_PACKAGE_FILES.json',{str(f.relative_to(pkg)):sha(f) for f in sorted(pkg.rglob('*')) if f.is_file() and '__pycache__' not in f.parts})
++ required=['REVIEW_LPS_PVCE_CONTINUUM_AND_NEAR_ONSET_AUDIT_V2.md','FINAL_STATUS.json','V2_DESIGN_FREEZE.json','CONTINUUM_REFERENCE_AUDIT.json','CONTINUUM_PVCE_COMPARISON.csv','A0_FIRST_FAILURE_SEARCH.json','FIRST_FAILURE_LOCATION_AUDIT.json','ENERGY_AND_EQUILIBRIUM_AUDIT.json','IMPLEMENTATION_CHECKS.json','OPEN_RESULTS.html'];assert all((BASE/f).exists() for f in required);assert not (BASE/'NEAR_ONSET_PVCE_RESULTS.json').exists();assert len(list(FIG.glob('Fig*.png')))==4 and len(list(FIG.glob('Fig*.svg')))==4
++ for idx in [BASE/'OPEN_RESULTS.html',FIG/'OPEN_RESULTS.html']:
++  for href in re.findall(r'(?:src|href)="([^"]+)"',idx.read_text()):assert (idx.parent/href).exists(),href
++ statuses=subprocess.run(['supervisorctl','status','y_clot_pvce_v2_continuum_'+RUN,'y_clot_pvce_v2_onset_'+RUN],capture_output=True,text=True).stdout;assert statuses.count('EXITED')==2
++ (BASE/'REPLAY.md').write_text('''# 最小复核与再运行限制
++
++现有服务器：`source /workspace/y_clot/env.sh`，进入`/workspace/y_clot/project`，运行`python -m analysis.lps_pvce_v2.replay --verify-only`。此命令只核验清单和储能差，绝不重新求解。
++
++WSL轻量复核只需Python标准库，无须安装NumPy或加载原生求解库。完整原生重算另需锁定LAMMPS库与energy.so，版本身份在保护清单，不能用其他库悄悄替代。FEM额外安装scikit-fem12.0.2到独立target目录（环境记录中给出），不得升级原环境。
++
++实际数值启动命令与Supervisor配置在provenance/*_launch.sh、*_supervisor.conf；六个FEM ATTEMPT和一个LPS ATTEMPT对应七个独立求解，没有重复计算。旧run目录不可用于覆盖重放。新数值试验需新的路径、冻结方案及授权范围，本轮到停止条件后不自动追加。
++
++三份重复body.data完整文本留服务器；它们是同一个完整未切节点/参考键表，可由旧V1 reference.npz和锁定write_typed_data重建。WSL已保存必要全精度网格、P2/P1自由度、节点状态、力、alive、m及全部数值审计。body.data并非唯一科学数据源。
++
++FILE_MANIFEST.json不收录自己、集合收据及核验回执，以免循环哈希；WSL缺失仅允许上述body.data。最终清单核验同时在服务器和WSL执行。没有迁移其他项目、旧大轨迹、软件环境或视频。
++''')
++ save(p/'COMPLETION_CHECK.json',dict(required_artifacts=required,high_PVCE_results_absent_by_admission=True,actual_FEM_solves=6,actual_LPS_candidates=1,new_LPS_accepted=0,source_locks_unchanged=True,protected_files=len(prot),supervisor=statuses,document_status=s['DOCUMENT_UPDATE'],visual_review=json.loads((p/'VISUAL_REVIEW.json').read_text())))
++ exclude={'FILE_MANIFEST.json','MANIFEST_VERIFICATION.json','WSL_FINAL_VERIFICATION.json','WSL_COMPACT_COLLECTION.json'};files=[f for folder in [BASE,FIG] for f in folder.rglob('*') if f.is_file() and f.name not in exclude];files+=list((ROOT/'analysis/lps_pvce_v2').glob('*.py'));records=[dict(path=str(f.relative_to(ROOT)),bytes=f.stat().st_size,sha256=sha(f)) for f in sorted(files)];save(BASE/'FILE_MANIFEST.json',dict(files=records,total_bytes=sum(r['bytes'] for r in records),excluded=list(sorted(exclude)),scientific_scope='Task-scoped source, full precision states, meshes, accepted/failed diagnostics, figures and actual input logs. Production and old results remain read-only.'))
++ print('FINALIZED',len(records),'files',sum(r['bytes'] for r in records),'bytes')
++if __name__=='__main__':main()
+--- /dev/null
++++ analysis/lps_pvce_v2/lps.py
+@@ -0,0 +1,41 @@
++"""One fixed-topology equilibrium; above-threshold states are diagnostic only."""
++from analysis.lps_pvce_v2.common import *
++from analysis.lps_pvce_v2.native import Native
++from analysis.lps_pvce_v1.run import contact
++from scipy.optimize import minimize
++import sys,csv,resource
++
++def run(name,amp,case='A0',warm=None,warm_amp=2e-6):
++ out=BASE/'lps'/name;out.mkdir(parents=True,exist_ok=True);assert not (out/'ATTEMPT.json').exists();save(out/'ATTEMPT.json',dict(opening_m=amp,case=case,utc=time.strftime('%FT%TZ',time.gmtime()),equilibrium_attempt=1));start=time.perf_counter();cpu=time.process_time();cfg=json.loads((BASE/'V2_DESIGN_FREEZE.json').read_text())['B'];c=cfg['criteria'];g,e,alive,mask,lo,hi,_,_=model([-100e-6,-50e-6,0][int(case[-1])]);X=g['X'];free=~mask;scale=amp;escale=1e-12*(amp/2e-6)**2
++ old=np.load(warm if warm else OLD/case/'equilibrium.npz');x0=X+(old['x_m']-X)*(amp/warm_amp);fixed=X.copy();fixed[lo,2]-=amp/2;fixed[hi,2]+=amp/2;x0[mask]=fixed[mask];calls=0;history=[];states=[];last=None;trial_max=-np.inf
++ def unpack(q):
++  x=fixed.copy();x[free]=X[free]+q*scale;return np.ascontiguousarray(x)
++ def evaluate(q):
++  nonlocal calls,last,trial_max
++  calls+=1
++  if calls>cfg['optimizer']['maxfun']:raise RuntimeError('FUNCTION_BUDGET')
++  x=unpack(q);U,f=e.eval(x,alive,True);s=(np.linalg.norm(x[e.b[:,1]]-x[e.b[:,0]],axis=1)-e.r)/e.r;trial_max=max(trial_max,float(s[alive.astype(bool)].max()));last=(q.copy(),x,U,f)
++  return U/escale,-f[free]*scale/escale
++ def record(q):
++  if last is None or not np.array_equal(last[0],q):evaluate(q)
++  _,x,U,f=last;top=float(-f[hi,2].sum());bottom=float(-f[lo,2].sum());Q=(top-bottom)/2;states.append((x.copy(),U));states[:]=states[-10:]
++  row=dict(iteration=len(history),evaluations=calls,U_J=U,relative_force=float(np.linalg.norm(f[free])/np.linalg.norm(f[mask])),max_force_N=float(abs(f[free]).max()),top_reaction_N=top,bottom_reaction_N=bottom,reaction_imbalance=abs(top+bottom)/abs(Q),energy_span_relative=(max(a[1] for a in states)-min(a[1] for a in states))/U if len(states)==10 else None,position_change_m=float(abs(x-states[0][0]).max()) if len(states)==10 else None)
++  history.append(row)
++  return row['relative_force']<=c['relative_free_force_L2_over_controlled_force_L2'] and row['max_force_N']<=c['max_free_force_N'] and row['reaction_imbalance']<=c['boundary_reaction_imbalance'] and row['energy_span_relative'] is not None and row['energy_span_relative']<=c['energy_span_last10_relative'] and row['position_change_m']<=c['max_position_change_last10_m']
++ q0=(x0[free]-X[free])/scale;evaluate(q0);record(q0)
++ def callback(intermediate_result):
++  if record(intermediate_result.x):raise StopIteration
++ result=minimize(evaluate,q0,jac=True,method='L-BFGS-B',callback=callback,options=cfg['optimizer']);x=unpack(result.x);U,f=e.eval(x,alive,True)
++ if not np.array_equal(states[-1][0],x):record(result.x)
++ row=history[-1]
++ with (out/'history.csv').open('w') as fp:w=csv.DictWriter(fp,fieldnames=list(row));w.writeheader();w.writerows(history)
++ n=Native(out/'native',g,alive);fn,diag,theta=n.evaluate(x);n.close();Uc,fc,cp=contact(x,g,alive);err=float(np.linalg.norm(fn-(f+fc))/np.linalg.norm(fn));nrel=float(np.linalg.norm(fn[free])/np.linalg.norm(fn[mask]));Q=(row['top_reaction_N']-row['bottom_reaction_N'])/2;cr=float(np.linalg.norm(fc)/abs(Q));eps=2*max(max(a[1] for a in states)-min(a[1] for a in states),np.linalg.norm(f[free])*np.linalg.norm((x-X)[free]),100*np.finfo(float).eps*U)
++ gates=dict(force=row['relative_force']<=c['relative_free_force_L2_over_controlled_force_L2'] and row['max_force_N']<=c['max_free_force_N'],energy_plateau=row['energy_span_relative'] is not None and row['energy_span_relative']<=c['energy_span_last10_relative'],coordinate_plateau=row['position_change_m'] is not None and row['position_change_m']<=c['max_position_change_last10_m'],reaction_balance=row['reaction_imbalance']<=c['boundary_reaction_imbalance'],native_force=nrel<=c['relative_free_force_L2_over_controlled_force_L2'] and abs(fn[free]).max()<=c['max_free_force_N'],force_energy=err<=c['native_energy_force_relative'],contact=Uc/U<=c['max_contact_energy_over_U'] and cr<=c['max_contact_force_over_reaction'],topology=diag['natural_broken']==0)
++ # Central FD at eight high-force/free components, step1pm; no extra equilibrium solve.
++ testids=np.unique(np.r_[np.argsort(abs(f.ravel()))[-4:],np.flatnonzero(free.ravel())[np.argsort(abs(f[free]))[-4:]]]);fd=[];h=1e-12
++ for j in testids:
++  xp=x.copy();xm=x.copy();xp.ravel()[j]+=h;xm.ravel()[j]-=h;fdv=-(e.eval(xp,alive,False)-e.eval(xm,alive,False))/(2*h);fd.append(dict(dof=int(j),finite_difference_N=fdv,gradient_N=float(f.ravel()[j]),absolute_error_N=abs(fdv-f.ravel()[j])))
++ fdscaled=max(a['absolute_error_N'] for a in fd)/abs(fn).max();gates['finite_difference']=fdscaled<=c['finite_difference_force_scaled_absolute']
++ state=dict(X=X,x_m=x,displacement_m=x-X,alive=alive,bonds=e.b,m=e.m,r=e.r,h=e.h,mask=mask,low=lo,high=hi,independent_force_N=f,native_force_N=fn,native_theta=theta,contact_force_N=fc,contact_pairs=cp,last_positions=np.stack([a[0] for a in states]),last_U_J=np.array([a[1] for a in states]));np.savez_compressed(out/'equilibrium.npz',**state);r=risk(state)
++ audit=dict(name=name,case=case,opening_m=amp,accepted=bool(all(gates.values())),gates={k:bool(v) for k,v in gates.items()},U_J=U,empirical_uncertainty_J=float(eps),last=row,native=diag,native_force_energy_relative=err,native_free_force_relative=nrel,max_native_free_force_N=float(abs(fn[free]).max()),contact_U_J=Uc,contact_force_over_Q=cr,contact_pairs=len(cp),risk=r,branch=('UNACCEPTED_STATIC_CANDIDATE' if not all(gates.values()) else 'SUBCRITICAL_FROZEN_TOPOLOGY_ELASTIC_EQUILIBRIUM' if r['max_utilization']<1 else 'FROZEN_TOPOLOGY_HYPOTHETICAL_ELASTIC_BRANCH'),native_natural_breaks='DISABLED_ONLY_FOR_DIAGNOSTIC; criterion read from unchanged source and evaluated on all alive bonds',max_stretch_all_trials=trial_max,finite_difference=fd,finite_difference_scaled_error=float(fdscaled),optimizer_message=str(result.message),iterations=result.nit,evaluations=calls,wall_seconds=time.perf_counter()-start,cpu_seconds=time.process_time()-cpu,peak_RSS_MiB=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024,threads=1,MPI_ranks=1,GPU=False)
++ save(out/'RESULT.json',audit);print(json.dumps(audit),flush=True);return audit
+--- /dev/null
++++ analysis/lps_pvce_v2/native.py
+@@ -0,0 +1,71 @@
++"""Task-only static branch adapter: copied V1 native check with break no.
++One explicit input change; source/material/criterion never modified.
++"""
++from analysis.lps_pvce_v1.core import *
++class Native:
++ def __init__(self,out,g,alive):
++  from lammps import lammps
++  out.mkdir(parents=True,exist_ok=True);self.g=g;self.alive=alive;self.n=len(g['X']);self.out=out
++  write_typed_data(out/'body.data',g,dict(dx_m=DX,delta_m=DELTA,rho_kg_m3=RHO))
++  text=f'''units si
++ dimension 3
++ boundary m m m
++ atom_style bond
++ atom_modify map array sort 0 0
++ newton on off
++ special_bonds lj 0 1 1 coul 1 1 1
++ lattice sc {DX:.17g}
++ read_data {out/'body.data'} extra/bond/per/atom 320 extra/special/per/atom 360
++ neighbor {2*DX:.17g} bin
++ neigh_modify every 1 delay 0 check no
++ comm_modify cutoff {3*DELTA:.17g}
++ fix props all property/atom d_vfrac d_theta d_damage ghost yes
++ set group all d_vfrac {DX**3:.17g}
++ pair_style bpm/peri contact_distance_factor 1.0
++ pair_coeff * * {18*K/(math.pi*DELTA**4):.17g} {DELTA:.17g}
++ bond_style bpm/peri break no
++ bond_coeff 1 lps {K:.17g} {G} {DELTA:.17g} .15 0
++ bond_coeff 2 lps {K:.17g} {G} {DELTA:.17g} .140624859375 0
++ bond_coeff 3 lps {K:.17g} {G} {DELTA:.17g} 1 0
++ velocity all set 0 0 0 units box
++ {force_conversion()}
++ timestep 5e-7
++ compute contactPE all pe pair
++ compute bondPE all pe bond
++ thermo 1
++ thermo_style custom step atoms bonds ke c_contactPE c_bondPE
++ thermo_modify lost error lost/bond error
++ run 0
++ '''
++  (out/'in.lammps').write_text(text+'\n# Python virtual-cut arrays, then run 1 pre no post no per force evaluation. No time integration fix.\n')
++  self.L=lammps(cmdargs=['-log',str(out/'log.lammps'),'-screen','none']);self.L.commands_string(text)
++  L=self.L;assert np.array_equal(L.numpy.extract_atom('id')[:self.n],np.arange(1,self.n+1))
++  cutpairs=set(map(tuple,(g['bonds'][alive==0]+1).tolist()));count=0
++  nb=L.extract_atom('num_bond');bt=L.extract_atom('bond_type');ba=L.extract_atom('bond_atom');ns=L.extract_atom('nspecial');sp=L.extract_atom('special')
++  for i in range(self.n):
++   remove=set()
++   for j in range(nb[i]):
++    pair=tuple(sorted((i+1,ba[i][j])))
++    if pair in cutpairs:bt[i][j]=0;remove.add(ba[i][j]);count+=1
++   # Remove only declared cut partners from the 1-2 special list. Later levels
++   # are unused (weights1); keep their storage counts consistent without init.
++   if remove:
++    original=[sp[i][j] for j in range(ns[i][2])];deleted=[j for j,v in enumerate(original[:ns[i][0]]) if v in remove]
++    kept=[v for j,v in enumerate(original) if j not in set(deleted)]
++    for j,v in enumerate(kept):sp[i][j]=v
++    for j in range(3):ns[i][j]-=len(deleted)
++  assert count==2*len(cutpairs);self.cut_entries=count
++ def evaluate(self,x):
++  L=self.L;n=self.n;L.numpy.extract_atom('x')[:n]=x
++  # pre no avoids BondBPMPeri::init_style resetting the common reference m.
++  # every1/checkno rebuilds active neighbor/bond lists using zeroed bond types.
++  L.command('run 1 pre no post no')
++  f=L.numpy.extract_atom('f')[:n].copy();theta=L.numpy.extract_atom('d_theta')[:n].copy()
++  bt=L.extract_atom('bond_type');nb=L.extract_atom('num_bond');ba=L.extract_atom('bond_atom');pairs=[]
++  for i in range(n):
++   for j in range(nb[i]):
++    if bt[i][j]>0 and ba[i][j]>i+1:pairs.append((i,ba[i][j]-1))
++  expected=self.g['bonds'][self.alive.astype(bool)];actual=np.array(sorted(pairs),int)
++  assert np.array_equal(expected,actual),'Unprescribed bond loss or topology mismatch'
++  return f,dict(contact_J=float(L.extract_compute('contactPE',0,0))*DX**3,native_bond_PE_times_V_J=float(L.extract_compute('bondPE',0,0))*DX**3,active_bonds=len(actual),natural_broken=0,kinetic_J=float(L.get_thermo('ke'))),theta
++ def close(self):self.L.close()
+--- /dev/null
++++ analysis/lps_pvce_v2/plots.py
+@@ -0,0 +1,60 @@
++"""Four scientific review figures from full-precision actual states only."""
++from analysis.lps_pvce_v2.common import *
++import matplotlib
++matplotlib.use('Agg')
++import matplotlib.pyplot as plt
++from matplotlib.lines import Line2D
++from matplotlib.collections import LineCollection
++from mpl_toolkits.mplot3d.art3d import Line3DCollection,Poly3DCollection
++RED='#a93040';BLUE='#2375a3';TEAL='#208e84';GOLD='#c58a2c';GRAY='#777777';COL=[TEAL,BLUE,GOLD,GRAY,'#7957a6'];SHORT=['Notch interior','Notch side surface','Grip','Other surface','Free interior']
++plt.rcParams.update({'font.family':'DejaVu Sans','font.size':14,'axes.titlesize':16,'axes.labelsize':14,'legend.fontsize':12,'axes.grid':True,'grid.color':'#777777','grid.alpha':.5,'svg.fonttype':'none'})
++def view(ax,title,limit=535):
++ ax.view_init(elev=12,azim=-58);ax.set(xlabel='x (µm)',ylabel='y (µm)',zlabel='z (µm)',title=title,xlim=[-340,340],ylim=[-340,340],zlim=[-limit,limit],xticks=[-200,0,200],yticks=[-200,200],zticks=[-500,0,500]);ax.set_box_aspect([.68,.68,1.07]);ax.tick_params(labelsize=11,pad=1)
++ for axis in [ax.xaxis,ax.yaxis,ax.zaxis]:axis.pane.set_facecolor((.96,.96,.96,1));axis._axinfo['grid'].update(color=(.40,.40,.40,.65),linewidth=.8)
++def savefig(fig,name):
++ for ext in ['png','svg']:fig.savefig(FIG/(name+'.'+ext),dpi=220,bbox_inches='tight',facecolor='white')
++ plt.close(fig)
++def main():
++ FIG.mkdir(parents=True,exist_ok=True);E=json.loads((BASE/'ENERGY_AND_EQUILIBRIUM_AUDIT.json').read_text());S=json.loads((BASE/'A0_FIRST_FAILURE_SEARCH.json').read_text());F=json.loads((BASE/'CONTINUUM_REFERENCE_AUDIT.json').read_text());candidate=E['lps'][-1];z=np.load(BASE/'lps'/candidate['name']/'equilibrium.npz');refs=[np.load(OLD/f'A{j}/reference.npz') for j in range(3)]
++ # Geometry, volume/control mapping, true independently numbered slit faces.
++ fig=plt.figure(figsize=(19,12));fig.subplots_adjust(top=.84,bottom=.12,wspace=.30,hspace=.34)
++ for j,r in enumerate(refs):
++  X=r['X']*1e6;b=r['bonds'];cut=r['alive']==0;m=r['mask'][:,2];ax=fig.add_subplot(2,3,j+1,projection='3d');ax.scatter(*X[~m].T,c=RED,s=5,alpha=.25,depthshade=False);ax.scatter(*X[m].T,c=BLUE,s=11,alpha=.7,depthshade=False);ax.add_collection3d(Line3DCollection(X[b[cut]],colors=TEAL,linewidths=.45,alpha=.22));tip=-100+50*j;ax.plot([tip,tip],[-300,300],[0,0],c='black',lw=2);view(ax,f'A{j}: a = {200+50*j} µm\n{cut.sum():,} actual cut bonds')
++ f=np.load(BASE/'continuum/refined/A0/equilibrium.npz');X=f['vertices_m']*1e6;xf=X+30*f['vertex_displacement_m']*1e6;cr=f['facets'][f['crack_facets']];ax=fig.add_subplot(2,3,4,projection='3d');ax.add_collection3d(Poly3DCollection(xf[cr],facecolors=TEAL,edgecolors='#15665f',linewidths=.35,alpha=.65));ctrl=np.unique(f['low_dofs']//3);ax.scatter(*X[np.isclose(abs(X[:,2]),475)].T,c=BLUE,s=6,alpha=.5,depthshade=False)
++ corners=np.array([[x,y,zz] for x in [-300,300] for y in [-300,300] for zz in [-500,500]])
++ edges=[corners[[i,j]] for i in range(8) for j in range(i+1,8) if np.sum(corners[i]!=corners[j])==1];ax.add_collection3d(Line3DCollection(edges,colors=GRAY,linewidths=.8));view(ax,'FEM A0: real independent crack faces\nDisplacements ×30 for visibility')
++ ax=fig.add_subplot(2,3,5);fac=f['facets'];side=fac[np.all(np.isclose(X[fac,1],-300),axis=1)];lines=np.concatenate([X[side[:,[0,1]]][:,:,[0,2]],X[side[:,[1,2]]][:,:,[0,2]],X[side[:,[2,0]]][:,:,[0,2]]]);ax.add_collection(LineCollection(lines,colors=GRAY,lw=.45,alpha=.7));ax.plot([-300,-100],[0,0],c=TEAL,lw=3);ax.plot([-100,-100],[-85,85],c=GOLD,lw=1.6,ls='--');ax.set(xlim=[-310,310],ylim=[-180,180],xlabel='Reference x (µm)',ylabel='Reference z (µm)',title='Refined mesh: actual y = −300 µm face');ax.set_aspect('equal')
++ ax=fig.add_subplot(2,3,6);ax.plot([-300,300,300,-300,-300],[-500,-500,500,500,-500],c=GRAY,lw=2)
++ for h in [-475,475]:ax.plot([-300,300],[h,h],c=BLUE,lw=2)
++ ax.scatter(np.tile([-275,275],2),np.repeat([-475,475],2),c=RED,s=25,zorder=4);ax.annotate('',(335,475),(335,-475),arrowprops=dict(arrowstyle='<->',color=BLUE,lw=1.8));ax.text(355,0,'950 µm\ncontrol span',va='center',color=BLUE,fontsize=13);ax.annotate('',(-340,500),(-340,-500),arrowprops=dict(arrowstyle='<->',color=GRAY,lw=1.8));ax.text(-355,0,'1000 µm nominal height',rotation=90,va='center',ha='right',fontsize=13);ax.set(xlim=[-450,640],ylim=[-540,540],xlabel='x (µm)',ylabel='z (µm)',title='Control planes ≠ physical outer faces',xticks=[-300,0,300],yticks=[-500,0,500]);ax.text(0,0,'25 µm outer caps\non both ends',ha='center',fontsize=12)
++ fig.suptitle('1 | Compatible geometry with an explicit boundary-mapping limitation\nB = 600 µm; Δa = 50 µm; ΔA = 3.0 × 10⁻⁸ m²; identical total opening = 2 µm',fontsize=20)
++ fig.legend(handles=[Line2D([],[],marker='o',ls='',c=RED,label='Actual LPS points'),Line2D([],[],c=BLUE,label='Only axial displacement prescribed'),Line2D([],[],c=TEAL,label='Actual virtual cuts / FEM crack faces')],loc='lower center',bbox_to_anchor=(.5,.03),ncol=3);fig.text(.5,.005,'FEM: full physical volume + internal control planes; three transverse gauge DOFs only. Nodal half-cells and a continuous controlled plane are not identical.',ha='center',fontsize=12);savefig(fig,'Fig1_geometry_and_boundary_mapping')
++ # Low-load energies, G and diagnostic errors.
++ fig,axs=plt.subplots(2,2,figsize=(16,11));fig.subplots_adjust(top=.88,bottom=.15,hspace=.35,wspace=.28);rows=E['comparison'];aa=[200,250,300]
++ for k,r in enumerate(rows):axs[0,0].plot(aa,np.array([r['U0_J'],r['U1_J'],r['U2_J']])*1e12,'o-',c=[RED,BLUE,TEAL][k],label=r['model'].replace('_',' '));axs[0,1].plot([0,1],np.array([r['G_two_J_m2'],r['G_three_J_m2']])*1e6,'o',ms=9,c=[RED,BLUE,TEAL][k],label=r['model'].replace('_',' '))
++ axs[0,0].set(xlabel='Crack length a (µm)',ylabel='Stored energy U (pJ)',title='Actual low-load equilibrium energies',xticks=aa);axs[0,0].legend();axs[0,1].set(xticks=[0,1],xticklabels=['Two point','Three point'],ylabel='G drive (µJ/m²)',title=f'LPS / refined FEM − 1: {100*rows[-1]["LPS_minus_reference_over_reference_three"]:.3f}% (three point)');axs[0,1].legend()
++ change=F['relative_G_change'];axs[1,0].bar([0,1],[100*change[k] for k in ['G_two_J_m2','G_three_J_m2']],color=[BLUE,TEAL]);axs[1,0].set(xticks=[0,1],xticklabels=['Two point','Three point'],ylabel='Refined / coarse − 1 (%)',title='One tip-band refinement; 5% screen passed');axs[1,0].set_ylim(0,.3)
++ axs[1,1].bar(np.array(aa)-7,100*np.array(E['mixed_projection_energy_excess']['coarse']),width=12,color=BLUE,label='Coarse');axs[1,1].bar(np.array(aa)+7,100*np.array(E['mixed_projection_energy_excess']['refined']),width=12,color=TEAL,label='Refined');axs[1,1].set(xlabel='Crack length a (µm)',ylabel='Unprojected / mixed U − 1 (%)',xticks=aa,title='Remaining volumetric-field resolution issue');axs[1,1].legend()
++ maxres=max(r['relative_free_force'] for r in E['continuum']);maxwork=max(r['work_energy_relative'] for r in E['continuum']);fig.suptitle('2 | Low-load finite-mesh continuum reference vs LPS',fontsize=21);fig.text(.5,.035,f'FEM maximum relative free-force residual = {maxres:.2e}; maximum |2U − u·R| / (2U) = {maxwork:.2e}.\nG refinement stability does not certify volumetric-field convergence. Model / boundary / horizon effects remain unseparated.\nLPS solver energy uncertainty is approximately 10⁻¹⁷ J; errors shown here are distinct from material uncertainty.',ha='center',fontsize=12);savefig(fig,'Fig2_low_load_continuum_comparison')
++ # Every actual load candidate, never call the failed candidate an accepted equilibrium.
++ samples=S['samples'];u=np.array([s['opening_m'] for s in samples])*1e6;st=np.array([s['risk']['max_stretch'] for s in samples]);fig=plt.figure(figsize=(16,11));fig.subplots_adjust(top=.88,bottom=.13,hspace=.34,wspace=.32);ax=fig.add_subplot(2,2,1);ax.scatter(u[:1],st[:1],s=80,c=TEAL,label='Accepted V1 reused');ax.scatter(u[1:],st[1:],s=100,facecolors='none',edgecolors=RED,lw=2,label='Unaccepted high candidate');ax.axhline(.15,c='black',ls='--',label='Native criterion: s > 0.15');ax.set(xlabel='Total opening (µm)',ylabel='Maximum alive-bond stretch',title='Actual points only; no critical bracket');ax.legend(loc='upper left',fontsize=11)
++ ax=fig.add_subplot(2,2,2)
++ for i,n in enumerate(NAMES):
++  vals=[s['risk']['regional_utilization'][n] for s in samples];ax.scatter(u[:1],vals[:1],c=COL[i],s=50,marker=['o','s','^','D','v'][i],label=SHORT[i]);ax.scatter(u[1:],vals[1:],facecolors='none',edgecolors=COL[i],s=100,marker=['o','s','^','D','v'][i],lw=1.7)
++ ax.axhline(1,c='black',ls='--');ax.set(xlabel='Total opening (µm)',ylabel='Maximum s / 0.15 by region',title='Grip leads in the failed candidate');ax.legend(loc='center left',fontsize=11)
++ ax=fig.add_subplot(2,2,3);Q=np.array([s['last']['top_reaction_N'] for s in samples])*1e6;ax.scatter(u[:1],Q[:1],c=TEAL,s=80);ax.scatter(u[1:],Q[1:],facecolors='none',edgecolors=RED,lw=2,s=100);ax.set(xlabel='Total opening (µm)',ylabel='Top reaction (µN)',title='Actual candidate force; not critical force');ax.annotate(f'{Q[-1]:.3f} µN\nnot accepted',(u[-1],Q[-1]),xytext=(-12,-45),textcoords='offset points',ha='right',color=RED)
++ ax=fig.add_subplot(2,2,4,projection='3d',computed_zorder=False);xx=z['x_m']*1e6;ax.scatter(*xx.T,c=RED,s=5,alpha=.23,depthshade=False);ids=np.array(candidate['risk']['symmetric_tie_reference_ids'])-1;b=z['bonds'][ids];ax.add_collection3d(Line3DCollection(xx[b],colors=GOLD,lw=3.5,zorder=10));ax.scatter(*xx[b].reshape(-1,3).T,c=GOLD,s=34,depthshade=False,zorder=11);view(ax,'Unaccepted candidate, deformation ×1\nFour actual grip-corner bond pairs',560)
++ fig.suptitle('3 | A0 near-threshold search stopped at the first static acceptance failure',fontsize=20);fig.text(.5,.025,'Filled symbols: accepted baseline. Hollow symbols: actual computed candidate that failed the absolute force gate.\nMaximum bond IDs: '+', '.join(map(str,candidate['risk']['symmetric_tie_reference_ids']))+' (full intact reference, 1-based). No first-failure event was established.',ha='center',fontsize=12);savefig(fig,'Fig3_A0_actual_search_and_location')
++ # Failed admission instead of fabricated high-load G.
++ fig,axs=plt.subplots(2,2,figsize=(16,11));fig.subplots_adjust(top=.88,bottom=.12,hspace=.35,wspace=.30);h=np.genfromtxt(BASE/'lps'/candidate['name']/'history.csv',names=True,delimiter=',');axs[0,0].semilogy(h['iteration'],h['max_force_N'],c=RED,label='Actual maximum free force');axs[0,0].axhline(1e-13,c='black',ls='--',label='Frozen absolute gate');axs[0,0].set(xlabel='Accepted optimizer iteration',ylabel='Maximum free force (N)',title='Absolute residual gate missed by 11.29×');axs[0,0].legend(fontsize=11)
++ axs[0,1].semilogy(h['iteration'],h['relative_force'],c=BLUE,label='Actual relative free-force norm');axs[0,1].axhline(1e-6,c='black',ls='--',label='Frozen relative gate');axs[0,1].set(xlabel='Accepted optimizer iteration',ylabel='||F free||₂ / ||F controlled||₂',title='Relative gate passed; this is insufficient');axs[0,1].legend(fontsize=11)
++ vals=[candidate['risk']['regional_utilization'][n] for n in NAMES];axs[1,0].barh(SHORT,vals,color=COL);axs[1,0].axvline(1,c='black',ls='--');axs[1,0].set(xlabel='s / 0.15 in unaccepted candidate',title='Spatial diagnostic only, no threshold event',xlim=[0,1.08])
++ ax=axs[1,1];ax.axis('off');text='HIGH-LOAD PVCE: NOT RUN\n\nA0 candidate: 73.5606 µm, not accepted\nA1 / A2 high-load states: not run\nG high two / three: unavailable\nCritical opening interval: unavailable\n\nNative / independent force difference: 9.35×10⁻¹⁶\nContact energy and force: zero\nNo natural bond deletion; no altered s00\n\nEnergy plateau is not proof of force convergence.\nNumerical stop ≠ physical instability.';ax.text(.0,1,text,transform=ax.transAxes,va='top',fontsize=13,linespacing=1.45)
++ fig.suptitle('4 | High-load PVCE admission failed; no invented three-state energies or G',fontsize=20);fig.text(.5,.022,'The optimizer stopped on objective-reduction roundoff. The saved native force independently confirms the missed absolute gate.\nNo tolerance relaxation, no additional A0 retry, and no high-load A1/A2 solve were performed.',ha='center',fontsize=12);savefig(fig,'Fig4_near_onset_admission_failure')
++ rel='../../../results/lps_pvce_continuum_and_near_onset_audit_v2/'+RUN+'/'
++ html='<!doctype html><meta charset="utf-8"><title>PVCE 连续体与近起裂审查 V2</title><style>body{max-width:1450px;margin:auto;font:18px sans-serif;line-height:1.6;color:#222;background:#fafafa}img{width:100%;background:white}section{margin:36px 0}a{color:#16749a}</style><h1>PVCE 连续体与近起裂审查 V2</h1><p>六个连续体状态完成；三点 G 加密变化0.22%，但体积应变场仍未认证收敛。A0 高载候选未通过绝对残余力门槛，真实临界区间未建立，高载 A1/A2 未运行；材料 Gc 未识别。</p>'
++ for p in sorted(FIG.glob('Fig*.png')):html+=f'<section><a href="{p.name}"><img src="{p.name}"></a><p><a href="{p.stem}.svg">SVG</a> · {p.stem}</p></section>'
++ (FIG/'OPEN_RESULTS.html').write_text(html);(BASE/'OPEN_RESULTS.html').write_text(html.replace('src="Fig','src="'+rel+'Fig').replace('href="Fig','href="'+rel+'Fig'))
++ save(BASE/'FIGURE_PROVENANCE.json',dict(figures=[p.name for p in sorted(FIG.glob('Fig*.png'))],sources=['V1 exact reference and states','six new continuum equilibrium.npz','one new LPS candidate equilibrium.npz and actual optimizer history'],deformation='LPS actual coordinates x1; Fig1 FEM slit displacements x30 labeled solely for visibility; topology never altered for rendering.',no_synthetic_shell=True,no_missing_G_fabricated=True))
++ print('four figure groups and static indexes written')
++if __name__=='__main__':main()
+--- /dev/null
++++ analysis/lps_pvce_v2/remote.py
+@@ -0,0 +1,12 @@
++"""Task-scoped explicit synchronization; commands use the existing private environment."""
++from pathlib import Path
++import json,sys,subprocess,shlex,hashlib
++C=json.loads(Path('/home/lzy/projects/.pvce_v2_current.json').read_text())
++SSH=['ssh','-p','15283','-i','/home/lzy/.ssh/vast_step3b_ed25519','-o','IdentitiesOnly=yes','-o','BatchMode=yes','root@95.3.33.46']
++if sys.argv[1]=='python':raise SystemExit(subprocess.call(SSH+['source /workspace/y_clot/env.sh && cd /workspace/y_clot/project && python -'],stdin=sys.stdin))
++if sys.argv[1]=='exec':raise SystemExit(subprocess.call(SSH+[sys.argv[2]]))
++if sys.argv[1]=='sync':
++ files=sys.argv[2:];r=Path(C['root']);assert all((r/p).is_file() for p in files)
++ with subprocess.Popen(['tar','-cf','-','-C',str(r),'--',*files],stdout=subprocess.PIPE) as src:
++  subprocess.run(SSH+[shlex.join(['tar','-xf','-','-C','/workspace/y_clot/project'])],stdin=src.stdout,check=True);src.stdout.close();assert src.wait()==0
++ p=Path(C['local'])/'provenance/EXPLICIT_SYNC.json';a=json.loads(p.read_text()) if p.exists() else [];a.extend(dict(path=n,sha256=hashlib.sha256((r/n).read_bytes()).hexdigest()) for n in files);p.write_text(json.dumps(a,indent=2));print('explicitly synchronized',len(files),'files')
+--- /dev/null
++++ analysis/lps_pvce_v2/replay.py
+@@ -0,0 +1,19 @@
++"""Read-only compact verification. Never launch any equilibrium or overwrite data."""
++from pathlib import Path
++import sys,json,hashlib
++ROOT=Path(__file__).resolve().parents[2]
++BASE=ROOT/"verification/lps_pvce_continuum_and_near_onset_audit_v2/20261011T142003Z"
++def sha(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()
++assert sys.argv[1:]==['--verify-only'],'Only --verify-only is implemented; new solves require a new frozen run.'
++m=json.loads((BASE/'FILE_MANIFEST.json').read_text());present=missing=0
++for r in m['files']:
++ p=ROOT/r['path']
++ if not p.exists():
++  assert p.name=='body.data','Missing required compact artifact: '+r['path'];missing+=1;continue
++ assert sha(p)==r['sha256'],r['path'];present+=1
++E=json.loads((BASE/'ENERGY_AND_EQUILIBRIUM_AUDIT.json').read_text())
++for r in E['comparison']:
++ assert abs((r['U0_J']-r['U1_J'])/3e-8-r['G_two_J_m2'])<1e-19
++ assert abs((3*r['U0_J']-4*r['U1_J']+r['U2_J'])/6e-8-r['G_three_J_m2'])<1e-19
++s=json.loads((BASE/'A0_FIRST_FAILURE_SEARCH.json').read_text());assert s['critical_opening_bracket_m'] is None and s['first_location']=='UNDETERMINED';assert s['admission']['high_A1_A2']=='NOT_RUN';assert not (BASE/'NEAR_ONSET_PVCE_RESULTS.json').exists()
++print(json.dumps(dict(manifest_verified=present,server_only_reconstructible_body_files_missing=missing,energy_differences_recomputed=True,high_PVCE_correctly_absent=True,new_solves=0)))
+--- /dev/null
++++ analysis/lps_pvce_v2/update_document.py
+@@ -0,0 +1,23 @@
++"""Apply supported new conclusions to the actual WSL document, with concurrency guard."""
++from pathlib import Path
++import json,hashlib,difflib,os,tempfile,time
++C=json.loads(Path('/home/lzy/projects/.pvce_v2_current.json').read_text());B=Path(C['local']);p=Path('/home/lzy/projects/clot_rupture.md');before=p.read_bytes();h=hashlib.sha256(before).hexdigest();initial=hashlib.sha256((B/'provenance/clot_rupture.before.md').read_bytes()).hexdigest();assert h==initial,'Concurrent edit: reread and reconcile before writing';text=before.decode();assert '本轮连续体与近起裂审查（PVCE V2）' not in text
++addition='''**本轮连续体与近起裂审查（PVCE V2）**：新增六个三维小应变线弹性混合有限元状态，裂纹两侧使用真正独立的自由面，材料 G、K 与 LPS 相同。保留 600×600×1000 µm 名义实体；实际轴向控制面在 z=±475 µm，间距 950 µm，两外侧各保留 25 µm 弹性端帽；只用三个横向点自由度消除刚体零模。这个映射没有混淆节点中心与体积外边界，但连续控制面与非局部节点的半单元传力仍不完全等价。
++
++2 µm 开度下，局部加密混合 FEM 的两点/三点能量释放率分别为 **6.0930588×10⁻⁶、6.0104634×10⁻⁶ J/m²**；LPS 相对它分别高约 **1.5246%、2.6594%**。一次裂尖带加密的 G 变化为 0.1561%、0.2217%，通过预注册 5% 差分稳定性筛查；不过，同一位移场的未投影体积应变能重建比混合变分能仍高 26.86%–27.39%，**完整连续体场与厚度方向尚未认证收敛**。这些数值只作为有限网格参考，不能把 2.66% 差异全部归为非局部效应，也不能用它宣称 LPS 已获物理验证。
++
++近起裂搜索先重读 V1 的真实 A0 最终状态：最大伸长是 **0.00407827**，此前约 0.00535 是优化试探历史最大值。由真实最终值预测的 73.5606 µm 仅作为首个加载候选。实际候选最大伸长 **0.143025**、夹具利用率 **0.953499**，缺口侧表面/中央为 0.832050/0.694233；四个最大键位于参考中点 (275,±275,±450) µm 的端面角点，顶部反力约 72.0964 µN。**该候选未通过静态验收，反力不是临界拉力，也不能说夹具已经首先断裂。**
++
++候选原生相对自由力残差 6.19×10⁻⁷ 虽通过，最大绝对自由力仍为 **1.1291×10⁻¹² N**，超过运行前冻结的 1×10⁻¹³ N 门槛。原生力与独立梯度相对差约 9.35×10⁻¹⁶、接触为零；L-BFGS-B 因目标下降达到浮点分辨率而停止。这是数值验收失败，不能解释成已证明材料失稳。按冻结停止规则不放宽门槛、不追加候选；**真实首次阈值开度区间与位置均未确定，高载 A1/A2 未运行，G_high 不可用而不是零**。最后严格有效的 A0 仍是 V1 的 2 µm 平衡态。
++
++本轮实际新增 6 个 FEM 求解和 1 个 LPS 候选。低载 G_drive 不等于临界撕裂阻力；未验收 A0 的储能比平方外推高约 5.69%，也不能代替高载三态 G。材料固有 Gc 仍未识别；不足以证明“LPS 比真实血块脆多少倍”、解释 Y 血栓细碎屑的唯一原因，或支持修改 s00 / 引入新耗能机制。生产材料卡、原生 LAMMPS 与旧 V1–V3/PVCE V1 结果保持不变。
++
++'''
++marker='---\n\n# ⑥ 外加剪切';assert text.count(marker)==1;text=text.replace(marker,addition+marker)
++old='下一轮唯一优先项是为同一微型试样、裂纹和位移边界建立独立线弹性连续体 G_drive 参考，评估非局部及有限域偏差；不自动启动。V1–V3 的自然裂纹面积和 Gc 未识别结论保持。本轮到此停止。';assert text.count(old)==1
++new=f'本轮 [连续体与近起裂审查]({B}/REVIEW_LPS_PVCE_CONTINUUM_AND_NEAR_ONSET_AUDIT_V2.md) 和 [四组 V2 审查图]({B}/OPEN_RESULTS.html) 记录了有限网格参考及高载静态门槛失败。下一轮唯一优先项是保持材料、原生力和验收门槛不变，修复并独立验证 A0 高载静态求解器的浮点停机问题，达标后再恢复首达阈值区间搜索；不自动启动。V1–V3 的自然裂纹面积和 Gc 未识别结论保持。本轮到此停止。'
++text=text.replace(old,new);backup=B/'provenance/clot_rupture.before_write.md';backup.write_bytes(before);diff=''.join(difflib.unified_diff(before.decode().splitlines(True),text.splitlines(True),fromfile=str(p)+'.before',tofile=str(p)));(B/'provenance/clot_rupture.diff').write_text(diff)
++assert p.read_bytes()==before;mode=p.stat().st_mode;fd,tmp=tempfile.mkstemp(prefix='.clot_rupture_pvce_v2_',dir=p.parent)
++with os.fdopen(fd,'wb') as fp:fp.write(text.encode());fp.flush();os.fsync(fp.fileno())
++os.chmod(tmp,mode);assert p.read_bytes()==before;os.replace(tmp,p);after=p.read_bytes();assert after==text.encode()
++r=dict(status='ACTUAL_WSL_UPDATED_AND_READ_BACK',file=str(p),before_sha256=h,after_sha256=hashlib.sha256(after).hexdigest(),same_as_start_backup=True,backup=str(backup),diff=str(B/'provenance/clot_rupture.diff'),changed_only='Section⑤ new PVCE V2 evidence and final review/one nextpriority paragraph; all historical paragraphs retained.',utc=time.strftime('%FT%TZ',time.gmtime()));(B/'provenance/DOCUMENT_UPDATE.json').write_text(json.dumps(r,indent=2));s=json.loads((B/'FINAL_STATUS.json').read_text());s['DOCUMENT_UPDATE']=r['status'];(B/'FINAL_STATUS.json').write_text(json.dumps(s,indent=2));print(json.dumps(r,indent=2))

@@ -1,0 +1,68 @@
+--- macro_lab.before.py
++++ pd_clot/lammps_fragmentation/macro_lab_v1.py
+@@ -44,10 +44,10 @@
+         u=self.fun(len(x),len(self.b),*[a.ctypes.data for a in arr],self.V,K,G,f.ctypes.data if force else None,*([.0006] if self.periodic else []))
+         return (u,f) if force else u
+ 
+-def run(out,case,dx=50e-6,dt=.5e-6,slow=1.,static=False):
++def run(out,case,dx=50e-6,dt=.5e-6,slow=1.,static=False,observer_factory=None):
+     start=time.perf_counter();out.mkdir(parents=True,exist_ok=False);os.chdir(out)
+     kind=case[:2] if case.startswith('M') else 'M5'
+-    periodic=case=='M3P'
++    periodic=case in ['M3P','M2P']
+     g,removed=geometry(dx,kind,periodic);X=g['X'];n=len(X);nc=g['clot_count'];b=g['bonds'];types=g['bond_types']
+     r=dict(dx_m=dx,delta_m=DELTA,rho_kg_m3=RHO,K_Pa=K,G_Pa=G,s00_bulk=.15,s00_interface=.140624859375)
+     write_typed_data(out/'body.data',g,r)
+@@ -65,6 +65,7 @@
+         mask[np.abs(X[:,0])>.0003-grip+1e-12,0]=True
+         mask[np.abs(X[:,1])>.0003-grip+1e-12,1]=True
+     H=float(X[high,2].mean()-(0 if kind=='M6' else X[low,2].mean()))
++    if case=='M5B':sign[low|high,2]=X[low|high,2]/H
+     # Interface origin is the anchor/clot midplane, z=-0.5 mm.
+     if kind=='M6':H=float(X[high,2].mean()+.0005)
+     small=kind in ['M1','M2','M3'];amp=(-.008 if kind in ['M1','M3'] else .008 if kind=='M2' else .8)*(.00085 if kind in ['M4','M5'] else H)
+@@ -73,8 +74,9 @@
+     centered=X[roi]-X[roi].mean(0);roi_pinv=np.linalg.pinv(centered)
+     plan=dict(case=case,kind=kind,material=r,dt_s=dt,steps=steps,duration_s=duration,ramp_s=ramp,amplitude_m=amp,nodes=n,clot_nodes=nc,bonds=len(b),removed_notch_bonds=len(removed),size_m=[.0006,.0006,.001],grip_m=grip,grip_center_distance_m=H,area_m2=.0006**2,roi_nodes=int(roi.sum()),roi_definition='|x|,|y|<150um approximately; |z|<199.5um; centroid least squares full deformation gradient',notch='z=0 from x=-300um to -100um, through y; projected single plane area',interface='Inherited attach_wall: only basal clot layer connects to 3 anchor layers; not a full-horizon bonded half-space',loading='Raised cosine; load-unload for M1-M3, monotone for M4-M6; fixed physical time across dt/dx',bc='fix move NULL components integrate naturally; no overlapping nve group; only selected boundary DOFs prescribed',damping_s_inv=500,stop='Fixed duration, no outcome-based stopping',uncertainty='Free-interior macro response/independent energy; '+('time-step sensitivity' if case=='T1' else 'two-level spacing sensitivity, fixed horizon; contact distance changes with dx' if case=='D1' else kind),decision='Assess mapping/identifiability; never tune production',output='Every accepted step scalar force, ROI strain and energy; independent native topology events; initial/first/peak/end double states',thresholds=dict(modulus_relative=.15,nu_absolute=.02,KE_over_U=.05,dt_relative=.10,dx_relative=.15,energy_residual=.05),fit='Loading 20%-70% imposed small amplitude; no outcome-selected fit interval')
+     plan['transverse_periodic_fixed_cell']=periodic
+-    if periodic:plan['bc']='Periodic x/y with fixed600um cell; only top/bottom axial grips prescribed; all other DOFs free; not a rerun with density/damping changes'
+-    save(out/'test_plan.json',plan);np.savez_compressed(out/'geometry.npz',**{k:g[k] for k in ['X','bonds','bond_types','anchors']},prescribed_mask=mask,roi=roi,removed_notch_bonds=removed)
++    if periodic:plan['bc']='Periodic x/y with fixed600um cell; only top/bottom case-specific grip DOFs prescribed; all other DOFs free; not a rerun with density/damping changes'
++    if case=='M5B':plan['bc']='Same axial-only150um collars and unchanged geometry/time; prescribed collar u_z=disp(t)*Z/H instead of rigid +/-disp/2; tangent DOFs and all interior DOFs free'
++    save(out/'test_plan.json',plan);np.savez_compressed(out/'geometry.npz',**{k:g[k] for k in ['X','bonds','bond_types','anchors']},prescribed_mask=mask,prescribed_sign=sign,roi=roi,removed_notch_bonds=removed)
+     root=Path(__file__).resolve().parents[2];lib=root/('analysis/material_macro_audit_v1/energy_periodic.so' if periodic else 'analysis/material_macro_audit_v1/energy.so');energy=Energy(g,dx,lib,periodic)
+     from lammps import lammps
+     L=lammps(cmdargs=['-log',str(out/'log.lammps'),'-screen','none'])
+@@ -102,6 +104,7 @@
+     (out/'in.lammps').write_text(text+'# Python registers callback then run '+str(steps)+'\n');L.commands_string(text)
+     alive=np.ones(len(b),np.uint8);keyb=b[:,0]*n+b[:,1];prev=None;W=Dn=Db=0.;events=[];peak=-np.inf;first=False;calls=0;forcechecks=[];negative_releases=[]
+     stream=(out/'history.csv').open('w');writer=csv.writer(stream);writer.writerow(['step','time_s','displacement_m','boundary_strain','stress_Pa','reaction_N','eps_x','eps_y','eps_z','gamma_xz','K_free_J','U_bulk_J','U_contact_J','D_num_J','D_break_independent_J','W_ext_J','R_energy_J','native_bond_pe_times_V_J','broken_bulk','broken_interface','broken_wall','KE_over_U','max_speed_m_s','roi_affine_residual_m'])
++    observer=observer_factory(out,g,mask,sign,plan) if observer_factory else None
+     def state(label,step,x,v):np.savez_compressed(out/(label+'.npz'),step=step,time_s=step*dt,x_m=x,v_full_m_s=v,alive=alive)
+     def callback(caller,step,nlocal,tags,x,fext):
+       nonlocal alive,prev,W,Dn,Db,peak,first,calls
+@@ -134,6 +137,7 @@
+         # Keep peak in memory; only write one accepted peak state at the end.
+         if abs(reaction)>peak:peak=abs(reaction);callback.peak=(step,x.copy(),vf.copy(),alive.copy())
+         if step==steps:state('end',step,x,vf)
++        if observer:observer.record(step,x,vf,fm,fd,alive,changed,F)
+         prev=(step,x.copy(),fm,fd)
+         if step%1000==0:stream.flush()
+       except BaseException:
+@@ -141,11 +145,15 @@
+     L.set_fix_external_callback('audit',callback)
+     try:
+         L.command(f'run {steps}')
++        if (out/'CALLBACK_ERROR.txt').exists():raise RuntimeError('Callback failed; no successful execution receipt will be written')
+         p=callback.peak;np.savez_compressed(out/'peak.npz',step=p[0],time_s=p[0]*dt,x_m=p[1],v_full_m_s=p[2],alive=p[3])
+         np.savez_compressed(out/'break_events.npz',events=np.asarray(events,dtype=np.int64).reshape(-1,3))
+         save(out/'DIAGNOSTIC_CHECKS.json',dict(force_checks=forcechecks,negative_topology_releases=negative_releases,callbacks=calls,expected=steps+1,energy_definition='U=.5*(K-5G/3)*V*sum(theta^2)+7.5G*V^2*sum_alive(h*e^2/r0*(1/m_i+1/m_j)); theta recomputed on topology, m fixed initial; native contact PE*V',energy_release='U(x,old_topology)-U(x,new_topology); independent of work balance; native force uses pre-break theta on break step, residual retains lag effects',wall_seconds=time.perf_counter()-start,process_cpu_seconds=time.process_time(),mpi_ranks=1,gpu_compute=False))
+         save(out/'EXECUTION.json',dict(status='COMPLETED',steps=steps,wall_seconds=time.perf_counter()-start))
+-    finally:stream.close();L.close()
++    finally:
++        stream.close()
++        if observer:observer.close()
++        L.close()
+ 
+ if __name__=='__main__':
+     a=argparse.ArgumentParser();a.add_argument('--output',type=Path,required=True);a.add_argument('--case',required=True);a.add_argument('--dx',type=float,default=50e-6);a.add_argument('--dt',type=float,default=.5e-6);a.add_argument('--slow',type=float,default=1);a.add_argument('--static',action='store_true')

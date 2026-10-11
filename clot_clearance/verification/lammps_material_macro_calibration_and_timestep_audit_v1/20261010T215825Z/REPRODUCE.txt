@@ -1,0 +1,17 @@
+source /workspace/y_clot/env.sh
+cd /workspace/y_clot/project
+g++ -O3 -fPIC -shared analysis/material_macro_audit_v1/energy.cpp -o analysis/material_macro_audit_v1/energy.so
+# Use a NEW run output path; never rerun into accepted directories.
+python -m pd_clot.lammps_fragmentation.macro_lab_v1 --case M1 --output verification/lammps_material_macro_calibration_and_timestep_audit_v1/NEW_RUN/M1
+# Other cases: M2 M3 M4 M5 M6; T1 --dt 2.5e-7; D1 --dx 4e-5.
+# Actual registered commands, all input coordinates/bonds, plans and logs remain in this run directory on server.
+# Microbubble: source its activate.sh; microbubble.py pins exact F7 snapshot and imports it read-only.
+# Existing completed data: postprocess.py RUN_DIR RESULTS_DIR, transport_plots.py RUN_DIR RESULTS_DIR.
+
+# Registered ninth case: transverse-periodic diagnostic, same production material.
+g++ -O3 -fPIC -shared analysis/material_macro_audit_v1/energy_periodic.cpp -o analysis/material_macro_audit_v1/energy_periodic.so
+python -m pd_clot.lammps_fragmentation.macro_lab_v1 --case M3P --output verification/lammps_material_macro_calibration_and_timestep_audit_v1/NEW_RUN/M3P
+# Final reports/figures from existing completed nine cases, no new solver run:
+python analysis/material_macro_audit_v1/finalize.py RUN_DIR RESULTS_DIR
+# Exact executed campaign and microbubble commands: run_campaign.py, run_M3P.sh, y_clot_micro_dt_20261010.sh.
+# Do not rerun the publication finalizer after WSL update without reconciling DOCUMENT_UPDATE.json.

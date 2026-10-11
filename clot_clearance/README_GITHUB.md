@@ -1,3 +1,5 @@
+> 最新代码、科学证据与文件核对见 [2026-10-11 clot 科研入口](github_sync_20261011/README.md)。以下说明属于此前归档阶段。
+
 > 当前项目已进入 Y 血管血栓点云断裂与早期流场耦合阶段。请先阅读 [2026-10-10 当前入口](github_sync_20261010/README.md)。以下内容保留为早期归档说明。
 
 # 血栓模拟开发归档 / Clot-clearance development snapshot

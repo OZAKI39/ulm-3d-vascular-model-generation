@@ -1,0 +1,49 @@
+Run 20261011T184653Z: offline only. Existing production binaries and old inputs are protected.
+
+Existing source project: /workspace/y_clot/project
+Environment: source /workspace/y_clot/env.sh
+Finite jobs used their own Supervisor group, autostart=false/autorestart=false.
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 PYTHONDONTWRITEBYTECODE=1
+
+Executed analysis sequence (cwd project root, Python from private environment):
+python -m analysis.traction_failure_v1.preflight_b
+python -m analysis.traction_failure_v1.freeze_b
+python -m analysis.traction_failure_v1.launch B_mapping analysis.traction_failure_v1.map_b
+  Initial local support screening stopped at10 faces before producing forces.
+python -m analysis.traction_failure_v1.launch B_support_repair analysis.traction_failure_v1.repair_support_b
+  One frozen local adjacency-graph amendment; same support radius and all quality gates.
+python -m analysis.traction_failure_v1.launch A_offline analysis.traction_failure_v1.offline_a
+python -m analysis.traction_failure_v1.verify_b
+python -m analysis.traction_failure_v1.launch figures analysis.traction_failure_v1.figures
+  Original drawing failed on Matplotlib linthresh setter. Numerical results unaffected.
+python -m analysis.traction_failure_v1.launch figures_fixed analysis.traction_failure_v1.figures
+python -m analysis.traction_failure_v1.launch figures_final analysis.traction_failure_v1.figures
+  Final drawing separates z labels and colorbars, reduces crowded ticks, draws arrow glyphs
+  in foreground; glyph subset and linear scale are recorded. No force/coordinate changes.
+python -m analysis.traction_failure_v1.report
+python -m analysis.traction_failure_v1.closeout verify
+
+Input identity: INPUT_MANIFEST.json and provenance/PROTECTED_START.json.
+Pinned perifit code and five full papers plus SI: A/sources; hashes in SOURCE_MANIFEST.json.
+The original graph freeze's geodesic-upper-bound wording is corrected by
+B/REPAIR_GRAPH_METRIC_CLARIFICATION.json: centroid-link chord graph is not exact geodesic.
+Preserve this qualification when reproducing; mapping arithmetic is unchanged.
+
+Do not rerun the above into the completed output directories. A reproduction must use
+a new isolated checkout/worktree copy of analysis/traction_failure_v1 and a fresh run_id
+in its config.json; replace all A/B/common/FA/FB run components, create those new dirs,
+and copy the pinned A/sources into the new A/sources. Keep old input paths and SHA fixed.
+The freeze and single-repair scripts assert against overwrite. Read inputs require the
+server's existing full-precision raw CFD. This compact WSL handoff does not include them.
+launch.py uses the stated server root; if using another checkout, adapt its ROOT/cwd first.
+Do not run update_wsl_document.py as part of scientific reproduction: it changes the
+actual WSL research document and refuses to overwrite this run's document audit.
+
+WSL delivery (project root):
+python analysis/traction_failure_v1/retrieve.py preview
+python analysis/traction_failure_v1/update_wsl_document.py
+python analysis/traction_failure_v1/remote.py sync <explicit current-run files>
+Server: python -m analysis.traction_failure_v1.closeout manifest
+WSL: python analysis/traction_failure_v1/retrieve.py final
+Receipts contain per-file SHA checks. No historical raw CFD, environment tree, binaries
+or unrelated data are transferred. No git commit/push, native solve, fracture or next task.

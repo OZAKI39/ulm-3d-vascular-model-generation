@@ -1,0 +1,98 @@
+{
+  "frozen_utc": "2026-10-11T16:00:23.790797+00:00",
+  "run_id": "20261011T154854Z",
+  "identity": "CLOT_PRESENT_RIGID_GEOMETRY_STEADY_CFD_BASELINE",
+  "geometry_sha256": "f279f2abe6696e348bec9b949eec6f4a52a5007671219d200dde9f7a7cbc6e75",
+  "geometry_audit_sha256": "05ae023b062806f457b699026f2de78d1cbfa4c2e6fdb0d7d088f2a3cba170a2",
+  "geometry": "Original native Y PLC plus original V3 analytic height law; fixed shared PLC for both meshes, no smoothing/hull",
+  "mesh": {
+    "generator": "Existing official SimVascular2023.05/TetGen",
+    "global_edge_m": 0.00025,
+    "local_sphere_center_m": [
+      -0.006,
+      0,
+      0.0003
+    ],
+    "local_sphere_radius_m": 0.00125,
+    "baseline_local_edge_m": 0.0001,
+    "refined_local_edge_m": 7e-05,
+    "preserve_surface": true,
+    "refinement_scope": "Same PLC, volume refinement in local sphere; surface already <=50um near clot before radial displacement. No geometry refinement in second solve.",
+    "quality": {
+      "closed": true,
+      "connected_volume": 1,
+      "negative_or_zero_tetrahedra": 0,
+      "unlabelled_or_duplicate_facets": 0,
+      "min_SICN": 1e-05,
+      "relative_volume_to_PLC": 1e-08
+    },
+    "budgets": {
+      "per_mesh_wall_s": 600,
+      "max_points": 500000,
+      "max_tetrahedra": 3000000
+    }
+  },
+  "flow": {
+    "rho_kg_m3": 1000,
+    "mu_Pa_s": 0.001,
+    "inlet_mean_m_s": 0.005,
+    "Q_target_m3_s": 2.6354060534101725e-08,
+    "inlet": "Original Parabolic, Impose_flux=true, Zero_out_perimeter=true",
+    "outlets": "Original Neu, steady Value=0; zero traction, not pointwise p=0",
+    "walls": "No-slip on VESSEL_WALL and CLOT_FLUID_SURFACE",
+    "time_integrator": "Original generalized alpha spectral radius .5; transient to steady",
+    "dt_s": 0.01,
+    "max_steps": 1000,
+    "mpi_ranks": 8,
+    "backend": "Existing validated GPU PETSc options + CPU domain decomposition; unchanged native solver"
+  },
+  "criteria": {
+    "save_interval_steps": 10,
+    "steady_last_intervals": 5,
+    "velocity_change_limit": 1e-05,
+    "flow_change_limit": 1e-06,
+    "mass_limit": 1e-05,
+    "nonlinear_relative_tolerance": 1e-10,
+    "all_linear_converged": true,
+    "wall_velocity_max_m_s": 5e-13,
+    "finite": true,
+    "positive_net_outlet_flows": true,
+    "no_symmetry_gate": "Clot breaks symmetry; measure outlet fractions"
+  },
+  "mesh_comparison": {
+    "relative_limit": 0.15,
+    "metrics": [
+      "mother_pressure_drop",
+      "surface_pressure_area_mean",
+      "surface_shear_area_mean",
+      "surface_shear_area_p95",
+      "integrated_force_vector_norm_difference",
+      "peak_velocity"
+    ],
+    "outlet_fraction_absolute_limit": 0.01,
+    "contact_rim": "Faces centroid within100um of contact line reported separately; peaks diagnostic, never finite peak convergence assertion"
+  },
+  "traction": {
+    "normal": "n_clot=-n_fluid, oriented using adjacent tetrahedron",
+    "formula": "sigma=-pI+mu(gradU+gradU.T); t=sigma@n_clot",
+    "gradient": "Piecewise linear tetrahedral velocity gradient from adjacent native volume element",
+    "pressure": "P1 face mean, gauge relative to original zero-traction outlets",
+    "integration": "Actual exposed CFD triangles only; pressure linear integrated exactly, viscous piecewise constant; split pressure, normal/tangential viscous, total; moments use degree2 triangle quadrature"
+  },
+  "budgets": {
+    "baseline": 1,
+    "conditional_refined": 1,
+    "per_CFD_wall_s": 2700,
+    "process_tree_RSS_GiB": 32,
+    "stop": "No second solve unless baseline mesh and all CFD criteria pass"
+  },
+  "not_included": [
+    "streaming",
+    "ultrasound feedback",
+    "clot deformation",
+    "fracture",
+    "two-way FSI",
+    "nonNewtonian blood",
+    "production LPS load changes"
+  ]
+}

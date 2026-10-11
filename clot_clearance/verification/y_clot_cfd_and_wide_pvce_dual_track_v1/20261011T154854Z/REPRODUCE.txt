@@ -1,0 +1,57 @@
+Y_CLOT_CFD_AND_WIDE_PVCE_DUAL_TRACK_V1 — bounded reproduction
+
+Current recorded run: 20261011T154854Z. DO NOT execute any generating/solver command
+on this ID again. Original raw accepted/candidate states and native logs are retained.
+No automatic commit/push, environment upgrade, historical rerun, or production edit.
+
+1. Server: source /workspace/y_clot/env.sh ; cd /workspace/y_clot/project
+   Read /etc/vast-agents-guide.md and project AGENTS.md. Inspect current tasks/resources.
+   Current code is analysis/dual_track_v1; pinned native dependencies are unchanged.
+2. Read-only analysis of this recorded run (does not solve a new physical state):
+   python -m analysis.dual_track_v1.analyze_a
+   python -m analysis.dual_track_v1.post_b baseline
+   python -m analysis.dual_track_v1.post_b refined       # only if accepted
+   python -m analysis.dual_track_v1.post_b compare       # only if both accepted
+   Plot modules only read recorded full-precision states; no image generation model.
+3. For an explicitly requested NEW replay, choose a unique NEW_ID, export
+   Y_CLOT_DUAL_RUN_ID=NEW_ID for every command and its Supervisor environment.
+   python -m analysis.dual_track_v1.prepare_replay --run-id NEW_ID
+   This performs only geometry preparation and independent A/B design freezes.
+4. Create separate Supervisor programs, autostart=false/autorestart=false,
+   directory=/workspace/y_clot/project, source the private env and export NEW_ID.
+   Commands (do not start unlimited copies):
+     python -u -m analysis.dual_track_v1.preflight_a
+     python -u -m analysis.dual_track_v1.campaign_b baseline
+   Only after periodic preflight PASS:
+     python -u -m analysis.dual_track_v1.campaign_a
+   Only after low PVCE PASS:
+     python -u -m analysis.dual_track_v1.recovery_a
+   Only after recovery PASS and remaining budget:
+     python -u -m analysis.dual_track_v1.campaign_high_a
+   Only after baseline CFD PASS_WITH_SCOPE:
+     python -u -m analysis.dual_track_v1.campaign_b refined
+   One low state failure stops new A states. At most8 equilibria and2 CFD solves.
+   A state900s/8GiB; B solve2700s/32GiB; B8MPI, A1process; preserve priorities.
+5. The original run needed three interface corrections, all evidenced in B reports:
+   - int32 ModelFaceID for native SimVascular, no shape change;
+   - volume-only set_walls inclusion mask must retain all five PLC faces; physical
+     solver no-slip is only tags1,5, with original inlet/outlet conditions;
+   - SV mesh/VTK coordinate serialization uses float32. Restore the boundary to
+     frozen double PLC via exact bijective float32 identity; solver fields remain
+     float64. Read native VTU using the same exact identity, not interpolation.
+   Corrected replay implements these directly. baseline_interface_failure_* and
+   monitor_baseline_b.py/resume_b_precision.py preserve the original chronology;
+   those recovery scripts are NOT the normal new-replay path. No baseline CFD restart
+   was made: the auxiliary observer stopped the original running solver after its
+   normal five-interval steady gate, and captured its actual exit status0.
+6. WSL document updates are separate and serial, with pre-write SHA, backup, diff,
+   read-back SHA and concurrent-change check. Do not run historical update scripts.
+
+Authoritative method/API references used:
+https://docs.lammps.org/bond_bpm_peri.html
+https://docs.lammps.org/pair_bpm_peri.html
+https://docs.lammps.org/boundary.html
+https://simvascular.github.io/documentation/python_interface/modules/docs/meshing_TetGenOptions.html
+https://github.com/SimVascular/SimVascular/blob/master/Code/Source/sv/Mesh/TetGenMeshObject/sv_TetGenMeshObject.cxx
+Upstream mesher source inspected as diagnostic context; it is not substituted for
+or claimed to be the exact pinned native binary. Native runtime audits are retained.

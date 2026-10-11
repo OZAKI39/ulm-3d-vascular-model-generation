@@ -1,0 +1,47 @@
+--- launch/fem.py
++++ final/fem.py
+@@ -45,7 +45,7 @@
+  c=cfg['criteria'];gates=dict(free_force=frel<c['relative_free_force'],mixed_residual=mixed<c['relative_mixed_residual'],work_energy=abs(work/(2*U)-1)<c['relative_work_energy'],reaction_balance=abs(top+bottom)/abs(Q)<c['relative_reaction_balance'],minimal_gauge_force=np.linalg.norm(res[gauge])*Fscale/abs(Q)<c['gauge_reaction_over_Q'],positive_crack_opening=gap.min()>=c['minimum_crack_gap_m'],physical_volume=volerr<c['relative_volume_error'],independent_faces=len(ids)>0,pressure_coercivity=lam>0)
+  result=dict(level=level,case=case,accepted=all(gates.values()),gates=gates,U_J=float(U),top_reaction_N=float(top),bottom_reaction_N=float(bottom),relative_free_force=float(frel),max_free_force_N=float(abs(res[ufree]).max()*Fscale),relative_mixed_residual=float(mixed),work_energy_relative=float(abs(work/(2*U)-1)),gauge_force_over_reaction=float(np.linalg.norm(res[gauge])*Fscale/abs(Q)),crack_vertex_gap_range_m=[float(gap.min()),float(gap.max())],mesh=ma,displacement_dofs=bu.N,pressure_dofs=bp.N,axial_control_dofs_each=len(lo),transverse_gauge_dofs=gauge.tolist(),pressure_projection_relative_L2=vol_mismatch,primal_energy_J=float(U_primal),primal_vs_mixed_energy_relative=float(U_primal/U-1),energy_scope='Mixed variational stored energy .5uAu+.5pCp, consistent with reaction; unprojected lambda*div(u)^2 energy also reported to expose approximation.',crack_traction='Zero applied natural traction on distinct boundary facets. Discrete weak equilibrium verified; pointwise stress traction at singular front is not claimed zero.',wall_seconds=time.perf_counter()-start,assembly_seconds=assembly_seconds,sparse_solve_seconds=solve_seconds,cpu_seconds=time.process_time()-cpu,peak_RSS_MiB=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024,threads=1,GPU=False)
+  np.savez_compressed(out/'equilibrium.npz',vertices_m=m.p.T*L,tetrahedra=m.t.T,facets=m.facets.T,crack_facets=cr,split_original=ids,split_duplicate=dup,displacement_dof_coordinates_m=bu.doflocs.T*L,displacement_dofs_m=u*L,vertex_displacement_m=u[ud].T*L,pressure_Pa=p*G,nodal_dofs=ud,low_dofs=lo,high_dofs=hi,gauge_dofs=gauge,residual_N=res[:bu.N]*Fscale,crack_vertex_gap_m=gap)
+- save(out/'RESULT.json',result);print(json.dumps(result),flush=True);return result
++ save(out/'RESULT.json',result);print((out/'RESULT.json').read_text(),flush=True);return result
+ if __name__=='__main__':
+  try:run(sys.argv[1],sys.argv[2])
+  except BaseException:
+--- launch/campaign.py
++++ final/campaign.py
+@@ -7,8 +7,13 @@
+   rows=[]
+   for case in ['A0','A1','A2']:
+    out=BASE/'continuum'/level/case;out.mkdir(parents=True,exist_ok=True)
+-   with (out/'stdout.log').open('w') as so,(out/'stderr.log').open('w') as se:p=subprocess.run([sys.executable,'-m','analysis.lps_pvce_v2.fem',level,case],stdout=so,stderr=se)
+-   if p.returncode!=0 or not (out/'RESULT.json').exists():save(BASE/'CONTINUUM_REFERENCE_AUDIT.json',dict(status='FAILED_REFERENCE',failed=str(out),levels=results,wall_seconds=time.perf_counter()-start));return
++   if (out/'RESULT.json').exists():
++    # Resume only a completed stored result after stdout serialization failure; never re-solve it.
++    returncode=0
++   else:
++    with (out/'stdout.log').open('w') as so,(out/'stderr.log').open('w') as se:p=subprocess.run([sys.executable,'-m','analysis.lps_pvce_v2.fem',level,case],stdout=so,stderr=se)
++    returncode=p.returncode
++   if returncode!=0 or not (out/'RESULT.json').exists():save(BASE/'CONTINUUM_REFERENCE_AUDIT.json',dict(status='FAILED_REFERENCE',failed=str(out),levels=results,wall_seconds=time.perf_counter()-start));return
+    r=json.loads((out/'RESULT.json').read_text());rows.append(r);print('FEM',level,case,r['accepted'],r['U_J'],flush=True)
+    if not r['accepted']:save(BASE/'CONTINUUM_REFERENCE_AUDIT.json',dict(status='FAILED_REFERENCE',levels={**results,level:rows},wall_seconds=time.perf_counter()-start));return
+   U=np.array([r['U_J'] for r in rows]);results[level]=dict(states=rows,G_two_J_m2=float((U[0]-U[1])/3e-8),G_three_J_m2=float((3*U[0]-4*U[1]+U[2])/6e-8))
+@@ -34,7 +39,7 @@
+   save(BASE/'A0_SEARCH_PROGRESS.json',dict(samples=samples,lower=lo['opening_m'],upper=hi['opening_m'] if hi else None,relative_width=width))
+   if hi and width<=.03:stop='RESOLVED_3PCT_BRACKET';break
+  if stop is None:stop='BUDGET_REACHED_BRACKET_UNRESOLVED'
+- location=hi['risk']['location'] if hi else samples[-1]['risk']['location'];lowloc=lo['risk']['location'];admit=stop=='RESOLVED_3PCT_BRACKET' and location==lowloc and location in ['NOTCH_INTERIOR_FIRST','NOTCH_SIDE_SURFACE_FIRST'];decision=dict(admitted=admit,reason='MEANINGFUL_NOTCH_FIRST_AND_STATIC_GATES' if admit else ('BOUNDARY_CONTROLLED_FIRST_FAILURE' if location=='GRIP_FIRST' else 'ADMISSION_GATE_NOT_MET'),high_A1_A2='NOT_RUN',G_high_two_J_m2=None,G_high_three_J_m2=None)
++ location=hi['risk']['location'] if hi and stop=='RESOLVED_3PCT_BRACKET' else 'UNDETERMINED';lowloc=lo['risk']['location'];admit=stop=='RESOLVED_3PCT_BRACKET' and location==lowloc and location in ['NOTCH_INTERIOR_FIRST','NOTCH_SIDE_SURFACE_FIRST'];decision=dict(admitted=admit,reason='MEANINGFUL_NOTCH_FIRST_AND_STATIC_GATES' if admit else ('BOUNDARY_CONTROLLED_FIRST_FAILURE' if location=='GRIP_FIRST' else 'STATIC_GATE_NOT_MET' if stop=='STOPPED_STATIC_OR_CONSISTENCY_GATE' else 'ADMISSION_GATE_NOT_MET'),high_A1_A2='NOT_RUN',G_high_two_J_m2=None,G_high_three_J_m2=None)
+  if admit:
+   high=[lo]
+   for case in ['A1','A2']:
+--- launch/lps.py
++++ final/lps.py
+@@ -37,5 +37,5 @@
+   xp=x.copy();xm=x.copy();xp.ravel()[j]+=h;xm.ravel()[j]-=h;fdv=-(e.eval(xp,alive,False)-e.eval(xm,alive,False))/(2*h);fd.append(dict(dof=int(j),finite_difference_N=fdv,gradient_N=float(f.ravel()[j]),absolute_error_N=abs(fdv-f.ravel()[j])))
+  fdscaled=max(a['absolute_error_N'] for a in fd)/abs(fn).max();gates['finite_difference']=fdscaled<=c['finite_difference_force_scaled_absolute']
+  state=dict(X=X,x_m=x,displacement_m=x-X,alive=alive,bonds=e.b,m=e.m,r=e.r,h=e.h,mask=mask,low=lo,high=hi,independent_force_N=f,native_force_N=fn,native_theta=theta,contact_force_N=fc,contact_pairs=cp,last_positions=np.stack([a[0] for a in states]),last_U_J=np.array([a[1] for a in states]));np.savez_compressed(out/'equilibrium.npz',**state);r=risk(state)
+- audit=dict(name=name,case=case,opening_m=amp,accepted=bool(all(gates.values())),gates={k:bool(v) for k,v in gates.items()},U_J=U,empirical_uncertainty_J=float(eps),last=row,native=diag,native_force_energy_relative=err,native_free_force_relative=nrel,max_native_free_force_N=float(abs(fn[free]).max()),contact_U_J=Uc,contact_force_over_Q=cr,contact_pairs=len(cp),risk=r,branch='SUBCRITICAL_FROZEN_TOPOLOGY_ELASTIC_EQUILIBRIUM' if r['max_utilization']<1 else 'FROZEN_TOPOLOGY_HYPOTHETICAL_ELASTIC_BRANCH',native_natural_breaks='DISABLED_ONLY_FOR_DIAGNOSTIC; criterion read from unchanged source and evaluated on all alive bonds',max_stretch_all_trials=trial_max,finite_difference=fd,finite_difference_scaled_error=float(fdscaled),optimizer_message=str(result.message),iterations=result.nit,evaluations=calls,wall_seconds=time.perf_counter()-start,cpu_seconds=time.process_time()-cpu,peak_RSS_MiB=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024,threads=1,MPI_ranks=1,GPU=False)
++ audit=dict(name=name,case=case,opening_m=amp,accepted=bool(all(gates.values())),gates={k:bool(v) for k,v in gates.items()},U_J=U,empirical_uncertainty_J=float(eps),last=row,native=diag,native_force_energy_relative=err,native_free_force_relative=nrel,max_native_free_force_N=float(abs(fn[free]).max()),contact_U_J=Uc,contact_force_over_Q=cr,contact_pairs=len(cp),risk=r,branch=('UNACCEPTED_STATIC_CANDIDATE' if not all(gates.values()) else 'SUBCRITICAL_FROZEN_TOPOLOGY_ELASTIC_EQUILIBRIUM' if r['max_utilization']<1 else 'FROZEN_TOPOLOGY_HYPOTHETICAL_ELASTIC_BRANCH'),native_natural_breaks='DISABLED_ONLY_FOR_DIAGNOSTIC; criterion read from unchanged source and evaluated on all alive bonds',max_stretch_all_trials=trial_max,finite_difference=fd,finite_difference_scaled_error=float(fdscaled),optimizer_message=str(result.message),iterations=result.nit,evaluations=calls,wall_seconds=time.perf_counter()-start,cpu_seconds=time.process_time()-cpu,peak_RSS_MiB=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024,threads=1,MPI_ranks=1,GPU=False)
+  save(out/'RESULT.json',audit);print(json.dumps(audit),flush=True);return audit

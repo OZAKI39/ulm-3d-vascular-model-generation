@@ -1,0 +1,653 @@
+Adhesive and cohesive fracture of blood clots: Experiments 
+and modeling
+Shiyu Liu a, Aram Bahmani a, Gabriella Paige Sugerman b, Zhen Yang a, 
+Manuel Rausch b, Farshid Ghezelbash a,*, Jianyu Li a,c,*
+a Department of Mechanical Engineering, McGill University, Montreal, Canada
+b Department of Aerospace Engineering & Engineering Mechanics, University of Texas at Austin, United States
+c Department of Biomedical Engineering, McGill University, Montreal, Canada
+ARTICLE INFO
+Keywords:
+Adhesion
+Fracture
+Cohesive zone model
+Blood clots
+RBC
+Platelet
+ABSTRACT
+Blood clots represent living materials composed of a polymer network and an abundance of cells. 
+They might fracture within the bulk material of the clot (cohesive fracture), at the interface 
+between the clot and the surrounding tissue (adhesive fracture), or through a combination of both 
+modes (hybrid fracture). The clot fracture within vascular systems and injury sites could lead to 
+life-threatening conditions. Despite the significance, understanding and modeling the fracture 
+behaviors of blood clots, including their dependence on mechanical loading and cellular com-
+ponents, remain in a nascent stage. In this study, we employ an integrated experimental- 
+computational approach to comprehensively investigate the fracture behaviors of bovine blood 
+clots. We explore various mechanical factors, substrates, and cellular components such as red 
+blood cells (RBCs) and platelets. Our findings reveal that among various tissue substrates, blood 
+clots exhibit the highest interfacial adhesion energy with muscle, and the lowest to the inner 
+arterial lining, consistent with their biological function. Both interfacial adhesion energy and bulk 
+fracture energy are rate-dependent, although they exhibit different dependencies. Also, RBCs and 
+platelets have different effects on clot fracture. An increase in RBC content tends to toughen both 
+adhesion and fracture of blood clots. However, an increase in platelet content enhances interfacial 
+adhesion energy but lowers the bulk fracture energy. The platelet content also governs the shift 
+from adhesive fracture to hybrid fracture. To model clot fracture, we developed two finite 
+element models incorporating a coupled cohesive-zone and Mullins-effect approach to simulate 
+pure shear fracture and peeling of blood clots. These models, validated through experimental 
+data, elucidate the interplay between intrinsic fracture toughness, interfacial strength, and bulk 
+energy dissipation during clot fracture. This study significantly advances our understanding of 
+clot mechanics, providing valuable insights into the mechanics of similar living materials and the 
+management of clot-related disorders such as hemorrhage and thrombosis.
+1. Introduction
+Blood clots are aggregates of fibrin fibers and blood cells. They could form at injury sites to halt bleeding or within blood vessels, 
+* Corresponding authors.
+E-mail addresses: farshid.ghezelbash@mail.mcgill.ca (F. Ghezelbash), jianyu.li@mcgill.ca (J. Li). 
+Contents lists available at ScienceDirect
+Journal of the Mechanics and Physics of Solids
+journal homepage: www.elsevier.com/locate/jmps
+https://doi.org/10.1016/j.jmps.2024.105858
+Received 18 May 2024; Received in revised form 7 August 2024; Accepted 7 September 2024  
+J. Mech. Phys. Solids 193 (2024) 105858 
+Available online 10 September 2024 
+0022-5096/© 2024 The Authors. Published by Elsevier Ltd. This is an open access article under the CC BY-NC license 
+( http://creativecommons.org/licenses/by-nc/4.0/ ). where they can block blood flow. Blood clots play a critical role in hemostasis and thrombosis (Jiang et al., 2022; Tanaka et al., 2009), 
+and also find significant usage for tissue repair and regeneration (Bayer, 2022; Brown and Barker, 2014; Laurens et al., 2006). Clinical 
+evidence underscores the importance of blood clot fracture: at bleeding sites, clot fracture leads to re-bleeding and potentially fatal 
+hemorrhage; within blood vessels, fragments of fractured clots can migrate through the blood circulatory system, causing deep vein 
+thrombosis and stroke. These complications could be further exacerbated by conditions such as blood disorders and COVID-19 
+(Ackermann et al., 2020). Blood clot fracture also limits their performance and application in biomedical fields, such as endovas-
+cular embolization surgery and regenerative medicine. Whereas the biochemical aspects of blood clots and clotting have been 
+extensively studied, research on blood clot fracture remains in an early stage (Fereidoonnezhad et al., 2021; Liu et al., 2021; Tutwiler 
+et al., 2020).
+Due to their unique structure and composition, blood clots differ from other material systems such as hydrogels. While containing a 
+fibrin network, they comprise a large volume fraction of biological cells such as red blood cells and platelets, which provide various 
+biological and mechanical functions, such as binding with biological tissues and active contraction (Lam et al., 2011; Litvinov and 
+Weisel, 2022; Qiu et al., 2019; Sugerman et al., 2020). These constituents could change with various disorders or conditions, such as 
+polycythemia leading to high RBC count, and thrombocytopenia causing low platelet count. Exploring the role of biological cells is 
+crucial for uncovering the underlying mechanisms of clot fracture with clinical implications (Ghezelbash et al., 2022; Liu et al., 2024). 
+While the influence of fibrin content on cohesive fracture has been evaluated (Fereidoonnezhad et al., 2021), the effects of RBCs and 
+platelets on clot fracture are less explored, and broadly the mechanical contributions of biological cells to the macroscopic fracture of 
+soft materials remain elusive (Jiang et al., 2018). Investigating the mechanical behaviors of blood clots will greatly expand our 
+knowledge of the mechanics of soft and living materials.
+Recent years witnessed a surge of interest in clot fracture. Research efforts have been centered around cohesive fracture arising 
+from crack propagation within the bulk matrix of clots (Fereidoonnezhad et al., 2021; Liu et al., 2021; Tutwiler et al., 2020). While 
+clots often interface with biological tissues, another failure mode, adhesive fracture, resulting from the progression of an interfacial 
+crack between the clot and a substrate tissue is equally important but less explored (Fig. 1) (Chan et al., 2020). The adhesive fracture of 
+clots has been linked with rebleeding in animal experiments (Chan et al., 2020), as well as the fragmentation of thrombi in blood 
+vessels. Moreover, crack propagation at the clot-tissue interface could proceed partly along the interface (adhesive) and partly within 
+Fig. 1. Schematics of adhesive and cohesive fracture of blood clots. (a-b) Adhesive and cohesive fracture of blood clot in hemostasis (a) and 
+thrombosis (b), led by the propagation of interfacial crack and crack within clots, respectively. (c-f) Different mechanical failure modes of blood 
+clots on biological tissue surfaces, including adhesive fracture (d), cohesive fracture (e), and their combination—hybrid fracture (f).
+S. Liu et al.                                                                                                                                                                                                              Journal of the Mechanics and Physics of Solids 193 (2024) 105858 
+2 one of the materials (cohesive). This case of hybrid fracture depends on the interplay between the clot’s bulk and adhesion properties 
+to the tissue substrate.
+Incorporating adhesive and cohesive fracture in the study of clot fracture presents a holistic framework for understanding the 
+fracture mechanics of clots. To quantify the resistance of clots against fracture, fracture mechanics approaches have been deployed in 
+recent studies, where the bulk fracture energy of blood clots, i.e., the energy required for a unit area of crack growth solely within one 
+material (cohesive fracture) (Mostovoy and Ripling, 1966), was measured using edge-notched and lap-shear tests (Fereidoonnezhad 
+et al., 2021; Liu et al., 2021; Tutwiler et al., 2020). For adhesive fracture, a similar quantity, interfacial adhesion energy, can be used to 
+define the energy required to create a unit area of an interfacial crack (He et al., 1995; Lau et al., 2014). These two properties are 
+correlated, as the interfacial adhesion energy of a material is linked with the energy dissipation within the bulk material, a key 
+contributor to the bulk fracture energy (Gent, 1996). The full picture of clot fracture is yet to be revealed, necessitating a compre-
+hensive investigation to study both the adhesive and cohesive fracture of blood clots.
+In this study, we employ an integrated experimental-computational approach to evaluate comprehensively both adhesive and 
+cohesive fracture of blood clots. We performed peeling tests on various substrates (such as muscle, skin, and artery) and pure shear 
+tests to characterize interfacial and bulk fracture energy, respectively. To study the effects of mechanical and cellular factors on clot 
+fracture, we vary the loading rate and the content of RBCs and platelets, and examine the failure mode under different conditions. 
+Furthermore, we build finite element models to capture the mechanical and fracture behaviors of blood clots. These models are 
+parameterized with our experimental results and used to estimate the range of the intrinsic work of fracture and cohesive zone strength 
+for the cohesive zone model formulation. This comprehensive framework lays the groundwork for the assessment and modeling of 
+adhesive and cohesive fracture behavior of blood clots.
+2. Methodology
+2.1. Blood preparation and clot formation
+Bovine whole blood (CPDA-1 anti-coagulant; sourced from McGill Veterinary Services, or Lampire Biological Laboratories, USA) 
+was utilized. Clots were formed through the addition of a calcification solution (10:1 volumetric ratio), resulting in a final concen-
+tration of 22.5 mM NaCl and 30 mM CaCl2. Due to the time-sensitivity of platelets, for tests involving platelet content variations, a local 
+source (McGill Veterinary Services) was used, and clotting was performed within 4 h of the blood collection. The remaining tests were 
+completed in <72 h from collection to minimize blood aging and maintain mechanical property consistency (Sugerman et al., 2021a, 
+2021b).
+We modified the RBC content of blood (while keeping the contents of fibrinogen and platelet constant) using the protocol below. 
+The whole blood was aliquoted into 15 mL centrifuge tubes and centrifuged at 1500 g for 15 min. After centrifuging, RBC content 
+settled on the bottom of tubes. The supernatant liquid separated from RBCs is platelet-rich plasma, which contains most of fibrinogen 
+and platelets. Then the supernatant was collected as platelet-rich plasma (PRP) using a pipette, while the remaining was collected as 
+erythrocytes (Raditya and Hernaningsih, 2020). PRP was used to prepare clots with no RBC content (0 %), and unmodified whole 
+blood was used to prepare clots with approximately 50 % RBC content. For 30 % volume ratio of RBC content, we mixed RBCs in 
+unprocessed PRP and normal saline (NS; 0.9% w/v of NaCl) at a volume ratio of 3:5:2 (RBC:PRP:NS) (Zohdi et al., 2010). By leaving a 
+buffer of 0.5 cm above the buffy coat, we carefully pipetted and placed the PRP in a 37 ◦C incubator, where 40 % of the water was 
+evaporated in approximately 12 h to obtain a concentrated PRP following the protocol modified from a previous study (Mercader Ruiz 
+et al., 2024). RBCs were re-suspended in concentrated PRP (7:3 v:v) to achieve 70 % volume ratio of RBC content blood samples.
+We varied platelet contents as follows. The bovine whole blood was centrifuged at 1500 g for 15 min at room temperature to 
+separate PRP and erythrocytes. The PRP was further centrifuged under the same condition. The supernatant which was platelet-poor 
+plasma (PPP) was collected using pipette, and the reminding platelet pellet on the bottom contained most of the platelet content. RBCs 
+were then re-suspended in PPP (1:1 v:v) to create a blood sample devoid of platelets. A blood sample with triple platelet contents was 
+then prepared by mixing the platelet pellet into the zero-platelet blood sample (Dhurat and Sukesh, 2014).
+2.2. 90◦ peeling adhesion tests
+To characterize the interfacial adhesion energy of blood clots, we performed 90◦ peeling tests (Liu et al., 2021; Yang et al., 2021a; 
+Yuk et al., 2016) with various substrates, including bovine muscle, bovine liver, porcine skin, bovine aorta, and gauze (Fig. S1). 
+Rectangular substrates (30 mm x 10 mm x 2 mm) – including bovine muscle, bovine liver, porcine skin, bovine aorta, and gauze – were 
+affixed to a rigid polyethylene terephthalate backing. A silicone mold (Ecoflex 30) with a rectangular chamber (30 mm x 10 mm x 4 
+mm) was positioned atop the PET plate to enclose the substrate. A scotch tape of 5 mm in length (as a hydrophobic spacer) was applied 
+at the initial part of the substrate to introduce an interfacial crack. Once clotting was started, the blood was pipetted into the chamber, 
+and a flexible backing (polypropylene fabric; 100 mm x 10 mm) was laid on the liquid blood surface with sufficient blood exudation to 
+enhance bonding between the backing and the clot. Samples were incubated at 37 ◦C for 60 min in humidity bags. Post-incubation, 
+samples were stored at 4 ◦C overnight and tested the following day. We mounted samples on an Instron machine (model 5965; 10 
+N loading cell) with a 90◦ peeling setup and applied vertical displacement on backings at 0.02 mm/s (0.01 s-1), 0.2 mm/s (0.1 s-1) and 2 
+mm/s (1 s-1; the limit of the testing machine without the inertial effects) loading rates. Strain rates were calculated by dividing the 
+loading rate by the thickness of specimens, which was pre-defined by the height of the space between the backing and substrate (2 
+mm). The interfacial adhesion energy of the specimen was calculated by (Bao et al., 2022): 
+S. Liu et al.                                                                                                                                                                                                              Journal of the Mechanics and Physics of Solids 193 (2024) 105858 
+3 Γadhesion = Ps / b (1) 
+where Ps is the average peeling force at the plateau, where the peeling force reaches a steady state, and b is the width of peeling 
+specimens.
+2.3. Pure shear tests
+To measure the bulk fracture energy of blood clots, we performed pure shear tests, which are commonly used to directly measure 
+the fracture energy of soft materials (Long and Hui, 2016). Given the delicate nature of clots, we designed a loading setup for pure 
+shear testing to ensure uniform loading, safe handling, and the creation of wide yet thin samples (40 × 4 × 3 mm) (Fig. S2) (Liu et al., 
+2024). 3D-printed components were placed on a silicon mold, and a thin polyester film was added to the silicone mold (only for 
+notched samples). After initiating clotting with the recalcification solution, we immediately transferred the blood sample into the 
+pre-assembled pure shear test frame using a pipette. These samples were then incubated at 37 ◦C for 60 min inside humidity bags to 
+prevent dehydration. Afterward, samples were stored at 4 ◦C overnight and underwent testing the subsequent day.
+The importance of the rate dependency of the interfacial and bulk fracture energy of blood clots is multifaceted. Prior works show 
+that the fracture toughness of clots is sensitive to the loading rate (Liu et al., 2024). This rate dependency reflects how blood clots 
+behave under dynamic physiological loads, such as those experienced during blood flow or muscle contraction. Specifically, the 
+rate-dependent fracture toughness indicates the role of viscoelastic dissipation mechanisms, which contribute to the overall toughness 
+of clots. Understanding this behavior helps in predicting clot stability and potential failure, which is vital for medical applications 
+related to hemostasis and thrombosis.
+Both unnotched and notched pure shear samples were used to assess the fracture toughness of clots under different loading rates of 
+0.04 mm/s (0.01 s-1), 0.4 mm/s (0.1 s-1) and 4 mm/s (1 s-1). The bulk fracture energy was then calculated using the following equation 
+(Long and Hui, 2016): 
+Γcohesive = W(λc)H0 (2) 
+where W(λ) is the strain energy density in bulk material far ahead of the crack tip and is measured by calculating the area under the 
+stress-strain curve from pure shear tests on unnotched samples. λc is the applied stretch ratio at the onset of crack growth, which is 
+measured using the critical fracture strain (where the applied stress reaches its maximum value) of pure shear tests on notched 
+samples. H0 is the initial height of the sample.
+2.4. Scanning electron microscopy
+Scanning electron microscopy (SEM) was used to characterize the microstructure of the clot samples subjected to variations in RBC 
+and platelet content, as well as to detect interfacial fracture mode. The microstructure of blood clots was captured using a field 
+emission SEM (F450, FEI). Prior to SEM imaging, all samples underwent sequential ethanol dehydration and hexamethyldisilazane 
+(drying to conserve their original microstructure) (Hazrin-Chong and Manefield, 2012). The dehydrated samples were then coated 
+with 4 nm Pt using a high-resolution sputter coater (ACE600, Leica) to enhance surface conductivity.
+2.5. Finite element modeling
+To predict the mechanical response of blood clot under unconfined compression and pure shear tests, we used a special 
+compressible Yeoh’s strain energy function along with a rate-independent Mullin’s damage factor was employed (Ogden and Rox-
+burgh, 1999; Rausch and Humphrey, 2016; Yeoh, 1993): 
+W= ηWdev+ Wvol+ Φ(η)= η
+∑3
+i=1Ci(I1  3)i+ 1D(J  1)2 + Φ(η) (3) 
+in which Wdev and Wvol denote the deviatoric and volumetric free energy function, respectively; Φ is the damage function. The pa-
+rameters C1, C2, C3 represent hyperelastic material constants of the Yeoh model in a cubic form, D is the material constant for 
+compressible materials, and I1 and J are the first deviatoric strain invariant and volumetric change (Ghezelbash et al., 2021; Holzapfel, 
+2000; Rausch et al., 2021). The damage factor η characterizes the material damage, which equals to 1 for an undeformed material and 
+0 for fully damaged state, and is determined from the following evolution equation (Ogden and Roxburgh, 1999): 
+η= 1  1r erf(Wmaxdev   Wdevm+ βWmaxdev ) (4) 
+where r and m are material constants that characterize the damage properties of a material; β is a positive-value parameter to avoid 
+overly stiff response at the beginning of unloading; erf denotes the error function; and Wmaxdev is the maximum deviatoric strain energy 
+function through the loading history. With η, the damage function Φ(η) takes the following form: 
+Φ(η)=
+∫ η
+1
+{ 
+m+ βWmaxdev )erf  1[r(1  η)]  Wmaxdev }dη (5) 
+S. Liu et al.                                                                                                                                                                                                              Journal of the Mechanics and Physics of Solids 193 (2024) 105858 
+4 To determine all material parameters, we minimized the root mean square error between model predictions and experimental data 
+during cyclic loading and compression; see Supplementary Information and Table S1 for additional details.
+The cohesive zone model – with a bilinear triangular function – was employed to represent both the midsection of the pure shear 
+samples along the crack plane, as well as the interfacial bonding between the blood clot and tissue (Hui et al., 2011; Tvergaard and 
+Hutchinson, 1993; Wei and Hutchinson, 1998; Yang et al., 2021a). For the bilinear triangular model, the intrinsic work of fracture Γ0 
+was defined by utilizing the cohesive zone strength S and the maximum separation δ via Γ0 = 12 Sδ. To ensure convergence of peeling 
+simulations, we employed a 4-node linear plane strain quadrilateral element with hourglass control, and modeled the clot-tissue 
+interface by a 4-node two-dimensional cohesive element. For pure shear test simulations, we used 8-node linear brick elements and 
+defined cohesive elements throughout the crack plane in the bulk material. In both simulations, a variety of combinations for intrinsic 
+work of fracture Γ0 (from 0.5 to 12 J/m2 with an increment of 0.5) and cohesive zone strength S (from 1 to 8 kPa with an increment of 
+0.5) was tested. The diagrams were obtained by interpolation using MATLAB between these simulated points.
+2.6. Statistical analysis
+One-way analysis of variance (ANOVA) was used to compare differences between groups. All data are represented as a mean as well 
+as the standard deviation.
+3. Results and discussion
+3.1. Interfacial adhesion energy
+We quantified adhesive fracture with interfacial adhesion energy (i.e., the energy per unit area needed to detach blood clots from a 
+substrate). The interfacial adhesion energy was measured with 90◦ peeling tests of blood clots on various substrates, including porcine 
+skin, liver, aorta, muscle and gauze (Fig. 2c). This test has been extensively used to characterize the adhesion of bioadhesives, 
+hydrogels and pressure-sensitive adhesives (Bao et al., 2022; Yang et al., 2021a; Yuk et al., 2016). Fig. 2d shows the representative 
+force per width/displacement curves, where the interfacial adhesion energy was extracted from the nearly plateau regions. Among the 
+tested substrates, we found that the strongest adhesion occurred with gauze, reaching an interfacial adhesion energy of 8.22 ± 0.88 
+J/m2. On tissue substrates, interfacial adhesion energy on muscle reached 5.63 ± 2.01 J/m2, while the weakest adhesion was with 
+inner aorta (1.35 ± 0.39 J/m2), and liver (2.59 ± 0.89 J/m2) (Fig. 2e).
+Fig. 2. Characterization of adhesive fracture of blood clots. (a) 90◦ peeling test of blood clots from a tissue substrate. (b) Crack propagation at the 
+interface between the tissue and the clot, comprising a network of fibrin fibers (yellow), red blood cells and activated platelets. (c) Digital photo of 
+the experimental setup. (d) Representative peeling force/width-displacement curves of blood clots on various substrates. (e) Interfacial adhesion 
+energy of blood clots measured on various substrates (mean ± SD, n = 4). (f) Effect of loading rate on interfacial adhesion energy of blood clots on 
+skin (mean ± SD, n = 4).
+S. Liu et al.                                                                                                                                                                                                              Journal of the Mechanics and Physics of Solids 193 (2024) 105858 
+5 Considering the viscoelastic nature of blood clots, we also investigated how their adhesion performance depends on the peeling 
+rate. We varied the loading rate from 0.01 to 1 s-1 due to the limitations of the displacement rate of the Instron machine. As anticipated, 
+the interfacial adhesion energy between the clot and the skin is rate-dependent (Fig. 2f). However, despite a two-order magnitude 
+change in loading rate, the increase of interfacial adhesion energy is less than twofold. This non-monotonic rate dependence of 
+interfacial adhesion energy suggests a distinct rate-dependence of interfacial bonding between the clot and the tissue, in contrast to the 
+bulk fracture and viscoelastic behaviour of bulk clots.
+To examine the effect of sample width on our measurements, we further conducted a series of 90-degree peeling tests of different 
+sample widths and compared their measured adhesion energies. The comparison results show that the measured adhesion energy is 
+irrelevant to the sample width; therefore, we believe this testing method could measure the adhesion energy of blood clots as a material 
+property (Fig. S3).
+Our measurements indicate that among biological substrates, the blood clot had the strongest adhesion to the muscle tissue and the 
+weakest adhesion to the inner arterial lining (Fig. 2), a phenomenon that harmonizes with the biological role of blood clots. That is, the 
+natural evolution process ensures that blood minimally adheres to the interior walls of blood vessels, facilitating blood flow and 
+mitigating clot formation. This is achieved through the production of anti-adhesive molecules such as heparan sulfate, prostacyclin, 
+and nitric oxide by the endothelial cells within blood vessels, thereby inhibiting blood cells from adhering to the vessel walls (Kohli 
+et al., 2022). Conversely, in muscle injury sites, in addition to the exposure of tissue factors, the exposed collagen fibers in the vessel 
+wall attract and activate platelets to form clots. This attraction is mediated by the von Willebrand factor acting as a bridge, while 
+platelets can also bind directly to collagen via integrin α2β1 and GPVI receptors (Kohli et al., 2022). These factors contribute to the 
+positive correlation between the platelet content and the adhesion performance.
+3.2. Bulk fracture energy
+We next performed pure shear tests to characterize the cohesive fracture behavior of bovine blood clots (Fig. 3a). Both unnotched 
+and notched specimens were prepared with a customized loading jig and tested with an Instron machine (Fig. 3b and 3c). We measured 
+the bulk fracture energy at 18.27±1.45 J/m2 under a loading rate of 0.01 s-1. Note that the value is around one order of magnitude 
+larger than the interfacial adhesion energy of the clots measured on skin at the same loading rate. The bulk fracture energy exhibits no 
+sensitivity to variations in the notch length (Fig. 3d), consistent with previous reports (Liu et al., 2021; Tutwiler et al., 2020).
+When varying the loading rate, we observed a strong rate dependency in the stress-stretch curves (Fig. 3e). The clots appear stiffer 
+and stronger at higher loading rates. While the failure stretches remain similar, there is a marked increase in the fracture toughness 
+(Fig. 3f). Specifically, the bulk fracture energy increases from 18.27 J/m2 to 38.12 J/m2, when the loading accelerated from 0.01 s-1 to 
+Fig. 3. Characterization of cohesive fracture. (a) Schematic illustration of crack growth within the bulk of blood clots. Average stress-stretch curves 
+of (b) unnotched and (c) notched specimens in pure shear tests (shaded area represents the experimental range; n = 4). (d) Bulk fracture energy of 
+blood clots is insensitive to crack length (mean ± SD, n = 4). (e) Average stress-stretch curves of unnotched specimens under different loading rates 
+(n = 4). (f) Bulk fracture energy of blood clots under different loading rates (mean ± SD, n = 4). For statistical analyses, one-way ANOVA was 
+carried out.
+S. Liu et al.                                                                                                                                                                                                              Journal of the Mechanics and Physics of Solids 193 (2024) 105858 
+6 1 s-1.
+Our results demonstrated that the clot has a strong rate-dependent response (Fig. 2 and 3). Bulk fracture energy within the bulk 
+material exhibited a consistent increase with an increasing loading rate (0.01 s-1 and 1 s-1 loading rate); Fig. 2. On the other hand, 
+interfacial adhesion energy showed a rather different trend; while an increase in interfacial adhesion energy was observed at lower 
+loading rates (from 0.01 s-1 to 0.1 s-1), the effect appeared to be small at larger rates (>0.1 s-1) (Fig. 3). These time-dependent responses 
+can be partly attributed to the poro-visco-elastic nature of the clot. In our mechanical tests, the poro-elastic time constant (τp = D2 
+/4Ek, where τp is the time constant, D is the characteristic length for fluid diffusion defined by the sample thickness due to the sample 
+geometry, and E and k represent the elastic modulus and permeability (Ghezelbash et al., 2022)) was estimated at 1 to 3 s, and given 
+the applied loading rates, fluid had sufficient time to exit the tissue. The effect of poro-elasticity on fibrin clot fracture was estimated at 
+a maximum of 15 % (Garyfallogiannis et al., 2023); therefore, the observed rate effects on bulk fracture energy are primarily due to the 
+viscoelasticity of the fibrin network. As the loading rate increases, the fibrin network’s viscoelastic response becomes more dominant, 
+resulting in a more resilient clot structure due to increased inter-fibrin interactions and strain-hardening. Recently, the rate-dependent 
+fracture toughness of bovine fibrin clots was reported in another work from our lab (Liu et al., 2024). It has been demonstrated that the 
+viscoelastic dissipation governs the toughening of fibrin clots in our previous study using the same setup and loading rates. When the 
+loading rate was increased from 0.01 /s to 1/s, the fracture toughness of both protein fibrin clots and whole blood clots increased 
+approximately two folds, suggesting similar rate dependence. As expected, the value of fibrin clot toughness is much lower than that of 
+whole blood clots measured here, presumingly due to the contribution from cellular components such as platelets and RBC.
+For bovine blood clots, the measured bulk fracture energy (18.3 ± 1.5 J/m2) from pure shear tests was larger than the earlier 
+measured values from lap shear (6.5 J/m2) and edge notch (8 J/m2; ovine blood) tests (Fereidoonnezhad et al., 2021). Such differences 
+could be in part due to the difference in testing setup and fracture mode. As blood clots are extremely delicate, we designed a 
+customized jig to test the blood clot with minimum handling, manipulation, and processing to maintain clot’s structural integrity. 
+Furthermore, we found that a crack length greater than 10 mm does not affect the fracture toughness, since this was much larger than 
+the fracto-sensitive length of the clot (the ratio of the fracture toughness to the work to rupture ξ= Γ/W∗, estimated at = 5.3 mm ± 0.5 
+mm based on the experimental results from this work).
+3.3. Effect of RBCs
+Despite the high volume fraction (>40 %) of RBC within clots, their mechanical contribution to clot fracture remains unclear. To 
+investigate this, we repeated the mechanical tests with blood clots of varying RBC content. The RBC volume ratio was varied between 
+0 %, 30 %, 50 %, and 70 % to encompass the range found in different clotting and disease conditions (Folsom et al., 2020). This 
+variation was achieved by concentrating platelet-rich plasma and reconstituting it with RBCs and normal saline (Fig. 4a). We 
+confirmed the differing RBC content in the clots using SEM images (Fig. 4b). In this test, the clots were formed on porcine muscle, 
+followed by 90◦ peeling tests to determine the interfacial adhesion energy as a function of RBC content. The muscle substrate was 
+selected because it formed the strongest adhesion to clots (Fig. 2e) and is often exposed to clots during bleeding. Additionally, we 
+conducted pure-shear tests to measure the bulk fracture energy of clots with varying RBC content.
+Fig. 4. Blood clots with varying RBC content. (a) Schematic illustrations of preparation process of blood clots with varying RBC content (WB: whole 
+blood; PRP: platelet-rich plasma; RBC: red blood cell; CPRP: concentrated platelet-rich plasma; NS: normal saline). (b) SEM images of blood clots 
+with varying RBC contents (0 %, 30 %, 50 %, and 70 %).
+S. Liu et al.                                                                                                                                                                                                              Journal of the Mechanics and Physics of Solids 193 (2024) 105858 
+7 Although RBCs present few functional groups for bioadhesion, their presence significantly impacts both the adhesion and fracture 
+of blood clots. In terms of adhesion between the clot and the muscle, the effect of RBCs is pronounced when the volume ratio is very 
+high. Specifically, a 70 % volume ratio results in an 80 % increase in the interfacial adhesion energy compared to lower volume ratio 
+conditions (Fig. 5a and 5b). Fig. 5c shows the representative stress-stretch curves from pure shear tests. Interestingly, we found that the 
+elastic modulus remains relatively insensitive to RBC content, as the crosslinking of fibrin network dominates the small-strain response 
+(Fig. 5d). This point is supported by the SEM images, showing no notable differences in the fibrin network (Fig. 4b). Notably, increased 
+RBC content raises the critical stretch (Fig. 5e) and thereby the bulk fracture energy (Fig. 5f). Altogether, our findings indicate a 
+synchronized effect of RBCs on both the adhesion and fracture behaviors of clots, with both the interfacial and bulk fracture energies 
+increasing proportionately with RBC content. This phenomenon differs from the dependence on platelet content, as discussed below.
+3.4. Effect of platelets
+We also studied the effect of platelets on the adhesion and fracture of blood clots. Although platelets are present at a much lower 
+volume fraction than RBCs within clots, they provide, if activated, binding with fibrin networks and adhesion to surrounding tissues. 
+Platelets also drive the contraction process through the generation of contractile forces. These forces are propagated through the 
+platelet-fibrin network, which compacts the clot and reduces its volume (Tutwiler et al., 2016), thus playing a more significant me-
+chanical role. In this test, in addition to the condition of physiological platelet concentration (1x), we either depleted or tripled the 
+platelets by centrifugation and re-mixing (Fig. 6a). SEM images confirm the formation of fibrin fiber network, enclosing blood cells 
+(Fig. S4). We then conducted peeling tests and pure-shear tests to characterize adhesive and cohesive fracture of clots with varying 
+platelet content.
+For the peeling tests, we first examined the cracked surface of the post-mortem specimens, showing the specimens of elevated 
+platelet content (3x) displayed a hybrid fracture (i.e., combined adhesive and cohesive fracture). Visual inspection and SEM images 
+revealed residual fibrin fibers and blood cells on the muscle substrate (Fig. 6b). In contrast, the specimens of normal platelet content 
+(1x) showed negligible traces of clot residue on the muscle substrate, indicative of an adhesive fracture (Fig. 6b). Consistent with the 
+fracture model transition, we found that the interfacial adhesion energy increased with the platelet content (Fig. 7a-b). Pure shear tests 
+further confirmed the mechanical significance of platelets in terms of the bulk mechanical properties. Fig. 7c shows the stress-stretch 
+curves of unnotched specimens of varying platelet content. Interestingly, the measured elastic moduli showed no significant difference 
+(Fig. 7d). However, increased platelet contents substantially reduced the critical stretch of notched specimens (Fig. 7e), so as the bulk 
+fracture energy (Fig. 7f). These findings underscore the critical role of platelets in determining the adhesion and fracture behavior of 
+blood clots.
+The focus of previous studies has been predominantly on cohesive fracture within the bulk clot, yet the interfacial crack propa-
+gation, as an independent mechanism of failure, receives much less attention. Consider the blood clot detaches from substrate tissues 
+Fig. 5. Effects of RBC on mechanical properties of blood clots. (a) Average load-displacement curves of blood clots for different RBC contents (0 %, 
+30 %, 50 %, and 70 %) on muscle substrate in 90◦ peeling tests. (b) Interfacial adhesion energy of blood clots on muscle for different RBC content 
+(mean ± SD, n = 4). (c) Average stress-stretch response of the blood clot under pure shear test (unnotched specimens) for different RBC content 
+(mean ± SD, n = 4). The effect of RBC content on (d) elastic modulus and (e) critical stretch of the blood clot under pure shear test. (f) Fracture 
+toughness of blood clot for different RBC content measured from pure shear test (mean ± SD, n = 4).
+S. Liu et al.                                                                                                                                                                                                              Journal of the Mechanics and Physics of Solids 193 (2024) 105858 
+8 (such as skin or arteries), and through this process adhesive, cohesive, and hybrid fracture can take place (Fig. 1). In comparison to 
+fracture toughness within the bulk material (Fig. 3), we measured much lower interfacial adhesion energy across all tested biological 
+tissues (Fig. 2), suggesting a higher likelihood for adhesive fracture. This observation underscores that the adhesion property is a key 
+limiting factor for blood clot fracture, especially under the context of hemostasis involving the contact between the clot and sur-
+rounding tissues. Our peeling tests further confirmed the predominance of adhesive fracture, with SEM imaging revealing only small 
+Fig. 6. Blood clots with varying platelet content. (a) Preparation process of blood with different platelet contents (WB: whole blood; PRP: platelet- 
+rich plasma; PPP: platelet-poor plasma; RBC: red blood cell; PLT: platelet). (b) SEM images of blood clots with 1x and 3x PLT after peeling tests 
+showing residues on bovine muscle substrates after peeling test.
+Fig. 7. Effects of platelet content on mechanical properties of blood clots. (c) Average force/width-displacement curves of blood clots (0x, 1x, and 
+3x PLT) on muscle substrate in 90◦ peeling tests. (d) Interfacial adhesion energy of blood clots on muscle for different platelet content (mean ± SD, n 
+= 4). (e) Average stress-stretch curves of the blood clots under pure shear test (unnotched specimens) for different platelet content (mean ± SD, n =
+4). The effect of PLT content on (f) elastic modulus and (g) critical stretch of blood clots under pure shear test. (h) Bulk fracture energy of blood clots 
+as a function of platelet content (mean ± SD, n = 4).
+S. Liu et al.                                                                                                                                                                                                              Journal of the Mechanics and Physics of Solids 193 (2024) 105858 
+9 residuals of the blood clot left on the substrate tissue (Fig. 6b). The fracture mode was shifted to be a hybrid mode when the platelet 
+content increased 3x from the normal level. It is worth noting that we characterized interfacial and bulk fracture energies using 
+different tests (peeling and pure shear), and a direct comparison of these values should be practiced with caution.
+3.5. Finite element model
+We built two finite element models to simulate the cohesive and adhesive fracture of blood clots, respectively, using a coupled 
+cohesive-zone and Mullins-effect model validated by our experiments. Although blood clots exhibit significant rate dependence, we 
+chose to focus on their rate-independent mechanical responses for this initial model development. Given that the clots display 
+hyperelastic and Mullin’s responses, we combined the Yeoh model and the Mullins model, both calibrated with experimental data from 
+cyclic loading and compression tests. In the peeling simulation, the substrate was modeled as porcine skin (Yang et al., 2021a). The 
+parameters used are listed in Table S2 and S3. Both the Yeoh and Mullins models are phenomenological, using empirical data and 
+mathematical formulations to describe material behavior without explaining the underlying microstructures. Fig. 8a shows a good 
+agreement between the simulated and experimental data obtained from unnotched pure-shear specimens under cyclic tensile loading 
+(Fig. 8a). Similar agreement was observed in the unidirectional compression tests (Fig. 8b). Furthermore, the constitutive model, 
+paired with the cohesive zone model discussed below, can reasonably well capture the stress-stretch curve of the notched pure-shear 
+specimens up to the rupture point (Fig. 8c).
+The cohesive zone model was used to simulate the fracture within the bulk and at the interface between the clot and porcine skin. 
+For the skin substrate, we used the Ogden model developed before (Yang et al., 2021a). The cohesive zone model defines the 
+traction-separation law for crack propagation. In the form of bilinear triangular function, it involves the intrinsic work of fracture Γ0, 
+cohesive zone strength S and the maximum separation δc. Determining these exact values is technically challenging, so we conducted a 
+parameter study by screening various combinations for intrinsic work of fracture Γ0 and cohesive zone strength S. With them, the 
+traction-separation law was defined and the FEM could output bulk fracture energy for the pure-shear model and interfacial adhesion 
+energy for the peeling model. Fig. 8d illustrates the simulated fracture energy as function of Γ0 and S, and the adhesion energy diagram 
+is shown in Fig. 8e. Using these two diagrams, we considered the fracture and adhesion energies measured at the lowest loading rates to 
+Fig. 8. Finite element modelling of blood clots. (a-b) Stress-stretch curves of blood clots under pure shear cyclic loading (a) and unconfined 
+compression tests (b) obtained from our experiments (red) and finite element models (black). (c) Stress-stretch curves of the notched blood clot 
+specimen under pure shear tests obtained from experiments (red) and finite element models (blue). (d) Simulated bulk fracture energy of the blood 
+clot for various cohesive zone model parameters (intrinsic work of fracture: Γbul0 ; cohesive zone strength for bulk fracture: Sbulk). The black dot line 
+indicates the average experiment result. (e) Simulated interfacial adhesion energy of the blood clot for various cohesive zone model parameters 
+(intrinsic work of adhesion: Γint0 ; cohesive zone strength for interfacial fracture: Sinterface). The black dot line indicates the average experiment result.
+S. Liu et al.                                                                                                                                                                                                              Journal of the Mechanics and Physics of Solids 193 (2024) 105858 
+10 minimize the rate-dependent contributions. The counter lines indicate the range of Γ0 and S could allow the model to yield the bulk 
+fracture and interfacial adhesion energies consistent with experimental results, whilst satisfying the criteria for Γ0 and the typical 
+strain concentration factors observed for blood clots.
+This cohesive zone model has widespread application in engineered and soft materials, including hydrogels and bioadhesives (Yang 
+et al., 2021a, 2021b; Yuk et al., 2016; Zhang et al., 2017). Within the framework, one needs to identify two parameters: the intrinsic 
+work of fracture Γ0 and the cohesive zone strength S. Both parameters are difficult to determine experimentally. However, recent 
+efforts have attempted to determine the intrinsic work of fracture through fatigue fracture tests, specifically by determining the fatigue 
+threshold below which no crack propagation under cyclic loading. For instance, another paper from our group reports the fatigue 
+threshold of bovine fibrin clots (i.e., blood cell-free plasma clot) measured at 1.66 J/m2 (Liu et al., 2024). Yet, conducting such tests 
+presents technical challenges due to the extended testing duration required, especially incompatible with whole blood clots containing 
+various blood cells and sensitive biological components.
+To further confine the range, we account for the physical range of Γ0 and S. Specifically, Γ0 cannot exceed the experimentally 
+measured fracture energy. For S, its value cannot fall below the bulk strength (~4 kPa) observed in pure shear tests and the peeling 
+strength (~1.7 kPa) during peeling, and the maximum value of S can be approximately estimated as its minimum value multiplied by 
+the strain concentration factor at crack tip (Tang et al., 2024; Tutwiler et al., 2021, 2020). These considerations lead to that S is likely 
+lower than 8 kPa in cohesive fracture and 3.5 kPa in adhesive fracture. For instance, by adhering to the constraint of S and matching the 
+simulation and experimentally measured fracture energy under the lowest loading rate (~18.3 J/m2), when observing Sbulk exceeding 
+5.2 kPa in some experimental results, we could identify a suitable range for Γbul0 between 6 and 8 J/m2 (Fig. 8d). With the values, our 
+FEM reasonably captured the stress-strain curves of notched specimens under pure shear tests (Fig. 8c). The FEM can reveal the stress, 
+strain, and displacement fields in the clot during cohesive and adhesive fracture, enable the estimation of intrinsic fracture energy and 
+cohesive zone strength that are difficult to measure directly, and further provide valuable insights for understanding and modelling 
+fracture mechanisms of blood clots.
+Compared with fibrin clot (blood cell-free plasma clot) (Liu et al., 2024), both the overall bulk fracture toughness and intrinsic 
+fracture toughness of whole blood clots are significantly higher, further indicating the important role of blood cells in the clot 
+toughening. Applying the same methodology above, we estimated a suitable range for Γint0 between 1.3 and 1.6 J/m2 with Sinterface 
+exceeding 1.7 kPa from the adhesion energy diagram (Fig. 8e). A close examination of the prediction results reveals that the intrinsic 
+work of adhesion is comparable to the interfacial adhesion energy, suggesting minimal bulk energy dissipation in blood clot adhesion, 
+in contrast to cohesive fracture, where the bulk fracture energy significantly exceeds the intrinsic work of fracture. These findings not 
+only enable the development of FEMs to simulate blood clot fracture and adhesion but also offer valuable insights into the underlying 
+fracture mechanisms.
+Interfacial adhesion energy arises from both the surface-to-surface bonds between adjacent materials (i.e., intrinsic work of 
+fracture) as well as energy dissipation within the bulk material (Li et al., 2017). Blood clots exhibit strong hysteresis under cyclic 
+loading (Liu et al., 2024), indicating a strong potential for bulk energy dissipation, which in turn toughens adhesion. To corroborate 
+this point, our finite element model for peeling tests reveals that eliminating bulk material dissipation (i.e., simulating an elastic 
+response devoid of the Mullin effect) reduces the interfacial adhesion energy by 31 %, underscoring the coupling between interfacial 
+and bulk mechanical characteristics. This indicates that understanding and controlling the adhesion of blood clots should involve not 
+only interfacial properties but also bulk material properties.
+4. General discussion
+Using an integrated experimental-computational methodology, we studied the adhesive/cohesive fracture mechanics of bovine 
+blood clots, and evaluated the effects of loading rates and cellular components (RBC and platelet) on the clot fracture mechanics. Upon 
+examination of the results, we found that the interfacial adhesion energy is significantly smaller than the bulk fracture energy in all 
+loading rates tested. While both increase with the loading rate, the rate dependence of the bulk fracture energy is more potent than that 
+of interfacial adhesion energy. Our results also reveal the mechanical contribution of RBC and platelets to the adhesion/cohesive 
+fracture of blood clots, which is further rationalized with the characterization of bulk mechanical properties. A picture of biological 
+cell-modulating clot fracture emerges: the increasing RBC content toughens the clots against both cohesive and adhesive fracture, 
+while the platelet content raises interfacial adhesion energy and eventually shifts the fracture mode from adhesive to hybrid fracture. 
+With the characterized mechanical and fracture properties of blood clots, we built a finite element model, successfully capturing the 
+rate-independent multi-modal behavior of the blood clot. This study provides novel insights into the fracture mechanics of blood clots 
+and brings valuable implications to the biomedical applications associated with blood clots and thrombosis. Below are some general 
+discussions of this study.
+4.1. Cell-mediated mechanical properties
+Unlike polymer chains, the impact of biological cells on fracture is unexplored. While the mechanical role of platelets in blood clots 
+has been widely recognized (Lam et al., 2011; Tutwiler et al., 2017; Wufsus et al., 2013, 2015), RBC is traditionally underappreciated 
+mechanically. RBCs primarily affect clots in vivo by influencing rheological behaviors, including laminar shearing, platelet margin-
+ation, aggregation, and RBC deformability. RBCs directly interact with fibrin, impacting the structure, mechanical properties, and lytic 
+resistance of clots and thrombi. Furthermore, studies on clot contraction reveal that contracted clots form an impermeable and 
+S. Liu et al.                                                                                                                                                                                                              Journal of the Mechanics and Physics of Solids 193 (2024) 105858 
+11 compacted barrier composed of polyhedral-shaped RBCs (Litvinov and Weisel, 2017).
+This study reveals the significant contribution of biological cells to the fracture properties of blood clots, but the elastic modulus of 
+blood clots is insensitive to the content of RBCs and platelets. Given the softness of RBC, they do not affect the elastic modulus 
+measured at small strains, which is mainly governed by the fibrin network. The weak dependence of elastic modulus on the platelet 
+content is noteworthy. We attribute this phenomenon to the fact that our pure-shear specimens could not contract due to the con-
+straints of the clotting mold, and clot contraction is the key mechanism of platelet-driven clot stiffening. Furthermore, the clot 
+contraction was found to require a high threshold value of platelet content, below which the elastic modulus of blood clots mainly 
+depends on the fibrin content (Boodt et al., 2021). This effect was confirmed with our experiment of blood clots with or without a 
+myosin inhibitor (blebbistatin), showing pre-strain measured at 11 %  15 % (Fig. S5).
+Our results clearly demonstrate that increased RBC content enhances both interfacial and bulk fracture energies. We interpret this 
+effect as follows. Fracture energy has generally two contributors: the intrinsic fracture toughness derived from bond breaking at the 
+crack tip (Γin) and the energy dissipation contribution from the bulk matrix (ΓD). The RBC could influence the energy dissipation 
+process in the process zone within the bulk matrix. Another possibility is that the presence of RBC could influence the configuration of 
+fibrin fibers and their crosslinking network (Gersh et al., 2009), which have effects on both Γin and ΓD. There are several crosslinking 
+mechanisms of blood clots, including fibrin crosslinking, cell-cell adhesion and cell-fibrin binding (Jiang et al., 2022). Further 
+investigation is warranted to pinpoint the underlying mechanism of RBC-mediated fracture.
+We found different effects of RBCs and platelets on the mechanical properties of clots and attributed these differences to their 
+polymer binding capacity. Platelets participate in secondary hemostasis, influencing fibrin network formation and crosslinking. The 
+contribution of platelets to clot adhesion has been documented (Chan et al., 2020; Eriksson and Whiss, 2005; Qiu et al., 2014). Our 
+experiments demonstrate a significant enhancement in interfacial adhesion energy by a factor of two with higher platelet counts 
+(Fig. 7b). The adhesion mechanism of platelets is discussed as follows. Platelet adhesion and activation occur upon exposure to 
+collagen and tissue factor-bearing cells at the injury site (Davie et al., 1991). Activated platelets bind collagen fibers via 
+fibrinogen-mediated interplay with platelet surface integrins, forming a platelet plug to stop hemorrhage (Govindarajan et al., 2018). 
+Also, the exposed collagen and immobilized von Willebrand factor further interact with platelets through platelet membrane receptors, 
+leading to platelet adhesion.
+In contrast to the positive effect on adhesion, increased platelet content tends to embrittle the fibrin network, resulting in reduced 
+bulk fracture toughness—a contrast to the consistent reinforcement observed with RBCs. We attribute this effect to platelet contraction 
+facilitated by contractile elements like actin and myosin, inducing prestress in the clots (Sun et al., 2022). Although additional platelets 
+are often believed to improve structural integrity (Darcourt et al., 2021), their potential benefit appears counterbalanced by the 
+contraction-induced reduction in bulk fracture energy. The effect of platelets is so profound that it shifted the mechanical failure mode 
+seen in our peeling tests—from predominantly adhesive fracture to hybrid fracture within the specimens with increased platelet 
+content.
+4.2. Clinical implications
+Understanding the mechanics of blood clots, including the distinct roles of adhesive and cohesive fracture in clot failure and the 
+impact of RBC and platelet contents, has important clinical implications. Consider the application of wound management. An ideal 
+wound dressing should balance its adhesion to the tissue and clot; it should attach firmly to the surrounding tissue to efficiently stop 
+bleeding yet maintain minimal adhesion to the clot itself to avoid disruption and potential re-bleeding upon removal. However, gauze 
+– the most common wound dressing material – seems to contradict this notion. In a skin injury, the gauze has almost zero adhesion to 
+the skin, rendering it unable to adequately seal the wound site. Meanwhile, our peeling tests have shown that gauze exhibits the 
+highest adhesion to the clot (Fig. 2). This elevated clot adherence can lead to cohesive fracture within the clot during dressing removal, 
+triggering a re-bleeding event, a situation familiar to many healthcare practitioners and patients.
+4.3. Limitations
+This study has several limitations. The blood clots tested here were formed under static conditions in vitro, which differ from 
+physiological conditions in vivo. Despite these differences, thrombin-induced clots from bovine blood have demonstrated mechanical 
+properties similar to those of human blood clots formed in arteries (Chueh et al., 2011). It is worth noting that using in vivo-formed 
+human clots for this study was not feasible due to restrictions related to sample size and technical considerations. Also, blood clots 
+formed in vivo exhibit significant variability, particularly in their cellular components. For example, the composition and formation of 
+venous and arterial thrombi differ due to various physiological, pathological and treatment conditions, which could lead to substantial 
+changes in their mechanical properties. Therefore, we prepared in vitro blood clots to minimize its variance and ensure consistency in 
+mechanical testing. Future research should be done to examine the correlation between in vitro and in vivo formed clots.
+Another limitation is the delay associated with shipping time, typically around 24 h, which is expected to render some platelets in 
+the blood source inactive, which could influence the results (Egidi et al., 2010; Josefsson et al., 2014). Lastly, our finite element 
+modeling was rate-independent and also did not account for the viscoelastic effect, but given that we were examining a single rate, this 
+assumption remained adequate for our study’s purposes. As the blood clots exhibit viscoplastic behavior, the effect of permanent 
+deformation or plasticity is worth consideration in future investigations (Fereidoonnezhad and McGarry, 2022; Ghezelbash et al., 
+2022; van Kempen et al., 2016).
+S. Liu et al.                                                                                                                                                                                                              Journal of the Mechanics and Physics of Solids 193 (2024) 105858 
+12 5. Conclusion
+This study revealed the pivotal roles of loading rate and biological cells in the adhesion and fracture of blood clots. The interfacial 
+adhesion energy also increased with the loading rate, though this effect diminished at high loading rate. In comparison, the bulk 
+fracture energy was significantly larger, while exhibiting more pronounced rate dependency. The clots exhibited the highest adhesion 
+to gauze (larger than other biological substrates) and paradoxically failed to adhere to the skin to seal the wound efficiently, risking 
+disruption and potential re-bleeding upon gauze removal. An increase in RBC content amplified both interfacial adhesion and bulk 
+fracture energies, with adhesive fracture emerging as the dominant fracture mode. Additionally, higher platelet content enhanced 
+interfacial adhesion energy to the point where the failure mode in peeling tests shifted from adhesive to hybrid fracture, underscoring 
+the crucial role of platelets in adhesion. We also developed a finite element model that captured the complex loading-unloading blood 
+clot behavior in various loading and fracture conditions, including cyclic loading, compression, cohesive fracture under pure shear 
+tests and adhesive fracture during peeling. This model enabled us to estimate the intrinsic work of fracture and the cohesive zone 
+strength for blood clot fracture. These findings significantly enhance our understanding of clot mechanics, with important clinical 
+implications for optimizing the management of clot-related disorders and paving the way for the development of innovative, more 
+efficient wound dressings.
+CRediT authorship contribution statement
+Shiyu Liu: Writing – review & editing, Writing – original draft, Visualization, Validation, Software, Resources, Methodology, 
+Investigation, Formal analysis, Data curation. Aram Bahmani: Writing – review & editing, Visualization, Software, Investigation. 
+Gabriella Paige Sugerman: Investigation, Data curation. Zhen Yang: Methodology, Investigation. Manuel Rausch: Investigation, 
+Data curation. Farshid Ghezelbash: Writing – original draft, Supervision, Methodology, Investigation, Conceptualization. Jianyu Li: 
+Writing – review & editing, Supervision, Project administration, Funding acquisition, Conceptualization.
+Declaration of competing interest
+The authors declare that they have no known competing financial interests or personal relationships that could have appeared to 
+influence the work reported in this paper.
+Data availability
+Data will be made available on request.
+Acknowledgment
+This study was supported by the Canadian Institutes of Health Research (grant PJT-180232, J.L.). S.L. and A.B. were financially 
+supported by a McGill Engineering Doctoral Award (MEDA). J.L. acknowledges the support from Canada Research Chairs Program and 
+International Excellence Fellowship from Karlsruhe Institute of Technology. M.K. acknowledges support by the National Science 
+Foundation through grants 2235856, 2127925, 2105175, 2046148 and the Office of Naval Research under grant N00014-23-2575.
+Supplementary materials
+Supplementary material associated with this article can be found, in the online version, at doi:10.1016/j.jmps.2024.105858.
+References
+Ackermann, M., Verleden, S.E., Kuehnel, M., Haverich, A., Welte, T., Laenger, F., Vanstapel, A., Werlein, C., Stark, H., Tzankov, A., Li, W.W., Li, V.W., Mentzer, S.J., 
+Jonigk, D., 2020. Pulmonary vascular endothelialitis, thrombosis, and angiogenesis in Covid-19. N. Engl. J. Med. 383, 120–128. https://doi.org/10.1056/ 
+nejmoa2015432.
+Bao, G., Gao, Q., Cau, M., Ali-Mohamad, N., Strong, M., Jiang, S., Yang, Z., Valiei, A., Ma, Z., Amabili, M., Gao, Z.-H., Mongeau, L., Kastrup, C., Li, J., 2022. Liquid- 
+infused microstructured bioadhesives halt non-compressible hemorrhage. Nat. Commun. 13 https://doi.org/10.1038/s41467-022-32803-1.
+Bayer, I.S., 2022. Advances in fibrin-based materials in wound repair: a review. Molecules 27, 4504. https://doi.org/10.3390/molecules27144504.
+Boodt, N., Snouckaert Van Schauburg, P.R.W., Hund, H.M., Fereidoonnezhad, B., McGarry, J.P., Akyildiz, A.C., Van Es, A.C.G.M., De Meyer, S.F., Dippel, D.W.J., 
+Lingsma, H.F., Van Beusekom, H.M.M., Van Der Lugt, A., Gijsen, F.J.H., 2021. Mechanical characterization of thrombi retrieved with endovascular thrombectomy 
+in patients with acute ischemic stroke. Stroke 52, 2510–2517. https://doi.org/10.1161/strokeaha.120.033527.
+Brown, A.C., Barker, T.H., 2014. Fibrin-based biomaterials: modulation of macroscopic properties through rational design at the molecular level. Acta Biomater 10, 
+1502–1514. https://doi.org/10.1016/j.actbio.2013.09.008.
+Chan, K.Y.T., Yong, A.S.M., Wang, X., Ringgold, K.M., St John, A.E., Baylis, J.R., White, N.J., Kastrup, C.J., 2020. The adhesion of clots in wounds contributes to 
+hemostasis and can be enhanced by coagulation factor XIII. Sci. Rep. 10, 20116. https://doi.org/10.1038/s41598-020-76782-z.
+Chueh, J.Y., Wakhloo, A.K., Hendricks, G.H., Silva, C.F., Weaver, J.P., Gounis, M.J., 2011. Mechanical characterization of thromboemboli in acute ischemic stroke and 
+laboratory embolus analogs. Am. J. Neuroradiol. 32, 1237–1244. https://doi.org/10.3174/ajnr.a2485.
+S. Liu et al.                                                                                                                                                                                                              Journal of the Mechanics and Physics of Solids 193 (2024) 105858 
+13 Darcourt, J., Demchuk, A.M., Olivot, J.-M., 2021. Platelets and clot stiffness: a challenge but also an opportunity toward achieving consistent complete reperfusion. 
+Stroke 52, 2518–2520. https://doi.org/10.1161/strokeaha.121.035105.
+Davie, E.W., Fujikawa, K., Kisiel, W., 1991. The coagulation cascade: initiation, maintenance, and regulation. Biochemistry 30, 10363–10370. https://doi.org/ 
+10.1021/bi00107a001.
+Dhurat, R., Sukesh, M., 2014. Principles and methods of preparation of platelet-rich plasma: a review and author’s perspective. J. Cutan. Aesthet. Surg. 7, 189–197. 
+https://doi.org/10.4103/0974-2077.150734.
+Egidi, M.G., D’Alessandro, A., Mandarello, G., Zolla, L., 2010. Troubleshooting in platelet storage temperature and new perspectives through proteomics. Blood 
+Transfus 8 (3), s73–s81. https://doi.org/10.2450/2010.012s. Suppl. 
+Eriksson, A.C., Whiss, P.A., 2005. Measurement of adhesion of human platelets in plasma to protein surfaces in microplates. J. Pharmacol. Toxicol. Methods 52, 
+356–365. https://doi.org/10.1016/j.vascn.2005.06.002.
+Fereidoonnezhad, B., Dwivedi, A., Johnson, S., McCarthy, R., McGarry, P., 2021. Blood clot fracture properties are dependent on red blood cell and fibrin content. 
+Acta Biomater 127, 213–228. https://doi.org/10.1016/j.actbio.2021.03.052.
+Fereidoonnezhad, B., McGarry, P., 2022. A new constitutive model for permanent deformation of blood clots with application to simulation of aspiration 
+thrombectomy. J. Biomech. 130, 110865 https://doi.org/10.1016/j.jbiomech.2021.110865.
+Folsom, A.R., Wang, W., Parikh, R., Lutsey, P.L., Beckman, J.D., Cushman, M., 2020. Hematocrit and incidence of venous thromboembolism. Res. Pract. Thromb. 
+Haemost. 4, 422–428. https://doi.org/10.1002/rth2.12325.
+Garyfallogiannis, K., Ramanujam, R.K., Litvinov, R.I., Yu, T., Nagaswami, C., Bassani, J.L., Weisel, J.W., Purohit, P.K., Tutwiler, V., 2023. Fracture toughness of fibrin 
+gels as a function of protein volume fraction: mechanical origins. Acta Biomater 159, 49–62. https://doi.org/10.1016/j.actbio.2022.12.028.
+Gent, A.N., 1996. Adhesion and strength of viscoelastic solids. Is there a relationship between adhesion and bulk properties? Langmuir 12, 4492–4496. https://doi. 
+org/10.1021/la950887q.
+Gersh, K.C., Nagaswami, C., Weisel, J.W., 2009. Fibrin network structure and clot mechanical properties are altered by incorporation of erythrocytes. Thromb. 
+Haemost. 102, 1169–1175. https://doi.org/10.1160/TH09-03-0199.
+Ghezelbash, F., Eskandari, A.H., Shirazi-Adl, A., Kazempour, M., Tavakoli, J., Baghani, M., Costi, J.J., 2021. Modeling of human intervertebral disc annulus fibrosus 
+with complex multi-fiber networks. Acta Biomater 123, 208–221. https://doi.org/10.1016/j.actbio.2020.12.062.
+Ghezelbash, F., Liu, S., Shirazi-Adl, A., Li, J., 2022. Blood clot behaves as a poro-visco-elastic material. J. Mech. Behav. Biomed. Mater. 105101 https://doi.org/ 
+10.1016/j.jmbbm.2022.105101.
+Govindarajan, V., Zhu, S., Li, R., Lu, Y., Diamond, S.L., Reifman, J., Mitrophanov, A.Y., 2018. Impact of tissue factor localization on blood clot structure and resistance 
+under venous shear. Biophys. J. 114, 978–991. https://doi.org/10.1016/j.bpj.2017.12.034.
+Hazrin-Chong, N.H., Manefield, M., 2012. An alternative SEM drying method using hexamethyldisilazane (HMDS) for microbial cell attachment studies on sub- 
+bituminous coal. J. Microbiol. Methods 90, 96–99. https://doi.org/10.1016/j.mimet.2012.04.014.
+He, M.Y., Turner, M.R., Evans, A.G., 1995. Analysis of the double cleavage drilled compression specimen for interface fracture energy measurements over a range of 
+mode mixities. Acta Metall. Mater. 43, 3453–3458. https://doi.org/10.1016/0956-7151(95)00036-U.
+Holzapfel, G.A., 2000. Nonlinear Solid mechanics: A continuum Approach For Engineering. Wiley Chichester, Chichester. 
+Hui, C.Y., Ruina, A., Long, R., Jagota, A., 2011. Cohesive zone models and fracture. J. Adhes. 87, 1–52. https://doi.org/10.1080/00218464.2011.538315.
+Jiang, S., Liu, S., Lau, S., Li, J., 2022. Hemostatic biomaterials to halt non-compressible hemorrhage. J. Mater. Chem. B 10, 7239–7259. https://doi.org/10.1039/ 
+d2tb00546h.
+Jiang, Y., Liang, X., Guo, M., Cao, Y., Cai, S., 2018. Fracture mechanics modeling of popping event during daughter cell separation. Biomech. Model. Mechanobiol. 17, 
+1131–1137. https://doi.org/10.1007/s10237-018-1019-6.
+Josefsson, E.C., Burnett, D.L., Lebois, M., Debrincat, M.A., White, M.J., Henley, K.J., Lane, R.M., Moujalled, D., Preston, S.P., O’Reilly, L.A., Pellegrini, M., Metcalf, D., 
+Strasser, A., Kile, B.T., 2014. Platelet production proceeds independently of the intrinsic and extrinsic apoptosis pathways. Nat. Commun. 5 https://doi.org/ 
+10.1038/ncomms4455.
+Kohli, S., Shahzad, K., Jouppila, A., Holth¨ofer, H., Isermann, B., Lassila, R., 2022. Thrombosis and inflammation—A dynamic interplay and the role of 
+glycosaminoglycans and activated protein C. Front. Cardiovasc. Med. 9 https://doi.org/10.3389/fcvm.2022.866751.
+Lam, W.A., Chaudhuri, O., Crow, A., Webster, K.D., Li, T.-D., Kita, A., Huang, J., Fletcher, D.A., 2011. Mechanics and contraction dynamics of single platelets and 
+implications for clot stiffening. Nat. Mater. 10, 61–66. https://doi.org/10.1038/nmat2903.
+Lau, D., Broderick, K., Buehler, M.J., Büyük¨oztürk, O., 2014. A robust nanoscale experimental quantification of fracture energy in a bilayer material system. PNAS 
+111, 11990–11995. https://doi.org/10.1073/pnas.1402893111.
+Laurens, N., Koolwijk, P., De Maat, M.P.M., 2006. Fibrin structure and wound healing. J. Thromb. Haemost. 4, 932–939. https://doi.org/10.1111/j.1538- 
+7836.2006.01861.x.
+Li, J., Celiz, A.D., Yang, J., Yang, Q., Wamala, I., Whyte, W., Seo, B.R., Vasilyev, N.V., Vlassak, J.J., Suo, Z., Mooney, D.J., 2017. Tough adhesives for diverse wet 
+surfaces. Science 357, 378–381. https://doi.org/10.1126/science.aah6362.
+Litvinov, R.I., Weisel, J.W., 2017. Role of red blood cells in haemostasis and thrombosis. ISBT Sci. Ser. 12, 176–183.
+Litvinov, R.I., Weisel, J.W., 2022. Blood clot contraction: mechanisms, pathophysiology, and disease. Res. Pract. Thromb. Haemost. 100023 https://doi.org/10.1016/ 
+j.rpth.2022.100023.
+Liu, S., Bahmani, A., Ghezelbash, F., Li, J., 2024. Fibrin clot fracture under cyclic fatigue and variable rate loading. Acta Biomater 177, 265–277. https://doi.org/ 
+10.1016/j.actbio.2024.01.046.
+Liu, S., Bao, G., Ma, Z., Kastrup, C.J., Li, J., 2021. Fracture mechanics of blood clots: measurements of toughness and critical length scales. Extreme Mech. Lett. 48, 
+101444 https://doi.org/10.1016/j.eml.2021.101444.
+Long, R., Hui, C.-Y., 2016. Fracture toughness of hydrogels: measurement and interpretation. Soft Matter 12, 8069–8086. https://doi.org/10.1039/c6sm01694d.
+Mercader Ruiz, J., Beitia, M., Delgado, D., S´anchez, P., S´anchez, M.B., Oraa, J., Benito-Lopez, F., Basabe-Desmonts, L., S´anchez, M., 2024. Method to obtain a plasma 
+rich in platelet- and plasma-growth factors based on water evaporation. PLoS ONE 19, e0297001. https://doi.org/10.1371/journal.pone.0297001.
+Mostovoy, S., Ripling, E.J., 1966. Fracture toughness of an epoxy system. J. Appl. Polym. Sci. 10, 1351–1371. https://doi.org/10.1002/app.1966.070100913.
+Ogden, R.W., Roxburgh, D.G., 1999. A pseudo–elastic model for the Mullins effect in filled rubber. Proc. R. Soc. A: Math. Phys. Eng. Sci. 455, 2861–2877. https://doi. 
+org/10.1098/rspa.1999.0431.
+Qiu, Y., Brown, A.C., Myers, D.R., Sakurai, Y., Mannino, R.G., Tran, R., Ahn, B., Hardy, E.T., Kee, M.F., Kumar, S., Bao, G., Barker, T.H., Lam, W.A., 2014. Platelet 
+mechanosensing of substrate stiffness during clot formation mediates adhesion, spreading, and activation. PNAS 111, 14430–14435. https://doi.org/10.1073/ 
+pnas.1322917111.
+Qiu, Y., Myers, D.R., Lam, W.A., 2019. The biophysics and mechanics of blood from a materials perspective. Nat. Rev. Mater. 4, 294–311. https://doi.org/10.1038/ 
+s41578-019-0099-y.
+Raditya, P.P.R., Hernaningsih, Y., 2020. Platelet counts analysis of platelet-poor plasma (PPP) produced by several centrifugation techniques. Indian J. Med. Forensic 
+Med. Toxicol. 14 https://doi.org/10.37506/ijfmt.v14i3.10559.
+Rausch, M.K., Humphrey, J.D., 2016. A microstructurally inspired damage model for early venous thrombus. J. Mech. Behav. Biomed. Mater. 55, 12–20. https://doi. 
+org/10.1016/j.jmbbm.2015.10.006.
+Rausch, M.K., Sugerman, G.P., Kakaletsis, S., Dortdivanlioglu, B., 2021. Hyper-viscoelastic damage modeling of whole blood clot under large deformation. Biomech. 
+Model. Mechanobiol. 1–13. https://doi.org/10.1007/s10237-021-01467-z.
+Sugerman, G.P., Chokshi, A., Rausch, M.K., 2021a. Preparation and mounting of whole blood clot samples for mechanical testing. Curr. Protoc. 1 https://doi.org/ 
+10.1002/cpz1.197.
+Sugerman, G.P., Kakaletsis, S., Thakkar, P., Chokshi, A., Parekh, S.H., Rausch, M.K., 2021b. A whole blood thrombus mimic: constitutive behavior under simple shear. 
+J. Mech. Behav. Biomed. Mater. 115, 104216 https://doi.org/10.1016/j.jmbbm.2020.104216.
+S. Liu et al.                                                                                                                                                                                                              Journal of the Mechanics and Physics of Solids 193 (2024) 105858 
+14 Sugerman, G.P., Parekh, S.H., Rausch, M.K., 2020. Nonlinear, dissipative phenomena in whole blood clot mechanics. Soft Matter 16, 9908–9916. https://doi.org/ 
+10.1039/d0sm01317j.
+Sun, Y., Oshinowo, O., Myers, D.R., Lam, W.A., Alexeev, A., 2022. Resolving the missing link between single platelet force and clot contractile force. iScience 25, 
+103690. https://doi.org/10.1016/j.isci.2021.103690.
+Tanaka, K.A., Key, N.S., Levy, J.H., 2009. Blood coagulation: hemostasis and thrombin regulation. Anesth. Analg. 108 https://doi.org/10.1213/ 
+ane.0b013e31819bcc9c.
+Tang, J., Lin, J., Wang, T., 2024. Cracking of soft collagenous tissues under suture retention. J. Mech. Phys. Solids 105682. https://doi.org/10.1016/j. 
+jmps.2024.105682.
+Tutwiler, V., Litvinov, R.I., Lozhkin, A.P., Peshkova, A.D., Lebedeva, T., Ataullakhanov, F.I., Spiller, K.L., Cines, D.B., Weisel, J.W., 2016. Kinetics and mechanics of 
+clot contraction are governed by the molecular and cellular composition of the blood. Blood 127, 149–159. https://doi.org/10.1182/blood-2015-05-647560.
+Tutwiler, V., Maksudov, F., Litvinov, R.I., Weisel, J.W., Barsegov, V., 2021. Strength and deformability of fibrin clots: biomechanics, thermodynamics, and 
+mechanisms of rupture. Acta Biomater 131, 355–369. https://doi.org/10.1016/j.actbio.2021.06.046.
+Tutwiler, V., Singh, J., Litvinov, R.I., Bassani, J.L., Purohit, P.K., Weisel, J.W., 2020. Rupture of blood clots: mechanics and pathophysiology. Sci. Adv. 6, eabc0496. 
+https://doi.org/10.1126/sciadv.abc0496.
+Tutwiler, V., Wang, H., Litvinov, R.I., Weisel, J.W., Shenoy, V.B., 2017. Interplay of platelet contractility and elasticity of fibrin/erythrocytes in blood clot retraction. 
+Biophys. J. 112, 714–723. https://doi.org/10.1016/j.bpj.2017.01.005.
+Tvergaard, V., Hutchinson, J.W., 1993. The influence of plasticity on mixed mode interface toughness. J. Mech. Phys. Solids 41, 1119–1135. https://doi.org/10.1016/ 
+0022-5096(93)90057-M.
+van Kempen, T.H., Donders, W.P., van de Vosse, F.N., Peters, G.W., 2016. A constitutive model for developing blood clots with various compositions and their 
+nonlinear viscoelastic behavior. Biomech. Model. Mechanobiol. 15, 279–291. https://doi.org/10.1007/s10237-015-0686-9.
+Wei, Y., Hutchinson, J.W., 1998. Interface strength, work of adhesion and plasticity in the peel test. Int. J. Fract. 93, 315–333. https://doi.org/10.1023/a: 
+1007545200315.
+Wufsus, A.R., Macera, N.E., Neeves, K.B., 2013. The hydraulic permeability of blood clots as a function of fibrin and platelet density. Biophys. J. 104, 1812–1823. 
+https://doi.org/10.1016/j.bpj.2013.02.055.
+Wufsus, A.R., Rana, K., Brown, A., Dorgan, J.R., Liberatore, M.W., Neeves, K.B., 2015. Elastic behavior and platelet retraction in low- and high-density fibrin gels. 
+Biophys. J. 108, 173–183. https://doi.org/10.1016/j.bpj.2014.11.007.
+Yang, Z., Ma, Z., Liu, S., Li, J., 2021a. Tissue adhesion with tough hydrogels: experiments and modeling. Mech. Mater. 157, 103800 https://doi.org/10.1016/j. 
+mechmat.2021.103800.
+Yang, Z., Zhu, Z., Xia, Y., Yang, F., Sun, Y., Jiang, H., 2021b. Modified cohesive zone model for soft adhesive layer considering rate dependence of intrinsic fracture 
+energy. Eng. Fract. Mech. 258, 108089 https://doi.org/10.1016/j.engfracmech.2021.108089.
+Yeoh, O.H., 1993. Some forms of the strain energy function for rubber. Rubber Chem. Technol. 66, 754–771. https://doi.org/10.5254/1.3538343.
+Yuk, H., Zhang, T., Lin, S., Parada, G.A., Zhao, X., 2016. Tough bonding of hydrogels to diverse non-porous surfaces. Nat. Mater. 15, 190–196. https://doi.org/ 
+10.1038/nmat4463.
+Zhang, T., Yuk, H., Lin, S., Parada, G.A., Zhao, X., 2017. Tough and tunable adhesion of hydrogels: experiments and models. Acta Mech. Sin. 33, 543–554. https://doi. 
+org/10.1007/s10409-017-0661-z.
+Zohdi, T.I., Kuypers, F.A., Lee, W.C., 2010. Estimation of red blood cell volume fraction from overall permittivity measurements. Int. J. Eng. Sci. 48, 1681–1691. 
+https://doi.org/10.1016/j.ijengsci.2010.04.013.
+S. Liu et al.                                                                                                                                                                                                              Journal of the Mechanics and Physics of Solids 193 (2024) 105858 
+15 

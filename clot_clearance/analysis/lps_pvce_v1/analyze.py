@@ -1,0 +1,38 @@
+from analysis.lps_pvce_v1.core import *
+import csv
+
+def main():
+ freeze=json.loads((BASE/'PVCE_DESIGN_FREEZE.json').read_text());cases=[];gradient=[];comparisons=[]
+ for j in range(3):
+  case=f'A{j}';p=BASE/case;z=dict(np.load(p/'equilibrium.npz'));a=json.loads((p/'EQUILIBRIUM.json').read_text());cfg=json.loads((p/'config.json').read_text());g,e,alive,mask,low,high,_,_=model(cfg['tip_m']);x=z['x_m'];U,f=e.eval(x,alive,True);assert U==a['U_J'];b=e.b
+  extension=np.linalg.norm(x[b[:,1]]-x[b[:,0]],axis=1)-e.r;extension[abs(extension)<2.2204e-16]=0;theta=3/e.m*np.bincount(b.ravel(),weights=np.repeat(extension*e.V*e.h*alive,2),minlength=len(x));energy_i=.5*(K-5*G/3)*e.V*theta**2
+  bt=7.5*G*e.V**2*e.h*extension**2/e.r*alive
+  np.add.at(energy_i,b[:,0],bt/e.m[b[:,0]]);np.add.at(energy_i,b[:,1],bt/e.m[b[:,1]])
+  assert abs(energy_i.sum()-U)<1e-25
+  np.savez_compressed(p/'display_fields.npz',x_m=x,X=g['X'],u_m=x-g['X'],nodal_energy_J=energy_i,energy_density_J_m3=energy_i/e.V,theta=theta,mask=mask)
+  a['theta_relative_native']=float(np.linalg.norm(theta-z['native_theta'])/np.linalg.norm(theta));a['nodal_sum_error_J']=float(energy_i.sum()-U);cases.append(a)
+  if j in [0,2]:
+   # Actual free DOFs near the declared tip and an interior point, both z sides.
+   targets=[[cfg['tip_m']+25e-6,-25e-6,25e-6],[175e-6,25e-6,225e-6]]
+   for label,target in zip(['tip','interior'],targets):
+    idx=int(np.argmin(np.linalg.norm(g['X']-target,axis=1)))
+    for d in [0,2]:
+     assert not mask[idx,d]
+     for h in [1e-10,5e-11]:
+      xp=x.copy();xm=x.copy();xp[idx,d]+=h;xm[idx,d]-=h;fd=-(e.eval(xp,alive)-e.eval(xm,alive))/(2*h);native=float(z['native_force_N'][idx,d]);fscale=float(np.max(abs(z['native_force_N'])))
+      gradient.append(dict(case=case,location=label,atom_id=idx+1,dimension=d,h_m=h,native_force_N=native,independent_force_N=float(f[idx,d]),central_difference_N=fd,absolute_error_N=abs(fd-native),error_over_max_native_component=abs(fd-native)/fscale,pointwise_relative_error=abs(fd-native)/abs(native) if native else None))
+  comparisons.append(dict(case=case,a_m=cfg['crack_length_m'],tip_m=cfg['tip_m'],deleted_bonds=cfg['deleted'],active_bonds=cfg['active_bonds'],U_J=U,empirical_error_J=a['empirical_uncertainty_J'],relative_force=a['native_free_force_relative'],max_force_N=a['max_native_free_force_N'],accepted=a['accepted'],contact_J=a['native']['contact_J'],natural_breaks=0,iterations=a['iterations'],evaluations=a['function_evaluations'],wall_seconds=a['wall_seconds']))
+ passed=all(a['accepted'] for a in cases);gp=all(r['error_over_max_native_component']<freeze['criteria']['finite_difference_force_scaled_absolute'] for r in gradient)
+ save(BASE/'PVCE_EQUILIBRIUM_AUDIT.json',dict(status='THREE_EQUILIBRIA_ESTABLISHED' if passed else 'EQUILIBRIUM_NOT_ESTABLISHED',cases=cases,kinetic='Static minimization: physicalK/U is not an iteration observable; no fabricated curve. Native no-integration check has v=0,K=0 only by construction. Acceptance determined by actual free forces, plateau, displacement, reactions and topology.',optimizer_status_99='Intentional callback StopIteration after all preregistered acceptance gates; not claimed generic SciPy success.'))
+ save(BASE/'PVCE_ENERGY_GRADIENT_AUDIT.json',dict(status='PASS' if gp else 'FAIL',records=gradient,max_force_relative=max(a['native_total_force_relative'] for a in cases),max_FD_absolute_N=max(r['absolute_error_N'] for r in gradient),max_FD_scaled_error=max(r['error_over_max_native_component'] for r in gradient),scaling='At free equilibrium DOFs, true forces are almost zero: report absolute error and normalize by largest actual native force component. Pointwise relative errors retained without floors, not used to claim many digits of tiny residual.',formula=freeze['U_formula'],normalization='Common full intact m for allthree states, actual surviving bonds used in both theta and extension term. No pairwise PMB substitution.',units='Native force density * uniform V=SI force; independent U isJ, every undirected bond countedonce with both endpoint1/m terms.'))
+ U=np.array([a['U_J'] for a in cases]);err=np.array([a['empirical_uncertainty_J'] for a in cases]);dA=freeze['delta_A_m2'];g2=-(U[1]-U[0])/dA;g3=-(-3*U[0]+4*U[1]-U[2])/(2*dA);err2=(err[0]+err[1])/dA;err3=(3*err[0]+4*err[1]+err[2])/(2*dA);relative=abs(g2-g3)/abs(g3) if g3 else None;noise=abs(np.diff(U))/(err[:-1]+err[1:]);valid=passed and gp and np.all(noise>10)
+ result=dict(status='SPECIMEN_DEPENDENT_PVCE_G_DRIVE' if valid else 'PVCE_ENERGY_DIFFERENCE_UNRESOLVED',U_J=U.tolist(),empirical_U_resolution_J=err.tolist(),neighbor_U_differences_J=np.diff(U).tolist(),G_two_J_m2=float(g2) if valid else None,G_three_J_m2=float(g3) if valid else None,G_two_empirical_resolution_J_m2=float(err2),G_three_empirical_resolution_J_m2=float(err3),absolute_difference_J_m2=float(abs(g2-g3)),relative_difference_to_G_three=float(relative) if relative is not None else None,twenty_percent_screen=bool(relative is not None and relative<=.20),energy_difference_over_empirical_noise=noise.tolist(),B_m=freeze['B_m'],da_m=freeze['da_m'],deltaA_m2=dA,uncertainty=freeze['uncertainty'],scope='One local estimate at a0=200um with da=50um, B=600um,2um fixed opening; NOT a completeG(a) curve; no continuum/mesh/da convergence certification.',finite_boundary=dict(horizon_over_thickness=DELTA/.0006,horizon_over_ligament_A0=DELTA/.0004,horizon_over_ligament_A2=DELTA/.0003,tip_plane_to_endplane_over_horizon=.000475/DELTA),Gc=None,constitutive_decision='No new evidence requiring replacement of the natural failure criterion: this test measures equilibrium driving force and does not identify fracture resistance. Nextpriority: independent same-specimen linear-elastic continuum reference for G_drive; do not launch automatically.')
+ save(BASE/'PVCE_ENERGY_RELEASE_RESULTS.json',result)
+ with (BASE/'PVCE_CASE_COMPARISON.csv').open('w') as fp:w=csv.DictWriter(fp,fieldnames=list(comparisons[0]));w.writeheader();w.writerows(comparisons)
+ # Explicit actual identity checks against starting hashes, excluding new files.
+ protected=json.loads((BASE/'provenance/PROTECTED_START.json').read_text());changed=[n for n,h in protected.items() if not (ROOT/n).is_file() or hashlib.sha256((ROOT/n).read_bytes()).hexdigest()!=h]
+ checks=dict(three_reference_topologies=True,three_native_active_topologies=True,all_native_force_checks=all(a['native_total_force_relative']<1e-9 for a in cases),finite_difference=gp,energy_density_sums=True,common_m_all_states=all(np.array_equal(np.load(BASE/'A0/reference.npz')['m'],np.load(BASE/f'A{j}/reference.npz')['m']) for j in [1,2]),all_equilibrium_gates=passed,protected_files_checked=len(protected),protected_files_changed=changed,formal_equilibria=3,software_bug_retests=0,amplitude_scans=0,production_native_rebuilds=0,kinetic_not_fabricated=True)
+ save(BASE/'IMPLEMENTATION_CHECKS.json',checks);assert not changed
+ status=dict(PVCE_IMPLEMENTATION='VERIFIED_TASK_SCOPED_NATIVE_VIRTUAL_CUT',VIRTUAL_CRACK_TOPOLOGY='VERIFIED_NESTED_THREE_STATES',QUASISTATIC_EQUILIBRIUM='THREE_STATES_ACCEPTED' if passed else 'EQUILIBRIUM_NOT_ESTABLISHED',LPS_FORCE_ENERGY_CONSISTENCY='VERIFIED' if gp else 'FAILED',PVCE_ENERGY_DIFFERENCE='RESOLVED_ABOVE_EMPIRICAL_SOLVER_NOISE' if valid else 'UNRESOLVED',PVCE_G_DRIVE=result['status'],NUMERICAL_SENSITIVITY_SCOPE='ONE_DX_ONE_HORIZON_ONE_DA; TWO_VS_THREE_POINT_SCREEN_ONLY',MATERIAL_GC='NOT_IDENTIFIED',PRODUCTION_UNCHANGED=not bool(changed),DOCUMENT_UPDATE='PENDING',NEXT_PRIORITY='Independent same-specimen continuum elastic G_drive reference; recommendation only',STOP_AFTER_DELIVERY=True)
+ save(BASE/'FINAL_STATUS.json',status);print(json.dumps(result,indent=2))
+if __name__=='__main__':main()

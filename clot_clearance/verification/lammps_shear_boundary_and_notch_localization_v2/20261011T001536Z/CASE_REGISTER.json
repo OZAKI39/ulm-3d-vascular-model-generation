@@ -1,0 +1,51 @@
+{
+  "created_utc": "2026-10-11T00:24:47.699536+00:00",
+  "formal_max": 3,
+  "formal_planned": 2,
+  "reserved_bug_retest": 1,
+  "common": {
+    "geometry_um": [
+      600,
+      600,
+      1000
+    ],
+    "dx_um": 50,
+    "horizon_um": 150.5,
+    "dt_us": 0.5,
+    "G_Pa": 940,
+    "K_Pa": 33333.333333333336,
+    "rho": 1000,
+    "s00": 0.15,
+    "alpha": 0,
+    "contact_distance_factor": 1,
+    "damping_s_inv": 500,
+    "MPI_ranks": 1,
+    "OMP_BLAS_threads": 1
+  },
+  "cases": [
+    {
+      "case": "M2P",
+      "purpose": "Separate free lateral surfaces and shear/grip response from strain/reaction formula errors; existing saved data do not isolate this cause",
+      "main_change": "Fixed x/y periodic600um cell with complete cross-boundary neighbors; all other M2 definitions unchanged",
+      "ramp_s": 0.01,
+      "duration_s": 0.02,
+      "amplitude_m": 6.8e-06,
+      "grip_center_distance_m": 0.00085,
+      "stop": "40000 accepted steps, no extension based on G outcome",
+      "decision": "If G approaches940 with uniform ROI and consistent reactions, boundary/stress-field mismatch is a major cause; do not claim mesh convergence"
+    },
+    {
+      "case": "M5B",
+      "purpose": "Test zero axial strain within rigid collar as source of competing grip-transition concentration",
+      "main_change": "Only axial displacement profile inside existing150um collars: u_z=disp(t)*Z/H instead of +/-disp/2. Same collar mean displacement, same free tangential DOFs, all interior DOFs free",
+      "ramp_s": 0.024,
+      "duration_s": 0.024,
+      "amplitude_m": 0.00068,
+      "grip_center_distance_m": 0.00085,
+      "nominal_engineering_strain_final": 0.8,
+      "stop": "48000 accepted steps fixed; no weakening/no manual event deletion/no constrained crack path",
+      "measurement": "Report resultant top reaction/initial face area and generalized load Q=-sum(F_mat*sign); external work uses each actual prescribed displacement, not R_top*d(mean opening) when collar strains",
+      "decision": "Apply frozen region/connected-front/area gates; fail honestly and stop if non-target failure remains"
+    }
+  ]
+}

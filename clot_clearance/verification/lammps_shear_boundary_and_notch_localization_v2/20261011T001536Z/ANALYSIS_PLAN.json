@@ -1,0 +1,56 @@
+{
+  "created_utc": "2026-10-11T00:19:02.686919+00:00",
+  "phase": "READ_ONLY_BEFORE_ANY_NEW_RUN",
+  "material": {
+    "K_Pa": 33333.333333333336,
+    "G_Pa": 940,
+    "rho": 1000,
+    "dx_m": 5e-05,
+    "delta_m": 0.0001505,
+    "s00": 0.15,
+    "alpha": 0,
+    "contact_distance_factor": 1,
+    "damping_s_inv": 500
+  },
+  "fit": "Unchanged 20%-70% imposed amplitude on first loading half, ordinary least squares with intercept",
+  "regions": {
+    "reference": "Bond reference midpoint, determined from geometry before reading utilization",
+    "notch_tip": "Distance to reference front line x=-100um,z=0 across full y thickness <=delta",
+    "grip_transition": "min(abs(z-350um),abs(z+350um)) <=delta",
+    "other_surface": "Remaining bonds with midpoint within delta of any x/y/z exterior plane",
+    "free_interior": "All remaining bonds",
+    "precedence": [
+      "notch_tip",
+      "grip_transition",
+      "other_surface",
+      "free_interior"
+    ],
+    "target_crack_band": "abs(reference midpoint z)<=delta/2 and x>=-100um-delta/2",
+    "on_projected_plane": "Endpoints on opposite sides of z=0; z=0 assigned upper side",
+    "near_field_support": "Node neighbor count and frozen weighted volume m normalized by intact full-neighborhood median"
+  },
+  "notch_dominance_gate": {
+    "first_or_earliest_coherent": "First event near tip OR earliest face-connected cluster of >=10 failed-bond midpoint voxels at dx resolution intersects initial tip strip |x+100um|<=dx and |z|<=delta/2",
+    "crack_band_fraction": ">=70% of new broken bonds before/at actual stress peak must lie in declared target band",
+    "grip_fraction": "<=20% of new broken bonds before/at peak in grip transition region",
+    "area": "Contiguous connected crossing-bond loss front from original notch tip in y strips, single projected face; no count*dx^2; disconnected/competing fronts invalidate material area",
+    "independent_energy": "max absolute residual / full-process max absolute cumulative boundary work <=5%",
+    "result": "All geometry gates required for single-crack interpretation; otherwise GC_UNAVAILABLE"
+  },
+  "shear_gates": {
+    "no_unexpected_break": true,
+    "force_comparison": 1e-09,
+    "energy_residual": 0.05,
+    "fit_KE_U": 0.05,
+    "G_relative": 0.15,
+    "periodic_neighbors": "Exact match to independently enumerated integer-offset lattice graph, no duplicate/self bonds, correct reference minimum images; 2delta<cell lengths",
+    "uniformity": "Report local F dispersion, no outcome-selected ROI"
+  },
+  "budget": {
+    "shear_max": 1,
+    "notch_max": 1,
+    "bug_retest_max": 1,
+    "total_max": 3
+  },
+  "limitations": "Baseline only initial/peak/end full states for M2 and initial/first-break/peak/end for M5. No invented intermediate fields or pre-first-break coordinates; every-step global scalars and exact native break times do exist."
+}

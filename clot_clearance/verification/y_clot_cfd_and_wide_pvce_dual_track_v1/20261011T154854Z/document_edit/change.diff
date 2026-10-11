@@ -1,0 +1,60 @@
+--- clot_rupture.md.before
++++ clot_rupture.md.after
+@@ -10,12 +10,21 @@
+ 
+ 左边是流体惯性；右边第一项是压力推动，第二项是黏性（流体内部的“摩擦”）。$\nabla\cdot\mathbf u=0$ 的意思是：流进来多少，就流出去多少。
+ 
+-⚠️ 这是**没有血栓**时的流场。血栓挡住血流后流场会变，这一点还没算。
+-
+-入口给的是**抛物线流速**（Poiseuille 流），中间快、贴壁处为 0。管中心约 10 mm/s。管壁上流速为 0（无滑移），两个出口压力都设为 0。雷诺数 $Re=\rho\bar u D/\mu\approx13$，远小于 2000，是平稳的**层流**。**参数 **ρ = 1000 kg/m³，μ = 0\.001 Pa·s（这是**水**的参数，不是血）；网格有 26,712 个节点、146,230 个四面体。
++⚠️ 下面原有参数和历史碎裂、输运轨迹使用的是**没有血栓**时的背景流场。本轮另行完成真正含 V3 血栓的 CFD，结果见本节新增说明；旧轨迹没有重新计算，也没有追溯替换成新含栓解。
++
++入口给的是**抛物线流速**（Poiseuille 流），中间快、贴壁处为 0。管中心约 10 mm/s。管壁上流速为 0（无滑移），两个出口采用原生零参考牵引条件（Neu、Value=0），不等于出口每个节点的计算压力都恰好为零。雷诺数 $Re=\rho\bar u D/\mu\approx13$，远小于 2000，是平稳的**层流**。**参数 **ρ = 1000 kg/m³，μ = 0\.001 Pa·s（这是**水**的参数，不是血）；网格有 26,712 个节点、146,230 个四面体。
+ 
+ $u(r)=2\bar u\Big(1-\frac{r^2}{R^2}\Big),\qquad \bar u=5\ \text{mm/s}$
+ 
++
++
++**本轮真正含栓背景流（CFD 双线任务）**：直接使用原生 Y 管和 V3 原连续高度函数，沿母管 +z 内壁构造流体域，未用点云凸包、球或椭球替代。CFD 三角化血栓体积为 0.271576593 mm³；原连续口径约 0.271574 mm³，1927 个材料点的积分体积为 0.240875 mm³，三者分别记录。壁锚点不进入流体域。共享接触线无间隙，内部附着面不作为流体载荷面。
++
++保持原入口抛物线剖面、平均 5 mm/s、流量约 1.581244 mL/min、两个零参考牵引出口及水样参数不变，血管壁和血栓暴露面都无滑移。实际完成基线 35,180 点/177,263 四面体，以及一次局部加密 36,599 点/187,162 四面体；两者均通过原生线性/非线性检查、五个连续稳态区间和冻结质量门槛。加密解质量不平衡为 2.511e-16，最大流速 **10.745852 mm/s**，旧无栓值为 10.074017 mm/s；两出口比例为 0.500201/0.499799。母管 x=−9 至 −3 mm 的截面平均压降从 0.142910 增为 0.152986 Pa。
++
++取血栓指向流体的法向，按 $\boldsymbol\sigma=-p\mathbf I+\mu(\nabla\mathbf u+\nabla\mathbf u^\top)$、$\mathbf t=\boldsymbol\sigma\mathbf n_{\rm clot}$ 提取真实暴露面载荷，压力与剪切分开。加密解的面积平均表压为 **0.516522 Pa**，切向剪切平均值/P95 为 **0.016770/0.037783 Pa**；总流体力约为 (0.059222, 0.022786, 0.660738) µN，大小 **0.663778 µN**，不包含固体壁面粘附反力。一次加密的平均剪切/P95 变化约 6.22%/5.65%，积分力向量变化约 0.067%，通过事先冻结的 15% 工程筛查；共享表面三角化与局部尖角峰值尚未证明渐近收敛。表压不等于绝对血压，当前结果也不是微泡 streaming 或双向 FSI；尚未映射到 LAMMPS 材料点，更未改动下面的工程剪切脉冲。
++
++
+ > **出处**：
+ > 
+ > Navier–Stokes 方程和 Hagen–Poiseuille 流都是流体力学教科书内容（如 Batchelor 1967, *An Introduction to Fluid Dynamics*）；
+@@ -138,10 +147,19 @@
+ 
+ 近起裂搜索先重读 V1 的真实 A0 最终状态：最大伸长是 **0.00407827**，此前约 0.00535 是优化试探历史最大值。由真实最终值预测的 73.5606 µm 仅作为首个加载候选。实际候选最大伸长 **0.143025**、夹具利用率 **0.953499**，缺口侧表面/中央为 0.832050/0.694233；四个最大键位于参考中点 (275,±275,±450) µm 的端面角点，顶部反力约 72.0964 µN。**该候选未通过静态验收，反力不是临界拉力，也不能说夹具已经首先断裂。**
+ 
+-候选原生相对自由力残差 6.19×10⁻⁷ 虽通过，最大绝对自由力仍为 **1.1291×10⁻¹² N**，超过运行前冻结的 1×10⁻¹³ N 门槛。原生力与独立梯度相对差约 9.35×10⁻¹⁶、接触为零；L-BFGS-B 因目标下降达到浮点分辨率而停止。这是数值验收失败，不能解释成已证明材料失稳。按冻结停止规则不放宽门槛、不追加候选；**真实首次阈值开度区间与位置均未确定，高载 A1/A2 未运行，G_high 不可用而不是零**。最后严格有效的 A0 仍是 V1 的 2 µm 平衡态。
++候选原生相对自由力残差 6.19×10⁻⁷ 虽通过，最大绝对自由力仍为 **1.1291×10⁻¹² N**，超过运行前冻结的 1×10⁻¹³ N 门槛。原生力与独立梯度相对差约 9.35×10⁻¹⁶、接触为零；L-BFGS-B 因目标下降达到浮点分辨率而停止。这是数值验收失败，不能解释成已证明材料失稳。按冻结停止规则不放宽门槛、不追加候选；**真实首次阈值开度区间与位置均未确定，高载 A1/A2 未运行，G_high 不可用而不是零**。在 V2 结束时，最后严格有效的 A0 仍是 V1 的 2 µm 平衡态；本轮恢复结果另见后述。
+ 
+ 本轮实际新增 6 个 FEM 求解和 1 个 LPS 候选。低载 G_drive 不等于临界撕裂阻力；未验收 A0 的储能比平方外推高约 5.69%，也不能代替高载三态 G。材料固有 Gc 仍未识别；不足以证明“LPS 比真实血块脆多少倍”、解释 Y 血栓细碎屑的唯一原因，或支持修改 s00 / 引入新耗能机制。生产材料卡、原生 LAMMPS 与旧 V1–V3/PVCE V1 结果保持不变。
+ 
++
++
++**本轮宽薄周期试样（PVCE 双线任务）**：实际 X×Y×Z=5×0.4×1 mm，16,000 个点、909,392 条完整参考键，其中 131,196 条跨 Y 周期。Y 单元厚度固定，宏观 Y 应变为零，代表理想化周期材料层；X 有限自由，z=±475 µm 的最外层仅控制轴向位移。原生周期影像、ghost、参考键、固定完整 m、膨胀量、力和独立储能均通过静态一致性检查；并非 Liu 完整实验，也不是有限厚度真实血栓。
++
++相同 2 µm 总开度下，a=1.50/1.55/1.60 mm 三态均通过原冻结平衡条件，累计预切 16,416/16,976/17,536 条键，每增量 560 条，$B\Delta a=2.0\times10^{-8}$ m²。$G_{\rm two}=7.14064721e-06$、$G_{\rm three}=7.14064413e-06$ J/m²；经验数值分辨尺度分别约 ±2.83×10⁻⁸、±5.79×10⁻⁸ J/m²，不是完整离散误差界。比旧小试样约高 15.43%/15.73%，但宽度、裂纹长度、厚度和周期条件同时改变，不能分离归因。**这是试样相关 G_drive，材料 Gc 仍未识别。**
++
++旧 73.5606 µm 小试样保存态仅做一次局部残差修正，最大原生自由力由 1.1291×10⁻¹² 降至 2.4431×10⁻¹⁹ N，原平衡门槛全部通过；历史 V2 的失败记录保留。随后只计算一个宽薄 A0 高载候选（72.554732 µm），自由力通过，但末十次位置变化 1.1061×10⁻¹⁰ m 超过 1×10⁻¹⁰ m，1 pm 分量差分也未通过冻结门槛，故**候选未验收并停止**。其最大 s/s00≈0.91685 位于夹具附近，只能作空间诊断，不能称为已首先起裂。没有第二候选、高载 A1/A2、新动态断裂或 G_high；只读较大差分步长检查支持舍入解释，但没有据此放宽门槛。本线正式静态调用为 5/8，仍无新增证据支持修改 LPS 本构。
++
++
+ ---
+ 
+ # ⑥ 外加剪切：模拟微泡对血块表面的“刮”
+@@ -318,7 +336,7 @@
+ 
+ 所以结论是 **附着主体 \+ 表面碎屑脱落**，还没有出现大块断裂。
+ 
+-前轮 [材料与时间步审查](/home/lzy/projects/temp_storage/y_clot_github_sync_20261010/clot_clearance/verification/lammps_material_macro_calibration_and_timestep_audit_v1/20261010T215825Z/REVIEW_LAMMPS_MATERIAL_MACRO_CALIBRATION_AND_TIMESTEP_AUDIT_V1.md) 保留了实际曲线、点阵状态和适用限制；数值检查通过不等于材料匹配或生物实验验证。 本轮 [剪切边界与缺口定位审查](/home/lzy/projects/temp_storage/y_clot_github_sync_20261010/clot_clearance/verification/lammps_shear_boundary_and_notch_localization_v2/20261011T001536Z/REVIEW_LAMMPS_SHEAR_BOUNDARY_AND_NOTCH_LOCALIZATION_V2.md) 和 [图与数据索引](/home/lzy/projects/temp_storage/y_clot_github_sync_20261010/clot_clearance/verification/lammps_shear_boundary_and_notch_localization_v2/20261011T001536Z/OPEN_RESULTS.html) 记录了上述边界对照。本轮 [夹持传力与缺口断裂审查](/home/lzy/projects/temp_storage/y_clot_github_sync_20261010/clot_clearance/verification/lammps_notch_fracture_grip_transfer_v3/20261011T115626Z/REVIEW_LAMMPS_NOTCH_FRACTURE_GRIP_TRANSFER_V3.md) 和 [V3 图与数据索引](/home/lzy/projects/temp_storage/y_clot_github_sync_20261010/clot_clearance/verification/lammps_notch_fracture_grip_transfer_v3/20261011T115626Z/OPEN_RESULTS.html) 记录了端面方案及其负面结果。本轮 [PVCE 能量释放可行性审查](/home/lzy/projects/temp_storage/y_clot_github_sync_20261010/clot_clearance/verification/lps_pvce_energy_release_feasibility_v1/20261011T132103Z/REVIEW_LPS_PVCE_ENERGY_RELEASE_FEASIBILITY_V1.md) 和 [四组真实科研图](/home/lzy/projects/temp_storage/y_clot_github_sync_20261010/clot_clearance/verification/lps_pvce_energy_release_feasibility_v1/20261011T132103Z/OPEN_RESULTS.html) 记录了三态平衡、能差与适用范围。本轮 [连续体与近起裂审查](/home/lzy/projects/temp_storage/y_clot_github_sync_20261010/clot_clearance/verification/lps_pvce_continuum_and_near_onset_audit_v2/20261011T142003Z/REVIEW_LPS_PVCE_CONTINUUM_AND_NEAR_ONSET_AUDIT_V2.md) 和 [四组 V2 审查图](/home/lzy/projects/temp_storage/y_clot_github_sync_20261010/clot_clearance/verification/lps_pvce_continuum_and_near_onset_audit_v2/20261011T142003Z/OPEN_RESULTS.html) 记录了有限网格参考及高载静态门槛失败。下一轮唯一优先项是保持材料、原生力和验收门槛不变，修复并独立验证 A0 高载静态求解器的浮点停机问题，达标后再恢复首达阈值区间搜索；不自动启动。V1–V3 的自然裂纹面积和 Gc 未识别结论保持。本轮到此停止。
+-
+-
+-
++前轮 [材料与时间步审查](/home/lzy/projects/temp_storage/y_clot_github_sync_20261010/clot_clearance/verification/lammps_material_macro_calibration_and_timestep_audit_v1/20261010T215825Z/REVIEW_LAMMPS_MATERIAL_MACRO_CALIBRATION_AND_TIMESTEP_AUDIT_V1.md) 保留了实际曲线、点阵状态和适用限制；数值检查通过不等于材料匹配或生物实验验证。 本轮 [剪切边界与缺口定位审查](/home/lzy/projects/temp_storage/y_clot_github_sync_20261010/clot_clearance/verification/lammps_shear_boundary_and_notch_localization_v2/20261011T001536Z/REVIEW_LAMMPS_SHEAR_BOUNDARY_AND_NOTCH_LOCALIZATION_V2.md) 和 [图与数据索引](/home/lzy/projects/temp_storage/y_clot_github_sync_20261010/clot_clearance/verification/lammps_shear_boundary_and_notch_localization_v2/20261011T001536Z/OPEN_RESULTS.html) 记录了上述边界对照。本轮 [夹持传力与缺口断裂审查](/home/lzy/projects/temp_storage/y_clot_github_sync_20261010/clot_clearance/verification/lammps_notch_fracture_grip_transfer_v3/20261011T115626Z/REVIEW_LAMMPS_NOTCH_FRACTURE_GRIP_TRANSFER_V3.md) 和 [V3 图与数据索引](/home/lzy/projects/temp_storage/y_clot_github_sync_20261010/clot_clearance/verification/lammps_notch_fracture_grip_transfer_v3/20261011T115626Z/OPEN_RESULTS.html) 记录了端面方案及其负面结果。本轮 [PVCE 能量释放可行性审查](/home/lzy/projects/temp_storage/y_clot_github_sync_20261010/clot_clearance/verification/lps_pvce_energy_release_feasibility_v1/20261011T132103Z/REVIEW_LPS_PVCE_ENERGY_RELEASE_FEASIBILITY_V1.md) 和 [四组真实科研图](/home/lzy/projects/temp_storage/y_clot_github_sync_20261010/clot_clearance/verification/lps_pvce_energy_release_feasibility_v1/20261011T132103Z/OPEN_RESULTS.html) 记录了三态平衡、能差与适用范围。本轮 [连续体与近起裂审查](/home/lzy/projects/temp_storage/y_clot_github_sync_20261010/clot_clearance/verification/lps_pvce_continuum_and_near_onset_audit_v2/20261011T142003Z/REVIEW_LPS_PVCE_CONTINUUM_AND_NEAR_ONSET_AUDIT_V2.md) 和 [四组 V2 审查图](/home/lzy/projects/temp_storage/y_clot_github_sync_20261010/clot_clearance/verification/lps_pvce_continuum_and_near_onset_audit_v2/20261011T142003Z/OPEN_RESULTS.html) 记录了有限网格参考及高载静态门槛失败。本轮 [宽薄 PVCE 审查](/home/lzy/projects/temp_storage/y_clot_github_sync_20261010/clot_clearance/verification/lps_wide_pure_shear_pvce_feasibility_v1/20261011T154854Z/REVIEW_LPS_WIDE_PURE_SHEAR_PVCE_FEASIBILITY_V1.md)、[真正含栓 CFD 审查](/home/lzy/projects/temp_storage/y_clot_github_sync_20261010/clot_clearance/verification/y_clot_present_cfd_baseline_v1/20261011T154854Z/REVIEW_Y_CLOT_PRESENT_CFD_BASELINE_V1.md) 和 [两线共 14 组真实图与数据索引](/home/lzy/projects/temp_storage/y_clot_github_sync_20261010/clot_clearance/verification/y_clot_cfd_and_wide_pvce_dual_track_v1/20261011T154854Z/OPEN_RESULTS.html) 分别记录低载成果、高载停止及含栓牵引结果。下一轮唯一优先项是验证含栓 CFD 暴露面牵引向现有 LAMMPS 材料点的离线保力、保力矩映射，先核对单位、坐标、面身份和面积权重，不直接启动生产加载或双向耦合；不自动启动。V1–V3 的自然裂纹面积和 Gc 未识别结论保持。本轮到此停止。
++
++
++

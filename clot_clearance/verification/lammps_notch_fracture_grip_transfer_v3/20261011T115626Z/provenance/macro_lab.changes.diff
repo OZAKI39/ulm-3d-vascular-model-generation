@@ -1,0 +1,47 @@
+--- macro_lab.before.py
++++ /home/lzy/projects/temp_storage/y_clot_github_sync_20261010/clot_clearance/pd_clot/lammps_fragmentation/macro_lab_v1.py
+@@ -56,6 +56,8 @@
+     # Physical 150 um grips; axial tangents remain free except M2 prescribed shear.
+     mask=np.zeros((n,3),bool);sign=np.zeros((n,3));grip=150e-6
+     low=X[:,2]<-.0005+grip-1e-12;high=(X[:,2]>.0005-grip+1e-12)&~g['anchors']
++    if case=='M5C':
++        low=np.isclose(X[:,2],X[:,2].min(),rtol=0,atol=1e-12);high=np.isclose(X[:,2],X[:,2].max(),rtol=0,atol=1e-12)
+     if kind=='M6':low=g['anchors'];mask[low]=True;mask[high,2]=True;sign[high,2]=1
+     else:
+         mask[low|high,2]=True;sign[low,2]=-.5;sign[high,2]=.5
+@@ -76,6 +78,8 @@
+     plan['transverse_periodic_fixed_cell']=periodic
+     if periodic:plan['bc']='Periodic x/y with fixed600um cell; only top/bottom case-specific grip DOFs prescribed; all other DOFs free; not a rerun with density/damping changes'
+     if case=='M5B':plan['bc']='Same axial-only150um collars and unchanged geometry/time; prescribed collar u_z=disp(t)*Z/H instead of rigid +/-disp/2; tangent DOFs and all interior DOFs free'
++    if case=='M5C':
++        plan.update(grip_m=dx,legacy_ROI_grip_m=grip,bc='Only outermost end planes z=+/-475um have z prescribed +/-disp/2; xy force-integrated by fix move NULL/NULL; all2592 interior nodes integrated by nve; disjoint groups',stop='M5C_DESIGN_FREEZE: accepted100-step checkpoints, maximum24ms, current topology/kinematics only')
+     save(out/'test_plan.json',plan);np.savez_compressed(out/'geometry.npz',**{k:g[k] for k in ['X','bonds','bond_types','anchors']},prescribed_mask=mask,prescribed_sign=sign,roi=roi,removed_notch_bonds=removed)
+     root=Path(__file__).resolve().parents[2];lib=root/('analysis/material_macro_audit_v1/energy_periodic.so' if periodic else 'analysis/material_macro_audit_v1/energy.so');energy=Energy(g,dx,lib,periodic)
+     from lammps import lammps
+@@ -138,18 +142,23 @@
+         if abs(reaction)>peak:peak=abs(reaction);callback.peak=(step,x.copy(),vf.copy(),alive.copy())
+         if step==steps:state('end',step,x,vf)
+         if observer:observer.record(step,x,vf,fm,fd,alive,changed,F)
++        if observer and hasattr(observer,'record_energy'):observer.record_energy(step,U,Uc,kinetic,W,Dn,Db,fm,fp,changed)
++        callback.last_v=vf.copy()
+         prev=(step,x.copy(),fm,fd)
+         if step%1000==0:stream.flush()
+       except BaseException:
+         (out/'CALLBACK_ERROR.txt').write_text(traceback.format_exc());raise
+     L.set_fix_external_callback('audit',callback)
+     try:
+-        L.command(f'run {steps}')
++        if steps and observer and hasattr(observer,'advance'):observer.advance(L,steps)
++        else:L.command(f'run {steps}')
++        accepted_steps=int(L.extract_global('ntimestep'))
++        if accepted_steps<steps:state('end',prev[0],prev[1],callback.last_v)
+         if (out/'CALLBACK_ERROR.txt').exists():raise RuntimeError('Callback failed; no successful execution receipt will be written')
+         p=callback.peak;np.savez_compressed(out/'peak.npz',step=p[0],time_s=p[0]*dt,x_m=p[1],v_full_m_s=p[2],alive=p[3])
+         np.savez_compressed(out/'break_events.npz',events=np.asarray(events,dtype=np.int64).reshape(-1,3))
+-        save(out/'DIAGNOSTIC_CHECKS.json',dict(force_checks=forcechecks,negative_topology_releases=negative_releases,callbacks=calls,expected=steps+1,energy_definition='U=.5*(K-5G/3)*V*sum(theta^2)+7.5G*V^2*sum_alive(h*e^2/r0*(1/m_i+1/m_j)); theta recomputed on topology, m fixed initial; native contact PE*V',energy_release='U(x,old_topology)-U(x,new_topology); independent of work balance; native force uses pre-break theta on break step, residual retains lag effects',wall_seconds=time.perf_counter()-start,process_cpu_seconds=time.process_time(),mpi_ranks=1,gpu_compute=False))
+-        save(out/'EXECUTION.json',dict(status='COMPLETED',steps=steps,wall_seconds=time.perf_counter()-start))
++        save(out/'DIAGNOSTIC_CHECKS.json',dict(force_checks=forcechecks,negative_topology_releases=negative_releases,callbacks=calls,expected=accepted_steps+1,energy_definition='U=.5*(K-5G/3)*V*sum(theta^2)+7.5G*V^2*sum_alive(h*e^2/r0*(1/m_i+1/m_j)); theta recomputed on topology, m fixed initial; native contact PE*V',energy_release='U(x,old_topology)-U(x,new_topology); independent of work balance; native force uses pre-break theta on break step, residual retains lag effects',wall_seconds=time.perf_counter()-start,process_cpu_seconds=time.process_time(),mpi_ranks=1,gpu_compute=False))
++        save(out/'EXECUTION.json',dict(status='COMPLETED',steps=accepted_steps,planned_steps=steps,wall_seconds=time.perf_counter()-start))
+     finally:
+         stream.close()
+         if observer:observer.close()

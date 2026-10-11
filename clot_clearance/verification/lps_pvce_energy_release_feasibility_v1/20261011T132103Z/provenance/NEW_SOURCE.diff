@@ -1,0 +1,489 @@
+--- /dev/null
++++ analysis/lps_pvce_v1/analyze.py
+@@ -0,0 +1,38 @@
++from analysis.lps_pvce_v1.core import *
++import csv
++
++def main():
++ freeze=json.loads((BASE/'PVCE_DESIGN_FREEZE.json').read_text());cases=[];gradient=[];comparisons=[]
++ for j in range(3):
++  case=f'A{j}';p=BASE/case;z=dict(np.load(p/'equilibrium.npz'));a=json.loads((p/'EQUILIBRIUM.json').read_text());cfg=json.loads((p/'config.json').read_text());g,e,alive,mask,low,high,_,_=model(cfg['tip_m']);x=z['x_m'];U,f=e.eval(x,alive,True);assert U==a['U_J'];b=e.b
++  extension=np.linalg.norm(x[b[:,1]]-x[b[:,0]],axis=1)-e.r;extension[abs(extension)<2.2204e-16]=0;theta=3/e.m*np.bincount(b.ravel(),weights=np.repeat(extension*e.V*e.h*alive,2),minlength=len(x));energy_i=.5*(K-5*G/3)*e.V*theta**2
++  bt=7.5*G*e.V**2*e.h*extension**2/e.r*alive
++  np.add.at(energy_i,b[:,0],bt/e.m[b[:,0]]);np.add.at(energy_i,b[:,1],bt/e.m[b[:,1]])
++  assert abs(energy_i.sum()-U)<1e-25
++  np.savez_compressed(p/'display_fields.npz',x_m=x,X=g['X'],u_m=x-g['X'],nodal_energy_J=energy_i,energy_density_J_m3=energy_i/e.V,theta=theta,mask=mask)
++  a['theta_relative_native']=float(np.linalg.norm(theta-z['native_theta'])/np.linalg.norm(theta));a['nodal_sum_error_J']=float(energy_i.sum()-U);cases.append(a)
++  if j in [0,2]:
++   # Actual free DOFs near the declared tip and an interior point, both z sides.
++   targets=[[cfg['tip_m']+25e-6,-25e-6,25e-6],[175e-6,25e-6,225e-6]]
++   for label,target in zip(['tip','interior'],targets):
++    idx=int(np.argmin(np.linalg.norm(g['X']-target,axis=1)))
++    for d in [0,2]:
++     assert not mask[idx,d]
++     for h in [1e-10,5e-11]:
++      xp=x.copy();xm=x.copy();xp[idx,d]+=h;xm[idx,d]-=h;fd=-(e.eval(xp,alive)-e.eval(xm,alive))/(2*h);native=float(z['native_force_N'][idx,d]);fscale=float(np.max(abs(z['native_force_N'])))
++      gradient.append(dict(case=case,location=label,atom_id=idx+1,dimension=d,h_m=h,native_force_N=native,independent_force_N=float(f[idx,d]),central_difference_N=fd,absolute_error_N=abs(fd-native),error_over_max_native_component=abs(fd-native)/fscale,pointwise_relative_error=abs(fd-native)/abs(native) if native else None))
++  comparisons.append(dict(case=case,a_m=cfg['crack_length_m'],tip_m=cfg['tip_m'],deleted_bonds=cfg['deleted'],active_bonds=cfg['active_bonds'],U_J=U,empirical_error_J=a['empirical_uncertainty_J'],relative_force=a['native_free_force_relative'],max_force_N=a['max_native_free_force_N'],accepted=a['accepted'],contact_J=a['native']['contact_J'],natural_breaks=0,iterations=a['iterations'],evaluations=a['function_evaluations'],wall_seconds=a['wall_seconds']))
++ passed=all(a['accepted'] for a in cases);gp=all(r['error_over_max_native_component']<freeze['criteria']['finite_difference_force_scaled_absolute'] for r in gradient)
++ save(BASE/'PVCE_EQUILIBRIUM_AUDIT.json',dict(status='THREE_EQUILIBRIA_ESTABLISHED' if passed else 'EQUILIBRIUM_NOT_ESTABLISHED',cases=cases,kinetic='Static minimization: physicalK/U is not an iteration observable; no fabricated curve. Native no-integration check has v=0,K=0 only by construction. Acceptance determined by actual free forces, plateau, displacement, reactions and topology.',optimizer_status_99='Intentional callback StopIteration after all preregistered acceptance gates; not claimed generic SciPy success.'))
++ save(BASE/'PVCE_ENERGY_GRADIENT_AUDIT.json',dict(status='PASS' if gp else 'FAIL',records=gradient,max_force_relative=max(a['native_total_force_relative'] for a in cases),max_FD_absolute_N=max(r['absolute_error_N'] for r in gradient),max_FD_scaled_error=max(r['error_over_max_native_component'] for r in gradient),scaling='At free equilibrium DOFs, true forces are almost zero: report absolute error and normalize by largest actual native force component. Pointwise relative errors retained without floors, not used to claim many digits of tiny residual.',formula=freeze['U_formula'],normalization='Common full intact m for allthree states, actual surviving bonds used in both theta and extension term. No pairwise PMB substitution.',units='Native force density * uniform V=SI force; independent U isJ, every undirected bond countedonce with both endpoint1/m terms.'))
++ U=np.array([a['U_J'] for a in cases]);err=np.array([a['empirical_uncertainty_J'] for a in cases]);dA=freeze['delta_A_m2'];g2=-(U[1]-U[0])/dA;g3=-(-3*U[0]+4*U[1]-U[2])/(2*dA);err2=(err[0]+err[1])/dA;err3=(3*err[0]+4*err[1]+err[2])/(2*dA);relative=abs(g2-g3)/abs(g3) if g3 else None;noise=abs(np.diff(U))/(err[:-1]+err[1:]);valid=passed and gp and np.all(noise>10)
++ result=dict(status='SPECIMEN_DEPENDENT_PVCE_G_DRIVE' if valid else 'PVCE_ENERGY_DIFFERENCE_UNRESOLVED',U_J=U.tolist(),empirical_U_resolution_J=err.tolist(),neighbor_U_differences_J=np.diff(U).tolist(),G_two_J_m2=float(g2) if valid else None,G_three_J_m2=float(g3) if valid else None,G_two_empirical_resolution_J_m2=float(err2),G_three_empirical_resolution_J_m2=float(err3),absolute_difference_J_m2=float(abs(g2-g3)),relative_difference_to_G_three=float(relative) if relative is not None else None,twenty_percent_screen=bool(relative is not None and relative<=.20),energy_difference_over_empirical_noise=noise.tolist(),B_m=freeze['B_m'],da_m=freeze['da_m'],deltaA_m2=dA,uncertainty=freeze['uncertainty'],scope='One local estimate at a0=200um with da=50um, B=600um,2um fixed opening; NOT a completeG(a) curve; no continuum/mesh/da convergence certification.',finite_boundary=dict(horizon_over_thickness=DELTA/.0006,horizon_over_ligament_A0=DELTA/.0004,horizon_over_ligament_A2=DELTA/.0003,tip_plane_to_endplane_over_horizon=.000475/DELTA),Gc=None,constitutive_decision='No new evidence requiring replacement of the natural failure criterion: this test measures equilibrium driving force and does not identify fracture resistance. Nextpriority: independent same-specimen linear-elastic continuum reference for G_drive; do not launch automatically.')
++ save(BASE/'PVCE_ENERGY_RELEASE_RESULTS.json',result)
++ with (BASE/'PVCE_CASE_COMPARISON.csv').open('w') as fp:w=csv.DictWriter(fp,fieldnames=list(comparisons[0]));w.writeheader();w.writerows(comparisons)
++ # Explicit actual identity checks against starting hashes, excluding new files.
++ protected=json.loads((BASE/'provenance/PROTECTED_START.json').read_text());changed=[n for n,h in protected.items() if not (ROOT/n).is_file() or hashlib.sha256((ROOT/n).read_bytes()).hexdigest()!=h]
++ checks=dict(three_reference_topologies=True,three_native_active_topologies=True,all_native_force_checks=all(a['native_total_force_relative']<1e-9 for a in cases),finite_difference=gp,energy_density_sums=True,common_m_all_states=all(np.array_equal(np.load(BASE/'A0/reference.npz')['m'],np.load(BASE/f'A{j}/reference.npz')['m']) for j in [1,2]),all_equilibrium_gates=passed,protected_files_checked=len(protected),protected_files_changed=changed,formal_equilibria=3,software_bug_retests=0,amplitude_scans=0,production_native_rebuilds=0,kinetic_not_fabricated=True)
++ save(BASE/'IMPLEMENTATION_CHECKS.json',checks);assert not changed
++ status=dict(PVCE_IMPLEMENTATION='VERIFIED_TASK_SCOPED_NATIVE_VIRTUAL_CUT',VIRTUAL_CRACK_TOPOLOGY='VERIFIED_NESTED_THREE_STATES',QUASISTATIC_EQUILIBRIUM='THREE_STATES_ACCEPTED' if passed else 'EQUILIBRIUM_NOT_ESTABLISHED',LPS_FORCE_ENERGY_CONSISTENCY='VERIFIED' if gp else 'FAILED',PVCE_ENERGY_DIFFERENCE='RESOLVED_ABOVE_EMPIRICAL_SOLVER_NOISE' if valid else 'UNRESOLVED',PVCE_G_DRIVE=result['status'],NUMERICAL_SENSITIVITY_SCOPE='ONE_DX_ONE_HORIZON_ONE_DA; TWO_VS_THREE_POINT_SCREEN_ONLY',MATERIAL_GC='NOT_IDENTIFIED',PRODUCTION_UNCHANGED=not bool(changed),DOCUMENT_UPDATE='PENDING',NEXT_PRIORITY='Independent same-specimen continuum elastic G_drive reference; recommendation only',STOP_AFTER_DELIVERY=True)
++ save(BASE/'FINAL_STATUS.json',status);print(json.dumps(result,indent=2))
++if __name__=='__main__':main()
+--- /dev/null
++++ analysis/lps_pvce_v1/collect.py
+@@ -0,0 +1,16 @@
++"""Pull only this new run and its four figures; never mirror/delete old data."""
++from pathlib import Path
++import json,subprocess,shlex,hashlib
++C=json.loads(Path('/home/lzy/projects/.pvce_current.json').read_text());root=Path(C['root']);base=Path(C['local']);SSH=['ssh','-p','15283','-i','/home/lzy/.ssh/vast_step3b_ed25519','-o','IdentitiesOnly=yes','-o','BatchMode=yes','root@95.3.33.46']
++script='''from pathlib import Path
++import json
++r=Path('/workspace/y_clot/project');bases=[r/'verification/lps_pvce_energy_release_feasibility_v1/20261011T132103Z',r/'results/lps_pvce_energy_release_feasibility_v1/20261011T132103Z'];items=[]
++for b in bases:
++ for p in b.rglob('*'):
++  if p.is_file() and p.name!='body.data':items.append(str(p.relative_to(r)))
++print(json.dumps(sorted(items)))'''
++files=json.loads(subprocess.check_output(SSH+['python3 -'],input=script.encode()))
++with subprocess.Popen(SSH+['cd /workspace/y_clot/project && '+shlex.join(['tar','-cf','-','--',*files])],stdout=subprocess.PIPE) as src:
++ subprocess.run(['tar','-xf','-','-C',str(root)],stdin=src.stdout,check=True);src.stdout.close();assert src.wait()==0
++receipt=[dict(path=f,bytes=(root/f).stat().st_size,sha256=hashlib.sha256((root/f).read_bytes()).hexdigest()) for f in files]
++(base/'provenance/WSL_COMPACT_COLLECTION.json').write_text(json.dumps(dict(files=receipt,total_bytes=sum(r['bytes'] for r in receipt),excluded='Four text body.data files (full intact reference table) remain on server; compressed full reference arrays + exact writer + actual native inputs collected. No unrelated historical data copied.'),indent=2));print('collected',len(files),'files',sum(r['bytes'] for r in receipt),'bytes')
+--- /dev/null
++++ analysis/lps_pvce_v1/core.py
+@@ -0,0 +1,91 @@
++"""PVCE task adapter: reuse locked energy; native virtual cut via public atom arrays.
++No production edits, no material parameter edits, one rank and fixed atom ordering.
++"""
++from pathlib import Path
++import os,math,json,hashlib
++import numpy as np
++from pd_clot.lammps_fragmentation.macro_lab_v1 import geometry,Energy,K,G,RHO,DELTA,save
++from pd_clot.lammps_fragmentation.interface_model import write_typed_data
++from pd_clot.lammps_fragmentation.lammps_writer import force_conversion
++ROOT=Path(__file__).resolve().parents[2]
++BASE=ROOT/'verification/lps_pvce_energy_release_feasibility_v1/20261011T132103Z'
++DX=50e-6
++
++def model(tip):
++ g,_=geometry(DX,'M4');X=g['X'];b=g['bonds'];a,c=X[b[:,0]],X[b[:,1]]
++ cross=(a[:,2]<0)!=(c[:,2]<0)
++ frac=np.divide(-a[:,2],c[:,2]-a[:,2],out=np.zeros(len(b)),where=c[:,2]!=a[:,2])
++ xx=a[:,0]+frac*(c[:,0]-a[:,0]);cut=cross&(xx<tip-1e-12)
++ # Half-open crack x<tip; 1pm tie guard enforces exact lattice-plane convention.
++ alive=np.ascontiguousarray(~cut,dtype=np.uint8)
++ e=Energy(g,DX,ROOT/'analysis/material_macro_audit_v1/energy.so')
++ mask=np.zeros_like(X,dtype=bool);low=np.isclose(X[:,2],X[:,2].min(),rtol=0,atol=1e-12);high=np.isclose(X[:,2],X[:,2].max(),rtol=0,atol=1e-12);mask[low|high,2]=True
++ return g,e,alive,mask,low,high,xx,cross
++
++class Native:
++ def __init__(self,out,g,alive):
++  from lammps import lammps
++  out.mkdir(parents=True,exist_ok=True);self.g=g;self.alive=alive;self.n=len(g['X']);self.out=out
++  write_typed_data(out/'body.data',g,dict(dx_m=DX,delta_m=DELTA,rho_kg_m3=RHO))
++  text=f'''units si
++ dimension 3
++ boundary m m m
++ atom_style bond
++ atom_modify map array sort 0 0
++ newton on off
++ special_bonds lj 0 1 1 coul 1 1 1
++ lattice sc {DX:.17g}
++ read_data {out/'body.data'} extra/bond/per/atom 320 extra/special/per/atom 360
++ neighbor {2*DX:.17g} bin
++ neigh_modify every 1 delay 0 check no
++ comm_modify cutoff {3*DELTA:.17g}
++ fix props all property/atom d_vfrac d_theta d_damage ghost yes
++ set group all d_vfrac {DX**3:.17g}
++ pair_style bpm/peri contact_distance_factor 1.0
++ pair_coeff * * {18*K/(math.pi*DELTA**4):.17g} {DELTA:.17g}
++ bond_style bpm/peri
++ bond_coeff 1 lps {K:.17g} {G} {DELTA:.17g} .15 0
++ bond_coeff 2 lps {K:.17g} {G} {DELTA:.17g} .140624859375 0
++ bond_coeff 3 lps {K:.17g} {G} {DELTA:.17g} 1 0
++ velocity all set 0 0 0 units box
++ {force_conversion()}
++ timestep 5e-7
++ compute contactPE all pe pair
++ compute bondPE all pe bond
++ thermo 1
++ thermo_style custom step atoms bonds ke c_contactPE c_bondPE
++ thermo_modify lost error lost/bond error
++ run 0
++ '''
++  (out/'in.lammps').write_text(text+'\n# Python virtual-cut arrays, then run 1 pre no post no per force evaluation. No time integration fix.\n')
++  self.L=lammps(cmdargs=['-log',str(out/'log.lammps'),'-screen','none']);self.L.commands_string(text)
++  L=self.L;assert np.array_equal(L.numpy.extract_atom('id')[:self.n],np.arange(1,self.n+1))
++  cutpairs=set(map(tuple,(g['bonds'][alive==0]+1).tolist()));count=0
++  nb=L.extract_atom('num_bond');bt=L.extract_atom('bond_type');ba=L.extract_atom('bond_atom');ns=L.extract_atom('nspecial');sp=L.extract_atom('special')
++  for i in range(self.n):
++   remove=set()
++   for j in range(nb[i]):
++    pair=tuple(sorted((i+1,ba[i][j])))
++    if pair in cutpairs:bt[i][j]=0;remove.add(ba[i][j]);count+=1
++   # Remove only declared cut partners from the 1-2 special list. Later levels
++   # are unused (weights1); keep their storage counts consistent without init.
++   if remove:
++    original=[sp[i][j] for j in range(ns[i][2])];deleted=[j for j,v in enumerate(original[:ns[i][0]]) if v in remove]
++    kept=[v for j,v in enumerate(original) if j not in set(deleted)]
++    for j,v in enumerate(kept):sp[i][j]=v
++    for j in range(3):ns[i][j]-=len(deleted)
++  assert count==2*len(cutpairs);self.cut_entries=count
++ def evaluate(self,x):
++  L=self.L;n=self.n;L.numpy.extract_atom('x')[:n]=x
++  # pre no avoids BondBPMPeri::init_style resetting the common reference m.
++  # every1/checkno rebuilds active neighbor/bond lists using zeroed bond types.
++  L.command('run 1 pre no post no')
++  f=L.numpy.extract_atom('f')[:n].copy();theta=L.numpy.extract_atom('d_theta')[:n].copy()
++  bt=L.extract_atom('bond_type');nb=L.extract_atom('num_bond');ba=L.extract_atom('bond_atom');pairs=[]
++  for i in range(n):
++   for j in range(nb[i]):
++    if bt[i][j]>0 and ba[i][j]>i+1:pairs.append((i,ba[i][j]-1))
++  expected=self.g['bonds'][self.alive.astype(bool)];actual=np.array(sorted(pairs),int)
++  assert np.array_equal(expected,actual),'Unprescribed bond loss or topology mismatch'
++  return f,dict(contact_J=float(L.extract_compute('contactPE',0,0))*DX**3,native_bond_PE_times_V_J=float(L.extract_compute('bondPE',0,0))*DX**3,active_bonds=len(actual),natural_broken=0,kinetic_J=float(L.get_thermo('ke'))),theta
++ def close(self):self.L.close()
+--- /dev/null
++++ analysis/lps_pvce_v1/deliver.py
+@@ -0,0 +1,99 @@
++"""Write the scientific review from collected actual numerical records."""
++from pathlib import Path
++import json,difflib,hashlib
++C=json.loads(Path('/home/lzy/projects/.pvce_current.json').read_text());ROOT=Path(C['root']);B=Path(C['local'])
++def js(n):return json.loads((B/n).read_text())
++def main():
++ r=js('PVCE_ENERGY_RELEASE_RESULTS.json');e=js('PVCE_EQUILIBRIUM_AUDIT.json')['cases'];g=js('PVCE_ENERGY_GRADIENT_AUDIT.json');t=js('PVCE_TOPOLOGY_AUDIT.json');cost=js('provenance/COMPUTE_EXECUTION.json');fig='../../../results/lps_pvce_energy_release_feasibility_v1/'+C['run_id']+'/'
++ rows='\n'.join(f'| A{j} | {200+50*j} | {t["records"][j]["deleted"]} | {t["records"][j]["active_bonds"]} | {q["U_J"]:.16e} | {q["empirical_uncertainty_J"]:.8e} | {q["native_free_force_relative"]:.7e} |' for j,q in enumerate(e))
++ text=f'''# LPS_PVCE_ENERGY_RELEASE_FEASIBILITY_V1 科研审查
++
++本轮实际完成三个固定裂纹的静态平衡计算，建立了 **SPECIMEN_DEPENDENT_PVCE_G_DRIVE**。三态通过运行前冻结的力、能量平台、坐标、反力、拓扑和接触门槛；独立弹性能与原生力相容。这个结论仅适用于当前试样与参考归一化，不是材料 Gc，不是离散收敛认证。
++
++run_id：{C['run_id']}。服务器 `/workspace/y_clot/project`；WSL 精简回收位于当前报告所在目录。服务器分支 migration-20261009，HEAD cc5ee77149f55e58d715bb5a4660c6467231a826；WSL 分支 clot-clearance/y-clot-migration-sync-20261010，HEAD2504de80d317ac1048f5279fdf113bb2c2d1d344。没有commit/push、清理历史、原生重建或环境升级。
++
++## 1. 实现与三种真实虚拟切口
++
++真实参考点阵2880点、135180条唯一无向键，600×600×1000µm，dx50µm、δ150.5µm。在z=0逐条计算参考线段交点，对 x<tip 删除跨面键；恰在tip的浮点交点用1pm容差排除。每种切口独立从同一完整参考键表构造，删除集合严格嵌套。A0到A1、A1到A2各实际增加766条。原子ID=数组索引+1，参考bond ID=完整排序键表索引+1，所有ID及新增/继承集合保存于各态reference.npz。无重复、漏删、孤立节点，最低度数28，三态各一个连通分量。
++
++| 状态 | a (µm) | 删除键 | 活跃键 | U (J，完整值) | 经验数值误差尺度 (J) | 原生自由力相对残差 |
++|---|---:|---:|---:|---:|---:|---:|
++{rows}
++
++B为含边缘半单元的600µm厚度，不是最外点心间550µm；Δa50µm，所以每次新增投影面积 **BΔa=3e-8m²**。不乘2，不用删除键数×dx²。
++
++**与旧M5的两项明确区别在求解前已冻结**：历史浮点比较误含了34条恰位于x=-100µm前缘的键，旧A0切2570条，本轮按统一半开几何切2536条；历史预删键后初始化m，本轮用完整未切参考一次初始化m并在A0/A1/A2保持相同。这使有限差分只改变指定活跃相互作用，不同时改变参考材料归一化。历史数据原样保留，不将本轮A0宣称为旧M5逐项复现。
++
++原生适配使用受支持的extract_atom数组：将指定bond_type双端条目设0，并从1-2 special表删除对应伙伴；不改变参考r0历史或任何生产参数。随后 `run 1 pre no post no`、every1/checkno重建真实活跃邻居/键表，无时间积分fix。每次原生检查逐条核对活跃端点集合。这里原生nbonds计数仍含已关闭条目，**不能用该原始总计数当成存活键数**；本轮明确读取type>0的实际活跃连接。没有通过s00触发虚拟切割，没有关闭其余键的自然失效设置。
++
++源码发现：init_style会重置m初始化标志，delete_bonds自身也调用init。因此不能先普通delete_bonds、再普通run0而声称m仍相同；本轮隔离适配保留参考状态，所有最终theta和力已独立验证。不能把这个诊断适配不经检查直接搬到任意多MPI/restart流程。
++
++## 2. 原文、力与能量
++
++Zhang & Qiao原始用户PDF的Sections2.2、3.1–3.4和SENT_DL已读取；Eqs8/9/18固定开度取负储能导数，Eq14采用1e-8储能变化。本轮三维总能量额外除厚度B。原文ADR被同一能量的静态L-BFGS-B替代；不调用LAMMPS不完整PE的minimize。原文与用户补充文件哈希、阅读说明见 [literature/PAPER_READING.md](literature/PAPER_READING.md) 与 SOURCES.json。
++
++锁定G=940Pa,K=33333.333333Pa,rho1000kg/m³,s00=.15,alpha0，节点V=1.25e-13m³，质量1.25e-10kg。接口临界值保持.140624859375但本试样未使用。复用未改动energy.cpp与Energy类：
++
++`theta_i=3V/m_i*sum_alive(h*e)`
++
++`U=.5*(K-5G/3)*V*sum(theta²)+7.5G*V²*sum_unique_alive(h*e²/r0*(1/m_i+1/m_j))`
++
++m由完整参考邻域固定；theta和e项由当前存活键重算。native输出力密度乘V后与负梯度比较，双端1/m且无向键只计一次。三态全部原生力最大相对差 {g['max_force_relative']:.5e}；A0/A2实际裂尖与内部代表自由DOF共16组中心差分，最大绝对误差 {g['max_FD_absolute_N']:.5e}N，以该态最大真实原生分量归一的最大差 {g['max_FD_scaled_error']:.5e}。接近平衡时单自由DOF力接近零，其逐点相对差可能较大；原始值完整保留，不加隐蔽分母下限。
++
++native bond PE×V仍明显不完整：三态约0.945663、0.849525、0.753494pJ，而独立总储能约1.805512、1.619933、1.433416pJ；它未用于优化或G分子。节点能量密度从同一公式分配，求和恢复总U。未加入数值阻尼、累计外功、动能或断键计数作为能量。
++
++Liu2024正文40×4×3mm pure-shear、0.01s^-1下18.27±1.45J/m²为实验总撕裂能，与intrinsic work不同。用户原始补充DOCX和历史件SHA完全一致；TableS2只用于未损伤小应变G/K映射，没有Yeoh/Mullins/CZM扩展。当前微型低开度G不应向18.27J/m²调参。
++
++## 3. 平衡搜索、门槛与成本
++
++总开度2µm，在计算前依据名义应变0.002105及V3约77µm首断范围冻结，无幅度扫描。144+144端面节点仅z=±1µm，其余2592点xyz和端面xy自由，共8352自由度；无额外锚定、虚构表面或刚性横向约束。
++
++复用独立能量/梯度，优化变量以1µm、目标以1pJ缩放；L-BFGS-B maxiter6000、maxfun60000、maxcor30、maxls40、ftol0。回调达到预注册门槛后明确停止，SciPy状态99代表人为StopIteration，不用其通用success标志替代科学判断。门槛：相对自由力≤1e-6，绝对最大自由分量≤1e-13N，末10接受态储能跨度/U≤1e-8，最大坐标变化≤1e-10m，上下反力不平衡≤1e-6，无新增自然断键，无显著接触。
++
++三态原生最大自由力为1.15–1.74e-14N；末10态储能相对跨度约7.7e-13–1.16e-12；最大坐标变化0.67–1.21pm；反力不平衡约6.3–9.4e-9。全部通过。静态优化没有真实动力学K/U历史；原生无积分检查的K=0是构造值，未假装成动态松弛的证明。
++
++严格只有3个正式平衡计算，各155/158/162量级接受迭代，函数评估163、163、167次。A0/A1/A2墙钟分别 {e[0]['wall_seconds']:.3f}、{e[1]['wall_seconds']:.3f}、{e[2]['wall_seconds']:.3f}s；三个并发进程总墙钟 {cost['concurrent_wall_seconds']:.3f}s，各单MPI、OMP/BLAS1线程，单进程峰值RSS最大 {max(q['peak_RSS_MiB'] for q in e):.2f}MiB。另一个非平衡仿射预检查不算正式平衡；无平衡重跑，GPU未用于求解。开机复核cgroup15.36核、可用内存约53.7GB、磁盘约295.9GB，4090空闲。计算由独立supervisor任务托管，autorestart=false，已正常退出。
++
++开发中修正一次结果JSON的NumPy布尔量序列化，以及绘图空集合兼容/布局；均只涉及交付后处理，没有重启平衡、改变冻结门槛或材料。证据在provenance。
++
++## 4. 能量差、G与可解释范围
++
++`G_two=-(U1-U0)/(B*da)`；`G_three=-(-3U0+4U1-U2)/(2*B*da)`。
++
++G_two = **{r['G_two_J_m2']:.10e}J/m²**；G_three = **{r['G_three_J_m2']:.10e}J/m²**。两者绝对差 {r['absolute_difference_J_m2']:.8e}J/m²，以|G_three|为参照的相对差 **{r['relative_difference_to_G_three']*100:.6f}%**，通过冻结20%工程筛查。差异高于求解误差尺度，提示有限增量效应仍可分辨；小差异不代表理论二阶收敛。
++
++相邻U降低 {abs(r['neighbor_U_differences_J'][0]):.10e}与{abs(r['neighbor_U_differences_J'][1]):.10e}J。经验误差尺度定义为 `2*max(末10态U跨度, ||F_free||*||u_free||,100eps*U)`；相邻能差分别为传播误差的 {r['energy_difference_over_empirical_noise'][0]:.1f}、{r['energy_difference_over_empirical_noise'][1]:.1f}倍。线性传播后的G_two和G_three经验分辨尺度分别±{r['G_two_empirical_resolution_J_m2']:.5e}和±{r['G_three_empirical_resolution_J_m2']:.5e}J/m²。
++
++这些不是严格误差界、统计置信区间或全部模型误差；未估计网格/虚拟增量/有限域误差。原始JSON保留完整双精度，报告保留的数字不表示真实材料精度。
++
++三态实际接触对数、接触能、接触力均0；全优化评估的最大存活键伸长约.00535，远低于.15；自然断键为0。低幅纯张开诊断无需关闭自然失效。本轮不提供复杂接触下PVCE的验证。
++
++δ/B=.2508，δ/剩余韧带约.3763–.5017，裂纹平面距端面约3.156δ；非局部截断、边界与尺寸对G有实际影响。只有一种dx、一种δ和一个Δa，本轮三点只给a0=200µm附近一个局部估计，没有伪造完整G(a)曲线或额外幅度结果。
++
++**能作为当前模型与试样下的G_drive；不能作为材料Gc。** 没有临界自然增长、宏观实验约束、尺度收敛或独立断裂耗能参数识别。当前结果没有提供必须更换失效机制的新证据，亦不推翻V1–V3的自然裂纹定位/面积不可识别结论。
++
++## 5. 科学状态与交付
++
++逐项状态见 [FINAL_STATUS.json](FINAL_STATUS.json)，将实现、拓扑、平衡、力能量、能差、G、数值范围、材料Gc和生产保护分开。578个原生/旧分析/旧结果文件起止SHA相同。冻结设计、逐节点实际状态、三份原生输入、源码差异、运行记录、文件manifest及回收清单随本报告保存。原生文本body.data留服务器，WSL收回完整精度参考数组与状态，可由原writer重建，未复制无关历史。
++
++- [图1：真实点阵及三种虚拟切口]({fig}Fig1_virtual_crack_topologies.png)
++- [图2：真实优化迭代与平衡门槛]({fig}Fig2_equilibrium_convergence.png)
++- [图3：三态储能、误差尺度和两种G估计]({fig}Fig3_PVCE_energy_release.png)
++- [图4：A0/A2实际位移与独立能量密度，变形倍率1]({fig}Fig4_equilibrium_fields.png)
++- [静态浏览入口](OPEN_RESULTS.html)，全部四图同时提供SVG。
++
++实际WSL `/home/lzy/projects/clot_rupture.md`在本轮验证完成后条件性更新；写前备份、并发检查、写后读回与SHA见provenance/DOCUMENT_UPDATE.json、clot_rupture.before_write.md、clot_rupture.diff。生产代码、材料卡、旧V1–V3科学结论不改。
++
++**下一轮唯一优先事项**：为同一微型试样、裂纹和位移边界建立独立线弹性连续体G_drive参考，以评估非局部/有限域偏差；不自动开展。开发在本轮交付后停止。
++
++## 6. 复现范围
++
++现有实际case目录禁止覆盖。只读复核可运行 `source /workspace/y_clot/env.sh`、切换到 `/workspace/y_clot/project`，调用 `python -m analysis.lps_pvce_v1.analyze` 和 `python -m analysis.lps_pvce_v1.plots`（只写本轮诊断/图）。正式平衡复现需复制analysis/lps_pvce_v1到新run_id、改core.BASE及design中新目录并重新冻结；然后 `python -m analysis.lps_pvce_v1.design`，分别 `python -m analysis.lps_pvce_v1.run A0/A1/A2`。原启动脚本见provenance/launch.sh。不要直接运行in.lammps替代Python虚拟切割步骤：单独输入只建立完整参考，不会应用三个删除集合。
++'''
++ (B/'REVIEW_LPS_PVCE_ENERGY_RELEASE_FEASIBILITY_V1.md').write_text(text)
++ # Newly added code diff relative to absence, no production source changed.
++ diff=''
++ for p in sorted((ROOT/'analysis/lps_pvce_v1').glob('*.py')):diff+=''.join(difflib.unified_diff([],p.read_text().splitlines(True),fromfile='/dev/null',tofile=str(p.relative_to(ROOT))))
++ (B/'provenance/NEW_SOURCE.diff').write_text(diff)
++ print('review and source diff written')
++if __name__=='__main__':main()
+--- /dev/null
++++ analysis/lps_pvce_v1/design.py
+@@ -0,0 +1,23 @@
++from analysis.lps_pvce_v1.core import *
++from scipy.sparse import coo_matrix
++from scipy.sparse.csgraph import connected_components
++import time
++
++def main():
++ assert not (BASE/'PVCE_DESIGN_FREEZE.json').exists()
++ records=[];previous=None
++ for j,tip in enumerate([-100e-6,-50e-6,0.]):
++  g,e,alive,mask,low,high,xx,cross=model(tip);X=g['X'];b=g['bonds'];cut=~alive.astype(bool);surv=b[~cut];deg=np.bincount(surv.ravel(),minlength=len(X));mat=coo_matrix((np.ones(len(surv)),(surv[:,0],surv[:,1])),shape=(len(X),len(X)))
++  assert connected_components(mat,directed=False)[0]==1 and deg.min()>0
++  assert previous is None or np.all(~previous|cut)
++  p=BASE/f'A{j}';p.mkdir(exist_ok=False)
++  np.savez_compressed(p/'reference.npz',X=X,bonds=b,reference_bond_ids=np.arange(1,len(b)+1),atom_ids=np.arange(1,len(X)+1),alive=alive,deleted_bond_ids=np.flatnonzero(cut)+1,new_deleted_ids=np.flatnonzero(cut if previous is None else cut&~previous)+1,mask=mask,low=low,high=high,m=e.m,r=e.r,h=e.h,cross=cross,intersection_x=xx)
++  rec=dict(case=f'A{j}',tip_m=tip,crack_length_m=.0003+tip,nodes=len(X),reference_bonds=len(b),active_bonds=int(alive.sum()),deleted=int(cut.sum()),increment_deleted=int(cut.sum() if previous is None else (cut&~previous).sum()),min_degree=int(deg.min()),components=1,unexpected_retained_crossings=0,duplicate_bonds=int(len(b)-len(np.unique(b,axis=0))),area_increment_m2=3e-8,reference_sha256=hashlib.sha256((p/'reference.npz').read_bytes()).hexdigest())
++  records.append(rec);save(p/'config.json',rec);previous=cut
++ old,_=geometry(DX,'M5');full=g['bonds'];key=full[:,0]*len(X)+full[:,1];oldkeys=old['bonds'][:,0]*len(X)+old['bonds'][:,1];oldcut=~np.isin(key,oldkeys);a0=np.load(BASE/'A0/reference.npz')['alive']==0
++ topo=dict(status='VALID_NESTED_REFERENCE_CUTS',records=records,area='B=600um includes half-cell margins at y=+/-300um; not550um center hull; dA=B*da=3e-8m2, single advance surface',cut_rule='Strict z-sign crossing; exact reference segment intersection x<tip. 1e-12m guard resolves roundoff ties at declared front. All three cuts independently from original intact sorted reference table.',legacy_M5_cut_count=int(oldcut.sum()),legacy_A0_roundoff_tie_difference=int((oldcut!=a0).sum()),legacy_difference_explanation='34 numerical x=-100um front ties were spuriously selected by old raw floating comparison; no prior files changed. Present exact half-open convention excludes all front ties.',full_reference_X_sha256=hashlib.sha256(X.tobytes()).hexdigest(),full_reference_bonds_sha256=hashlib.sha256(full.tobytes()).hexdigest(),common_m_sha256=hashlib.sha256(e.m.tobytes()).hexdigest())
++ save(BASE/'PVCE_TOPOLOGY_AUDIT.json',topo)
++ E=9*K*G/(3*K+G);amp=2e-6;H=.00095
++ freeze=dict(task='LPS_PVCE_ENERGY_RELEASE_FEASIBILITY_V1',frozen_utc=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),material=dict(G_Pa=G,K_Pa=K,rho_kg_m3=RHO,s00_bulk=.15,s00_interface=.140624859375,alpha=0,dx_m=DX,horizon_m=DELTA,V_m3=DX**3,mass_kg=RHO*DX**3),reference=topo,amplitude_m=amp,amplitude_rationale=dict(analytic_E_Pa=E,nominal_strain=amp/H,intact_continuum_estimated_U_J=.5*E*(amp/H)**2*(.0006**2*.001),history='2um much lower than approximately77um first failure V3; affine preflight max stretch0.002106, below0.15. No load scan.'),bc='144+144 outer end nodes z prescribed +/-1um; xy and2592 interior xyz free; 8352 free DOFs; no added pinning',common_weighted_volume='FULL INTACT reference m computed once atzero load before all virtual cuts, heldidentical forA0/A1/A2. Distinct from historical M5 predeleted-then-renormalized m; explicit diagnostic adaptation, no core/source law modification.',virtual_cut_native='Public extract_atom bond_type entries set0 for both endpoints, remove specified1-2 special partners; retain bond histories; run1 pre no with no integration fix, every1/checkno rebuild; native init_style must not recur after cutting because it resets m.',method='SciPy L-BFGS-B of reused independent energy.cpp, exact supplied negative-force gradient, variables u/1um, energy/1pJ; native force/topology validation at start/final. No native minimize, no dynamic relaxation, no damping.',optimizer=dict(maxiter=6000,maxfun=60000,maxls=40,maxcor=30,ftol=0.,gtol=1e-11),criteria=dict(relative_free_force_L2_over_controlled_force_L2=1e-6,max_free_force_N=1e-13,energy_span_last10_relative=1e-8,max_position_change_last10_m=1e-10,boundary_reaction_imbalance=1e-6,natural_breaks=0,max_contact_energy_over_U=1e-8,max_contact_force_over_reaction=1e-6,native_energy_force_relative=1e-9,finite_difference_force_scaled_absolute=1e-6,kinetic='NOT_APPLICABLE_STATIC_OPTIMIZER; native zero velocities diagnostic only'),budget=dict(formal_states=3,per_state_max_function_evaluations=60000,per_state_max_iterations=6000,bugfix_retest_limit=1,processes=3,mpi_ranks_per_process=1,threads=1),stops=['All frozen acceptance gates passed','Budget reached','Nonprescribed break or force/energy inconsistency','Significant contact cannot be included by no-contact optimizer: fail pure-opening admissibility, no parameter retune'],U_formula='U=.5*(K-5G/3)*V*sum(theta^2)+7.5G*V^2*sum_alive(h*e^2/r0*(1/m_i+1/m_j)); theta=3V/m*sum_alive(h*e)',G_two='-(U1-U0)/(B*da)',G_three='-(-3*U0+4*U1-U2)/(2*B*da)',B_m=.0006,da_m=50e-6,delta_A_m2=3e-8,two_three_relative_difference_reference='abs(G_three), no denominator floor; undefined ifzero',difference_screen=.20,uncertainty='Empirical conservative resolution estimate epsU=2*max(last10 U span, ||Ffree||*||ufree||,100*machine_epsilon*U). Residual-work scale uses entire displacement; not rigorous errorbound and excludes crack/discretization/model errors. Require each energy contrast >10x propagated epsU.',paper='Original user PDF read sections2.2,3.1-3.4 and4.2; Eqs8/9/14/18 verified. Native influence/taper and energy are locked project law; no claim literal full paper reproduction.',production='UNCHANGED')
++ save(BASE/'PVCE_DESIGN_FREEZE.json',freeze);print(json.dumps({'frozen':freeze['frozen_utc'],'cases':records},indent=2))
++if __name__=='__main__':main()
+--- /dev/null
++++ analysis/lps_pvce_v1/finalize.py
+@@ -0,0 +1,27 @@
++"""Read-only scientific crosschecks and task-only manifests; never starts a solve."""
++from analysis.lps_pvce_v1.core import *
++import sys,subprocess,time
++
++def main():
++ results=ROOT/'results/lps_pvce_energy_release_feasibility_v1/20261011T132103Z';checks=json.loads((BASE/'IMPLEMENTATION_CHECKS.json').read_text());independent=[]
++ for j,tip in enumerate([-4,-2,0]):
++  z=np.load(BASE/f'A{j}/reference.npz');X=z['X'];b=z['bonds'];q=np.rint(2*X/DX).astype(np.int64);ai=q[b[:,0]];bi=q[b[:,1]];den=bi[:,2]-ai[:,2];num=ai[:,0]*bi[:,2]-ai[:,2]*bi[:,0];cross=ai[:,2]*bi[:,2]<0;cut=cross&np.where(den>0,num<tip*den,num>tip*den);assert np.array_equal(cut,z['alive']==0)
++  end=np.load(BASE/f'A{j}/equilibrium.npz');mask=z['mask'];dx=end['x_m']-X;assert np.max(abs(dx[z['high'],2]-1e-6))<1e-19 and np.max(abs(dx[z['low'],2]+1e-6))<1e-19;assert np.array_equal(end['alive'],z['alive']);assert mask.sum()==288
++  independent.append(dict(case=f'A{j}',integer_rational_intersection_matches=True,actual_deleted=int(cut.sum()),prescribed_opening_exact=True,final_topology_unchanged=True))
++ checks['integer_geometry_crosscheck']=independent;checks['postprocess_only_corrections']='JSON NumPybool cast; empty plottingcollection + layout; document-script string syntax. No solver fix or equilibrium rerun.';save(BASE/'IMPLEMENTATION_CHECKS.json',checks)
++ protected=json.loads((BASE/'provenance/PROTECTED_START.json').read_text());changed=[n for n,h in protected.items() if hashlib.sha256((ROOT/n).read_bytes()).hexdigest()!=h];assert not changed;save(BASE/'provenance/PROTECTED_FINAL.json',dict(checked=len(protected),changed=changed,utc=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())))
++ # Record exact lock identities, state-file shapes and source files for replay.
++ required=['REVIEW_LPS_PVCE_ENERGY_RELEASE_FEASIBILITY_V1.md','FINAL_STATUS.json','PVCE_DESIGN_FREEZE.json','PVCE_TOPOLOGY_AUDIT.json','PVCE_EQUILIBRIUM_AUDIT.json','PVCE_ENERGY_GRADIENT_AUDIT.json','PVCE_ENERGY_RELEASE_RESULTS.json','PVCE_CASE_COMPARISON.csv','IMPLEMENTATION_CHECKS.json','OPEN_RESULTS.html']
++ assert all((BASE/n).is_file() for n in required);assert len(list(results.glob('Fig*.png')))==4 and len(list(results.glob('Fig*.svg')))==4
++ state=json.loads((BASE/'FINAL_STATUS.json').read_text());assert state['DOCUMENT_UPDATE']=='ACTUAL_WSL_UPDATED_AND_READ_BACK'
++ # Native-step counter counts force checks, not physical loading steps.
++ status=subprocess.run(['supervisorctl','status','y_clot_pvce_20261011T132103Z'],capture_output=True,text=True).stdout
++ save(BASE/'provenance/COMPLETION_CHECK.json',dict(required_artifacts=required,four_figures=True,supervisor_status=status,formal_equilibrium_calls=3,equilibrium_retests=0,force_preflight=1,production_unchanged=True,document_receipt=state['DOCUMENT_UPDATE'],native_checks='One initialization run0 + two nonintegrating force evaluations per formal state; separate affine preflight; iteration histories come from actualL-BFGS, no physical-time claim.'))
++ source=[]
++ for p in sorted((ROOT/'analysis/lps_pvce_v1').glob('*.py')):source.append(dict(path=str(p.relative_to(ROOT)),sha256=hashlib.sha256(p.read_bytes()).hexdigest(),bytes=p.stat().st_size))
++ save(BASE/'provenance/TASK_SOURCE_SHA.json',source)
++ paths=[p for d in [BASE,results] for p in d.rglob('*') if p.is_file() and p.name not in ['FILE_MANIFEST.json','MANIFEST_VERIFICATION.json','WSL_FINAL_VERIFICATION.json','WSL_COMPACT_COLLECTION.json'] and 'pdf_reader' not in p.parts]
++ paths += list((ROOT/'analysis/lps_pvce_v1').glob('*.py'))
++ records=[dict(path=str(p.relative_to(ROOT)),bytes=p.stat().st_size,sha256=hashlib.sha256(p.read_bytes()).hexdigest()) for p in sorted(paths)];save(BASE/'FILE_MANIFEST.json',dict(files=records,total_bytes=sum(q['bytes'] for q in records),exclusions='Self and downstream receipts; local temporarypdf_reader package notscientificartifact. All full states and serverbody.data included.'))
++ print('FINALIZED',len(records),'files',sum(q['bytes'] for q in records),'bytes',status.strip())
++if __name__=='__main__':main()
+--- /dev/null
++++ analysis/lps_pvce_v1/plots.py
+@@ -0,0 +1,69 @@
++"""Four figures from actual native topology and accepted equilibrium data."""
++from analysis.lps_pvce_v1.core import *
++import matplotlib
++matplotlib.use('Agg')
++import matplotlib.pyplot as plt
++from matplotlib.lines import Line2D
++from mpl_toolkits.mplot3d.art3d import Line3DCollection
++RED='#a93040';BLUE='#2375a3';TEAL='#208e84';GOLD='#c58a2c';GRAY='#777777'
++COLORS=[TEAL,BLUE,GOLD]
++OUT=ROOT/'results/lps_pvce_energy_release_feasibility_v1/20261011T132103Z'
++plt.rcParams.update({'font.family':'DejaVu Sans','font.size':14,'axes.titlesize':16,'axes.labelsize':14,'legend.fontsize':12,'axes.grid':True,'grid.color':'#777777','grid.alpha':.55,'svg.fonttype':'none'})
++
++def view(ax,title):
++ ax.view_init(elev=12,azim=-58);ax.set(xlabel='x (µm)',ylabel='y (µm)',zlabel='z (µm)',title=title,xlim=[-330,330],ylim=[-330,330],zlim=[-520,520],xticks=[-200,0,200],yticks=[-200,200],zticks=[-500,0,500]);ax.set_box_aspect([.66,.66,1.04]);ax.tick_params(labelsize=11,pad=1)
++ for axis in [ax.xaxis,ax.yaxis,ax.zaxis]:axis.pane.set_facecolor((.97,.97,.97,1));axis._axinfo['grid'].update(color=(.42,.42,.42,.65),linewidth=.7)
++def savefig(fig,name,svg=True):
++ fig.savefig(OUT/(name+'.png'),dpi=240,bbox_inches='tight',facecolor='white')
++ if svg:fig.savefig(OUT/(name+'.svg'),bbox_inches='tight',facecolor='white')
++ plt.close(fig)
++def main():
++ OUT.mkdir(parents=True,exist_ok=True);top=json.loads((BASE/'PVCE_TOPOLOGY_AUDIT.json').read_text());R=json.loads((BASE/'PVCE_ENERGY_RELEASE_RESULTS.json').read_text());F=json.loads((BASE/'PVCE_DESIGN_FREEZE.json').read_text());refs=[dict(np.load(BASE/f'A{j}/reference.npz')) for j in range(3)];states=[dict(np.load(BASE/f'A{j}/display_fields.npz')) for j in range(3)]
++ # True deleted bonds and full point sets. Separate close views reveal selection.
++ fig=plt.figure(figsize=(18,11));fig.subplots_adjust(top=.81,bottom=.13,hspace=.22,wspace=.30)
++ for j,z in enumerate(refs):
++  X=z['X']*1e6;b=z['bonds'];deleted=z['alive']==0;inherited=refs[j-1]['alive']==0 if j else np.zeros(len(b),bool);new=deleted&~inherited;ax=fig.add_subplot(2,3,j+1,projection='3d');mask=z['mask'][:,2]
++  ax.scatter(*X[~mask].T,c=RED,s=5,alpha=.30,depthshade=False);ax.scatter(*X[mask].T,c=BLUE,s=10,alpha=.75,depthshade=False)
++  for m,col in [(inherited,GOLD),(new,TEAL if j==0 else BLUE)]:
++   if m.any():ax.add_collection3d(Line3DCollection(X[b[m]],colors=col,linewidths=.4,alpha=.22))
++  tip=top['records'][j]['tip_m']*1e6;ax.plot([tip,tip],[-300,300],[0,0],c='black',lw=2);view(ax,f'A{j}: a = {200+50*j} µm\n{int(deleted.sum()):,} reference bonds cut')
++  ax=fig.add_subplot(2,3,j+4);slab=(abs(X[b[:,0],1])<=26)&(abs(X[b[:,1],1])<=26)&(abs(X[b[:,0],2])<=150)&(abs(X[b[:,1],2])<=150)
++  from matplotlib.collections import LineCollection
++  for m,col in [(~deleted,'#c9c9c9'),(inherited,GOLD),(new,TEAL if j==0 else BLUE)]:ax.add_collection(LineCollection(X[b[m&slab]][:,:,[0,2]],colors=col,linewidths=.7,alpha=.70))
++  sel=(abs(X[:,1])<=26)&(abs(X[:,2])<=150);ax.scatter(X[sel,0],X[sel,2],s=14,c=RED,zorder=4);ax.plot([-300,tip],[0,0],c='black',lw=2);ax.axvline(tip,c='black',ls=':',lw=1.1);ax.set(xlim=[-305,305],ylim=[-155,155],xlabel='Reference x (µm)',ylabel='Reference z (µm)',title=f'Central y slab | '+('initial cut' if j==0 else '+766 actual virtual cuts'));ax.set_aspect('equal')
++ fig.legend(handles=[Line2D([],[],c=GOLD,label='Inherited cut bonds'),Line2D([],[],c=TEAL,label='A0 prescribed pre-cut'),Line2D([],[],c=BLUE,label='Current added cuts'),Line2D([],[],c='black',label='Declared crack / front')],loc='lower center',bbox_to_anchor=(.5,.01),ncol=4)
++ fig.suptitle('1 | Actual reference lattice and nested virtual cuts\nB = 600 µm through y; Δa = 50 µm; ΔA = BΔa = 3.0 × 10⁻⁸ m² (one advance area)',fontsize=19);savefig(fig,'Fig1_virtual_crack_topologies')
++ # Actual optimizer histories. No kinetic trace for static minimization.
++ fig,axs=plt.subplots(2,2,figsize=(15,11));fig.subplots_adjust(top=.89,bottom=.12,hspace=.31,wspace=.27)
++ for j in range(3):
++  h=np.genfromtxt(BASE/f'A{j}/history.csv',delimiter=',',names=True);c=COLORS[j];it=h['iteration'];axs[0,0].semilogy(it,h['relative_force'],c=c,label=f'A{j}');axs[0,1].plot(it,h['U_J']*1e12,c=c,label=f'A{j}');axs[1,0].semilogy(it,h['max_force_N'],c=c);axs[1,1].semilogy(it[9:],h['energy_span_relative'][9:],c=c)
++ axs[0,0].axhline(1e-6,c='black',ls='--',label='Frozen force gate');axs[1,0].axhline(1e-13,c='black',ls='--');axs[1,1].axhline(1e-8,c='black',ls='--');axs[0,0].legend();axs[0,1].legend()
++ for ax in axs.ravel():ax.set_xlabel('Accepted L-BFGS iteration')
++ axs[0,0].set(ylabel='||F free||₂ / ||F controlled||₂',title='Actual residual; all three accepted');axs[0,1].set(ylabel='Independent elastic energy U (pJ)',title='Fixed opening = 2 µm');axs[1,0].set(ylabel='Maximum free force component (N)',title='Absolute force gate');axs[1,1].set(ylabel='Last 10 states: energy span / U',title='Plateau is checked alongside force')
++ fig.suptitle('2 | Three bounded static equilibria',fontsize=20);fig.text(.5,.025,'K/U: not applicable to a static optimizer. No artificial kinetic curve or pseudo physical time.\nNative checks use zero velocities; acceptance also requires stable coordinates and balanced reactions.',ha='center',fontsize=13);savefig(fig,'Fig2_equilibrium_convergence')
++ # Errorbars display the empirical solver-resolution scale, not material uncertainty.
++ fig,axs=plt.subplots(2,2,figsize=(15,10));fig.subplots_adjust(top=.88,bottom=.14,hspace=.38,wspace=.30);U=np.array(R['U_J']);err=np.array(R['empirical_U_resolution_J']);aa=np.array([200,250,300]);axs[0,0].errorbar(aa,U*1e12,yerr=err*1e12,fmt='o',c=BLUE,ms=9,capsize=7);axs[0,0].set(xlabel='Actual crack length a (µm)',ylabel='U (pJ)',title='Three actual equilibria; error bars to scale',xticks=aa)
++ for j in range(3):axs[0,0].annotate(f'A{j}',(aa[j],U[j]*1e12),xytext=(10,4),textcoords='offset points')
++ du=-np.diff(U);de=err[:-1]+err[1:];axs[0,1].errorbar([0,1],du*1e12,yerr=de*1e12,fmt='o',c=TEAL,ms=9,capsize=7);axs[0,1].set(xticks=[0,1],xticklabels=['U0 − U1','U1 − U2'],ylabel='Elastic energy decrease (pJ)',title='Both differences exceed solver noise')
++ vals=np.array([R['G_two_J_m2'],R['G_three_J_m2']])*1e6;ee=np.array([R['G_two_empirical_resolution_J_m2'],R['G_three_empirical_resolution_J_m2']])*1e6;axs[1,0].errorbar([0,1],vals,yerr=ee,fmt='o',c=RED,ms=9,capsize=7);axs[1,0].set(xticks=[0,1],xticklabels=['Two point','Three point'],ylabel='G drive (µJ/m²)',title=f'One local estimate at a0 = 200 µm\nDifference = {R["relative_difference_to_G_three"]*100:.4f}%')
++ axs[1,1].bar(['A0','A1','A2'],err*1e18,color=COLORS);axs[1,1].set(ylabel='Empirical energy resolution (aJ)',title='Residual-work + last-10-state drift scale')
++ fig.suptitle('3 | Specimen-dependent PVCE energy release: G drive ≠ material Gc',fontsize=19);fig.text(.5,.025,'Error bars estimate solver resolution only; they are not rigorous bounds and exclude finite-size / horizon / crack-increment error.\nNo load, dx or horizon scan. These three states do not provide a complete G(a) curve.',ha='center',fontsize=12);savefig(fig,'Fig3_PVCE_energy_release')
++ # Shared scales; accepted coordinates, deformation scale1; point-cloud only.
++ fig=plt.figure(figsize=(16,12));fig.subplots_adjust(top=.85,bottom=.1,wspace=.2,hspace=.34);vmax=max(np.linalg.norm(states[j]['u_m'],axis=1).max()*1e6 for j in [0,2]);emax=max(states[j]['energy_density_J_m3'].max() for j in [0,2]);axes=[]
++ for col,j in enumerate([0,2]):
++  z=states[j];x=z['x_m']*1e6;m=z['mask'][:,2];tip=top['records'][j]['tip_m']*1e6
++  for row in range(2):
++   ax=fig.add_subplot(2,2,row*2+col+1,projection='3d',computed_zorder=False);axes.append(ax);val=np.linalg.norm(z['u_m'],axis=1)*1e6 if row==0 else z['energy_density_J_m3'];sc=ax.scatter(*x.T,c=val,cmap='viridis' if row==0 else 'magma',vmin=0,vmax=vmax if row==0 else emax,s=16,alpha=.95,depthshade=False,zorder=1);ax.scatter(*x[m].T,s=23,facecolors='none',edgecolors=BLUE,linewidths=.7,depthshade=False)
++   # Front is a declared reference line only, never rendered as a fitted surface.
++   ax.plot([tip,tip],[-300,300],[0,0],c='limegreen',lw=2,ls='--',zorder=10);view(ax,f'A{j} | '+('Displacement magnitude' if row==0 else 'Independent LPS energy density'))
++   if col==1:
++    cb=fig.colorbar(sc,cax=fig.add_axes([.91,.59 if row==0 else .20,.013,.22]));cb.set_label('|u| (µm)' if row==0 else 'W (J/m³)')
++ fig.suptitle('4 | Actual equilibria: deformation scale = 1\nPoint-cloud fields; shared color ranges for A0 and A2',fontsize=20);fig.text(.5,.025,'Blue outlines: end-plane z-controlled nodes (x/y free). Other nodes: all DOFs free.\nGreen dashed lines mark the declared reference crack fronts; no continuous crack shell is synthesized.',ha='center',fontsize=13);savefig(fig,'Fig4_equilibrium_fields')
++ html='''<!doctype html><meta charset="utf-8"><title>LPS PVCE 实际结果</title><style>body{max-width:1400px;margin:auto;font:18px sans-serif;line-height:1.6;background:#fafafa;color:#222}img{width:100%;background:white}a{color:#16749a}section{margin:36px 0}</style><h1>LPS PVCE：三个平衡态的试样相关 G_drive</h1><p>固定位移总开度 2 µm；a=200/250/300 µm。三个状态均通过预注册平衡检查。G_two=6.18596×10⁻⁶ J/m²；G_three=6.17031×10⁻⁶ J/m²；差异0.2536%。结果不是材料固有 Gc，未进行离散收敛认证。</p>'''
++ for p in sorted(OUT.glob('Fig*.png')):html+=f'<section><a href="{p.name}"><img src="{p.name}"></a><p><a href="{p.stem}.svg">SVG</a> · {p.stem}</p></section>'
++ (OUT/'OPEN_RESULTS.html').write_text(html)
++ # Verification index uses a stable relative link to actual results.
++ rel='../../../results/lps_pvce_energy_release_feasibility_v1/20261011T132103Z/'
++ (BASE/'OPEN_RESULTS.html').write_text(html.replace('src="Fig','src="'+rel+'Fig').replace('href="Fig','href="'+rel+'Fig'))
++ print('generated',len(list(OUT.glob('Fig*.png'))),'PNG and SVG figures')
++if __name__=='__main__':main()
+--- /dev/null
++++ analysis/lps_pvce_v1/remote.py
+@@ -0,0 +1,12 @@
++"""Task-scoped explicit synchronization; commands use the existing private environment."""
++from pathlib import Path
++import json,sys,subprocess,shlex,hashlib
++C=json.loads(Path('/home/lzy/projects/.pvce_current.json').read_text())
++SSH=['ssh','-p','15283','-i','/home/lzy/.ssh/vast_step3b_ed25519','-o','IdentitiesOnly=yes','-o','BatchMode=yes','root@95.3.33.46']
++if sys.argv[1]=='python':raise SystemExit(subprocess.call(SSH+['source /workspace/y_clot/env.sh && cd /workspace/y_clot/project && python -'],stdin=sys.stdin))
++if sys.argv[1]=='exec':raise SystemExit(subprocess.call(SSH+[sys.argv[2]]))
++if sys.argv[1]=='sync':
++ files=sys.argv[2:];r=Path(C['root']);assert all((r/p).is_file() for p in files)
++ with subprocess.Popen(['tar','-cf','-','-C',str(r),'--',*files],stdout=subprocess.PIPE) as src:
++  subprocess.run(SSH+[shlex.join(['tar','-xf','-','-C','/workspace/y_clot/project'])],stdin=src.stdout,check=True);src.stdout.close();assert src.wait()==0
++ p=Path(C['local'])/'provenance/EXPLICIT_SYNC.json';a=json.loads(p.read_text()) if p.exists() else [];a.extend(dict(path=n,sha256=hashlib.sha256((r/n).read_bytes()).hexdigest()) for n in files);p.write_text(json.dumps(a,indent=2));print('explicitly synchronized',len(files),'files')
+--- /dev/null
++++ analysis/lps_pvce_v1/run.py
+@@ -0,0 +1,61 @@
++"""Exactly one bounded static equilibrium for the requested frozen case."""
++from analysis.lps_pvce_v1.core import *
++import sys,time,csv,resource,traceback
++from scipy.optimize import minimize
++from scipy.spatial import cKDTree
++
++def contact(x,g,alive):
++ b=g['bonds'];n=len(x);p=cKDTree(x).query_pairs(DX,output_type='ndarray');p=p[~np.isin(p[:,0]*n+p[:,1],b[alive.astype(bool),0]*n+b[alive.astype(bool),1])]
++ d=x[p[:,0]]-x[p[:,1]];r=np.linalg.norm(d,axis=1);gap=DX-r;c=15*(18*K/(math.pi*DELTA**4))*DX**6/DELTA
++ f=np.zeros_like(x)
++ if len(p):
++  ff=c*gap[:,None]*d/r[:,None];np.add.at(f,p[:,0],ff);np.add.at(f,p[:,1],-ff)
++ return float(.5*c*np.sum(gap**2)),f,p
++
++def run(case):
++ start=time.perf_counter();cpu=time.process_time();out=BASE/case;freeze=json.loads((BASE/'PVCE_DESIGN_FREEZE.json').read_text());cfg=json.loads((out/'config.json').read_text());assert not (out/'EXECUTION.json').exists()
++ g,e,alive,mask,low,high,_,_=model(cfg['tip_m']);X=g['X'];free=~mask;scale=1e-6;Escale=1e-12;amp=freeze['amplitude_m'];H=float(X[high,2].mean()-X[low,2].mean());fixed=X.copy();fixed[low,2]-=amp/2;fixed[high,2]+=amp/2
++ x0=X.copy();x0[:,2]*=1+amp/H
++ n=Native(out/'native',g,alive);fn,diag,tn=n.evaluate(x0);u0,f0=e.eval(np.ascontiguousarray(x0),alive,True);err=np.linalg.norm(fn-f0)/np.linalg.norm(fn);assert err<1e-9 and diag['contact_J']==0
++ save(out/'START_NATIVE_CHECK.json',dict(force_relative=float(err),U_J=u0,**diag))
++ history=[];states=[];calls=0;maxstretch=-np.inf;last=None
++ def unpack(q):
++  x=fixed.copy();x[free]=X[free]+q*scale;return np.ascontiguousarray(x)
++ def evaluate(q):
++  nonlocal calls,maxstretch,last
++  calls+=1
++  if calls>freeze['budget']['per_state_max_function_evaluations']:raise RuntimeError('FUNCTION_BUDGET')
++  x=unpack(q);U,f=e.eval(x,alive,True);b=e.b;st=(np.linalg.norm(x[b[:,1]]-x[b[:,0]],axis=1)-e.r)/e.r;maxstretch=max(maxstretch,float(st[alive.astype(bool)].max()))
++  if maxstretch>=.15:raise RuntimeError('UNPRESCRIBED_FAILURE_CRITERION_REACHED')
++  last=(q.copy(),x,U,f)
++  return U/Escale,-f[free]*scale/Escale
++ def record(q):
++  if last is None or not np.array_equal(last[0],q):evaluate(q)
++  _,x,U,f=last;den=float(np.linalg.norm(f[mask]));rel=float(np.linalg.norm(f[free])/den) if den>0 else None;top=float(-f[high,2].sum());bottom=float(-f[low,2].sum());Q=(top-bottom)/2
++  row=dict(iteration=len(history),evaluations=calls,U_J=U,relative_force=rel,max_force_N=float(abs(f[free]).max()),top_reaction_N=top,bottom_reaction_N=bottom,reaction_imbalance=abs(top+bottom)/abs(Q) if Q!=0 else None,energy_span_relative=None,position_change_m=None,kinetic_J=None)
++  states.append((x.copy(),U));states[:]=states[-10:]
++  if len(states)==10:
++   row['energy_span_relative']=(max(t[1] for t in states)-min(t[1] for t in states))/U;row['position_change_m']=float(np.max(np.abs(x-states[0][0])))
++  history.append(row)
++  with (out/'history.csv').open('w') as fp:w=csv.DictWriter(fp,fieldnames=list(row));w.writeheader();w.writerows(history)
++  c=freeze['criteria'];passed=rel is not None and rel<=c['relative_free_force_L2_over_controlled_force_L2'] and row['max_force_N']<=c['max_free_force_N'] and row['energy_span_relative'] is not None and row['energy_span_relative']<=c['energy_span_last10_relative'] and row['position_change_m']<=c['max_position_change_last10_m'] and row['reaction_imbalance']<=c['boundary_reaction_imbalance']
++  if len(history)%100==0:print(case,row,flush=True)
++  return passed
++ q0=(x0[free]-X[free])/scale;evaluate(q0);record(q0)
++ def callback(intermediate_result):
++  if record(intermediate_result.x):raise StopIteration
++ result=minimize(evaluate,q0,method='L-BFGS-B',jac=True,callback=callback,options=freeze['optimizer']);x=unpack(result.x);U,f=e.eval(x,alive,True)
++ if last is None or not np.array_equal(last[0],result.x):evaluate(result.x)
++ if not np.array_equal(states[-1][0],x):record(result.x)
++ fn,diag,theta=n.evaluate(x);native_error=float(np.linalg.norm(fn-f)/np.linalg.norm(fn));Uc,fc,cp=contact(x,g,alive)
++ native_total_error=float(np.linalg.norm(fn-(f+fc))/np.linalg.norm(fn));row=history[-1];epsU=2*max(max(t[1] for t in states)-min(t[1] for t in states),float(np.linalg.norm(f[free])*np.linalg.norm((x-X)[free])),100*np.finfo(float).eps*U)
++ Q=(row['top_reaction_N']-row['bottom_reaction_N'])/2;contact_ratio=float(np.linalg.norm(fc)/abs(Q));c=freeze['criteria'];gates=dict(relative_force=row['relative_force']<=c['relative_free_force_L2_over_controlled_force_L2'],max_force=row['max_force_N']<=c['max_free_force_N'],energy_plateau=row['energy_span_relative'] is not None and row['energy_span_relative']<=c['energy_span_last10_relative'],position_stable=row['position_change_m'] is not None and row['position_change_m']<=c['max_position_change_last10_m'],reaction_balance=row['reaction_imbalance']<=c['boundary_reaction_imbalance'],natural_breaks=diag['natural_broken']==0 and maxstretch<.15,contact=Uc/U<=c['max_contact_energy_over_U'] and contact_ratio<=c['max_contact_force_over_reaction'],force_energy=native_total_error<=c['native_energy_force_relative'])
++ # Actual native free forces also satisfy same gates; no denominator floor.
++ native_den=float(np.linalg.norm(fn[mask]));native_rel=float(np.linalg.norm(fn[free])/native_den);gates['native_free_force']=native_rel<=c['relative_free_force_L2_over_controlled_force_L2'] and float(abs(fn[free]).max())<=c['max_free_force_N']
++ np.savez_compressed(out/'equilibrium.npz',X=X,x_m=x,displacement_m=x-X,alive=alive,bonds=e.b,m=e.m,r=e.r,h=e.h,mask=mask,low=low,high=high,independent_force_N=f,native_force_N=fn,native_theta=theta,contact_force_N=fc,contact_pairs=cp,last_positions=np.stack([v[0] for v in states]),last_U_J=np.array([v[1] for v in states]))
++ audit=dict(case=case,accepted=all(gates.values()),gates=gates,last=row,U_J=U,empirical_uncertainty_J=epsU,uncertainty_scope=freeze['uncertainty'],native=diag,native_total_force_relative=native_total_error,native_bulk_force_relative=native_error,native_free_force_relative=native_rel,max_native_free_force_N=float(abs(fn[free]).max()),contact_independent_J=Uc,contact_native_energy_difference_J=Uc-diag['contact_J'],contact_force_over_reaction=contact_ratio,contact_pairs=len(cp),max_stretch_all_optimizer_evaluations=maxstretch,kinetic='NA_STATIC_MINIMIZATION',optimizer_message=str(result.message),optimizer_status=int(result.status),iterations=int(result.nit),function_evaluations=calls,wall_seconds=time.perf_counter()-start,cpu_seconds=time.process_time()-cpu,peak_RSS_MiB=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024,mpi_ranks=1,OMP_threads=1,GPU=False)
++ save(out/'EQUILIBRIUM.json',audit);save(out/'EXECUTION.json',dict(status='ACCEPTED' if audit['accepted'] else 'STOPPED_UNCONVERGED',wall_seconds=audit['wall_seconds'],formal_equilibrium_attempts=1));n.close();print(json.dumps(audit,indent=2),flush=True)
++if __name__=='__main__':
++ try:run(sys.argv[1])
++ except BaseException:
++  (BASE/sys.argv[1]/'ERROR.txt').write_text(traceback.format_exc());raise
+--- /dev/null
++++ analysis/lps_pvce_v1/update_document.py
+@@ -0,0 +1,23 @@
++from pathlib import Path
++import json,hashlib,difflib,os,tempfile,time
++C=json.loads(Path('/home/lzy/projects/.pvce_current.json').read_text());B=Path(C['local']);p=Path('/home/lzy/projects/clot_rupture.md');before=p.read_bytes();sha=hashlib.sha256(before).hexdigest();start=hashlib.sha256((B/'provenance/clot_rupture.before.md').read_bytes()).hexdigest();assert sha==start,'Concurrent document edit: reread and reconcile before writing';text=before.decode();assert '本轮虚拟裂纹能量释放（PVCE）' not in text
++addition=r'''
++**本轮虚拟裂纹能量释放（PVCE）**：按 Zhang & Qiao（2020）的固定位移能量差思想，单独计算 a=200、250、300 µm 的三个预定裂纹。固定端面总开度 2 µm，材料、点距和作用半径保持不变；复用独立 LPS 储能及其梯度，通过静态 L-BFGS 求平衡，并与原生实际力核对。三个状态均通过运行前冻结的自由力、绝对力、储能平台、位移稳定和反力平衡条件；原生自由力相对残差为 7.81×10⁻⁷、9.04×10⁻⁷、8.91×10⁻⁷，没有额外自然断键，最终接触能与接触力均为零。静态优化不产生动力学 K/U 曲线。
++
++三个裂纹累计切除 2536、3302、4068 条真实参考键，后两次各增加 766 条。统一采用 x<裂尖的半开几何规则，修正了旧 M5 中 34 条前缘浮点交点的选择；三个状态都固定使用完整未切参考邻域的加权体积 m，膨胀量按存活键重算，因此本轮 A0 不等同旧 M5 的“预删后重新归一化”状态。这两项定义在求解前已冻结，旧 V1–V3 结果不改。
++
++用完整三维独立储能 $U_0=1.8055120142$、$U_1=1.6199333620$、$U_2=1.4334157154$ pJ，取单个裂纹推进面积 $B\Delta a=600\times50\ \mu\mathrm m^2=3.0\times10^{-8}\ \mathrm m^2$，不乘双面系数，也不用断键数量换算面积。固定位移下 $G_{\mathrm{two}}=-(U_1-U_0)/(B\Delta a)=6.1859551\times10^{-6}$ J/m²；三点式 $G_{\mathrm{three}}=-(-3U_0+4U_1-U_2)/(2B\Delta a)=6.1703052\times10^{-6}$ J/m²。相对三点值的差异约 0.2536%。储能差约为经验求解误差尺度的 6500–6900 倍；三点 G 的传播数值分辨尺度约 ±1.82×10⁻⁹ J/m²，但这不是严格误差界，未包含虚拟增量、非局部边界、网格和有限尺寸误差。
++
++**当前新增能力是试样相关的 $G_{\mathrm{drive}}$，不是材料固有 $G_c$**。只求了三个平衡态，三态只给一个局部能量导数估计；未验证临界自然扩展、网格收敛或完整 G(a) 曲线。原生力与独立能量梯度的相对差约 10⁻¹⁵；不完整 native PE、累计外功、动能及数值阻尼均未进入 G 的能量分子。Liu 的实验总断裂能不作为这个微型低开度试样的调参目标。现有新证据仍不足以认定必须更换失效机制或增加软化。
++
++'''.replace(chr(92)*2,chr(92))
++marker='---\n\n# ⑥ 外加剪切';assert text.count(marker)==1;text=text.replace(marker,addition+marker)
++old='下一轮唯一优先项是基于已有 M5/M5B/M5C 与 Liu 原文实验，开展只读的断裂观测量可辨识性与本构需求审查，明确哪些实验量可约束 LPS 和软化需求；结束同类夹具试错。本轮到此停止，没有自动开始后续计算。';assert text.count(old)==1
++new=f'本轮 [PVCE 能量释放可行性审查]({B}/REVIEW_LPS_PVCE_ENERGY_RELEASE_FEASIBILITY_V1.md) 和 [四组真实科研图]({B}/OPEN_RESULTS.html) 记录了三态平衡、能差与适用范围。下一轮唯一优先项是为同一微型试样、裂纹和位移边界建立独立线弹性连续体 G_drive 参考，评估非局部及有限域偏差；不自动启动。V1–V3 的自然裂纹面积和 Gc 未识别结论保持。本轮到此停止。'
++text=text.replace(old,new);data=text.encode();backup=B/'provenance/clot_rupture.before_write.md';backup.write_bytes(before);diff=''.join(difflib.unified_diff(before.decode().splitlines(True),text.splitlines(True),fromfile=str(p)+'.before',tofile=str(p)));(B/'provenance/clot_rupture.diff').write_text(diff)
++assert p.read_bytes()==before,'Concurrent write detected';mode=p.stat().st_mode
++fd,tmp=tempfile.mkstemp(prefix='.clot_rupture_pvce_',dir=p.parent)
++with os.fdopen(fd,'wb') as f:f.write(data);f.flush();os.fsync(f.fileno())
++os.chmod(tmp,mode);assert p.read_bytes()==before;os.replace(tmp,p);after=p.read_bytes();assert after==data
++record=dict(status='ACTUAL_WSL_UPDATED_AND_READ_BACK',file=str(p),before_sha256=sha,after_sha256=hashlib.sha256(after).hexdigest(),same_as_start_backup=True,backup=str(backup),diff=str(B/'provenance/clot_rupture.diff'),changed_only='Section⑤ fracture/energy addition and final review/one nextpriority paragraph',concurrency_check='Exactbyte comparisons before editing and immediately before atomic replace; start hash unchanged.',utc=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()));(B/'provenance/DOCUMENT_UPDATE.json').write_text(json.dumps(record,indent=2))
++s=json.loads((B/'FINAL_STATUS.json').read_text());s['DOCUMENT_UPDATE']=record['status'];(B/'FINAL_STATUS.json').write_text(json.dumps(s,indent=2));print(json.dumps(record,indent=2))

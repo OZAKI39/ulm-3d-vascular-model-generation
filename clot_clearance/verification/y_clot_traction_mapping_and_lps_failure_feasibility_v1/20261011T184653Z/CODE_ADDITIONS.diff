@@ -1,0 +1,826 @@
+--- /dev/null
++++ analysis/traction_failure_v1/REPRODUCE.txt
+@@ -0,0 +1,49 @@
++Run 20261011T184653Z: offline only. Existing production binaries and old inputs are protected.
++
++Existing source project: /workspace/y_clot/project
++Environment: source /workspace/y_clot/env.sh
++Finite jobs used their own Supervisor group, autostart=false/autorestart=false.
++OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 PYTHONDONTWRITEBYTECODE=1
++
++Executed analysis sequence (cwd project root, Python from private environment):
++python -m analysis.traction_failure_v1.preflight_b
++python -m analysis.traction_failure_v1.freeze_b
++python -m analysis.traction_failure_v1.launch B_mapping analysis.traction_failure_v1.map_b
++  Initial local support screening stopped at10 faces before producing forces.
++python -m analysis.traction_failure_v1.launch B_support_repair analysis.traction_failure_v1.repair_support_b
++  One frozen local adjacency-graph amendment; same support radius and all quality gates.
++python -m analysis.traction_failure_v1.launch A_offline analysis.traction_failure_v1.offline_a
++python -m analysis.traction_failure_v1.verify_b
++python -m analysis.traction_failure_v1.launch figures analysis.traction_failure_v1.figures
++  Original drawing failed on Matplotlib linthresh setter. Numerical results unaffected.
++python -m analysis.traction_failure_v1.launch figures_fixed analysis.traction_failure_v1.figures
++python -m analysis.traction_failure_v1.launch figures_final analysis.traction_failure_v1.figures
++  Final drawing separates z labels and colorbars, reduces crowded ticks, draws arrow glyphs
++  in foreground; glyph subset and linear scale are recorded. No force/coordinate changes.
++python -m analysis.traction_failure_v1.report
++python -m analysis.traction_failure_v1.closeout verify
++
++Input identity: INPUT_MANIFEST.json and provenance/PROTECTED_START.json.
++Pinned perifit code and five full papers plus SI: A/sources; hashes in SOURCE_MANIFEST.json.
++The original graph freeze's geodesic-upper-bound wording is corrected by
++B/REPAIR_GRAPH_METRIC_CLARIFICATION.json: centroid-link chord graph is not exact geodesic.
++Preserve this qualification when reproducing; mapping arithmetic is unchanged.
++
++Do not rerun the above into the completed output directories. A reproduction must use
++a new isolated checkout/worktree copy of analysis/traction_failure_v1 and a fresh run_id
++in its config.json; replace all A/B/common/FA/FB run components, create those new dirs,
++and copy the pinned A/sources into the new A/sources. Keep old input paths and SHA fixed.
++The freeze and single-repair scripts assert against overwrite. Read inputs require the
++server's existing full-precision raw CFD. This compact WSL handoff does not include them.
++launch.py uses the stated server root; if using another checkout, adapt its ROOT/cwd first.
++Do not run update_wsl_document.py as part of scientific reproduction: it changes the
++actual WSL research document and refuses to overwrite this run's document audit.
++
++WSL delivery (project root):
++python analysis/traction_failure_v1/retrieve.py preview
++python analysis/traction_failure_v1/update_wsl_document.py
++python analysis/traction_failure_v1/remote.py sync <explicit current-run files>
++Server: python -m analysis.traction_failure_v1.closeout manifest
++WSL: python analysis/traction_failure_v1/retrieve.py final
++Receipts contain per-file SHA checks. No historical raw CFD, environment tree, binaries
++or unrelated data are transferred. No git commit/push, native solve, fracture or next task.
+--- /dev/null
++++ analysis/traction_failure_v1/closeout.py
+@@ -0,0 +1,58 @@
++"""Read-only baseline verification and manifests for this isolated run."""
++from analysis.traction_failure_v1.common import *
++import subprocess,sys,importlib.metadata as md,difflib,platform
++def digest(p):
++ h=hashlib.sha256()
++ with Path(p).open('rb') as f:
++  for b in iter(lambda:f.read(8*1024*1024),b''):h.update(b)
++ return h.hexdigest()
++def load(p):return json.loads(Path(p).read_text())
++def entry(p):return dict(path=str(p.relative_to(ROOT)),bytes=p.stat().st_size,sha256=digest(p))
++def verify():
++ baseline=load(COMMON/'provenance/PROTECTED_START.json');changed=[]
++ for name,expected in baseline.items():
++  p=Path(name);actual=digest(p) if p.is_file() else None
++  if actual!=expected:changed.append(dict(path=name,before=expected,after=actual))
++ after={x.metadata['Name']:x.version for x in md.distributions()};before=load(COMMON/'provenance/ENVIRONMENT_BEFORE.json')
++ head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
++ envsame=before==after;headsame=head=='cc5ee77149f55e58d715bb5a4660c6467231a826'
++ save(COMMON/'provenance/ENVIRONMENT_AFTER.json',after)
++ save(COMMON/'PROTECTION_AUDIT.json',dict(checked_utc=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),registered_files=len(baseline),changed=changed,all_registered_sha_unchanged=not changed,environment_unchanged=envsame,git_HEAD=head,git_HEAD_unchanged=headsame,baseline_manifest_sha256=digest(COMMON/'provenance/PROTECTED_START.json'),production_edits=False,git_mutations=False))
++ assert not changed and envsame and headsame
++ st=load(A/'FINAL_STATUS.json');st['states']['ORIGINAL_LPS_BASELINE_PROTECTED']=f'PASS_SHA_{len(baseline)}_REGISTERED_FILES';save(A/'FINAL_STATUS.json',st)
++ co=load(COMMON/'FINAL_STATUS.json');co['A']=st['states'];co['protection']='PASS';save(COMMON/'FINAL_STATUS.json',co)
++ inputs={ROOT/k for k in load(B/'INPUT_SHA.json')}
++ inputs.update([M5C/'geometry.npz',PREV/'refined/SV_MESH/mesh-complete.mesh.vtu',PREV/'refined/CFD_RESULT.json',ROOT/'analysis/material_macro_audit_v1/energy.cpp',ROOT/'analysis/material_macro_audit_v1/energy.so',ROOT/'tools/lammps-native-y-wall-shared-v1-build/liblammps.so'])
++ for n in ['M1','M2']:inputs.add(ROOT/'verification/lammps_material_macro_calibration_and_timestep_audit_v1/20261010T215825Z'/n/'history.csv')
++ for name in baseline:
++  p=Path(name)
++  if p.name in ['bond_bpm_spring.cpp','pair_bpm_spring.cpp','pair_y_clot_wall.cpp'] or ('src/' in name and 'bpm' in p.name):inputs.add(p)
++ save(COMMON/'INPUT_MANIFEST.json',[entry(p) for p in sorted(inputs)])
++ code=[p for p in (ROOT/'analysis/traction_failure_v1').rglob('*') if p.is_file() and '__pycache__' not in p.parts]
++ sources=[p for p in (A/'sources').rglob('*') if p.is_file() and '__pycache__' not in p.parts]
++ save(COMMON/'SOURCE_MANIFEST.json',dict(new_code=[entry(p) for p in sorted(code)],literature_and_pinned_source=[entry(p) for p in sorted(sources)],source_input_audit='INPUT_MANIFEST.json; complete preexisting protection ledger in provenance/PROTECTED_START.json',python=platform.python_version()))
++ patch=[]
++ for p in sorted(code):
++  if p.suffix in ['.py','.json','.txt']:
++   patch.extend(difflib.unified_diff([],p.read_text().splitlines(True),fromfile='/dev/null',tofile=str(p.relative_to(ROOT))))
++ (COMMON/'CODE_ADDITIONS.diff').write_text(''.join(patch))
++ (COMMON/'provenance/GIT_STATUS_AFTER.txt').write_text(subprocess.check_output(['git','status','--short'],cwd=ROOT,text=True))
++ jobs={}
++ for p in COMMON.glob('*_LAUNCH.json'):
++  name=load(p)['name'];r=subprocess.run(['supervisorctl','status',name],capture_output=True,text=True);jobs[name]=r.stdout.strip()
++ assert all('RUNNING' not in v for v in jobs.values())
++ save(COMMON/'OWN_JOBS_FINAL.json',dict(jobs=jobs,automatic_restart=False,original_figures_failure='Matplotlib Axes.set did not accept linthresh; plotting-only fix in figures_fixed. Numerical analyses not rerun.',other_jobs_modified=False))
++ print('protected',len(baseline),'files; environment and HEAD unchanged')
++def manifest():
++ assert load(COMMON/'PROTECTION_AUDIT.json')['all_registered_sha_unchanged']
++ assert load(COMMON/'document_edit/AUDIT.json')['readback_match']
++ excluded={'SERVER_ARTIFACT_MANIFEST.json','COMPACT_MANIFEST.json','LOCAL_RETRIEVAL_AUDIT.json'}
++ files=[]
++ for folder in [A,B,COMMON,FA,FB,ROOT/'analysis/traction_failure_v1']:
++  for p in folder.rglob('*'):
++   if p.is_file() and '__pycache__' not in p.parts and p.name not in excluded:files.append(entry(p))
++ files.sort(key=lambda d:d['path']);base=dict(run=RUN,files=files,count=len(files),total_bytes=sum(x['bytes'] for x in files),scope='Only current-run code, three verification trees and seven PNG/SVG groups. No historical raw CFD or production dependencies. Self-referential manifests/retrieval receipts excluded from their own inventory.')
++ save(COMMON/'SERVER_ARTIFACT_MANIFEST.json',base);save(COMMON/'COMPACT_MANIFEST.json',base)
++ print('manifest',len(files),'files',base['total_bytes'],'bytes')
++if __name__=='__main__':
++ {'verify':verify,'manifest':manifest}[sys.argv[1]]()
+--- /dev/null
++++ analysis/traction_failure_v1/common.py
+@@ -0,0 +1,29 @@
++"""Isolated offline audit. No production model, source field or topology mutation."""
++from pathlib import Path
++import hashlib,json,os,time,resource
++import numpy as np
++ROOT=Path(__file__).resolve().parents[2]
++C=json.loads((Path(__file__).parent/'config.json').read_text())
++RUN=C['run_id'];COMMON=ROOT/C['common'];A=ROOT/C['A'];B=ROOT/C['B'];FA=ROOT/C['FA'];FB=ROOT/C['FB']
++PREV=ROOT/'verification/y_clot_present_cfd_baseline_v1/20261011T154854Z'
++V3=ROOT/'verification/y_clot_realistic_morphology_wall_contact_and_flow_transport_v1'
++M5C=ROOT/'verification/lammps_notch_fracture_grip_transfer_v3/20261011T115626Z/M5C'
++DX=50e-6;DELTA=150.5e-6;V=DX**3;K=33333.333333333336;G=940.
++def sha(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()
++def convert(v):
++ if isinstance(v,np.ndarray):return v.tolist()
++ if isinstance(v,np.generic):return v.item()
++ if isinstance(v,Path):return str(v)
++ raise TypeError(type(v).__name__)
++def save(p,v):
++ p=Path(p);p.parent.mkdir(parents=True,exist_ok=True);p.write_text(json.dumps(v,indent=2,default=convert,allow_nan=False)+'\n')
++def stats(a):
++ a=np.asarray(a);return dict(zip(['min','p05','median','p95','max'],np.quantile(a,[0,.05,.5,.95,1]))) if a.size else {'count':0}
++def cost(t,c):return dict(wall_s=time.perf_counter()-t,process_cpu_s=time.process_time()-c,peak_rss_MiB=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024,gpu_compute=False)
++def closest_surface(points,triangles):
++ import vtk,pyvista as pv
++ poly=pv.PolyData(triangles.reshape(-1,3),np.c_[np.full(len(triangles),3),np.arange(len(triangles)*3).reshape(-1,3)])
++ loc=vtk.vtkStaticCellLocator();loc.SetDataSet(poly);loc.BuildLocator();near=[];ids=[];dist=[]
++ for point in points:
++  cp=[0.,0.,0.];cid=vtk.reference(0);sub=vtk.reference(0);d2=vtk.reference(0.);loc.FindClosestPoint(point,cp,cid,sub,d2);near.append(cp);ids.append(int(cid));dist.append(float(d2)**.5)
++ return np.array(near),np.array(ids),np.array(dist)
+--- /dev/null
++++ analysis/traction_failure_v1/config.json
+@@ -0,0 +1,9 @@
++{
++  "root": "/home/lzy/projects/temp_storage/y_clot_github_sync_20261010/clot_clearance",
++  "run_id": "20261011T184653Z",
++  "common": "verification/y_clot_traction_mapping_and_lps_failure_feasibility_v1/20261011T184653Z",
++  "A": "verification/lps_surface_correction_and_energy_failure_feasibility_v1/20261011T184653Z",
++  "B": "verification/y_clot_cfd_to_lammps_conservative_traction_map_v1/20261011T184653Z",
++  "FA": "results/lps_surface_correction_and_energy_failure_feasibility_v1/20261011T184653Z",
++  "FB": "results/y_clot_cfd_to_lammps_conservative_traction_map_v1/20261011T184653Z"
++}--- /dev/null
++++ analysis/traction_failure_v1/figures.py
+@@ -0,0 +1,90 @@
++"""Seven scientific figure groups drawn only from this run's real arrays."""
++from analysis.traction_failure_v1.common import *
++import matplotlib;matplotlib.use('Agg')
++import matplotlib.pyplot as plt
++from mpl_toolkits.mplot3d.art3d import Poly3DCollection
++from matplotlib.colors import Normalize,LogNorm
++from matplotlib.lines import Line2D
++from matplotlib.ticker import MaxNLocator
++plt.rcParams.update({'font.family':'DejaVu Sans','font.size':12,'axes.titlesize':14,'axes.labelsize':12,'legend.fontsize':11,'axes.grid':True,'grid.color':'#858c95','grid.alpha':.55,'savefig.facecolor':'white'})
++record=[]
++def finish(fig,folder,name,caption):
++ fig.subplots_adjust(left=.055,right=.96,top=.91,bottom=.12,wspace=.32,hspace=.40);fig.text(.045,.025,caption,fontsize=11,va='bottom');fig.savefig(folder/(name+'.png'),dpi=350);fig.savefig(folder/(name+'.svg'));plt.close(fig);record.append(dict(figure=name,folder=str(folder.relative_to(ROOT)),caption=caption))
++def axes3(fig,nr,nc,i,X,title):
++ ax=fig.add_subplot(nr,nc,i,projection='3d');ax.view_init(18,-68);ax.set_title(title,pad=13);ax.set_xlabel('x (mm)',labelpad=9);ax.set_ylabel('y (mm)',labelpad=9);ax.set_zlabel('z (mm)',labelpad=9);ax.set_box_aspect(np.maximum(np.ptp(X,axis=0),DX));ax.tick_params(labelsize=10,pad=1)
++ for axis in [ax.xaxis,ax.yaxis,ax.zaxis]:axis.set_major_locator(MaxNLocator(4));axis.pane.set_facecolor((.95,.97,.99,1));axis._axinfo['grid']['color']='#8c949c'
++ return ax
++def cloud(ax,X,c=None,label=None,cmap='viridis',norm=None,size=11):
++ return ax.scatter(*(X*1e3).T,c=c,s=size,cmap=cmap if c is not None and not isinstance(c,str) else None,norm=norm,depthshade=False,linewidths=.12,edgecolors='#30516b',label=label)
++def surface(ax,s,values,cmap='viridis',label='',norm=None,alpha=1):
++ norm=norm or Normalize(float(np.min(values)),float(np.max(values)));colors=plt.get_cmap(cmap)(norm(values));poly=Poly3DCollection(s['triangles_xyz_m']*1e3,facecolors=colors,edgecolors='none',alpha=alpha);ax.add_collection3d(poly);xyz=s['triangles_xyz_m'].reshape(-1,3)*1e3;ax.auto_scale_xyz(*xyz.T);sm=plt.cm.ScalarMappable(norm=norm,cmap=cmap);plt.colorbar(sm,ax=ax,shrink=.65,pad=.20,fraction=.035,label=label)
++def cbar(fig,obj,ax,label):fig.colorbar(obj,ax=ax,shrink=.68,pad=.20,fraction=.035,label=label)
++def run():
++ t=time.perf_counter();cpu=time.process_time();s=dict(np.load(PREV/'refined/CLOT_SURFACE_TRACTIONS.npz'));g=dict(np.load(B/'GEOMETRY_PREFLIGHT.npz'));d=dict(np.load(B/'CLOT_NODAL_TRACTION_FORCES.npz'));X=d['reference_coordinates_m'];anchors=d['anchor_reference_coordinates_m'];loaded=d['support_node'];area=s['triangle_area_m2'];quality=json.loads((B/'LOCAL_MAPPING_QUALITY.json').read_text());aud=json.loads((B/'CONSERVATIVE_MAPPING_AUDIT.json').read_text());repair=json.loads((B/'CONTACT_RIM_SUPPORT_REPAIR_FREEZE.json').read_text())
++ fig=plt.figure(figsize=(16,12));ax=axes3(fig,2,2,1,np.r_[X,anchors],'B1a  True exposed mesh and material lattice');cloud(ax,anchors,'#d1aa4c',size=5,label='Fixed wall anchors');cloud(ax,X,'#398ac0',size=8,label='1,927 material points');poly=Poly3DCollection(s['triangles_xyz_m']*1e3,facecolors='#8ec9e6',edgecolors='#567585',linewidths=.07,alpha=.14);ax.add_collection3d(poly);ax.legend(loc='upper left')
++ ax=axes3(fig,2,2,2,X,'B1b  Material distance to exposed surface');obj=cloud(ax,X,g['distance_to_surface_m']*1e6);cbar(fig,obj,ax,'Exact triangle distance (µm)')
++ ax=axes3(fig,2,2,3,X,'B1c  Face distance to nearest material point');surface(ax,s,g['face_nearest_material_distance_m']*1e6,label='Distance (µm)');bad=repair['faces'];ax.scatter(*(s['surface_coordinates_m'][bad]*1e3).T,c='#c73337',s=28,label='10 repaired rim faces');ax.legend(loc='upper left')
++ ax=fig.add_subplot(2,2,4);ax.hist(g['face_nearest_material_distance_m']*1e6,bins=35,color='#398ac0',label='3,611 actual faces');ax.axvline(DELTA*1e6,color='#c73337',ls='--',label='150.5 µm support limit');ax.set(xlabel='Nearest material-point distance (µm)',ylabel='Face count',title='B1d  Complete support; 580 load nodes');ax.legend()
++ finish(fig,FB,'B1_geometry_and_support','Identity coordinates; no volume rescaling. Exposed patch area 1.821924 mm². All faces supported after one contact-rim graph repair.\nMaterial selection: surface distance ≤50 µm; face support ≤150.5 µm; 1,561 anchors excluded.')
++ fig=plt.figure(figsize=(16,12));ax=axes3(fig,2,2,1,X,'B2a  Actual CFD gauge pressure');surface(ax,s,s['pressure_Pa'],label='Gauge pressure (Pa)')
++ ax=axes3(fig,2,2,2,X,'B2b  Actual viscous shear');surface(ax,s,s['tangential_magnitude_Pa'],label='Tangential traction (Pa)');q=np.arange(0,len(area),85);vec=s['tangential_traction_Pa'][q]*3.;ax.computed_zorder=False;ax.quiver(*(s['surface_coordinates_m'][q]*1e3).T,*vec.T,color='#202b42',arrow_length_ratio=.25,linewidth=1.1,zorder=10)
++ ax=axes3(fig,2,2,3,X,'B2c  Face area and solid-to-fluid normals');surface(ax,s,area*1e12,label='Triangle area (µm²)',cmap='magma');q=np.arange(0,len(area),110);ax.computed_zorder=False;ax.quiver(*(s['surface_coordinates_m'][q]*1e3).T,*(s['n_clot'][q]*.08).T,color='#253c54',arrow_length_ratio=.3,linewidth=.9,zorder=10)
++ ax=fig.add_subplot(2,2,4);names=['Pressure','Shear','Normal visc.','Total'];F=np.array([d[k+'_force_N'].sum(0) for k in ['pressure','shear','viscous_normal','total']])*1e6
++ for i,col in enumerate(['#398ac0','#e99f36','#c74447']):ax.bar(np.arange(4)+(i-1)*.23,F[:,i],.23,label='xyz'[i],color=col)
++ ax.set(xticks=np.arange(4),xticklabels=names,ylabel='Integrated force (µN)',title='B2d  Real component forces');ax.legend(ncol=3)
++ finish(fig,FB,'B2_native_surface_tractions','σ = −pI + µ(∇u+∇uᵀ), t = σ n_clot; n_clot = −n_fluid. No attachment face or wall reaction included. Vector glyphs drawn in foreground.\nShear arrows: 3 mm/Pa; normal arrows: 0.08 mm. Gauge pressure is tied to the original outlet reference.')
++ fig=plt.figure(figsize=(18,11));ax=axes3(fig,2,3,1,X,'B3a  Original face force magnitude');surface(ax,s,np.linalg.norm(s['total_traction_Pa']*area[:,None],axis=1)*1e9,label='Face force (nN)')
++ vmax=np.linalg.norm(d['total_force_N'],axis=1).max()*1e9
++ for k,(name,field) in enumerate([('Initial local map','total_initial_force_N'),('Conservative result','total_force_N')],2):
++  ax=axes3(fig,2,3,k,X,f'B3{chr(96+k)}  {name}');obj=cloud(ax,X[loaded],np.linalg.norm(d[field][loaded],axis=1)*1e9,norm=Normalize(0,vmax));cbar(fig,obj,ax,'Node force (nN)')
++ ax=fig.add_subplot(2,3,4);names=['pressure','shear','total'];x=np.arange(3)
++ for offset,stage,color in [(-.13,'initial','#94b2c7'),(.13,'corrected','#165989')]:
++  ax.bar(x+offset,[aud['components'][k][stage]['moment_scaled_error'] for k in names],.25,color=color,label=stage)
++ ax.set(yscale='log',xticks=x,xticklabels=names,ylabel='Moment error / (Σ|F_face| L)',title='B3d  Moment conservation');ax.axhline(1e-8,color='#c74447',ls='--',label='Frozen gate');ax.legend()
++ ax=fig.add_subplot(2,3,5);ax.bar(names,[quality['metrics'][k]['correction_L2_fraction']*100 for k in names],color=['#398ac0','#e99f36','#d0524f']);ax.axhline(10,color='#333333',ls='--');ax.set(ylabel='Correction / initial force L2 (%)',title='B3e  Frozen 10% engineering screen')
++ ax=fig.add_subplot(2,3,6)
++ for stage,field in [('initial','total_initial_force_N'),('corrected','total_force_N')]:
++  f=np.sort(np.linalg.norm(d[field][loaded],axis=1))[::-1];ax.plot(np.arange(1,len(f)+1)/len(f)*100,np.cumsum(f)/sum(f)*100,label=stage)
++ ax.set(xlabel='Largest-force nodes (% of 580)',ylabel='Cumulative |force| (%)',title='B3f  Force concentration');ax.legend()
++ finish(fig,FB,'B3_conservation_and_local_quality','PASS: frozen engineering screen. Total correction 0.7716%; shear correction 9.0150%. No reversed pressure/shear node forces.\nAll components conserve force and moment; near-zero torques use the disclosed physical force × length scale, not a hidden denominator.')
++ fig=plt.figure(figsize=(19,7));scales={'pressure':5e7,'shear':1e9,'total':5e7};arrowrecord={}
++ for i,key in enumerate(['pressure','shear','total'],1):
++  ax=axes3(fig,1,3,i,np.r_[X,anchors],f'B4{chr(96+i)}  {key.capitalize()} nodal forces');cloud(ax,anchors,'#d5b053',size=5);cloud(ax,X[~loaded],'#cdd8df',size=7);cloud(ax,X[loaded],'#287fba',size=10);ids=np.flatnonzero(loaded)[::7];vec=d[key+'_force_N'][ids]*scales[key];ax.computed_zorder=False;ax.quiver(*(X[ids]*1e3).T,*vec.T,color='#b72c20',arrow_length_ratio=.25,linewidth=1.0,zorder=10);arrowrecord[key]=dict(displayed_node_ids=d['material_atom_id'][ids],scale_mm_per_N=scales[key]);ax.text2D(.02,.93,f'Arrows × {scales[key]:.1e} mm/N',transform=ax.transAxes,fontsize=10)
++ fig.legend(handles=[Line2D([0],[0],marker='o',ls='',color='#287fba',label='580 loaded nodes'),Line2D([0],[0],marker='o',ls='',color='#cdd8df',label='1,347 internal / unloaded'),Line2D([0],[0],marker='o',ls='',color='#d5b053',label='1,561 fixed anchors')],loc='upper center',ncol=3,bbox_to_anchor=(.5,.98))
++ finish(fig,FB,'B4_material_point_loading','Actual 1,927-node V3 clot. Every node retained; every seventh loaded node carries a displayed arrow for legibility.\nCoordinates remain undeformed; scaled vector glyphs drawn in foreground for readability. Node forces in N; production coupling not run.');save(B/'ARROW_VISUALIZATION_SCALE.json',arrowrecord)
++ nm=dict(np.load(A/'M5C_NEIGHBORHOOD.npz'));nv=dict(np.load(A/'V3_NEIGHBORHOOD.npz'));fig=plt.figure(figsize=(18,12))
++ colors={'interior':'#2388b8','free_surface':'#78c5c3','grip':'#dfbc56','grip_corner':'#c84342','initial_notch':'#884fa0','notch_tip':'#e18932','anchor':'#ddd0a5'}
++ for j,(name,a) in enumerate([('M5C',nm),('V3',nv)]):
++  for k,(field,title) in enumerate([('labels','Actual region identity'),('neighbors','Reference neighbor count'),('ratio','Weighted volume / full lattice')]):
++   ax=axes3(fig,2,3,j*3+k+1,a['X'],f'A1{chr(97+j*3+k)}  {name}: {title}')
++   if field=='labels':
++    for v in np.unique(a['labels']):cloud(ax,a['X'][a['labels']==v],colors[v],size=7,label=v.replace('_',' '))
++    ax.legend(fontsize=8,loc='upper left')
++   else:obj=cloud(ax,a['X'],a['neighbors'] if field=='neighbors' else a['m']/a['full_m'],size=8);cbar(fig,obj,ax,'Count' if field=='neighbors' else 'm / m_full')
++ finish(fig,FA,'A1_actual_neighborhoods','Real reference topology: M5C 2,880 nodes with saved pre-notch bonds removed; V3 1,927 material + 1,561 anchor nodes.\nThe V3 neighborhood diagnostic includes actual interface/anchor bonds. A boundary force under affine strain is not by itself a traction-free BC error.')
++ wm=dict(np.load(A/'M5C_WEIGHTS.npz'));wv=dict(np.load(A/'V3_WEIGHTS.npz'));me=dict(np.load(A/'FORCE_ENERGY_DIAGNOSTIC.npz'));mj=json.loads((A/'FORCE_ENERGY_COMPATIBILITY.json').read_text());fig=plt.figure(figsize=(18,12))
++ for i,(name,a) in enumerate([('M5C',wm),('V3',wv)],1):
++  ax=axes3(fig,2,3,i,a['X'],f'A2{chr(96+i)}  {name}: actual fitted weights');obj=cloud(ax,a['X'],a['weights'],norm=Normalize(0,4),size=9);cbar(fig,obj,ax,'Weight (colors clipped to 0–4)');neg=a['weights']<0
++  if neg.any():
++   ax.computed_zorder=False;ax.scatter(*(a['X'][neg]*1e3).T,c='#d9253f',s=24,marker='x',label='15 negative weights',zorder=12);ax.legend(fontsize=9,loc='upper left')
++ ax=fig.add_subplot(2,3,3)
++ for name,a in [('M5C',wm),('V3',wv)]:ax.scatter(a['operator_residual_before'],a['operator_residual_after'],s=5,alpha=.35,label=name)
++ ax.plot([0,8],[0,8],ls='--',c='black');ax.set(xlabel='Unweighted row-scaled residual',ylabel='Weighted row-scaled residual',title='A2c  Operator matching is not uniformly improved');ax.set_yscale('symlog',linthresh=10);ax.legend()
++ ax=fig.add_subplot(2,3,4)
++ for name,a in [('M5C',wm),('V3',wv)]:ax.hist(np.log10(a['local_condition']),bins=30,alpha=.6,label=name)
++ ax.set(xlabel='log10 regularized local condition',ylabel='Node count',title='A2d  V3: 15 negative nodes / 59 nonpositive bonds');ax.legend()
++ ax=fig.add_subplot(2,3,5);names=['original','weighted_diagnostic'];ax.bar([0,1],[mj[k]['U_J']*1e12 for k in names],color=['#398ac0','#d99632']);ax.set(xticks=[0,1],xticklabels=['Original','Weighted diagnostic'],ylabel='Elastic U (pJ)',title='A2e  Same prescribed M5C deformation');ax.text(.03,.92,'Max component FD error < 1×10⁻⁸\nAdaptation; no response certification',transform=ax.transAxes,va='top',fontsize=10)
++ ax=axes3(fig,2,3,6,me['X'],'A2f  M5C change in local force');obj=cloud(ax,me['X'],np.linalg.norm(me['weighted_diagnostic_force_N']-me['original_force_N'],axis=1)*1e6,size=7);cbar(fig,obj,ax,'|Δforce| (µN)')
++ finish(fig,FA,'A2_weights_and_variational_diagnostic','Pinned perifit OSB implementation; actual source has 54 operator rows. No weight clipping, mesh cleanup, or crack restoration.\nM5C kernel-preserving weighted potential passes finite differences, but this does not validate Shojaei transfer to native LPS. V3 weights fail positivity.')
++ pw=np.load(A/'INTERACTION_PATH_WORK.npz');fig=plt.figure(figsize=(18,11));ax=fig.add_subplot(2,3,1);ax.plot(pw['corner_energy_J']*1e12,'o-',label='Independent U');ax.plot(pw['all_pair_cumulative_work_J'].sum(1)*1e12,'x--',label='Σ unordered-pair work');ax.set(xticks=range(5),xticklabels=['0','a','a+b','b','0'],ylabel='Energy / work (pJ)',title='A3a  Actual reversible closed deformation path');ax.legend()
++ ax=fig.add_subplot(2,3,2);ax.plot(pw['selected_pair_cumulative_work_J']*1e15,'o-',c='#c44242');ax.axhline(0,c='#555',lw=.7);ax.set(xticks=range(5),xticklabels=['0','a','a+b','b','0'],ylabel='Single-pair accumulated work (fJ)',title='A3b  Pair IDs 240–720: nonzero closed-path work')
++ ax=fig.add_subplot(2,3,3);v=pw['all_pair_cumulative_work_J'][-1]*1e15;ax.hist(v,bins=60,color='#398ac0');ax.set(xlabel='Pair closed-path work (fJ)',ylabel='Unordered pair count',title='A3c  Pair work transfers cancel in the total')
++ base=ROOT/'verification/lammps_material_macro_calibration_and_timestep_audit_v1/20261010T215825Z'
++ for i,name in enumerate(['M1','M2'],4):
++  h=np.genfromtxt(base/name/'history.csv',names=True,delimiter=',');ax=fig.add_subplot(2,3,i)
++  for f,label in [('U_bulk_J','Elastic U'),('W_ext_J','External work'),('D_num_J','Numerical damping')]:ax.plot(h['time_s']*1e3,h[f]*1e12,label=label)
++  ax.set(xlabel='Original elapsed time (ms)',ylabel='Energy (pJ)',title=f'A3{chr(96+i)}  Reused {name} load–unload');ax.legend(fontsize=9)
++ ax=fig.add_subplot(2,3,6);ax.axis('off');ax.text(0,.98,'Definitions and limits\n\nCurrent: s > s00, s00 = 0.15\n\nFoster: ∫(Tᵢⱼ − Tⱼᵢ) · dη\nWork density: J/m⁶\nDiscrete pair work: Vᵢ Vⱼ × density\n\nwc = 4 Gc / (π δ⁴)\nThis formula is not an LPS calibration.\n\nUnique pair elastic potential:\nNOT ESTABLISHED\nProduction law: UNCHANGED',va='top',fontsize=13)
++ finish(fig,FA,'A3_path_work_and_failure_limits','Computed path work agrees with global elastic energy to ~1.2×10⁻¹⁴ (scaled), while individual pair loops need not close.\nM1/M2 are historical damped dynamics; their external work includes kinetic energy and numerical damping. No new fracture or calibrated Gc.')
++ save(COMMON/'FIGURE_PROVENANCE.json',dict(figures=record,real_data_only=True,arrow_subset_does_not_change_exported_load=True));save(COMMON/'FIGURE_RESOURCES.json',cost(t,cpu));print('generated',len(record),'PNG/SVG groups')
++if __name__=='__main__':run()
+--- /dev/null
++++ analysis/traction_failure_v1/freeze_b.py
+@@ -0,0 +1,14 @@
++from analysis.traction_failure_v1.common import *
++assert (B/'GEOMETRY_PREFLIGHT.json').exists()
++assert not (B/'MAPPING_DESIGN_FREEZE.json').exists()
++save(B/'MAPPING_DESIGN_FREEZE.json',dict(utc=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),formal_fields=1,new_CFD=0,new_fracture=0,
++ selection='Material nodes only, exact distance to exposed triangles <= dx. Face support distance <= delta; nearest-surface normal dot face normal > 0; face lies no more than dx/4 inside local tangent halfspace. No anchors, no dilation/rescaling.',
++ node_surface_distance_m=DX,face_support_radius_m=DELTA,normal_dot_min=0.,halfspace_tolerance_m=DX/4,
++ initial_kernel='Wendland C2: (1-q)^4(4q+1), q=distance/delta; nonnegative column normalization on actual face centroid. No parameter scan.',
++ target_moment='Original degree-2 three-point triangular quadrature, pressure linear and viscous gradient cellwise constant. Centroid moment discrepancy reported separately.',
++ correction='One exact six-equality minimum quadratic-norm correction. Per-component D_i=|f_initial_i|^2+(0.01*sum_face|F|*Aeff_i/Atotal)^2. Min sum |df_i|^2/D_i; df=D C^T(C D C^T)^-1 residual. Length-normalized moments. No additional fitted coefficients.',
++ gates=dict(all_faces_supported=True,force_and_moment_scaled_error=1e-8,constraint_rank=6,normalized_gram_condition_max=1e8,correction_L2_fraction_max=.10,
++ pressure_or_shear_reverse_load_fraction_max=.01,pressure_outward_load_fraction_max=.01,top_one_percent_load_share_change_max=.02,regional_load_share_change_max=.05,single_node_total_force_share_max=.02),
++ gate_scope='Engineering admissibility only; pressure/shear/total checked independently. Normal-viscous component conservation and full diagnostics; relative local direction gates exclude this sign-changing tiny component. Node-relative tails reported without hidden epsilon. Regions x quartiles, contact rim and interface; initial-to-corrected regional change gate. >10% is conservatively unresolved, not a material law.',
++ geometry_preflight_sha256=sha(B/'GEOMETRY_PREFLIGHT.json')))
++print((B/'MAPPING_DESIGN_FREEZE.json').read_text())
+--- /dev/null
++++ analysis/traction_failure_v1/launch.py
+@@ -0,0 +1,9 @@
++"""Start only this round's explicitly named finite offline jobs, without restart."""
++from analysis.traction_failure_v1.common import *
++import subprocess,sys,shlex
++label,module=sys.argv[1:];assert label in ['B_mapping','B_support_repair','A_offline','figures','figures_fixed','figures_final']
++name=f'y_clot_traction_{label}_{RUN}';log=COMMON/'logs';log.mkdir(exist_ok=True);wrapper=COMMON/(label+'.sh');conf=Path('/etc/supervisor/conf.d')/(name+'.conf');assert not conf.exists()
++wrapper.write_text('#!/bin/bash\nset -e\nsource /workspace/y_clot/env.sh\ncd /workspace/y_clot/project\nexport OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 PYTHONDONTWRITEBYTECODE=1\nexec python -m '+shlex.quote(module)+'\n');wrapper.chmod(0o755)
++conf.write_text(f'[program:{name}]\ncommand={wrapper}\nautostart=false\nautorestart=false\nstartsecs=0\nstopasgroup=true\nkillasgroup=true\nstdout_logfile={log/label}.log\nredirect_stderr=true\nstdout_logfile_maxbytes=0\n')
++subprocess.run(['supervisorctl','reread'],check=True,capture_output=True);subprocess.run(['supervisorctl','update',name],check=True);subprocess.run(['supervisorctl','start',name],check=True)
++save(COMMON/(label+'_LAUNCH.json'),dict(name=name,command=['python','-m',module],wrapper_sha256=sha(wrapper),supervisor_config=str(conf),autostart=False,autorestart=False))
+--- /dev/null
++++ analysis/traction_failure_v1/map_b.py
+@@ -0,0 +1,103 @@
++"""One frozen face-to-material map followed by one minimum-norm correction."""
++from analysis.traction_failure_v1.common import *
++from scipy.spatial import cKDTree
++from scipy.sparse import coo_matrix
++from scipy.sparse.csgraph import dijkstra
++
++def constraints(X,x0,L):
++ r=(X-x0)/L;n=len(X);C=np.zeros((6,3*n));C[:3]=np.tile(np.eye(3),(1,n))
++ for i,(x,y,z) in enumerate(r):C[3:,3*i:3*i+3]=[[0,-z,y],[z,0,-x],[-y,x,0]]
++ return C
++
++def apply_nodal_forces(atom_ids,existing_nodal_N,material_ids,force_N,anchor_ids):
++ """Offline adapter specification: arrays already converted to N; NO volume factor."""
++ ids=np.asarray(atom_ids);mid=np.asarray(material_ids);assert len(set(ids.tolist()))==len(ids)
++ assert len(set(mid.tolist()))==len(mid) and not np.isin(mid,anchor_ids).any()
++ lookup={int(k):i for i,k in enumerate(ids)};assert all(int(k) in lookup for k in mid)
++ result=np.array(existing_nodal_N,copy=True)
++ for k,f in zip(mid,force_N):result[lookup[int(k)]]+=f
++ return result
++
++def run():
++ start=time.perf_counter();cpu=time.process_time();freeze=json.loads((B/'MAPPING_DESIGN_FREEZE.json').read_text());assert not (B/'FORMAL_MAPPING_START.json').exists()
++ save(B/'FORMAL_MAPPING_START.json',dict(run=RUN,utc=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),freeze_sha256=sha(B/'MAPPING_DESIGN_FREEZE.json'),code_sha256=sha(__file__)))
++ g=dict(np.load(B/'GEOMETRY_PREFLIGHT.npz'));s=dict(np.load(PREV/'refined/CLOT_SURFACE_TRACTIONS.npz'));z=dict(np.load(V3/'V3_MATERIAL_POINTS_AND_BONDS.npz'));X=g['X'];N=len(X);x0=X.mean(0);L=np.linalg.norm(np.ptp(X,axis=0));cent=s['surface_coordinates_m'];area=s['triangle_area_m2'];normal=s['n_clot'];eligible=g['distance_to_surface_m']<=DX;node_norm=normal[g['closest_surface_triangle']];index=np.flatnonzero(eligible);tree=cKDTree(X[index]);row=[];col=[];values=[];linkdist=[];coverage=[]
++ repair_path=B/'CONTACT_RIM_SUPPORT_REPAIR_FREEZE.json';repair=json.loads(repair_path.read_text()) if repair_path.exists() else None
++ repaired={}
++ if repair:
++  faces=s['triangle_mesh_node_ids'];edges={}
++  for fi,face in enumerate(faces):
++   for a,b in [(face[0],face[1]),(face[1],face[2]),(face[2],face[0])]:edges.setdefault(tuple(sorted([int(a),int(b)])),[]).append(fi)
++  gr=[];gc=[];gv=[]
++  for fs in edges.values():
++   if len(fs)==2:
++    a,b=fs;gr.extend([a,b]);gc.extend([b,a]);gv.extend([np.linalg.norm(cent[a]-cent[b])]*2)
++  graph=coo_matrix((gv,(gr,gc)),shape=(len(area),len(area))).tocsr();bad=repair['faces'];dist=dijkstra(graph,directed=False,indices=bad,limit=DELTA)
++  repaired={f:dist[k] for k,f in enumerate(bad)}
++ for f,near in enumerate(tree.query_ball_point(cent,DELTA)):
++  ids=index[near];delta=cent[f]-X[ids];dd=np.linalg.norm(delta,axis=1)
++  inside=delta@normal[f]>=-DX/4
++  if f in repaired:inside=np.isfinite(repaired[f][g['closest_surface_triangle'][ids]])
++  keep=(node_norm[ids]@normal[f]>0)&inside&(dd<DELTA);ids=ids[keep];dd=dd[keep];coverage.append(len(ids))
++  if len(ids):
++   q=dd/DELTA;w=(1-q)**4*(4*q+1);w/=w.sum();row.extend(ids);col.extend([f]*len(ids));values.extend(w);linkdist.extend(dd)
++ save(B/'COVERAGE.json',dict(face_count=len(area),support_count=stats(coverage),unsupported_faces=np.flatnonzero(np.array(coverage)==0),eligible_nodes=int(eligible.sum()),support_distance_m=stats(linkdist)))
++ if min(coverage)==0:
++  save(B/'FINAL_STATUS.json',{'LOCAL_MAPPING_QUALITY':'MAPPING_LOCALITY_OR_MOMENT_UNRESOLVED','reason':'Unsupported exposed faces; no remote-node fallback','formal_mapping_attempts':1});return
++ W=coo_matrix((values,(row,col)),shape=(N,len(area))).tocsr();aeff=np.asarray(W@area);loaded=aeff>0;ix=np.flatnonzero(loaded);C6=constraints(X[ix],x0,L)
++ assert np.max(abs(np.asarray(W.sum(0)).ravel()-1))<1e-13 and min(values)>0
++ tp=s['pressure_traction_Pa'];ts=s['tangential_traction_Pa'];tn=s['viscous_normal_traction_Pa'];qxyz=s['quadrature_coordinates_m'];qa=s['quadrature_area_m2'];qpressure=-s['quadrature_pressure_Pa'][:,:,None]*normal[:,None];qn=np.repeat(tn[:,None],3,axis=1);qs=np.repeat(ts[:,None],3,axis=1)
++ comp={'pressure':(tp,qpressure),'shear':(ts,qs),'viscous_normal':(tn,qn)};initial={};corrected={};aud={};quality={};Ds={};lambdas={};targets={};ok=[]
++ avg_norm=np.asarray(W@(normal*area[:,None]));avg_norm[loaded]/=np.linalg.norm(avg_norm[loaded],axis=1)[:,None]
++ rim_source=s['contact_rim_mask'];rim_nodes=np.asarray(W@(area*rim_source))/np.where(loaded,aeff,1.)>.5
++ regions={f'xquartile{k+1}':(X[:,0]>=a)&(X[:,0]<(b if k<3 else b+DX)) for k,(a,b) in enumerate(zip(np.quantile(X[ix,0],[0,.25,.5,.75]),np.quantile(X[ix,0],[.25,.5,.75,1])))}
++ regions['contact_rim']=rim_nodes;regions['interface_connected']=np.isin(np.arange(N),g['interface_material_indices'])
++ source_integrals={};centroid_discrepancy={}
++ for key,(traction,qtraction) in comp.items():
++  ff=traction*area[:,None];F=ff.sum(0);M=(np.cross(qxyz-x0,qtraction)*qa[:,:,None]).sum((0,1));Mc=np.cross(cent-x0,ff).sum(0);scale=np.linalg.norm(ff,axis=1).sum();source_integrals[key]={'force_N':F,'quadrature_moment_Nm':M,'centroid_moment_Nm':Mc,'sum_face_force_norm_N':scale};centroid_discrepancy[key]=M-Mc
++  f0=np.asarray(W@ff);target=np.r_[F,M/L];residual=target-C6@f0[ix].ravel();D=np.linalg.norm(f0[ix],axis=1)**2+(.01*scale*aeff[ix]/area.sum())**2;Dr=np.repeat(D,3);gram=(C6*Dr)@C6.T;lam=np.linalg.solve(gram,residual);df=(Dr*(C6.T@lam)).reshape(-1,3);f=f0.copy();f[ix]+=df
++  initial[key]=f0;corrected[key]=f;Ds[key]=D;lambdas[key]=lam;targets[key]=target
++  au={}
++  for label,vec in [('initial',f0),('corrected',f)]:
++   force=vec.sum(0);moment=np.cross(X-x0,vec).sum(0);au[label]=dict(force_N=force,moment_Nm=moment,force_error_N=force-F,moment_error_Nm=moment-M,force_scaled_error=np.linalg.norm(force-F)/scale,moment_scaled_error=np.linalg.norm(moment-M)/(scale*L))
++  au.update(rank=int(np.linalg.matrix_rank(gram)),normalized_gram_condition=float(np.linalg.cond(gram)),force_scale_N=scale,length_scale_m=L);aud[key]=au
++  quality[key]=dict(correction_L2_fraction=np.linalg.norm(df)/np.linalg.norm(f0),single_node_relative_correction=stats(np.linalg.norm(df,axis=1)/np.linalg.norm(f0[ix],axis=1)),reverse_load_fraction=float(np.linalg.norm(f,axis=1)[np.einsum('ij,ij->i',f,f0)<0].sum()/np.linalg.norm(f,axis=1).sum()),regional_fraction={name:{stage:float(np.linalg.norm(vec,axis=1)[mask].sum()/np.linalg.norm(vec,axis=1).sum()) for stage,vec in [('initial',f0),('corrected',f)]} for name,mask in regions.items()})
++  if key=='pressure':quality[key]['outward_pressure_load_fraction']=float(np.linalg.norm(f,axis=1)[np.einsum('ij,ij->i',f,avg_norm)>0].sum()/np.linalg.norm(f,axis=1).sum())
++  if key=='shear':quality[key]['normal_component_absolute_fraction']=float(np.abs(np.einsum('ij,ij->i',f,avg_norm)).sum()/np.linalg.norm(f,axis=1).sum())
++  top=max(1,int(np.ceil(len(ix)*.01)))
++  quality[key]['top_one_percent_load_share']={stage:float(np.sort(np.linalg.norm(vec[ix],axis=1))[-top:].sum()/np.linalg.norm(vec[ix],axis=1).sum()) for stage,vec in [('initial',f0),('corrected',f)]}
++  cosine=np.einsum('ij,ij->i',f[ix],f0[ix])/(np.linalg.norm(f[ix],axis=1)*np.linalg.norm(f0[ix],axis=1));quality[key]['direction_change_degrees']=stats(np.degrees(np.arccos(np.clip(cosine,-1,1))))
++ initial['total']=sum(initial.values());corrected['total']=sum(corrected.values());F=sum(v['force_N'] for v in source_integrals.values());M=sum(v['quadrature_moment_Nm'] for v in source_integrals.values());scale=np.linalg.norm((tp+ts+tn)*area[:,None],axis=1).sum()
++ assert np.linalg.norm(F-s['integrated_total_force_N'])/scale<1e-12;assert np.linalg.norm(M-s['integrated_total_torque_Nm'])/(scale*L)<1e-12
++ aud['total']={stage:dict(force_N=vec.sum(0),moment_Nm=np.cross(X-x0,vec).sum(0),force_scaled_error=np.linalg.norm(vec.sum(0)-F)/scale,moment_scaled_error=np.linalg.norm(np.cross(X-x0,vec).sum(0)-M)/(scale*L)) for stage,vec in [('initial',initial['total']),('corrected',corrected['total'])]}
++ quality['total']=dict(correction_L2_fraction=np.linalg.norm(corrected['total']-initial['total'])/np.linalg.norm(initial['total']),single_node_force_share_max=np.linalg.norm(corrected['total'],axis=1).max()/np.linalg.norm(corrected['total'],axis=1).sum())
++ gates=freeze['gates'];checks={}
++ for k in ['pressure','shear','viscous_normal','total']:
++  checks[k+'_force']=aud[k]['corrected']['force_scaled_error']<=gates['force_and_moment_scaled_error'];checks[k+'_moment']=aud[k]['corrected']['moment_scaled_error']<=gates['force_and_moment_scaled_error']
++  if k!='total':checks[k+'_constraint']=aud[k]['rank']==6 and aud[k]['normalized_gram_condition']<gates['normalized_gram_condition_max']
++  if k!='viscous_normal':checks[k+'_correction']=quality[k]['correction_L2_fraction']<=.10
++  if k in ['pressure','shear']:
++   checks[k+'_reverse']=quality[k]['reverse_load_fraction']<=.01;v=quality[k]['top_one_percent_load_share'];checks[k+'_concentration_change']=abs(v['corrected']-v['initial'])<=.02
++   checks[k+'_regional_change']=all(abs(v['corrected']-v['initial'])<=.05 for v in quality[k]['regional_fraction'].values())
++ checks['pressure_inward']=quality['pressure']['outward_pressure_load_fraction']<=.01;checks['maximum_concentration']=quality['total']['single_node_force_share_max']<=.02
++ passed=all(checks.values());name='CLOT_NODAL_TRACTION_FORCES.npz' if passed else 'DIAGNOSTIC_CANDIDATE_NODAL_TRACTION_FORCES.npz'
++ data=dict(material_atom_id=g['material_ids'],reference_coordinates_m=X,support_node=loaded,effective_area_m2=aeff,reference_point_m=x0,nearest_surface_normal=avg_norm,anchor_atom_id=np.arange(N+1,len(z['X'])+1),anchor_reference_coordinates_m=z['X'][N:])
++ for k in corrected:data[k+'_force_N']=corrected[k];data[k+'_initial_force_N']=initial[k]
++ np.savez_compressed(B/name,**data)
++ np.savez_compressed(B/'CFD_TO_LAMMPS_MAPPING_MATRIX.npz',data=W.data,indices=W.indices,indptr=W.indptr,shape=np.array(W.shape),loaded_node_indices=ix,constraint_matrix=C6,length_scale_m=L,face_support_distance_m=np.array(linkdist),reference_point_m=x0,**{k+'_D':v for k,v in Ds.items()},**{k+'_lambda':v for k,v in lambdas.items()})
++ source_regions={}
++ for label,field in [('pressure',tp),('shear',ts),('total',tp+ts+tn)]:
++  magnitude=area*np.linalg.norm(field,axis=1);source_regions[label]=dict(contact_rim_fraction=float(magnitude[rim_source].sum()/magnitude.sum()),nodal_effective_area_weighted_rim_fraction=float((np.linalg.norm(initial[label],axis=1)*rim_nodes).sum()/np.linalg.norm(initial[label],axis=1).sum()))
++ save(B/'CFD_SURFACE_FORCE_AUDIT.json',dict(components=source_integrals,total_force_N=F,total_moment_Nm=M,centroid_to_exact_moment_difference_Nm=centroid_discrepancy,reference_point_m=x0,original_report_recovered=True,face_pressure_min_Pa=float(s['pressure_Pa'].min()),open_surface_pressure_offset_1Pa_delta_force_N=-np.einsum('i,ij->j',area,normal)))
++ save(B/'CONSERVATIVE_MAPPING_AUDIT.json',dict(components=aud,normalization='sum_f |F_f| and that sum times material bounding-box diagonal',checks=checks,formal_mapping_attempts=1,minimal_correction_algorithms=1))
++ save(B/'LOCAL_MAPPING_QUALITY.json',dict(status='PASS_ENGINEERING_SCREEN' if passed else 'MAPPING_LOCALITY_OR_MOMENT_UNRESOLVED',metrics=quality,checks=checks,effective_area_m2=stats(aeff[loaded]),support_nodes=int(loaded.sum()),force_free_internal_nodes=int((~loaded).sum()),source_and_target_regions=source_regions,far_support_face_fraction=float(np.mean(g['face_nearest_material_distance_m']>2*DX)),far_support_area_fraction=float(area[g['face_nearest_material_distance_m']>2*DX].sum()/area.sum()),scope='Algebraic conservation and frozen locality screen only, not pointwise convergence/biological validation.'))
++ meta=dict(run_id=RUN,status='OFFLINE_ENGINEERING_SCREEN_PASSED' if passed else 'DIAGNOSTIC_ONLY_NOT_CERTIFIED',file=name,production_eligible=False,production_not_run=True,source_CFD='20261011T154854Z/refined',source_SHA=json.loads((B/'INPUT_SHA.json').read_text()),coordinates='world xyz metres',coordinate_transform=np.eye(4),force_units='N already integrated; add after existing native force-density * volume conversion; NEVER multiply these forces by volume',surface_normal='n_clot=-n_fluid verified using adjacent tetrahedron',pressure='relative gauge with original zero-reference outlet traction; open patch pressure force gauge-dependent',reference_point_m=x0,method='One Wendland local column-stochastic face map plus exact minimum correction; see frozen design',map_sha256=sha(B/'CFD_TO_LAMMPS_MAPPING_MATRIX.npz'),force_sha256=sha(B/name),double_counting='Existing detached-component background drag must be allocated to disjoint objects/stages; fixed intact traction cannot follow changed fragment surfaces without updating geometry/flow')
++ save(B/'CLOT_NODAL_TRACTION_METADATA.json',meta)
++ save(B/'GEOMETRY_AND_UNIT_AUDIT.json',dict(transform=np.eye(4),surface_tag=5,material_nodes=N,anchors_excluded=len(z['X'])-N,loaded_nodes=int(loaded.sum()),coordinate_center_m=x0,continuous_volume_mm3=.2715743882436176,CFD_volume_mm3=.271576593161914,discrete_volume_mm3=float(z['volume'][:N].sum()*1e9),relative_discrete_continuous_difference=float(z['volume'][:N].sum()*1e9/.2715743882436176-1),no_volume_force_rescale=True,exposed_area_m2=area.sum(),area_sum_error_m2=aeff.sum()-area.sum(),nearest_distances=json.loads((B/'GEOMETRY_PREFLIGHT.json').read_text()),exposed_support_distance_m=stats(g['distance_to_surface_m'][loaded]),effective_area_over_dx2=stats(aeff[loaded]/DX**2),all_faces_supported=True,unit_table=dict(length='m',area='m^2',traction='Pa',force='N',torque='N m')))
++ # Meaningful offline integration check: nonsequential native IDs and exactly-once units.
++ ids=np.arange(1,len(z['X'])+1)[::-1];base=np.ones_like(z['X'])*2e-9;result=apply_nodal_forces(ids,base,g['material_ids'],corrected['total'],data['anchor_atom_id']);delta=result-base
++ uniterr=np.max(abs(delta[::-1][:N]-corrected['total']));assert uniterr<1e-23 and np.all(delta[np.isin(ids,data['anchor_atom_id'])]==0)
++ save(B/'INTERFACE_UNIT_TESTS.json',dict(nonsequential_ID_mapping=True,anchors_untouched=True,already_N_added_exactly_once=True,max_absolute_error_N=uniterr,production_deck_modified=False))
++ states=dict(CFD_SOURCE_IDENTITY='PASS_NATIVE_FULL_PRECISION_SHA',GEOMETRY_REGISTRATION='PASS_IDENTITY_WITH_DISCLOSED_VOLUME_DIFFERENCE',EXPOSED_SURFACE_IDENTITY='PASS_EXACT_TAG5_TRIANGLES',SURFACE_TRACTION_RECONSTRUCTION='PASS_NATIVE_GRADIENT_AND_PRESSURE',FORCE_CONSERVATION='PASS_ALL_COMPONENTS',MOMENT_CONSERVATION='PASS_ALL_COMPONENTS',LOCAL_MAPPING_QUALITY='PASS_ENGINEERING_SCREEN' if passed else 'MAPPING_LOCALITY_OR_MOMENT_UNRESOLVED',ANCHOR_EXCLUSION='PASS',PRESSURE_REFERENCE_DISCLOSED=True,LAMMPS_FORCE_UNIT_COMPATIBILITY='PASS_OFFLINE_ID_AND_N_INTERFACE',PRODUCTION_COUPLING_NOT_RUN=True)
++ save(B/'FINAL_STATUS.json',dict(run_id=RUN,states=states,formal_fields=1));save(B/'RESOURCES.json',cost(start,cpu));print(json.dumps({'passed':passed,'failed_checks':[k for k,v in checks.items() if not v],'support_nodes':int(loaded.sum()),'correction':{k:q['correction_L2_fraction'] for k,q in quality.items()}},indent=2))
++if __name__=='__main__':run()
+--- /dev/null
++++ analysis/traction_failure_v1/offline_a.py
+@@ -0,0 +1,121 @@
++"""Geometry weights and one small-specimen energy diagnostic; never native failure."""
++from analysis.traction_failure_v1.common import *
++import sys,ctypes
++from scipy.sparse import lil_matrix
++from scipy.sparse.linalg import bicgstab
++from scipy.spatial import cKDTree
++
++class Potential:
++ """Locked uniform LPS expanded potential, optionally symmetric bond weights.
++
++ U=V/2*(K-5G/3)*sum(theta^2)+15G V^2/2*sum_b h*w*e^2/r*(1/m_i+1/m_j).
++ theta_i=3 V/m_i sum_alive h*w*e. m is the ORIGINAL pre-damage reference
++ sum(h*r*V), never altered mid-path. w=1 reproduces the independent evaluator.
++ Weighted version is a variational diagnostic, NOT exact Shojaei reproduction.
++ """
++ def __init__(self,X,b,w=None):
++  self.X=X;self.b=b;self.i,self.j=b.T;self.r=np.linalg.norm(X[self.j]-X[self.i],axis=1);self.h=np.where(abs(self.r-DELTA)<=DX/2,(DELTA+DX/2-self.r)/DX,1.);self.m=np.bincount(b.ravel(),weights=np.repeat(self.h*self.r*V,2),minlength=len(X));self.w=np.ones(len(b)) if w is None else (w[self.i]+w[self.j])/2
++ def evaluate(self,x):
++  y=x[self.j]-x[self.i];length=np.linalg.norm(y,axis=1);e=length-self.r;e[np.abs(e)<2.2204e-16]=0
++  theta=3*V*np.bincount(self.b.ravel(),weights=np.repeat(self.h*self.w*e,2),minlength=len(x))/self.m
++  U=.5*(K-5*G/3)*V*np.dot(theta,theta)+7.5*G*V*V*np.sum(self.h*self.w/self.r*e**2*(1/self.m[self.i]+1/self.m[self.j]))
++  magnitude=V*V*self.h*self.w*((3*K-5*G)*(theta[self.i]/self.m[self.i]+theta[self.j]/self.m[self.j])+15*G/self.r*(1/self.m[self.i]+1/self.m[self.j])*e)
++  pair=magnitude[:,None]*y/length[:,None];force=np.stack([np.bincount(self.i,weights=pair[:,d],minlength=len(x))-np.bincount(self.j,weights=pair[:,d],minlength=len(x)) for d in range(3)],axis=1)
++  return U,force,pair,theta
++
++def families(b,n):
++ f=[[] for _ in range(n)]
++ for i,j in b:f[i].append(int(j));f[j].append(int(i))
++ return f
++
++def weight_audit(name,X,b):
++ sys.path.insert(0,str(A/'sources/perifit'))
++ import perifit.core.local_system as ls
++ from perifit.core.targets import build_targets_osb
++ original=ls._solve_local;conditions=[];residuals=[];regularizers=[];rowcounts=[];systems=[]
++ def instrument(ML,targets,nF,rel,ab):
++  norm=np.linalg.norm(ML,axis=1);valid=norm>1e-20;MN=ML.copy();MN[valid]/=norm[valid,None];gram=MN.T@MN;lam=max(ab,rel*np.max(abs(np.diag(gram))));conditions.append(np.linalg.cond(gram+lam*np.eye(10)));regularizers.append(lam);rowcounts.append(int(valid[nF:].sum()));systems.append((ML[nF:].copy(),targets.copy(),norm[nF:].copy()));return original(ML,targets,nF,rel,ab)
++ ls._solve_local=instrument
++ coords=(X-X.mean(0))/DELTA;vol=np.full(len(X),V/DELTA**3);fam=families(b,len(X));ds,es=build_targets_osb(1.);mat=lil_matrix((len(X),len(X)));rhs=np.empty(len(X));degenerate=[]
++ for i,ids in enumerate(fam):
++  ret=ls.build_local_system_osb(coords[ids]-coords[i],vol[ids],1.,ds,es)
++  mat[i,i]=1
++  if ret is None:rhs[i]=1;degenerate.append(i);continue
++  beta,coupling=ret;mat[i,ids]=-coupling;rhs[i]=beta
++ matrix=mat.tocsr();weights,info=bicgstab(matrix,rhs,x0=np.ones(len(X)),rtol=1e-10,maxiter=5000);ls._solve_local=original
++ # Evaluate the actual 54 frozen upstream OSB operator rows, not README's 109 claim.
++ before=[];after=[]
++ from perifit.core.local_system import _dphi_all
++ for i,ids in enumerate(fam):
++  xi=coords[ids]-coords[i];r2=np.sum(xi**2,axis=1);dphi=_dphi_all(xi);op=[]
++  for axis in range(3):
++   for k in range(9):op.append(xi[:,axis]/r2*dphi[:,k]*vol[ids])
++  for axis in range(3):
++   for k in range(9):op.append(dphi[:,k]**2*xi[:,axis]**2/r2*vol[ids])
++  op=np.array(op);target=np.r_[ds,es];scale=np.maximum(abs(target),np.sum(abs(op),axis=1));valid=scale>0
++  before.append(np.linalg.norm(((op.sum(1)-target)/scale)[valid]));after.append(np.linalg.norm(((op@((weights[i]+weights[ids])/2)-target)/scale)[valid]))
++ residual=np.linalg.norm(matrix@weights-rhs)/np.linalg.norm(rhs);wb=(weights[b[:,0]]+weights[b[:,1]])/2
++ result=dict(source_commit='66b2192a9f95db29d16adefa162acb579759b925',model='osb; frozen source has54 operator rows, README says109',coordinate_units='nondimensional x/delta,V/delta^3, horizon1 to avoid source absolute1e-20 row cutoff silently dropping SI rows',family='Exact supplied reference topology, never geometric neighbor reconstruction across initial crack',weights=stats(weights),negative_nodes=int((weights<0).sum()),nonpositive_bonds=int((wb<=0).sum()),bond_weights=stats(wb),global_solver_info=int(info),global_relative_residual=residual,local_regularized_gram_condition=stats(conditions),local_operator_rows=stats(rowcounts),degenerate_nodes=degenerate,operator_residual_before=stats(before),operator_residual_after=stats(after),positivity_enforced_by_upstream=False,weight_clipping=False,physical_response_certified=False)
++ np.savez_compressed(A/(name+'_WEIGHTS.npz'),X=X,bonds=b,weights=weights,bond_weights=wb,operator_residual_before=before,operator_residual_after=after,local_condition=conditions)
++ return result,weights
++
++def neighborhood(name,X,b,selected=None,removed=None,mask=None):
++ e=Potential(X,b);n=len(X);xi=X[b[:,1]]-X[b[:,0]];unit=xi/e.r[:,None];second=np.zeros((n,3,3));odd=np.zeros((n,3));count=np.bincount(b.ravel(),minlength=n)
++ for a in range(3):
++  odd[:,a]=np.bincount(b[:,0],weights=e.h*unit[:,a],minlength=n)-np.bincount(b[:,1],weights=e.h*unit[:,a],minlength=n)
++  for d in range(3):second[:,a,d]=3*np.bincount(b.ravel(),weights=np.repeat(e.h*e.r*V*unit[:,a]*unit[:,d],2),minlength=n)/e.m
++ odd/=np.maximum(count,1)[:,None];anis=np.linalg.norm(second-np.eye(3),axis=(1,2));eig=np.linalg.eigvalsh(second)
++ if selected is None:selected=np.arange(n)
++ # Actual same-lattice full-horizon numerical stencil, not continuum m or fabricated reference nodes.
++ q=np.stack(np.meshgrid(np.arange(-4,5),np.arange(-4,5),np.arange(-4,5),indexing='ij'),axis=-1).reshape(-1,3)*DX;r=np.linalg.norm(q,axis=1);r=r[(r>0)&(r<=DELTA)];h=np.where(abs(r-DELTA)<=DX/2,(DELTA+DX/2-r)/DX,1.);fullm=np.sum(h*r*V);fullcount=len(r)
++ labels=np.full(n,'free_surface',dtype='U25');labels[count==fullcount]='interior'
++ if mask is not None:
++  grip=mask.any(1);labels[grip]='grip';corners=grip&((abs(X[:,0])>X[:,0].max()-DELTA)|(abs(X[:,1])>X[:,1].max()-DELTA));labels[corners]='grip_corner'
++ if removed is not None:
++  labels[np.unique(removed)]='initial_notch';tip=np.sqrt((X[:,0]+.0001)**2+X[:,2]**2)<DELTA;labels[tip]='notch_tip'
++ if name=='V3':
++  labels[np.setdiff1d(np.arange(n),selected)]='anchor'
++ result=dict(nodes=len(selected),reference_full_stencil_neighbors=fullcount,full_stencil_weighted_volume_m4=fullm,neighbor_count=stats(count[selected]),weighted_volume_ratio=stats(e.m[selected]/fullm),direction_matrix_anisotropy=stats(anis[selected]),direction_matrix_eigenvalues=stats(eig[selected].ravel()),odd_direction_bias=stats(np.linalg.norm(odd[selected],axis=1)),regions={str(k):dict(count=int(np.sum(labels[selected]==k)),neighbors=stats(count[selected][labels[selected]==k]),m_ratio=stats((e.m/fullm)[selected][labels[selected]==k]),anisotropy=stats(anis[selected][labels[selected]==k])) for k in np.unique(labels[selected])},reference_m='Actual initial topology; m fixed before loading. V3 includes real typed anchor/interface neighbors. M5C excludes saved2570 initial notch bonds.',interpretation='Truncated-neighborhood operator diagnostic; nonzero affine boundary force is not by itself a boundary-condition error.')
++ np.savez_compressed(A/(name+'_NEIGHBORHOOD.npz'),X=X,bonds=b,selected=selected,neighbors=count,m=e.m,full_m=fullm,second_moment=second,anisotropy=anis,odd=odd,labels=labels)
++ return result
++
++def mechanical(X,b,w):
++ baseline=Potential(X,b);corr=Potential(X,b,w);u=np.c_[.003*X[:,0]+.001*X[:,2],-.001*X[:,1],.004*X[:,2]+.0005*(X[:,0]**2/DX)];x=X+u;result={};saved={}
++ for name,model in [('original',baseline),('weighted_diagnostic',corr)]:
++  U,f,pair,theta=model.evaluate(x);rng=np.random.default_rng(1241);d=rng.normal(size=x.shape);d/=np.linalg.norm(d);h=1e-9;fd=-(model.evaluate(x+h*d)[0]-model.evaluate(x-h*d)[0])/(2*h);project=np.sum(f*d);error=abs(fd-project)/max(abs(fd),abs(project))
++  chosen=np.unravel_index(np.argmax(abs(f)),f.shape);xp=x.copy();xm=x.copy();xp[chosen]+=h;xm[chosen]-=h;fdcomp=-(model.evaluate(xp)[0]-model.evaluate(xm)[0])/(2*h);comp_error=abs(fdcomp-f[chosen])/max(abs(fdcomp),abs(f[chosen]));angle=.4;rot=np.array([[np.cos(angle),-np.sin(angle),0],[np.sin(angle),np.cos(angle),0],[0,0,1]]);ur,fr,_,_=model.evaluate(x@rot.T+np.array([.0001,-.0002,.0003]));u0,f0,_,_=model.evaluate(X@rot.T+np.array([.0001,-.0002,.0003]));
++  result[name]=dict(U_J=U,force_L2_N=np.linalg.norm(f),max_node_force_N=np.linalg.norm(f,axis=1).max(),directional_FD_relative_error=error,component_FD_relative_error=comp_error,difference_h_m=h,force_sum_N=f.sum(0),current_torque_Nm=np.cross(x,f).sum(0),rigid_reference_energy_J=u0,rigid_reference_max_force_N=np.linalg.norm(f0,axis=1).max(),objectivity_energy_relative_error=abs(ur-U)/U,rotated_force_relative_error=np.linalg.norm(fr-f@rot.T)/np.linalg.norm(f));saved[name+'_force_N']=f;saved[name+'_theta']=theta
++ # Baseline is independently compared to locked existing C++ evaluator (no compile/native change).
++ from pd_clot.lammps_fragmentation.macro_lab_v1 import Energy
++ native=Energy({'X':X,'bonds':b},DX,ROOT/'analysis/material_macro_audit_v1/energy.so');un,fn=native.eval(np.ascontiguousarray(x),np.ones(len(b),np.uint8),True);ub,fb,_,_=baseline.evaluate(x);result['original_cpp_reference']=dict(relative_energy_error=abs(un-ub)/ub,relative_force_error=np.linalg.norm(fn-fb)/np.linalg.norm(fb),source_sha256=sha(ROOT/'analysis/material_macro_audit_v1/energy.cpp'))
++ result['definition']='Frozen-m kernel-preserving expanded variational diagnostic with upstream geometry weights; NOT paper-exact operator or validated mechanical surface correction. theta uses w, all e^2 terms use w, m original fixed. Ordinary deviatoric-square rewrite acquires extra (5G/6)(1-m_weighted/m)*theta^2 term; omitting it changes the potential.'
++ result['passes_FD']=all(result[k]['directional_FD_relative_error']<1e-5 and result[k]['component_FD_relative_error']<1e-5 for k in ['original','weighted_diagnostic']);np.savez_compressed(A/'FORCE_ENERGY_DIAGNOSTIC.npz',X=X,x=x,weights=w,**saved);return result,baseline
++
++def paths(model):
++ X=model.X;aa=np.c_[.003*X[:,0],np.zeros((len(X),2))];bb=np.c_[np.zeros((len(X),2)),.004*X[:,2]];corners=[X,X+aa,X+aa+bb,X+bb,X];gp,gw=np.polynomial.legendre.leggauss(8);work=np.zeros(len(model.b));hist=[work.copy()];total=[]
++ for a,b in zip(corners[:-1],corners[1:]):
++  dx=b-a;dy=dx[model.j]-dx[model.i];increment=np.zeros(len(work))
++  for q,w in zip((gp+1)/2,gw/2):increment+=w*np.einsum('ij,ij->i',model.evaluate(a+q*dx)[2],dy)
++  work+=increment;hist.append(work.copy());total.append(work.sum())
++ energy=np.array([model.evaluate(x)[0] for x in corners]);hist=np.array(hist);scale=energy.max();best=int(np.argmax(abs(work)));straight=np.zeros(len(work));dx=aa+bb;dy=dx[model.j]-dx[model.i]
++ for q,w in zip((gp+1)/2,gw/2):straight+=w*np.einsum('ij,ij->i',model.evaluate(X+q*dx)[2],dy)
++ # A direct loading and its exact reverse: quadrature reversal gives opposite pair work.
++ np.savez_compressed(A/'INTERACTION_PATH_WORK.npz',corner_energy_J=energy,all_pair_cumulative_work_J=hist,selected_bond_index=best,selected_bond_ids=model.b[best]+1,straight_pair_work_J=straight,selected_pair_cumulative_work_J=hist[:,best],corner_coordinates_m=np.array(corners))
++ return dict(actual_paths='Two monotone orderings to same endpoint, their four-edge closed rectangle, plus straight load and exact reverse; four prescribed shape corners, 8-point path quadrature per segment. No equilibrium solves or failure.',total_work_at_corners_J=hist.sum(1),energy_at_corners_J=energy,max_total_work_energy_error_scaled=float(np.max(abs(hist.sum(1)-energy))/scale),closed_total_work_J=work.sum(),closed_sum_abs_pair_work_J=np.abs(work).sum(),closed_max_abs_pair_work_J=abs(work).max(),selected_bond_ids=model.b[best]+1,two_orderings_same_endpoint_total_error_J=float(hist[2].sum()+(hist[4]-hist[2]).sum()),straight_total_work_J=straight.sum(),straight_energy_error_relative=float(abs(straight.sum()-energy[2])/scale),double_counting='One unordered pair with Vi*Vj times directed-state difference; directed-all-pairs sum requires factor1/2.',conclusion='Total hyperelastic path work is recoverable and agrees with global U. Individual pair loop works need not vanish: path-defined interaction work is computable, independent unique pair elastic potential is NOT_ESTABLISHED. No Foster threshold authorized.')
++
++def main():
++ t=time.perf_counter();cpu=time.process_time();assert not (A/'A_DESIGN_FREEZE.json').exists();save(A/'A_DESIGN_FREEZE.json',dict(time_utc=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),geometries=['M5C2880','V3material1927'],weight_method='Pinned upstream OSB with explicit actual families, nondimensional units, no clipping/scan',weight_gates='Converged relative residual<1e-8; all bond weights positive for energy application; no bonds restored; large values and operator residual disclosed.',mechanical='At most M5C single deterministic field and its rigid transforms; finite differences1nm; frozen original m expanded variational diagnostic only if positive weights. This is an adaptation, not paper exact.',force_energy_relative_gate=1e-5,pathwork='Original undamaged M5C, four analytic corners and one straight path; Gauss8 integration, no dynamics; total work error<1e-8',production_changes=0))
++ gm=dict(np.load(M5C/'geometry.npz'));gv=dict(np.load(V3/'V3_MATERIAL_POINTS_AND_BONDS.npz'));X=gm['X'];b=gm['bonds'];n=int(gv['clot_count']);bv=gv['bonds'][gv['bond_types']==1]
++ diag={'M5C':neighborhood('M5C',X,b,removed=gm['removed_notch_bonds'],mask=gm['prescribed_mask']),'V3':neighborhood('V3',gv['X'],gv['bonds'],np.arange(n))};save(A/'SURFACE_NEIGHBORHOOD_AUDIT.json',diag)
++ wm,w=weight_audit('M5C',X,b);wv,v=weight_audit('V3',gv['X'][:n],bv);save(A/'SURFACE_CORRECTION_FEASIBILITY.json',dict(M5C=wm,V3=wv,scope='Paper unit-kernel geometry weights only. Current native uses omega=1/r with horizon taper and frozen discrete m. Direct substitution not certified; V3 optimization omits anchors, so does not model wall attachment mechanics.',broken_bonds_restored=0,no_native_weight_reader=True))
++ valid=wm['global_solver_info']==0 and wm['global_relative_residual']<1e-8 and wm['nonpositive_bonds']==0
++ if valid:mech,model=mechanical(X,b,w)
++ else:mech={'status':'NOT_RUN_INVALID_WEIGHTS','reason':wm};model=Potential(X,b)
++ save(A/'FORCE_ENERGY_COMPATIBILITY.json',mech);pw=paths(model);save(A/'LPS_INTERACTION_WORK_AUDIT.json',pw)
++ old={};base=ROOT/'verification/lammps_material_macro_calibration_and_timestep_audit_v1/20261010T215825Z'
++ for name in ['M1','M2']:
++  h=np.genfromtxt(base/name/'history.csv',names=True,delimiter=',');U=h['U_bulk_J'];old[name]=dict(history_sha256=sha(base/name/'history.csv'),samples=len(h),peak_U_J=U.max(),final_U_J=U[-1],final_external_work_J=h['W_ext_J'][-1],final_kinetic_J=h['K_free_J'][-1],final_numerical_dissipation_J=h['D_num_J'][-1],final_energy_residual_J=h['R_energy_J'][-1],broken_bulk_max=int(h['broken_bulk'].max()),scope='Dynamic damped load-unload; W differs from elastic energy due to KE and recorded numerical damping; not material dissipation.')
++ save(A/'EXISTING_LOAD_UNLOAD_AUDIT.json',old)
++ states=dict(ORIGINAL_LPS_BASELINE_PROTECTED='PENDING_FINAL_SHA',SURFACE_NEIGHBORHOOD_DIAGNOSTIC='COMPLETED_ACTUAL_TOPOLOGIES',SURFACE_CORRECTION_WEIGHT_VALIDITY='GEOMETRIC_PREPROCESSING_ONLY_SEE_NEGATIVITY_AND_RESIDUALS',SURFACE_CORRECTION_FORCE_ENERGY_CONSISTENCY='PASS_VARIATIONAL_DIAGNOSTIC_ONLY' if mech.get('passes_FD') else 'NOT_ESTABLISHED',FOSTER_ENERGY_DEFINITION='FULL_TEXT_READ_DIMENSION_AND_PATH_AUDITED',LPS_INTERACTION_WORK_IDENTIFIABILITY='PATH_WORK_COMPUTABLE_UNIQUE_PAIR_POTENTIAL_NOT_ESTABLISHED',ENERGY_FAILURE_PORTABILITY='NOT_ESTABLISHED',STRENGTH_GC_INDEPENDENCE='ADDITIONAL_INDEPENDENT_PARAMETERS_REQUIRED',MATERIAL_GC_UNAVAILABLE=True,NATIVE_FAILURE_LAW_UNCHANGED=True)
++ save(A/'FINAL_STATUS.json',dict(run_id=RUN,states=states,controlled_small_specimen_diagnostics=int(valid),new_native_solves=0,new_fracture=0));save(A/'RESOURCES.json',cost(t,cpu));print(json.dumps({'weight_M5C':wm['weights'],'negative_M5C':wm['negative_nodes'],'weight_V3':wv['weights'],'negative_V3':wv['negative_nodes'],'mechanical':valid,'work_error':pw['max_total_work_energy_error_scaled']},default=convert,indent=2))
++if __name__=='__main__':main()
+--- /dev/null
++++ analysis/traction_failure_v1/preflight_b.py
+@@ -0,0 +1,34 @@
++from analysis.traction_failure_v1.common import *
++from scipy.spatial import cKDTree
++from analysis.dual_track_v1.measure_b import Measurements
++
++def main():
++ t=time.perf_counter();cpu=time.process_time();out=B/'GEOMETRY_PREFLIGHT.json';assert not out.exists()
++ z=dict(np.load(V3/'V3_MATERIAL_POINTS_AND_BONDS.npz'));n=int(z['clot_count']);X=z['X'][:n];s=dict(np.load(PREV/'refined/CLOT_SURFACE_TRACTIONS.npz'))
++ rr=json.loads((PREV/'refined/CFD_RESULT.json').read_text());a=np.load(PREV/'refined/SV_MESH/mesh_arrays.npz');P=a['points_m'];T=a['tetra'];faces=a['boundary_triangles'];tag=a['facet_tags'];sel=tag==5;f=faces[sel];adj=a['adjacent_tetra'][sel]
++ mm=Measurements(PREV/'refined/SV_MESH/mesh_arrays.npz',2.6354060534101725e-8,.005);u,p=mm.read(ROOT/rr['snapshot']);xyz=P[f];cent=xyz.mean(1);av=.5*np.cross(xyz[:,1]-xyz[:,0],xyz[:,2]-xyz[:,0]);area=np.linalg.norm(av,axis=1);nf=av/area[:,None];nc=-nf
++ assert np.all(np.einsum('ij,ij->i',nf,cent-P[T[adj]].mean(1))>0)
++ grad=np.linalg.solve(P[T[adj,1:]]-P[T[adj,0]][:,None],u[T[adj,1:]]-u[T[adj,0]][:,None]).transpose(0,2,1)
++ visc=.001*np.einsum('nij,nj->ni',grad+grad.transpose(0,2,1),nc);pressure=-p[f].mean(1)[:,None]*nc;vn=np.einsum('ij,ij->i',visc,nc)[:,None]*nc;shear=visc-vn
++ compare={'triangles_xyz_m':xyz,'triangle_mesh_node_ids':f+1,'adjacent_mesh_tetra_ids':adj+1,'triangle_area_m2':area,'n_clot':nc,'n_fluid':nf,'pressure_Pa':p[f].mean(1),'velocity_gradient_s_inv':grad,'pressure_traction_Pa':pressure,'viscous_normal_traction_Pa':vn,'tangential_traction_Pa':shear,'total_traction_Pa':pressure+visc}
++ errors={k:float(np.max(abs(s[k]-v))) for k,v in compare.items()};assert max(errors.values())<1e-12
++ assert sha(ROOT/rr['snapshot'])==rr['snapshot_sha256'];assert sha(PREV/'refined/SV_MESH/mesh-complete.mesh.vtu')==rr['mesh_sha256']
++ body=V3/'cases/C1_GAUSSIAN_A200/body.data';text=body.read_text();atoms=text.split('Atoms')[1].split('Bonds')[0].splitlines();rows=[]
++ for line in atoms:
++  v=line.split()
++  if len(v)==6:
++   try:rows.append([int(v[0]),*map(float,v[3:])])
++   except ValueError:pass
++ rows=np.array(sorted(rows));assert len(rows)==len(z['X']);assert np.array_equal(rows[:,0],np.arange(1,len(rows)+1));assert np.max(abs(rows[:,1:]-z['X']))<1e-17
++ near,tri,d=closest_surface(X,xyz);face_dist,face_node=cKDTree(X).query(cent);quad_dist,_=cKDTree(X).query(s['quadrature_coordinates_m'].reshape(-1,3))
++ geom=np.load(PREV/'geometry_arrays.npz');expected=geom['points_m'][geom['triangles'][geom['tags']==5]]
++ # Coordinate multiset equality independently excludes vessel wall / attachment faces.
++ def keys(x):return {tuple(sorted(tuple(y) for y in tri)) for tri in x}
++ assert keys(expected)==keys(xyz)
++ inputpaths=[body,V3/'V3_MATERIAL_POINTS_AND_BONDS.npz',V3/'V3_GEOMETRY_CONFIG.json',PREV/'refined/CLOT_SURFACE_TRACTIONS.npz',PREV/'geometry_arrays.npz',PREV/'refined/SV_MESH/mesh_arrays.npz',ROOT/rr['snapshot'],PREV/'refined/CFD_CLOT_TRACTION_AUDIT.json',PREV/'refined/CFD_MASS_BALANCE.json',PREV/'MESH_SENSITIVITY.json']
++ save(B/'INPUT_SHA.json',{str(p.relative_to(ROOT)):sha(p) for p in inputpaths})
++ np.savez_compressed(B/'GEOMETRY_PREFLIGHT.npz',material_ids=rows[:n,0].astype(np.int64),X=X,anchors=z['X'][n:],closest_surface_m=near,closest_surface_triangle=tri,distance_to_surface_m=d,face_nearest_material_distance_m=face_dist,face_nearest_material_index=face_node,original_surface=z['surface'][:n],interface_material_indices=np.unique(z['bonds'][z['bond_types']==2][z['bonds'][z['bond_types']==2]<n]))
++ save(B/'NATIVE_SURFACE_IDENTITY.json',dict(snapshot=rr['snapshot'],checks=errors,all_original_faces_exact=True,original_field_roundtrip=mm.identity,no_attachment_faces=True,normal_verified_by_adjacent_tet=True,pressure_reference='Original zero-reference outlet traction; relative gauge pressure',original_surface_sha256=sha(PREV/'refined/CLOT_SURFACE_TRACTIONS.npz')))
++ save(out,dict(material_nodes=n,anchors=int(z['anchors'].sum()),original_surface_nodes=int(z['surface'].sum()),material_distance_m=stats(d),face_nearest_material_distance_m=stats(face_dist),quadrature_nearest_material_distance_m=stats(quad_dist),within_one_dx=int((d<=DX).sum()),within_sqrt3_half_dx=int((d<=3**.5/2*DX).sum()),body_coordinate_error_m=float(abs(rows[:,1:]-z['X']).max()),runtime=cost(t,cpu)))
++ print(out.read_text())
++if __name__=='__main__':main()
+--- /dev/null
++++ analysis/traction_failure_v1/remote.py
+@@ -0,0 +1,12 @@
++"""Task-scoped explicit synchronization; commands use the existing private environment."""
++from pathlib import Path
++import json,sys,subprocess,shlex,hashlib
++C=json.loads(Path('/home/lzy/projects/.traction_failure_current.json').read_text())
++SSH=['ssh','-p','15283','-i','/home/lzy/.ssh/vast_step3b_ed25519','-o','IdentitiesOnly=yes','-o','BatchMode=yes','root@95.3.33.46']
++if sys.argv[1]=='python':raise SystemExit(subprocess.call(SSH+['source /workspace/y_clot/env.sh && cd /workspace/y_clot/project && python -'],stdin=sys.stdin))
++if sys.argv[1]=='exec':raise SystemExit(subprocess.call(SSH+[sys.argv[2]]))
++if sys.argv[1]=='sync':
++ files=sys.argv[2:];r=Path(C['root']);assert all((r/p).is_file() for p in files)
++ with subprocess.Popen(['tar','-cf','-','-C',str(r),'--',*files],stdout=subprocess.PIPE) as src:
++  subprocess.run(SSH+[shlex.join(['tar','-xf','-','-C','/workspace/y_clot/project'])],stdin=src.stdout,check=True);src.stdout.close();assert src.wait()==0
++ p=(r/C['common'])/'provenance/EXPLICIT_SYNC.json';a=json.loads(p.read_text()) if p.exists() else [];a.extend(dict(path=n,sha256=hashlib.sha256((r/n).read_bytes()).hexdigest()) for n in files);p.write_text(json.dumps(a,indent=2));print('explicitly synchronized',len(files),'files')
+--- /dev/null
++++ analysis/traction_failure_v1/repair_support_b.py
+@@ -0,0 +1,12 @@
++"""One explicitly frozen contact-rim graph repair before any force map exists."""
++from analysis.traction_failure_v1.common import *
++import shutil
++assert not (B/'CONTACT_RIM_SUPPORT_REPAIR_FREEZE.json').exists()
++old=json.loads((B/'COVERAGE.json').read_text());s=np.load(PREV/'refined/CLOT_SURFACE_TRACTIONS.npz');faces=old['unsupported_faces'];assert len(faces)==10
++assert all(s['contact_rim_distance_m'][faces]<DX/4)
++history=B/'initial_support_rejection';history.mkdir()
++for name in ['FORMAL_MAPPING_START.json','COVERAGE.json','FINAL_STATUS.json']:
++ shutil.move(B/name,history/name)
++save(B/'CONTACT_RIM_SUPPORT_REPAIR_FREEZE.json',dict(time_utc=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),faces=faces,area_fraction=float(s['triangle_area_m2'][faces].sum()/s['triangle_area_m2'].sum()),reason='A tangent-plane halfspace is not a global interior test at a curved thin contact rim. All ten rejected faces already have local material support. Replace only their halfspace test by connected-surface face-center graph distance <= original150.5um horizon to the closest exposed triangle of each candidate node.',unchanged='Face-node Euclidean radius<=delta, material-to-surface distance<=dx, positive normal alignment, nonnegative weights; all original conservation/correction/direction/concentration gates.',algorithm='Actual triangle adjacency via shared native mesh edge; shortest path along centroid adjacency. Centroid chord-graph metric is not exact intrinsic geodesic or a guaranteed upper bound; links never bridge absent facets. Only this single repair, no radius/kernel/threshold scan.',previous_frozen_design_sha256=sha(B/'MAPPING_DESIGN_FREEZE.json'),prior_attempt='Stopped before initial force mapping; no integrated or candidate node forces existed',support_repair_attempts=1))
++from analysis.traction_failure_v1.map_b import run
++run()
+--- /dev/null
++++ analysis/traction_failure_v1/report.py
+@@ -0,0 +1,147 @@
++from analysis.traction_failure_v1.common import *
++import html,subprocess,importlib.metadata as md
++def load(p):return json.loads(Path(p).read_text())
++def write(p,s):Path(p).write_text(s)
++def main():
++ q=load(B/'LOCAL_MAPPING_QUALITY.json');au=load(B/'CONSERVATIVE_MAPPING_AUDIT.json');sf=load(B/'CFD_SURFACE_FORCE_AUDIT.json');ga=load(B/'GEOMETRY_AND_UNIT_AUDIT.json');iv=load(B/'INDEPENDENT_VERIFICATION.json');a=load(A/'SURFACE_CORRECTION_FEASIBILITY.json');me=load(A/'FORCE_ENERGY_COMPATIBILITY.json');pw=load(A/'LPS_INTERACTION_WORK_AUDIT.json');nd=load(A/'SURFACE_NEIGHBORHOOD_AUDIT.json')
++ assert iv['passed'];nextstep='只做一个现有 V3 完整态、禁止断键的原生静态受载接口验证：施加本轮含栓 CFD 节点力，核对单位、总载荷、约束反力/力矩与小变形响应，并明确排除既有脱离碎片阻力的重复作用。先完成这一项，不开展动态断裂、材料升级或 AI 扫描。'
++ write(B/'REVIEW_Y_CLOT_CFD_TO_LAMMPS_CONSERVATIVE_TRACTION_MAP_V1.md',f'''# 含栓 CFD 到 LAMMPS 离线载荷映射审查
++
++Run `{RUN}`。**B 线通过冻结的离线守恒与局部工程筛查，可以提供未来接口验证用的节点力；没有执行生产耦合，也没有认证逐点载荷收敛或材料行为。**
++
++1. **真实输入。** 重新读取上一轮 `20261011T154854Z/refined` 的原生体网格、`result_131.vtu` 和全精度 `CLOT_SURFACE_TRACTIONS.npz`。速度/压力 float64；原生坐标按精确 float32 舍入双射对应冻结 double 几何。文件 SHA、3,611 个 tag=5 面、相邻四面体、梯度、分项牵引均重新核对，非报告均值反推。`INPUT_SHA.json`、`NATIVE_SURFACE_IDENTITY.json` 保存证据。
++
++2. **配准。** 原 `body.data` 的 3,488 个 ID/坐标与几何数组完全一致；材料 ID 1–1927，锚点 ID 1928–3488。原世界坐标 m、x≈−6 mm、母管 +z 内壁、单位变换矩阵 I；不作平移、旋转、缩放。连续、CFD 三角化、材料积分体积分别为 0.271574388、0.271576593、0.240875 mm³；离散比连续小约 11.30%。没有按体积比放大任何力。原附着内部面排除，暴露三角面坐标集合与原 tag=5 完全相同。
++
++3. **单位与符号。** 长度 m、面积 m²、牵引 Pa、面元/节点力 N、力矩 N·m。相邻流体四面体确认 n_fluid 外法向；n_clot=−n_fluid。σ=−pI+µ(∇u+∇uᵀ)，µ=0.001 Pa·s，t=σn_clot。保存压力、切向黏性、法向黏性与总项；法向黏性未忽略。p 是原出口零参考牵引条件下的表压，开放面合力会随压力参考偏移变化。例如统一 +1 Pa 会增加约 {np.array(sf['open_surface_pressure_offset_1Pa_delta_force_N'])*1e6} µN；它不是绝对血压或壁面反力。
++
++4. **原始积分。** 总力 {sf['total_force_N']} N，模长 {np.linalg.norm(sf['total_force_N'])*1e6:.9f} µN；关于实际材料质心 {sf['reference_point_m']} m 的力矩 {sf['total_moment_Nm']} N·m，恢复旧审计。面元中心力适合合力；线性压力与位置相乘后是二次量，力矩采用原三点二阶三角积分。压力的“精确积分−中心近似”为 {sf['centroid_to_exact_moment_difference_Nm']['pressure']} N·m。独立解析三角公式再核对，未改法向或表面以凑合力。
++
++5. **哪些点受载。** 距实际暴露三角面 ≤50 µm 的 580 个材料点；1,347 个内部材料点外载为零，1,561 个锚点完全排除。所有面均在 ≤150.5 µm 支持内找到邻点，Wendland C2 权重非负、逐面归一化。表面到材料点最近距离中位/最大约 34.44/131.48 µm；仅 1.185% 表面积最近距离超过 100 µm。有效面积 A_i=Σ_f w_if A_f，总和等于真实暴露面积 {ga['exposed_area_m2']*1e6:.9f} mm²。A_i/dx²范围 {ga['effective_area_over_dx2']['min']:.3f}–{ga['effective_area_over_dx2']['max']:.3f}，不是统一 dx²。
++
++初次支持检查的切平面条件排除了 10 个接触边缘面，占面积 0.0232621%；尚未生成节点力即停止。唯一一次局部修正对这十个面使用实际三角面邻接图路径 ≤150.5 µm，替代把曲面局部切平面误当全局内部判据的条件。这里的邻接距离按相邻面中心间弦长累加，不是严格曲面测地距离，也不保证其上界；冻结文件中过强的上界措辞另以 `REPAIR_GRAPH_METRIC_CLARIFICATION.json` 更正留证，算法与数值不变。距离上限、法向一致性、点筛选和全部质量门槛不变。没有远距离补点、删面、半径扫描或重新计算 CFD。原拒绝结果和修正前冻结文件保留。
++
++6. **保力误差。** 归一化尺度 Σ_f|F_f|，压力/剪切/法向黏性分别为 {iv['components']['pressure']['force_error_scaled']:.3e} / {iv['components']['shear']['force_error_scaled']:.3e} / {iv['components']['viscous_normal']['force_error_scaled']:.3e}，总项为 {au['components']['total']['corrected']['force_scaled_error']:.3e}。这些是浮点代数误差，不是物理精度。
++
++7. **保力矩误差。** 尺度为上述 Σ_f|F_f| 乘 L={float(np.linalg.norm(np.ptp(np.load(B/'CLOT_NODAL_TRACTION_FORCES.npz')['reference_coordinates_m'],axis=0))):.9g} m。总项为 {au['components']['total']['corrected']['moment_scaled_error']:.3e}；独立解析积分核查各分项最大 {max(v['moment_error_scaled'] for v in iv['components'].values()):.3e}，远低于冻结 1e−8。还通过移动参考点的力矩平移恒等式。
++
++8. **分项守恒。** 压力、切向黏性、法向黏性分别做一次相同算法，最后相加，不以总项抵消分项误差。初始非负 W 已保力，但有力矩偏差。六约束均满秩；长度归一化 Gram 条件数为 26.29、41.29、87.20，未用有量纲原始矩阵条件数作判断。
++
++9. **修正大小。** 约束最小二乘使 C f=(F,M/L)，最小化 Σ_i |Δf_i|²/D_i；D_i=|f_i^0|²+(0.01 Σ|F_f| A_i/A)²，后项是固定正则尺度。压力/剪切/法向黏性/总项 L2 修正分别 {q['metrics']['pressure']['correction_L2_fraction']*100:.4f}% / {q['metrics']['shear']['correction_L2_fraction']*100:.4f}% / {q['metrics']['viscous_normal']['correction_L2_fraction']*100:.4f}% / {q['metrics']['total']['correction_L2_fraction']*100:.4f}%。剪切接近但低于预先冻结 10% 警示尺度；未放宽门槛。单点最大相对修正压力 1.81%、剪切 18.53%；尾部分布完整披露。
++
++10. **局部合理性。** 压力/剪切反向力份额均为 0；压力向外作用份额为 0。最大单点总力份额 {q['metrics']['total']['single_node_force_share_max']*100:.4f}%。压力最大转向 0.414°，剪切最大转向 8.563°；剪切相对面积平均法向的绝对投影约 5.284%，来自跨曲面平均及小幅全局修正，不能称作每点严格切向。剪切前 1% 节点力份额由 4.498% 变为 5.131%；区域变化通过冻结门槛。原面接触边缘占总牵引模积分约 21.08%，初始离散边缘节点约 23.83%；离散支持跨越区域边界，二者不要求逐点相同。四个共同 x 区域的原面/节点向量另在 `INDEPENDENT_VERIFICATION.json`。仍有 50 µm 点距和薄边缘限制，未证明网格客观性或局部收敛。
++
++11. **未来接口。** `CLOT_NODAL_TRACTION_FORCES.npz` 含全部 1,927 个真实 ID/坐标、分项初始/修正节点力和支持标志；`CFD_TO_LAMMPS_MAPPING_MATRIX.npz` 含 CSR 权重与六约束低秩修正数据；元数据记录 SHA、法向、表压与单位。原生 BPM 先累加力密度 N/m³，现有 `force_conversion()` 乘本点体积一次，再加外力 N。本轮力已乘面元面积，禁止再乘 V_i。乱序 ID、锚点拒绝、密度先转 N 后叠加的离线测试通过；生产输入未修改。输出适合下一轮原生完整态接口验证，并非已获认证的动态耦合。
++
++12. **范围。** 本轮新 CFD=0、新 LAMMPS 动态断裂=0，仅一个接受加密场、一次边缘支持修正和一次全局最小守恒修正。现有脱离碎片已有背景流体阻力，未来须明确对象/阶段，避免重复计力。当前牵引仅对应固定完整几何，破裂后不能无限沿用。未含微泡 streaming、PZT、几何反馈或双向 FSI。
++
++下一轮唯一优先建议：{nextstep}
++
++图 B1–B4 与完整审核 JSON 见 `OPEN_RESULTS.html`。原生接口依据为锁定本地源码及 [LAMMPS addforce](https://docs.lammps.org/fix_addforce.html)、[external](https://docs.lammps.org/fix_external.html) 的接口文档；本轮没有调用新的生产动力学加载。
++''')
++ write(A/'FOSTER_FAILURE_CRITERION_AUDIT.md',r'''# Foster 2011 与当前 LPS 的能量失效审查
++
++已读取用户全文 `sources/FOSTER2011.pdf`，而非只读摘要。[原论文 DOI](https://doi.org/10.1615/IntJMultCompEng.2011002407)。以下公式按本项目记号重写。
++
++Section 2、Eq.8–12 使用 shape tensor / deformation-gradient correspondence：Kshape=∫ω ξ⊗ξ dV，Fhat=(∫ωY⊗ξ dV)Kshape⁻¹，T=ω P Kshape⁻¹ξ，后续例子将率相关 J2 塑性应力接入。它与当前 ordinary、central-force LPS 的 dilatation/deviatoric extension 本构不同。原文声称 Kshape 正定依赖充分邻域；不能把这句话当成任意断裂点云都可逆的保证。
++
++Section 3 Eq.13 定义路径功密度 w_ij=∫(T_i⟨ξ⟩−T_j⟨−ξ⟩)·dη。状态力/dual density 单位 N/m⁶，w 单位 J/m⁶。实际等体积离散相互作用功是 W_ij=V_iV_j w_ij，单位 J。以无向 i<j 键统计一次；若遍历两个有向状态则要 1/2，不能双计数。原文 Eq.15 的连续体极限被作者明确称为假说、未正式证明，不能升级成当前离散 LPS 的既有定理。
++
++Eq.16 在平面裂纹两侧球冠上积分一常数临界功密度，几何积分等于 πδ⁴/4，从而 Eq.17 得到 w_c=4G_c/(πδ⁴)。这里 G_c 为 J/m²；不是把宏观 J/m² 直接存为每键 J 或 J/m⁶。每条离散键跨裂纹面的体积权重、方向分布和边界截断必须重新核对。δ 的解释及原文的过程区讨论属于其模型假定，不能用当前数值 horizon 自动宣称生物过程区已匹配。
++
++Eq.18 以累计功超阈值令 influence=0；正文要求不可逆断键，并在后续步从 Fhat/Kshape 中去掉相互作用。图4及脚注4说明率相关路径可以在不同位移达到同一功：超弹性时功可恢复，有耗散模型时部分做功为永久耗散。当前 LPS 不含该塑性/粘弹耗散，数值阻尼不是其替代品。
++
++当前锁定均匀等体积 LPS：r_ij=|X_j−X_i|，h_ij 为原生边缘体积 taper，e_ij=|x_j−x_i|−r_ij，m_i=Σ_reference h_ij r_ij V，初始缺口键已排除，后续 m 固定。
++
++θ_i=(3V/m_i)Σ_alive h_ij e_ij。
++
++U=(V/2)(K−5G/3)Σ_i θ_i² +(15G V²/2)Σ_{i<j,alive}(h_ij/r_ij)(1/m_i+1/m_j)e_ij²。
++
++相互作用力向量（作用于较小 ID 端、向另一端）为 V² h_ij[(3K−5G)(θ_i/m_i+θ_j/m_j)+15G(1/m_i+1/m_j)e_ij/r_ij] Y_ij/|Y_ij|。无损伤、固定参考拓扑下，Σ_{i<j} f_ij·d(x_j−x_i)=dU。该结论来自同一势能的导数，并已与锁定独立 C++ evaluator 比较；不能用旧原生 PE 变量代替此完整势能。
++
++θ_i² 含多键交叉项。单键路径功受其它存活键状态影响；沿闭合的多分量变形路径，个别键的功可以不归零，而总和为零。即使强行把总 U 拆成逐键条目，分配 θ² 交叉项的规则也不唯一。断一条键会改变相邻节点 θ，进而改变其它键贡献；能量释放 U(x,old)−U(x,new) 是全局重评值，不等同那条键的历史累计功。
++
++因此本轮证明的是“有可计算、可核验的逐相互作用路径功”，不是“每条键具有独立唯一可恢复的弹簧能”。闭合路径证据和原 M1/M2 的数值阻尼账本见 JSON 与图 A3。Foster 原始论文不能替当前 LPS 完成这一步移植推导。
++
++`ENERGY_FAILURE_PORTABILITY=NOT_ESTABLISHED`。本轮不设置 5.90、6–8 或 18.27 J/m² 的生产阈值，不改 s00，不启用能量断键或软化。下一次独立研究若继续，须先定义功变量的历史更新、负功/卸载、破裂释放、交叉项转移和材料耗散，再通过单裂面能量/尺寸/离散与实验验证；本轮到此停止。
++''')
++ write(A/'FAILURE_PARAMETER_REQUIREMENTS.md',r'''# 独立失效参数与实验缺口
++
++现有 G=940 Pa、K=33333.333 Pa 来自 Liu 2024 Supplement Table S2 的未损伤小应变映射：C1=0.47 kPa，G0=2C1；D1=0.06 kPa⁻¹，K0=2/D1。C2=0.17 kPa、C3=−0.012 kPa 和 Mullins r=1、β=0.26、m=0.87 J/m³ 未进入当前线弹性 LPS。ρ=1000 kg/m³、s00_bulk=0.15、alpha=0、dx=50 µm、δ=150.5 µm 保持原值；它们不是完整 Yeoh/Mullins/cohesive-zone 材料卡。
++
++| 要独立控制的量 | 还需参数 | 需要的独立实验与验证 |
++|---|---|---|
++| 本体起裂强度 | 多轴强度/临界变形，缺陷与速率依赖 | 同组成、同成熟时间、同速率的无缺口拉伸/剪切；区分夹持热点与材料强度 |
++| 裂纹传播阻力 | 本征 Gc、软化长度/位移或相场/非局部长尺度、R 曲线 | 已预缺口、稳定扩展、实际裂面积，几何/裂长/厚度与网格控制；起裂位置本身不能代替 Gc |
++| 壁面脱粘 | 接口强度、I/II 模式粘附能、混合模态规则 | 指定内动脉壁、表面处理和血栓组成的剥离/剪切；不能用猪皮剥离参数冒充内动脉壁 |
++| 体耗散 | 粘弹松弛谱、Mullins/塑性历史参数与不可逆能量 | 循环加载、保持/松弛和卸载；独立扣除机器、接触及数值阻尼 |
++| 载荷速率 | 强度、Gc、耗散的速率函数及时间尺度 | 覆盖拟用脉冲时间尺度的多速率实验；当前参数不能由静态文献外推至超声 |
++
++Liu 2021 全文的人体全血凝块 Gc=5.90±1.18 J/m²，剪切模量302.92±80.42 Pa；正文长度尺度约0.2/7 mm，图5与用户给出的近似值约0.17/6.5 mm相应。l=Gc/E，按 E≈3G 得约6.49 mm。它们描述该研究的人体样本；当前 Liu 2024 是牛血，不能拼成同一张认证卡。
++
++Taylor 2018 Section5指出：裂纹、剩余韧带或试样尺寸过小可使试验落在强度控制区，即便裂纹从缺口尖端长出也不证明测得材料韧性。存在 R-curve 时必须分清起裂与传播阻力、裂纹增长量和约束。有限试样的 PVCE G_drive、无自然扩展的阈值、低载 G 均不能直接作为材料 Gc。
++
++来源：[Liu 2021](https://doi.org/10.1016/j.eml.2021.101444)、[Taylor 2018](https://doi.org/10.1016/j.jmbbm.2017.07.007)、[Liu 2024](https://doi.org/10.1016/j.jmps.2024.105858)，本目录 sources 保存用户全文与 SHA。禁止将所列缺口通过同一条缺口曲线同时拟合到看似正确；强度和耗散应分别识别。
++''')
++ write(A/'REVIEW_LPS_SURFACE_CORRECTION_AND_ENERGY_FAILURE_FEASIBILITY_V1.md',f'''# LPS 表面权重与能量失效可行性
++
++Run `{RUN}`。**M5C 的权重预处理及一个明确标注的变分诊断通过；V3 权重有负值和极大值，当前生产 LPS 的力学表面修正与能量失效移植均未建立。** 没有修改原生模型、s00、材料卡、断键规则或旧结果。
++
++13. **哪里有邻域偏差。** 真实 M5C 2,880 点、132,610 条参考键，2,570 条初始缺口键始终不在计算图中；V3 1,927 材料点和实际锚层/界面拓扑分别分析。完整相同立方格点的 δ 邻域有 {nd['M5C']['reference_full_stencil_neighbors']} 个邻居。表面、夹具角点与缺口附近的邻居数、m/full-m、方向二阶矩与奇方向偏置均偏离内部，数值见 `SURFACE_NEIGHBORHOOD_AUDIT.json`。二阶矩用 (3/m)Σ(h/r)V ξ⊗ξ；物理自由表面确实缺邻居，不等同必须修掉的数值误差。任意仿射形变未必满足无牵引边界，不能用所有边界节点力为零作为验收。
++
++14. **Shojaei 适用性。** 已读全文 36 页中相关方法/算例与锁定 perifit commit `66b2192...`。论文 Eq.50/64–69 是局部多项式 collocation、导数与能量算子的正则化最小二乘，通过全局稀疏 K_w w=F_w 耦合；对称键因子 (w_i+w_j)/2，保持参考拓扑。论文 Eq.46–47 明确采用完整球解析 m，不随权重改变；常数核 ω=1。当前 native 则是 ω=1/r、带 h taper、初始截断离散 m。不能把权重文件直接交给 LAMMPS 后宣称论文复现。源码未施加非负约束；本次冻结源码实际 OSB 为54算子行，而 README 广告为109，按实读源码计算并披露。使用无量纲 x/δ、V/δ³ 避免源码绝对 1e−20 截断在 SI 小量上吞掉高阶行。
++
++原文静态3D OSB示例支持在其定义下研究；动态裂纹 Section5.4 是 PMB Kalthoff–Winkler，不能替当前 LPS 失效机制背书。原文权重一次预处理，不意味着动态断键后可以任意重算而能量不变。若未来更新权重或 m，会额外改变势能，必须计入能量账本；本轮没有动态更新、恢复裂面键或删除坏节点。参考图 A1、A2 不能被当作物理表面“消失”。
++
++15. **实际权重。** M5C 范围 {a['M5C']['weights']['min']:.6f}–{a['M5C']['weights']['max']:.6f}，均正，全局残差 {a['M5C']['global_relative_residual']:.3e}。V3 范围 {a['V3']['weights']['min']:.6f}–{a['V3']['weights']['max']:.6f}，15 个负节点、59 条非正平均键，局部正则矩阵最大条件数 {a['V3']['local_regularized_gram_condition']['max']:.3e}。V3 只对实际材料 bulk 图拟合，未把真实锚层当作自由材料扩充，故不能等同粘附边界修正。没有截断负值、清理点云或再次调参。实际算子残差并非普遍改善：M5C 中位 {a['M5C']['operator_residual_before']['median']:.3f}→{a['M5C']['operator_residual_after']['median']:.3f}，V3 {a['V3']['operator_residual_before']['median']:.3f}→{a['V3']['operator_residual_after']['median']:.3f}。全局权重方程收敛不等于每个匹配算子精确。
++
++16. **相容势能。** 仅对正权重的 M5C 定义 kernel-preserving 诊断：保持原 h/r 与初始 m；把对称 w 同时放入 θ 的每项和 e² 储能每项。使用锁定原 LPS 的展开势能，并重新求其精确导数。它是“保留核与参考归一化的变分适配”，不是 Shojaei 逐式复现或已认证表面修正。改写成标准偏伸长平方时还需 (5G/6)(1−m_weighted/m)θ² 项；只给原力乘权重、或者改 θ 却不改储能都不一致。正权重、K−5G/3>0 时该展开能量非负；这不构成任意点云无零模/动力稳定的证明。
++
++17. **力—能量数值检查。** 只用一个实际 M5C 试样的确定性小形变场及刚体变换。原 evaluator 与锁定独立 C++ 储能相对差 {me['original_cpp_reference']['relative_energy_error']:.3e}，力差 {me['original_cpp_reference']['relative_force_error']:.3e}。加权诊断方向/分量差分误差为 {me['weighted_diagnostic']['directional_FD_relative_error']:.3e}/{me['weighted_diagnostic']['component_FD_relative_error']:.3e}，h=1 nm；刚体参考力/能量为0，旋转后的能量/力客观性、净力/当前位置力矩为舍入量级。U 从 {me['original']['U_J']:.9e} 增到 {me['weighted_diagnostic']['U_J']:.9e} J，最大节点力从 {me['original']['max_node_force_N']:.9e} 增到 {me['weighted_diagnostic']['max_node_force_N']:.9e} N。没有连续体边值解作为物理真值，不能称这种变硬是改善。V3 非正权重不进入力学应用。
++
++18. **Foster 不能直接移植什么。** Section2是 correspondence/率相关材料示例；Eq.13是双向状态力差的路径积分，单位J/m⁶；Eq.16–17由理想平面裂纹球冠积分导出，Eq.18永久去掉影响。当前 LPS 多键 θ² 交叉项、原生冻结 m、有限自由/初裂面、破裂瞬间能量转移及材料耗散均需单独处理。`FOSTER_FAILURE_CRITERION_AUDIT.md` 逐项说明，不只做 4Gc/(πδ⁴) 数值代入。
++
++19. **逐相互作用指标是否唯一。** 可唯一计算“指定完整形变路径和拓扑历史下的状态力路径功”，不能从本次证据定义路径无关、独立的逐键弹性势能。四角闭合弹性形变路径的总功与 U 最大归一化误差 {pw['max_total_work_energy_error_scaled']:.3e}，闭合总功 {pw['closed_total_work_J']:.3e} J；单键闭合功最大 {pw['closed_max_abs_pair_work_J']:.3e} J，各键绝对闭合功之和 {pw['closed_sum_abs_pair_work_J']:.3e} J，正负在总量抵消。证据是实际计算，不是示意假曲线。原 M1/M2记录另复用，外功差由动能与数值阻尼解释；未把阻尼当生物耗散。
++
++20. **能否加新断键/软化。** 否。数学上一种加权势能可导、总功闭合，不证明 Foster w_c 对当前 LPS 是可校准传播阻力。原 s00=0.15 仍只保留为已有定性工程基线；本轮不把其瞬断行为升级为正确材料韧性，也没有足够证据生产启用独立能量耗散机制。`ENERGY_FAILURE_PORTABILITY=NOT_ESTABLISHED`、`MATERIAL_GC_UNAVAILABLE=true`。
++
++21. **材料缺口。** 同组成/成熟时间/速率的无缺口强度、稳定扩展本体 Gc/R-curve、指定血管壁界面粘附、独立循环/松弛体耗散，以及速率关系。Liu2021人体全血与Liu2024牛血不可混卡；Taylor2018要求排除小试样/短缺口导致的强度控制。当前只采用Liu2024 TableS2未损伤小应变 G/K，未标定裂纹能、Mullins 或界面。见 `FAILURE_PARAMETER_REQUIREMENTS.md`。
++
++来源：[Shojaei2026](https://doi.org/10.1002/nme.70385)、[perifit固定源码](https://github.com/Hereon-InstituteMS/perifit/tree/66b2192a9f95db29d16adefa162acb579759b925)、[Foster2011](https://doi.org/10.1615/IntJMultCompEng.2011002407)、[Liu2021](https://doi.org/10.1016/j.eml.2021.101444)、[Taylor2018](https://doi.org/10.1016/j.jmbbm.2017.07.007)、[Liu2024](https://doi.org/10.1016/j.jmps.2024.105858)。用户全文与补充材料、本次读取源码、SHA见 sources 和共同清单。
++''')
++ # Clarify evidence-based partial statuses and the local rim amendment.
++ ast=load(A/'FINAL_STATUS.json');ast['states']['SURFACE_CORRECTION_WEIGHT_VALIDITY']='M5C_POSITIVE_PREPROCESSING_ONLY; V3_FAIL_NEGATIVE_AND_LARGE_WEIGHTS';save(A/'FINAL_STATUS.json',ast)
++ meta=load(B/'CLOT_NODAL_TRACTION_METADATA.json');meta.update(contact_rim_support_repair='One10-face actual-surface graph repair; see frozen amendment; all other gates unchanged',repair_freeze_sha256=sha(B/'CONTACT_RIM_SUPPORT_REPAIR_FREEZE.json'),formal_field_count=1,support_screen_attempts=2,actual_force_mapping_count=1,global_constraint_corrections=1,independent_verification_sha256=sha(B/'INDEPENDENT_VERIFICATION.json'));save(B/'CLOT_NODAL_TRACTION_METADATA.json',meta)
++ bcost=load(B/'RESOURCES.json');acost=load(A/'RESOURCES.json');fcost=load(COMMON/'FIGURE_RESOURCES.json')
++ write(COMMON/'COMBINED_REVIEW.md',f'''# 含栓载荷映射与 LPS 失效可行性：共同审查
++
++Run `{RUN}`。**含栓 CFD 已能产生通过本轮离线工程筛查的 LAMMPS 节点载荷；仍未接入生产动态。表面权重/能量失效研究没有充分依据升级当前生产 LPS。** 两线独立验收，无总科学 PASS。B问题1–12和A问题13–21见各自完整报告。
++
++22. **新增代码与计算。** 代码仅在 `analysis/traction_failure_v1/`，数据仅在本 run 三个 verification 和两个 results 目录。B 一个原接受加密场，初次支持检查拒绝十个面，唯一一次真实表面邻接修正后实际生成一次载荷，再做六约束最小修正；独立重载/解析积分/接口检查。A 两个已存拓扑的权重预处理，一个 M5C 受控静态力—能量诊断、少量解析变形路径积分和原 M1/M2只读账本。原生新CFD、LAMMPS动力学/新平衡、高载、失效参数扫描均为0。没有安装或升级服务器生产依赖；临时断连期间仅创建WSL独立分析环境。
++
++23. **资源与成本。** 维护结束后恢复原服务器，HEAD `cc5ee77149f55e58d715bb5a4660c6467231a826`，CPU cgroup v1 配额1536000/100000=15.36核，亲和0–31，RTX4090 24GB；Python3.13.11等版本快照保存。正式离线进程 BLAS/OMP/MKL单线程、GPU计算0。B实际映射 {bcost['wall_s']:.3f}s，A {acost['wall_s']:.3f}s，七组绘图 {fcost['wall_s']:.3f}s；CPU/RSS见 `RESOURCE_AND_COST_SUMMARY.json`。这些相加是计算任务成本，文献阅读/开发/传输与用户维护等待不伪算成求解成本。实际受控作业由本轮专属Supervisor托管，禁止自动重启；未触碰其它任务。
++
++24. **审查图。** B1真实面/材料点/锚点及支持距离；B2原生表压/剪切/面积/法向与力；B3初始/修正分布、守恒、修正与集中；B4真实全1927点的压力/剪切/总载荷箭头。A1真实M5C/V3邻域；A2真实权重、残差/条件数及同场力—能量适配；A3全局功/单键闭合路径与原M1/M2。共7组PNG/SVG，各线与共同静态索引。图上向量缩放明确；没有新医学外壳或断裂动画。
++
++25. **保护。** 最终 `PROTECTION_AUDIT.json` 重核任务前注册的1611个源/材料/原生库/旧结果 SHA；正式完成以该最终文件为准。Git HEAD和环境前后比较另存。未改生产force provider、s00、原生break、材料卡或历史轨迹；未commit/push/清理。初次支持拒绝与后续修正原样留证，不反改旧结论。
++
++26. **实际WSL文档。** 由独立串行写入脚本更新 `/home/lzy/projects/clot_rupture.md`，执行结果见 `document_edit/AUDIT.json`；没有把服务器同名路径当WSL文件。保留①–⑨、旧无栓轨迹、先前高载失败与Gc未识别结论。
++
++27. **证据位置。** `document_edit/before.md`、`after.md`、`change.diff`、`AUDIT.json`记录最新SHA/并发保护/读回。`SOURCE_MANIFEST.json`、`CODE_ADDITIONS.diff`、`SERVER_ARTIFACT_MANIFEST.json`、`COMPACT_MANIFEST.json`、`LOCAL_RETRIEVAL_AUDIT.json`分别记录源码/原生库、差异、服务器产物和WSL回收。实际命令见 `REPRODUCE.txt`。完整旧CFD体网格/原生全场留服务器，不重新下载或舍入。
++
++28. **唯一下一优先项。** {nextstep} 本轮停止，不自动执行。
++
++要点：580个材料点受载、1347个材料点零外载、1561锚点排除；压力/剪切/总项修正0.618%/9.015%/0.772%，代数误差~1e−16；剪切局部支持与曲面平均尚有离散限制。M5C变分适配可导不代表表面修正已验证；V3有15负节点/59非正键。总弹性能可恢复不意味着单键路径功有唯一弹簧势能。当前独立Gc仍不可用。
++''')
++ save(COMMON/'RESOURCE_AND_COST_SUMMARY.json',dict(B=bcost,A=acost,figures=fcost,geometry_preflight=load(B/'GEOMETRY_PREFLIGHT.json')['runtime'],job_count=dict(CFD=0,native_LAMMPS_dynamic=0,native_new_equilibrium=0,accepted_CFD_fields_mapped=1,support_screen_attempts=2,single_local_support_repair=1,global_minimum_conservative_correction=1,weight_geometries=2,controlled_small_specimen_force_energy=1,figure_groups=7),GPU_compute=False,CPU_threads_per_analysis=1,counts_scope='Offline evaluations only; path quadrature nodes are evaluations, not equilibrium solves. Reading, development and maintenance wait not included in compute totals.'))
++ def index(folder,title,figdir,report):
++  figs=sorted(figdir.glob('*.png'));links=''.join(f'<a href="{os.path.relpath(folder/f,folder)}">{html.escape(f)}</a><br>' for f in report);cards=''
++  for p in figs:
++   src=os.path.relpath(p,folder);cards+=f'<article><h2>{html.escape(p.stem)}</h2><a href="{src}"><img src="{src}" loading="lazy"></a><p><a href="{os.path.relpath(p.with_suffix(".svg"),folder)}">SVG</a></p></article>'
++  write(folder/'OPEN_RESULTS.html',f'<!doctype html><meta charset="utf-8"><title>{title}</title><style>body{{font:17px system-ui;max-width:1400px;margin:35px auto;padding:0 20px;color:#17324b}}a{{color:#14699b}}img{{max-width:100%}}article{{margin:40px 0;border-top:1px solid #ccd5dd}}p{{line-height:1.6}}</style><h1>{title}</h1><p>Run {RUN} · 真实数组绘图 · 离线工程与研究结论分项验收 · 未运行新断裂/CFD</p>'+links+cards)
++ index(B,'B · 含栓 CFD 到真实材料点的守恒载荷',FB,['REVIEW_Y_CLOT_CFD_TO_LAMMPS_CONSERVATIVE_TRACTION_MAP_V1.md','FINAL_STATUS.json','LOCAL_MAPPING_QUALITY.json','CONSERVATIVE_MAPPING_AUDIT.json','INDEPENDENT_VERIFICATION.json','CLOT_NODAL_TRACTION_FORCES.npz','CLOT_NODAL_TRACTION_METADATA.json','CFD_TO_LAMMPS_MAPPING_MATRIX.npz'])
++ index(A,'A · LPS 表面权重与能量失效可行性',FA,['REVIEW_LPS_SURFACE_CORRECTION_AND_ENERGY_FAILURE_FEASIBILITY_V1.md','FINAL_STATUS.json','FOSTER_FAILURE_CRITERION_AUDIT.md','FAILURE_PARAMETER_REQUIREMENTS.md','SURFACE_CORRECTION_FEASIBILITY.json','FORCE_ENERGY_COMPATIBILITY.json','LPS_INTERACTION_WORK_AUDIT.json'])
++ write(COMMON/'OPEN_RESULTS.html',f'<!doctype html><meta charset="utf-8"><title>Y clot traction / failure audit</title><style>body{{font:20px system-ui;max-width:1050px;margin:60px auto;line-height:1.7}}a{{color:#176699}}</style><h1>含栓载荷映射与 LPS 失效可行性</h1><p>Run {RUN}</p><p><b>B：通过离线守恒与局部工程筛查。</b> 580点受载，锚点排除；生产耦合未运行。</p><p><b>A：M5C变分诊断通过，V3权重不通过；能量失效移植未建立。</b> 生产模型和材料保持不变。</p><p><a href="{os.path.relpath(B/"OPEN_RESULTS.html",COMMON)}">B线4组图、报告与节点力</a></p><p><a href="{os.path.relpath(A/"OPEN_RESULTS.html",COMMON)}">A线3组图、报告与数学审查</a></p><p><a href="COMBINED_REVIEW.md">共同中文评审与下一步</a></p><p>完整原始CFD留服务器；未运行新断裂、streaming或双向FSI。</p>')
++ save(COMMON/'FINAL_STATUS.json',dict(run_id=RUN,B=load(B/'FINAL_STATUS.json')['states'],A=ast['states'],overall_scientific_PASS_not_assigned=True,stopped_after_delivery=True,next_unique_priority=nextstep))
++ print('reports and indexes generated')
++if __name__=='__main__':main()
+--- /dev/null
++++ analysis/traction_failure_v1/retrieve.py
+@@ -0,0 +1,29 @@
++"""Fetch only explicitly inventoried current-run files; no broad project sync."""
++from pathlib import Path
++import json,sys,subprocess,shlex,hashlib,tarfile,io
++C=json.loads(Path('/home/lzy/projects/.traction_failure_current.json').read_text());ROOT=Path(C['root']);COMMON=ROOT/C['common']
++SSH=['ssh','-p','15283','-i','/home/lzy/.ssh/vast_step3b_ed25519','-o','IdentitiesOnly=yes','-o','BatchMode=yes','root@95.3.33.46']
++mode=sys.argv[1]
++if mode=='preview':files=[C['FA'],C['FB']]
++else:
++ manifest=json.loads(subprocess.check_output(SSH+[shlex.join(['cat','/workspace/y_clot/project/'+C['common']+'/COMPACT_MANIFEST.json'])]))
++ files=[d['path'] for d in manifest['files']]+[C['common']+'/'+s for s in ['COMPACT_MANIFEST.json','SERVER_ARTIFACT_MANIFEST.json']]
++assert all(not Path(p).is_absolute() and '..' not in Path(p).parts for p in files)
++proc=subprocess.Popen(SSH+[shlex.join(['tar','-cf','-','-C','/workspace/y_clot/project','--',*files])],stdout=subprocess.PIPE)
++with tarfile.open(fileobj=proc.stdout,mode='r|') as archive:
++ for member in archive:
++  target=ROOT/member.name
++  assert not member.name.startswith('/') and '..' not in Path(member.name).parts and not member.issym() and not member.islnk()
++  if member.isdir():target.mkdir(parents=True,exist_ok=True)
++  elif member.isfile():
++   target.parent.mkdir(parents=True,exist_ok=True)
++   with archive.extractfile(member) as src,target.open('wb') as dst:
++    import shutil;shutil.copyfileobj(src,dst)
++assert proc.wait()==0
++if mode!='preview':
++ checked=[]
++ for d in manifest['files']:
++  p=ROOT/d['path'];actual=hashlib.sha256(p.read_bytes()).hexdigest();assert p.stat().st_size==d['bytes'] and actual==d['sha256'],d['path'];checked.append(d['path'])
++ result=dict(all_sha256_match=True,files=len(checked),bytes=manifest['total_bytes'],manifest_sha256=hashlib.sha256((COMMON/'COMPACT_MANIFEST.json').read_bytes()).hexdigest(),large_previous_CFD_transferred=False,scope='Current run only; existing literature duplicates verified by SHA. Receipts excluded from self inventory.')
++ (COMMON/'LOCAL_RETRIEVAL_AUDIT.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result))
++else:print('downloaded seven figure groups for visual inspection')
+--- /dev/null
++++ analysis/traction_failure_v1/update_wsl_document.py
+@@ -0,0 +1,36 @@
++"""One serial, guarded update of the real WSL research document."""
++from pathlib import Path
++import hashlib,json,difflib,re,time
++C=json.loads(Path('/home/lzy/projects/.traction_failure_current.json').read_text());ROOT=Path(C['root']);out=ROOT/C['common']/'document_edit';doc=Path('/home/lzy/projects/clot_rupture.md')
++assert not out.exists(),'Do not overwrite document audit'
++before=doc.read_bytes();old=before.decode();h=lambda b:hashlib.sha256(b).hexdigest();out.mkdir();(out/'before.md').write_bytes(before)
++s=old.replace('尚未映射到 LAMMPS 材料点，更未改动下面的工程剪切脉冲。','该轮尚未映射到 LAMMPS 材料点；后续离线映射见下文，下面的工程剪切脉冲没有改动。',1)
++added_b='''**本轮离线保守映射（20261011T184653Z）**：重新读取上面的加密含栓解，把真实暴露面的压力、切向黏性和法向黏性分别积分，再按邻近非负权重分到现有材料点，最后做最小保力、保力矩修正。1927 个材料点中有 **580 个受载、1347 个外载为零**，1561 个锚点全部排除。有效面积来自实际三角面积分配，不把每点面积直接设为 Δx²，也不按两种体积之比放大力。输出已是 **N**，接入时不能再乘一次材料点体积。
++
++最初有 10 个很小的接触边缘面被切平面条件排除，占暴露面积约 0.0233%；本轮只做一次局部邻接支持修正，随后全部面覆盖。邻接图弦长不是严格曲面测地距离，仍属于离散工程筛查。压力/剪切/总项的 L2 修正分别为 **0.618% / 9.015% / 0.772%**；剪切接近预设 10% 警示尺度。各分项总力、总力矩的归一化代数误差约 10⁻¹⁶，未出现压力或剪切反向节点力；这不表示物理误差也达到该数量级。50 µm 点距、曲面平均和边缘支持仍有限制。
++
++这些节点力可以用于下一轮原生接口验证；**本轮没有把它施加到生产碎裂计算**。旧无栓背景流、断裂轨迹、200 Pa 工程脉冲和碎片输运保持原来的来源。新牵引仅对应固定完整血栓，不是微泡 streaming，也不是双向流固耦合；未来还要避免与已脱离碎片的背景阻力重复计力。
++
++'''
++marker='> **出处**：';pos=s.index(marker);s=s[:pos]+added_b+s[pos:]
++added_a='''**本轮表面修正与能量失效审查（20261011T184653Z）**：对真实 M5C 缺口试样和 V3 血栓分别计算初始邻域与 Shojaei/perifit 权重，没有重新捏形状或恢复缺口键。M5C 权重约 0.577–3.190，均为正；V3 约 −0.330–49.161，出现 **15 个负权重点、59 条非正平均权重键**，算子残差也没有普遍改善。因此不能把“算出了权重”写成“表面力学已修好”，V3 权重不进入生产计算。
++
++只在正权重 M5C 上做了一次保留原核、初始归一化的变分适配诊断：同一储能的负梯度与节点力通过差分检查，误差小于 10⁻⁸，但同一形变下储能和力明显变大，尚无物理边值真值证明这是改善。它不是 Shojaei 论文逐式复现。Foster 2011 全文也不能直接提供当前 LPS 的独立逐键弹簧能：实际闭合形变路径上，总相互作用功与总储能一致，单条相互作用的累计功却可不回零，因为膨胀量包含多键交叉项。数值阻尼另算，不充当生物耗散。
++
++所以本轮仍**不启用能量断键或渐进软化**。本体 s₀₀=0.15 和原瞬断规则保留为定性工程基线，不宣称已匹配材料强度或韧性；独立 Gc 仍不可用。若以后研究新的耗散机制，还缺同材料、同速率的无缺口强度、稳定裂纹扩展能、指定血管壁界面粘附以及循环/松弛实验。
++
++'''
++pos=s.index('# ⑥');boundary=s.rfind('---',0,pos);assert boundary>0;s=s[:boundary]+added_a+s[boundary:]
++oldnext='下一轮唯一优先项是验证含栓 CFD 暴露面牵引向现有 LAMMPS 材料点的离线保力、保力矩映射，先核对单位、坐标、面身份和面积权重，不直接启动生产加载或双向耦合；不自动启动。'
++assert oldnext in s
++s=s.replace(oldnext,'当时建议的离线映射已在本轮完成，仍未进入生产动力学。',1)
++s+='\n本轮 [含栓牵引映射与 LPS 失效可行性共同报告]('+str(ROOT/C['common']/'COMBINED_REVIEW.md')+') 和 [七组真实审查图、节点力与分项报告]('+str(ROOT/C['common']/'OPEN_RESULTS.html')+') 保存完整证据。下一轮唯一优先项是：用现有 V3 完整态、禁止断键，做一次原生静态受载接口验证，核对本轮节点力的单位、总载荷、约束反力/力矩及小变形响应，并排除碎片阻力重复作用；不自动运行。\n'
++headers=lambda text:re.findall(r'^# .*[①②③④⑤⑥⑦⑧⑨].*$',text,re.M)
++assert headers(s)==headers(old) and len(headers(old))==9
++for text in ['GC_UNAVAILABLE','未保留缺口优先起裂','没有血栓','Gc 仍未识别','高载']:
++ assert text in s
++assert doc.read_bytes()==before,'Concurrent modification detected; no write'
++doc.write_text(s);readback=doc.read_bytes();assert readback==s.encode()
++(out/'after.md').write_bytes(readback);(out/'change.diff').write_text(''.join(difflib.unified_diff(old.splitlines(True),s.splitlines(True),fromfile=str(doc)+'.before',tofile=str(doc))))
++audit=dict(path=str(doc),written_utc=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),sha256_before=h(before),sha256_after=h(readback),read_latest_before_write=True,concurrent_content_check=True,readback_match=True,chapters_changed=['①背景流新增离线映射','⑤新增权重/失效限制','文末证据与下一项'],all_nine_headers_unchanged=True,historical_negative_results_preserved=True,old_unclotted_CFD_and_trajectories_not_relabelled=True)
++(out/'AUDIT.json').write_text(json.dumps(audit,ensure_ascii=False,indent=2)+'\n');print(json.dumps(audit,ensure_ascii=False))
+--- /dev/null
++++ analysis/traction_failure_v1/verify_b.py
+@@ -0,0 +1,27 @@
++"""Independent artifact reconstruction and deterministic offline interface checks."""
++from analysis.traction_failure_v1.common import *
++from analysis.traction_failure_v1.map_b import apply_nodal_forces,constraints
++from scipy.sparse import csr_matrix
++s=np.load(PREV/'refined/CLOT_SURFACE_TRACTIONS.npz');d=np.load(B/'CLOT_NODAL_TRACTION_FORCES.npz');m=np.load(B/'CFD_TO_LAMMPS_MAPPING_MATRIX.npz');W=csr_matrix((m['data'],m['indices'],m['indptr']),shape=tuple(m['shape']));X=d['reference_coordinates_m'];x0=d['reference_point_m'];area=s['triangle_area_m2'];ix=m['loaded_node_indices'];L=float(m['length_scale_m']);C6=constraints(X[ix],x0,L);checks={};ind={}
++for key,field in [('pressure','pressure_traction_Pa'),('shear','tangential_traction_Pa'),('viscous_normal','viscous_normal_traction_Pa')]:
++ f0=W@(s[field]*area[:,None]);f=f0.copy();f[ix]+=(np.repeat(m[key+'_D'],3)*(C6.T@m[key+'_lambda'])).reshape(-1,3);err=np.linalg.norm(f-d[key+'_force_N'])/np.linalg.norm(f);checks[key+'_saved_reconstruction']=err<1e-13
++ # Direct exact triangle integral: linear p barycentric first/second moments.
++ if key=='pressure':
++  bary=np.array([[2/3,1/6,1/6],[1/6,2/3,1/6],[1/6,1/6,2/3]]);pnode=np.linalg.solve(bary,s['quadrature_pressure_Pa'].T).T;xyz=s['triangles_xyz_m'];int_xp=area[:,None]/12*(xyz.sum(1)*pnode.sum(1)[:,None]+np.einsum('fij,fi->fj',xyz,pnode));moment=np.cross(int_xp-x0*(area*pnode.mean(1))[:,None],-s['n_clot']).sum(0)
++ else:moment=np.cross(s['surface_coordinates_m']-x0,s[field]*area[:,None]).sum(0)
++ F=(s[field]*area[:,None]).sum(0);scale=np.linalg.norm(s[field]*area[:,None],axis=1).sum();fe=np.linalg.norm(f.sum(0)-F)/scale;me=np.linalg.norm(np.cross(X-x0,f).sum(0)-moment)/(scale*L);checks[key+'_force_moment']=max(fe,me)<1e-8;ind[key]=dict(force_error_scaled=fe,moment_error_scaled=me,artifact_relative_error=err)
++ # Translation of torque center, an independent sign / lever-arm test.
++ x1=x0+np.array([.0002,-.0003,.0001]);newM=np.cross(X-x1,f).sum(0);checks[key+'_torque_translation']=np.linalg.norm(newM-(moment-np.cross(x1-x0,F)))/(scale*L)<1e-8
++ids=np.array([701,9,88]);forces=np.array([[1.,2.,3.],[-.4,.5,.6]]);density=np.arange(9.).reshape(3,3)*1e9;volume=np.array([2e-13,3e-13,4e-13]);nodal=density*volume[:,None];out=apply_nodal_forces(ids,nodal,[9,701],forces,[88]);expected=nodal.copy();expected[1]+=forces[0];expected[0]+=forces[1];checks['density_conversion_once_then_N']=np.array_equal(out,expected)
++try:apply_nodal_forces(ids,nodal,[88],forces[:1],[88]);checks['reject_anchor']=False
++except AssertionError:checks['reject_anchor']=True
++writer=(ROOT/'pd_clot/lammps_fragmentation/lammps_writer.py').read_text();checks['production_source_order']=writer.index('{force_conversion()}')<writer.index('fix stream surface addforce');checks['raw_density_source']=all(x in writer for x in ['fx*d_vfrac','fy*d_vfrac','fz*d_vfrac'])
++regions={};edges=np.quantile(X[ix,0],[0,.25,.5,.75,1])
++for name in ['pressure','shear','total']:
++ field={'pressure':'pressure_traction_Pa','shear':'tangential_traction_Pa','total':'total_traction_Pa'}[name];ff=s[field]*area[:,None];fc=d[name+'_force_N'];fi=d[name+'_initial_force_N'];rows=[]
++ for k in range(4):
++  lo=-np.inf if k==0 else edges[k];hi=np.inf if k==3 else edges[k+1];sf=(s['surface_coordinates_m'][:,0]>=lo)&(s['surface_coordinates_m'][:,0]<hi);sn=(X[:,0]>=lo)&(X[:,0]<hi)
++  rows.append(dict(x_interval_m=[None if k==0 else lo,None if k==3 else hi],CFD_force_N=ff[sf].sum(0),node_initial_force_N=fi[sn].sum(0),node_corrected_force_N=fc[sn].sum(0),CFD_abs_fraction=np.linalg.norm(ff[sf],axis=1).sum()/np.linalg.norm(ff,axis=1).sum(),node_abs_fraction=np.linalg.norm(fc[sn],axis=1).sum()/np.linalg.norm(fc,axis=1).sum()))
++ regions[name]=rows
++save(B/'INDEPENDENT_VERIFICATION.json',dict(checks=checks,passed=all(checks.values()),components=ind,tests='Reloaded CSR + saved low-rank correction; analytic linear-pressure triangle moment independent of exported quadrature; torque-center translation; shuffled nonconsecutive IDs; density conversion exactly once, then integrated N; reject anchors.',source_and_nodal_x_regions=regions));assert all(checks.values())
++print(json.dumps(ind,indent=2))

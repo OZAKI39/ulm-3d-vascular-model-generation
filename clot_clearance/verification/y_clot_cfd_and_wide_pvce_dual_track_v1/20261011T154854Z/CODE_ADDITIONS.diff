@@ -1,0 +1,1786 @@
+diff --git a/analysis/dual_track_v1/REPRODUCE.txt b/analysis/dual_track_v1/REPRODUCE.txt
+new file mode 100644
+index 0000000..bb2356c
+--- /dev/null
++++ b/analysis/dual_track_v1/REPRODUCE.txt
+@@ -0,0 +1,57 @@
++Y_CLOT_CFD_AND_WIDE_PVCE_DUAL_TRACK_V1 — bounded reproduction
++
++Current recorded run: 20261011T154854Z. DO NOT execute any generating/solver command
++on this ID again. Original raw accepted/candidate states and native logs are retained.
++No automatic commit/push, environment upgrade, historical rerun, or production edit.
++
++1. Server: source /workspace/y_clot/env.sh ; cd /workspace/y_clot/project
++   Read /etc/vast-agents-guide.md and project AGENTS.md. Inspect current tasks/resources.
++   Current code is analysis/dual_track_v1; pinned native dependencies are unchanged.
++2. Read-only analysis of this recorded run (does not solve a new physical state):
++   python -m analysis.dual_track_v1.analyze_a
++   python -m analysis.dual_track_v1.post_b baseline
++   python -m analysis.dual_track_v1.post_b refined       # only if accepted
++   python -m analysis.dual_track_v1.post_b compare       # only if both accepted
++   Plot modules only read recorded full-precision states; no image generation model.
++3. For an explicitly requested NEW replay, choose a unique NEW_ID, export
++   Y_CLOT_DUAL_RUN_ID=NEW_ID for every command and its Supervisor environment.
++   python -m analysis.dual_track_v1.prepare_replay --run-id NEW_ID
++   This performs only geometry preparation and independent A/B design freezes.
++4. Create separate Supervisor programs, autostart=false/autorestart=false,
++   directory=/workspace/y_clot/project, source the private env and export NEW_ID.
++   Commands (do not start unlimited copies):
++     python -u -m analysis.dual_track_v1.preflight_a
++     python -u -m analysis.dual_track_v1.campaign_b baseline
++   Only after periodic preflight PASS:
++     python -u -m analysis.dual_track_v1.campaign_a
++   Only after low PVCE PASS:
++     python -u -m analysis.dual_track_v1.recovery_a
++   Only after recovery PASS and remaining budget:
++     python -u -m analysis.dual_track_v1.campaign_high_a
++   Only after baseline CFD PASS_WITH_SCOPE:
++     python -u -m analysis.dual_track_v1.campaign_b refined
++   One low state failure stops new A states. At most8 equilibria and2 CFD solves.
++   A state900s/8GiB; B solve2700s/32GiB; B8MPI, A1process; preserve priorities.
++5. The original run needed three interface corrections, all evidenced in B reports:
++   - int32 ModelFaceID for native SimVascular, no shape change;
++   - volume-only set_walls inclusion mask must retain all five PLC faces; physical
++     solver no-slip is only tags1,5, with original inlet/outlet conditions;
++   - SV mesh/VTK coordinate serialization uses float32. Restore the boundary to
++     frozen double PLC via exact bijective float32 identity; solver fields remain
++     float64. Read native VTU using the same exact identity, not interpolation.
++   Corrected replay implements these directly. baseline_interface_failure_* and
++   monitor_baseline_b.py/resume_b_precision.py preserve the original chronology;
++   those recovery scripts are NOT the normal new-replay path. No baseline CFD restart
++   was made: the auxiliary observer stopped the original running solver after its
++   normal five-interval steady gate, and captured its actual exit status0.
++6. WSL document updates are separate and serial, with pre-write SHA, backup, diff,
++   read-back SHA and concurrent-change check. Do not run historical update scripts.
++
++Authoritative method/API references used:
++https://docs.lammps.org/bond_bpm_peri.html
++https://docs.lammps.org/pair_bpm_peri.html
++https://docs.lammps.org/boundary.html
++https://simvascular.github.io/documentation/python_interface/modules/docs/meshing_TetGenOptions.html
++https://github.com/SimVascular/SimVascular/blob/master/Code/Source/sv/Mesh/TetGenMeshObject/sv_TetGenMeshObject.cxx
++Upstream mesher source inspected as diagnostic context; it is not substituted for
++or claimed to be the exact pinned native binary. Native runtime audits are retained.
+diff --git a/analysis/dual_track_v1/analyze_a.py b/analysis/dual_track_v1/analyze_a.py
+new file mode 100644
+index 0000000..c71eb1f
+--- /dev/null
++++ b/analysis/dual_track_v1/analyze_a.py
+@@ -0,0 +1,54 @@
++from analysis.dual_track_v1.common import *
++import csv
++
++def main():
++ topo=json.loads((A/'PERIODIC_TOPOLOGY_AUDIT.json').read_text());g=json.loads((A/'PVCE_ENERGY_RELEASE_RESULTS.json').read_text());low=[json.loads((A/f'A{i}/EQUILIBRIUM.json').read_text()) for i in range(3)];rec=json.loads((A/'STATIC_SOLVER_RECOVERY.json').read_text());high=json.loads((A/'lps/wide_A0_search_1/RESULT.json').read_text());fd=json.loads((A/'READ_ONLY_FD_SCALE_DIAGNOSIS.json').read_text());oldtwo=6.1859550723487025e-6;oldthree=6.170305164660184e-6
++ summary=dict(geometry=topo,low=low,G=g,old_G=dict(two_J_m2=oldtwo,three_J_m2=oldthree),relative_G_change=dict(two=g['G_two_J_m2']/oldtwo-1,three=g['G_three_J_m2']/oldthree-1),recovery=rec,high=high,read_only_FD_diagnosis=fd,formal_equilibrium_attempts=5,measured_low_high_wall_s=sum(v['wall_seconds'] for v in low)+high['wall_seconds'],recovery_wall_upper_bound_s=rec['wall_upper_bound_s'],measured_low_high_CPU_s=sum(v['cpu_seconds'] for v in low)+high['cpu_seconds'],peak_observed_RSS_MiB=max(topo['peak_RSS_MiB'],high['peak_RSS_MiB'],*[v['peak_RSS_MiB'] for v in low]),recovery_CPU_RSS='Unavailable due reporting-only exception; do not replace by zero',delta_over_dimension=dict(old_W=.1505/.6,wide_W=.1505/5,H=.1505/1,old_B=.1505/.6,wide_periodic_B=.1505/.4),scientific_stop='Low3 accepted, old saved high recovery certified; one wide high candidate rejected on frozen coordinate plateau and1pm component FD. No further formal A solves. Read-only1nm FD diagnoses scale/roundoff without regrading acceptance.')
++ save(A/'ANALYSIS_SUMMARY.json',summary)
++ status=dict(WIDE_GEOMETRY_VALIDITY='PASS_16000_POINTS',PERIODIC_BOND_TOPOLOGY='PASS_SINGLE_RANK_STATIC_Y_PERIODIC',LPS_FORCE_ENERGY_CONSISTENCY='LOW_PASS_NATIVE_AND_FD_HIGH_COMPONENT_FD_GATE_NOT_PASSED',LOW_LOAD_PVCE_EQUILIBRIUM='PASS_3_OF_3',LOW_LOAD_G_DRIVE='PASS_SPECIMEN_DRIVING_FORCE',STATIC_SOLVER_RECOVERY='PASS_SAVED_OLD_STATE_CERTIFIED_METADATA_LIMIT_REPORTED',NEAR_ONSET_LOCATION='UNACCEPTED_HIGH_CANDIDATE_GRIP_DOMINANT_NO_ONSET_IDENTIFIED',NEAR_ONSET_G_DRIVE='NOT_RUN_ENTRANCE_GATE_FAILED',MATERIAL_GC='NOT_IDENTIFIED',NUMERICAL_SCOPE='FINITE_XZ_PERIODIC_Y_SMALL_PURE_SHEAR_LIKE_STATIC_DIAGNOSTIC_NO_BIOMATERIAL_VALIDATION')
++ save(A/'FINAL_STATUS.json',dict(run_id=RUN,states=status,formal_equilibria=5,remaining_budget_unused=3,stopped=True))
++ rows=[]
++ for i,v in enumerate(low):rows.append(dict(model='wide_periodic_Y',case=f'A{i}',opening_m=2e-6,crack_length_m=.0015+i*.00005,U_J=v['U_J'],G_two_J_m2=g['G_two_J_m2'] if i==0 else '',G_three_J_m2=g['G_three_J_m2'] if i==0 else '',accepted=v['accepted'],maximum_free_force_N=v['max_native_free_force_N'],wall_s=v['wall_seconds']))
++ rows.append(dict(model='old_finite_small_V1',case='A0_A1_A2_reused',opening_m=2e-6,crack_length_m=.0002,U_J='',G_two_J_m2=oldtwo,G_three_J_m2=oldthree,accepted=True,maximum_free_force_N='',wall_s='NOT_RERUN'))
++ rows.append(dict(model='wide_periodic_Y',case='high_A0_candidate',opening_m=high['opening_m'],crack_length_m=.0015,U_J=high['U_J'],G_two_J_m2='',G_three_J_m2='',accepted=False,maximum_free_force_N=high['max_native_free_force_N'],wall_s=high['wall_seconds']))
++ with (A/'CASE_COMPARISON.csv').open('w') as f:w=csv.DictWriter(f,fieldnames=list(rows[0]));w.writeheader();w.writerows(rows)
++ text=f'''# LPS_WIDE_PURE_SHEAR_PVCE_FEASIBILITY_V1 科研审查
++
++运行：`{RUN}`。低载三态通过；旧小试样高载静态恢复通过；宽薄高载候选未通过全部冻结门槛，已停止。本报告不以总 PASS 代替分项科学状态。
++
++## 用户要求的 12 项回答
++
++1. **实际几何、节点与键。** 名义 X×Y×Z＝5×0.4×1 mm，dx＝50 µm，δ＝150.5 µm；100×8×20＝16,000 点，909,392 条完整参考键。体积 2 mm³、质量 2 mg。Y 周期厚度固定为 0.4 mm，宏观 Y 应变为零，X 自由，Z 上下端最外层各 800 点仅控制轴向位移；1,600 个受控自由度、46,400 个自由自由度。该几何是缩小 Pure-Shear 类周期材料层，不是 Liu 2024 的完整实验或真实有限厚度血栓。
++
++2. **周期认证。** 共 131,196 条跨 Y 周期键。独立整数格点枚举与最小镜像 KD 邻居键逐一相等，无自键、重复或遗漏；Y 平移一层后 m 和三个切口集合不变。原子 ID、完整参考键 ID、周期影像和长度均保存于 `reference_topology.npz`。原生单 MPI rank ghost 通信已在完整态及 A0、参考态及周期非仿射位移上核对；未宣称多 MPI rank 或任意大变形周期拓扑已认证。
++
++3. **m、θ、力与能量。** 所有状态使用完整未切参考 m；仅在任务目录把既有 XY 周期储能评估器改为 Y 周期。原生力与独立 −∇U 在非仿射预检查中最大相对差 {max(x['force_relative'] for x in topo['checks']):.6e}，θ 最大相对差 {max(x['theta_relative'] for x in topo['checks']):.6e}。四个方向差分均通过 1e−6 门槛。A0 参考态独立接触检测中的极微小数值接触能约 3.9e−37 J，原生接触为零，属于浮点距离舍入，未出现物理接触。没有用原生不完整 bond PE 代替独立储能。
++
++4. **三态平衡。** A0/A1/A2 均通过相对自由力≤1e−6、最大自由力≤1e−13 N、末十次能量跨度≤1e−8、位置变化≤1e−10 m、反力不平衡≤1e−6、原生/独立力≤1e−9、接触及固定拓扑门槛。原生最大自由力依次为 {', '.join(f"{x['max_native_free_force_N']:.6e}" for x in low)} N。加载总开度均为 2 µm。
++
++5. **PVCE 数值。** 从负 X 面切入 a＝1.50/1.55/1.60 mm，z＝0 参考交点按半开区间删除；删键数 16,416/16,976/17,536，严格嵌套，每增量 560 条。BΔa＝2.0e−8 m²。U0/U1/U2＝{', '.join(f"{x:.12e}" for x in g['U_J'])} J。G_two＝{g['G_two_J_m2']:.12e} J/m²，经验误差估计 ±{g['empirical_error_G_two_J_m2']:.6e}；G_three＝{g['G_three_J_m2']:.12e} J/m²，经验误差估计 ±{g['empirical_error_G_three_J_m2']:.6e}。估计合并残余力做功、能量平台和舍入，**不是严格离散误差界、材料误差或置信区间**。
++
++6. **与旧小试样对照。** 旧低载 G_two/G_three＝{oldtwo:.12e}/{oldthree:.12e} J/m²。本轮分别提高 {summary['relative_G_change']['two']*100:.4f}% / {summary['relative_G_change']['three']*100:.4f}%。旧结果只读复用，没有重算。
++
++7. **可否单独归因。** 不可以。δ/W 从 0.250833 降至 0.0301，δ/H 仍为 0.1505；宽度、厚度、裂纹长度和 Y 边界身份同时改变，当前不是分离这些因素的对照试验。两种 G 的差别属于试样相关驱动力差异，不应当作材料本构改变的证据。
++
++8. **旧高载静态恢复。** 原 73.5605577 µm A0 保存态仅进行一次局部 Hessian-vector 残差修正，不改变材料、载荷、参考键或门槛。原最大自由力 1.129107e−12 N，恢复后 {rec['final']['max_force_N']:.6e} N，所有原门槛通过。原最终双精度状态已保存；随后 stdout JSON 序列化错误导致报告写出失败，现已从该保存态独立重建验证报告，没有再次求解。该次 CPU、峰值 RSS、HVP 计数未恢复，明确保留为未知；墙钟上界为 {rec['wall_upper_bound_s']:.6f} s。
++
++9. **宽薄近临界检查及停止。** 满足入口条件后，只计算一个 A0 候选，开度 {high['opening_m']*1e6:.9f} µm。L-BFGS 浮点终止后使用预先记录的同类局部修正；最终自由力通过，但末十次位置变化 {high['last']['position_change_m']:.9e} m，大于 1e−10 m；1 pm 分量差分误差 {high['finite_difference_scaled_error']:.9e}，大于 1e−6。故该候选**未接受**，不再计算第二候选或高载 A1/A2。
++
++10. **首达阈值位置。** 未建立真实首达阈值区间，也未运行自然断键。未接受候选的最大 s/s00＝{high['risk']['max_utilization']:.9f}，位于有限 X 正端与上下夹持面的交界附近；相应参考键与原子 ID 见 `FIRST_FAILURE_AUDIT.json`，只是空间诊断，不能称为可信起裂事件。Y 没有自由侧面。裂尖距负 X 面 1.5 mm，裂尖带与 X 面交集为空；另在 `SAVED_CANDIDATE_SPATIAL_REGIONS.json` 按 δ 宽度单独报告缺口口部与负 X 边界的交界区，及缺口前缘、夹具、其他 X 自由面和内部五区，不据此改变任何验收门槛。只读复核将差分步长设为固定 1 nm 后，相同保存态误差为 {fd['scaled_error']:.6e}，支持 1 pm 检查受舍入影响的解释；**未据此重评接受态，位置门槛失败仍保留**。
++
++11. **能否称材料 Gc。** 不能。当前是已给定裂纹、固定参考 m、理想化周期试样的 `WIDE_PERIODIC_SPECIMEN_PVCE_G_DRIVE`；没有可信目标缺口临界分支、自然新裂纹面积或生物实验认证。
++
++12. **是否支持修改 LPS 本构。** 没有。当前发现指向边界、有限尺寸和静态数值接受问题，不构成新增软化、Yeoh、Mullins 或修改 s00 的证据。
++
++## 成本、审查图与复现
++
++正式静态调用 5/8：低载 3、旧候选恢复 1、宽薄高载候选 1；没有新增动态算例。低载及宽薄高载记录墙钟合计 {summary['measured_low_high_wall_s']:.3f} s，CPU 合计 {summary['measured_low_high_CPU_s']:.3f} s；另加恢复墙钟上界 {rec['wall_upper_bound_s']:.3f} s。周期预检查 {topo['wall_s']:.3f} s，所记录的峰值 RSS 最大 {summary['peak_observed_RSS_MiB']:.2f} MiB。恢复元数据缺项不以零补齐。
++
++`OPEN_RESULTS.html` 包含真实点阵、周期影像、三种切口、收敛/能量/G、恢复与停止证据、高载实际键位置以及三态真实平衡图。所有原始状态、原生输入、完整键表与日志留在本目录；材料点不是医学外壳。
++
++正式运行前方案：`DESIGN_FREEZE.json`；高载数值步骤冻结：`HIGH_NUMERICAL_FREEZE.json`。复现入口和本轮接口修正见共同目录 `REPRODUCE.txt`。原生源码/库与历史结果是否保护，以共同 `PROTECTION_AUDIT.json` 的完整 SHA 复核为准。
++'''
++ (A/'REVIEW_LPS_WIDE_PURE_SHEAR_PVCE_FEASIBILITY_V1.md').write_text(text)
++if __name__=='__main__':main()
+diff --git a/analysis/dual_track_v1/analyze_b.py b/analysis/dual_track_v1/analyze_b.py
+new file mode 100644
+index 0000000..c73e860
+--- /dev/null
++++ b/analysis/dual_track_v1/analyze_b.py
+@@ -0,0 +1,86 @@
++from analysis.dual_track_v1.common import *
++import csv,shutil
++
++def main():
++ geom=json.loads((B/'GEOMETRY_AUDIT.json').read_text());base=json.loads((B/'baseline/CFD_RESULT.json').read_text());assert base['status']=='PASS_WITH_SCOPE';levels=['baseline'];finefile=B/'refined/CFD_RESULT.json'
++ if finefile.exists() and json.loads(finefile.read_text())['status']=='PASS_WITH_SCOPE':levels.append('refined')
++ chosen=levels[-1];d={l:json.loads((B/l/'CFD_RESULT.json').read_text()) for l in levels};t={l:json.loads((B/l/'CFD_CLOT_TRACTION_AUDIT.json').read_text()) for l in levels};c={l:json.loads((B/l/'CFD_BASELINE_COMPARISON.json').read_text()) for l in levels};meshes={l:json.loads((B/l/'MESH_QUALITY_AUDIT.json').read_text()) for l in levels};sens=json.loads((B/'MESH_SENSITIVITY.json').read_text()) if (B/'MESH_SENSITIVITY.json').exists() else dict(status='NOT_ACCEPTED_OR_NOT_RUN');r=d[chosen];tr=t[chosen];comp=c[chosen];old=comp['old_metrics'];metrics=r['metrics'];good=sens['status']=='PASS_ENGINEERING_SCREEN'
++ for name in ['CFD_CLOT_TRACTION_AUDIT.json','CFD_MASS_BALANCE.json','TRACTION_INTERFACE.json','TRACTION_MATH_AUDIT.json','CLOT_SURFACE_TRACTIONS.npz']:shutil.copy2(B/chosen/name,B/name)
++ save(B/'SELECTED_FLOW.json',dict(level=chosen,selection='Use accepted local-refined field when available; mesh sensitivity remains a separate scientific status',snapshot=r['snapshot'],snapshot_sha256=r['snapshot_sha256'],mesh_sha256=r['mesh_sha256'],surface_data_sha256=sha(B/'CLOT_SURFACE_TRACTIONS.npz')))
++ states=dict(CLOT_PRESENT_GEOMETRY_VALIDITY='PASS_ORIGINAL_V3_ANALYTIC_DEFINITION',CFD_MESH_VALIDITY='PASS_CLOSED_LABELLED_POSITIVE_VOLUME',STEADY_FLOW_SOLVER='PASS_NATIVE_LINEAR_NONLINEAR_AND_STEADY_GATES',MASS_BALANCE='PASS_FROZEN_1E_MINUS5',CLOT_SURFACE_PRESSURE='EXTRACTED_GAUGE_PRESSURE',CLOT_SURFACE_SHEAR_TRACTION='EXTRACTED_P1_ADJACENT_ELEMENT_GRADIENT',INTEGRATED_FLUID_FORCE='PASS_EXPOSED_SURFACE_INTEGRAL_AND_MATH_AUDIT',MESH_SENSITIVITY=sens['status'],BASELINE_COMPARABILITY='PASS_SAME_SUPPLY_AND_NATIVE_Y_WITH_STATED_MESH_LIMITS',STREAMING_NOT_INCLUDED=True,TWO_WAY_FSI_NOT_INCLUDED=True)
++ save(B/'FINAL_STATUS.json',dict(run_id=RUN,states=states,selected_level=chosen,formal_CFD_attempts=sum((B/l/'FORMAL_ATTEMPT.json').exists() for l in ['baseline','refined']),accepted_flows=len(levels),stopped=True))
++ rows=[]
++ keys=[('Q_in_m3_s',lambda mm,tt,cc:mm['Q_in_m3_s']),('max_velocity_m_s',lambda mm,tt,cc:mm['velocity_max_m_s']),('outlet_1_fraction',lambda mm,tt,cc:mm['outlet_fractions']['OUTLET_A']),('outlet_2_fraction',lambda mm,tt,cc:mm['outlet_fractions']['OUTLET_B']),('inlet_pressure_Pa',lambda mm,tt,cc:mm['area_average_pressure_pa']['INLET']),('mother_pressure_drop_Pa',lambda mm,tt,cc:cc['parent_pressure_drop'][1]['drop_Pa']),('surface_pressure_mean_Pa',lambda mm,tt,cc:tt['pressure_Pa']['mean']),('surface_shear_mean_Pa',lambda mm,tt,cc:tt['shear_Pa']['mean']),('surface_shear_P95_Pa',lambda mm,tt,cc:tt['shear_Pa']['p95']),('total_force_norm_N',lambda mm,tt,cc:tt['total_force_norm_N'])]
++ for name,fun in keys:
++  row=dict(metric=name,unobstructed='NOT_APPLICABLE_NO_CLOT_SURFACE')
++  if name in ['Q_in_m3_s','max_velocity_m_s','outlet_1_fraction','outlet_2_fraction','inlet_pressure_Pa']:row['unobstructed']=fun(old,None,None)
++  if name=='mother_pressure_drop_Pa':row['unobstructed']=comp['parent_pressure_drop'][0]['drop_Pa']
++  for level in levels:row[level]=fun(d[level]['metrics'],t[level],c[level])
++  rows.append(row)
++ with (B/'CFD_BASELINE_COMPARISON.csv').open('w') as f:w=csv.DictWriter(f,fieldnames=['metric','unobstructed']+levels);w.writeheader();w.writerows(rows)
++ telemetry={}
++ for l in levels:
++  records=json.loads((B/l/'RESOURCES.json').read_text());gpu=[]
++  for rr in records:
++   value=rr.get('gpu_util_percent_memory_MiB')
++   if value:
++    try:gpu.append([float(x) for x in value.split(',')])
++    except ValueError:pass
++  telemetry[l]=dict(native_runtime_s=d[l]['runtime_s'],process_tree_peak_sampled_RSS_MiB=max(v['RSS_bytes'] for v in records)/1024**2,maximum_sampled_live_CPU_s=max(v['CPU_seconds_live'] for v in records),sampling_interval_s=15,CPU_scope='Process-tree sampled CPU lower bound; exited processes may not appear in the final sample',GPU_max_sampled_util_percent=max(v[0] for v in gpu) if gpu else None,GPU_mean_sampled_util_percent=float(np.mean([v[0] for v in gpu])) if gpu else None,GPU_peak_sampled_memory_MiB=max(v[1] for v in gpu) if gpu else None)
++ save(B/'RESOURCE_SUMMARY.json',telemetry)
++ summary=dict(selected_level=chosen,geometry=geom,flows=d,traction=t,comparison=c,mesh=meshes,mesh_sensitivity=sens,telemetry=telemetry,formal_CFD_attempts=sum((B/l/'FORMAL_ATTEMPT.json').exists() for l in ['baseline','refined']),total_accepted_native_runtime_s=sum(v['runtime_s'] for v in d.values()),scope='Rigid original synthetic V3, Newtonian water, original fixed inlet flux and zero traction outlets; no ultrasound/streaming/FSI')
++ save(B/'ANALYSIS_SUMMARY.json',summary)
++ mt='\n'.join(f'| {l} | {meshes[l]["points"]:,} | {meshes[l]["tetrahedra"]:,} | {d[l]["stop"]["step"]} | {d[l]["metrics"]["epsilon_mass"]:.6e} | {d[l]["runtime_s"]:.3f} |' for l in levels)
++ sensitivity=('；'.join(f'{k}：{v*100:.4f}%' for k,v in sens['relative_errors'].items()) if 'relative_errors' in sens else '本轮未获得可接受的两网格对照；见停止证据。')
++ nexttask='验证含栓 CFD 暴露面牵引向现有 LAMMPS 材料点的离线保力、保力矩映射，先核对单位、坐标、面身份和面积权重，再决定是否接入加载。' if good else '针对本轮未收敛的表面牵引指标设计一次有明确误差预算的近壁梯度/局部网格验证，先解决载荷分辨率，再进行材料点映射。'
++ save(B/'NEXT_PRIORITY.json',dict(recommendation=nexttask,automatic_execution=False,basis=sens['status']))
++ text=f'''# Y_CLOT_PRESENT_CFD_BASELINE_V1 科研审查
++
++运行：`{RUN}`。已真正求解原生 Y 血管中的原 V3 含栓稳态背景流。独立身份为 `CLOT_PRESENT_RIGID_GEOMETRY_STEADY_CFD_BASELINE`。下列牵引数值来自 `{chosen}` 接受态；网格敏感性状态为 `{sens['status']}`。
++
++## 用户要求的 12 项回答
++
++1. **是否为原 V3。** 是。直接读取原 `y_clot_morphology_v3.profile`、冻结配置和原生 WALL 三角面，在原壁面沿径向向管腔内施加同一个多叶高度函数。没有从 1,927 个点做凸包，没有用球或椭球替代，也没有平滑形状。x 中心约 −6 mm，位于母管 +z 内壁；图中的主体仍是原材料点。
++
++2. **体积与流体域。** 原连续表面体积 {geom['original_V3_continuous_volume_m3']*1e9:.12f} mm³，新 CFD 有限三角化体积 {geom['CFD_triangulated_clot_volume_m3']*1e9:.12f} mm³，相差 {geom['relative_to_original_V3_mesh']*100:.9f}%；材料点积分体积 0.240875 mm³，属于不同口径。没有为匹配体积调整参数。原生管腔体积 {geom['original_lumen_volume_m3']*1e9:.9f} mm³，含栓流体域 {geom['fluid_volume_m3']*1e9:.9f} mm³，差值等于进入腔内的血栓体积。高度函数从实际壁面向内构造，未发生另一个体积的墙外裁切。接触线共 293 个共享节点、间隙为零；闭合单连通流体体网格通过。最大向内突出约 {geom['max_inward_height_m']*1e6:.6f} µm，29 个真实截面记录于 `GEOMETRY_AUDIT.json`。
++
++3. **暴露面。** `ModelFaceID=5` 的 3,611 个面元是流体真正接触的表面，面积 {tr['exposed_area_m2']*1e6:.9f} mm²；内部壁面附着面不计入流体边界或载荷。由相邻四面体确认流体外法向，取 n_clot＝−n_fluid；流体对血栓牵引为 σn_clot，σ＝−pI＋µ(∇u＋∇uᵀ)。法向符号、剪切与法向正交及力矩积分均有独立数学检查。
++
++4. **网格与边界。** 使用已有 SimVascular 2023.05 / TetGen，保留完整原生 Y：母管半径 1.3 mm、长 14 mm，两支半径 1 mm、长 12 mm、±30°。物理标签为血管壁、入口、两个出口、血栓暴露面。全局目标边长 250 µm，血栓附近球形区域体网格目标 100/70 µm；两次体网格共享同一提前细分的 CFD 表面。所有四面体体积与符号质量为正，边界无遗漏或重复；没有另外生成棱柱边界层。入口保持原 Parabolic、Impose_flux=true、Zero_out_perimeter=true，Q＝2.6354060534101725e−8 m³/s，即约 1.581244 mL/min，平均速度 5 mm/s。出口保持原 Neu、Value=0（零牵引，不能解释成每个出口节点压力恰好为零）；两类壁面均 no-slip。ρ＝1000 kg/m³、µ＝0.001 Pa·s。
++
++5. **是否实际求解。** 是。使用锁定 svMultiPhysics/PETSc/MPI 和原 GPU 选项，8 MPI、dt＝0.01 s、原广义 α 时间推进至稳态。速度、压力来自新的原生 VTU 和双精度重启记录，没有以旧场插值冒充含栓解。原无栓 CFD 未重算。原生速度与压力数组为 float64；原生 vtkPoints 序列化为 float32，按严格的一一对应和精确 float32 舍入身份映射到冻结输入的 double 坐标，所有积分使用输入几何。
++
++6. **质量和稳态。** 冻结门槛为质量/入口误差≤1e−5，连续五个十步区间 E_u≤1e−5、E_Q≤1e−6，全部原生线性收敛，非线性相对残差≤1e−10，有限值和 no-slip 均通过。所选态质量不平衡 {metrics['epsilon_mass']:.9e}，入口误差 {metrics['epsilon_Q']:.9e}；两类壁面最大速度均为零，两个出口净流为正且无负向流出面积。入口负向外流比例为 1 是正常入流符号，不是倒流。
++
++| 接受态 | 节点 | 四面体 | 稳态触发步 | 质量不平衡 | 原生墙钟 / s |
++|---|---:|---:|---:|---:|---:|
++{mt}
++
++7. **有栓/无栓变化。** 旧最大速度 {old['velocity_max_m_s']*1e3:.9f} mm/s，新值 {metrics['velocity_max_m_s']*1e3:.9f} mm/s，变化 {(metrics['velocity_max_m_s']/old['velocity_max_m_s']-1)*100:.6f}%；新峰值坐标 {comp['new_peak_location_m']} m。旧两个出口比例为 {old['outlet_fractions']['OUTLET_A']:.9f}/{old['outlet_fractions']['OUTLET_B']:.9f}，新值 {metrics['outlet_fractions']['OUTLET_A']:.9f}/{metrics['outlet_fractions']['OUTLET_B']:.9f}。母管 x＝−9 至 −3 mm 的面积平均压降由 {comp['parent_pressure_drop'][0]['drop_Pa']:.9f} 增至 {comp['parent_pressure_drop'][1]['drop_Pa']:.9f} Pa；入口平均压力由 {old['area_average_pressure_pa']['INLET']:.9f} 变为 {metrics['area_average_pressure_pa']['INLET']:.9f} Pa。公共中心线和切面只做严格 P1 分析插值，域外留空不外推；几何/网格差别和插值误差与真正 CFD 解明确区分。
++
++8. **表面压力与剪切。** 面积平均表压 {tr['pressure_Pa']['mean']:.9f} Pa，面积加权 P95 {tr['pressure_Pa']['p95']:.9f} Pa；面积平均切向剪切 {tr['shear_Pa']['mean']:.9f} Pa，P95 {tr['shear_Pa']['p95']:.9f} Pa，面元最大值 {tr['shear_Pa']['max']:.9f} Pa。压力为相对原出口参考的表压，不是绝对血压。黏性牵引来自相邻四面体的原生 P1 速度梯度，未做平滑或替换模型；压力法向、黏性法向、切向和总牵引分别保存。
++
++9. **积分流体力。** 压力力＝{tr['pressure_force_N']} N，黏性力＝{tr['viscous_force_N']} N，总力＝{tr['total_force_N']} N，大小 {tr['total_force_norm_N']*1e6:.9f} µN。参考点为实际材料点质心 {tr['reference_point_m']} m，总力矩＝{tr['torque_Nm']} N·m。只统计流体暴露面，不含固体壁面黏附反力。接触线 100 µm 范围按实际边线段的精确距离识别，面积占比 {tr['contact_rim']['area_fraction']*100:.6f}%，牵引模面积积分占比 {tr['contact_rim']['traction_magnitude_integral_fraction']*100:.6f}%；全局剪切峰值是否位于该范围：{tr['contact_rim']['contains_global_shear_peak']}。
++
++10. **一次网格对照。** 状态 `{sens['status']}`。局部体单元由 28,237 增至 38,127，中位体积由 3.921428e−14 降至 2.556330e−14 m³；表面几何、入口和出口条件保持同一冻结定义。相对变化：{sensitivity}。关键积分/统计量门槛为 15%，出口比例绝对变化门槛为 0.01；局部峰值单列。它只是一次局部体网格工程筛查，**不是表面三角化、渐近网格收敛或接触线极值已认证**；没有再加第三个网格。
++
++11. **未来 LAMMPS 载荷来源。** `CLOT_SURFACE_TRACTIONS.npz` 保存全精度面元坐标、真实面积、相邻单元/节点 ID、法向、压力、分解牵引、积分力/力矩及积分点数据；`TRACTION_INTERFACE.json` 记录单位、坐标和表面身份。这些是候选背景流体载荷数据，尚未建立到 1,927 个材料点的保力/保力矩映射；没有把结果写入生产 LPS 载荷。
++
++12. **为何不是 streaming/FSI。** 本轮是刚性 V3 障碍物上的牛顿水样背景流，没有微泡诱导 streaming、超声反馈、血栓变形或断裂后更新，也没有双向流固耦合。不能把静态剪切当作超声剪切，不能由 Pa 直接换算 PZT 功率，也没有患者级/临床认证。
++
++## 接口问题与原始证据
++
++正式 CFD 前的原生接口问题均保留在 `baseline_interface_failure_*`：int64 标签不兼容；旧 set_walls 逻辑在仅划分体网格时移除三个端盖；一次 SSH 同步中断导致未更新脚本被再次调用。通过原生 VTK 检查与源码定位后，改为 int32 标签、让体网格输入保留全部五类封闭边界；物理 no-slip 仍仅作用在壁面和血栓面。实际体网格导出单精度坐标后，以精确双向身份恢复冻结边界 double 坐标，重新检查全部几何门槛，未重划基线网格。
++
++第一套正式 CFD 没有重启。旧只读监测器不能匹配原生 float32 坐标输出，使用任务独立辅助观察器按精确舍入身份读取同一运行，按原稳态门槛写 STOP_SIM，并在父进程回收前实际记录 MPI 启动器退出码 0。旧读取器的报告异常保留，最终状态来自实际原生日志、完整检查点、接受态及独立监测记录。第二套运行已直接使用修正读取器。冻结数值门槛未放宽。
++
++## 审查与下一步
++
++真实图索引为 `OPEN_RESULTS.html`：原生 Y/材料点、局部体网格/绕流截面、公共位置速度/压力、暴露面压力/剪切、质量/稳态/力/网格对照、三维流线与方向、横截面和剪切方向。没有新医学外壳或历史动画。
++
++下一轮唯一优先建议：{nexttask} 本轮不自动执行。
++
++原生数据全部位于本 run 目录；软件、输入 SHA、完整资源统计、精简回收清单及文档更新证据见共同目录。实际方法和接口依据见 [SimVascular TetGen API](https://simvascular.github.io/documentation/python_interface/modules/docs/meshing_TetGenOptions.html) 与 [原生接口源码说明](https://github.com/SimVascular/SimVascular/blob/master/Code/Source/sv/Mesh/TetGenMeshObject/sv_TetGenMeshObject.cxx)，运行时二进制身份另有锁定 SHA，不以当前上游源码代替原生验证。
++'''
++ (B/'REVIEW_Y_CLOT_PRESENT_CFD_BASELINE_V1.md').write_text(text)
++if __name__=='__main__':main()
+diff --git a/analysis/dual_track_v1/campaign_a.py b/analysis/dual_track_v1/campaign_a.py
+new file mode 100644
+index 0000000..f79fb15
+--- /dev/null
++++ b/analysis/dual_track_v1/campaign_a.py
+@@ -0,0 +1,17 @@
++from analysis.dual_track_v1.common import *
++from analysis.dual_track_v1.low_a import run
++import traceback,time
++assert json.loads((A/'PERIODIC_TOPOLOGY_AUDIT.json').read_text())['status']=='PASS'
++d=json.loads((A/'DESIGN_FREEZE.json').read_text());c=d['criteria'];op=d['optimizer'];opt={k:op[k] for k in ['maxiter','maxfun','maxls','maxcor','ftol','gtol']}
++freeze=dict(amplitude_m=2e-6,budget=dict(per_state_max_function_evaluations=60000),optimizer=opt,uncertainty='Empirical residual work plus last10 plateau and floating roundoff; not rigorous truncation error or material uncertainty',criteria=dict(relative_free_force_L2_over_controlled_force_L2=c['relative_free_force'],max_free_force_N=c['max_free_force_N'],energy_span_last10_relative=c['energy_plateau_relative'],max_position_change_last10_m=c['position_plateau_m'],boundary_reaction_imbalance=c['reaction_imbalance'],max_contact_energy_over_U=c['contact_energy_fraction'],max_contact_force_over_reaction=c['contact_force_fraction'],native_energy_force_relative=c['native_force_relative']))
++assert not (A/'PVCE_DESIGN_FREEZE.json').exists();save(A/'PVCE_DESIGN_FREEZE.json',freeze);start=time.monotonic();results=[]
++try:
++ for i,tip in enumerate(d['tip_x_m']):
++  case='A'+str(i);out=A/case;out.mkdir();save(out/'config.json',dict(tip_m=tip));run(case);r=json.loads((out/'EQUILIBRIUM.json').read_text());results.append(r)
++  if not r['accepted']:break
++ save(A/'PVCE_EQUILIBRIUM_AUDIT.json',dict(accepted_three=len(results)==3 and all(r['accepted'] for r in results),formal_states=len(results),states=results,wall_s=time.monotonic()-start))
++ if len(results)==3 and all(r['accepted'] for r in results):
++  u=np.array([r['U_J'] for r in results]);ep=np.array([r['empirical_uncertainty_J'] for r in results]);area=d['delta_A_m2'];g2=(u[0]-u[1])/area;g3=(3*u[0]-4*u[1]+u[2])/(2*area);e2=(ep[0]+ep[1])/area;e3=np.dot([3,4,1],ep)/(2*area)
++  save(A/'PVCE_ENERGY_RELEASE_RESULTS.json',dict(status='PASS' if min(g2-e2,g3-e3)>0 else 'ENERGY_DIFFERENCE_BELOW_ERROR_BUDGET',identity=d['G_identity'],U_J=u,empirical_U_uncertainty_J=ep,G_two_J_m2=g2,G_three_J_m2=g3,empirical_error_G_two_J_m2=e2,empirical_error_G_three_J_m2=e3,delta_A_m2=area,scope=freeze['uncertainty']))
++except BaseException as e:
++ save(A/'LOW_STOP.json',dict(case=case,error=repr(e),traceback=traceback.format_exc(),wall_s=time.monotonic()-start));raise
+diff --git a/analysis/dual_track_v1/campaign_b.py b/analysis/dual_track_v1/campaign_b.py
+new file mode 100644
+index 0000000..efb79c1
+--- /dev/null
++++ b/analysis/dual_track_v1/campaign_b.py
+@@ -0,0 +1,11 @@
++from analysis.dual_track_v1.common import *
++import sys,time,traceback,resource
++from analysis.dual_track_v1 import mesh_b,cfd_b
++level=sys.argv[1];start=time.monotonic();stage='mesh';out=B/level
++try:
++ mesh_b.main(level);stage='CFD';save(out/'FORMAL_ATTEMPT.json',dict(formal_CFD_attempt=1,level=level,started_unix=time.time()))
++ cfd_b.main(level);stage='COMPLETE'
++except BaseException as e:
++ save(B/(level+'_STOP.json'),dict(stage=stage,error=repr(e),traceback=traceback.format_exc(),wall_s=time.monotonic()-start));raise
++finally:
++ save(B/(level+'_EXECUTION.json'),dict(last_stage=stage,wall_s=time.monotonic()-start,peak_self_RSS_MiB=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024,child_CPU_s=resource.getrusage(resource.RUSAGE_CHILDREN).ru_utime+resource.getrusage(resource.RUSAGE_CHILDREN).ru_stime))
+diff --git a/analysis/dual_track_v1/campaign_high_a.py b/analysis/dual_track_v1/campaign_high_a.py
+new file mode 100644
+index 0000000..68982c1
+--- /dev/null
++++ b/analysis/dual_track_v1/campaign_high_a.py
+@@ -0,0 +1,28 @@
++from analysis.dual_track_v1.common import *
++from analysis.dual_track_v1.high_helpers import risk
++from analysis.dual_track_v1.high_a import run
++import subprocess,time,traceback
++assert json.loads((A/'PVCE_ENERGY_RELEASE_RESULTS.json').read_text())['status']=='PASS';assert json.loads((A/'STATIC_SOLVER_RECOVERY.json').read_text())['status']=='PASS'
++c=json.loads((A/'PVCE_DESIGN_FREEZE.json').read_text());c['criteria']['finite_difference_force_scaled_absolute']=1e-6;c['protocol']='V1 scaling and L-BFGS-B, at most one verified Y-only exact Hessian-vector Newton correction per wide high candidate, max600CG iterations, unchanged acceptance criteria; all within same900s/8GiB formal equilibrium budget.';c['frozen_unix']=time.time();save(A/'HIGH_NUMERICAL_FREEZE.json',c)
++p=ROOT/'analysis/dual_track_v1/hvp_y.cpp';r=subprocess.run(['g++','-O3','-shared','-fPIC',str(p),'-o',str(p.with_suffix('.so'))],capture_output=True,text=True);assert r.returncode==0
++z=dict(np.load(A/'A0/equilibrium.npz'));r0=risk(z);amp=.95*.15/r0['max_stretch']*2e-6;records=[];start=time.monotonic();decision=''
++try:
++ for i in range(2):
++  r=run('wide_A0_search_'+str(i+1),amp,warm=A/'A0/equilibrium.npz');records.append(r)
++  if not r['accepted']:decision='STOP_STATIC_EQUILIBRIUM_FAILED';break
++  if r['risk']['leading_region']!='notch_front_periodic_layer':decision='STOP_NON_NOTCH_COMPETITOR_LEADS';break
++  if r['risk']['max_utilization']>=1:decision='THRESHOLD_BRACKET_CANDIDATE';break
++  amp=1.05*amp/r['risk']['max_utilization']
++ # A high PVCE requires an accepted subcritical notch leader with >2% margin.
++ candidate=next((v for v in reversed(records) if v['accepted'] and v['risk']['max_utilization']<1 and v['risk']['leading_region']=='notch_front_periodic_layer'),None)
++ if decision=='THRESHOLD_BRACKET_CANDIDATE' and candidate:
++  competing=max(v['max_utilization'] or 0 for k,v in candidate['risk']['regions'].items() if k!='notch_front_periodic_layer')
++  if competing<.98*candidate['risk']['max_utilization']:
++   high=[candidate]
++   for case in ['A1','A2']:
++    rr=run('high_'+case,candidate['opening_m'],case,warm=A/case/'equilibrium.npz');high.append(rr)
++    if not rr['accepted']:break
++   if len(high)==3 and all(v['accepted'] for v in high):
++    u=np.array([v['U_J'] for v in high]);save(A/'NEAR_ONSET_PVCE_RESULTS.json',dict(identity='SPECIMEN_G_DRIVE_NOT_GC',opening_m=candidate['opening_m'],U_J=u,G_two_J_m2=(u[0]-u[1])/2e-8,G_three_J_m2=(3*u[0]-4*u[1]+u[2])/4e-8))
++ save(A/'FIRST_FAILURE_AUDIT.json',dict(decision=decision,low_risk=r0,high_A0_candidates=records,actual_natural_break_run=False,first_failure_identified=False,reason='Frozen-topology static branch diagnostic; no natural dynamic fracture. A competitor lead terminates high PVCE.',wall_s=time.monotonic()-start))
++except BaseException as e:save(A/'HIGH_STOP.json',dict(error=repr(e),traceback=traceback.format_exc(),states_completed=len(records),wall_s=time.monotonic()-start));raise
+diff --git a/analysis/dual_track_v1/cfd_b.py b/analysis/dual_track_v1/cfd_b.py
+new file mode 100644
+index 0000000..31bcbf3
+--- /dev/null
++++ b/analysis/dual_track_v1/cfd_b.py
+@@ -0,0 +1,196 @@
++"""Y-case glue around the existing svMultiPhysics executable and audited monitors."""
++import json
++import os
++from pathlib import Path
++import shutil
++import subprocess
++import sys
++import time
++import xml.etree.ElementTree as ET
++
++import numpy as np
++import yaml
++
++from analysis.dual_track_v1.common import *
++from analysis.dual_track_v1.resources import sample
++import signal
++write=save
++def finish(out,obj):save(out/"CFD_RESULT.json",obj)
++
++
++def main(level):
++    from pd_clot.lammps_fragmentation.y_bifurcation_sources import YSources
++    sources=YSources();c=sources.config
++    w=yaml.safe_load(Path('/workspace/y_clot/deps/y_workflow/configs/stage4/workflow.yaml').read_text())
++    out=B/level;mesh=json.loads((out/'MESH_QUALITY_AUDIT.json').read_text());assert mesh['status']=='PASS'
++    mesh['mesh']=str((out/'SV_MESH/mesh-complete.mesh.vtu').relative_to(ROOT));mesh['geometry_hash']=sha(B/'clot_present_lumen.vtp')
++    freeze=json.loads((B/'DESIGN_FREEZE.json').read_text())
++    sys.path.insert(0, w["solver_vendor"])
++    from vascular_validation.postprocess import SolutionMeasurements
++    from vascular_validation.validation import triangle_flux
++    from flow_solver_support.steady_monitor import SteadyStopMonitor
++    from flow_solver_support.transient_checks import checkpoint_audit
++    from flow_solver_support.solver_checks import linear_gate, nonlinear_gate
++    from flow_solver_support.flow_parser import parse_solver_log
++
++    class YMeasurements(SolutionMeasurements):
++        def measure(self, velocity, pressure):
++            flows, pressures, backflow = {}, {}, {}
++            for face_id, role in [(2,"INLET"),(3,"OUTLET_A"),(4,"OUTLET_B")]:
++                tri = self.boundary[self.tags == face_id]
++                flows[role] = triangle_flux(self.points, tri, velocity)
++                xyz = self.points[tri]
++                area_vectors = .5*np.cross(xyz[:,1]-xyz[:,0],xyz[:,2]-xyz[:,0])
++                areas = np.linalg.norm(area_vectors,axis=1)
++                pressures[role] = float(np.dot(areas,pressure[tri].mean(axis=1))/areas.sum())
++                fluxes = np.einsum("ij,ij->i",velocity[tri].mean(axis=1),area_vectors)
++                backflow[role] = float(areas[fluxes < 0].sum()/areas.sum())
++            incoming = -flows["INLET"]
++            outlets = {n: flows[n] for n in ("OUTLET_A","OUTLET_B")}
++            total = sum(outlets.values())
++            wall = np.linalg.norm(velocity[self.wall_nodes],axis=1)
++            return dict(Q_target_m3_s=self.Q,Q_in_m3_s=incoming,Q_out_total_m3_s=total,
++                        outlet_flows_m3_s=outlets,signed_outward_boundary_flows_m3_s=flows,
++                        epsilon_Q=abs(incoming-self.Q)/self.Q,epsilon_mass=abs(total-incoming)/self.Q,
++                        outlet_fractions={n:v/total for n,v in outlets.items()} if total else None,
++                        area_average_pressure_pa=pressures,negative_outward_flux_area_fraction=backflow,
++                        velocity_L2=self.velocity_l2(velocity),velocity_max_m_s=float(np.linalg.norm(velocity,axis=1).max()),
++                        pressure_range_pa=[float(pressure.min()),float(pressure.max())],
++                        velocity_finite=bool(np.isfinite(velocity).all()),pressure_finite=bool(np.isfinite(pressure).all()),
++                        wall_velocity_max_m_s=float(wall.max()),wall_noslip_pass=bool(wall.max() <= 1e-10*self.Umean))
++
++    assert sha(w["solver_executable"]) == w["solver_sha256"]
++    assert json.loads(Path(w["solver_backend_validation"]).read_text())["passed"]
++    build = json.loads(Path(w["solver_build_manifest"]).read_text())
++    stack = build["PETSc_build"]
++    library = Path(stack["prefix"]) / "lib/libpetsc.so"
++    assert sha(library) == build["PETSc_library_sha256"]
++    source_mesh = (ROOT / mesh["mesh"]).parent
++    assert (out / "SV_MESH").resolve()==source_mesh.resolve()
++    run = out / "run"
++    run.mkdir()
++    flow = c["flow"]
++    dt, ranks = flow["steady_relaxation_dt_s"], flow["mpi_ranks"]
++    q=freeze["flow"]["Q_target_m3_s"]
++    assert abs(q/(flow["inlet_mean_velocity_m_s"]*mesh["faces"]["INLET"]["area_m2"])-1)<1e-10
++    tree = ET.parse(w["solver_xml_template"])
++    root = tree.getroot()
++    for tag, value in {"Number_of_time_steps":flow["maximum_steps"],"Time_step_size":dt,
++                       "Increment_in_saving_VTK_files":flow["save_interval_steps"],
++                       "Increment_in_saving_restart_files":flow["save_interval_steps"],
++                       "Density":c["medium"]["density_kg_m3"],"Viscosity/Value":c["medium"]["viscosity_Pa_s"]}.items():
++        root.find(".//"+tag).text = str(value)
++    block = root.find("Add_mesh")
++    for face in block.findall("Add_face"):
++        block.remove(face)
++    for name in ("WALL","INLET","OUTLET_A","OUTLET_B","CLOT"):
++        face = ET.SubElement(block,"Add_face",name=name)
++        ET.SubElement(face,"Face_file_path").text = "../SV_MESH/mesh-surfaces/"+name+".vtp"
++    equation = root.find("Add_equation")
++    for bc in equation.findall("Add_BC"):
++        equation.remove(bc)
++    conditions = [("INLET",dict(Type="Dir",Time_dependence="Steady",Profile="Parabolic",Impose_flux="true",Zero_out_perimeter="true",Value=-q)),
++                  ("WALL",dict(Type="Dir",Time_dependence="Steady",Value=0)),
++                  ("CLOT",dict(Type="Dir",Time_dependence="Steady",Value=0)),
++                  *[(name,dict(Type="Neu",Time_dependence="Steady",Value=p)) for name,p in zip(("OUTLET_A","OUTLET_B"),flow["outlet_pressure_Pa"],strict=True)]]
++    for name, values in conditions:
++        bc = ET.SubElement(equation,"Add_BC",name=name)
++        for tag,value in values.items():
++            ET.SubElement(bc,tag).text = str(value)
++    ET.indent(tree)
++    tree.write(run / "solver.xml",encoding="utf-8",xml_declaration=True)
++    shutil.copy2(w["petsc_options_template"],run / "PETSC_OPTIONS.txt")
++    policy = dict(save_interval_steps=flow["save_interval_steps"],steady_last_intervals=flow["steady_consecutive_intervals"],
++                  velocity_change_limit=flow["steady_velocity_relative_tolerance"],flow_change_limit=1e-6,
++                  mass_limit=flow["mass_relative_tolerance"])
++    write(out / "INPUTS.json",dict(policy=policy,Q_target_m3_s=q,inlet_profile="Parabolic, flux normalized",
++          coordinate_unit="m",velocity_unit="m/s",time_unit="s",pressure_unit="Pa",rho_unit="kg/m3",mu_unit="Pa s",
++          mesh_sha256=mesh["mesh_sha256"],solver_sha256=sha(w["solver_executable"]),
++          solver_xml_sha256=sha(run / "solver.xml"),petsc_library_sha256=sha(library),
++          backend_validation_sha256=sha(w["solver_backend_validation"])))
++    env = {k:os.environ[k] for k in ("HOME","USER","LOGNAME","LANG") if k in os.environ}
++    env.update(PATH="/usr/bin:/bin:/usr/local/cuda/bin",LC_ALL="C",OMP_NUM_THREADS="1",CUDA_VISIBLE_DEVICES="0",
++               LD_LIBRARY_PATH=build["runtime_library_path"],PETSC_OPTIONS=(run / "PETSC_OPTIONS.txt").read_text().strip())
++    command = [stack["candidate_wrapper"],stack["launcher"],"-n",str(ranks),stack["candidate_wrapper"],w["solver_executable"],"solver.xml"]
++    from analysis.dual_track_v1.measure_b import Measurements
++    measure = Measurements(source_mesh / "mesh_arrays.npz",q,flow["inlet_mean_velocity_m_s"])
++    measure.wall_nodes=np.unique(measure.boundary[np.isin(measure.tags,[1,5])])
++    monitor = SteadyStopMonitor(measure,policy)
++    resource_records=[];hard_stop=None;last_resource=0
++    seen, retries = set(), []
++    started = time.perf_counter()
++    result_dir = run / (str(ranks)+"-procs")
++    stop = None
++
++    def observe(done=False):
++        nonlocal stop
++        for path in sorted(result_dir.glob("result_*.vtu"),key=lambda p:int(p.stem.rsplit("_",1)[1])):
++            step = int(path.stem.rsplit("_",1)[1])
++            if step == 0 or step % policy["save_interval_steps"] or step in seen:
++                continue
++            cp = path.with_name("stFile_%03d.bin" % step)
++            if not cp.exists() or (not done and time.time()-max(cp.stat().st_mtime,path.stat().st_mtime)<2):
++                continue
++            try:
++                checkpoint_audit(cp,step,dt,ranks=ranks)
++                u,p = measure.read(path)
++            except Exception as error:
++                retries.append(dict(step=step,error=repr(error)))
++                break
++            seen.add(step)
++            state = dict(measure.measure(u,p),step=step,time_s=step*dt)
++            if monitor.observe(state,u) and stop is None:
++                stop = dict(step=step,reason="Five consecutive steady intervals and measured finite/mass/wall gates")
++                (run / "STOP_SIM").write_text("0\n")
++            write(out / "PROGRESS.json",dict(states=monitor.states,intervals=monitor.intervals,stop=stop,
++                                              elapsed_s=time.perf_counter()-started,read_retries=retries))
++
++    with (run / "solver.log").open("w") as log:
++        proc = subprocess.Popen(command,cwd=run,env=env,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
++        while proc.poll() is None:
++            observe()
++            if time.perf_counter()-last_resource>15:
++                r=sample(proc.pid);resource_records.append(r);last_resource=time.perf_counter();write(out/'RESOURCES.json',resource_records)
++                if r['RSS_bytes']>freeze['budgets']['process_tree_RSS_GiB']*1024**3:hard_stop='MEMORY_BUDGET'
++            if time.perf_counter()-started>freeze['budgets']['per_CFD_wall_s']:hard_stop='WALL_BUDGET'
++            if hard_stop:
++                os.killpg(proc.pid,signal.SIGTERM)
++                try:proc.wait(timeout=20)
++                except subprocess.TimeoutExpired:os.killpg(proc.pid,signal.SIGKILL)
++                break
++            time.sleep(3)
++        code = proc.wait()
++    write(out/"NATIVE_EXIT_STATUS.json",dict(exit_code=code,source="Python Popen.wait of own MPI launcher"))
++    observe(True)
++    history = parse_solver_log((run / "solver.log").read_text(errors="replace"),dt)
++    write(out / "SOLVER_HISTORY.json",history)
++    failures = [] if hard_stop is None else [dict(gate="resource",error=hard_stop)]
++    for name, gate in [("linear",lambda:linear_gate(dict(exit_code=code,history=history))),
++                       ("nonlinear",lambda:nonlinear_gate(history,max_iterations=24))]:
++        try:
++            gate()
++        except Exception as error:
++            failures.append(dict(gate=name,error=repr(error)))
++    outputs = list(result_dir.glob("result_*.vtu"))
++    if not outputs:
++        finish(out,dict(status="FAIL",exit_code=code,health_failures=failures,error="No native VTU output"))
++        raise RuntimeError("CFD produced no solution; native log preserved")
++    final = max(outputs,key=lambda p:int(p.stem.rsplit("_",1)[1]))
++    u,p = measure.read(final)
++    metrics = measure.measure(u,p)
++    checks = dict(solver=code == 0 and not failures,steady=stop is not None,
++                  mass=max(metrics["epsilon_Q"],metrics["epsilon_mass"]) <= policy["mass_limit"],
++                  finite=metrics["velocity_finite"] and metrics["pressure_finite"],wall=metrics["wall_noslip_pass"],
++                  forward_outlets=all(v>0 for v in metrics["outlet_flows_m3_s"].values()))
++    write(out/"CFD_MASS_BALANCE.json",dict(source="actual_vtu_surface_integration",**metrics))
++    finish(out,dict(status="PASS_WITH_SCOPE" if all(checks.values()) else "FAIL",checks=checks,metrics=metrics,
++                    exit_code=code,health_failures=failures,stop=stop,runtime_s=time.perf_counter()-started,
++                    snapshot=str(final.relative_to(ROOT)),snapshot_sha256=sha(final),velocity_array="Velocity",
++                    coordinate_scale_to_m=1.,velocity_scale_to_m_s=1.,time_unit="s",mesh_sha256=mesh["mesh_sha256"],
++                    geometry_hash=mesh["geometry_hash"],scope="Steady SI water flow, numerical coupling case; no CFD mesh-independence or local-physics accuracy claim"))
++    if not all(checks.values()):
++        raise RuntimeError("Steady CFD acceptance failed; preserve diagnostics before dependent work")
++
++
++if __name__ == "__main__":
++    main(sys.argv[1])
+diff --git a/analysis/dual_track_v1/collect_results.py b/analysis/dual_track_v1/collect_results.py
+new file mode 100644
+index 0000000..377543a
+--- /dev/null
++++ b/analysis/dual_track_v1/collect_results.py
+@@ -0,0 +1,24 @@
++"""Inventory the new run, select compact evidence, retain all raw data on server."""
++from analysis.dual_track_v1.common import *
++import datetime,tarfile
++
++def main():
++ roots=[A,B,FA,FB,COMMON,ROOT/'analysis/dual_track_v1'];excluded_names={'SERVER_ARTIFACT_MANIFEST.json','COMPACT_MANIFEST.json','LOCAL_RETRIEVAL_AUDIT.json','compact_results.tar.gz'}
++ files=sorted({p for d in roots for p in d.rglob('*') if p.is_file() and '__pycache__' not in p.parts and p.name not in excluded_names})
++ rows=[];selected=[];omitted=[]
++ npz_names={'equilibrium.npz','reference_topology.npz','geometry_arrays.npz','CLOT_SURFACE_TRACTIONS.npz','COMMON_POSITION_COMPARISON.npz'}
++ text_ext={'.json','.md','.html','.txt','.csv','.conf','.xml','.inp','.in','.patch','.diff','.py','.cpp','.cxx'}
++ for p in files:
++  row=dict(path=str(p.relative_to(ROOT)),bytes=p.stat().st_size,sha256=sha(p));rows.append(row)
++  take=(p.suffix in text_ext and row['bytes']<12*1024**2) or p.suffix in {'.png','.svg'} or (p.suffix=='.log' and row['bytes']<6*1024**2) or (p.name in npz_names and row['bytes']<20*1024**2)
++  (selected if take else omitted).append(row)
++ raw=dict(generated_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),server_root=str(ROOT),new_run_only=True,file_count=len(rows),total_bytes=sum(v['bytes'] for v in rows),files=rows,self_and_transfer_manifests_excluded_to_avoid_recursive_hashing=True)
++ save(COMMON/'SERVER_ARTIFACT_MANIFEST.json',raw)
++ p=COMMON/'SERVER_ARTIFACT_MANIFEST.json';selected.append(dict(path=str(p.relative_to(ROOT)),bytes=p.stat().st_size,sha256=sha(p)))
++ compact=dict(selected_files=len(selected),selected_bytes=sum(v['bytes'] for v in selected),files=selected,omitted_files=len(omitted),omitted_bytes=sum(v['bytes'] for v in omitted),omitted=omitted,scope='New run only. Scientific arrays retain original precision. Native body.data, full mesh/VTU/restarts, shared libraries and intermediate native geometry remain on server. Source/inputs/config/logs/reports/figures/accepted saved static states/traction arrays retained locally.',archive='compact_results.tar.gz',manifest_self_not_hashed=True)
++ save(COMMON/'COMPACT_MANIFEST.json',compact)
++ with tarfile.open(COMMON/'compact_results.tar.gz','w:gz',compresslevel=3) as tf:
++  for row in selected:tf.add(ROOT/row['path'],arcname=row['path'],recursive=False)
++  p=COMMON/'COMPACT_MANIFEST.json';tf.add(p,arcname=str(p.relative_to(ROOT)),recursive=False)
++ print(json.dumps(dict(raw_files=len(rows),raw_bytes=raw['total_bytes'],selected_files=len(selected),selected_bytes=compact['selected_bytes'],archive_bytes=(COMMON/'compact_results.tar.gz').stat().st_size)))
++if __name__=='__main__':main()
+diff --git a/analysis/dual_track_v1/common.py b/analysis/dual_track_v1/common.py
+new file mode 100644
+index 0000000..ca7ae22
+--- /dev/null
++++ b/analysis/dual_track_v1/common.py
+@@ -0,0 +1,23 @@
++from pathlib import Path
++import json,hashlib,time,os
++import numpy as np
++ROOT=Path(__file__).resolve().parents[2];RUN=os.environ.get('Y_CLOT_DUAL_RUN_ID','20261011T154854Z')
++COMMON=ROOT/'verification/y_clot_cfd_and_wide_pvce_dual_track_v1'/RUN
++A=ROOT/'verification/lps_wide_pure_shear_pvce_feasibility_v1'/RUN
++B=ROOT/'verification/y_clot_present_cfd_baseline_v1'/RUN
++FA=ROOT/'results/lps_wide_pure_shear_pvce_feasibility_v1'/RUN
++FB=ROOT/'results/y_clot_present_cfd_baseline_v1'/RUN
++OLD=ROOT/'verification/lps_pvce_energy_release_feasibility_v1/20261011T132103Z'
++V2=ROOT/'verification/lps_pvce_continuum_and_near_onset_audit_v2/20261011T142003Z'
++V3=ROOT/'verification/y_clot_realistic_morphology_wall_contact_and_flow_transport_v1'
++DX=50e-6;DELTA=150.5e-6;G=940.;K=100000/3;RHO=1000.
++def sha(p):
++ with Path(p).open('rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()
++def save(p,v):
++ Path(p).parent.mkdir(parents=True,exist_ok=True)
++ def cv(o):
++  if isinstance(o,np.ndarray):return o.tolist()
++  if isinstance(o,np.generic):return o.item()
++  if isinstance(o,Path):return str(o)
++  raise TypeError(type(o).__name__)
++ Path(p).write_text(json.dumps(v,indent=2,default=cv,allow_nan=False))
+diff --git a/analysis/dual_track_v1/core_a.py b/analysis/dual_track_v1/core_a.py
+new file mode 100644
+index 0000000..e33ca94
+--- /dev/null
++++ b/analysis/dual_track_v1/core_a.py
+@@ -0,0 +1,30 @@
++from analysis.dual_track_v1.common import *
++import ctypes,math
++from scipy.spatial import cKDTree
++PERIOD=.0004
++
++def delta_y(x,b):
++ d=x[b[:,1]]-x[b[:,0]];d[:,1]-=PERIOD*np.rint(d[:,1]/PERIOD);return d
++
++def model(tip=-.001):
++ dims=np.array([.005,PERIOD,.001]);counts=np.array([100,8,20]);axes=[(np.arange(n)+.5)*DX-d/2 for n,d in zip(counts,dims)];X=np.stack(np.meshgrid(*axes,indexing='ij'),axis=-1).reshape(-1,3);n=len(X)
++ xp=X+dims/2;b=cKDTree(xp,boxsize=[.5,PERIOD,.1]).query_pairs(DELTA*(1+1e-12),output_type='ndarray');b=b[np.lexsort((b[:,1],b[:,0]))]
++ g=dict(X=X,bonds=b,bond_types=np.ones(len(b),int),clot_count=n,anchors=np.zeros(n,bool),base=np.zeros(n,bool),surface=np.zeros(n,bool),areas=np.zeros(n),normals=np.zeros_like(X),info={})
++ e=Energy(g);a,c=X[b[:,0]],X[b[:,1]];cross=(a[:,2]<0)!=(c[:,2]<0);frac=np.divide(-a[:,2],c[:,2]-a[:,2],out=np.zeros(len(b)),where=c[:,2]!=a[:,2]);xx=a[:,0]+frac*(c[:,0]-a[:,0]);alive=np.ascontiguousarray(~(cross&(xx<tip-1e-12)),dtype=np.uint8)
++ low=np.isclose(X[:,2],X[:,2].min(),rtol=0,atol=1e-12);high=np.isclose(X[:,2],X[:,2].max(),rtol=0,atol=1e-12);mask=np.zeros_like(X,bool);mask[low|high,2]=True
++ return g,e,alive,mask,low,high,xx,cross
++
++class Energy:
++ def __init__(self,g):
++  self.X=g['X'];self.b=np.ascontiguousarray(g['bonds'],dtype=np.int32);self.V=DX**3;self.r=np.linalg.norm(delta_y(self.X,self.b),axis=1);self.h=np.where(abs(self.r-DELTA)<=DX/2,(DELTA+DX/2-self.r)/DX,1.);self.m=np.bincount(self.b.ravel(),weights=np.repeat(self.r*self.V*self.h,2),minlength=len(self.X))
++  self.lib=ctypes.CDLL(str(ROOT/'analysis/dual_track_v1/energy_y.so'));self.fun=self.lib.evaluate_periodic;self.fun.restype=ctypes.c_double;self.fun.argtypes=[ctypes.c_int]*2+[ctypes.c_void_p]*6+[ctypes.c_double]*3+[ctypes.c_void_p,ctypes.c_double]
++ def eval(self,x,alive,force=False):
++  x=np.ascontiguousarray(x);f=np.zeros_like(x) if force else None;arr=[x,self.b,alive,self.r,self.h,self.m];u=self.fun(len(x),len(self.b),*[a.ctypes.data for a in arr],self.V,K,G,f.ctypes.data if force else None,PERIOD);return (u,f) if force else u
++ def theta(self,x,alive):
++  extension=np.linalg.norm(delta_y(x,self.b),axis=1)-self.r;extension[abs(extension)<2.2204e-16]=0;return 3*self.V/self.m*np.bincount(self.b.ravel(),weights=np.repeat(self.h*extension*alive,2),minlength=len(x))
++
++def contact(x,g,alive):
++ xp=x.copy();xp[:,0]+=.05;xp[:,2]+=.05;xp[:,1]=(xp[:,1]+PERIOD/2)%PERIOD;n=len(x);p=cKDTree(xp,boxsize=[.1,PERIOD,.1]).query_pairs(DX,output_type='ndarray');b=g['bonds'];p=p[~np.isin(p[:,0]*n+p[:,1],b[alive.astype(bool),0]*n+b[alive.astype(bool),1])];d=-delta_y(x,p);r=np.linalg.norm(d,axis=1);gap=DX-r;c=15*(18*K/(math.pi*DELTA**4))*DX**6/DELTA;f=np.zeros_like(x)
++ if len(p):
++  ff=c*gap[:,None]*d/r[:,None];np.add.at(f,p[:,0],ff);np.add.at(f,p[:,1],-ff)
++ return float(.5*c*np.sum(gap**2)),f,p
+diff --git a/analysis/dual_track_v1/design.py b/analysis/dual_track_v1/design.py
+new file mode 100644
+index 0000000..372523a
+--- /dev/null
++++ b/analysis/dual_track_v1/design.py
+@@ -0,0 +1,12 @@
++from analysis.dual_track_v1.common import *
++from datetime import datetime,timezone
++import os
++
++def main():
++ stamp=datetime.now(timezone.utc).isoformat();criteria=dict(relative_free_force=1e-6,max_free_force_N=1e-13,energy_plateau_relative=1e-8,position_plateau_m=1e-10,reaction_imbalance=1e-6,native_force_relative=1e-9,gradient_scaled_error=1e-6,contact_energy_fraction=1e-8,contact_force_fraction=1e-6,plateau_window=10)
++ a=dict(frozen_utc=stamp,run_id=RUN,identity='5x1x0.4 mm scaled pure-shear-like finite XZ / periodic Y idealized material layer; not Liu full experiment or finite-thickness clot',size_xyz_m=[.005,.0004,.001],counts_xyz=[100,8,20],dx_m=DX,horizon_m=DELTA,G_Pa=G,K_Pa=K,rho_kg_m3=RHO,s00=.15,alpha=0.,reference_m='Same full intact minimum-image reference m in every cut; one independent Y-only evaluator',periodic_direction='Y only, cell 0.4 mm',cut_rule='Reference z=0 crossing with X intersection < tip-1e-12 m; all states from complete original list',crack_length_m=[.00150,.00155,.00160],tip_x_m=[-.001,-.00095,-.00090],delta_a_m=50e-6,periodic_B_m=.0004,delta_A_m2=2e-8,total_low_opening_m=2e-6,controlled='Only uz at outer z=+/-475 um planes; tangent DOFs free',criteria=criteria,optimizer=dict(method='L-BFGS-B same as V1',coordinate_scale_m=1e-6,energy_scale_J=1e-12,maxiter=6000,maxfun=60000,maxls=40,maxcor=30,ftol=0,gtol=1e-11),budgets=dict(low_equilibria=3,old_high_recovery=1,wide_high_search=2,conditional_high_A1_A2=2,total=8,per_wide_state_wall_s=900,RSS_limit_GiB=8,processes=1),recovery='Only if three wide low states accepted: one local exact Hessian-vector Newton/Krylov residual correction of saved small 73.56055769588697um A0, <=10 Newton corrections and <=1500 HVP, <=300s, unchanged original gates, old accepted iteration history retained for plateau',high_plan='Only after low3 and recovery pass. First A0 at .95 * .15/maxstretch_low * 2um; second only if needed at 1.05 * estimated threshold from first. At most2, exact threshold > .15, no material fit. High PVCE only at an accepted notch-first subcritical A0 state with all gate margins and candidate topology unchanged; stop if competitor leads or remains ambiguous within2%.',first_region='Notch front distance sqrt((x-tip)^2+z^2)<=delta, notch/finite-X intersection if simultaneously <=delta from X wall (no such front overlap expected here), grip within delta of either outer controlled plane, other X free surface within delta, otherwise free interior. Y never free surface.',stops='Any periodic, energy/native force, topology, contact, equilibrium, errorbudget or resource failure stops new A states; B independent',G_identity='WIDE_PERIODIC_SPECIMEN_PVCE_G_DRIVE; never material Gc')
++ b=dict(frozen_utc=stamp,run_id=RUN,identity='CLOT_PRESENT_RIGID_GEOMETRY_STEADY_CFD_BASELINE',geometry_sha256=sha(B/'clot_present_lumen.vtp'),geometry_audit_sha256=sha(B/'GEOMETRY_AUDIT.json'),geometry='Original native Y PLC plus original V3 analytic height law; fixed shared PLC for both meshes, no smoothing/hull',mesh=dict(generator='Existing official SimVascular2023.05/TetGen',global_edge_m=.00025,local_sphere_center_m=[-.006,0,.0003],local_sphere_radius_m=.00125,baseline_local_edge_m=.00010,refined_local_edge_m=.00007,preserve_surface=True,refinement_scope='Same PLC, volume refinement in local sphere; surface already <=50um near clot before radial displacement. No geometry refinement in second solve.',quality=dict(closed=True,connected_volume=1,negative_or_zero_tetrahedra=0,unlabelled_or_duplicate_facets=0,min_SICN=1e-5,relative_volume_to_PLC=1e-8),budgets=dict(per_mesh_wall_s=600,max_points=500000,max_tetrahedra=3000000)),flow=dict(rho_kg_m3=1000,mu_Pa_s=.001,inlet_mean_m_s=.005,Q_target_m3_s=2.6354060534101725e-8,inlet='Original Parabolic, Impose_flux=true, Zero_out_perimeter=true',outlets='Original Neu, steady Value=0; zero traction, not pointwise p=0',walls='No-slip on VESSEL_WALL and CLOT_FLUID_SURFACE',time_integrator='Original generalized alpha spectral radius .5; transient to steady',dt_s=.01,max_steps=1000,mpi_ranks=8,backend='Existing validated GPU PETSc options + CPU domain decomposition; unchanged native solver'),criteria=dict(save_interval_steps=10,steady_last_intervals=5,velocity_change_limit=1e-5,flow_change_limit=1e-6,mass_limit=1e-5,nonlinear_relative_tolerance=1e-10,all_linear_converged=True,wall_velocity_max_m_s=5e-13,finite=True,positive_net_outlet_flows=True,no_symmetry_gate='Clot breaks symmetry; measure outlet fractions'),mesh_comparison=dict(relative_limit=.15,metrics=['mother_pressure_drop','surface_pressure_area_mean','surface_shear_area_mean','surface_shear_area_p95','integrated_force_vector_norm_difference','peak_velocity'],outlet_fraction_absolute_limit=.01,contact_rim='Faces centroid within100um of contact line reported separately; peaks diagnostic, never finite peak convergence assertion'),traction=dict(normal='n_clot=-n_fluid, oriented using adjacent tetrahedron',formula='sigma=-pI+mu(gradU+gradU.T); t=sigma@n_clot',gradient='Piecewise linear tetrahedral velocity gradient from adjacent native volume element',pressure='P1 face mean, gauge relative to original zero-traction outlets',integration='Actual exposed CFD triangles only; pressure linear integrated exactly, viscous piecewise constant; split pressure, normal/tangential viscous, total; moments use degree2 triangle quadrature'),budgets=dict(baseline=1,conditional_refined=1,per_CFD_wall_s=2700,process_tree_RSS_GiB=32,stop='No second solve unless baseline mesh and all CFD criteria pass'),not_included=['streaming','ultrasound feedback','clot deformation','fracture','two-way FSI','nonNewtonian blood','production LPS load changes'])
++ for p,obj in [(A/'DESIGN_FREEZE.json',a),(B/'DESIGN_FREEZE.json',b),(B/'CFD_BOUNDARY_CONDITIONS.json',b['flow'])]:
++  assert not p.exists(),str(p);save(p,obj)
++ save(COMMON/'RESOURCE_ALLOCATION.json',dict(frozen_utc=stamp,cpu_max=(Path('/sys/fs/cgroup/cpu.max').read_text().strip() if Path('/sys/fs/cgroup/cpu.max').exists() else Path('/sys/fs/cgroup/cpu/cpu.cfs_quota_us').read_text().strip()+'/'+Path('/sys/fs/cgroup/cpu/cpu.cfs_period_us').read_text().strip()),affinity=sorted(os.sched_getaffinity(0)),B_MPI=8,A_process=1,priority='B main track; A capped independent one process',memory_budget_GiB=dict(A=8,B=32),no_other_jobs_modified=True))
++if __name__=='__main__':main()
+diff --git a/analysis/dual_track_v1/energy_y.cpp b/analysis/dual_track_v1/energy_y.cpp
+new file mode 100644
+index 0000000..fedf466
+--- /dev/null
++++ b/analysis/dual_track_v1/energy_y.cpp
+@@ -0,0 +1,23 @@
++// Isolated task adaptation: Y-only periodic cell instead of original XY.
++// Read-only energy/force evaluator for the locked equal-volume, uniform-K/G LPS.
++// Never linked into LAMMPS; no trajectory changes. m is frozen initial weighted volume.
++#include <cmath>
++#include <vector>
++static double core(int n,int nb,const double*x,const int*b,const unsigned char*alive,
++ const double*r0,const double*h,const double*m,double V,double K,double G,double*force,double L) {
++ std::vector<double> theta(n,0.0), e(nb,0.0);
++ for(int k=0;k<nb;k++)if(alive[k]){int i=b[2*k],j=b[2*k+1];double r=0;
++  for(int d=0;d<3;d++){double z=x[3*j+d]-x[3*i+d];if(d==1 && L>0)z-=L*std::round(z/L);r+=z*z;}e[k]=std::sqrt(r)-r0[k];
++  if(std::abs(e[k])<2.2204e-16)e[k]=0;
++  theta[i]+=e[k]*V*h[k];theta[j]+=e[k]*V*h[k];}
++ double U=0;
++ for(int i=0;i<n;i++){theta[i]*=3/m[i];U+=0.5*(K-5*G/3)*V*theta[i]*theta[i];}
++ if(force)for(int q=0;q<3*n;q++)force[q]=0;
++ for(int k=0;k<nb;k++)if(alive[k]){int i=b[2*k],j=b[2*k+1];
++  U+=7.5*G*V*V*h[k]/r0[k]*e[k]*e[k]*(1/m[i]+1/m[j]);
++  if(force){double r=r0[k]+e[k];double f=V*V*h[k]*((3*K-5*G)*(theta[i]/m[i]+theta[j]/m[j])+15*G/r0[k]*(1/m[i]+1/m[j])*e[k]);
++   for(int d=0;d<3;d++){double delta=x[3*j+d]-x[3*i+d];if(d==1 && L>0)delta-=L*std::round(delta/L);double z=f*delta/r;force[3*i+d]+=z;force[3*j+d]-=z;}}}
++ return U;
++}
++
++extern "C" double evaluate_periodic(int n,int nb,const double*x,const int*b,const unsigned char*alive,const double*r0,const double*h,const double*m,double V,double K,double G,double*force,double L){return core(n,nb,x,b,alive,r0,h,m,V,K,G,force,L);}
+diff --git a/analysis/dual_track_v1/finalize_common.py b/analysis/dual_track_v1/finalize_common.py
+new file mode 100644
+index 0000000..3fa0ead
+--- /dev/null
++++ b/analysis/dual_track_v1/finalize_common.py
+@@ -0,0 +1,77 @@
++"""Read-only provenance closure and portable review indexes; no numerical solves."""
++from analysis.dual_track_v1.common import *
++import ast,datetime,html,importlib.metadata as md,os,subprocess,shutil
++
++def read(p):return json.loads(p.read_text())
++def command(args):
++ r=subprocess.run(args,cwd=ROOT,text=True,capture_output=True)
++ return dict(returncode=r.returncode,stdout=r.stdout,stderr=r.stderr)
++def href(p,base):return html.escape(os.path.relpath(p,base),quote=True)
++def page(title,body):
++ return '<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+html.escape(title)+'</title><style>body{max-width:1200px;margin:32px auto;padding:0 22px;color:#253440;font:17px/1.6 system-ui,sans-serif;background:#fafbfd}h1,h2{line-height:1.3}a{color:#176182}img{width:100%;height:auto;background:white}figure{margin:28px 0;padding:16px;background:white;border:1px solid #ccd4dc}figcaption{padding:10px 0}table{border-collapse:collapse;width:100%;font-size:14px}td,th{border:1px solid #cad2d9;padding:9px;text-align:left;overflow-wrap:anywhere}code{overflow-wrap:anywhere}.note{padding:16px;background:#eef3f5}pre{white-space:pre-wrap;overflow-wrap:anywhere}</style><h1>'+html.escape(title)+'</h1>'+body+'</html>'
++def table(states):return '<table><tr><th>分项</th><th>状态</th></tr>'+''.join('<tr><td>'+html.escape(k)+'</td><td>'+html.escape(str(v))+'</td></tr>' for k,v in states.items())+'</table>'
++
++def protection():
++ before=read(COMMON/'provenance/PROTECTED_START.json');checks=[]
++ for name,expected in before.items():
++  p=Path(name);p=p if p.is_absolute() else ROOT/p;actual=sha(p) if p.is_file() else None
++  checks.append(dict(path=name,before_sha256=expected,after_sha256=actual,unchanged=actual==expected))
++ failure=[x for x in checks if not x['unchanged']]
++ save(COMMON/'PROTECTION_AUDIT.json',dict(status='PASS' if not failure else 'FAIL',checked_files=len(checks),changed_or_missing=failure,checks=checks,scope='Exact rehash of all pre-registered production/material/native libraries and historical accepted files; no restoration/overwrite attempted'))
++ assert not failure,failure
++ packages={d.metadata['Name']:d.version for d in md.distributions()};original=read(COMMON/'provenance/ENVIRONMENT_BEFORE.json')['packages'];assert packages==original
++ start=read(COMMON/'provenance/SERVER_START.json');head=command(['git','rev-parse','HEAD']);assert head['stdout'].strip()==start['HEAD'].strip()
++ capture=dict(utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),HEAD=head,branch=command(['git','branch','--show-current']),git_status=command(['git','status','--short']),git_tracked_diff=command(['git','diff','--stat']),packages=packages,packages_unchanged=True,python=sys.executable,python_version=sys.version,compiler=command(['g++','--version']),mpi=command(['mpirun','--version']),supervisor=command(['supervisorctl','status']),processes=command(['ps','-eo','pid,ppid,pcpu,pmem,comm']),gpu=command(['nvidia-smi','--query-gpu=name,utilization.gpu,memory.used,memory.total','--format=csv,noheader']),affinity=sorted(os.sched_getaffinity(0)),CPU_quota_us=Path('/sys/fs/cgroup/cpu/cpu.cfs_quota_us').read_text().strip(),CPU_period_us=Path('/sys/fs/cgroup/cpu/cpu.cfs_period_us').read_text().strip(),meminfo=Path('/proc/meminfo').read_text(),disk=shutil.disk_usage(ROOT)._asdict())
++ save(COMMON/'provenance/ENVIRONMENT_AFTER.json',capture)
++ source=[];patch=[]
++ for p in sorted((ROOT/'analysis/dual_track_v1').iterdir()):
++  if p.suffix not in ['.py','.cpp','.txt']:continue
++  if p.suffix=='.py':ast.parse(p.read_text(),filename=str(p))
++  source.append(dict(path=str(p.relative_to(ROOT)),sha256=sha(p),bytes=p.stat().st_size));r=command(['git','diff','--no-index','--','/dev/null',str(p.relative_to(ROOT))]);assert r['returncode'] in [0,1];patch.append(r['stdout'])
++ save(COMMON/'SOURCE_MANIFEST.json',dict(files=source,python_AST='PASS',new_dependencies_installed=False,isolated_compilers_only=True))
++ (COMMON/'CODE_ADDITIONS.diff').write_text(''.join(patch));shutil.copy2(ROOT/'analysis/dual_track_v1/REPRODUCE.txt',COMMON/'REPRODUCE.txt')
++
++def indexes():
++ a=read(A/'ANALYSIS_SUMMARY.json');b=read(B/'ANALYSIS_SUMMARY.json');t=b['traction'][b['selected_level']];metrics=b['flows'][b['selected_level']]['metrics'];nxt=read(B/'NEXT_PRIORITY.json')['recommendation'];doc=COMMON/'document_edit/AUDIT.json';docstate='PASS_WRITTEN_AND_READ_BACK' if doc.exists() and read(doc)['status']=='PASS' else 'PENDING_LOCAL_SERIAL_UPDATE';visual=COMMON/'VISUAL_REVIEW.json';visualstate='PASS_14_REAL_FIGURES_REVIEWED' if visual.exists() and read(visual)['status']=='PASS' else 'PENDING_FINAL_VISUAL_REVIEW';protection_audit=read(COMMON/'PROTECTION_AUDIT.json')
++ cost=dict(run_id=RUN,formal_A_equilibrium_attempts=5,formal_A_budget=8,formal_B_CFD_attempts=2,formal_B_budget=2,A_known_static_wall_s=a['measured_low_high_wall_s'],A_recovery_wall_upper_bound_s=a['recovery_wall_upper_bound_s'],A_known_CPU_s=a['measured_low_high_CPU_s'],A_recovery_CPU_RSS_unknown=True,A_peak_recorded_RSS_MiB=a['peak_observed_RSS_MiB'],B_native_runtime_s=b['total_accepted_native_runtime_s'],B_telemetry=b['telemetry'],known_formal_wall_sum_excluding_recovery_s=a['measured_low_high_wall_s']+b['total_accepted_native_runtime_s'],time_accounting='Sum of formal solve wall times is not end-to-end duration. A recovery wall is an upper bound, CPU/RSS missing. B CPU is sampled live-process lower bound; GPU samples are device-wide.',report_generated_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),elapsed_since_run_id_s=(datetime.datetime.now(datetime.timezone.utc)-datetime.datetime.strptime(RUN,'%Y%m%dT%H%M%SZ').replace(tzinfo=datetime.timezone.utc)).total_seconds())
++ save(COMMON/'RESOURCE_AND_COST_SUMMARY.json',cost)
++ states=dict(PRODUCTION_MATERIAL_UNCHANGED=protection_audit['status'],NATIVE_LAMMPS_UNCHANGED=protection_audit['status'],HISTORICAL_RESULTS_PROTECTED=protection_audit['status'],WSL_DOCUMENT_UPDATE=docstate,VISUALIZATION_COMPLETE=visualstate)
++ save(COMMON/'FINAL_STATUS.json',dict(run_id=RUN,common_states=states,A_status_file=str((A/'FINAL_STATUS.json').relative_to(ROOT)),B_status_file=str((B/'FINAL_STATUS.json').relative_to(ROOT)),no_global_scientific_PASS=True,task_numerical_work_stopped=True,next_round_automatically_started=False))
++ # Machine-readable figure identity after final rendering.
++ for verification,figdir in [(A,FA),(B,FB)]:
++  figs=sorted(figdir.glob('Fig*.png'));assert len(figs)==7
++  save(verification/'FINAL_FIGURE_MANIFEST.json',dict(figures=[dict(path=str(p.relative_to(ROOT)),sha256=sha(p),svg_sha256=sha(p.with_suffix('.svg'))) for p in figs],field_source='refined accepted native CFD' if verification==B else 'actual saved topology/equilibria and unaccepted high-candidate diagnostic',deformation_scale=1,no_AI_or_medical_shell=True))
++ for verification,figdir,title,lead in [(A,FA,'A｜宽薄周期试样与 PVCE','低载三态通过；旧高载恢复通过；宽薄高载候选未验收，已停止。G 是试样驱动力，不是材料 Gc。'),(B,FB,'B｜原生 Y 血管中的 V3 含栓 CFD','基线与一次局部加密均通过；牵引已提取，15% 工程网格筛查通过。刚性背景流，不含 streaming 或双向 FSI。')]:
++  review=next(verification.glob('REVIEW_*.md'));stat=read(verification/'FINAL_STATUS.json')['states']
++  for target in [verification/'OPEN_RESULTS.html',figdir/'OPEN_RESULTS.html']:
++   base=target.parent;body='<p class="note">'+lead+'</p><p>run_id：<code>'+RUN+'</code></p><p><a href="'+href(COMMON/'OPEN_RESULTS.html',base)+'">总索引</a> · <a href="'+href(review,base)+'">中文科研报告（12 项回答）</a> · <a href="'+href(verification/'FINAL_STATUS.json',base)+'">状态 JSON</a> · <a href="'+href(verification/'DESIGN_FREEZE.json',base)+'">冻结方案</a></p>'+table(stat)
++   for p in sorted(figdir.glob('Fig*.png')):body+='<figure><a href="'+href(p,base)+'"><img loading="lazy" src="'+href(p,base)+'" alt="'+html.escape(p.stem)+'"></a><figcaption>'+html.escape(p.stem)+' · <a href="'+href(p.with_suffix('.svg'),base)+'">SVG</a></figcaption></figure>'
++   body+='<p>完整原始结果留在服务器：<code>'+str(verification)+'</code>；本地回收范围见总索引的 COMPACT_MANIFEST.json。</p>';target.write_text(page(title,body))
++ report=f'''# Y_CLOT_CFD_AND_WIDE_PVCE_DUAL_TRACK_V1 共同审查
++
++run_id：`{RUN}`。A、B 独立验收，没有单一总科学 PASS。A 的 12 项回答见相邻 A 报告，B 的 12 项回答见相邻 B 报告；下列覆盖共同问题 13–19。
++
++13. **正式算例和资源。** A 共 5/8：低载三态、旧保存态恢复一次、宽薄高载候选一次；B 共 2/2：含栓基线和一次局部体网格加密。没有新动态断裂、无栓重算或第三个网格。A 已记录正式墙钟 {a['measured_low_high_wall_s']:.3f} s、CPU {a['measured_low_high_CPU_s']:.3f} s，另有恢复墙钟上界 {a['recovery_wall_upper_bound_s']:.3f} s；恢复 CPU/RSS/迭代遥测因报告序列化异常不可恢复，不能以零代替。B 两次原生墙钟合计 {b['total_accepted_native_runtime_s']:.3f} s（{b['total_accepted_native_runtime_s']/60:.3f} min）。已记录正式墙钟相加 {cost['known_formal_wall_sum_excluding_recovery_s']:.3f} s，另加上述恢复上界；不把并行任务墙钟相加冒充端到端时长。完整时长、CPU 下界、内存/GPU 样本与当前报告时刻见 `RESOURCE_AND_COST_SUMMARY.json`。A 所记录峰值 RSS {a['peak_observed_RSS_MiB']:.2f} MiB；B 峰值采样 RSS 分别 {b['telemetry']['baseline']['process_tree_peak_sampled_RSS_MiB']:.2f}/{b['telemetry']['refined']['process_tree_peak_sampled_RSS_MiB']:.2f} MiB。15.36 CPU 配额下采用 A 单进程、B 8 MPI，优先 B。4090 沿用原生 PETSc GPU 路径；无压力测试或依赖升级。
++
++14. **实际审查图。** 共 14 组 PNG＋SVG。A1 点阵/控制自由度/尺寸比，A2 周期影像邻居和原生一致性，A3 三个参考切口，A4 低载收敛/能差/G，A5 旧态恢复及宽态停止，A6 未接受高载候选真实键，A7 三个实际低载平衡。B1 原生 Y 与 V3 材料点，B2 真实体网格与开放绕流截面，B3 公共位置速度/压力，B4 实际暴露面压力/剪切，B5 守恒/稳态/压降/力/加密，B6 原生速度场流线与方向，B7 横截面和切向牵引方向。A/B 分别有索引，并有共同 `OPEN_RESULTS.html`。没有新医学外壳、AI 生成图或无分析意义动画。
++
++15. **未完成和停止。** A 低载 G_two/G_three 为 {a['G']['G_two_J_m2']:.12e}/{a['G']['G_three_J_m2']:.12e} J/m²。旧小态高载恢复通过；宽薄高载候选的末十次位置变化及 1 pm 分量差分失败，原冻结门槛保留，没有真正首达阈值区间、高载 A1/A2、材料 Gc。只读 1 nm 差分支持舍入解释，但未重评接受。B 两个解及一次工程筛查完成；表面三角化收敛、接触线极值、到材料点载荷映射、超声 streaming、变形与双向 FSI 不在本轮完成范围。两线按范围停止。
++
++16. **保护情况。** `PROTECTION_AUDIT.json` 对 {protection_audit['checked_files']} 个事先登记的源码、材料卡、原生库和历史结果重新计算 SHA，结果 {protection_audit['status']}。原生环境包版本完全一致，HEAD 未变。新代码只在 `analysis/dual_track_v1`，新数据只在本 run 的独立目录；没有修改 s00、生产载荷或历史接受态，没有 commit/push/reset/clean/stash，也没有停止其他任务。A 的 Y 周期独立能量/HVP 适配仅在隔离诊断目录。
++
++17. **实际 WSL 文档。** `/home/lzy/projects/clot_rupture.md` 状态：`{docstate}`。更新保留 ①–⑨、历史无栓背景流使用记录及各轮负面科研结论，新增含栓解和宽薄 PVCE 的已验证结论；不会把旧碎裂或输运轨迹改称使用了新含栓流场。
++
++18. **备份、diff 与 SHA。** `document_edit/before.md`、`document_edit/after.md`、`document_edit/change.diff`、`document_edit/AUDIT.json` 记录最新原文、并发检查、写入/读回和前后 SHA；任务开始备份另在 `provenance/clot_rupture.before.md`。`SOURCE_MANIFEST.json`、`CODE_ADDITIONS.diff`、`PROTECTION_AUDIT.json`、`provenance/ENVIRONMENT_BEFORE.json` 与 `ENVIRONMENT_AFTER.json`、`REPRODUCE.txt` 提供源码/库身份、代码差异和条件复现说明。`SERVER_ARTIFACT_MANIFEST.json` 清点本轮服务器全部原始数据；`COMPACT_MANIFEST.json` 与 `LOCAL_RETRIEVAL_AUDIT.json` 记录 WSL 精简回收及 SHA 验证。完整 CFD 网格、原生全场、逐步状态和 LAMMPS 原始输入均保留服务器，不降低输出精度。
++
++19. **下一轮唯一优先项。** {nxt} 理由是 B 已得到含栓场及稳定的积分载荷，仍缺少到实际材料点的受力接口验证；A 未识别 Gc 不否定 B 的独立成果。建议只做保力/保力矩离线检查，不自动启动生产加载、材料升级、AI 大扫描或双向耦合。
++
++加密 CFD 代表值：最大速度 {metrics['velocity_max_m_s']*1e3:.9f} mm/s；平均表压 {t['pressure_Pa']['mean']:.9f} Pa；平均/P95 切向剪切 {t['shear_Pa']['mean']:.9f}/{t['shear_Pa']['p95']:.9f} Pa；总力 {t['total_force_N']} N，模长 {t['total_force_norm_N']*1e6:.9f} µN。压力是出口参考表压，力只含暴露流体面，不含壁面粘附反力。
++'''
++ (COMMON/'REVIEW_DUAL_TRACK_V1.md').write_text(report)
++ links=[(A/'OPEN_RESULTS.html','A：宽薄 PVCE 图与数据'),(B/'OPEN_RESULTS.html','B：含栓 CFD 图与数据'),(COMMON/'REVIEW_DUAL_TRACK_V1.md','共同报告：问题 13–19'),(COMMON/'FINAL_STATUS.json','共同状态'),(COMMON/'RESOURCE_AND_COST_SUMMARY.json','实际资源和成本'),(COMMON/'PROTECTION_AUDIT.json','历史与生产 SHA 保护审计'),(COMMON/'REPRODUCE.txt','复现说明'),(COMMON/'CODE_ADDITIONS.diff','本轮代码差异'),(COMMON/'SOURCE_MANIFEST.json','新增源码 SHA'),(COMMON/'document_edit/AUDIT.json','WSL 文档实际更新审计'),(COMMON/'COMPACT_MANIFEST.json','精简回收清单'),(COMMON/'LOCAL_RETRIEVAL_AUDIT.json','本地回收 SHA 核验'),(COMMON/'SERVER_ARTIFACT_MANIFEST.json','完整服务器数据清单')]
++ body='<p>run_id：<code>'+RUN+'</code></p><div class="note"><p><b>A：</b>16,000 点；低载三态通过，G ≈ 7.14065×10⁻⁶ J/m²。高载候选未验收并停止；材料 Gc 未识别。</p><p><b>B：</b>原生 Y＋原 V3，两个含栓稳态解通过，15% 工程网格筛查通过。平均剪切约 0.01677 Pa，总力约 0.6638 µN。刚性背景流，不含 streaming/FSI。</p></div><ul>'+''.join('<li><a href="'+href(p,COMMON)+'">'+label+'</a></li>' for p,label in links)+'</ul>'+table(states)+'<p>本轮计算已停止，不自动执行下一轮。</p>'
++ (COMMON/'OPEN_RESULTS.html').write_text(page('Y 血栓｜含栓 CFD 与宽薄 PVCE 双线审查',body))
++if __name__=='__main__':
++ import sys
++ if sys.argv[1]=='protection':protection()
++ elif sys.argv[1]=='indexes':indexes()
+diff --git a/analysis/dual_track_v1/geometry_b.py b/analysis/dual_track_v1/geometry_b.py
+new file mode 100644
+index 0000000..caa25a2
+--- /dev/null
++++ b/analysis/dual_track_v1/geometry_b.py
+@@ -0,0 +1,67 @@
++"""CFD-only PLC: native Y triangles with the ORIGINAL V3 height law applied locally.
++No convex hull, ideal Y reconstruction, smoothing, or production geometry edits.
++"""
++from analysis.dual_track_v1.common import *
++import pyvista as pv
++from pd_clot.lammps_fragmentation.y_bifurcation_sources import YSources
++from pd_clot.lammps_fragmentation.y_clot_morphology_v3 import profile
++
++def surface():
++ s=YSources();c=json.loads((V3/'V3_GEOMETRY_CONFIG.json').read_text());surf=s.exterior;P=np.array(surf.points,float);T=surf.faces.reshape(-1,4)[:,1:].copy();tags=np.array(surf['ModelFaceID'],int);initialN=len(P);counts=[]
++ # Conforming edge midpoint refinement in a fixed local wall patch; neighboring
++ # triangles share each midpoint. Red/green subdivision remains on original planes.
++ for it in range(8):
++  center=P[T].mean(1);hot=(tags==1)&(abs(center[:,0]-c['x0_m'])<.0010)&(abs(center[:,1])<.0010)&(center[:,2]>.0004);edges=np.sort(np.concatenate([T[hot][:,[0,1]],T[hot][:,[1,2]],T[hot][:,[2,0]]]),axis=1);edges=np.unique(edges,axis=0);edges=edges[np.linalg.norm(P[edges[:,0]]-P[edges[:,1]],axis=1)>50e-6*(1+1e-10)]
++  if not len(edges):break
++  pts=P.tolist();emap={tuple(e):len(P)+i for i,e in enumerate(edges)};pts.extend(P[edges].mean(1).tolist());newT=[];newtag=[]
++  for tri,tag in zip(T,tags):
++   a,b,cc=map(int,tri);m=[emap.get(tuple(sorted(e))) for e in [(a,b),(b,cc),(cc,a)]];n=sum(v is not None for v in m)
++   if n==0:children=[[a,b,cc]]
++   elif n==3:
++    ab,bc,ca=m;children=[[a,ab,ca],[ab,b,bc],[ca,bc,cc],[ab,bc,ca]]
++   else:
++    k=next(k for k in range(3) if m[k] is not None and (n==1 or m[(k+1)%3] is not None));a,b,cc=[int(tri[(k+j)%3]) for j in range(3)];ab=m[k]
++    if n==1:children=[[a,ab,cc],[ab,b,cc]]
++    else:
++     bc=m[(k+1)%3];children=[[ab,b,bc],[a,ab,cc],[ab,bc,cc]]
++   newT.extend(children);newtag.extend([tag]*len(children))
++  P=np.array(pts);T=np.array(newT,int);tags=np.array(newtag,int);counts.append(dict(iteration=it,points=len(P),triangles=len(T),split_edges=len(edges)))
++ else:raise RuntimeError('Local geometry triangulation refinement budget exceeded')
++ q,h=profile(P,c);pts=P.tolist();boundary=set();intersections={};newT=[];newtags=[]
++ def inter(a,b):
++  key=tuple(sorted((a,b)))
++  if key not in intersections:
++   t=(1-q[a])/(q[b]-q[a]);pt=P[a]+t*(P[b]-P[a]);j=len(pts);pts.append(pt.tolist());intersections[key]=j;boundary.add(j)
++  return intersections[key]
++ def clip(tri,inside):
++  out=[]
++  for i in range(3):
++   a=int(tri[i]);b=int(tri[(i+1)%3]);ina=q[a]<1;inb=q[b]<1
++   if ina==inside:out.append(a)
++   if ina!=inb:out.append(inter(a,b))
++  return out
++ for tri,tag in zip(T,tags):
++  if tag!=1:newT.append(tri);newtags.append(tag);continue
++  for inner in [False,True]:
++   poly=clip(tri,inner)
++   for j in range(1,len(poly)-1):newT.append([poly[0],poly[j],poly[j+1]]);newtags.append(5 if inner else 1)
++ P=np.array(pts);T=np.array(newT,int);tags=np.array(newtags,int);original=P.copy();height=profile(P,c)[1];height[np.array(sorted(boundary),int)]=0.;affected=np.unique(T[tags==5]);notclot=np.ones(len(P),bool);notclot[affected]=False;height[notclot]=0.;radius=np.linalg.norm(P[:,1:],axis=1);P[:,1:]*=((radius-height)/radius)[:,None]
++ out=pv.PolyData(P,np.c_[np.full(len(T),3),T]);out.cell_data['ModelFaceID']=tags.astype(np.int32);out=out.compute_normals(consistent_normals=True,auto_orient_normals=True,split_vertices=False,inplace=False);T=out.faces.reshape(-1,4)[:,1:];tags=np.array(out['ModelFaceID']);assert out.n_open_edges==0
++ edges=np.sort(np.concatenate([T[:,[0,1]],T[:,[1,2]],T[:,[2,0]]]),axis=1);_,ec=np.unique(edges,axis=0,return_counts=True);assert np.all(ec==2);assert len(np.unique(np.sort(T,axis=1),axis=0))==len(T)
++ areas=.5*np.linalg.norm(np.cross(P[T[:,1]]-P[T[:,0]],P[T[:,2]]-P[T[:,0]]),axis=1);assert areas.min()>0;assert set(tags)=={1,2,3,4,5}
++ # Independent signed-volume difference on identical closed triangulation.
++ vol=lambda X:abs(np.einsum('ij,ij->',X[T[:,0]],np.cross(X[T[:,1]],X[T[:,2]]))/6)
++ originalV=vol(original);fluidV=vol(P);clotV=originalV-fluidV;oldV=json.loads((V3/'GEOMETRY_SUMMARY.json').read_text())['continuous_mesh_volume_m3'];assert abs(clotV/oldV-1)<.02
++ out.save(B/'clot_present_lumen.vtp');np.savez_compressed(B/'geometry_arrays.npz',points_m=P,reference_wall_points_m=original,triangles=T,tags=tags,height_m=height,contact_line_nodes=np.array(sorted(boundary)),clot_surface_nodes=affected)
++ top=out.extract_cells(tags==5).extract_surface().triangulate();top.save(B/'clot_fluid_surface.vtp');oldsolid=pv.read(ROOT/'results/y_clot_realistic_morphology_wall_contact_and_flow_transport_v1/paraview/clot_solid.vtp')
++ # Actual native lumen membership checks, without a newly constructed cylinder.
++ inside=pv.PolyData(P[height>1e-8]).select_enclosed_points(s.exterior,tolerance=1e-8,check_surface=True)['SelectedPoints'];assert np.all(inside)
++ from scipy.spatial import cKDTree
++ sections=[]
++ for x in np.linspace(c['x0_m']-.0007,c['x0_m']+.0007,29):
++  # Closed slices integrated after triangulation; original native external surface.
++  oldslice=s.exterior.slice(normal=[1,0,0],origin=[x,0,0]).triangulate_contours();newslice=out.slice(normal=[1,0,0],origin=[x,0,0]).triangulate_contours()
++  sections.append(dict(x_m=float(x),original_area_m2=float(oldslice.area),fluid_area_m2=float(newslice.area),occlusion_fraction=float(1-newslice.area/oldslice.area)))
++ audit=dict(status='VALID_CFD_PLC_PENDING_VOLUME_MESH',source_definition='Original y_clot_morphology_v3.profile + V3_GEOMETRY_CONFIG + radial inward height from actual native WALL triangulation; no point-cloud hull or smoothing',source_sha={str(p.relative_to(ROOT)):sha(p) for p in [ROOT/'pd_clot/lammps_fragmentation/y_clot_morphology_v3.py',ROOT/'pd_clot/lammps_fragmentation/y_mural_clot_geometry.py',V3/'V3_GEOMETRY_CONFIG.json',ROOT/'verification/y_bifurcation_clot_placement_visual_integration_v1/SOURCE_ASSET_REGISTER.json']},original_native_exterior_sha=sha(s.path(str(Path(s.states['simvascular/mesh']['mesh']).parent/'mesh-complete.exterior.vtp'))),units='global xyz metres, identity transform',original_V3_continuous_volume_m3=oldV,V3_discrete_volume_m3=1927*DX**3,CFD_triangulated_clot_volume_m3=clotV,relative_to_original_V3_mesh=clotV/oldV-1,raw_analytic_solid_scope='Native-wall-fitted height law; no outside-wall solid component or new clipping into lumen. Historical and new finite surface triangulations have distinct documented volumes.',fluid_volume_m3=fluidV,original_lumen_volume_m3=originalV,removed_volume_identity=originalV-fluidV,clot_surface_area_m2=float(areas[tags==5].sum()),wall_attachment_surface_excluded=True,shared_contact_line_nodes=len(boundary),gap_at_contact_line_m=float(abs(P[list(boundary)]-original[list(boundary)]).max()),closed=True,edge_incidence_two=True,single_connected_surface=int(out.connectivity().cell_data['RegionId'].max()+1)==1,duplicate_triangles=0,minimum_triangle_area_m2=float(areas.min()),surface_points=len(P),surface_triangles=len(T),geometry_refinement_history=counts,max_inward_height_m=float(height.max()),minimum_clot_z_m=float(P[affected,2].min()),cross_sections=sections,tag_names={1:'VESSEL_WALL',2:'INLET',3:'OUTLET_1',4:'OUTLET_2',5:'CLOT_FLUID_SURFACE'},ports_preserved=True,geometry_change='CFD-only finite triangulation of the same frozen analytic law; original assets and point cloud untouched. This same PLC is shared by both volume meshes.')
++ save(B/'GEOMETRY_AUDIT.json',audit);save(B/'CLOT_PRESENT_GEOMETRY_AUDIT.json',audit);print(json.dumps({k:v for k,v in audit.items() if k not in ['source_sha','cross_sections','geometry_refinement_history']},indent=2))
++if __name__=='__main__':surface()
+diff --git a/analysis/dual_track_v1/high_a.py b/analysis/dual_track_v1/high_a.py
+new file mode 100644
+index 0000000..9647bcc
+--- /dev/null
++++ b/analysis/dual_track_v1/high_a.py
+@@ -0,0 +1,50 @@
++"""One fixed-topology equilibrium; above-threshold states are diagnostic only."""
++from analysis.dual_track_v1.core_a import *
++from analysis.dual_track_v1.high_helpers import risk,correction
++BASE=A
++import time
++from analysis.dual_track_v1.native_a import Native
++
++from scipy.optimize import minimize
++import sys,csv,resource
++
++def run(name,amp,case='A0',warm=None,warm_amp=2e-6):
++ out=BASE/'lps'/name;out.mkdir(parents=True,exist_ok=True);assert not (out/'ATTEMPT.json').exists();save(out/'ATTEMPT.json',dict(opening_m=amp,case=case,utc=time.strftime('%FT%TZ',time.gmtime()),equilibrium_attempt=1));start=time.perf_counter();cpu=time.process_time();cfg=json.loads((BASE/'HIGH_NUMERICAL_FREEZE.json').read_text());c=cfg['criteria'];g,e,alive,mask,lo,hi,_,_=model([-.001,-.00095,-.00090][int(case[-1])]);X=g['X'];free=~mask;scale=1e-6;escale=1e-12
++ old=np.load(warm if warm else A/case/'equilibrium.npz');x0=X+(old['x_m']-X)*(amp/warm_amp);fixed=X.copy();fixed[lo,2]-=amp/2;fixed[hi,2]+=amp/2;x0[mask]=fixed[mask];calls=0;history=[];states=[];last=None;trial_max=-np.inf
++ def unpack(q):
++  x=fixed.copy();x[free]=X[free]+q*scale;return np.ascontiguousarray(x)
++ def evaluate(q):
++  nonlocal calls,last,trial_max
++  calls+=1
++  if time.perf_counter()-start>900:raise RuntimeError("WALL_BUDGET")
++  if resource.getrusage(resource.RUSAGE_SELF).ru_maxrss>8*1024**2:raise RuntimeError("MEMORY_BUDGET")
++  if calls>cfg['optimizer']['maxfun']:raise RuntimeError('FUNCTION_BUDGET')
++  x=unpack(q);U,f=e.eval(x,alive,True);s=(np.linalg.norm(delta_y(x,e.b),axis=1)-e.r)/e.r;trial_max=max(trial_max,float(s[alive.astype(bool)].max()));last=(q.copy(),x,U,f)
++  return U/escale,-f[free]*scale/escale
++ def record(q):
++  if last is None or not np.array_equal(last[0],q):evaluate(q)
++  _,x,U,f=last;top=float(-f[hi,2].sum());bottom=float(-f[lo,2].sum());Q=(top-bottom)/2;states.append((x.copy(),U));states[:]=states[-10:]
++  row=dict(iteration=len(history),evaluations=calls,U_J=U,relative_force=float(np.linalg.norm(f[free])/np.linalg.norm(f[mask])),max_force_N=float(abs(f[free]).max()),top_reaction_N=top,bottom_reaction_N=bottom,reaction_imbalance=abs(top+bottom)/abs(Q),energy_span_relative=(max(a[1] for a in states)-min(a[1] for a in states))/U if len(states)==10 else None,position_change_m=float(abs(x-states[0][0]).max()) if len(states)==10 else None)
++  history.append(row)
++  return row['relative_force']<=c['relative_free_force_L2_over_controlled_force_L2'] and row['max_force_N']<=c['max_free_force_N'] and row['reaction_imbalance']<=c['boundary_reaction_imbalance'] and row['energy_span_relative'] is not None and row['energy_span_relative']<=c['energy_span_last10_relative'] and row['position_change_m']<=c['max_position_change_last10_m']
++ q0=(x0[free]-X[free])/scale;evaluate(q0);record(q0)
++ def callback(intermediate_result):
++  if record(intermediate_result.x):raise StopIteration
++ result=minimize(evaluate,q0,jac=True,method='L-BFGS-B',callback=callback,options=cfg['optimizer']);x=unpack(result.x);U,f=e.eval(x,alive,True)
++ if not np.array_equal(states[-1][0],x):record(result.x)
++ corrections=[]
++ row=history[-1]
++ # Same verified local residual solver; limited one correction per wide candidate.
++ if not (row['relative_force']<=1e-6 and row['max_force_N']<=1e-13):
++  x,cr=correction(x,e,alive,free);corrections.append(cr);q=(x[free]-X[free])/scale;evaluate(q);record(q);U,f=e.eval(x,alive,True);row=history[-1]
++ with (out/'history.csv').open('w') as fp:w=csv.DictWriter(fp,fieldnames=list(row));w.writeheader();w.writerows(history)
++ n=Native(out/'native',g,alive);fn,diag,theta=n.evaluate(x);n.close();Uc,fc,cp=contact(x,g,alive);err=float(np.linalg.norm(fn-(f+fc))/np.linalg.norm(fn));nrel=float(np.linalg.norm(fn[free])/np.linalg.norm(fn[mask]));Q=(row['top_reaction_N']-row['bottom_reaction_N'])/2;cr=float(np.linalg.norm(fc)/abs(Q));eps=2*max(max(a[1] for a in states)-min(a[1] for a in states),np.linalg.norm(f[free])*np.linalg.norm((x-X)[free]),100*np.finfo(float).eps*U)
++ gates=dict(force=row['relative_force']<=c['relative_free_force_L2_over_controlled_force_L2'] and row['max_force_N']<=c['max_free_force_N'],energy_plateau=row['energy_span_relative'] is not None and row['energy_span_relative']<=c['energy_span_last10_relative'],coordinate_plateau=row['position_change_m'] is not None and row['position_change_m']<=c['max_position_change_last10_m'],reaction_balance=row['reaction_imbalance']<=c['boundary_reaction_imbalance'],native_force=nrel<=c['relative_free_force_L2_over_controlled_force_L2'] and abs(fn[free]).max()<=c['max_free_force_N'],force_energy=err<=c['native_energy_force_relative'],contact=Uc/U<=c['max_contact_energy_over_U'] and cr<=c['max_contact_force_over_reaction'],topology=diag['natural_broken']==0)
++ # Central FD at eight high-force/free components, step1pm; no extra equilibrium solve.
++ testids=np.unique(np.r_[np.argsort(abs(f.ravel()))[-4:],np.flatnonzero(free.ravel())[np.argsort(abs(f[free]))[-4:]]]);fd=[];h=1e-12
++ for j in testids:
++  xp=x.copy();xm=x.copy();xp.ravel()[j]+=h;xm.ravel()[j]-=h;fdv=-(e.eval(xp,alive,False)-e.eval(xm,alive,False))/(2*h);fd.append(dict(dof=int(j),finite_difference_N=fdv,gradient_N=float(f.ravel()[j]),absolute_error_N=abs(fdv-f.ravel()[j])))
++ fdscaled=max(a['absolute_error_N'] for a in fd)/abs(fn).max();gates['finite_difference']=fdscaled<=c['finite_difference_force_scaled_absolute']
++ state=dict(tip_m=[-.001,-.00095,-.00090][int(case[-1])],X=X,x_m=x,displacement_m=x-X,alive=alive,bonds=e.b,m=e.m,r=e.r,h=e.h,mask=mask,low=lo,high=hi,independent_force_N=f,native_force_N=fn,native_theta=theta,contact_force_N=fc,contact_pairs=cp,last_positions=np.stack([a[0] for a in states]),last_U_J=np.array([a[1] for a in states]));np.savez_compressed(out/'equilibrium.npz',**state);r=risk(state)
++ audit=dict(corrections=corrections,name=name,case=case,opening_m=amp,accepted=bool(all(gates.values())),gates={k:bool(v) for k,v in gates.items()},U_J=U,empirical_uncertainty_J=float(eps),last=row,native=diag,native_force_energy_relative=err,native_free_force_relative=nrel,max_native_free_force_N=float(abs(fn[free]).max()),contact_U_J=Uc,contact_force_over_Q=cr,contact_pairs=len(cp),risk=r,branch=('UNACCEPTED_STATIC_CANDIDATE' if not all(gates.values()) else 'SUBCRITICAL_FROZEN_TOPOLOGY_ELASTIC_EQUILIBRIUM' if r['max_utilization']<1 else 'FROZEN_TOPOLOGY_HYPOTHETICAL_ELASTIC_BRANCH'),native_natural_breaks='DISABLED_ONLY_FOR_DIAGNOSTIC; criterion read from unchanged source and evaluated on all alive bonds',max_stretch_all_trials=trial_max,finite_difference=fd,finite_difference_scaled_error=float(fdscaled),optimizer_message=str(result.message),iterations=result.nit,evaluations=calls,wall_seconds=time.perf_counter()-start,cpu_seconds=time.process_time()-cpu,peak_RSS_MiB=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024,threads=1,MPI_ranks=1,GPU=False)
++ save(out/'RESULT.json',audit);print((out/'RESULT.json').read_text(),flush=True);return audit
+diff --git a/analysis/dual_track_v1/high_helpers.py b/analysis/dual_track_v1/high_helpers.py
+new file mode 100644
+index 0000000..c817316
+--- /dev/null
++++ b/analysis/dual_track_v1/high_helpers.py
+@@ -0,0 +1,29 @@
++from analysis.dual_track_v1.core_a import *
++import ctypes,time
++from scipy.sparse.linalg import LinearOperator,cg
++
++def risk(state):
++ X=state['X'];b=state['bonds'];x=state['x_m'];alive=state['alive'].astype(bool);r=state['r'];s=(np.linalg.norm(delta_y(x,b),axis=1)-r)/r;d=delta_y(X,b);mid=X[b[:,0]]+.5*d;mid[:,1]=(mid[:,1]+PERIOD/2)%PERIOD-PERIOD/2
++ tip=float(state.get('tip_m',-.001));front=np.hypot(mid[:,0]-tip,mid[:,2])<=DELTA;xwall=.0025-abs(mid[:,0])<=DELTA;grip=.000475-abs(mid[:,2])<=DELTA
++ labels=np.full(len(b),'free_interior',dtype='U40');labels[xwall]='other_X_free_surface';labels[grip]='grip';labels[front]='notch_front_periodic_layer';labels[front&xwall]='notch_finite_X_intersection'
++ regions={}
++ for name in ['notch_front_periodic_layer','notch_finite_X_intersection','grip','other_X_free_surface','free_interior']:
++  ids=np.flatnonzero((labels==name)&alive);regions[name]=dict(bonds=len(ids),max_utilization=float(s[ids].max()/.15) if len(ids) else None)
++ ids=np.flatnonzero(alive);order=ids[np.argsort(s[ids])[-12:][::-1]];j=order[0];return dict(max_stretch=float(s[j]),max_utilization=float(s[j]/.15),leading_region=str(labels[j]),regions=regions,top_bonds=[dict(reference_bond_id=int(k+1),atom_ids=(b[k]+1).tolist(),stretch=float(s[k]),utilization=float(s[k]/.15),reference_midpoint_m=mid[k].tolist(),region=str(labels[k])) for k in order],Y_scope='Periodic layer; no free Y surface',natural_failure='Not run; exact frozen-topology utilization criterion >1')
++
++def correction(x,e,alive,free,max_hvp=600):
++ lib=ctypes.CDLL(str(ROOT/'analysis/dual_track_v1/hvp_y.so'));hv=lib.hessian_vector;hv.restype=None;hv.argtypes=[ctypes.c_int]*2+[ctypes.c_void_p]*6+[ctypes.c_double]*3+[ctypes.c_void_p]*2;calls=0;t=time.monotonic()
++ def H(v):
++  nonlocal calls
++  calls+=1
++  if calls>max_hvp+3:raise RuntimeError('HVP_BUDGET')
++  v=np.ascontiguousarray(v);z=np.zeros_like(x);hv(len(x),len(e.b),*[a.ctypes.data for a in [x,e.b,alive,e.r,e.h,e.m]],e.V,K,G,v.ctypes.data,z.ctypes.data);return z
++ rng=np.random.default_rng(928);v=rng.normal(size=x.shape);v[~free]=0;v/=np.linalg.norm(v);h=1e-9;fd=-(e.eval(x+h*v,alive,True)[1]-e.eval(x-h*v,alive,True)[1])/(2*h);err=float(np.linalg.norm(fd-H(v))/np.linalg.norm(fd));assert err<1e-6
++ modes=np.zeros((2,len(x),3));modes[0,:,0]=1;modes[1,:,1]=1;Q=np.linalg.qr(np.stack([v[free] for v in modes],axis=1))[0];project=lambda z:z-Q@(Q.T@z)
++ def matvec(z):
++  v=np.zeros_like(x);v[free]=project(z);return project(H(v)[free])+Q@(Q.T@z)
++ U,f=e.eval(x,alive,True);rhs=project(f[free]);dq,code=cg(LinearOperator((int(free.sum()),)*2,matvec=matvec,dtype=float),rhs,rtol=1e-7,atol=1e-18,maxiter=max_hvp);assert code==0,('HVP_CG_FAILED',code)
++ for alpha in [1.,.5,.25,.125,.0625]:
++  trial=x.copy();trial[free]+=alpha*project(dq);ut,ft=e.eval(trial,alive,True)
++  if np.linalg.norm(ft[free])<np.linalg.norm(f[free]) and ut<=U+100*np.finfo(float).eps*U:return trial,dict(alpha=alpha,HVP_calls=calls,HVP_FD_relative=err,wall_s=time.monotonic()-t,correction_max_m=float(abs(trial-x).max()))
++ raise RuntimeError('NO_RESIDUAL_REDUCING_CORRECTION')
+diff --git a/analysis/dual_track_v1/hvp.cpp b/analysis/dual_track_v1/hvp.cpp
+new file mode 100644
+index 0000000..d36c703
+--- /dev/null
++++ b/analysis/dual_track_v1/hvp.cpp
+@@ -0,0 +1,10 @@
++// Exact directional derivative of isolated equal-volume LPS force, nonperiodic.
++// Recovery diagnostic only. Production energy and LAMMPS remain unchanged.
++#include <cmath>
++#include <vector>
++extern "C" void hessian_vector(int n,int nb,const double*x,const int*b,const unsigned char*a,const double*r0,const double*h,const double*m,double V,double K,double G,const double*v,double*out){
++ std::vector<double> th(n,0),dt(n,0),r(nb),e(nb),de(nb);
++ for(int k=0;k<nb;k++)if(a[k]){int i=b[2*k],j=b[2*k+1];double r2=0,dot=0;for(int d=0;d<3;d++){double q=x[3*j+d]-x[3*i+d];r2+=q*q;dot+=q*(v[3*j+d]-v[3*i+d]);}r[k]=std::sqrt(r2);e[k]=r[k]-r0[k];if(std::abs(e[k])<2.2204e-16)e[k]=0;de[k]=dot/r[k];th[i]+=h[k]*e[k];th[j]+=h[k]*e[k];dt[i]+=h[k]*de[k];dt[j]+=h[k]*de[k];}
++ for(int i=0;i<n;i++){th[i]*=3*V/m[i];dt[i]*=3*V/m[i];for(int d=0;d<3;d++)out[3*i+d]=0;}
++ for(int k=0;k<nb;k++)if(a[k]){int i=b[2*k],j=b[2*k+1];double c=V*V*h[k]*((3*K-5*G)*(th[i]/m[i]+th[j]/m[j])+15*G*e[k]/r0[k]*(1/m[i]+1/m[j]));double dc=V*V*h[k]*((3*K-5*G)*(dt[i]/m[i]+dt[j]/m[j])+15*G*de[k]/r0[k]*(1/m[i]+1/m[j]));for(int d=0;d<3;d++){double q=(x[3*j+d]-x[3*i+d])/r[k];double w=dc*q+c/r[k]*(v[3*j+d]-v[3*i+d]-q*de[k]);out[3*i+d]-=w;out[3*j+d]+=w;}}
++}
+diff --git a/analysis/dual_track_v1/hvp_y.cpp b/analysis/dual_track_v1/hvp_y.cpp
+new file mode 100644
+index 0000000..78d5161
+--- /dev/null
++++ b/analysis/dual_track_v1/hvp_y.cpp
+@@ -0,0 +1,10 @@
++// Exact directional derivative of isolated equal-volume LPS force, nonperiodic.
++// Recovery diagnostic only. Production energy and LAMMPS remain unchanged.
++#include <cmath>
++#include <vector>
++extern "C" void hessian_vector(int n,int nb,const double*x,const int*b,const unsigned char*a,const double*r0,const double*h,const double*m,double V,double K,double G,const double*v,double*out){
++ std::vector<double> th(n,0),dt(n,0),r(nb),e(nb),de(nb);
++ for(int k=0;k<nb;k++)if(a[k]){int i=b[2*k],j=b[2*k+1];double r2=0,dot=0;for(int d=0;d<3;d++){double q=x[3*j+d]-x[3*i+d];if(d==1)q-=0.0004*std::round(q/0.0004);r2+=q*q;dot+=q*(v[3*j+d]-v[3*i+d]);}r[k]=std::sqrt(r2);e[k]=r[k]-r0[k];if(std::abs(e[k])<2.2204e-16)e[k]=0;de[k]=dot/r[k];th[i]+=h[k]*e[k];th[j]+=h[k]*e[k];dt[i]+=h[k]*de[k];dt[j]+=h[k]*de[k];}
++ for(int i=0;i<n;i++){th[i]*=3*V/m[i];dt[i]*=3*V/m[i];for(int d=0;d<3;d++)out[3*i+d]=0;}
++ for(int k=0;k<nb;k++)if(a[k]){int i=b[2*k],j=b[2*k+1];double c=V*V*h[k]*((3*K-5*G)*(th[i]/m[i]+th[j]/m[j])+15*G*e[k]/r0[k]*(1/m[i]+1/m[j]));double dc=V*V*h[k]*((3*K-5*G)*(dt[i]/m[i]+dt[j]/m[j])+15*G*de[k]/r0[k]*(1/m[i]+1/m[j]));for(int d=0;d<3;d++){double delta=x[3*j+d]-x[3*i+d];if(d==1)delta-=0.0004*std::round(delta/0.0004);double q=delta/r[k];double w=dc*q+c/r[k]*(v[3*j+d]-v[3*i+d]-q*de[k]);out[3*i+d]-=w;out[3*j+d]+=w;}}
++}
+diff --git a/analysis/dual_track_v1/low_a.py b/analysis/dual_track_v1/low_a.py
+new file mode 100644
+index 0000000..e155e70
+--- /dev/null
++++ b/analysis/dual_track_v1/low_a.py
+@@ -0,0 +1,59 @@
++"""Exactly one bounded static equilibrium for the requested frozen case."""
++from analysis.dual_track_v1.core_a import *
++from analysis.dual_track_v1.native_a import Native
++BASE=A
++import sys,time,csv,resource,traceback
++from scipy.optimize import minimize
++from scipy.spatial import cKDTree
++
++
++def run(case):
++ start=time.perf_counter();cpu=time.process_time();out=BASE/case;freeze=json.loads((BASE/'PVCE_DESIGN_FREEZE.json').read_text());cfg=json.loads((out/'config.json').read_text());assert not (out/'EXECUTION.json').exists()
++ save(out/'ATTEMPT.json',dict(formal_equilibrium=1,case=case,started_unix=time.time()))
++ g,e,alive,mask,low,high,_,_=model(cfg['tip_m']);X=g['X'];free=~mask;scale=1e-6;Escale=1e-12;amp=freeze['amplitude_m'];H=float(X[high,2].mean()-X[low,2].mean());fixed=X.copy();fixed[low,2]-=amp/2;fixed[high,2]+=amp/2
++ x0=X.copy();x0[:,2]*=1+amp/H
++ n=Native(out/'native',g,alive);fn,diag,tn=n.evaluate(x0);u0,f0=e.eval(np.ascontiguousarray(x0),alive,True);err=np.linalg.norm(fn-f0)/np.linalg.norm(fn);assert err<1e-9 and diag['contact_J']==0
++ save(out/'START_NATIVE_CHECK.json',dict(force_relative=float(err),U_J=u0,**diag))
++ history=[];states=[];calls=0;maxstretch=-np.inf;last=None
++ def unpack(q):
++  x=fixed.copy();x[free]=X[free]+q*scale;return np.ascontiguousarray(x)
++ def evaluate(q):
++  nonlocal calls,maxstretch,last
++  calls+=1
++  if time.perf_counter()-start>900:raise RuntimeError("WALL_BUDGET")
++  if resource.getrusage(resource.RUSAGE_SELF).ru_maxrss>8*1024**2:raise RuntimeError("MEMORY_BUDGET")
++  if calls>freeze['budget']['per_state_max_function_evaluations']:raise RuntimeError('FUNCTION_BUDGET')
++  x=unpack(q);U,f=e.eval(x,alive,True);b=e.b;st=(np.linalg.norm(delta_y(x,b),axis=1)-e.r)/e.r;maxstretch=max(maxstretch,float(st[alive.astype(bool)].max()))
++  if maxstretch>=.15:raise RuntimeError('UNPRESCRIBED_FAILURE_CRITERION_REACHED')
++  last=(q.copy(),x,U,f)
++  return U/Escale,-f[free]*scale/Escale
++ def record(q):
++  if last is None or not np.array_equal(last[0],q):evaluate(q)
++  _,x,U,f=last;den=float(np.linalg.norm(f[mask]));rel=float(np.linalg.norm(f[free])/den) if den>0 else None;top=float(-f[high,2].sum());bottom=float(-f[low,2].sum());Q=(top-bottom)/2
++  row=dict(iteration=len(history),evaluations=calls,U_J=U,relative_force=rel,max_force_N=float(abs(f[free]).max()),top_reaction_N=top,bottom_reaction_N=bottom,reaction_imbalance=abs(top+bottom)/abs(Q) if Q!=0 else None,energy_span_relative=None,position_change_m=None,kinetic_J=None)
++  states.append((x.copy(),U));states[:]=states[-10:]
++  if len(states)==10:
++   row['energy_span_relative']=(max(t[1] for t in states)-min(t[1] for t in states))/U;row['position_change_m']=float(np.max(np.abs(x-states[0][0])))
++  history.append(row)
++  with (out/'history.csv').open('w') as fp:w=csv.DictWriter(fp,fieldnames=list(row));w.writeheader();w.writerows(history)
++  c=freeze['criteria'];passed=rel is not None and rel<=c['relative_free_force_L2_over_controlled_force_L2'] and row['max_force_N']<=c['max_free_force_N'] and row['energy_span_relative'] is not None and row['energy_span_relative']<=c['energy_span_last10_relative'] and row['position_change_m']<=c['max_position_change_last10_m'] and row['reaction_imbalance']<=c['boundary_reaction_imbalance']
++  if len(history)%100==0:print(case,row,flush=True)
++  return passed
++ q0=(x0[free]-X[free])/scale;evaluate(q0);record(q0)
++ def callback(intermediate_result):
++  if record(intermediate_result.x):raise StopIteration
++ result=minimize(evaluate,q0,method='L-BFGS-B',jac=True,callback=callback,options=freeze['optimizer']);x=unpack(result.x);U,f=e.eval(x,alive,True)
++ if last is None or not np.array_equal(last[0],result.x):evaluate(result.x)
++ if not np.array_equal(states[-1][0],x):record(result.x)
++ fn,diag,theta=n.evaluate(x);native_error=float(np.linalg.norm(fn-f)/np.linalg.norm(fn));Uc,fc,cp=contact(x,g,alive)
++ native_total_error=float(np.linalg.norm(fn-(f+fc))/np.linalg.norm(fn));row=history[-1];epsU=2*max(max(t[1] for t in states)-min(t[1] for t in states),float(np.linalg.norm(f[free])*np.linalg.norm((x-X)[free])),100*np.finfo(float).eps*U)
++ Q=(row['top_reaction_N']-row['bottom_reaction_N'])/2;contact_ratio=float(np.linalg.norm(fc)/abs(Q));c=freeze['criteria'];gates=dict(relative_force=row['relative_force']<=c['relative_free_force_L2_over_controlled_force_L2'],max_force=row['max_force_N']<=c['max_free_force_N'],energy_plateau=row['energy_span_relative'] is not None and row['energy_span_relative']<=c['energy_span_last10_relative'],position_stable=row['position_change_m'] is not None and row['position_change_m']<=c['max_position_change_last10_m'],reaction_balance=row['reaction_imbalance']<=c['boundary_reaction_imbalance'],natural_breaks=diag['natural_broken']==0 and maxstretch<.15,contact=Uc/U<=c['max_contact_energy_over_U'] and contact_ratio<=c['max_contact_force_over_reaction'],force_energy=native_total_error<=c['native_energy_force_relative'])
++ # Actual native free forces also satisfy same gates; no denominator floor.
++ native_den=float(np.linalg.norm(fn[mask]));native_rel=float(np.linalg.norm(fn[free])/native_den);gates['native_free_force']=native_rel<=c['relative_free_force_L2_over_controlled_force_L2'] and float(abs(fn[free]).max())<=c['max_free_force_N']
++ np.savez_compressed(out/'equilibrium.npz',X=X,x_m=x,displacement_m=x-X,alive=alive,bonds=e.b,m=e.m,r=e.r,h=e.h,mask=mask,low=low,high=high,independent_force_N=f,native_force_N=fn,native_theta=theta,contact_force_N=fc,contact_pairs=cp,last_positions=np.stack([v[0] for v in states]),last_U_J=np.array([v[1] for v in states]))
++ audit=dict(case=case,accepted=all(gates.values()),gates=gates,last=row,U_J=U,empirical_uncertainty_J=epsU,uncertainty_scope=freeze['uncertainty'],native=diag,native_total_force_relative=native_total_error,native_bulk_force_relative=native_error,native_free_force_relative=native_rel,max_native_free_force_N=float(abs(fn[free]).max()),contact_independent_J=Uc,contact_native_energy_difference_J=Uc-diag['contact_J'],contact_force_over_reaction=contact_ratio,contact_pairs=len(cp),max_stretch_all_optimizer_evaluations=maxstretch,kinetic='NA_STATIC_MINIMIZATION',optimizer_message=str(result.message),optimizer_status=int(result.status),iterations=int(result.nit),function_evaluations=calls,wall_seconds=time.perf_counter()-start,cpu_seconds=time.process_time()-cpu,peak_RSS_MiB=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024,mpi_ranks=1,OMP_threads=1,GPU=False)
++ save(out/'EQUILIBRIUM.json',audit);save(out/'EXECUTION.json',dict(status='ACCEPTED' if audit['accepted'] else 'STOPPED_UNCONVERGED',wall_seconds=audit['wall_seconds'],formal_equilibrium_attempts=1));n.close();print(json.dumps(audit,indent=2),flush=True)
++if __name__=='__main__':
++ try:run(sys.argv[1])
++ except BaseException:
++  (BASE/sys.argv[1]/'ERROR.txt').write_text(traceback.format_exc());raise
+diff --git a/analysis/dual_track_v1/low_states_figure.py b/analysis/dual_track_v1/low_states_figure.py
+new file mode 100644
+index 0000000..39d0f76
+--- /dev/null
++++ b/analysis/dual_track_v1/low_states_figure.py
+@@ -0,0 +1,5 @@
++from analysis.dual_track_v1.plots_a import *
++z=np.load(A/'reference_topology.npz');layer=np.isclose(z['X'][:,1],.000025);fig,axs=plt.subplots(3,1,figsize=(17,9));fig.subplots_adjust(top=.89,bottom=.13,hspace=.4,right=.89);norm=plt.Normalize(-1.1,1.1)
++for i,ax in enumerate(axs):
++ s=np.load(A/f'A{i}/equilibrium.npz');x=s['x_m']*1e3;u=s['displacement_m'][:,2]*1e6;im=ax.scatter(x[layer,0],x[layer,2],c=u[layer],norm=norm,cmap='coolwarm',s=13);ax.set(xlabel='x (mm)' if i==2 else '',ylabel='z (mm)',xlim=[-2.55,2.55],ylim=[-.54,.54],title=f'A{i}: actual accepted equilibrium | a = {1.5+.05*i:.2f} mm | no displacement magnification');ax.set_aspect('equal')
++cax=fig.add_axes([.91,.22,.014,.55]);fig.colorbar(im,cax=cax,label='Actual u z (µm)');fig.suptitle('A7 | Three accepted low-load equilibria on the actual periodic material layer',fontsize=20);fig.text(.5,.025,'Positions are drawn at deformation ×1; color shows the actual axial displacement. All 3D states and native forces are saved at full precision.\nOnly one actual Y layer is displayed for readability; equilibrium and energy audits use all 16,000 nodes and all alive bonds.',ha='center',fontsize=12);write(fig,'FigA7_actual_three_low_equilibria')
+diff --git a/analysis/dual_track_v1/measure_b.py b/analysis/dual_track_v1/measure_b.py
+new file mode 100644
+index 0000000..466327e
+--- /dev/null
++++ b/analysis/dual_track_v1/measure_b.py
+@@ -0,0 +1,25 @@
++"""Actual-native-field measurements with explicit coordinate-format identity.
++Native SV writes vtkPoints float32 and velocity/pressure float64. Bijection to
++frozen input doubles is accepted only on exact float32 roundtrip equality.
++All integrals use the actual double input mesh. No interpolation/extrapolation.
++"""
++from analysis.dual_track_v1.common import *
++from vascular_validation.postprocess import SolutionMeasurements
++from vascular_validation.validation import triangle_flux,parse_result_vtu
++from scipy.spatial import cKDTree
++class Measurements(SolutionMeasurements):
++ def __init__(self,*args):
++  super().__init__(*args);self.wall_nodes=np.unique(self.boundary[np.isin(self.tags,[1,5])]);self.identity=[]
++ def read(self,path):
++  grid,u,p=parse_result_vtu(path);assert grid.n_points==len(self.points) and grid.n_cells==len(self.tetra)
++  dist,idx=cKDTree(np.asarray(grid.points,float)).query(self.points);assert len(np.unique(idx))==len(idx)
++  assert np.array_equal(np.asarray(grid.points)[idx].astype(np.float32),self.points.astype(np.float32)),'Native coordinate identity not an exact float32 roundtrip'
++  assert np.asarray(u).dtype==np.float64 and np.asarray(p).dtype==np.float64,'Native velocity/pressure precision changed'
++  self.identity.append(dict(snapshot=str(path),max_coordinate_roundoff_m=float(dist.max()),bijection=True,exact_float32_roundtrip=True,velocity_dtype=str(np.asarray(u).dtype),pressure_dtype=str(np.asarray(p).dtype)))
++  return np.asarray(u,float)[idx],np.asarray(p,float).reshape(-1)[idx]
++ def measure(self,u,p):
++  flows={};pressure={};backflow={}
++  for tag,name in [(2,'INLET'),(3,'OUTLET_A'),(4,'OUTLET_B')]:
++   tri=self.boundary[self.tags==tag];xyz=self.points[tri];av=.5*np.cross(xyz[:,1]-xyz[:,0],xyz[:,2]-xyz[:,0]);area=np.linalg.norm(av,axis=1);flow=np.einsum('ij,ij->i',u[tri].mean(1),av);flows[name]=float(flow.sum());pressure[name]=float(np.dot(area,p[tri].mean(1))/area.sum());backflow[name]=float(area[flow<0].sum()/area.sum())
++  incoming=-flows['INLET'];outlets={n:flows[n] for n in ['OUTLET_A','OUTLET_B']};total=sum(outlets.values());wall=float(np.linalg.norm(u[self.wall_nodes],axis=1).max());clot=np.unique(self.boundary[self.tags==5]);clotmax=float(np.linalg.norm(u[clot],axis=1).max()) if len(clot) else None
++  return dict(Q_target_m3_s=self.Q,Q_in_m3_s=incoming,Q_out_total_m3_s=total,outlet_flows_m3_s=outlets,signed_outward_boundary_flows_m3_s=flows,epsilon_Q=abs(incoming-self.Q)/self.Q,epsilon_mass=abs(total-incoming)/self.Q,outlet_fractions={n:v/total for n,v in outlets.items()},area_average_pressure_pa=pressure,negative_outward_flux_area_fraction=backflow,velocity_L2=self.velocity_l2(u),velocity_max_m_s=float(np.linalg.norm(u,axis=1).max()),velocity_max_location_m=self.points[np.linalg.norm(u,axis=1).argmax()].tolist(),pressure_range_pa=[float(p.min()),float(p.max())],velocity_finite=bool(np.isfinite(u).all()),pressure_finite=bool(np.isfinite(p).all()),wall_velocity_max_m_s=wall,clot_velocity_max_m_s=clotmax,wall_noslip_pass=wall<=5e-13)
+diff --git a/analysis/dual_track_v1/mesh_b.py b/analysis/dual_track_v1/mesh_b.py
+new file mode 100644
+index 0000000..e29f9c2
+--- /dev/null
++++ b/analysis/dual_track_v1/mesh_b.py
+@@ -0,0 +1,102 @@
++from analysis.dual_track_v1.common import *
++import os,sys,subprocess,time,pyvista as pv
++from scipy.spatial import cKDTree
++def compact(points, triangles):
++    used, inverse = np.unique(triangles, return_inverse=True)
++    face = pv.PolyData(points[used], np.column_stack([np.full(len(triangles),3), inverse.reshape(-1,3)]))
++    face.point_data["GlobalNodeID"] = (used+1).astype(np.int32)
++    return face
++
++
++def audit(raw, output, workflow):
++    sys.path.insert(0, str(workflow))
++    from vascular_validation.mesh_diagnostics import volume_validity, tetra_sicn, quality_summary
++    grid = pv.read(raw / "volume.vtu")
++    if set(grid.cells_dict) != {pv.CellType.TETRA}:
++        raise ValueError("Expected linear tetrahedra from the existing mesher")
++    points = np.array(grid.points, dtype=float)
++    tetra = np.asarray(grid.cells_dict[pv.CellType.TETRA], np.int64)
++    validity = volume_validity(points, tetra)
++    quality = tetra_sicn(points, tetra)
++    stats = quality_summary(quality)
++    if not stats["q_min"] > 0:
++        raise ValueError("Nonpositive signed tetrahedron quality")
++    all_faces = np.concatenate([tetra[:, indices] for indices in ([0,1,2],[0,1,3],[0,2,3],[1,2,3])])
++    owners = np.tile(np.arange(len(tetra)),4)
++    _, first, counts = np.unique(np.sort(all_faces,axis=1),axis=0,return_index=True,return_counts=True)
++    assert np.max(counts) <= 2
++    boundary = all_faces[first[counts == 1]].copy()
++    adjacent = owners[first[counts == 1]]
++    xyz = points[boundary]
++    direction = xyz.mean(axis=1)-points[tetra[adjacent]].mean(axis=1)
++    wrong = np.einsum("ij,ij->i",np.cross(xyz[:,1]-xyz[:,0],xyz[:,2]-xyz[:,0]),direction) < 0
++    boundary[wrong] = boundary[wrong][:,[0,2,1]]
++    lookup = {tuple(sorted(face)):i for i,face in enumerate(boundary)}
++    tags = np.zeros(len(boundary),np.int32)
++    tree = cKDTree(points)
++    for face_id in (1,2,3,4,5):
++        face = pv.read(raw / ("face_"+str(face_id)+".vtp"))
++        distances, index = tree.query(face.points)
++        assert distances.max() < 1e-10
++        for triangle in index[face.faces.reshape(-1,4)[:,1:]]:
++            j = lookup[tuple(sorted(triangle))]
++            assert tags[j] == 0
++            tags[j] = face_id
++    assert np.all(tags > 0)
++    # SV's vtkPoints export is float32. Restore only the unchanged PLC nodes to
++    # original double coordinates after proving a bijective, exact float32 match.
++    plc=pv.read(B/'clot_present_lumen.vtp');used=np.unique(boundary);distance,index=cKDTree(plc.points).query(points[used])
++    assert len(used)==plc.n_points and len(np.unique(index))==plc.n_points
++    assert np.array_equal(points[used].astype(np.float32),plc.points[index].astype(np.float32))
++    restore=dict(native_coordinate_dtype=str(grid.points.dtype),boundary_nodes=len(used),max_roundoff_restore_m=float(distance.max()),bijection=True,exact_float32_roundtrip=True)
++    points[used]=plc.points[index];grid.points=points
++    validity=volume_validity(points,tetra);quality=tetra_sicn(points,tetra);stats=quality_summary(quality)
++    assert stats['q_min']>0
++    (output / "mesh-surfaces").mkdir(parents=True)
++    grid.point_data["GlobalNodeID"] = np.arange(1,len(points)+1,dtype=np.int32)
++    grid.cell_data["GlobalElementID"] = np.arange(1,len(tetra)+1,dtype=np.int32)
++    grid.cell_data["minSICN"] = quality
++    grid.save(output / "mesh-complete.mesh.vtu")
++    surface = compact(points,boundary)
++    surface.cell_data["ModelFaceID"] = tags
++    surface.cell_data["GlobalElementID"] = (adjacent+1).astype(np.int32)
++    surface.cell_data["BranchID"] = np.where(surface.cell_centers().points[:,0] <= 0,0,
++                                            np.where(surface.cell_centers().points[:,1] >= 0,1,2))
++    surface.save(output / "mesh-complete.exterior.vtp")
++    assert surface.n_open_edges == 0
++    face_info = {}
++    for name,face_id in [("WALL",1),("INLET",2),("OUTLET_A",3),("OUTLET_B",4),("CLOT",5)]:
++        selected = tags == face_id
++        face = compact(points,boundary[selected])
++        face.cell_data["GlobalElementID"] = (adjacent[selected]+1).astype(np.int32)
++        face.save(output / "mesh-surfaces" / (name+".vtp"))
++        face_info[name] = dict(triangles=face.n_cells,area_m2=float(face.area))
++    np.savez_compressed(output / "mesh_arrays.npz", points_m=points,tetra=tetra,
++                        boundary_triangles=boundary,facet_tags=tags,adjacent_tetra=adjacent)
++    return dict(precision_restore=restore,validity=validity,quality=stats,faces=face_info,points=len(points),tetrahedra=len(tetra),
++                diagnostic_source=str(workflow / "vascular_validation/mesh_diagnostics.py"),
++                diagnostic_source_sha256=sha(workflow / "vascular_validation/mesh_diagnostics.py"))
++
++
++def main(level):
++ design=json.loads((B/'DESIGN_FREEZE.json').read_text());m=design['mesh'];out=B/level;out.mkdir(exist_ok=False)
++ if level=='refined':assert json.loads((B/'baseline/CFD_RESULT.json').read_text())['status']=='PASS_WITH_SCOPE'
++ source=B/'clot_present_lumen_int32.vtp';representation=json.loads((B/'GEOMETRY_REPRESENTATION_ADDENDUM.json').read_text());assert sha(source)==representation['new_sha256'];assert representation['old_sha256']==design['geometry_sha256']
++ req=dict(surface=str(source),output=str(out/'raw'),global_edge_m=m['global_edge_m'],local_edge_m=m[level+'_local_edge_m'],sphere_radius_m=m['local_sphere_radius_m'],sphere_center_m=m['local_sphere_center_m']);save(out/'MESH_REQUEST.json',req)
++ env=dict(os.environ,DUAL_TRACK_MESH_REQUEST=str(out/'MESH_REQUEST.json'),PYTHONNOUSERSITE='1',QT_QPA_PLATFORM='offscreen',XDG_CONFIG_HOME=str(out/'app_config'),XDG_CACHE_HOME=str(out/'app_cache'));env.pop('PYTHONPATH',None)
++ t=time.monotonic();cmd=['/workspace/y_clot/bin/y-clot-simvascular','-python','--',str(ROOT/'analysis/dual_track_v1/mesh_embedded.py')]
++ with (out/'mesh.log').open('w') as log:r=subprocess.run(cmd,env=env,stdout=log,stderr=subprocess.STDOUT,timeout=m['budgets']['per_mesh_wall_s'])
++ save(out/'MESH_EXECUTION.json',dict(returncode=r.returncode,wall_s=time.monotonic()-t,command=cmd));assert r.returncode==0
++ report=audit(out/'raw',out/'SV_MESH',Path('/workspace/y_clot/deps/y_cfd_vendor'))
++ geom=json.loads((B/'GEOMETRY_AUDIT.json').read_text());grid=pv.read(out/'SV_MESH/mesh-complete.mesh.vtu');volume=float(grid.volume);relative=abs(volume/geom['fluid_volume_m3']-1)
++ report.update(volume_m3=volume,relative_volume_PLC=relative,PLC_sha256=design['geometry_sha256'],local_target_m=req['local_edge_m'],mesh_sha256=sha(out/'SV_MESH/mesh-complete.mesh.vtu'))
++ # Every generated boundary point remains on the frozen PLC, without remeshing.
++ surface=pv.read(out/'SV_MESH/mesh-complete.exterior.vtp');plc=pv.read(B/'clot_present_lumen.vtp');dist,_=cKDTree(plc.points).query(surface.points);report['max_boundary_node_distance_from_PLC_m']=float(dist.max())
++ checks=dict(positive_quality=report['quality']['q_min']>=m['quality']['min_SICN'],volume=relative<=m['quality']['relative_volume_to_PLC'],points=report['points']<=m['budgets']['max_points'],elements=report['tetrahedra']<=m['budgets']['max_tetrahedra'],closed=surface.n_open_edges==0,unchanged_boundary=dist.max()<1e-10)
++ if level=='refined':
++  coarse=np.load(B/'baseline/SV_MESH/mesh_arrays.npz');fine=np.load(out/'SV_MESH/mesh_arrays.npz');local=[]
++  for data in [coarse,fine]:
++   tet=data['tetra'];pp=data['points_m'];xyz=pp[tet];inside=np.linalg.norm(xyz.mean(1)-m['local_sphere_center_m'],axis=1)<m['local_sphere_radius_m'];vv=np.linalg.det(xyz[:,1:]-xyz[:,:1])/6;local.append(dict(local_tetrahedra=int(inside.sum()),local_median_cell_volume_m3=float(np.median(vv[inside]))))
++  checks['actual_local_refinement']=local[1]['local_tetrahedra']>local[0]['local_tetrahedra'] and local[1]['local_median_cell_volume_m3']<local[0]['local_median_cell_volume_m3'];report['local_refinement_measured']=local
++ report.update(checks=checks,status='PASS' if all(checks.values()) else 'FAIL',wall_s=time.monotonic()-t);save(out/'MESH_QUALITY_AUDIT.json',report);save(B/'MESH_QUALITY_AUDIT.json',dict(level=level,**report));assert all(checks.values()),checks
++if __name__=='__main__':main(sys.argv[1])
+diff --git a/analysis/dual_track_v1/mesh_embedded.py b/analysis/dual_track_v1/mesh_embedded.py
+new file mode 100644
+index 0000000..c48ad21
+--- /dev/null
++++ b/analysis/dual_track_v1/mesh_embedded.py
+@@ -0,0 +1,16 @@
++# set_walls is a mesher inclusion mask here: all PLC faces must survive for
++# volume-only meshing. Physical no-slip is assigned ONLY to tags 1 and 5 in solver.xml.
++# Runs only with the existing SimVascular embedded Python 3.5.
++import json,os,time,sv,vtk
++with open(os.environ['DUAL_TRACK_MESH_REQUEST']) as f:r=json.load(f)
++out=r['output'];os.makedirs(out,exist_ok=True)
++assert not os.path.exists(os.path.join(out,'volume.vtu'))
++print('ENTER load_model',flush=True);m=sv.meshing.TetGen();m.load_model(r['surface']);print('LOADED',m.get_model_face_ids(),flush=True);m.set_walls([1,2,3,4,5]);assert sorted(m.get_model_face_ids())==[1,2,3,4,5]
++o=sv.meshing.TetGenOptions(global_edge_size=r['global_edge_m'],surface_mesh_flag=False,volume_mesh_flag=True)
++o.use_mmg=False;o.no_bisect=True;o.no_merge=True
++o.sphere_refinement=[dict(edge_size=r['local_edge_m'],radius=r['sphere_radius_m'],center=r['sphere_center_m'])];o.sphere_refinement_on=True
++with open(os.path.join(out,'OPTIONS.json'),'w') as f:json.dump(o.get_values(),f,indent=2)
++t=time.time();m.generate_mesh(o);grid=m.get_mesh();assert grid.GetNumberOfCells()>0;m.write_mesh(os.path.join(out,'volume.vtu'))
++for fid in m.get_model_face_ids():
++ w=vtk.vtkXMLPolyDataWriter();w.SetFileName(os.path.join(out,'face_'+str(fid)+'.vtp'));w.SetInputData(m.get_face_polydata(fid));assert w.Write()==1
++with open(os.path.join(out,'GENERATION.json'),'w') as f:json.dump(dict(points=grid.GetNumberOfPoints(),cells=grid.GetNumberOfCells(),wall_s=time.time()-t),f,indent=2)
+diff --git a/analysis/dual_track_v1/monitor_baseline_b.py b/analysis/dual_track_v1/monitor_baseline_b.py
+new file mode 100644
+index 0000000..88eff81
+--- /dev/null
++++ b/analysis/dual_track_v1/monitor_baseline_b.py
+@@ -0,0 +1,47 @@
++"""Auxiliary observer for the SAME running first CFD, no solver restart.
++Corrects a read-only precision identity check and records native process exit.
++"""
++from analysis.dual_track_v1.common import *
++from analysis.dual_track_v1.measure_b import Measurements
++from flow_solver_support.steady_monitor import SteadyStopMonitor
++from flow_solver_support.transient_checks import checkpoint_audit
++from flow_solver_support.flow_parser import parse_solver_log
++from flow_solver_support.solver_checks import linear_gate,nonlinear_gate
++import os,time,traceback
++out=B/'baseline';run=out/'run';results=run/'8-procs';design=json.loads((B/'DESIGN_FREEZE.json').read_text());policy={k:design['criteria'][k] for k in ['save_interval_steps','steady_last_intervals','velocity_change_limit','flow_change_limit','mass_limit']};measure=Measurements(out/'SV_MESH/mesh_arrays.npz',design['flow']['Q_target_m3_s'],.005);monitor=SteadyStopMonitor(measure,policy);seen=set();stop=None;retries=[];started=json.loads((out/'FORMAL_ATTEMPT.json').read_text())['started_unix']
++pids=[]
++for d in Path('/proc').iterdir():
++ if not d.name.isdigit():continue
++ try:
++  if (d/'comm').read_text().strip()=='mpirun' and os.readlink(d/'cwd')==str(run):pids.append(int(d.name))
++ except OSError:pass
++assert len(pids)==1;pidx=pids[0];exit_status=None
++save(out/'MONITOR_ADAPTER_IDENTITY.json',dict(mpirun_pid=pidx,formal_CFD_attempt=1,solver_restart=False,reason='Native vtkPoints float32 but fields float64; exact bijective float32 roundtrip replaces overly strict geometric equality. Convergence thresholds unchanged.',reader_sha=sha(ROOT/'analysis/dual_track_v1/measure_b.py'),started_unix=time.time()))
++def observe(done=False):
++ global stop
++ for p in sorted(results.glob('result_*.vtu')):
++  step=int(p.stem.rsplit('_',1)[1]);cp=p.with_name('stFile_%03d.bin'%step)
++  if step==0 or step%10 or step in seen or not cp.exists() or (not done and time.time()-max(cp.stat().st_mtime,p.stat().st_mtime)<2):continue
++  try:checkpoint_audit(cp,step,.01,ranks=8);u,pressure=measure.read(p)
++  except Exception as e:retries.append(dict(step=step,error=repr(e)));break
++  seen.add(step);state=dict(measure.measure(u,pressure),step=step,time_s=step*.01)
++  if monitor.observe(state,u) and stop is None:
++   stop=dict(step=step,reason='Five consecutive steady intervals and finite/mass/wall gates, identical frozen criteria');(run/'STOP_SIM').write_text('0\n')
++  save(out/'ADAPTER_PROGRESS.json',dict(states=monitor.states,intervals=monitor.intervals,stop=stop,elapsed_s=time.time()-started,read_retries=retries));print('observed',step,'mass',state['epsilon_mass'],'stop',stop,flush=True)
++last=0
++while True:
++ try:
++  raw=Path('/proc')/str(pidx)/'stat';text=raw.read_text();v=text[text.rfind(')')+2:].split()
++  if v[0]=='Z':exit_status=os.waitstatus_to_exitcode(int(v[49]));save(out/'NATIVE_EXIT_STATUS.json',dict(mpirun_pid=pidx,raw_wait_status=int(v[49]),exit_code=exit_status,source='Own MPI launcher /proc/PID/stat zombie exit_code observed before parent reap',time_unix=time.time()));break
++ except FileNotFoundError:break
++ if time.monotonic()-last>3:observe();last=time.monotonic()
++ time.sleep(.05)
++observe(True)
++# Native process is finished. Postprocess all original logs, no new flow solve.
++log=(run/'solver.log').read_text(errors='replace');history=parse_solver_log(log,.01);save(out/'SOLVER_HISTORY.json',history);fail=[]
++try:linear_gate(dict(exit_code=exit_status,history=history))
++except Exception as e:fail.append(dict(gate='linear_or_exit',error=repr(e)))
++try:nonlinear_gate(history,max_iterations=24)
++except Exception as e:fail.append(dict(gate='nonlinear',error=repr(e)))
++final=max(results.glob('result_*.vtu'),key=lambda p:int(p.stem.rsplit('_',1)[1]));u,p=measure.read(final);metrics=measure.measure(u,p);checks=dict(solver=exit_status==0 and not fail,steady=stop is not None,mass=max(metrics['epsilon_Q'],metrics['epsilon_mass'])<=1e-5,finite=metrics['velocity_finite'] and metrics['pressure_finite'],wall=metrics['wall_noslip_pass'],forward_outlets=all(v>0 for v in metrics['outlet_flows_m3_s'].values()))
++save(out/'COORDINATE_IDENTITY_AUDIT.json',measure.identity);save(out/'CFD_MASS_BALANCE.json',dict(source='actual_vtu_surface_integration_on_frozen_double_input_geometry',**metrics));save(out/'CFD_RESULT.json',dict(status='PASS_WITH_SCOPE' if all(checks.values()) else 'FAIL',checks=checks,metrics=metrics,exit_code=exit_status,health_failures=fail,stop=stop,runtime_s=time.time()-started,snapshot=str(final.relative_to(ROOT)),snapshot_sha256=sha(final),mesh_sha256=sha(out/'SV_MESH/mesh-complete.mesh.vtu'),geometry_hash=design['geometry_sha256'],monitor_adapter=True,formal_CFD_attempts=1,solver_restart=False,scope='Steady SI water rigid V3 geometry, no streaming or FSI; mesh sensitivity separate'))
+diff --git a/analysis/dual_track_v1/native_a.py b/analysis/dual_track_v1/native_a.py
+new file mode 100644
+index 0000000..7e67537
+--- /dev/null
++++ b/analysis/dual_track_v1/native_a.py
+@@ -0,0 +1,75 @@
++"""Task-only static branch adapter: copied V1 native check with break no.
++One explicit input change; source/material/criterion never modified.
++"""
++from analysis.dual_track_v1.core_a import *
++from pd_clot.lammps_fragmentation.interface_model import write_typed_data
++from pd_clot.lammps_fragmentation.lammps_writer import force_conversion
++class Native:
++ def __init__(self,out,g,alive):
++  from lammps import lammps
++  out.mkdir(parents=True,exist_ok=True);self.g=g;self.alive=alive;self.n=len(g['X']);self.out=out
++  write_typed_data(out/'body.data',g,dict(dx_m=DX,delta_m=DELTA,rho_kg_m3=RHO))
++  lines=(out/'body.data').read_text().splitlines();lines=[('-0.0002 0.0002 ylo yhi' if line.endswith('ylo yhi') else line) for line in lines];(out/'body.data').write_text('\n'.join(lines)+'\n')
++  text=f'''units si
++ dimension 3
++ boundary m p m
++ atom_style bond
++ atom_modify map array sort 0 0
++ newton on off
++ special_bonds lj 0 1 1 coul 1 1 1
++ lattice sc {DX:.17g}
++ read_data {out/'body.data'} extra/bond/per/atom 320 extra/special/per/atom 360
++ neighbor {2*DX:.17g} bin
++ neigh_modify every 1 delay 0 check no
++ comm_modify cutoff {3*DELTA:.17g}
++ fix props all property/atom d_vfrac d_theta d_damage ghost yes
++ set group all d_vfrac {DX**3:.17g}
++ pair_style bpm/peri contact_distance_factor 1.0
++ pair_coeff * * {18*K/(math.pi*DELTA**4):.17g} {DELTA:.17g}
++ bond_style bpm/peri break no
++ bond_coeff 1 lps {K:.17g} {G} {DELTA:.17g} .15 0
++ bond_coeff 2 lps {K:.17g} {G} {DELTA:.17g} .140624859375 0
++ bond_coeff 3 lps {K:.17g} {G} {DELTA:.17g} 1 0
++ velocity all set 0 0 0 units box
++ {force_conversion()}
++ timestep 5e-7
++ compute contactPE all pe pair
++ compute bondPE all pe bond
++ thermo 1
++ thermo_style custom step atoms bonds ke c_contactPE c_bondPE
++ thermo_modify lost error lost/bond error
++ run 0
++ '''
++  (out/'in.lammps').write_text(text+'\n# Python virtual-cut arrays, then run 1 pre no post no per force evaluation. No time integration fix.\n')
++  self.L=lammps(cmdargs=['-log',str(out/'log.lammps'),'-screen','none']);self.L.commands_string(text)
++  L=self.L;assert np.array_equal(L.numpy.extract_atom('id')[:self.n],np.arange(1,self.n+1))
++  cutpairs=set(map(tuple,(g['bonds'][alive==0]+1).tolist()));count=0
++  nb=L.extract_atom('num_bond');bt=L.extract_atom('bond_type');ba=L.extract_atom('bond_atom');ns=L.extract_atom('nspecial');sp=L.extract_atom('special')
++  for i in range(self.n):
++   remove=set()
++   for j in range(nb[i]):
++    pair=tuple(sorted((i+1,ba[i][j])))
++    if pair in cutpairs:bt[i][j]=0;remove.add(ba[i][j]);count+=1
++   # Remove only declared cut partners from the 1-2 special list. Later levels
++   # are unused (weights1); keep their storage counts consistent without init.
++   if remove:
++    original=[sp[i][j] for j in range(ns[i][2])];deleted=[j for j,v in enumerate(original[:ns[i][0]]) if v in remove]
++    kept=[v for j,v in enumerate(original) if j not in set(deleted)]
++    for j,v in enumerate(kept):sp[i][j]=v
++    for j in range(3):ns[i][j]-=len(deleted)
++  assert count==2*len(cutpairs);self.cut_entries=count
++ def evaluate(self,x):
++  L=self.L;n=self.n;L.numpy.extract_atom('x')[:n]=x
++  # pre no avoids BondBPMPeri::init_style resetting the common reference m.
++  # every1/checkno rebuilds active neighbor/bond lists using zeroed bond types.
++  L.command('run 1 pre no post no')
++  assert np.array_equal(L.numpy.extract_atom('id')[:n],np.arange(1,n+1))
++  f=L.numpy.extract_atom('f')[:n].copy();theta=L.numpy.extract_atom('d_theta')[:n].copy()
++  bt=L.extract_atom('bond_type');nb=L.extract_atom('num_bond');ba=L.extract_atom('bond_atom');pairs=[]
++  for i in range(n):
++   for j in range(nb[i]):
++    if bt[i][j]>0 and ba[i][j]>i+1:pairs.append((i,ba[i][j]-1))
++  expected=self.g['bonds'][self.alive.astype(bool)];actual=np.array(sorted(pairs),int)
++  assert np.array_equal(expected,actual),'Unprescribed bond loss or topology mismatch'
++  return f,dict(contact_J=float(L.extract_compute('contactPE',0,0))*DX**3,native_bond_PE_times_V_J=float(L.extract_compute('bondPE',0,0))*DX**3,active_bonds=len(actual),natural_broken=0,kinetic_J=float(L.get_thermo('ke'))),theta
++ def close(self):self.L.close()
+diff --git a/analysis/dual_track_v1/plots_a.py b/analysis/dual_track_v1/plots_a.py
+new file mode 100644
+index 0000000..b445e0a
+--- /dev/null
++++ b/analysis/dual_track_v1/plots_a.py
+@@ -0,0 +1,51 @@
++from analysis.dual_track_v1.common import *
++from analysis.dual_track_v1.core_a import delta_y
++import matplotlib
++matplotlib.use('Agg')
++import matplotlib.pyplot as plt
++from matplotlib.collections import LineCollection
++from mpl_toolkits.mplot3d.art3d import Line3DCollection
++from matplotlib.lines import Line2D
++RED='#a63345';BLUE='#287ca4';TEAL='#24877c';GOLD='#bf8a32';GRAY='#69717a'
++plt.rcParams.update({'font.family':'DejaVu Sans','font.size':14,'axes.titlesize':16,'axes.labelsize':14,'legend.fontsize':12,'axes.grid':True,'grid.color':'#6f7479','grid.alpha':.55,'svg.fonttype':'none'})
++def write(fig,name):
++ FA.mkdir(parents=True,exist_ok=True)
++ for ext in ['png','svg']:fig.savefig(FA/(name+'.'+ext),dpi=220,bbox_inches='tight',facecolor='white')
++ plt.close(fig)
++def view(ax):
++ for artist in ax.collections:artist.set_clip_on(False)
++ ax.view_init(elev=12,azim=-68);ax.set(xlabel='x (mm)',ylabel='y (mm)',zlabel='z (mm)',xticks=[-2,0,2],yticks=[-.2,.2],zticks=[-.5,0,.5]);ax.set_box_aspect([5,.6,1.3],zoom=2.0);ax.tick_params(labelsize=11,pad=2);ax.xaxis.labelpad=13;ax.yaxis.labelpad=-1;ax.zaxis.labelpad=9
++ for axis in [ax.xaxis,ax.yaxis,ax.zaxis]:axis.pane.set_facecolor((.96,.96,.96,1));axis._axinfo['grid'].update(color=(.4,.4,.4,.65),linewidth=.8)
++def main():
++ z=np.load(A/'reference_topology.npz');X=z['X'];b=z['bonds'];d=delta_y(X,b);ctrl=z['mask'][:,2];audit=json.loads((A/'PERIODIC_TOPOLOGY_AUDIT.json').read_text());g=json.loads((A/'PVCE_ENERGY_RELEASE_RESULTS.json').read_text());states=[np.load(A/f'A{i}/equilibrium.npz') for i in range(3)]
++ fig=plt.figure(figsize=(19,10));fig.subplots_adjust(top=.88,bottom=.14,wspace=.22);ax=fig.add_subplot(2,1,1,projection='3d');ax.scatter(*(X[~ctrl]*1e3).T,s=4,c=RED,alpha=.26,depthshade=False);ax.scatter(*(X[ctrl]*1e3).T,s=6,c=BLUE,alpha=.7,depthshade=False);ax.plot([-1,-1],[-.2,.2],[0,0],c=TEAL,lw=3);view(ax);ax.set_title('16,000 actual material points | outer-plane axial grips | a₀ = 1.50 mm',pad=3)
++ ax=fig.add_subplot(2,2,3);layer=np.isclose(X[:,1],.000025);ax.scatter(X[layer&~ctrl,0]*1e3,X[layer&~ctrl,2]*1e3,s=10,c=RED);ax.scatter(X[layer&ctrl,0]*1e3,X[layer&ctrl,2]*1e3,s=13,c=BLUE);ax.plot([-2.5,-1],[0,0],c=TEAL,lw=3);ax.set(xlabel='x (mm)',ylabel='z (mm)',title='Actual single periodic layer; Δx = 50 µm',xlim=[-2.55,2.55],ylim=[-.56,.56]);ax.set_aspect('equal')
++ ax=fig.add_subplot(2,2,4);names=['δ / W','δ / H','δ / B'];xx=np.arange(3);ax.bar(xx-.18,[.1505/.6,.1505/1,.1505/.6],.34,color=GRAY,label='Old finite 0.6 × 1 × 0.6 mm');ax.bar(xx+.18,[.1505/5,.1505/1,.1505/.4],.34,color=TEAL,label='Wide 5 × 1 × 0.4 mm');ax.set(xticks=xx,xticklabels=names,ylabel='Horizon / nominal dimension',title='Wider X; periodic Y is a different model');ax.legend(fontsize=11)
++ fig.suptitle('A1 | Wide periodic-layer specimen: actual lattice and controls',fontsize=21);fig.text(.5,.045,'Y is periodic with B = 0.4 mm. X is finite; only u_z at z = ±475 µm is prescribed.\nNo continuous medical shell. Scaled pure-shear-like specimen, not a full Liu 2024 experiment.',ha='center',fontsize=13);write(fig,'FigA1_actual_wide_lattice')
++ # True neighbor seam with explicit image positions.
++ fig=plt.figure(figsize=(18,9));fig.subplots_adjust(top=.86,bottom=.19,wspace=.35);ax=fig.add_subplot(1,2,1,projection='3d');seed=int(np.argmin(np.linalg.norm(X-[.000025,.000175,.000025],axis=1)));ids=np.flatnonzero((b[:,0]==seed)|(b[:,1]==seed));other=np.where(b[ids,0]==seed,b[ids,1],b[ids,0]);dv=X[other]-X[seed];dv[:,1]-=.0004*np.rint(dv[:,1]/.0004);image=X[seed]+dv;wrapped=np.abs(image[:,1]-X[other,1])>1e-10
++ ax.scatter(*(X[seed][None]*1e6).T,c=GOLD,s=110,depthshade=False,label=f'Actual node ID {seed+1}');ax.scatter(*(image[~wrapped]*1e6).T,c=RED,s=25,depthshade=False,label='Reference neighbors');ax.scatter(*(image[wrapped]*1e6).T,facecolors='none',edgecolors=BLUE,s=55,depthshade=False,label='Periodic images of actual IDs');segments=np.stack([np.repeat(X[seed][None],len(ids),axis=0),image],axis=1)*1e6;ax.add_collection3d(Line3DCollection(segments,colors=np.where(wrapped[:,None],np.array([[.15,.48,.65,1]]),np.array([[.6,.2,.3,.4]])),linewidths=.8));ax.set(xlabel='x (µm)',ylabel='y image (µm)',zlabel='z (µm)',title=f'{len(ids)} true reference neighbors\n{wrapped.sum()} cross-seam interactions');ax.view_init(15,-55);ax.yaxis.labelpad=13;ax.legend(loc='upper left',fontsize=10)
++ ax=fig.add_subplot(1,2,2);err=[max(v['force_relative'],1e-20) for v in audit['checks']];terr=[max(v['theta_relative'],1e-20) for v in audit['checks']];xx=np.arange(4);ax.semilogy(xx,err,'o-',c=BLUE,label='Native force vs independent −∇U');ax.semilogy(xx,terr,'s--',c=TEAL,label='Native θ vs independent θ');ax.axhline(1e-9,c='black',ls='--',label='Frozen relative gate');ax.set(xticks=xx,xticklabels=['Full\nreference','Full\nnonaffine','A0\nreference','A0\nnonaffine'],ylabel='Relative difference (zero shown at 10⁻²⁰)',title='Periodic force / energy consistency');ax.legend(loc='upper right',fontsize=11)
++ fig.suptitle('A2 | 131,196 cross-periodic bonds; integer stencil and native checks',fontsize=21);fig.text(.5,.045,'909,392 unique original bonds; no self/duplicate/missing bonds. Every cut spans the full Y cell.\nFull-reference m is common to A0/A1/A2; no significant seam contact. Native tests: one MPI rank.',ha='center',fontsize=13);write(fig,'FigA2_periodic_neighbors_and_native_checks')
++ fig,axes=plt.subplots(3,1,figsize=(17,9));fig.subplots_adjust(top=.90,bottom=.12,hspace=.42)
++ same=layer[b[:,0]]&layer[b[:,1]]
++ for i,ax in enumerate(axes):
++  cut=(z['alive'][i]==0)&same;ax.scatter(X[layer,0]*1e3,X[layer,2]*1e3,c=RED,s=7,alpha=.5);ax.add_collection(LineCollection(X[b[cut]][:,:,[0,2]]*1e3,colors=TEAL,lw=.7,alpha=.65));tip=z['tip_x_m'][i]*1e3;ax.axvline(tip,c=GOLD,ls='--',lw=2);ax.set(xlim=[-2.55,2.55],ylim=[-.23,.23],ylabel='z (mm)',title=f'A{i}: a = {1.5+.05*i:.2f} mm | {(z["alive"][i]==0).sum():,} actual cuts in the full cell');ax.set_aspect('equal')
++ axes[-1].set_xlabel('Reference x (mm)');fig.suptitle('A3 | Independently cut reference states; equal increments of 560 bonds',fontsize=21);fig.text(.5,.035,'Displayed bonds belong to one actual Y layer; counts use the complete 3D reference list.\nHalf-open reference intersection rule x < tip; Δa = 50 µm, B = 0.4 mm, ΔA = 2.0 × 10⁻⁸ m².',ha='center',fontsize=13);write(fig,'FigA3_virtual_cut_topology')
++ fig,ax=plt.subplots(2,3,figsize=(22,12));fig.subplots_adjust(top=.88,bottom=.14,hspace=.36,wspace=.32)
++ for i,c in enumerate([RED,BLUE,TEAL]):
++  h=np.genfromtxt(A/f'A{i}/history.csv',names=True,delimiter=',');ax[0,0].semilogy(h['iteration'],h['relative_force'],c=c,label=f'A{i}');ax[0,1].semilogy(h['iteration'],h['max_force_N'],c=c,label=f'A{i}');ax[0,2].semilogy(h['iteration'],h['U_J']*1e12,c=c,label=f'A{i}');ax[1,2].semilogy(h['iteration'],h['energy_span_relative'],c=c,label=f'A{i}')
++ ax[0,0].axhline(1e-6,c='black',ls='--');ax[0,0].set(xlabel='Optimizer iteration',ylabel='||F free|| / ||F controlled||',title='All three relative force gates passed');ax[0,0].legend();ax[0,1].axhline(1e-13,c='black',ls='--');ax[0,1].set(xlabel='Optimizer iteration',ylabel='Maximum free force (N)',title='All three absolute force gates passed');ax[0,1].legend()
++ ax[1,0].errorbar([1.50,1.55,1.60],np.array(g['U_J'])*1e12,yerr=np.array(g['empirical_U_uncertainty_J'])*1e12,color=RED,marker='o',capsize=5);ax[1,0].set(xticks=[1.5,1.55,1.6],xlabel='Reference crack length (mm)',ylabel='Independent stored energy (pJ)',title='Actual U₀, U₁, U₂; total opening 2 µm')
++ ax[1,1].errorbar([0,1],[g['G_two_J_m2']*1e6,g['G_three_J_m2']*1e6],yerr=[g['empirical_error_G_two_J_m2']*1e6,g['empirical_error_G_three_J_m2']*1e6],fmt='o',ms=9,c=TEAL,capsize=6,label='Wide periodic layer');ax[1,1].scatter([0,1],[6.1859550723487025,6.170305164660184],c=GRAY,marker='s',s=70,label='Old finite small specimen');ax[1,1].set(xticks=[0,1],xticklabels=['Two point','Three point'],ylabel='G drive (µJ/m²)',title='Specimen-related crack driving force');ax[1,1].legend()
++ ax[0,2].set(xlabel='Optimizer iteration',ylabel='Independent stored energy (pJ)',title='Actual LPS energy history');ax[0,2].legend();ax[1,2].axhline(1e-8,c='black',ls='--');ax[1,2].set(xlabel='Optimizer iteration',ylabel='Last-10 relative energy span',title='Frozen energy plateau gate');ax[1,2].legend()
++ fig.suptitle('A4 | Accepted low-load PVCE; G two and G three agree closely',fontsize=21);fig.text(.5,.025,'Error bars are empirical residual-work / plateau / roundoff estimates, not rigorous discretization or material errors.\nWidth, thickness, crack length and Y boundary changed together: their separate causes are not identified. These values are not Gc.',ha='center',fontsize=13);write(fig,'FigA4_low_PVCE_convergence_and_G')
++ candidate=json.loads((A/'lps/wide_A0_search_1/RESULT.json').read_text());r=dict(candidate['risk']);r['regions']=json.loads((A/'SAVED_CANDIDATE_SPATIAL_REGIONS.json').read_text())['regions'];high=np.load(A/'lps/wide_A0_search_1/equilibrium.npz');recovery=json.loads((A/'STATIC_SOLVER_RECOVERY.json').read_text());fig=plt.figure(figsize=(18,11));fig.subplots_adjust(top=.87,bottom=.13,hspace=.37,wspace=.34);ax=fig.add_subplot(2,2,1);ax.bar(['Before recovery','After recovery'],[1.1291070121348528e-12,recovery['final']['max_force_N']],color=[GRAY,TEAL]);ax.set_yscale('log');ax.axhline(1e-13,c='black',ls='--');ax.set(ylabel='Maximum native free force (N)',title='Old small high-load candidate restored')
++ ax=fig.add_subplot(2,2,2);names=[k for k,v in r['regions'].items() if v['bonds']];vals=[r['regions'][k]['max_utilization'] for k in names];ax.barh([{'notch_front_periodic_layer':'Notch front','notch_mouth_at_finite_X_boundary':'Notch mouth','grip':'Grip','other_X_free_surface':'Free X surface','free_interior':'Interior'}[k] for k in names],vals,color=[TEAL if k.startswith('notch') else GOLD if k=='grip' else GRAY for k in names]);ax.axvline(1,c='black',ls='--');ax.set(xlabel='s / 0.15, unaccepted candidate',title=f'Wide candidate {candidate["opening_m"]*1e6:.4f} µm: grip leads')
++ ax=fig.add_subplot(2,2,3);h=np.genfromtxt(A/'lps/wide_A0_search_1/history.csv',names=True,delimiter=',');ax.semilogy(h['iteration'],h['max_force_N'],c=BLUE,label='Actual max free force');ax.axhline(1e-13,c='black',ls='--');ax.set(xlabel='Optimizer / correction iteration',ylabel='Maximum free force (N)',title='Force passed; full acceptance failed');ax.legend()
++ ax=fig.add_subplot(2,2,4);ax.axis('off');failed=[k for k,v in candidate['gates'].items() if not v];text='HIGH-LOAD CANDIDATE: NOT ACCEPTED\n\n'+f'Failed gates: {", ".join(failed)}\n'+f'Last10 position change: {candidate["last"]["position_change_m"]:.3e} m\nFrozen position gate: 1.0e−10 m\n'+f'Component FD error: {candidate["finite_difference_scaled_error"]:.3e}\nFrozen FD gate: 1.0e−6\n\n'+'No second high A0; no high A1/A2.\nNo accepted critical interval or high G drive.\nNo natural fracture run or material Gc.';ax.text(0,1,text,va='top',fontsize=13,linespacing=1.5)
++ fig.suptitle('A5 | One targeted recovery passed; wide high-load admission stopped',fontsize=21);fig.text(.5,.035,'Regional stretch in the high candidate is diagnostic only: it is not an accepted onset state.\nAll original tolerances are retained; production LPS parameters, failure law and native solver are unchanged.',ha='center',fontsize=13);write(fig,'FigA5_recovery_and_high_stop')
++ # Actual critical-candidate point/bond location, displacements unscaled.
++ fig=plt.figure(figsize=(18,6));ax=fig.add_subplot(111,projection='3d');xx=high['x_m']*1e3;ax.scatter(*xx.T,c=RED,s=3,alpha=.18,depthshade=False);pairs=np.array([v['atom_ids'] for v in r['top_bonds']])-1;ax.add_collection3d(Line3DCollection(xx[pairs],colors=GOLD,lw=3));ax.scatter(*xx[pairs].reshape(-1,3).T,c=GOLD,s=30,depthshade=False);view(ax);fig.suptitle('A6 | Actual high-candidate points and largest-stretch grip bonds (deformation ×1)',fontsize=19);fig.text(.5,.025,'Unaccepted static candidate. Reference bond IDs and all region maxima are saved in FIRST_FAILURE_AUDIT.json. No onset event was established.',ha='center',fontsize=12);write(fig,'FigA6_actual_high_candidate_bonds')
++ save(A/'FIGURE_PROVENANCE.json',dict(figures=[p.name for p in FA.glob('Fig*.png')],source='Actual reference topology, saved native/independent forces, optimizer histories and saved candidate; no synthetic shells',deformation_scale=1))
++if __name__=='__main__':main()
+diff --git a/analysis/dual_track_v1/plots_b.py b/analysis/dual_track_v1/plots_b.py
+new file mode 100644
+index 0000000..7efd12e
+--- /dev/null
++++ b/analysis/dual_track_v1/plots_b.py
+@@ -0,0 +1,99 @@
++from analysis.dual_track_v1.common import *
++from analysis.dual_track_v1.measure_b import Measurements
++from pd_clot.lammps_fragmentation.y_bifurcation_sources import YSources
++import matplotlib
++matplotlib.use('Agg')
++import matplotlib.pyplot as plt
++from matplotlib.colors import Normalize
++from matplotlib.cm import ScalarMappable
++from matplotlib.collections import LineCollection
++from mpl_toolkits.mplot3d.art3d import Poly3DCollection,Line3DCollection
++from matplotlib.lines import Line2D
++import pyvista as pv,sys
++RED='#a63345';BLUE='#287ca4';TEAL='#24877c';GOLD='#bf8a32';GRAY='#69717a'
++plt.rcParams.update({'font.family':'DejaVu Sans','font.size':14,'axes.titlesize':16,'axes.labelsize':14,'legend.fontsize':12,'axes.grid':True,'grid.color':'#6f7479','grid.alpha':.50,'svg.fonttype':'none'})
++def write(fig,name,svg=True):
++ FB.mkdir(parents=True,exist_ok=True)
++ for ext in (['png','svg'] if svg else ['png']):fig.savefig(FB/(name+'.'+ext),dpi=230,bbox_inches='tight',facecolor='white')
++ plt.close(fig)
++def grid3(ax,title,limits=None,aspect=None,elev=18,azim=-65):
++ ax.set(xlabel='x (mm)',ylabel='y (mm)',zlabel='z (mm)',title=title);ax.view_init(elev,azim);ax.tick_params(labelsize=11,pad=2);ax.xaxis.labelpad=10;ax.yaxis.labelpad=10;ax.zaxis.labelpad=8
++ if limits:ax.set(xlim=limits[0],ylim=limits[1],zlim=limits[2])
++ if aspect:ax.set_box_aspect(aspect,zoom=1.03)
++ for a in [ax.xaxis,ax.yaxis,ax.zaxis]:a.pane.set_facecolor((.96,.96,.96,1));a._axinfo['grid'].update(color=(.4,.4,.4,.7),linewidth=.8)
++def line_segments(poly,dims=[0,2]):
++ ls=np.asarray(poly.lines);segs=[];i=0
++ while i<len(ls):
++  n=ls[i];ids=ls[i+1:i+1+n];segs.extend(np.stack([poly.points[ids[:-1]][:,dims],poly.points[ids[1:]][:,dims]],axis=1));i+=n+1
++ return np.array(segs)*1e3
++
++def geometry():
++ s=YSources();z=np.load(V3/'V3_MATERIAL_POINTS_AND_BONDS.npz');X=z['X'][:1927]*1e3;points=np.load(B/'geometry_arrays.npz');P=points['points_m']*1e3;T=points['triangles'];tags=points['tags'];audit=json.loads((B/'GEOMETRY_AUDIT.json').read_text());fig=plt.figure(figsize=(18,10));fig.subplots_adjust(top=.88,bottom=.12,wspace=.2);ax=fig.add_subplot(1,2,1,projection='3d');surface=Poly3DCollection(P[T[tags!=5]],facecolors=(.58,.66,.7,.075),edgecolors=(.35,.42,.48,.035),linewidths=.15);ax.add_collection3d(surface);ax.scatter(*X.T,c=RED,s=5,alpha=.95,depthshade=False)
++ for xyz,label,col in [([-14,0,0],'INLET',BLUE),([8.6,7,1.5],'OUTLET 1',TEAL),([10.392,-6,0],'OUTLET 2',TEAL)]:ax.text(*xyz,label,color=col,fontsize=12)
++ ax.text(-6,0,2,'V3 clot',color=RED,fontsize=13);grid3(ax,'Original native Y lumen and 1,927 clot points',([-15,12],[-8,8],[-2,3]),[26,15,4],elev=30,azim=-73)
++ ax=fig.add_subplot(1,2,2,projection='3d');wall=s.faces['WALL'];wP=wall.points*1e3;wT=wall.faces.reshape(-1,4)[:,1:];cent=wP[wT].mean(1);sel=(abs(cent[:,0]+6)<1)&(cent[:,2]>.45)&(abs(cent[:,1])<.9);ax.add_collection3d(Poly3DCollection(wP[wT[sel]],facecolors=(.6,.65,.7,.09),edgecolors=(.4,.45,.5,.3),linewidths=.45));ax.scatter(*X.T,c=RED,s=11,alpha=.8,depthshade=False);rim=P[points['contact_line_nodes']];ef=np.sort(np.concatenate([T[tags==5][:,[0,1]],T[tags==5][:,[1,2]],T[tags==5][:,[2,0]]]),axis=1);ee,counts=np.unique(ef,axis=0,return_counts=True);ax.add_collection3d(Line3DCollection(P[ee[counts==1]],colors=TEAL,lw=1.2,label='Shared CFD contact line'));grid3(ax,'Original V3 point cloud on the +z wall',([-6.85,-5.10],[-.8,.8],[.35,1.45]),[1.8,1.6,1.1],elev=16,azim=-65);ax.legend(loc='lower left',fontsize=11)
++ fig.suptitle('B1 | Actual native Y geometry and original V3 morphology',fontsize=21);fig.text(.5,.035,f'CFD-triangulated clot volume = {audit["CFD_triangulated_clot_volume_m3"]*1e9:.6f} mm³; discrete material volume = 0.240875 mm³.\nGrey surfaces are numerical fluid-domain boundaries. Clot body remains the actual material-point representation.',ha='center',fontsize=13);write(fig,'FigB1_native_Y_and_V3_points')
++ mesh=pv.read(B/'baseline/SV_MESH/mesh-complete.mesh.vtu');cut=mesh.slice(normal=[0,1,0],origin=[0,0,0]).triangulate();tr=cut.faces.reshape(-1,4)[:,1:];c=cut.points[tr].mean(1);use=(c[:,0]>-.0075)&(c[:,0]<-.0045);tr=tr[use];segs=np.concatenate([cut.points[tr[:,[0,1]]][:,:,[0,2]],cut.points[tr[:,[1,2]]][:,:,[0,2]],cut.points[tr[:,[2,0]]][:,:,[0,2]]])*1e3
++ fig,axs=plt.subplots(1,2,figsize=(18,8));fig.subplots_adjust(top=.85,bottom=.16,wspace=.25);ax=axs[0];ax.add_collection(LineCollection(segs,colors='#6a7c88',lw=.25,alpha=.75));sel=abs(X[:,1])<.04;ax.scatter(X[sel,0],X[sel,2],s=12,c=RED,zorder=5);ax.set(xlim=[-7.5,-4.5],ylim=[-1.35,1.35],xlabel='x (mm)',ylabel='z (mm)',title='Actual fluid tetrahedra sliced at y = 0');ax.set_aspect('equal')
++ ax=axs[1];surf=pv.read(B/'clot_present_lumen.vtp');old=s.exterior.slice(normal=[1,0,0],origin=[-.006,0,0]);new=surf.slice(normal=[1,0,0],origin=[-.006,0,0]);ax.add_collection(LineCollection(line_segments(old,[1,2]),colors=GRAY,lw=2,label='Original lumen'));ax.add_collection(LineCollection(line_segments(new,[1,2]),colors=TEAL,lw=2,label='Actual clot-present fluid contour'));sel=abs(X[:,0]+6)<.03;ax.scatter(X[sel,1],X[sel,2],s=18,c=RED,label='Actual clot points near slice');ax.set(xlim=[-1.4,1.4],ylim=[-1.4,1.4],xlabel='y (mm)',ylabel='z (mm)',title='x = −6 mm: open bypass channel');ax.set_aspect('equal');ax.legend(loc='lower right',fontsize=10)
++ meshq=json.loads((B/'baseline/MESH_QUALITY_AUDIT.json').read_text());fig.suptitle('B2 | Actual fluid mesh and clot bypass section',fontsize=21);fig.text(.5,.035,f'{meshq["points"]:,} nodes; {meshq["tetrahedra"]:,} tetrahedra; minimum signed quality = {meshq["quality"]["q_min"]:.3g}.\nNo inverted/degenerate cells. Contact line shared, internal attachment face excluded; surface geometry fixed for the two meshes.',ha='center',fontsize=13);write(fig,'FigB2_mesh_and_bypass')
++
++def fields(level):
++ out=B/level;comp=np.load(out/'COMMON_POSITION_COMPARISON.npz');X=np.load(V3/'V3_MATERIAL_POINTS_AND_BONDS.npz')['X'][:1927]*1e3;traction=json.loads((out/'CFD_CLOT_TRACTION_AUDIT.json').read_text());data=np.load(out/'CLOT_SURFACE_TRACTIONS.npz');result=json.loads((out/'CFD_RESULT.json').read_text())
++ # Longitudinal sections at identical physical sampling points; strict masks.
++ fig,axs=plt.subplots(3,2,figsize=(17,16));fig.subplots_adjust(top=.92,bottom=.11,wspace=.28,hspace=.40);coords=comp['longitudinal_points_m']*1e3;xx=coords[:,0].reshape(130,151);zz=coords[:,2].reshape(130,151);vels=[np.linalg.norm(comp['longitudinal_'+k+'_u_m_s'],axis=1)*1e3 for k in ['old','new']];prs=[comp['longitudinal_'+k+'_p_Pa'] for k in ['old','new']];vnorm=Normalize(0,max(np.nanmax(v) for v in vels));pnorm=Normalize(min(np.nanmin(p) for p in prs),max(np.nanmax(p) for p in prs))
++ for row,values,norm,cmap,unit in [(0,vels,vnorm,'viridis','Speed (mm/s)'),(1,prs,pnorm,'cividis','Gauge pressure (Pa)')]:
++  for j,k in enumerate(['old','new']):
++   ax=axs[row,j];field=values[j].copy();valid=comp['longitudinal_'+k+'_valid'];field[~valid]=np.nan;plot=ax.pcolormesh(xx,zz,field.reshape(130,151),norm=norm,cmap=cmap,shading='auto',rasterized=True);ax.set(xlabel='x (mm)',ylabel='z (mm)',title=('Original no-clot CFD' if j==0 else 'New clot-present CFD')+' | y = 0');ax.set_aspect('equal');fig.colorbar(plot,ax=ax,pad=.025,label=unit,shrink=.82)
++   if j==1:
++    ids=abs(X[:,1])<.035;ax.scatter(X[ids,0],X[ids,2],c=RED,s=5,zorder=5)
++ for key,col,label in [('old',GRAY,'Original no-clot'),('new',TEAL,'Actual clot-present')]:
++  axs[2,0].plot(comp['centerline_m'][:,0]*1e3,np.linalg.norm(comp['centerline_'+key+'_u_m_s'],axis=1)*1e3,c=col,label=label);axs[2,1].plot(comp['centerline_m'][:,0]*1e3,comp['centerline_'+key+'_p_Pa'],c=col,label=label)
++ axs[2,0].set(xlabel='x (mm)',ylabel='Speed (mm/s)',title='Same physical parent centerline');axs[2,1].set(xlabel='x (mm)',ylabel='Gauge pressure (Pa)',title='Same physical parent centerline')
++ for ax in axs[2]:ax.axvline(-6,c=RED,ls=':',label='Clot center');ax.legend(fontsize=11)
++ fig.suptitle('B3 | Native velocity and pressure compared at identical physical positions',fontsize=21);fig.text(.5,.03,f'New field: {level} accepted steady solution. Strict P1 interpolation is an analysis operation, with no extrapolation.\nWhite regions are outside that model’s fluid domain; red points belong to the original clot. Pressure is outlet-referenced gauge pressure.',ha='center',fontsize=12);write(fig,'FigB3_common_sections_velocity_pressure')
++ # Real exposed computational boundary, distinct from the clot point body.
++ fig=plt.figure(figsize=(18,10));fig.subplots_adjust(top=.87,bottom=.15,wspace=.25)
++ for j,(key,cmap,title,units) in enumerate([('pressure_Pa','cividis','Pressure on exposed fluid boundary','Gauge pressure (Pa)'),('tangential_magnitude_Pa','magma','Tangential shear on exposed fluid boundary','Shear traction (Pa)')]):
++  ax=fig.add_subplot(1,2,j+1,projection='3d');v=data[key];norm=Normalize(v.min(),v.max());colors=plt.get_cmap(cmap)(norm(v));poly=Poly3DCollection(data['triangles_xyz_m']*1e3,facecolors=colors,edgecolors=(.15,.15,.15,.1),linewidths=.10);ax.add_collection3d(poly);ax.scatter(*X.T,c=RED,s=4,alpha=.08,depthshade=False);grid3(ax,title,([-6.75,-5.18],[-.75,.75],[.50,1.36]),[1.6,1.5,.9],elev=16,azim=-68);fig.colorbar(ScalarMappable(norm=norm,cmap=cmap),ax=ax,shrink=.72,pad=.10,label=units,orientation='horizontal',fraction=.045)
++ fig.suptitle('B4 | Actual CFD exposed boundary: pressure and shear are separated',fontsize=21);fig.text(.5,.03,f'Area-weighted mean / 95th percentile: pressure {traction["pressure_Pa"]["mean"]:.5g} / {traction["pressure_Pa"]["p95"]:.5g} Pa; shear {traction["shear_Pa"]["mean"]:.5g} / {traction["shear_Pa"]["p95"]:.5g} Pa.\nShown triangles are the numerical fluid boundary; internal attachment face is absent. Adjacent-tet P1 gradients, no smoothing.\nContact-line peak stresses and the one-refinement sensitivity are reported separately; this is not a medical surface reconstruction.',ha='center',fontsize=12);write(fig,'FigB4_exposed_pressure_and_shear')
++ # True field streamlines, no animation and no dynamics claim.
++ m=Measurements(out/'SV_MESH/mesh_arrays.npz',2.6354060534101725e-8,.005);u,p=m.read(ROOT/result['snapshot']);mesh=pv.read(out/'SV_MESH/mesh-complete.mesh.vtu');mesh.point_data['Velocity']=u;mesh.point_data['Pressure']=p;seeds=np.array([[-.008,y,z] for y in np.linspace(-.0006,.0006,5) for z in [-.0005,0,.0004,.0008] if y*y+z*z<.0011**2]);stream=mesh.streamlines_from_source(pv.PolyData(seeds),vectors='Velocity',integration_direction='forward',initial_step_length=.05,max_steps=800,max_length=.006,terminal_speed=1e-8,compute_vorticity=False);stream.save(out/'native_field_streamlines.vtp');lines=stream.lines;segments=[];speed=[];arrows=[];k=0
++ while k<len(lines):
++  n=lines[k];ids=lines[k+1:k+n+1];xyz=stream.points[ids];vel=stream['Velocity'][ids];segments.extend(np.stack([xyz[:-1],xyz[1:]],axis=1)*1e3);speed.extend(.5*(np.linalg.norm(vel[:-1],axis=1)+np.linalg.norm(vel[1:],axis=1))*1e3)
++  if n>5:
++   j=n//3;arrows.append((xyz[j]*1e3,vel[j]/np.linalg.norm(vel[j])))
++  k+=n+1
++ fig=plt.figure(figsize=(18,9));fig.subplots_adjust(top=.86,bottom=.22);ax=fig.add_subplot(111,projection='3d');norm=Normalize(0,max(speed));lc=Line3DCollection(segments,cmap='viridis',norm=norm,linewidths=1.1);lc.set_array(np.array(speed));ax.add_collection3d(lc);ax.scatter(*X.T,c=RED,s=11,alpha=.8,depthshade=False)
++ for pt,direction in arrows:ax.quiver(*pt,*direction,length=.20,color=BLUE,linewidth=.9,arrow_length_ratio=.5)
++ grid3(ax,'Forward streamlines of the accepted stationary CFD field',([-8.1,-2.0],[-1.05,1.05],[-1.15,1.45]),[6.1,2.1,2.6],elev=13,azim=-76);ax.set_box_aspect([6.1,2.1,2.6],zoom=1.15);ax.set_yticks([-1,0,1]);fig.colorbar(lc,ax=ax,shrink=.50,pad=.12,fraction=.035,orientation='horizontal',label='Speed (mm/s)');fig.suptitle('B6 | Actual clot points, local streamlines and flow direction',fontsize=21);fig.text(.5,.025,'Streamlines integrate the native P1 velocity field; arrow direction follows that field.\nRigid geometry and steady water flow: these are not microbubble streaming, detached-fragment trajectories or two-way FSI.',ha='center',fontsize=13);write(fig,'FigB6_local_streamlines_and_direction')
++ # Transverse bypass profiles at the same coordinates, plus traction directions.
++ fig,axs=plt.subplots(1,3,figsize=(19,7));fig.subplots_adjust(top=.84,bottom=.18,wspace=.30);coords=comp['section1_points_m']*1e3;yy=coords[:,1].reshape(111,111);zz=coords[:,2].reshape(111,111);norm=Normalize(0,max(np.nanmax(np.linalg.norm(comp['section1_'+key+'_u_m_s'],axis=1)*1e3) for key in ['old','new']))
++ for j,key in enumerate(['old','new']):
++  vals=np.linalg.norm(comp['section1_'+key+'_u_m_s'],axis=1)*1e3;vals[~comp['section1_'+key+'_valid']]=np.nan;im=axs[j].pcolormesh(yy,zz,vals.reshape(111,111),norm=norm,cmap='viridis',shading='auto',rasterized=True);axs[j].set(xlabel='y (mm)',ylabel='z (mm)',title=('Original no-clot' if j==0 else 'Actual clot-present')+' | x = −6 mm');axs[j].set_aspect('equal')
++  if j==1:
++   ids=abs(X[:,0]+6)<.03;axs[j].scatter(X[ids,1],X[ids,2],c=RED,s=10)
++ fig.colorbar(im,ax=axs[:2].tolist(),shrink=.75,label='Speed (mm/s)',pad=.025)
++ ax=axs[2];cent=data['surface_coordinates_m']*1e3;sv=data['tangential_traction_Pa'];ids=np.arange(0,len(cent),50);ax.scatter(cent[:,0],cent[:,1],c=data['tangential_magnitude_Pa'],cmap='magma',s=4);ar=ax.quiver(cent[ids,0],cent[ids,1],sv[ids,0],sv[ids,1],color=BLUE,angles='xy',scale_units='xy',scale=.20,width=.0045);ax.quiverkey(ar,.10,.08,.02,'0.02 Pa',labelpos='E',coordinates='axes',fontproperties={'size':10});ax.set(xlabel='x (mm)',ylabel='y (mm)',title='Actual shear direction, xy projection');ax.set_aspect('equal')
++ fig.suptitle('B7 | Cross-section bypass and tangential surface-force direction',fontsize=21);fig.text(.5,.035,'Both transverse panels use the same physical sampling locations and color range. Main flow travels in +x (out of these transverse panels).\nRight: exposed-face centroids and unnormalized tangential traction vectors; pressure is not included in these arrows.',ha='center',fontsize=12);write(fig,'FigB7_transverse_flow_and_shear_direction')
++
++def summary():
++ base=json.loads((B/'baseline/CFD_RESULT.json').read_text());levels=['baseline']+(['refined'] if (B/'refined/CFD_RESULT.json').exists() and json.loads((B/'refined/CFD_RESULT.json').read_text())['status']=='PASS_WITH_SCOPE' else []);s=YSources();old=s.states['simvascular/steady']['metrics'];fig,ax=plt.subplots(2,3,figsize=(20,12));fig.subplots_adjust(top=.88,bottom=.14,hspace=.4,wspace=.55)
++ for level,col in zip(levels,[BLUE,TEAL]):
++  progress=B/level/('ADAPTER_PROGRESS.json' if level=='baseline' else 'PROGRESS.json');d=json.loads(progress.read_text());st=d['states'];it=d['intervals'];ax[0,0].semilogy([v['step'] for v in st],[max(v['epsilon_mass'],1e-16) for v in st],c=col,label=level);ax[0,1].semilogy([v['step'] for v in it],[v['E_u'] for v in it],c=col,label=level+' velocity');ax[0,1].semilogy([v['step'] for v in it],[max(v['E_Q'],1e-16) for v in it],c=col,ls='--',label=level+' flow')
++ ax[0,0].axhline(1e-5,c='black',ls='--');ax[0,0].set(xlabel='Native time step',ylabel='|Q out − Q in| / Q target',title='Actual mass balance');ax[0,0].legend();ax[0,1].axhline(1e-5,c='gray',ls=':');ax[0,1].axhline(1e-6,c='black',ls=':');ax[0,1].set(xlabel='Native time step',ylabel='Relative change per 10 steps',title='Five-interval steady acceptance');ax[0,1].legend(fontsize=10)
++ labels=['Old no-clot']+levels;metrics=[old]+[json.loads((B/l/'CFD_RESULT.json').read_text())['metrics'] for l in levels];xx=np.arange(len(labels))
++ ax[0,2].bar(xx-.16,[m['outlet_flows_m3_s']['OUTLET_A']*6e7 for m in metrics],.30,color=BLUE,label='Outlet 1');ax[0,2].bar(xx+.16,[m['outlet_flows_m3_s']['OUTLET_B']*6e7 for m in metrics],.30,color=TEAL,label='Outlet 2');ax[0,2].set(xticks=xx,xticklabels=labels,ylabel='Outlet flow (mL/min)',title='Fixed inlet flow, actual outlet split');ax[0,2].legend()
++ comps=[json.loads((B/l/'CFD_BASELINE_COMPARISON.json').read_text()) for l in levels];drop=[comps[0]['parent_pressure_drop'][0]['drop_Pa']]+[v['parent_pressure_drop'][1]['drop_Pa'] for v in comps];ax[1,0].bar(xx,drop,color=[GRAY,BLUE,TEAL][:len(labels)]);ax[1,0].set(xticks=xx,xticklabels=labels,ylabel='Area-mean pressure drop (Pa)',title='Parent: x = −9 to −3 mm')
++ for j,l in enumerate(levels):
++  tr=json.loads((B/l/'CFD_CLOT_TRACTION_AUDIT.json').read_text());ax[1,1].bar(np.arange(3)+(j-.5)*.3,np.array(tr['total_force_N'])*1e6,.28,color=[BLUE,TEAL][j],label=l)
++ ax[1,1].set(xticks=range(3),xticklabels=['F x','F y','F z'],ylabel='Integrated fluid force (µN)',title='Pressure + viscous force on clot');ax[1,1].legend()
++ sens=B/'MESH_SENSITIVITY.json'
++ if sens.exists():
++  v=json.loads(sens.read_text());names=['Pressure drop','Mean pressure','Mean shear','Shear P95','Peak speed','Force vector'];errors=list(v['relative_errors'].values());ax[1,2].barh(names,100*np.array(errors),color=TEAL);ax[1,2].axvline(15,c='black',ls='--');ax[1,2].tick_params(axis='y',labelsize=12);ax[1,2].set(xlabel='Refined vs baseline change (%)',title='One local volume refinement')
++ else:ax[1,2].axis('off');ax[1,2].text(0,1,'LOCAL REFINEMENT\nNOT ACCEPTED / NOT RUN\n\nSee explicit status and stop evidence.',va='top')
++ fig.suptitle('B5 | Native steady gates, pressure drop, integrated force and mesh comparison',fontsize=21);fig.text(.5,.035,'One baseline and at most one refinement; original unobstructed CFD reused. All tractions use only the exposed clot boundary.\nA two-mesh engineering screen is separate from contact-line peak convergence, clinical validity, streaming and two-way FSI.',ha='center',fontsize=12);write(fig,'FigB5_flow_force_and_mesh_audit')
++if __name__=='__main__':
++ if sys.argv[1]=='geometry':geometry()
++ elif sys.argv[1]=='summary':summary()
++ else:fields(sys.argv[1])
+diff --git a/analysis/dual_track_v1/post_b.py b/analysis/dual_track_v1/post_b.py
+new file mode 100644
+index 0000000..371f9e7
+--- /dev/null
++++ b/analysis/dual_track_v1/post_b.py
+@@ -0,0 +1,65 @@
++from analysis.dual_track_v1.common import *
++from analysis.dual_track_v1.measure_b import Measurements
++from pd_clot.lammps_fragmentation.y_bifurcation_sources import YSources
++import pyvista as pv,vtk,csv,sys
++from scipy.spatial import cKDTree
++
++def weighted(values,area):
++ order=np.argsort(values);v=values[order];a=area[order];q=(np.cumsum(a)-a/2)/a.sum();return dict(mean=float(np.dot(values,area)/area.sum()),p05=float(np.interp(.05,q,v)),p50=float(np.interp(.5,q,v)),p95=float(np.interp(.95,q,v)),min=float(values.min()),max=float(values.max()))
++class Sampler:
++ def __init__(self,grid,u,p):
++  self.grid=grid;self.u=u;self.p=p;self.tet=grid.cells_dict[pv.CellType.TETRA];xyz=grid.points[self.tet];self.origin=xyz[:,0];self.inverse=np.linalg.inv((xyz[:,1:]-xyz[:,:1]).transpose(0,2,1));self.loc=vtk.vtkStaticCellLocator();self.loc.SetDataSet(grid);self.loc.BuildLocator()
++ def sample(self,pts):
++  pts=np.asarray(pts);ids=np.array([self.loc.FindCell(x) for x in pts]);w=np.einsum('nij,nj->ni',self.inverse[np.maximum(ids,0)],pts-self.origin[np.maximum(ids,0)]);w=np.c_[1-w.sum(1),w];valid=(ids>=0)&(w.min(1)>=-1e-10)&(w.max(1)<=1+1e-10)
++  for k in np.flatnonzero(~valid):
++   cand=vtk.vtkIdList();self.loc.FindCellsWithinBounds(np.c_[pts[k]-1e-14,pts[k]+1e-14].ravel(),cand);ii=np.array([cand.GetId(j) for j in range(cand.GetNumberOfIds())],int)
++   if len(ii):
++    ww=np.einsum('nij,nj->ni',self.inverse[ii],pts[k]-self.origin[ii]);ww=np.c_[1-ww.sum(1),ww];good=(ww.min(1)>=-1e-10)&(ww.max(1)<=1+1e-10)
++    if good.any():j=np.flatnonzero(good)[0];ids[k]=ii[j];w[k]=ww[j];valid[k]=True
++  u=np.full((len(pts),3),np.nan);p=np.full(len(pts),np.nan);tet=self.tet[ids[valid]];u[valid]=np.einsum('ni,nij->nj',w[valid],self.u[tet]);p[valid]=np.einsum('ni,ni->n',w[valid],self.p[tet]);return u,p,valid
++
++def process(level):
++ out=B/level;r=json.loads((out/'CFD_RESULT.json').read_text());assert r['status']=='PASS_WITH_SCOPE';m=Measurements(out/'SV_MESH/mesh_arrays.npz',2.6354060534101725e-8,.005);u,p=m.read(ROOT/r['snapshot']);a=np.load(out/'SV_MESH/mesh_arrays.npz');P=a['points_m'];T=a['tetra'];faces=a['boundary_triangles'];tags=a['facet_tags'];adj=a['adjacent_tetra'];sel=tags==5;f=faces[sel];ad=adj[sel];xyz=P[f];centers=xyz.mean(1);av=.5*np.cross(xyz[:,1]-xyz[:,0],xyz[:,2]-xyz[:,0]);area=np.linalg.norm(av,axis=1);nf=av/area[:,None];nc=-nf;assert np.all(np.einsum('ij,ij->i',nf,centers-P[T[ad]].mean(1))>0)
++ edge=P[T[ad,1:]]-P[T[ad,0]][:,None];du=u[T[ad,1:]]-u[T[ad,0]][:,None];grad=np.linalg.solve(edge,du).transpose(0,2,1);strain=grad+grad.transpose(0,2,1);tv=.001*np.einsum('nij,nj->ni',strain,nc);pm=p[f].mean(1);tp=-pm[:,None]*nc;tvn=np.einsum('ij,ij->i',tv,nc)[:,None]*nc;ts=tv-tvn;total=tp+tv;shear=np.linalg.norm(ts,axis=1)
++ assert np.max(abs(np.einsum('ij,ij->i',ts,nc)))<1e-12;assert np.allclose(tp+tvn+ts,total,rtol=1e-13,atol=1e-15)
++ geom=np.load(B/'geometry_arrays.npz');gt=geom['triangles'][geom['tags']==5];ee=np.sort(np.concatenate([gt[:,[0,1]],gt[:,[1,2]],gt[:,[2,0]]]),axis=1);edge,counts=np.unique(ee,axis=0,return_counts=True);line=geom['points_m'][edge[counts==1]];direction=line[:,1]-line[:,0];length2=np.sum(direction**2,axis=1);rimdist=np.empty(len(centers))
++ for begin in range(0,len(centers),512):
++  delta=centers[begin:begin+512,None]-line[None,:,0];tt=np.clip(np.einsum('fkj,kj->fk',delta,direction)/length2,0,1);rimdist[begin:begin+512]=np.sqrt(np.min(np.sum((delta-tt[:,:,None]*direction)**2,axis=2),axis=1))
++ rim=rimdist<=100e-6;z=np.load(V3/'V3_MATERIAL_POINTS_AND_BONDS.npz');ref=z['X'][:1927].mean(0)
++ bary=np.array([[2/3,1/6,1/6],[1/6,2/3,1/6],[1/6,1/6,2/3]]);qxyz=np.einsum('qk,fkj->fqj',bary,xyz);qp=np.einsum('qk,fk->fq',bary,p[f]);qtp=-qp[:,:,None]*nc[:,None];qt=qtp+tv[:,None];mom=np.sum(np.cross(qxyz-ref,qt)*area[:,None,None]/3,axis=(0,1));fp=np.einsum('i,ij->j',area,tp);fv=np.einsum('i,ij->j',area,tv);ft=np.einsum('i,ij->j',area,total);assert np.allclose(ft,fp+fv,rtol=1e-13,atol=1e-20)
++ np.savez_compressed(out/'CLOT_SURFACE_TRACTIONS.npz',surface_coordinates_m=centers,triangles_xyz_m=xyz,triangle_mesh_node_ids=f+1,adjacent_mesh_tetra_ids=ad+1,triangle_area_m2=area,n_clot=nc,n_fluid=nf,pressure_Pa=pm,pressure_traction_Pa=tp,viscous_traction_Pa=tv,viscous_normal_traction_Pa=tvn,tangential_traction_Pa=ts,tangential_magnitude_Pa=shear,total_traction_Pa=total,velocity_gradient_s_inv=grad,quadrature_coordinates_m=qxyz,quadrature_pressure_Pa=qp,quadrature_total_traction_Pa=qt,quadrature_area_m2=np.repeat(area[:,None]/3,3,axis=1),integrated_pressure_force_N=fp,integrated_viscous_force_N=fv,integrated_total_force_N=ft,reference_point_m=ref,integrated_total_torque_Nm=mom,contact_rim_distance_m=rimdist,contact_rim_mask=rim)
++ surface=pv.PolyData(xyz.reshape(-1,3),np.c_[np.full(len(f),3),np.arange(len(f)*3).reshape(-1,3)]);
++ for key,value in dict(Pressure_Pa=pm,Shear_Pa=shear,Shear_vector_Pa=ts,Total_traction_Pa=total,Clot_normal=nc,Contact_rim=rim.astype(np.uint8)).items():surface.cell_data[key]=value
++ surface.save(out/'clot_traction_surface.vtp')
++ traction=dict(status='EXTRACTED_FROM_ACCEPTED_NATIVE_FLOW',level=level,faces=len(f),exposed_area_m2=float(area.sum()),pressure_Pa=weighted(pm,area),shear_Pa=weighted(shear,area),pressure_force_N=fp,viscous_force_N=fv,viscous_normal_force_N=np.einsum('i,ij->j',area,tvn),viscous_tangential_force_N=np.einsum('i,ij->j',area,ts),total_force_N=ft,total_force_norm_N=float(np.linalg.norm(ft)),reference_point_m=ref,torque_Nm=mom,normal_check='n_fluid outward by adjacent tet; n_clot=-n_fluid; applied fluid-on-clot traction is sigma@n_clot. Tangential dot normal checked.',pressure_scope='Gauge pressure with original zero-reference Neumann traction outlets, not absolute blood pressure',gradient_scope='P1 adjacent native tetrahedral gradient; no smoothing/recovered-gradient model. Mesh sensitivity checked separately.',contact_rim=dict(distance_method='Exact centroid-to-segment distance on actual CFD contact-line edges',width_m=.0001,faces=int(rim.sum()),area_fraction=float(area[rim].sum()/area.sum()),force_N=np.einsum('i,ij->j',area[rim],total[rim]),traction_magnitude_integral_fraction=float(np.sum(area[rim]*np.linalg.norm(total[rim],axis=1))/np.sum(area*np.linalg.norm(total,axis=1))),shear_mean_Pa=float(np.dot(area[rim],shear[rim])/area[rim].sum()),shear_max_Pa=float(shear[rim].max()),shear_nonrim_max_Pa=float(shear[~rim].max()),contains_global_shear_peak=bool(rim[shear.argmax()])),mesh_sha256=r['mesh_sha256'],snapshot_sha256=r['snapshot_sha256'],data_sha256=sha(out/'CLOT_SURFACE_TRACTIONS.npz'),native_field_precision='float64 velocity and pressure, preserved in full precision; vtkPoints float32 identity mapped to frozen input doubles',no_attachment_face_integrated=True,no_LAMMPS_production_load_written=True)
++ save(out/'CFD_CLOT_TRACTION_AUDIT.json',traction)
++ s=YSources();oldm=s.states['simvascular/steady']['metrics'];old=Sampler(s.flow,s.u,s.p);grid=pv.read(out/'SV_MESH/mesh-complete.mesh.vtu');new=Sampler(grid,u,p)
++ # Shared physical parent centerline and three identical transverse planes.
++ line=np.c_[np.linspace(-.0135,-.0005,261),np.zeros((261,2))];uo,po,mo=old.sample(line);un,pn,mn=new.sample(line);assert np.all(mo&mn);data=dict(centerline_m=line,centerline_old_u_m_s=uo,centerline_new_u_m_s=un,centerline_old_p_Pa=po,centerline_new_p_Pa=pn)
++ axis=np.linspace(-.00129,.00129,111);yy,zz=np.meshgrid(axis,axis,indexing='xy')
++ for i,xpos in enumerate([-.007,-.006,-.005]):
++  pts=np.c_[np.full(yy.size,xpos),yy.ravel(),zz.ravel()];uo,po,mo=old.sample(pts);un,pn,mn=new.sample(pts);data.update({f'section{i}_points_m':pts,f'section{i}_old_u_m_s':uo,f'section{i}_new_u_m_s':un,f'section{i}_old_p_Pa':po,f'section{i}_new_p_Pa':pn,f'section{i}_old_valid':mo,f'section{i}_new_valid':mn,f'section{i}_common_valid':mo&mn})
++ xx,zz=np.meshgrid(np.linspace(-.0075,-.0045,151),np.linspace(-.00129,.00129,130),indexing='xy');pts=np.c_[xx.ravel(),np.zeros(xx.size),zz.ravel()];uo,po,mo=old.sample(pts);un,pn,mn=new.sample(pts);data.update(longitudinal_points_m=pts,longitudinal_old_u_m_s=uo,longitudinal_new_u_m_s=un,longitudinal_old_p_Pa=po,longitudinal_new_p_Pa=pn,longitudinal_old_valid=mo,longitudinal_new_valid=mn)
++ # Cross-section area-weighted pressure drop around parent clot: actual mesh slices.
++ slice_data=[]
++ for sampler,name in [(old,'old'),(new,'new')]:
++  field=sampler.grid.copy();field.point_data['P']=sampler.p;field.point_data['U']=sampler.u;means=[]
++  for xpos in [-.009,-.003]:
++   cut=field.slice(normal=[1,0,0],origin=[xpos,0,0]).triangulate();tri=cut.faces.reshape(-1,4)[:,1:];q=cut.points[tri];aa=.5*np.linalg.norm(np.cross(q[:,1]-q[:,0],q[:,2]-q[:,0]),axis=1);means.append(float(np.dot(aa,cut['P'][tri].mean(1))/aa.sum()))
++  slice_data.append(dict(model=name,x_sections_m=[-.009,-.003],mean_pressure_Pa=means,drop_Pa=means[0]-means[1]))
++ np.savez_compressed(out/'COMMON_POSITION_COMPARISON.npz',**data)
++ comparison=dict(scope='Read-only strict P1 interpolation at identical physical positions; outside each native domain remains NaN and is never extrapolated. Original unclotted CFD reused, never rerun.',old_field_sha=s.flow_id,new_field_sha=r['snapshot_sha256'],old_metrics=oldm,new_metrics=r['metrics'],parent_pressure_drop=slice_data,old_peak_location_m=s.flow.points[np.linalg.norm(s.u,axis=1).argmax()],new_peak_location_m=P[np.linalg.norm(u,axis=1).argmax()],source_meshes_distinct=True,source_geometry='Frozen native Y; clot-present domain removes original V3 analytic continuous shape')
++ save(out/'CFD_BASELINE_COMPARISON.json',comparison);rows=[]
++ for label,key in [('Q inlet (m3/s)','Q_in_m3_s'),('Q outlets total (m3/s)','Q_out_total_m3_s'),('Maximum speed (m/s)','velocity_max_m_s')]:rows.append(dict(metric=label,unobstructed=oldm[key],clot_present=r['metrics'][key]))
++ rows.append(dict(metric='Parent pressure drop -9 to -3 mm (Pa)',unobstructed=slice_data[0]['drop_Pa'],clot_present=slice_data[1]['drop_Pa']))
++ for name in ['OUTLET_A','OUTLET_B']:rows.append(dict(metric=name+' flow fraction',unobstructed=oldm['outlet_fractions'][name],clot_present=r['metrics']['outlet_fractions'][name]))
++ with (out/'CFD_BASELINE_COMPARISON.csv').open('w') as f:w=csv.DictWriter(f,fieldnames=['metric','unobstructed','clot_present']);w.writeheader();w.writerows(rows)
++ save(out/'TRACTION_INTERFACE.json',dict(status='READ_ONLY_OFFLINE_DATA_READY',NPZ='CLOT_SURFACE_TRACTIONS.npz',data_sha256=sha(out/'CLOT_SURFACE_TRACTIONS.npz'),mesh_sha256=r['mesh_sha256'],snapshot_sha256=r['snapshot_sha256'],surface_tag=5,coordinate='global native xyz metres; identity transform',pressure_and_traction='Pa = N/m2',force='N',torque='N m',normal='solid into fluid',mapping_to_LAMMPS='Not implemented/validated; 1927 points and1561 wall anchors are not CFD surface quadrature nodes',streaming=False,two_way_FSI=False))
++ print(level,'postprocessed',len(faces[sel]),'exposed faces',flush=True)
++
++def compare():
++ rows={k:json.loads((B/k/'CFD_CLOT_TRACTION_AUDIT.json').read_text()) for k in ['baseline','refined']};comp={k:json.loads((B/k/'CFD_BASELINE_COMPARISON.json').read_text()) for k in rows};metrics={k:json.loads((B/k/'CFD_RESULT.json').read_text())['metrics'] for k in rows};a,b=rows['baseline'],rows['refined'];aa,bb=comp['baseline'],comp['refined'];errors={}
++ for name,va,vb in [('mother_pressure_drop',aa['parent_pressure_drop'][1]['drop_Pa'],bb['parent_pressure_drop'][1]['drop_Pa']),('surface_pressure_area_mean',a['pressure_Pa']['mean'],b['pressure_Pa']['mean']),('surface_shear_area_mean',a['shear_Pa']['mean'],b['shear_Pa']['mean']),('surface_shear_area_p95',a['shear_Pa']['p95'],b['shear_Pa']['p95']),('peak_velocity',metrics['baseline']['velocity_max_m_s'],metrics['refined']['velocity_max_m_s'])]:errors[name]=abs(vb-va)/abs(va)
++ errors['integrated_force_vector_norm_difference']=float(np.linalg.norm(np.array(b['total_force_N'])-a['total_force_N'])/np.linalg.norm(a['total_force_N']));fractions={n:abs(metrics['refined']['outlet_fractions'][n]-metrics['baseline']['outlet_fractions'][n]) for n in ['OUTLET_A','OUTLET_B']};checks={k:v<=.15 for k,v in errors.items()};checks['outlet_split']=max(fractions.values())<=.01
++ save(B/'MESH_SENSITIVITY.json',dict(status='PASS_ENGINEERING_SCREEN' if all(checks.values()) else 'MESH_SENSITIVITY_UNRESOLVED',relative_errors=errors,outlet_fraction_absolute_difference=fractions,checks=checks,thresholds=dict(relative=.15,outlet_fraction_absolute=.01),surface_fixed=True,scope='One local volume refinement, unchanged continuous geometry and pre-refined surface. Engineering two-mesh screen, not asymptotic convergence or contact-line peak convergence.',baseline_peak_shear_Pa=a['shear_Pa']['max'],refined_peak_shear_Pa=b['shear_Pa']['max'],baseline_rim=a['contact_rim'],refined_rim=b['contact_rim']))
++if __name__=='__main__':compare() if sys.argv[1]=='compare' else process(sys.argv[1])
+diff --git a/analysis/dual_track_v1/preflight_a.py b/analysis/dual_track_v1/preflight_a.py
+new file mode 100644
+index 0000000..58a5462
+--- /dev/null
++++ b/analysis/dual_track_v1/preflight_a.py
+@@ -0,0 +1,43 @@
++from analysis.dual_track_v1.core_a import *
++from analysis.dual_track_v1.native_a import Native
++import time,resource,subprocess,traceback
++
++def main():
++ start=time.monotonic();src=ROOT/'analysis/dual_track_v1/energy_y.cpp';lib=src.with_suffix('.so');cmd=['g++','-O3','-shared','-fPIC',str(src),'-o',str(lib)];r=subprocess.run(cmd,capture_output=True,text=True);save(A/'EVALUATOR_BUILD.json',dict(command=cmd,exit_code=r.returncode,stdout=r.stdout,stderr=r.stderr,source_sha=sha(src)));assert r.returncode==0
++ g,e,a0,mask,low,high,xx,cross=model();X=g['X'];b=e.b;n=len(X)
++ # Independent integer-lattice enumeration with only Y wrapped.
++ ijk=np.stack(np.meshgrid(np.arange(100),np.arange(8),np.arange(20),indexing='ij'),axis=-1).reshape(-1,3);keys=[]
++ for di in range(-3,4):
++  for dj in range(-3,4):
++   for dk in range(-3,4):
++    if not 0<di*di+dj*dj+dk*dk<=(DELTA/DX)**2:continue
++    target=ijk+[di,dj,dk];valid=(target[:,0]>=0)&(target[:,0]<100)&(target[:,2]>=0)&(target[:,2]<20);target[:,1]%=8;j=(target[:,0]*8+target[:,1])*20+target[:,2];i=np.arange(n);valid &=i<j;keys.append(i[valid]*n+j[valid])
++ lattice=np.unique(np.concatenate(keys));kd=b[:,0].astype(np.int64)*n+b[:,1];assert np.array_equal(kd,lattice)
++ image=-np.rint((X[b[:,1],1]-X[b[:,0],1])/PERIOD).astype(np.int8);assert np.all(b[:,0]<b[:,1]);assert e.r.max()<=DELTA*(1+1e-12);assert np.all(e.m>0)
++ tips=[-.001,-.00095,-.00090];alive=np.array([~(cross&(xx<t-1e-12)) for t in tips],np.uint8);removed=(alive==0).sum(1);assert np.all(alive[1:]<=alive[:-1]);assert removed[1]-removed[0]==removed[2]-removed[1]>0
++ # Translation by one Y lattice layer leaves each virtual cut and m invariant.
++ perm=((ijk[:,0]*8+(ijk[:,1]+1)%8)*20+ijk[:,2]);mapped=np.sort(perm[b],axis=1);mk=mapped[:,0]*n+mapped[:,1];idx=np.searchsorted(kd,mk);assert np.array_equal(kd[idx],mk);assert np.all(alive[:,idx]==alive);assert np.allclose(e.m[perm],e.m,rtol=1e-14,atol=0)
++ np.savez_compressed(A/'reference_topology.npz',X=X,bonds=b,bond_reference_id=np.arange(len(b))+1,periodic_image_y=image,r0_m=e.r,h=e.h,m=e.m,alive=alive,tip_x_m=tips,mask=mask,low=low,high=high,reference_intersection_x_m=xx,cross_z0=cross)
++ report=dict(status='PENDING_NATIVE',nodes=n,bonds=len(b),cross_periodic_bonds=int(np.count_nonzero(image)),total_volume_m3=n*DX**3,total_mass_kg=n*DX**3*RHO,weighted_m_range_m4=[float(e.m.min()),float(e.m.max())],cut_counts=removed.tolist(),cut_increments=np.diff(removed).tolist(),controlled_nodes=int((low|high).sum()),controlled_DOFs=int(mask.sum()),free_DOFs=int((~mask).sum()),integer_stencil_matches_KD=True,Y_shift_invariant_cuts_and_m=True,minimum_image_rmax_m=float(e.r.max()),Y_period_gt_twice_delta=PERIOD>2*DELTA,evaluator_sha=sha(lib),checks=[])
++ save(A/'PERIODIC_TOPOLOGY_AUDIT.json',report)
++ for case,al in [('full',np.ones(len(b),np.uint8)),('A0',alive[0])]:
++  native=Native(A/'preflight'/case,g,al)
++  for state in ['reference','periodic_nonaffine']:
++   x=X.copy()
++   if state!='reference':
++    x[:,2]*=1+2e-6/.00095;x[:,0]+=.35e-6*np.sin(2*np.pi*X[:,1]/PERIOD)*np.cos(np.pi*X[:,2]/.001);x[:,1]+=.30e-6*np.sin(2*np.pi*X[:,1]/PERIOD)
++   fn,diag,tn=native.evaluate(x);U,f=e.eval(x,al,True);Uc,fc,cp=contact(x,g,al);th=e.theta(x,al);norm=np.linalg.norm(fn);error=float(np.linalg.norm(fn-f-fc)/norm) if norm else float(np.linalg.norm(f+fc));terr=float(np.linalg.norm(tn-th)/np.linalg.norm(th)) if np.linalg.norm(th) else float(np.linalg.norm(tn));rr=dict(case=case,state=state,U_J=U,force_relative=error,theta_relative=terr,native=diag,contact_independent_J=Uc,contact_pairs=len(cp),contact_force_N=float(np.linalg.norm(fc)),max_free_N=float(abs(fn[~mask]).max()))
++   report['checks'].append(rr);save(A/'PERIODIC_TOPOLOGY_AUDIT.json',report);np.savez_compressed(A/'preflight'/case/(state+'.npz'),x=x,native_force=fn,independent_force=f,native_theta=tn,independent_theta=th,contact_force=fc)
++   assert error<1e-9 and terr<1e-9,(case,state,error,terr);assert Uc<1e-24 and diag['contact_J']<1e-24,'Unexpected periodic contact'
++  native.close()
++ # Independent finite differences in a periodic smooth displacement, fixed active A0.
++ rng=np.random.default_rng(917);checks=[];U,f=e.eval(x,alive[0],True)
++ for _ in range(4):
++  d=rng.normal(size=x.shape);d[mask]=0;d/=np.linalg.norm(d);h=1e-9;fd=(e.eval(np.ascontiguousarray(x+h*d),alive[0])-e.eval(np.ascontiguousarray(x-h*d),alive[0]))/(2*h);analytic=-float(np.sum(f*d));err=abs(fd-analytic)/np.linalg.norm(f);checks.append(dict(FD_N=fd,analytic_N=analytic,scaled_error=err))
++ assert max(v['scaled_error'] for v in checks)<1e-6
++ report.update(status='PASS',gradient_checks=checks,wall_s=time.monotonic()-start,peak_RSS_MiB=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024,native_scope='Single MPI rank, public atom virtual-cut arrays, full initial native m, static force calls without integrator, unchanged production lib; explicit force/theta comparison for full and A0 across seam')
++ save(A/'PERIODIC_TOPOLOGY_AUDIT.json',report);print(json.dumps(report,indent=2))
++if __name__=='__main__':
++ try:main()
++ except BaseException as e:
++  p=A/'PERIODIC_TOPOLOGY_AUDIT.json';d=json.loads(p.read_text()) if p.exists() else {};d.update(status='PERIODIC_TOPOLOGY_NOT_VALIDATED',error=repr(e),traceback=traceback.format_exc());save(p,d);raise
+diff --git a/analysis/dual_track_v1/prepare_replay.py b/analysis/dual_track_v1/prepare_replay.py
+new file mode 100644
+index 0000000..9c92492
+--- /dev/null
++++ b/analysis/dual_track_v1/prepare_replay.py
+@@ -0,0 +1,19 @@
++"""Prepare a NEW explicitly named replay; never overwrite the accepted run.
++Run using the existing activated server environment. Subsequent solvers require
++individual task-specific Supervisor jobs and the same conditional entry gates.
++"""
++import os,argparse
++parser=argparse.ArgumentParser();parser.add_argument('--run-id',required=True);args=parser.parse_args()
++assert args.run_id!='20261011T154854Z' and '/' not in args.run_id and '..' not in args.run_id
++os.environ['Y_CLOT_DUAL_RUN_ID']=args.run_id
++from analysis.dual_track_v1.common import *
++for p in [A,B,COMMON]:p.mkdir(parents=True,exist_ok=False)
++from analysis.dual_track_v1.geometry_b import surface
++surface()
++# Native-compatible tag representation produced directly by the corrected source.
++import shutil,pyvista as pv
++source=B/'clot_present_lumen.vtp';target=B/'clot_present_lumen_int32.vtp';s=pv.read(source);assert s['ModelFaceID'].dtype==np.int32;shutil.copy2(source,target)
++save(B/'GEOMETRY_REPRESENTATION_ADDENDUM.json',dict(old_sha256=sha(source),new_sha256=sha(target),values_identical=True,formal_CFD_attempts_at_change=0,reason='Corrected replay directly emits the native int32 tag format. No shape edits.'))
++from analysis.dual_track_v1.design import main
++main()
++print('Prepared only. Run all subsequent commands with Y_CLOT_DUAL_RUN_ID='+args.run_id)
+diff --git a/analysis/dual_track_v1/recovery_a.py b/analysis/dual_track_v1/recovery_a.py
+new file mode 100644
+index 0000000..aaab212
+--- /dev/null
++++ b/analysis/dual_track_v1/recovery_a.py
+@@ -0,0 +1,44 @@
++from analysis.dual_track_v1.common import *
++from analysis.lps_pvce_v1.core import model
++from analysis.lps_pvce_v1.run import contact
++from analysis.lps_pvce_v2.native import Native
++import ctypes,time,resource,subprocess,traceback,csv
++from scipy.sparse.linalg import LinearOperator,cg
++
++def main():
++ assert json.loads((A/'PVCE_ENERGY_RELEASE_RESULTS.json').read_text())['status']=='PASS'
++ out=A/'old_high_recovery';out.mkdir();save(out/'ATTEMPT.json',dict(formal_equilibrium=1,kind='Single targeted local Hessian-vector residual correction',started_unix=time.time()));start=time.monotonic();cpu=time.process_time();src=ROOT/'analysis/dual_track_v1/hvp.cpp';r=subprocess.run(['g++','-O3','-shared','-fPIC',str(src),'-o',str(src.with_suffix('.so'))],capture_output=True,text=True);assert r.returncode==0
++ old=V2/'lps/A0_search_01/equilibrium.npz';state=np.load(old);g,e,alive,mask,lo,hi,_,_=model(-100e-6);x=state['x_m'].copy();X=g['X'];free=~mask;criteria=json.loads((A/'DESIGN_FREEZE.json').read_text())['criteria'];hist=list(zip(state['last_positions'].copy(),state['last_U_J'].copy()));hist=hist[-10:];records=[];hvp_calls=0
++ lib=ctypes.CDLL(str(src.with_suffix('.so')));hv=lib.hessian_vector;hv.restype=None;hv.argtypes=[ctypes.c_int]*2+[ctypes.c_void_p]*6+[ctypes.c_double]*3+[ctypes.c_void_p]*2
++ def H(v,x):
++  nonlocal hvp_calls
++  hvp_calls+=1
++  if hvp_calls>1500 or time.monotonic()-start>300:raise RuntimeError('RECOVERY_BUDGET')
++  v=np.ascontiguousarray(v);z=np.zeros_like(x);hv(len(x),len(e.b),*[a.ctypes.data for a in [x,e.b,alive,e.r,e.h,e.m]],e.V,K,G,v.ctypes.data,z.ctypes.data);return z
++ # One small directional finite-difference certification before local correction.
++ rng=np.random.default_rng(391);v=rng.normal(size=x.shape);v[mask]=0;v/=np.linalg.norm(v);step=1e-9;fd=-(e.eval(x+step*v,alive,True)[1]-e.eval(x-step*v,alive,True)[1])/(2*step);herr=float(np.linalg.norm(fd-H(v,x))/np.linalg.norm(fd));assert herr<1e-6
++ def measure(x,U,f):
++  top=-f[hi,2].sum();bottom=-f[lo,2].sum();q=(top-bottom)/2;return dict(U_J=U,relative_force=float(np.linalg.norm(f[free])/np.linalg.norm(f[mask])),max_force_N=float(abs(f[free]).max()),reaction_imbalance=float(abs(top+bottom)/abs(q)),top_reaction_N=float(top),bottom_reaction_N=float(bottom),energy_span_relative=float((max(v[1] for v in hist)-min(v[1] for v in hist))/U),position_change_m=float(abs(x-hist[0][0]).max()))
++ def gates(row):return row['relative_force']<=criteria['relative_free_force'] and row['max_force_N']<=criteria['max_free_force_N'] and row['reaction_imbalance']<=criteria['reaction_imbalance'] and row['energy_span_relative']<=criteria['energy_plateau_relative'] and row['position_change_m']<=criteria['position_plateau_m']
++ U,f=e.eval(x,alive,True);initial=measure(x,U,f)
++ for iteration in range(10):
++  # Remove only exact rigid translations x/y and rotation about z; no grip changes.
++  modes=np.zeros((3,len(x),3));modes[0,:,0]=1;modes[1,:,1]=1;modes[2,:,0]=-x[:,1];modes[2,:,1]=x[:,0];Q=np.linalg.qr(np.stack([v[free] for v in modes],axis=1))[0]
++  project=lambda v:v-Q@(Q.T@v)
++  def matvec(z):
++   zz=np.zeros_like(x);zz[free]=project(z);return project(H(zz,x)[free])+Q@(Q.T@z)
++  operator=LinearOperator((int(free.sum()),)*2,matvec=matvec,dtype=float);rhs=project(f[free]);dq,code=cg(operator,rhs,rtol=1e-7,atol=1e-18,maxiter=min(600,1490-hvp_calls));assert code==0,('Krylov did not converge',code)
++  before=float(np.linalg.norm(f[free]));accepted=False
++  for alpha in [1.,.5,.25,.125,.0625]:
++   trial=x.copy();trial[free]+=alpha*project(dq);ut,ft=e.eval(trial,alive,True)
++   if np.linalg.norm(ft[free])<before and ut<=U+100*np.finfo(float).eps*U:accepted=True;break
++  assert accepted,'No residual-reducing local Newton correction'
++  x,U,f=trial,ut,ft;hist.append((x.copy(),U));hist=hist[-10:];row=measure(x,U,f);row.update(correction=iteration+1,alpha=alpha,HVP_calls=hvp_calls,step_max_m=float(abs(alpha*dq).max()));records.append(row)
++  if gates(row):break
++ native=Native(out/'native',g,alive);fn,diag,theta=native.evaluate(x);native.close();Uc,fc,cp=contact(x,g,alive);nrel=float(np.linalg.norm(fn[free])/np.linalg.norm(fn[mask]));err=float(np.linalg.norm(fn-f-fc)/np.linalg.norm(fn));q=(row['top_reaction_N']-row['bottom_reaction_N'])/2;checks=dict(original_equilibrium=gates(row),native_free=nrel<=criteria['relative_free_force'] and abs(fn[free]).max()<=criteria['max_free_force_N'],native_energy=err<=criteria['native_force_relative'],contact=Uc/U<=criteria['contact_energy_fraction'] and np.linalg.norm(fc)/abs(q)<=criteria['contact_force_fraction'],topology=diag['natural_broken']==0,material_load_unchanged=np.array_equal(x[mask],state['x_m'][mask]))
++ np.savez_compressed(out/'equilibrium.npz',**{k:state[k] for k in state.files if k not in ['x_m','displacement_m','independent_force_N','native_force_N','native_theta','last_positions','last_U_J']},x_m=x,displacement_m=x-X,independent_force_N=f,native_force_N=fn,native_theta=theta,last_positions=np.stack([v[0] for v in hist]),last_U_J=np.array([v[1] for v in hist]))
++ audit=dict(status='PASS' if all(checks.values()) else 'FAIL',formal_attempts=1,source_state=str(old),source_sha=sha(old),opening_m=73.56055769588697e-6,initial=initial,corrections=records,checks=checks,HVP_FD_relative=herr,HVP_calls=hvp_calls,native_free_force_relative=nrel,max_native_free_force_N=float(abs(fn[free]).max()),native_force_energy_relative=err,native=diag,U_J=U,wall_s=time.monotonic()-start,cpu_s=time.process_time()-cpu,peak_RSS_MiB=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024,interpretation='Restores equilibrium of prior subcritical candidate only; does not prove notch-first onset or material Gc')
++ save(A/'STATIC_SOLVER_RECOVERY.json',audit);print((A/'STATIC_SOLVER_RECOVERY.json').read_text())
++if __name__=='__main__':
++ try:main()
++ except BaseException as e:save(A/'STATIC_SOLVER_RECOVERY.json',dict(status='FAIL',formal_attempts=int((A/'old_high_recovery/ATTEMPT.json').exists()),error=repr(e),traceback=traceback.format_exc()));raise
+diff --git a/analysis/dual_track_v1/region_a.py b/analysis/dual_track_v1/region_a.py
+new file mode 100644
+index 0000000..04af94d
+--- /dev/null
++++ b/analysis/dual_track_v1/region_a.py
+@@ -0,0 +1,9 @@
++"""Saved-candidate spatial audit only; does not change frozen gates or acceptance."""
++from analysis.dual_track_v1.core_a import *
++s=np.load(A/'lps/wide_A0_search_1/equilibrium.npz');X=s['X'];x=s['x_m'];b=s['bonds'];alive=s['alive'].astype(bool);mid=X[b[:,0]]+.5*delta_y(X,b);mid[:,1]=(mid[:,1]+PERIOD/2)%PERIOD-PERIOD/2
++stretch=(np.linalg.norm(delta_y(x,b),axis=1)-s['r'])/s['r'];front=np.hypot(mid[:,0]+.001,mid[:,2])<=DELTA;mouth=(mid[:,0]+.0025<=DELTA)&(abs(mid[:,2])<=DELTA);grip=.000475-abs(mid[:,2])<=DELTA;xsurface=.0025-abs(mid[:,0])<=DELTA
++labels=np.full(len(b),'free_interior',dtype='U48');labels[xsurface]='other_X_free_surface';labels[grip]='grip';labels[mouth]='notch_mouth_at_finite_X_boundary';labels[front]='notch_front_periodic_layer';regions={}
++for name in ['notch_front_periodic_layer','notch_mouth_at_finite_X_boundary','grip','other_X_free_surface','free_interior']:
++ ids=np.flatnonzero(alive&(labels==name));k=ids[np.argmax(stretch[ids])];regions[name]=dict(bonds=len(ids),max_utilization=float(stretch[k]/.15),reference_bond_id=int(k+1),atom_ids=(b[k]+1).tolist(),reference_midpoint_m=mid[k].tolist())
++assert sum(v['bonds'] for v in regions.values())==int(alive.sum())
++save(A/'SAVED_CANDIDATE_SPATIAL_REGIONS.json',dict(scope='Post-run read-only spatial reporting on the same unaccepted state. Original frozen acceptance/risk record unchanged. Not a new onset or equilibrium.',regions=regions,reference_region_width_m=DELTA,classification='Mutually exclusive horizon-wide reference bands: notch tip; notch mouth at negative-X boundary; grips; remaining X surface; remaining interior. Fixed Y cell: no Y free surface.',front_finite_X_intersection='Empty by geometry: front x=-1 mm is 1.5 mm from negative-X boundary. The crack mouth is reported separately.',state_sha256=sha(A/'lps/wide_A0_search_1/equilibrium.npz')))
+diff --git a/analysis/dual_track_v1/remote.py b/analysis/dual_track_v1/remote.py
+new file mode 100644
+index 0000000..0a08201
+--- /dev/null
++++ b/analysis/dual_track_v1/remote.py
+@@ -0,0 +1,12 @@
++"""Task-scoped explicit synchronization; commands use the existing private environment."""
++from pathlib import Path
++import json,sys,subprocess,shlex,hashlib
++C=json.loads(Path('/home/lzy/projects/.dual_track_current.json').read_text())
++SSH=['ssh','-p','15283','-i','/home/lzy/.ssh/vast_step3b_ed25519','-o','IdentitiesOnly=yes','-o','BatchMode=yes','root@95.3.33.46']
++if sys.argv[1]=='python':raise SystemExit(subprocess.call(SSH+['source /workspace/y_clot/env.sh && cd /workspace/y_clot/project && python -'],stdin=sys.stdin))
++if sys.argv[1]=='exec':raise SystemExit(subprocess.call(SSH+[sys.argv[2]]))
++if sys.argv[1]=='sync':
++ files=sys.argv[2:];r=Path(C['root']);assert all((r/p).is_file() for p in files)
++ with subprocess.Popen(['tar','-cf','-','-C',str(r),'--',*files],stdout=subprocess.PIPE) as src:
++  subprocess.run(SSH+[shlex.join(['tar','-xf','-','-C','/workspace/y_clot/project'])],stdin=src.stdout,check=True);src.stdout.close();assert src.wait()==0
++ p=Path(C['local'])/'provenance/EXPLICIT_SYNC.json';a=json.loads(p.read_text()) if p.exists() else [];a.extend(dict(path=n,sha256=hashlib.sha256((r/n).read_bytes()).hexdigest()) for n in files);p.write_text(json.dumps(a,indent=2));print('explicitly synchronized',len(files),'files')
+diff --git a/analysis/dual_track_v1/resources.py b/analysis/dual_track_v1/resources.py
+new file mode 100644
+index 0000000..1956565
+--- /dev/null
++++ b/analysis/dual_track_v1/resources.py
+@@ -0,0 +1,18 @@
++import os,subprocess,time
++from pathlib import Path
++
++def sample(root_pid):
++ info={}
++ for p in Path('/proc').iterdir():
++  if not p.name.isdigit():continue
++  try:
++   raw=(p/'stat').read_text();v=raw[raw.rfind(')')+2:].split();info[int(p.name)]=(int(v[1]),int(v[21])*os.sysconf('SC_PAGE_SIZE'),(int(v[11])+int(v[12]))/os.sysconf('SC_CLK_TCK'))
++  except (OSError,ValueError,IndexError):pass
++ ids={root_pid}
++ for _ in range(8):
++  old=len(ids);ids.update(k for k,v in info.items() if v[0] in ids)
++  if len(ids)==old:break
++ gpu=None
++ try:gpu=subprocess.check_output(['nvidia-smi','--query-gpu=utilization.gpu,memory.used','--format=csv,noheader,nounits'],text=True,timeout=3).strip()
++ except Exception:pass
++ return dict(unix_time=time.time(),processes=len(ids),RSS_bytes=sum(info[p][1] for p in ids if p in info),CPU_seconds_live=sum(info[p][2] for p in ids if p in info),gpu_util_percent_memory_MiB=gpu)
+diff --git a/analysis/dual_track_v1/resume_b_precision.py b/analysis/dual_track_v1/resume_b_precision.py
+new file mode 100644
+index 0000000..d02ed1e
+--- /dev/null
++++ b/analysis/dual_track_v1/resume_b_precision.py
+@@ -0,0 +1,19 @@
++"""Audit the already-generated mesh, restore frozen PLC doubles, then first CFD.
++No additional volume meshing and no previous CFD solve to restart.
++"""
++from analysis.dual_track_v1.common import *
++from analysis.dual_track_v1.mesh_b import audit
++from analysis.dual_track_v1.cfd_b import main as cfd
++import time,traceback,pyvista as pv
++from scipy.spatial import cKDTree
++out=B/'baseline';start=time.monotonic()
++try:
++ assert not (out/'FORMAL_ATTEMPT.json').exists();(out/'MESH_QUALITY_AUDIT.json').rename(out/'MESH_QUALITY_NATIVE_FLOAT32.json');(out/'SV_MESH').rename(out/'SV_MESH_NATIVE_FLOAT32')
++ for name in ['baseline_STOP.json','baseline_EXECUTION.json']:
++  (B/name).rename(B/name.replace('baseline_','baseline_native_float32_'))
++ d=json.loads((B/'DESIGN_FREEZE.json').read_text());geom=json.loads((B/'GEOMETRY_AUDIT.json').read_text());r=audit(out/'raw',out/'SV_MESH',Path('/workspace/y_clot/deps/y_cfd_vendor'));grid=pv.read(out/'SV_MESH/mesh-complete.mesh.vtu');surface=pv.read(out/'SV_MESH/mesh-complete.exterior.vtp');plc=pv.read(B/'clot_present_lumen.vtp');dist,_=cKDTree(plc.points).query(surface.points);relative=abs(grid.volume/geom['fluid_volume_m3']-1)
++ checks=dict(positive_quality=r['quality']['q_min']>=d['mesh']['quality']['min_SICN'],volume=relative<=d['mesh']['quality']['relative_volume_to_PLC'],points=r['points']<=d['mesh']['budgets']['max_points'],elements=r['tetrahedra']<=d['mesh']['budgets']['max_tetrahedra'],closed=surface.n_open_edges==0,unchanged_boundary=dist.max()<1e-10)
++ r.update(checks=checks,status='PASS' if all(checks.values()) else 'FAIL',volume_m3=float(grid.volume),relative_volume_PLC=relative,PLC_sha256=d['geometry_sha256'],mesh_sha256=sha(out/'SV_MESH/mesh-complete.mesh.vtu'),max_boundary_node_distance_from_PLC_m=float(dist.max()),local_target_m=.0001,postprocess_wall_s=time.monotonic()-start);save(out/'MESH_QUALITY_AUDIT.json',r);save(B/'MESH_QUALITY_AUDIT.json',dict(level='baseline',**r));assert all(checks.values())
++ save(out/'FORMAL_ATTEMPT.json',dict(formal_CFD_attempt=1,level='baseline',started_unix=time.time()));cfd('baseline')
++except BaseException as e:save(B/'baseline_STOP.json',dict(stage='precision_restore_or_CFD',error=repr(e),traceback=traceback.format_exc(),wall_s=time.monotonic()-start));raise
++finally:save(B/'baseline_EXECUTION.json',dict(wall_s=time.monotonic()-start,original_mesh_execution=str(out/'MESH_EXECUTION.json'),no_remesh=True))
+diff --git a/analysis/dual_track_v1/traction_math_audit.py b/analysis/dual_track_v1/traction_math_audit.py
+new file mode 100644
+index 0000000..a22bcab
+--- /dev/null
++++ b/analysis/dual_track_v1/traction_math_audit.py
+@@ -0,0 +1,13 @@
++"""Read-only algebra/geometry checks, not a CFD or material simulation."""
++from analysis.dual_track_v1.common import *
++import sys
++level=sys.argv[1];out=B/level;a=np.load(out/'SV_MESH/mesh_arrays.npz');t=np.load(out/'CLOT_SURFACE_TRACTIONS.npz');P=a['points_m'];T=a['tetra'];ids=t['adjacent_mesh_tetra_ids']-1;xyz=P[T[ids]];edges=xyz[:,1:]-xyz[:,:1]
++A0=np.array([[.3,.5,1.2],[-.2,.7,-.6],[.9,-.4,-.8]])
++velocity=np.einsum('ij,ekj->eki',A0,xyz)+np.array([.002,-.001,.0003]);gradient=np.linalg.solve(edges,velocity[:,1:]-velocity[:,:1]).transpose(0,2,1);error=float(np.max(np.linalg.norm(gradient-A0,axis=(1,2)))/np.linalg.norm(A0));assert error<1e-7
++# Exact linear-pressure moment via barycentric monomial integrals, independent of quadrature.
++r=t['triangles_xyz_m']-t['reference_point_m'];n=t['n_clot'];area=t['triangle_area_m2'];q=t['quadrature_coordinates_m'];qp=t['quadrature_pressure_Pa'];bary=np.array([[2/3,1/6,1/6],[1/6,2/3,1/6],[1/6,1/6,2/3]]);pv=np.linalg.solve(bary,qp.T).T;analytic=np.zeros(3)
++for i in range(3):
++ for j in range(3):analytic-=np.einsum('f,fj->j',area*pv[:,j]*(1/6 if i==j else 1/12),np.cross(r[:,i],n))
++analytic+=np.einsum('f,fj->j',area,np.cross(r.mean(1),t['viscous_traction_Pa']));moment_error=float(np.linalg.norm(analytic-t['integrated_total_torque_Nm'])/np.linalg.norm(analytic));assert moment_error<1e-10
++normal_error=float(abs(t['n_clot']+t['n_fluid']).max());tangent_error=float(abs(np.einsum('ij,ij->i',t['tangential_traction_Pa'],t['n_clot'])).max());assert normal_error==0 and tangent_error<1e-12
++save(out/'TRACTION_MATH_AUDIT.json',dict(status='PASS',scope='Read-only manufactured affine gradient on actual adjacent elements + independent exact linear-pressure moment integral; no new flow/mechanical solve',affine_gradient_relative_max=error,gradient_gate=1e-7,linear_pressure_moment_relative_error=moment_error,moment_gate=1e-10,normal_sign_error=normal_error,tangent_dot_normal_max_Pa=tangent_error,solver_fields_unchanged=True))
+diff --git a/analysis/dual_track_v1/update_wsl_document.py b/analysis/dual_track_v1/update_wsl_document.py
+new file mode 100644
+index 0000000..7cda504
+--- /dev/null
++++ b/analysis/dual_track_v1/update_wsl_document.py
+@@ -0,0 +1,39 @@
++"""Single serial WSL document update with backup, concurrent-change guard and readback."""
++from pathlib import Path
++import hashlib,json,datetime,difflib,os,re
++cfg=json.loads(Path('/home/lzy/projects/.dual_track_current.json').read_text());root=Path(cfg['root']);out=Path(cfg['local'])/'document_edit';doc=Path('/home/lzy/projects/clot_rupture.md');assert not (out/'AUDIT.json').exists(),'Already applied; do not rerun'
++a=json.loads((root/cfg['A']/'ANALYSIS_SUMMARY.json').read_text());b=json.loads((root/cfg['B']/'ANALYSIS_SUMMARY.json').read_text());level=b['selected_level'];t=b['traction'][level];m=b['flows'][level]['metrics'];comp=b['comparison'][level]
++raw=doc.read_bytes();before=raw.decode();digest=lambda x:hashlib.sha256(x).hexdigest();out.mkdir(parents=True,exist_ok=True);(out/'before.md').write_bytes(raw);started=datetime.datetime.now(datetime.timezone.utc).isoformat();sha_before=digest(raw)
++old='⚠️ 这是**没有血栓**时的流场。血栓挡住血流后流场会变，这一点还没算。';new='⚠️ 下面原有参数和历史碎裂、输运轨迹使用的是**没有血栓**时的背景流场。本轮另行完成真正含 V3 血栓的 CFD，结果见本节新增说明；旧轨迹没有重新计算，也没有追溯替换成新含栓解。';assert before.count(old)==1;after=before.replace(old,new)
++after=after.replace('两个出口压力都设为 0。','两个出口采用原生零参考牵引条件（Neu、Value=0），不等于出口每个节点的计算压力都恰好为零。',1)
++addition_b=fr'''
++
++**本轮真正含栓背景流（CFD 双线任务）**：直接使用原生 Y 管和 V3 原连续高度函数，沿母管 +z 内壁构造流体域，未用点云凸包、球或椭球替代。CFD 三角化血栓体积为 {b['geometry']['CFD_triangulated_clot_volume_m3']*1e9:.9f} mm³；原连续口径约 0.271574 mm³，1927 个材料点的积分体积为 0.240875 mm³，三者分别记录。壁锚点不进入流体域。共享接触线无间隙，内部附着面不作为流体载荷面。
++
++保持原入口抛物线剖面、平均 5 mm/s、流量约 1.581244 mL/min、两个零参考牵引出口及水样参数不变，血管壁和血栓暴露面都无滑移。实际完成基线 35,180 点/177,263 四面体，以及一次局部加密 36,599 点/187,162 四面体；两者均通过原生线性/非线性检查、五个连续稳态区间和冻结质量门槛。加密解质量不平衡为 {m['epsilon_mass']:.3e}，最大流速 **{m['velocity_max_m_s']*1e3:.6f} mm/s**，旧无栓值为 10.074017 mm/s；两出口比例为 {m['outlet_fractions']['OUTLET_A']:.6f}/{m['outlet_fractions']['OUTLET_B']:.6f}。母管 x=−9 至 −3 mm 的截面平均压降从 {comp['parent_pressure_drop'][0]['drop_Pa']:.6f} 增为 {comp['parent_pressure_drop'][1]['drop_Pa']:.6f} Pa。
++
++取血栓指向流体的法向，按 $\boldsymbol\sigma=-p\mathbf I+\mu(\nabla\mathbf u+\nabla\mathbf u^\top)$、$\mathbf t=\boldsymbol\sigma\mathbf n_{{\rm clot}}$ 提取真实暴露面载荷，压力与剪切分开。加密解的面积平均表压为 **{t['pressure_Pa']['mean']:.6f} Pa**，切向剪切平均值/P95 为 **{t['shear_Pa']['mean']:.6f}/{t['shear_Pa']['p95']:.6f} Pa**；总流体力约为 ({t['total_force_N'][0]*1e6:.6f}, {t['total_force_N'][1]*1e6:.6f}, {t['total_force_N'][2]*1e6:.6f}) µN，大小 **{t['total_force_norm_N']*1e6:.6f} µN**，不包含固体壁面粘附反力。一次加密的平均剪切/P95 变化约 6.22%/5.65%，积分力向量变化约 0.067%，通过事先冻结的 15% 工程筛查；共享表面三角化与局部尖角峰值尚未证明渐近收敛。表压不等于绝对血压，当前结果也不是微泡 streaming 或双向 FSI；尚未映射到 LAMMPS 材料点，更未改动下面的工程剪切脉冲。
++'''
++anchor='> **出处**：';assert anchor in after;after=after.replace(anchor,addition_b+'\n\n'+anchor,1)
++addition_a=fr'''
++
++**本轮宽薄周期试样（PVCE 双线任务）**：实际 X×Y×Z=5×0.4×1 mm，16,000 个点、909,392 条完整参考键，其中 131,196 条跨 Y 周期。Y 单元厚度固定，宏观 Y 应变为零，代表理想化周期材料层；X 有限自由，z=±475 µm 的最外层仅控制轴向位移。原生周期影像、ghost、参考键、固定完整 m、膨胀量、力和独立储能均通过静态一致性检查；并非 Liu 完整实验，也不是有限厚度真实血栓。
++
++相同 2 µm 总开度下，a=1.50/1.55/1.60 mm 三态均通过原冻结平衡条件，累计预切 16,416/16,976/17,536 条键，每增量 560 条，$B\Delta a=2.0\times10^{{-8}}$ m²。$G_{{\rm two}}={a['G']['G_two_J_m2']:.8e}$、$G_{{\rm three}}={a['G']['G_three_J_m2']:.8e}$ J/m²；经验数值分辨尺度分别约 ±2.83×10⁻⁸、±5.79×10⁻⁸ J/m²，不是完整离散误差界。比旧小试样约高 15.43%/15.73%，但宽度、裂纹长度、厚度和周期条件同时改变，不能分离归因。**这是试样相关 G_drive，材料 Gc 仍未识别。**
++
++旧 73.5606 µm 小试样保存态仅做一次局部残差修正，最大原生自由力由 1.1291×10⁻¹² 降至 2.4431×10⁻¹⁹ N，原平衡门槛全部通过；历史 V2 的失败记录保留。随后只计算一个宽薄 A0 高载候选（72.554732 µm），自由力通过，但末十次位置变化 1.1061×10⁻¹⁰ m 超过 1×10⁻¹⁰ m，1 pm 分量差分也未通过冻结门槛，故**候选未验收并停止**。其最大 s/s00≈0.91685 位于夹具附近，只能作空间诊断，不能称为已首先起裂。没有第二候选、高载 A1/A2、新动态断裂或 G_high；只读较大差分步长检查支持舍入解释，但没有据此放宽门槛。本线正式静态调用为 5/8，仍无新增证据支持修改 LPS 本构。
++'''
++anchor='---\n\n# ⑥ 外加剪切';assert after.count(anchor)==1;after=after.replace(anchor,addition_a+'\n\n'+anchor)
++after=after.replace('最后严格有效的 A0 仍是 V1 的 2 µm 平衡态。','在 V2 结束时，最后严格有效的 A0 仍是 V1 的 2 µm 平衡态；本轮恢复结果另见后述。',1)
++oldnext='下一轮唯一优先项是保持材料、原生力和验收门槛不变，修复并独立验证 A0 高载静态求解器的浮点停机问题，达标后再恢复首达阈值区间搜索；不自动启动。'
++links=f"本轮 [宽薄 PVCE 审查]({root/cfg['A']/'REVIEW_LPS_WIDE_PURE_SHEAR_PVCE_FEASIBILITY_V1.md'})、[真正含栓 CFD 审查]({root/cfg['B']/'REVIEW_Y_CLOT_PRESENT_CFD_BASELINE_V1.md'}) 和 [两线共 14 组真实图与数据索引]({Path(cfg['local'])/'OPEN_RESULTS.html'}) 分别记录低载成果、高载停止及含栓牵引结果。下一轮唯一优先项是验证含栓 CFD 暴露面牵引向现有 LAMMPS 材料点的离线保力、保力矩映射，先核对单位、坐标、面身份和面积权重，不直接启动生产加载或双向耦合；不自动启动。"
++assert after.count(oldnext)==1;after=after.replace(oldnext,links)
++assert re.findall(r'^# .*$',before,re.M)==re.findall(r'^# .*$',after,re.M)
++assert all(ord(c)>=32 or c in '\n\t\r' for c in after)
++# Explicitly reject stray literal tabs in the new scientific prose.
++assert '\t' not in addition_a and '\t' not in addition_b
++(out/'proposed.md').write_text(after);(out/'change.diff').write_text(''.join(difflib.unified_diff(before.splitlines(True),after.splitlines(True),fromfile='clot_rupture.md.before',tofile='clot_rupture.md.after')))
++assert digest(doc.read_bytes())==sha_before,'Concurrent edit; proposed text preserved, actual document untouched'
++tmp=doc.with_name('.clot_rupture.dual_track.tmp');assert not tmp.exists();tmp.write_text(after);os.chmod(tmp,doc.stat().st_mode);assert digest(doc.read_bytes())==sha_before;os.replace(tmp,doc);readback=doc.read_bytes();assert readback==after.encode();(out/'after.md').write_bytes(readback)
++audit=dict(status='PASS',actual_WSL_path=str(doc),started_utc=started,finished_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),before_sha256=sha_before,after_sha256=digest(readback),backup_sha256=digest((out/'before.md').read_bytes()),readback_exact=True,concurrent_checks=2,headings_unchanged=True,sections_changed=['① 背景血流','⑤ 失效与 PVCE','碎块统计和本次结果：索引/下一轮建议'],history_preserved=True,old_trajectories_not_recomputed_or_relabelled=True)
++(out/'AUDIT.json').write_text(json.dumps(audit,ensure_ascii=False,indent=2));print(json.dumps(audit,ensure_ascii=False))

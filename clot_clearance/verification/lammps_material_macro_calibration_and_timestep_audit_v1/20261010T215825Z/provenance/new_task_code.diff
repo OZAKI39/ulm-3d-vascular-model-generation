@@ -1,0 +1,847 @@
+diff --git a/pd_clot/lammps_fragmentation/macro_lab_v1.py b/pd_clot/lammps_fragmentation/macro_lab_v1.py
+new file mode 100644
+index 0000000..2a02351
+--- /dev/null
++++ b/pd_clot/lammps_fragmentation/macro_lab_v1.py
+@@ -0,0 +1,152 @@
++"""Bounded macroscopic LPS tests, free interiors and independent read-only energy.
++Run with the private migrated environment; one MPI rank per case. No production edits.
++"""
++from pathlib import Path
++import argparse,ctypes,csv,json,math,os,time,traceback
++import numpy as np
++from scipy.spatial import cKDTree
++from .interface_model import attach_wall,write_typed_data
++from .lammps_writer import force_conversion
++
++K=100000/3;G=940.;RHO=1000.;DELTA=150.5e-6
++
++def save(p,obj):p.write_text(json.dumps(obj,indent=2,allow_nan=False))
++def geometry(dx,kind,periodic=False):
++    dims=np.array([.0006,.0006,.001]);counts=np.rint(dims/dx).astype(int)
++    axes=[(np.arange(n)+.5)*dx-d/2 for n,d in zip(counts,dims)]
++    X=np.stack(np.meshgrid(*axes,indexing='ij'),axis=-1).reshape(-1,3);N=len(X)
++    b=(cKDTree(X+[.0003,.0003,.0005],boxsize=[.0006,.0006,10.]) if periodic else cKDTree(X)).query_pairs(DELTA*(1+1e-12),output_type='ndarray')
++    b=b[np.lexsort((b[:,1],b[:,0]))]
++    g=dict(X=X,bonds=b,bond_types=np.ones(len(b),int),clot_count=N,anchors=np.zeros(N,bool),base=X[:,2]<X[:,2].min()+dx/2,surface=np.zeros(N,bool),areas=np.zeros(N),normals=np.zeros_like(X),info={})
++    if kind=='M6':g=attach_wall(g,dict(dx_m=dx,delta_m=DELTA,rho_kg_m3=RHO,anchor_layers=3))
++    removed=np.empty((0,2),int)
++    if kind=='M5':
++        a,c=X[b[:,0]],X[b[:,1]];cross=((a[:,2]<-1e-12)!=(c[:,2]<-1e-12))
++        frac=np.divide(-a[:,2],c[:,2]-a[:,2],out=np.zeros(len(b)),where=c[:,2]!=a[:,2])
++        xx=a[:,0]+frac*(c[:,0]-a[:,0]);cut=cross&(xx<-.0001)
++        removed=b[cut];g['bonds']=b[~cut];g['bond_types']=g['bond_types'][~cut]
++    return g,removed
++
++class Energy:
++    def __init__(self,g,dx,lib,periodic=False):
++        self.X=g['X'];self.b=np.ascontiguousarray(g['bonds'],dtype=np.int32);self.V=dx**3
++        self.periodic=periodic
++        delta=self.X[self.b[:,1]]-self.X[self.b[:,0]]
++        if periodic:delta[:,:2]-=.0006*np.rint(delta[:,:2]/.0006)
++        self.r=np.linalg.norm(delta,axis=1)
++        self.h=np.where(abs(self.r-DELTA)<=dx/2,(DELTA+dx/2-self.r)/dx,1.)
++        self.m=np.bincount(self.b.ravel(),weights=np.repeat(self.r*self.V*self.h,2),minlength=len(self.X))
++        self.lib=ctypes.CDLL(str(lib));self.fun=self.lib.evaluate_periodic if periodic else self.lib.evaluate;self.fun.restype=ctypes.c_double
++        self.fun.argtypes=[ctypes.c_int,ctypes.c_int]+[ctypes.c_void_p]*6+[ctypes.c_double]*3+[ctypes.c_void_p]+([ctypes.c_double] if periodic else [])
++    def eval(self,x,alive,force=False):
++        f=np.zeros_like(x) if force else None
++        arr=[x,self.b,alive,self.r,self.h,self.m]
++        u=self.fun(len(x),len(self.b),*[a.ctypes.data for a in arr],self.V,K,G,f.ctypes.data if force else None,*([.0006] if self.periodic else []))
++        return (u,f) if force else u
++
++def run(out,case,dx=50e-6,dt=.5e-6,slow=1.,static=False):
++    start=time.perf_counter();out.mkdir(parents=True,exist_ok=False);os.chdir(out)
++    kind=case[:2] if case.startswith('M') else 'M5'
++    periodic=case=='M3P'
++    g,removed=geometry(dx,kind,periodic);X=g['X'];n=len(X);nc=g['clot_count'];b=g['bonds'];types=g['bond_types']
++    r=dict(dx_m=dx,delta_m=DELTA,rho_kg_m3=RHO,K_Pa=K,G_Pa=G,s00_bulk=.15,s00_interface=.140624859375)
++    write_typed_data(out/'body.data',g,r)
++    if periodic:
++        lines=(out/'body.data').read_text().splitlines();lines=[('-0.0003 0.0003 '+line.split()[-2]+' '+line.split()[-1]) if line.endswith(('xlo xhi','ylo yhi')) else line for line in lines];(out/'body.data').write_text('\n'.join(lines)+'\n')
++    # Physical 150 um grips; axial tangents remain free except M2 prescribed shear.
++    mask=np.zeros((n,3),bool);sign=np.zeros((n,3));grip=150e-6
++    low=X[:,2]<-.0005+grip-1e-12;high=(X[:,2]>.0005-grip+1e-12)&~g['anchors']
++    if kind=='M6':low=g['anchors'];mask[low]=True;mask[high,2]=True;sign[high,2]=1
++    else:
++        mask[low|high,2]=True;sign[low,2]=-.5;sign[high,2]=.5
++    if kind=='M2':
++        mask[low|high,0]=True;sign[:,0]=sign[:,2];sign[:,2]=0
++    if kind=='M3' and not periodic:
++        mask[np.abs(X[:,0])>.0003-grip+1e-12,0]=True
++        mask[np.abs(X[:,1])>.0003-grip+1e-12,1]=True
++    H=float(X[high,2].mean()-(0 if kind=='M6' else X[low,2].mean()))
++    # Interface origin is the anchor/clot midplane, z=-0.5 mm.
++    if kind=='M6':H=float(X[high,2].mean()+.0005)
++    small=kind in ['M1','M2','M3'];amp=(-.008 if kind in ['M1','M3'] else .008 if kind=='M2' else .8)*(.00085 if kind in ['M4','M5'] else H)
++    ramp=(.010 if small else .024)*slow;duration=2*ramp if small else ramp;steps=0 if static else round(duration/dt)
++    roi=(np.abs(X[:,0])<.0003-DELTA)&(np.abs(X[:,1])<.0003-DELTA)&(np.abs(X[:,2])<.0005-grip-DELTA)&~g['anchors']
++    centered=X[roi]-X[roi].mean(0);roi_pinv=np.linalg.pinv(centered)
++    plan=dict(case=case,kind=kind,material=r,dt_s=dt,steps=steps,duration_s=duration,ramp_s=ramp,amplitude_m=amp,nodes=n,clot_nodes=nc,bonds=len(b),removed_notch_bonds=len(removed),size_m=[.0006,.0006,.001],grip_m=grip,grip_center_distance_m=H,area_m2=.0006**2,roi_nodes=int(roi.sum()),roi_definition='|x|,|y|<150um approximately; |z|<199.5um; centroid least squares full deformation gradient',notch='z=0 from x=-300um to -100um, through y; projected single plane area',interface='Inherited attach_wall: only basal clot layer connects to 3 anchor layers; not a full-horizon bonded half-space',loading='Raised cosine; load-unload for M1-M3, monotone for M4-M6; fixed physical time across dt/dx',bc='fix move NULL components integrate naturally; no overlapping nve group; only selected boundary DOFs prescribed',damping_s_inv=500,stop='Fixed duration, no outcome-based stopping',uncertainty='Free-interior macro response/independent energy; '+('time-step sensitivity' if case=='T1' else 'two-level spacing sensitivity, fixed horizon; contact distance changes with dx' if case=='D1' else kind),decision='Assess mapping/identifiability; never tune production',output='Every accepted step scalar force, ROI strain and energy; independent native topology events; initial/first/peak/end double states',thresholds=dict(modulus_relative=.15,nu_absolute=.02,KE_over_U=.05,dt_relative=.10,dx_relative=.15,energy_residual=.05),fit='Loading 20%-70% imposed small amplitude; no outcome-selected fit interval')
++    plan['transverse_periodic_fixed_cell']=periodic
++    if periodic:plan['bc']='Periodic x/y with fixed600um cell; only top/bottom axial grips prescribed; all other DOFs free; not a rerun with density/damping changes'
++    save(out/'test_plan.json',plan);np.savez_compressed(out/'geometry.npz',**{k:g[k] for k in ['X','bonds','bond_types','anchors']},prescribed_mask=mask,roi=roi,removed_notch_bonds=removed)
++    root=Path(__file__).resolve().parents[2];lib=root/('analysis/material_macro_audit_v1/energy_periodic.so' if periodic else 'analysis/material_macro_audit_v1/energy.so');energy=Energy(g,dx,lib,periodic)
++    from lammps import lammps
++    L=lammps(cmdargs=['-log',str(out/'log.lammps'),'-screen','none'])
++    text=f'''units si\ndimension 3\nboundary m m m\natom_style bond\natom_modify map array sort 0 0\nnewton on off\nspecial_bonds lj 0 1 1 coul 1 1 1\nlattice sc {dx:.17g}\nread_data body.data extra/bond/per/atom 320 extra/special/per/atom 360\nneighbor {2*dx:.17g} bin\nneigh_modify every 1 delay 0 check yes\ncomm_modify cutoff {3*DELTA:.17g}\nfix props all property/atom d_vfrac d_theta d_damage ghost yes\nset group all d_vfrac {dx**3:.17g}\npair_style bpm/peri contact_distance_factor 1.0\npair_coeff * * {18*K/(math.pi*DELTA**4):.17g} {DELTA:.17g}\nbond_style bpm/peri\nbond_coeff 1 lps {K:.17g} {G} {DELTA} .15 0\nbond_coeff 2 lps {K:.17g} {G} {DELTA} .140624859375 0\nbond_coeff 3 lps {K:.17g} {G} {DELTA} 1 0\nvelocity all set 0 0 0 units box\n{force_conversion()}\ntimestep {dt:.17g}\nvariable zero equal 0\nvariable disp equal {amp:.17g}*0.5*(1-cos(PI*time/{ramp:.17g}))\nvariable vel equal {amp:.17g}*0.5*PI/{ramp:.17g}*sin(PI*time/{ramp:.17g})\n'''
++    # Disjoint integrator groups. Sign values are constant within each group.
++    keys=np.column_stack([mask.astype(int),sign]);unique,inverse=np.unique(keys,axis=0,return_inverse=True)
++    for j,key in enumerate(unique):
++        ids=np.flatnonzero(inverse==j)+1;text+=f'group g{j} id '+ ' '.join(map(str,ids))+'\n'
++        if not mask[ids[0]-1].any():text+=f'fix integrate{j} g{j} nve\n';continue
++        uv=[];vv=[]
++        for d in range(3):
++            if not key[d]:uv.append('NULL');vv.append('NULL')
++            else:
++                text+=f'variable u{j}_{d} equal {key[d+3]:.17g}*v_disp\nvariable v{j}_{d} equal {key[d+3]:.17g}*v_vel\n';uv.append(f'v_u{j}_{d}');vv.append(f'v_v{j}_{d}')
++        text+=f'fix integrate{j} g{j} move variable '+ ' '.join(uv+vv)+'\n'
++    text+='''compute contactPE all pe pair
++compute bondPE all pe bond
++fix pe_record all ave/time 1 1 1 c_contactPE c_bondPE file native_energy_density.dat
++fix audit all external pf/callback 1 1
++thermo 1000
++thermo_style custom step time atoms bonds ke c_contactPE c_bondPE
++thermo_modify lost error lost/bond error flush yes
++'''
++    if periodic:text=text.replace('boundary m m m','boundary p p m')
++    (out/'in.lammps').write_text(text+'# Python registers callback then run '+str(steps)+'\n');L.commands_string(text)
++    alive=np.ones(len(b),np.uint8);keyb=b[:,0]*n+b[:,1];prev=None;W=Dn=Db=0.;events=[];peak=-np.inf;first=False;calls=0;forcechecks=[];negative_releases=[]
++    stream=(out/'history.csv').open('w');writer=csv.writer(stream);writer.writerow(['step','time_s','displacement_m','boundary_strain','stress_Pa','reaction_N','eps_x','eps_y','eps_z','gamma_xz','K_free_J','U_bulk_J','U_contact_J','D_num_J','D_break_independent_J','W_ext_J','R_energy_J','native_bond_pe_times_V_J','broken_bulk','broken_interface','broken_wall','KE_over_U','max_speed_m_s','roi_affine_residual_m'])
++    def state(label,step,x,v):np.savez_compressed(out/(label+'.npz'),step=step,time_s=step*dt,x_m=x,v_full_m_s=v,alive=alive)
++    def callback(caller,step,nlocal,tags,x,fext):
++      nonlocal alive,prev,W,Dn,Db,peak,first,calls
++      try:
++        assert nlocal==n and np.array_equal(tags,np.arange(1,n+1)),'One-rank ordering required'
++        step=int(step);calls+=1;x=np.ascontiguousarray(x);fm=L.numpy.extract_atom('f')[:n].copy();vh=L.numpy.extract_atom('v')[:n].copy()
++        fd=-500*RHO*dx**3*vh;fd[mask]=0;fext[:]=fd
++        nb=int(L.extract_global('nbonds'));changed=nb!=int(alive.sum())
++        if changed:
++            _,raw=L.gather_bonds();a=np.ctypeslib.as_array(raw).reshape(-1,3);ends=np.sort(a[:,1:].astype(np.int64)-1,axis=1);idx=np.searchsorted(keyb,ends[:,0]*n+ends[:,1]);new=np.zeros_like(alive);new[idx]=1
++            assert np.all(new<=alive);broken=np.flatnonzero(alive&~new);before=energy.eval(x,alive);after=energy.eval(x,new);release=before-after;Db+=release
++            if release<0:negative_releases.append([step,release])
++            events.extend((step,int(k),int(types[k])) for k in broken);alive=new
++        U,fp=energy.eval(x,alive,True)
++        Uc=float(L.extract_compute('contactPE',0,0))*dx**3;native=float(L.extract_compute('bondPE',0,0))*dx**3
++        vf=vh.copy();vf[~mask]+=.5*dt*(fm+fd)[~mask]/(RHO*dx**3)
++        kinetic=.5*RHO*dx**3*float(np.sum(vf[~mask]**2))
++        if prev is not None and step>prev[0]:
++            dxstep=x-prev[1];W-=float(np.sum(.5*(fm+prev[2])[mask]*dxstep[mask]));Dn-=float(np.sum(.5*(fd+prev[3])*dxstep))
++        if not changed and Uc<1e-20 and step in [100,1000,5000]:
++            err=float(np.linalg.norm(fp-fm)/max(np.linalg.norm(fm),1e-30));q=int(np.argmax(abs(fp).ravel()));node,dim=divmod(q,3);hh=1e-10;xx=x.copy();xx[node,dim]+=hh;up=energy.eval(xx,alive);xx[node,dim]-=2*hh;um=energy.eval(xx,alive);fdcheck=-(up-um)/(2*hh)
++            forcechecks.append(dict(step=step,native_force_relative_error=err,finite_difference_relative_error=abs(fdcheck-fp[node,dim])/max(abs(fp[node,dim]),1e-30),native_energy_relative_error=(native-U)/max(abs(U),1e-30)))
++        direction=0 if kind=='M2' else 2;reaction=-fm[high,direction].sum();stress=reaction/plan['area_m2']
++        disp=float((x[high,direction]-X[high,direction]).mean()-(0 if kind=='M6' else (x[low,direction]-X[low,direction]).mean()))
++        F=(roi_pinv@(x[roi]-x[roi].mean(0))).T;strain=F-np.eye(3);res=float(np.sqrt(np.mean(((x[roi]-x[roi].mean(0))-centered@F.T)**2)))
++        counts=[int(np.sum((1-alive)[types==t])) for t in [1,2,3]]
++        writer.writerow([step,step*dt,disp,disp/H,stress,reaction,strain[0,0],strain[1,1],strain[2,2],strain[0,2]+strain[2,0],kinetic,U,Uc,Dn,Db,W,W-kinetic-U-Uc-Dn-Db,native,*counts,kinetic/U if U>1e-30 else 0,float(np.linalg.norm(vf,axis=1).max()),res])
++        if step==0:state('initial',step,x,vf)
++        if changed and not first:state('first_break',step,x,vf);first=True
++        # Keep peak in memory; only write one accepted peak state at the end.
++        if abs(reaction)>peak:peak=abs(reaction);callback.peak=(step,x.copy(),vf.copy(),alive.copy())
++        if step==steps:state('end',step,x,vf)
++        prev=(step,x.copy(),fm,fd)
++        if step%1000==0:stream.flush()
++      except BaseException:
++        (out/'CALLBACK_ERROR.txt').write_text(traceback.format_exc());raise
++    L.set_fix_external_callback('audit',callback)
++    try:
++        L.command(f'run {steps}')
++        p=callback.peak;np.savez_compressed(out/'peak.npz',step=p[0],time_s=p[0]*dt,x_m=p[1],v_full_m_s=p[2],alive=p[3])
++        np.savez_compressed(out/'break_events.npz',events=np.asarray(events,dtype=np.int64).reshape(-1,3))
++        save(out/'DIAGNOSTIC_CHECKS.json',dict(force_checks=forcechecks,negative_topology_releases=negative_releases,callbacks=calls,expected=steps+1,energy_definition='U=.5*(K-5G/3)*V*sum(theta^2)+7.5G*V^2*sum_alive(h*e^2/r0*(1/m_i+1/m_j)); theta recomputed on topology, m fixed initial; native contact PE*V',energy_release='U(x,old_topology)-U(x,new_topology); independent of work balance; native force uses pre-break theta on break step, residual retains lag effects',wall_seconds=time.perf_counter()-start,process_cpu_seconds=time.process_time(),mpi_ranks=1,gpu_compute=False))
++        save(out/'EXECUTION.json',dict(status='COMPLETED',steps=steps,wall_seconds=time.perf_counter()-start))
++    finally:stream.close();L.close()
++
++if __name__=='__main__':
++    a=argparse.ArgumentParser();a.add_argument('--output',type=Path,required=True);a.add_argument('--case',required=True);a.add_argument('--dx',type=float,default=50e-6);a.add_argument('--dt',type=float,default=.5e-6);a.add_argument('--slow',type=float,default=1);a.add_argument('--static',action='store_true')
++    z=a.parse_args();run(z.output.resolve(),z.case,z.dx,z.dt,z.slow,z.static)
+diff --git a/analysis/material_macro_audit_v1/collect.py b/analysis/material_macro_audit_v1/collect.py
+new file mode 100644
+index 0000000..a4ac9e0
+--- /dev/null
++++ b/analysis/material_macro_audit_v1/collect.py
+@@ -0,0 +1,42 @@
++"""Collect an explicit compact audit delivery; leave raw scalar histories in place."""
++import hashlib,json,shlex,subprocess
++from pathlib import Path
++
++C=json.loads(Path('/home/lzy/projects/.macro_audit_current.json').read_text())
++SSH=['ssh','-p','15283','-i','/home/lzy/.ssh/vast_step3b_ed25519','-o','IdentitiesOnly=yes','-o','BatchMode=yes','root@95.3.33.46']
++relative='verification/lammps_material_macro_calibration_and_timestep_audit_v1/'+C['run_id']
++figrelative='results/lammps_material_macro_calibration_and_timestep_audit_v1/'+C['run_id']
++script='''
++import json,hashlib
++from pathlib import Path
++root=Path('/workspace/y_clot/project')
++b=root/RELATIVE
++f=root/FIGRELATIVE
++assert (b/'FINAL_STATUS.json').is_file() and (f/'OPEN_RESULTS.html').is_file()
++selected=[]
++for p in sorted(b.rglob('*')):
++ if not p.is_file():continue
++ if p.name in ['history.csv','body.data','native_energy_density.dat','COMPACT_EXPORT.json','FINAL_METADATA_RECEIPT.json']:continue
++ if p.suffix in ['.h5','.bin','.so','.pyc']:continue
++ if p.suffix in ['.json','.npz','.csv','.md','.txt','.diff','.py','.cpp','.sh','.lammps','.log']:selected.append(p)
++selected+=sorted(p for p in f.iterdir() if p.suffix in ['.png','.svg','.html'])
++rows={str(p.relative_to(root)):dict(bytes=p.stat().st_size,sha256=hashlib.file_digest(p.open('rb'),'sha256').hexdigest()) for p in selected}
++print(json.dumps(rows))
++'''.replace('FIGRELATIVE',repr(figrelative)).replace('RELATIVE',repr(relative))
++rows=json.loads(subprocess.check_output(SSH+[shlex.join(['/workspace/y_clot/envs/clot/bin/python','-c',script])],text=True))
++assert all(p.startswith(relative+'/') or p.startswith(figrelative+'/') for p in rows)
++assert all('..' not in Path(p).parts for p in rows)
++changed=[p for p,r in rows.items() if not (Path(C['root'])/p).is_file() or hashlib.file_digest((Path(C['root'])/p).open('rb'),'sha256').hexdigest()!=r['sha256']]
++if changed:
++ cmd=shlex.join(['tar','-cf','-','-C','/workspace/y_clot/project','--',*changed])
++ with subprocess.Popen(SSH+[cmd],stdout=subprocess.PIPE) as remote:
++  subprocess.run(['tar','-xf','-','-C',C['root']],stdin=remote.stdout,check=True)
++  remote.stdout.close()
++  assert remote.wait()==0
++for p,r in rows.items():
++ local=Path(C['root'])/p
++ assert local.stat().st_size==r['bytes']
++ assert hashlib.file_digest(local.open('rb'),'sha256').hexdigest()==r['sha256'],p
++receipt=dict(status='COPIED_AND_SHA256_VERIFIED',server_root='/workspace/y_clot/project',local_root=C['root'],files=rows,total_bytes=sum(r['bytes'] for r in rows.values()),raw_data_retained_on_server=['*/history.csv','*/body.data','*/native_energy_density.dat','microbubble/dt_half/trajectory.h5'],note='review_curves.npz explicitly describes analysis sampling; all accepted scalar states remain in server history.csv. Later document/status metadata have a separate final receipt.')
++(Path(C['local'])/'COMPACT_EXPORT.json').write_text(json.dumps(receipt,indent=2))
++print(json.dumps(dict(files=len(rows),updated_files=len(changed),bytes=receipt['total_bytes'],status=receipt['status'])))
+diff --git a/analysis/material_macro_audit_v1/finalize.py b/analysis/material_macro_audit_v1/finalize.py
+new file mode 100644
+index 0000000..4daed6b
+--- /dev/null
++++ b/analysis/material_macro_audit_v1/finalize.py
+@@ -0,0 +1,59 @@
++"""Finalize only after all nine registered material cases and microbubble finish."""
++import sys,json,csv,hashlib,os,html,time
++from pathlib import Path
++import numpy as np
++sys.path.insert(0,str(Path(__file__).parent))
++from postprocess import material,save,js,E,G,K,NU
++from transport_plots import run as transport_plots
++
++def main(base,figs):
++ figs.mkdir(parents=True,exist_ok=True);rows,mapping,comparison=material(base,figs);transport_plots(base,figs)
++ r={a['case']:a for a in rows};micro=js(base/'microbubble/MICROBUBBLE_AUDIT.json');y=js(base/'production_audit/Y_AUDIT.json');yx=js(base/'production_audit/Y_CROSSCHECKS.json');details=js(base/'MATERIAL_DETAILS.json');areas={n:js(base/n/'CRACK_AREA_ATTEMPT.json') for n in ['M5','T1','D1']}
++ audit=js(base/'TIMESTEP_AUDIT.json');audit['material']=comparison;audit['production_crosschecks']=yx;save(base/'TIMESTEP_AUDIT.json',audit)
++ checks={}
++ for name,d in details.items():
++  p=base/name;data=np.genfromtxt(p/'history.csv',names=True,delimiter=',');fc=d['diagnostics']['force_checks'];assert len(fc)==3
++  assert max(v['native_force_relative_error'] for v in fc)<1e-9
++  assert max(v['finite_difference_relative_error'] for v in fc)<1e-5
++  assert d['metrics']['energy_residual_work_fraction']<.05
++  assert np.min(np.diff(data['time_s']))>0
++  assert np.all(np.diff(data['broken_bulk'])>=0) and np.all(np.diff(data['broken_interface'])>=0)
++  # Compact review points, with all exact peak and first-break states retained.
++  indexes=np.unique(np.r_[np.arange(0,len(data),20),len(data)-1,np.argmax(data['stress_Pa']),np.argmax(abs(data['stress_Pa'])),np.flatnonzero(np.diff(data['broken_bulk']+data['broken_interface'])>0)+1])
++  np.savez_compressed(p/'review_curves.npz',records=data[indexes],original_step_index=indexes,selection='Every20 steps plus every topology-change step, exact peaks, final; full history.csv remains on server')
++  checks[name]=dict(accepted_states=len(data),finite=True,time_index=True,monotone_topology=True,independent_gradient=True,finite_difference=True,energy_residual_below5percent=True,no_callback_errors=True)
++ assert micro['initial_ids_radii_positions_identical'] and list(micro['actual_config_changes'])==['dt_s']
++ assert micro['half_step_instrumentation']['accepted_kernel_calls']==200000
++ checks['microbubble']=dict(source_config_only_dt_changed=True,actual_steps=200000,registered_geometry_gate=micro['registered_geometric_gate_pass'],coarse_cluster_metric_gate=micro['cluster_metric_screen_pass'],internal_trajectory_convergence='NOT_ESTABLISHED')
++ checks['production']=yx;save(base/'IMPLEMENTATION_CHECKS.json',checks)
++ status=dict(execution_status='COMPLETE:9 material cases +1 reused-baseline microbubble dt/2 + read-only Y audit; one registered M3 boundary diagnostic consumed',numerical_validity='Implementation/units/time-level/independent energy checks passed for declared tests; startup/fracture inertia and finite-specimen boundary effects retained',elastic_mapping_status=dict(matches=mapping['matches'],measured=mapping['measured'],scope='G effective mismatch19%; K assessed in M3P fixed periodic cell; not homogeneous continuum validation'),strength_test_scope='Free-interior finite specimens and fixed accelerated loading; genuine in-window peaks; no identification with old affine6.78kPa or Liu cohesive-zone parameters',fracture_energy_status='ENERGY_TRANSFER_IDENTIFIED_BUT_MATERIAL_Gc_NOT_IDENTIFIABLE: signed releases include negative increments and nonplanar fracture',timestep_sensitivity_status=dict(material_T1=comparison['T1'],microbubble='Coarse cluster/COM stable; internal same-ID/contact topology sensitive'),discretization_scope=comparison['D1'],microbubble_audit_status='COMPLETED_LIMITED:10->5us full1s mature-contact case; multi-radius internal trajectory divergence; near-field uncalibrated',production_transport_audit_scope='2104 full-clot native saved states;4068 every-step detached states;4661 native wall steps;232276 accepted transport steps; unknown unrecorded attached-node peaks',allowed_AI_labels=dict(permitted='Explicitly model/geometry/dx/dt/boundary-tagged simulation observables and diagnostic topology records for exploratory use',not_permitted=['Material-intrinsic Gc','Resolution-independent blood-clot strength','Experimentally calibrated adhesion','Certified microbubble cluster/contact/formation labels','Clinical fragmentation size/safety','Clot-present CFD or inverse PZT power']),experimental_validation='NOT_ESTABLISHED',softening_decision='Insufficient evidence to attribute fragmentation to missing softening; first resolve macro strength mapping and geometry dependence',document_update=js(base/'DOCUMENT_UPDATE.json') if (base/'DOCUMENT_UPDATE.json').exists() else 'PENDING_WSL_CONDITIONAL_UPDATE',github_push='NOT_PERFORMED',production_material_and_native_source_changes=False,case_budget=dict(material_used=9,material_max=10,microbubble_new=1,full_Y_reruns=0))
++ save(base/'FINAL_STATUS.json',status)
++ title='REVIEW_LAMMPS_MATERIAL_MACRO_CALIBRATION_AND_TIMESTEP_AUDIT_V1.md'
++ lines=['# LAMMPS_MATERIAL_MACRO_CALIBRATION_AND_TIMESTEP_AUDIT_V1', '',f'Run ID：`{base.name}`。已实际完成9个材料算例、1个微泡减半步复算及现有Y/输运只读审计。实现验证、数值敏感性、材料匹配、实验有效性分开列出；没有自动推送、改生产参数或重跑Y。', '', '## 试样、边界和弹性', '', '所有基体名义尺寸600×600×1000 µm；基线2880材料点，M6加432锚点，D1为5625材料点。horizon=150.5 µm，基线dx=50 µm，dt=0.5 µs，G=940 Pa，K=33333.333 Pa，rho=1000 kg/m³，s00_bulk=.15、s00_interface=.140624859375，contact_distance_factor=1。', '', '内部自由；M1/M4/M5轴向夹持、切向自由；M2上下边界给定剪切及z位置；M3只在侧条带固定相应横向自由度；M6沿用仅基层材料点连到三层锚点的typed-bond构造，不是满horizon半空间粘接。互不重叠的积分组保证每个DOF只推进一次。', '', '尺寸/δ约3.99×3.99×6.64，中心ROI与外侧/夹具保持约一层horizon距离，有限几何和侧表面影响仍存在。夹持厚度基线150 µm；40 µm点阵选4层、实际160 µm，夹具中心距840 µm而非850 µm。D1加载绝对幅度与基线相同，接触距离随dx变化。不是完整网格收敛。', '', 'M1–M3：10 ms余弦加载至0.8%名义变形、10 ms卸载；M4/M5/M6：24 ms余弦单调加载，固定终止。未质量缩放，数值阻尼保持500 s⁻¹。它不是论文0.01/s实验复现。拟合区间在运行前固定为加载幅度20–70%；完整启动/卸载/破裂动能峰值均保留，准静态判断只限拟合区。', '', '|量|连续体小应变映射|本轮有限试样|筛查|','|---|---:|---:|---|']
++ for k,label in [('E_Pa','E / Pa'),('G_Pa','G / Pa'),('nu','ν'),('K_Pa','K / Pa')]:
++  gate=mapping['matches']['nu' if k=='nu' else k[0]];lines.append(f'|{label}|{mapping["target"][k]:.6g}|{mapping["measured"][k]:.6g}|'+('范围内' if gate else '不匹配')+'|')
++ lines+=['',f'原M3中心横向应变/轴向应变比20.55%，其M={r["M3"]["M_Pa"]:.3f} Pa不能直接换算K；朴素公式给出38.315kPa的结果已明确撤回物理解释。预留预算追加第9例M3P：横向600µm周期盒固定，所有内部DOF继续自由，只给轴向夹持。中心横向应变比{r["M3P"]["fit_transverse_to_axial_strain_max"]:.3g}，通过预注册1e−6门槛。M3P的M={r["M3P"]["M_Pa"]:.3f} Pa，K=M−4G_eff/3={r["M3P"]["K_Pa"]:.3f} Pa；若使用输入G，K={r["M3P"]["K_using_input_G_Pa"]:.3f} Pa。K偏差{mapping["relative_errors"]["K"]*100:.3f}%，不是生物实验精度。ν绝对差{mapping["nu_absolute_error"]:.6f}。G偏低约19%是有限试样结果，不据此静默修改输入G。', '', '## 强度与破坏', '', '|试样|峰值名义应力 / Pa|峰值名义应变|首断 / ms|破坏范围|','|---|---:|---:|---:|---|']
++ for name in ['M4','M5','M6']:
++  z=r[name];lines.append(f'|{name}|{z["peak_stress_Pa"]:.6g}|{z["peak_boundary_strain"]:.6g}|{z["first_break_s"]*1e3:.6g}|'+('本体先断、混合损伤；未辨识纯界面强度' if name=='M6' else '自由内部、特定几何/加载协议')+'|')
++ lines+=['', f'首断前一接受步K/U：M4={r["M4"]["KE_over_U_immediately_before_first_break"]*100:.3f}%，M5={r["M5"]["KE_over_U_immediately_before_first_break"]*100:.3f}%，M6={r["M6"]["KE_over_U_immediately_before_first_break"]*100:.3f}%。启动及破裂阶段完整保留；这些单步数值不替代全程准静态证明，强度仅按该加速显式协议解释。', '', '首断位置已逐键定位：M4为参考坐标(-275,-275,-350)µm夹具过渡角点；M5为(275,-275,350)µm夹具过渡角点，未首先在预缺口尖端形成理想裂纹；M6为(-275,-225,-450)µm靠近基底的bulk键。完整位置/ID见汇总表。这是强度和单裂纹识别的重要限制。三个窗口都实际越过峰值并下降，未把终点当峰值。旧6.78 kPa来自全部节点规定仿射运动且侧向受限的小单元；旧界面约1.96 kPa来自规定刚体拉脱。历史事实保留，但不能把它们当成上述自由内部试样或已验证的生物材料强度。论文pure-shear/CZM与本轮单轴/法向试样的定义和几何也不同。', '', f'M6：{r["M6"]["broken_bulk"]}条bulk、{r["M6"]["broken_interface"]}条interface断键；完全失去所有锚键的基底材料点{r["M6"]["basal_interface_nodes_fully_debonded"]}个，对应分配参考斑块面积{r["M6"]["basal_reference_patch_area_m2"]:.6g} m²。这不是按断键数估算裂纹面积，也不是人体内皮粘附定律。', '', '## 独立能量与无法辨识的Gc', '', '详见 UNIT_REACTION_ENERGY_AUDIT.md。原生力为力密度，生产脚本转换顺序正确；原生pe虽乘体积具有焦耳量纲，却少算LPS偏能。独立能量负梯度与原生SI力一致，有限差分及M1/M2完整无断裂加载卸载检查通过。没有修改原生力或轨迹来迁就能量统计。', '', '本轮从实际断前/断后拓扑及分别重算的膨胀量独立求带符号储能变化；没有用功差反推断裂耗散。CSV的D_break_independent_J是此带符号拓扑项，不能无条件称作非负材料耗散。实际负增量另存。接触储能单列，已启用耗散只有原数值阻尼；原生断键当步膨胀量滞后一拍的影响保留在残差中。', '', '|算例|净拓扑能量 / nJ|负增量次数|独立残差/外功尺度|离面断键比例|','|---|---:|---:|---:|---:|']
++ for name in ['M5','T1','D1']:
++  z=r[name];lines.append(f'|{name}|{z["signed_topology_energy_J"]*1e9:.6g}|{z["negative_topology_events"]}|{z["energy_residual_work_fraction"]*100:.5g}%|{areas[name]["off_plane_break_fraction"]*100:.4g}%|')
++ lines+=['', '面积原定为单个z=0投影裂面：厚度×缺口前缘新增长度。已经用实际跨面键交点和连续失连条带尝试追踪，详见各例CRACK_AREA_ATTEMPT.json；大量离面破坏使单裂纹面积不能可靠定义。净拓扑能量、能量闭合和材料Gc是三件事。**本轮Gc仍不可辨识，0.2 J/m²仍不是LPS已知断裂能。**', '', '原文已直接取得并重读：Liu 2024 DOI 10.1016/j.jmps.2024.105858，正文PDF15页、原始DOCX补充Table S2。正文第6页18.27±1.45 J/m²是最低加载率下实验总断裂能；第11页6–8 J/m²是特定Yeoh/Mullins/CZM反演且Sbulk>5.2 kPa的intrinsic work，不是同一定义。猪皮代理1.3–1.6与牛主动脉内壁1.35±.39分开。页码、原文件哈希、直接提取文本见provenance/LITERATURE_IDENTITY.json。', '', '## 时间步与离散化', '']
++ for name in ['T1','D1']:
++  q=comparison[name];lines.append(f'- {name}：峰值差{q["relative_differences"]["peak_stress_Pa"]*100:.4g}%，曲线物理时间对齐L2差{q["time_aligned_stress_relative_L2"]*100:.4g}%，净拓扑能量差{q["relative_differences"]["signed_topology_energy_J"]*100:.4g}%。工程筛查：'+('范围内' if q['main_metrics_pass'] else '敏感/未通过')+'。曲线对齐插值仅用于分析，没有插值生成可视化状态。')
++ lines+=['', 'T1固定几何、24 ms时程和680 µm加载幅度，仅dt减半；D1固定名义几何、物理horizon和加载幅度，但表面/夹具取样及点接触距离随dx变化。这一组结果只适用于该缺口试样，不能替代完整Y算例稳定性证明。', '', '## 微泡实际路线及有意义对照', '', '检查了平行项目当前F6/F7执行树；没有把迁移F5副本认作最新。与最新观察到的F7快照48fccd9188…比较，所用9个主要科学内核文件SHA相同；后续控制器轨迹未在本轮认证。选定可追溯F7 replay_v1/M0（源码快照9c198a0…），冻结原32粒子成熟初态、ID、半径1.78 µm、全部控制事件、响应表、声场、零背景流和GPU后端，复用基线，仅新增10→5 µs、0–1s复算。F7采用Euler预测+12次Jacobi接触投影，非旧RK tracker；没有该旧路径的max_displacement_per_radius限制，也没有将慢质心步当声学周期积分。', '', '基线100,000步，对照200,000步；500 µs是保存间隔。实际步累计与保存时钟一致。原生诊断名max_physical_substep_displacement实际记录投影前预测位移，已核对源码并纠正解释；基线未保存每一步接受位移，不能补造。对照增加只读GPU统计，记录所有接受步，力/接触运算顺序不变。', '', f'时间加权最大群集和聚团比例差均0；近接触比例差{micro["core_normalized_differences"]["timeweighted_nearcontact_fraction"]*100:.6g}个百分点。最大接受穿透/R基线{micro["baseline"]["summary"]["quality"]["max_accepted_penetration_m"]/1.78e-6:.6g}、对照{micro["half_step"]["summary"]["quality"]["max_accepted_penetration_m"]/1.78e-6:.6g}，低于既有求解几何门槛0.01R；0.001R是另外的hard-contact标签定义，不能混用。', '', f'对照每步实际位移/R最大{micro["half_step_instrumentation"]["maximums"][0]:.6g}，步首预测最大{micro["half_step_instrumentation"]["maximums"][1]:.6g}，终点净投影最大{micro["half_step_instrumentation"]["maximums"][2]:.6g}。每次投影pass的最大量另列，与终点净修正不是同一量。正间隙关闭时间不加分母地板：最小约3.42e−14 s，含机器精度量级正间隙；极大dt/t_close没有被隐藏，投影几何合规不等于近接触时间分辨率充分。', '', f'尽管质心最大差只有{micro["maximum_saved_COM_difference_over_R"]:.6g}R，粒子同ID最大差{micro["maximum_same_ID_saved_position_difference_over_R"]:.6g}R；去除刚体姿态后RMS仍{micro["max_rigid_pose_aligned_same_ID_RMS_over_R"]:.6g}R，接触邻接Jaccard差最大{micro["max_cluster_edge_Jaccard_disagreement"]:.6g}。因此只支持粗粒度群集保持统计，内部运动/接触并未建立时间收敛，**不认证群集AI标签**。近场为未标定探索模型；本轮不是新聚团形成全过程或6s历史验证。没有扩大扫描。', '', '## Y及长时输运只读覆盖', '', f'全节点力记录4,054,408行、2104个保存时刻，覆盖0–2.33ms；已保存最大完整步节点速度3.919968 m/s，0.3795ms、ID364。完整附着节点每步峰值仍未知。脱离节点728,078行、593–4660每步共4068时刻，脱离后最大节点3.913083 m/s，游离COM最大3.729178 m/s。原半步速度以当前实际总力重建完整步，与234帧原生轨迹最大误差{yx["native_saved_full_step_velocity_reconstruction"]["max_velocity_error_m_s"]:.3g} m/s。没有使用显示力缓存或视频差分。', '', '相邻可用真实节点步最大位移1.960449 µm（0.03921dx）；234帧存活键相对速度最大2.688609 m/s，仍只是已保存帧范围。原生壁日志覆盖全部4661步，最小中心净距25.797976 µm，活动罚接触0、穿壁0。cL=5.881 m/s，cLdt/dx=.05881，壁罚弹簧dtω=.3162，双点接触dtω=.04816；这些是尺度筛查，不是完整网络谱稳定性证明。', '', f'输运232,276条实际积分记录、208组件、最长5s；步长中位3.46255ms、最大5ms、最小22.268ns为实际记录；每步位置变化≤20µm。包含交接初态的COM速度最大0.0299442m/s。1025次壁约束事件，最大投影修正0.220809µm；起始原生壁法向上的接受位移最大{yx["transport_contact_normal_displacement"]["maximum"]["abs_start_wall_normal_displacement_m"]*1e6:.6g}µm。绝对时钟+2.33ms误差<3e−16s，逐步dt重建误差<5e−16s。', '', 'COM位置、速度和同态拖曳律连续，不延伸为内部变形/转动连续。长时段冻结末态成员偏移与附着主体，截断内部速度最大0.116966m/s；20µm原生罚接触切换为5µm单边约束。附着数值阻尼、脱离后流体COM拖曳、壁力始终分开。硬编码.5e−6/4660/.00233位置记录在Y_AUDIT.json，本轮没有改变生产时钟。', '', '## 资源、来源、交付与决策', '', 'CPU cgroup配额15.36核，affinity32；小试样各1个MPI rank，最多4例并行，BLAS/OMP1。LAMMPS CPU计算，未盲加GPU后缀。微泡沿用NVIDIA Warp float64/RTX4090，必要计算实测记录；Matplotlib绘图使用CPU。没有重建或升级生产LAMMPS/MPI/PETSc。', '', f'材料算例求解墙时合计（并行作业之和，非总elapsed）：{sum(x["wall_seconds"] for x in rows):.3f}s；微泡对照推进{micro["half_step"]["summary"]["wall_s"]:.3f}s，GPU事件时钟包含host-idle/capture，不称纯kernel时间。各例process/diagnostic日志保留。', '', '所有逐步history.csv、实际body.data、in.lammps、原生日志、全精度关键状态和断键事件留在服务器本run目录；紧凑代码、配置、哈希清单、报告、表和图回收WSL。FILE_MANIFEST.json记录原始文件身份，COMPACT_EXPORT.json明确回收范围。OPEN_RESULTS.html为静态索引，无新Web服务。', '', '允许：带几何/边界/dx/dt/模型身份的探索性模拟曲线、拓扑和审计观测。不能使用：材料固有Gc、分辨率无关血液强度/粘附、已认证群集AI标签、临床碎片安全、含栓流场/PZT逆映射。数值成功不等于实验验证。', '', '**软化判断：尚无足够证据将碎片行为归因于缺少软化，更不能用0.2与文献能量作量化依据。下一轮唯一优先项：重审自由内部试样与旧仿射小单元的宏观强度映射及边界影响，再决定本构调整。本轮到此停止，不自动执行下一轮。**', '', 'WSL文档是否写入，以DOCUMENT_UPDATE.json和实际diff为准；此报告不把PENDING当完成。']
++ (base/title).write_text('\n'.join(lines)+'\n')
++ reportrel=os.path.relpath(base/title,figs);csvrel=os.path.relpath(base/'MACRO_TEST_RESULTS.csv',figs)
++ cards=''.join('<section><h2>'+html.escape(p.stem)+'</h2><a href="'+p.name+'"><img src="'+p.name+'" loading="lazy"></a>'+('<p><a href="'+p.with_suffix('.svg').name+'">SVG</a></p>' if p.with_suffix('.svg').exists() else '')+'</section>' for p in sorted(figs.glob('*.png')))
++ (figs/'OPEN_RESULTS.html').write_text('<!doctype html><html lang="zh"><meta charset="utf-8"><title>LPS宏观标定与时间步审查</title><style>body{font:17px system-ui;max-width:1400px;margin:30px auto;padding:0 20px;color:#24323a;background:#f8fafb}section{background:white;padding:18px;margin:22px 0;border:1px solid #d7dfe3}img{width:100%;height:auto}h2{font-size:20px}a{color:#216591}</style><h1>LPS 宏观标定与时间步审查</h1><p>实现检查完成；G有限试样不匹配，材料Gc未识别；微泡内部轨迹敏感。具体dt/dx结论见报告。</p><p><a href="'+reportrel+'">完整评审</a> · <a href="'+csvrel+'">MACRO_TEST_RESULTS.csv</a></p>'+cards+'</html>')
++ # Hash native/raw data in place; never pull large files just to hash them.
++ manifest={}
++ for p in sorted(base.rglob('*')):
++  if p.is_file() and p.name not in ['FILE_MANIFEST.json']:
++   h=hashlib.sha256()
++   with p.open('rb') as f:
++    for block in iter(lambda:f.read(8*1024*1024),b''):h.update(block)
++   manifest[str(p.relative_to(base))]=dict(bytes=p.stat().st_size,sha256=h.hexdigest())
++ save(base/'FILE_MANIFEST.json',dict(server_root=str(base),files=manifest,total_bytes=sum(x['bytes'] for x in manifest.values()),scope='Before WSL document update; final document/update receipts have their own hashes'))
++ print(json.dumps(status,ensure_ascii=False,indent=2))
++if __name__=='__main__':main(Path(sys.argv[1]),Path(sys.argv[2]))
+diff --git a/analysis/material_macro_audit_v1/microbubble.py b/analysis/material_macro_audit_v1/microbubble.py
+new file mode 100644
+index 0000000..b2ae040
+--- /dev/null
++++ b/analysis/material_macro_audit_v1/microbubble.py
+@@ -0,0 +1,69 @@
++"""Frozen F7 replay M0 dt/2, with read-only accepted-step GPU diagnostics."""
++import sys,json,hashlib,math
++from pathlib import Path
++import numpy as np
++SNAP=Path('/workspace/mevo_acoustic_microbubbles/f7/.execution/9c198a0dd8589d6c6b5414ca529ab0a861cfe74e')
++sys.path[:0]=[str(SNAP/'src'),str(SNAP)]
++import warp as wp
++from mevo_mb.fast_sim.f6_engine import F6Simulator
++from mevo_mb.fast_sim import kernels as k
++from scripts.fast_pzt_f7 import runner,common
++
++@wp.kernel
++def audit(x:wp.array(dtype=wp.vec3d),pred:wp.array(dtype=wp.vec3d),end:wp.array(dtype=wp.vec3d),counter:wp.array(dtype=int),stats:wp.array2d(dtype=wp.float64),n:int,R:wp.float64,dt:wp.float64):
++ i=wp.tid();s=counter[0];v=(pred[i]-x[i])/dt
++ wp.atomic_max(stats,s,0,wp.length(end[i]-x[i])/R)
++ wp.atomic_max(stats,s,1,wp.length(pred[i]-x[i])/R)
++ wp.atomic_max(stats,s,2,wp.length(end[i]-pred[i])/R)
++ mingap=wp.float64(1.e9);closing=wp.float64(1.e9);approach=wp.float64(0.0);ratio=wp.float64(0.0)
++ for j in range(n):
++  if j!=i:
++   d=wp.length(x[j]-x[i]);gap=d-wp.float64(2.0)*R
++   endgap=wp.length(end[j]-end[i])-wp.float64(2.0)*R;mingap=wp.min(mingap,endgap)
++   vj=(pred[j]-x[j])/dt
++   closing_v=-wp.dot(vj-v,(x[j]-x[i])/d)
++   approach=wp.max(approach,closing_v)
++   if gap>wp.float64(0.0) and closing_v>wp.float64(0.0):
++    tc=gap/closing_v;closing=wp.min(closing,tc);ratio=wp.max(ratio,dt/tc)
++ wp.atomic_min(stats,s,3,mingap/R);wp.atomic_max(stats,s,4,approach)
++ wp.atomic_min(stats,s,5,closing);wp.atomic_max(stats,s,6,ratio)
++ if mingap<=wp.float64(0.02)*R:wp.atomic_add(stats,s,7,wp.float64(1.0)/wp.float64(n))
++ if mingap<-wp.float64(0.01)*R:wp.atomic_add(stats,s,8,wp.float64(1.0))
++@wp.kernel
++def advance_counter(counter:wp.array(dtype=int)):counter[0]=counter[0]+1
++
++class AuditSimulator(F6Simulator):
++ instance=None
++ def __init__(self,*a,**kw):
++  super().__init__(*a,**kw);AuditSimulator.instance=self
++  self.audit_pred=wp.zeros(self.total,dtype=wp.vec3d,device=self.device)
++  self.audit_counter=wp.zeros(1,dtype=int,device=self.device)
++  initial=np.zeros((200010,9));initial[:,3]=1e9;initial[:,5]=1e9
++  self.audit_initial=initial;self.audit_stats=wp.array(initial,dtype=wp.float64,device=self.device)
++  wp.load_module(module=sys.modules[__name__],device=self.device)
++ def reset(self):
++  super().reset()
++  if hasattr(self,'audit_counter'):self.audit_counter.zero_();self.audit_stats.assign(self.audit_initial)
++ def launch(self,kernel,dim,args):
++  if kernel is k.accept and hasattr(self,'audit_counter'):
++   wp.launch(audit,dim=self.total,inputs=[self.x,self.audit_pred,args[0],self.audit_counter,self.audit_stats,self.n,self.p.radius_m,self._current_dt],device=self.device)
++  result=super().launch(kernel,dim,args)
++  if kernel is k.predict and hasattr(self,'audit_counter'):wp.copy(self.audit_pred,args[2])
++  return result
++ def step(self,dt):
++  super().step(dt)
++  if hasattr(self,'audit_counter'):wp.launch(advance_counter,dim=1,inputs=[self.audit_counter],device=self.device)
++
++if __name__=='__main__':
++ out=Path(sys.argv[1]);out.mkdir(parents=True,exist_ok=False)
++ baseline=Path('/workspace/mevo_acoustic_microbubbles/f7/results/fast_pzt/f7/replay_v1/M0')
++ config=json.loads((baseline/'CONFIG.json').read_text());summary=json.loads((baseline/'SUMMARY.json').read_text())
++ protocol=json.loads((SNAP/'configs/fast_pzt/f7/protocol.json').read_text())
++ plan=dict(baseline=str(baseline),source_snapshot=str(SNAP),reason='Contact-active 32-particle mature cluster, baseline correction/free path=0.396 and accepted overlap/R=0.00759; monitor persistence/morphology across prescribed controls, not de-novo formation',window_s=[0,1],same_initial_ids=True,initial_seed='Explicit archived initial coordinates; no new randomness',change='Only nominal dt10->5us; no adaptive displacement cap in this actual F6 fixed_event_aligned backend',extra_kernel='Read-only accepted proposal before original commit; original kernel sequence/order unchanged; diagnostic arrays never feed forces',criteria=dict(cluster_fraction_absolute=.05,timeweighted_aggregation_absolute=.05,accepted_penetration_over_R=.01,contact_pass_correction_over_R=.1),hard_contact_label_tolerance_over_R=.001,hard_contact_label_is_not_solver_stop_tolerance=True,integrator='Overdamped forward Euler prediction plus12 Jacobi PBD passes; no RK intermediate stages',baseline_missing='Actual accepted displacement and positive-gap closing rates not logged at every baseline step; baseline quality contains prediction/pass-correction/accepted overlap extrema; saved states are0.5ms',new_computation_count=1,maximum_extra_displacement_cap_runs=0,physics='Uncalibrated exploratory regularized pair near-field; no experimental cluster labels')
++ common.write(out/'test_plan.json',plan)
++ common.write(out/'SOURCE_IDENTITY.json',dict(identity=common.identity(),actual_f6_module=sys.modules[F6Simulator.__module__].__file__,baseline_config_sha256=hashlib.sha256((baseline/'CONFIG.json').read_bytes()).hexdigest(),baseline_trajectory_sha256=hashlib.sha256((baseline/'trajectory.h5').read_bytes()).hexdigest()))
++ runner.F6Simulator=AuditSimulator
++ result=runner.run_case(out/'dt_half',config['environment'],config['events'],protocol,common.objects(),dt=config['dt_s']/2,mobility=config['mobility'],gradient=config['gradient'],duration=1.,adaptive=config['adaptive'],feedback=config['feedback'])
++ sim=AuditSimulator.instance;count=int(sim.audit_counter.numpy()[0]);stats=sim.audit_stats.numpy()[:count]
++ np.savez_compressed(out/'dt_half/accepted_step_audit.npz',values=stats,columns=['actual_displacement_over_R','start_prediction_over_R','endpoint_net_projection_over_R','minimum_gap_over_R','max_relative_approach_m_s','min_positive_gap_closing_s','max_dt_over_positive_gap_closing','nearcontact_particle_fraction','nodes_beyond_registered_overlap'])
++ common.write(out/'INSTRUMENTATION.json',dict(accepted_kernel_calls=count,reported_accepted_steps=result['actual_substep_count'],maximums=stats[:,[0,1,2,4,6,7,8]].max(0).tolist(),minimum_gap_over_R=float(stats[:,3].min()),minimum_positive_closing_s=float(stats[:,5].min()),extra_physics_changes=False))
+diff --git a/analysis/material_macro_audit_v1/postprocess.py b/analysis/material_macro_audit_v1/postprocess.py
+new file mode 100644
+index 0000000..2d09ad3
+--- /dev/null
++++ b/analysis/material_macro_audit_v1/postprocess.py
+@@ -0,0 +1,149 @@
++"""Audit completed accepted states; no solver reruns and no retrospective fit tuning."""
++import sys,json,csv,math,hashlib
++from pathlib import Path
++import numpy as np
++import matplotlib
++matplotlib.use('Agg')
++import matplotlib.pyplot as plt
++from mpl_toolkits.mplot3d.art3d import Line3DCollection
++K=100000/3;G=940.;E=9*K*G/(3*K+G);NU=(3*K-2*G)/(2*(3*K+G))
++plt.rcParams.update({'font.family':'DejaVu Sans','font.size':11,'axes.titlesize':12,'axes.labelsize':11,'legend.fontsize':9,'axes.grid':True,'grid.color':'#9099a0','grid.alpha':.55,'figure.facecolor':'white','savefig.facecolor':'white'})
++COLORS={'M1':'#236c9d','M2':'#cf8a28','M3':'#6c4c9a','M4':'#b33132','M5':'#16818b','M6':'#cf6227','T1':'#bd4b80','D1':'#4354a6'}
++def clean(x):
++ if isinstance(x,dict):return {k:clean(v) for k,v in x.items()}
++ if isinstance(x,(list,tuple)):return [clean(v) for v in x]
++ if isinstance(x,np.ndarray):return clean(x.tolist())
++ if isinstance(x,np.generic):return clean(x.item())
++ if isinstance(x,float) and not math.isfinite(x):return None
++ return x
++def js(p):return json.loads(p.read_text())
++def save(p,x):p.write_text(json.dumps(clean(x),indent=2,ensure_ascii=False))
++def figsave(fig,figs,name,svg=True):
++ fig.savefig(figs/(name+'.png'),dpi=220,bbox_inches='tight')
++ if svg:fig.savefig(figs/(name+'.svg'),bbox_inches='tight')
++ plt.close(fig)
++
++def fracture_area(p,g,end,events):
++ X=g['X'];b=g['bonds'];alive=end['alive'].astype(bool);a,c=X[b[:,0]],X[b[:,1]]
++ cross=((a[:,2]<-1e-12)!=(c[:,2]<-1e-12));broken=~alive
++ where=np.divide(-a[:,2],c[:,2]-a[:,2],out=np.zeros(len(b)),where=abs(c[:,2]-a[:,2])>1e-15)
++ at=a+where[:,None]*(c-a);dx=js(p/'test_plan.json')['material']['dx_m'];xs=np.arange(-.0001,.0003-dx/2,dx);ys=np.arange(-.0003,.0003-dx/2,dx)
++ lost=np.zeros((len(xs),len(ys)),bool);occup=np.zeros_like(lost)
++ for i,x in enumerate(xs):
++  for j,y in enumerate(ys):
++   ids=cross&(at[:,0]>=x-1e-12)&(at[:,0]<x+dx-1e-12)&(at[:,1]>=y-1e-12)&(at[:,1]<y+dx-1e-12)
++   occup[i,j]=ids.any();lost[i,j]=ids.any() and not alive[ids].any()
++ front=[]
++ for j in range(len(ys)):
++  count=0
++  for i in range(len(xs)):
++   if not lost[i,j]:break
++   count+=1
++  front.append(count*dx)
++ return dict(convention='One projected plane z=0, thickness600um x newly advanced length; never bond_count*dx^2',method='Reference crossing intersections rasterized in dx cells; contiguous rows with zero surviving crossing bonds from original notch tip x=-100um; conservative connectivity diagnostic, not physical surface reconstruction',resolution_m=dx,notch_m=.0002,total_new_breaks=int(broken.sum()),cross_plane_breaks=int((broken&cross).sum()),off_plane_break_fraction=float((broken&~cross).sum()/max(broken.sum(),1)),front_advance_per_thickness_strip_m=front,projected_connectivity_loss_area_m2=float(sum(front)*dx),fully_lost_cross_plane_bins=int(lost.sum()),area_identification='NOT_IDENTIFIABLE_AS_SINGLE_CRACK' if ((broken&~cross).sum()/max(broken.sum(),1)>.2 or np.ptp(front)>2*dx) else 'CONNECTIVITY_PROXY_ONLY_NOT_VALIDATED_SURFACE',Gc_J_m2=None)
++
++def material(base,figs):
++ rows=[];series={};details={}
++ for name in ['M1','M2','M3','M3P','M4','M5','M6','T1','D1']:
++  p=base/name;assert js(p/'EXECUTION.json')['status']=='COMPLETED';assert not list(p.glob('*ERROR*'))
++  a=np.genfromtxt(p/'history.csv',delimiter=',',names=True);plan=js(p/'test_plan.json');diag=js(p/'DIAGNOSTIC_CHECKS.json');series[name]=a
++  assert len(a)==plan['steps']+1 and np.array_equal(a['step'],np.arange(plan['steps']+1));assert np.isfinite(np.column_stack([a[k] for k in a.dtype.names])).all()
++  assert np.max(abs(a['time_s']-a['step']*plan['dt_s']))<1e-14
++  row=dict(case=name,node_count=plan['nodes'],dx_um=plan['material']['dx_m']*1e6,dt_us=plan['dt_s']*1e6,duration_ms=plan['duration_s']*1e3,wall_seconds=diag['wall_seconds'],E_Pa=None,G_Pa=None,nu=None,M_Pa=None,K_Pa=None,peak_stress_Pa=None,peak_boundary_strain=None,peak_time_s=None,peak_observed=False,first_break_s=None,first_break_type=None,broken_bulk=int(a['broken_bulk'][-1]),broken_interface=int(a['broken_interface'][-1]),energy_residual_work_fraction=float(max(abs(a['R_energy_J']))/max(abs(a['W_ext_J']))),signed_topology_energy_J=float(a['D_break_independent_J'][-1]),positive_topology_energy_J=float(np.maximum(np.diff(a['D_break_independent_J']),0).sum()),negative_topology_energy_J=float(np.minimum(np.diff(a['D_break_independent_J']),0).sum()),negative_topology_events=len(diag['negative_topology_releases']),quasistatic_scope='Fit-window only; full startup and fracture inertia retained',fit_max_KE_U=None,full_max_KE_U=float(a['KE_over_U'].max()),Gc_J_m2=None)
++  row.update(end_max_speed_m_s=float(a['max_speed_m_s'][-1]),end_K_free_J=float(a['K_free_J'][-1]),end_U_bulk_J=float(a['U_bulk_J'][-1]),max_U_contact_J=float(a['U_contact_J'].max()))
++  if name in ['M1','M2','M3','M3P']:
++   frac=abs(a['boundary_strain'])/.008;fit=(a['time_s']<=plan['ramp_s'])&(frac>=.2)&(frac<=.7);key='gamma_xz' if name=='M2' else 'eps_z';slope=np.polyfit(a[key][fit],a['stress_Pa'][fit],1)[0]
++   row[{'M1':'E_Pa','M2':'G_Pa','M3':'M_Pa','M3P':'M_Pa'}[name]]=float(slope)
++   if name=='M1':row['nu']=float(-np.polyfit(a['eps_z'][fit],.5*(a['eps_x'][fit]+a['eps_y'][fit]),1)[0])
++   row['fit_max_KE_U']=float(a['KE_over_U'][fit].max());row['fit_time_start_s']=float(a['time_s'][fit][0]);row['fit_time_end_s']=float(a['time_s'][fit][-1]);row['fit_transverse_to_axial_strain_max']=float(np.max(abs(a['eps_x'][fit])+abs(a['eps_y'][fit]))/max(abs(a['eps_z'][fit])))
++   assert row['broken_bulk']==0
++  else:
++   peak=int(np.argmax(a['stress_Pa']));row.update(peak_stress_Pa=float(a['stress_Pa'][peak]),peak_boundary_strain=float(a['boundary_strain'][peak]),peak_time_s=float(a['time_s'][peak]),peak_observed=bool(peak<len(a)-1 and a['stress_Pa'][-1]<.9*a['stress_Pa'][peak]))
++   ev=np.load(p/'break_events.npz')['events']
++   if len(ev):
++    first_step=int(ev[0,0]);row.update(first_break_s=float(ev[0,0]*plan['dt_s']),first_break_type=int(ev[0,2]),KE_over_U_immediately_before_first_break=float(a['KE_over_U'][first_step-1]),maximum_unbroken_KE_U_including_startup=float(a['KE_over_U'][:first_step].max()))
++   if len(ev):
++    gg=np.load(p/'geometry.npz');first_bond=gg['bonds'][ev[0,1]];mid=gg['X'][first_bond].mean(0);current=np.load(p/'first_break.npz')['x_m'][first_bond].mean(0)
++    row.update(first_break_atom_ids=(first_bond+1).tolist(),first_break_reference_midpoint_um=(mid*1e6).tolist(),first_break_current_midpoint_um=(current*1e6).tolist(),first_break_near_grip_transition=bool(abs(mid[2])>=.00035-150.5e-6))
++   if name in ['M5','T1','D1']:
++    area=fracture_area(p,np.load(p/'geometry.npz'),np.load(p/'end.npz'),ev);save(p/'CRACK_AREA_ATTEMPT.json',area);row['off_plane_break_fraction']=area['off_plane_break_fraction'];row['fracture_energy_status']='SIGNED_TOPOLOGY_TRANSFER_IDENTIFIED; NONNEGATIVE_Gc_NOT_IDENTIFIABLE'
++   if name=='M6':
++    g=np.load(p/'geometry.npz');initial=g['bonds'][g['bond_types']==2,0];alive=np.load(p/'end.npz')['alive'];surv=g['bonds'][(g['bond_types']==2)&alive.astype(bool),0];lost=np.setdiff1d(np.unique(initial),np.unique(surv));row['basal_interface_nodes_fully_debonded']=len(lost);row['basal_reference_patch_area_m2']=float(len(lost)*(plan['material']['dx_m']**2));row['interface_area_scope']='Assigned basal nodal patch area losing every anchor bond; not a fracture surface area from bond counts';row['failure_mode']='BULK_FIRST_OR_MIXED' if row['first_break_type']==1 else 'INTERFACE_FIRST_WITH_BULK_DAMAGE' if row['broken_bulk'] else 'INTERFACE'
++  details[name]=dict(plan=plan,diagnostics=diag,metrics=row);rows.append(row)
++ r={v['case']:v for v in rows};r['M3']['K_naive_formula_Pa']=r['M3']['M_Pa']-4*r['M2']['G_Pa']/3
++ r['M3']['K_identification']='NOT_IDENTIFIED: central transverse strain is20.55% of axial'
++ assert r['M3P']['fit_transverse_to_axial_strain_max']<1e-6
++ r['M3P']['K_Pa']=r['M3P']['M_Pa']-4*r['M2']['G_Pa']/3
++ r['M3P']['K_using_input_G_Pa']=r['M3P']['M_Pa']-4*G/3
++ mapping=dict(target=dict(E_Pa=E,G_Pa=G,nu=NU,K_Pa=K),measured=dict(E_Pa=r['M1']['E_Pa'],G_Pa=r['M2']['G_Pa'],nu=r['M1']['nu'],K_Pa=r['M3P']['K_Pa']),relative_errors=dict(E=(r['M1']['E_Pa']/E-1),G=(r['M2']['G_Pa']/G-1),K=(r['M3P']['K_Pa']/K-1)),nu_absolute_error=abs(r['M1']['nu']-NU),scope='Finite free-interior specimens, nominal grip reaction / initial area versus central fitted strain; surface/grip effects included; not uniform continuum calibration')
++ mapping['matches']={k:abs(v)<=.15 for k,v in mapping['relative_errors'].items()};mapping['matches']['nu']=mapping['nu_absolute_error']<=.02
++ comparison={}
++ for name,limit in [('T1',.10),('D1',.15)]:
++  aa=series['M5'];bb=series[name];interp=np.interp(aa['time_s'],bb['time_s'],bb['stress_Pa']);norm=np.linalg.norm(aa['stress_Pa']);curve=float(np.linalg.norm(interp-aa['stress_Pa'])/norm)
++  metrics={key:abs(r[name][key]/r['M5'][key]-1) for key in ['peak_stress_Pa','signed_topology_energy_J','first_break_s']}
++  comparison[name]=dict(relative_differences=metrics,time_aligned_stress_relative_L2=curve,interpolation='Linear analysis-only alignment on M5 physical times; displayed states never interpolated',criterion=limit,main_metrics_pass=all(v<=limit for v in metrics.values()) and curve<=limit,first_failure_type_matches=r[name]['first_break_type']==r['M5']['first_break_type'],same_duration=details[name]['plan']['duration_s']==details['M5']['plan']['duration_s'],same_amplitude_relative_error=abs(details[name]['plan']['amplitude_m']/details['M5']['plan']['amplitude_m']-1),mesh_scope='Fixed nominal dimensions/horizon/notch/loading amplitude; nodal surface/grip sampling and contact distance vary with dx; two levels only')
++ save(base/'ELASTIC_MAPPING.json',mapping);save(base/'MATERIAL_COMPARISONS.json',comparison);save(base/'MATERIAL_DETAILS.json',details)
++ fields=list(dict.fromkeys(k for r in rows for k in r))
++ with (base/'MACRO_TEST_RESULTS.csv').open('w') as f:w=csv.DictWriter(f,fieldnames=fields);w.writeheader();w.writerows(rows)
++ fig,axs=plt.subplots(2,3,figsize=(14,8),layout='constrained')
++ for j,name in enumerate(['M1','M2','M3']):
++  a=series[name];key='gamma_xz' if name=='M2' else 'eps_z';ax=axs[0,j];ax.plot(a[key]*100,a['stress_Pa'],color=COLORS[name],lw=1.5,label='Accepted load-unload');frac=abs(a['boundary_strain'])/.008;fit=(a['time_s']<=.010)&(frac>=.2)&(frac<=.7);ax.plot(a[key][fit]*100,a['stress_Pa'][fit],color='#e4a53d',lw=3,label='Fixed fit: 20–70% load');target=[E,G,K+4*G/3][j];xx=np.array([a[key].min(),a[key].max()]);ax.plot(xx*100,target*xx,'--',color='black',label='Continuum target');ax.set(xlabel=('Central shear strain (%)' if name=='M2' else 'Central axial strain (%)'),ylabel='Nominal stress (Pa)',title=f'{name}: '+['E = %.1f Pa'%r['M1']['E_Pa'],'G = %.1f Pa'%r['M2']['G_Pa'],'M = %.1f Pa'%r['M3']['M_Pa']][j]);ax.legend()
++  ax=axs[1,j];ax.plot(a['time_s']*1e3,a['KE_over_U']*100,color=COLORS[name]);ax.axhline(5,color='black',ls='--');ax.set(xlabel='Physical time (ms)',ylabel='K / U (%)',title='Full startup and unloading retained');ax.set_yscale('symlog',linthresh=1)
++ fig.suptitle('Fixed LPS: G=940 Pa, K=33.33 kPa; free interiors; 500 s⁻¹ numerical damping');figsave(fig,figs,'01_elastic_response')
++ fig,axs=plt.subplots(1,3,figsize=(14,4),layout='constrained')
++ a=series['M1'];axs[0].plot(a['eps_z']*100,a['eps_x']*100,label='x transverse');axs[0].plot(a['eps_z']*100,a['eps_y']*100,'--',label='y transverse');axs[0].set(xlabel='Central axial strain (%)',ylabel='Transverse strain (%)',title=f'M1 ν = {r["M1"]["nu"]:.4f} (target {NU:.4f})');axs[0].legend()
++ for name in ['M4','M5']:a=series[name];axs[1].plot(a['boundary_strain']*100,a['stress_Pa'],label=name,color=COLORS[name]);axs[1].scatter(r[name]['peak_boundary_strain']*100,r[name]['peak_stress_Pa'],s=24,color=COLORS[name])
++ axs[1].set(xlabel='Grip engineering strain (%)',ylabel='Nominal tensile stress (Pa)',title='New free-interior specimens');axs[1].legend()
++ for name in ['M5','T1','D1']:a=series[name];axs[2].plot(a['time_s']*1e3,a['stress_Pa'],label=name,color=COLORS[name],lw=1)
++ axs[2].set(xlabel='Physical time (ms)',ylabel='Notched nominal stress (Pa)',title='T1: dt/2; D1: 40 µm / fixed horizon');axs[2].legend();figsave(fig,figs,'02_strength_and_controls')
++ fig,axs=plt.subplots(2,2,figsize=(12,8),layout='constrained')
++ for ax,name in zip(axs.ravel(),['M1','M2','M5','M6']):
++  a=series[name]
++  for key,label in [('W_ext_J','Boundary work'),('U_bulk_J','Source-consistent bulk U'),('U_contact_J','Conservative contact U'),('K_free_J','Free-DOF K'),('D_num_J','Numerical damping'),('D_break_independent_J','Signed topology transfer'),('R_energy_J','Independent residual')]:ax.plot(a['time_s']*1e3,a[key]*1e9,label=label,lw=1)
++  ax.plot(a['time_s']*1e3,a['native_bond_pe_times_V_J']*1e9,'--',color='gray',label='Native bond pe × V (incomplete)');ax.set(xlabel='Physical time (ms)',ylabel='Energy (nJ)',title=name+'; Gc unavailable' if name in ['M5','M6'] else name+' no fracture');ax.legend(fontsize=8,ncol=2)
++ figsave(fig,figs,'03_energy_ledger')
++ fig,axs=plt.subplots(1,3,figsize=(14,4),layout='constrained');a=series['M6'];axs[0].plot(a['displacement_m']*1e6,a['stress_Pa'],color=COLORS['M6']);axs[0].set(xlabel='Top grip opening (µm)',ylabel='Nominal traction (Pa)',title='M6: 3 fixed anchor layers')
++ for key,label in [('broken_bulk','Bulk'),('broken_interface','Interface')]:axs[1].plot(a['time_s']*1e3,a[key],label=label)
++ axs[1].legend();axs[1].set(xlabel='Physical time (ms)',ylabel='Actual broken bonds',title=r['M6']['failure_mode'])
++ a=series['M5'];axs[2].plot(a['time_s']*1e3,a['D_break_independent_J']*1e9,label='Net topology transfer');neg=np.diff(a['D_break_independent_J'])<0;axs[2].scatter(a['time_s'][1:][neg]*1e3,a['D_break_independent_J'][1:][neg]*1e9,s=7,color='crimson',label='Negative release event');axs[2].legend();axs[2].set(xlabel='Physical time (ms)',ylabel='Energy (nJ)',title='M5: cannot call all releases dissipation');figsave(fig,figs,'04_interface_and_energy_limits')
++ # All real nodes; one-plane cutaway bond display to prevent an opaque line mass.
++ for name in ['M4','M5','M6']:
++  p=base/name;g=np.load(p/'geometry.npz');X=g['X'];b=g['bonds'];anc=g['anchors'];roi=g['roi'];types=g['bond_types'];fig=plt.figure(figsize=(17,6));fig.subplots_adjust(left=.02,right=.98,bottom=.10,top=.80,wspace=.12)
++  snapshots={lab:dict(np.load(p/(lab+'.npz'))) for lab in ['initial','first_break','peak','end']}
++  allx=np.concatenate([snap['x_m'] for snap in snapshots.values()])*1e3;lo=allx.min(0);hi=allx.max(0);pad=.04*(hi-lo);lo-=pad;hi+=pad
++  ev=np.load(p/'break_events.npz')['events'];first_nodes=b[int(ev[0,1])] if len(ev) else np.array([],int)
++  for j,label in enumerate(['initial','first_break','peak','end']):
++   ax=fig.add_subplot(1,4,j+1,projection='3d');snap=snapshots[label];x=snap['x_m']*1e3;alive=snap['alive'].astype(bool)
++   degree=np.bincount(b[alive].ravel(),minlength=len(x));isolated=degree==0;ax.scatter(*x[~anc&~isolated].T,s=6,c='#b43c37',alpha=.75,depthshade=False);ax.scatter(*x[anc].T,s=6,c='#3378aa',depthshade=False)
++   if isolated.any():ax.scatter(*x[isolated].T,s=8,c='#7b858e',depthshade=False)
++   cut=(abs(X[b[:,0],1])<=55e-6)&(abs(X[b[:,1],1])<=55e-6)&alive
++   seg=x[b[cut]];cs=np.where(types[cut]==2,'#c99b35',np.where(types[cut]==3,'#638bb0','#b3a5a1'));ax.add_collection3d(Line3DCollection(seg,colors=cs,linewidths=.25,alpha=.35))
++   if label=='first_break':ax.scatter(*x[first_nodes].T,s=45,c='#e1b42d',edgecolors='black',linewidths=.5,depthshade=False)
++   ax.set(xlabel='x (mm)',ylabel='y (mm)',zlabel='z (mm)',title=f'{name} {label.replace("_"," ")}\nt={float(snap["time_s"])*1e3:.3f} ms',xlim=(lo[0],hi[0]),ylim=(lo[1],hi[1]),zlim=(lo[2],hi[2]),xticks=[-.3,0,.3],yticks=[-.3,0,.3]);ax.view_init(elev=16,azim=-55);ax.set_box_aspect(hi-lo);ax.tick_params(labelsize=9);ax.grid(True)
++  fig.suptitle('Actual accepted states; common physical axis limits; surviving bonds in central y slab\nRed=clot, blue=anchors, gray=isolated, gold=first-break nodes; no shell',y=.98,fontsize=13);figsave(fig,figs,'05_states_'+name,False)
++ # Boundary/measurement geometry from actual registered node masks.
++ fig=plt.figure(figsize=(13,4.8),layout='constrained')
++ for j,name in enumerate(['M1','M2','M3']):
++  geo=np.load(base/name/'geometry.npz');x=geo['X']*1e3;mask=geo['prescribed_mask'].any(1);roi=geo['roi'];ax=fig.add_subplot(1,3,j+1,projection='3d')
++  ax.scatter(*x[~mask].T,s=5,color='#b43c37',alpha=.6,label='Free interior')
++  ax.scatter(*x[mask].T,s=5,color='#3e78a4',alpha=.6,label='Boundary: selected DOFs')
++  ax.scatter(*x[roi].T,s=9,facecolors='none',edgecolors='#71409a',linewidths=.5,label='Central measurement ROI')
++  ax.view_init(elev=16,azim=-55);ax.set(xlabel='x (mm)',ylabel='y (mm)',zlabel='z (mm)',title=name+': '+['axial-only grips','x/z grip motion; free interior','lateral boundary normals fixed'][j]);ax.set_box_aspect([.6,.6,1]);ax.tick_params(labelsize=8)
++  if j==1:ax.legend(loc='upper center',bbox_to_anchor=(.5,-.14),fontsize=9)
++ fig.suptitle('600 × 600 × 1000 µm; dx=50 µm; horizon=150.5 µm; selected boundary DOFs only')
++ figsave(fig,figs,'08_actual_geometry_and_ROI',False)
++ fig,axs=plt.subplots(1,3,figsize=(14,4.5),layout='constrained')
++ for name,color in [('M3','#888888'),('M3P','#226ba1')]:
++  a=series[name];axs[0].plot(a['eps_z']*100,a['stress_Pa'],color=color,label=name)
++  axs[1].plot(a['time_s']*1e3,a['eps_x']*100,color=color,label=name+' x');axs[1].plot(a['time_s']*1e3,a['eps_y']*100,'--',color=color,label=name+' y')
++  axs[2].plot(a['time_s']*1e3,a['R_energy_J']*1e9,color=color,label=name)
++ xx=np.array([series['M3P']['eps_z'].min(),0.]);axs[0].plot(xx*100,(K+4*G/3)*xx,'--',color='black',label='Continuum M target')
++ axs[0].set(xlabel='Central axial strain (%)',ylabel='Nominal stress (Pa)',title=f'M3P: K = {r["M3P"]["K_Pa"] / 1000:.3f} kPa');axs[0].legend()
++ axs[1].set(xlabel='Physical time (ms)',ylabel='Central lateral strain (%)',title='M3 is not locally uniaxial strain');axs[1].legend()
++ axs[2].set(xlabel='Physical time (ms)',ylabel='Independent residual (nJ)',title='M3P: K estimate after boundary check');axs[2].legend()
++ fig.suptitle('Registered diagnostic9: no parameter tuning; only transverse boundary condition changed')
++ figsave(fig,figs,'10_constrained_compression_diagnostic')
++ return rows,mapping,comparison
++
++if __name__=='__main__':
++ base=Path(sys.argv[1]);figs=Path(sys.argv[2]);figs.mkdir(parents=True,exist_ok=True);material(base,figs)
+diff --git a/analysis/material_macro_audit_v1/remote.py b/analysis/material_macro_audit_v1/remote.py
+new file mode 100644
+index 0000000..93a1c82
+--- /dev/null
++++ b/analysis/material_macro_audit_v1/remote.py
+@@ -0,0 +1,21 @@
++"""Explicit task-scoped transport; no deletion, credentials, or whole-tree sync."""
++import json,subprocess,sys,shlex
++from pathlib import Path
++C=json.loads(Path('/home/lzy/projects/.macro_audit_current.json').read_text())
++SSH=['ssh','-p','15283','-i','/home/lzy/.ssh/vast_step3b_ed25519','-o','IdentitiesOnly=yes','-o','BatchMode=yes','root@95.3.33.46']
++if sys.argv[1]=='exec':
++ raise SystemExit(subprocess.call(SSH+[sys.argv[2]]))
++if sys.argv[1]=='python':
++ raise SystemExit(subprocess.call(SSH+['/workspace/y_clot/envs/clot/bin/python -'],stdin=sys.stdin))
++if sys.argv[1]=='sync':
++ files=sys.argv[2:]
++ for rel in files:
++  src=Path(C['root'])/rel;dest=Path('/workspace/y_clot/project')/rel
++  subprocess.run(SSH+['mkdir -p '+shlex.quote(str(dest.parent))],check=True)
++  # New task paths only; existing files must be prior versions of this task.
++  subprocess.run(['scp','-P','15283','-i','/home/lzy/.ssh/vast_step3b_ed25519','-o','IdentitiesOnly=yes',str(src),'root@95.3.33.46:'+str(dest)],check=True)
++ p=Path(C['local'])/'provenance/SYNC_EXPLICIT.json'
++ old=json.loads(p.read_text()) if p.exists() else []
++ import hashlib
++ old.extend({'path':r,'sha256':hashlib.sha256((Path(C['root'])/r).read_bytes()).hexdigest()} for r in files)
++ p.write_text(json.dumps(old,indent=2))
+diff --git a/analysis/material_macro_audit_v1/transport_plots.py b/analysis/material_macro_audit_v1/transport_plots.py
+new file mode 100644
+index 0000000..e81c34c
+--- /dev/null
++++ b/analysis/material_macro_audit_v1/transport_plots.py
+@@ -0,0 +1,77 @@
++"""Actual-step / saved-state distinction, physical-time weighted comparisons."""
++import sys,json
++from pathlib import Path
++import numpy as np,h5py
++import matplotlib
++matplotlib.use('Agg')
++import matplotlib.pyplot as plt
++from scipy.sparse.csgraph import connected_components
++sys.path.insert(0,str(Path(__file__).parent))
++from postprocess import save,js,figsave
++R=1.78e-6
++
++def measure(path):
++ with h5py.File(path/'trajectory.h5') as h:
++  t=h['time_s'][:];x=h['positions_m'][:,0];ids=h['particle_id'][:];dt=h['trajectory/physical_dt_s'][:];quality=h['quality/raw_F1_diagonal'][:,0];r=h['radii_m'][:]
++ n=len(ids);delta=x[:,:,None,:]-x[:,None,:,:];distance=np.linalg.norm(delta,axis=-1);distance[:,np.arange(n),np.arange(n)]=np.inf;gap=distance-2*R;near=(gap<=.02*R).any(2).mean(1);aggregation=[];largest=[]
++ for g in gap:
++  count,lab=connected_components(g<=.1*R,directed=False);size=np.bincount(lab);largest.append(size.max()/n);aggregation.append(np.mean(size[lab]>=2))
++ largest=np.array(largest);aggregation=np.array(aggregation);weights=np.diff(t)
++ weighted=lambda a:float(np.sum(.5*(a[:-1]+a[1:])*weights)/(t[-1]-t[0]))
++ cum=np.r_[0,np.cumsum(dt)];ix=np.searchsorted(cum,t);ix=np.clip(ix,0,len(cum)-1);clockerr=np.minimum(abs(cum[ix]-t),abs(cum[np.maximum(ix-1,0)]-t)).max()
++ d=dict(saved_frames=len(t),accepted_steps=len(dt),dt_quantiles_s=np.quantile(dt,[0,.5,.9,.99,1]),saved_interval_quantiles_s=np.quantile(np.diff(t),[0,.5,1]),max_saved_clock_vs_accumulated_accepted_dt_error_s=clockerr,total_accepted_time_s=dt.sum(),initial_zero_dt_rows=int((dt==0).sum()),timeweighted_largest_fraction=weighted(largest),timeweighted_aggregation_fraction=weighted(aggregation),timeweighted_nearcontact_fraction=weighted(near),weighting='Trapezoidal integration on identical actual 0.5ms saved states; no interpolation; substep-dense-region bias avoided; nearcontact inter-save behavior is not fully sampled in baseline',minimum_saved_gap_over_R=float(gap.min()/R),summary=js(path/'SUMMARY.json'))
++ return d,dict(t=t,x=x,dt=dt,quality=quality,largest=largest,aggregation=aggregation,near=near,ids=ids,r=r)
++
++def run(base,figs):
++ mb=base/'microbubble';baseline=Path(js(mb/'test_plan.json')['baseline']);b,bdata=measure(baseline);h,hdata=measure(mb/'dt_half');stats=np.load(mb/'dt_half/accepted_step_audit.npz')['values']
++ assert np.array_equal(bdata['ids'],hdata['ids']) and np.array_equal(bdata['r'],hdata['r']) and np.array_equal(bdata['x'][0],hdata['x'][0]);assert np.max(abs(bdata['t']-hdata['t']))<1e-13
++ c0=js(baseline/'CONFIG.json');c1=js(mb/'dt_half/CONFIG.json');changes={k:[c0[k],c1[k]] for k in c0 if c0[k]!=c1[k]};assert list(changes)==['dt_s']
++ diffs={k:abs(h[k]-b[k]) for k in ['timeweighted_largest_fraction','timeweighted_aggregation_fraction','timeweighted_nearcontact_fraction']}
++ inst=js(mb/'INSTRUMENTATION.json');maxpos=float(np.linalg.norm(hdata['x']-bdata['x'],axis=-1).max());comdiff=float(np.linalg.norm(hdata['x'].mean(1)-bdata['x'].mean(1),axis=-1).max())
++ result=dict(baseline=b,half_step=h,actual_config_changes=changes,initial_ids_radii_positions_identical=True,core_normalized_differences=diffs,cluster_metric_screen_pass=all(v<=.05 for v in diffs.values()),maximum_same_ID_saved_position_difference_over_R=maxpos/R,maximum_saved_COM_difference_over_R=comdiff/R,half_step_instrumentation=inst,half_timeweighted_all_accepted_step_nearcontact_fraction=float(np.sum(stats[:,7]*hdata['dt'])/sum(hdata['dt'])),half_actual_displacement_over_R_quantiles=np.quantile(stats[:,0],[0,.5,.9,.99,1]),half_start_prediction_over_R_quantiles=np.quantile(stats[:,1],[0,.5,.9,.99,1]),half_endpoint_projection_over_R_quantiles=np.quantile(stats[:,2],[0,.5,.9,.99,1]),half_raw_positive_gap_closing_s_quantiles=np.quantile(stats[:,5][stats[:,5]<1e8],[0,.5,.9,.99,1]),positive_gap_interpretation='No denominator floor; near machine-zero positive gaps produce min closing time3.4e-14s and very large dt/closing ratios. Projection enforces a geometric budget; this does not establish temporally resolved lubrication/contact physics.',baseline_actual_displacement_per_step='UNAVAILABLE; baseline diagnostic field max_physical_substep_displacement is actually pre-projection prediction, verified source kernels.py predict(); never relabel it accepted displacement',RK_stage_scope='NOT_APPLICABLE: this actual F6/F7 branch is Euler prediction +12 contact passes, not old RK tracker. Per-pass and endpoint-net projection explicitly distinct.',stage_model_scope='Mature initial cluster persists across 0–1s; no de-novo cluster-formation or whole6s claim',physics_validity='UNCALIBRATED_NEAR_FIELD_EXPLORATORY; independent of timestep screen',not_run='No full baseline rerun, no max_displacement_per_radius sweep: this actual backend has no such cap',files_missing_or_schema_replaced='F7 uses CONFIG/IDENTITY/SUMMARY plus trajectory.h5; old particles/events.jsonl/PHYSICS_BANNER names not present. Equivalent actual metadata audited, no invented files.')
++ # Remove only rigid pose for a diagnostic of internal rearrangement; never alter saved states.
++ aligned=[];pairdiff=[];edge_disagreement=[]
++ for xb,xh in zip(bdata['x'],hdata['x']):
++  xb=xb-xb.mean(0);xh=xh-xh.mean(0);u,_,vt=np.linalg.svd(xh.T@xb);rotation=u@vt
++  if np.linalg.det(rotation)<0:u[:,-1]*=-1;rotation=u@vt
++  aligned.append(float(np.sqrt(np.mean(np.sum((xh@rotation-xb)**2,axis=1)))/R))
++  db=np.linalg.norm(xb[:,None]-xb[None,:],axis=-1);dh=np.linalg.norm(xh[:,None]-xh[None,:],axis=-1);tri=np.triu_indices(len(xb),1)
++  pairdiff.append(float(np.sqrt(np.mean((db[tri]-dh[tri])**2))/R));eb=db[tri]<=2.1*R;eh=dh[tri]<=2.1*R;edge_disagreement.append(float(np.count_nonzero(eb!=eh)/max(np.count_nonzero(eb|eh),1)))
++ result['max_rigid_pose_aligned_same_ID_RMS_over_R']=max(aligned)
++ result['max_pair_distance_RMS_difference_over_R']=max(pairdiff)
++ result['max_cluster_edge_Jaccard_disagreement']=max(edge_disagreement)
++ result['internal_trajectory_timestep_status']='NOT_ESTABLISHED: multi-radius same-ID divergence despite stable cluster size/COM; no certified cluster AI labels'
++ result['registered_geometric_gate_pass']=all(s['summary']['quality']['error_bits']==0 and s['summary']['quality']['max_accepted_penetration_m']/R<=.01 and s['summary']['quality']['max_contact_pass_correction_m']/R<=.1 for s in [b,h])
++ result['allowed_AI_labels']='NO_CERTIFIED_CLUSTER_AI_LABELS; retain audit observables as exploratory records only'
++ save(mb/'MICROBUBBLE_AUDIT.json',result)
++ np.savez_compressed(mb/'COMPARISON_SERIES.npz',time_s=bdata['t'],largest_baseline=bdata['largest'],largest_half=hdata['largest'],near_baseline=bdata['near'],near_half=hdata['near'],baseline_quality=bdata['quality'],half_quality=hdata['quality'],half_step_time_s=np.cumsum(hdata['dt']),half_step_audit=stats)
++ fig,axs=plt.subplots(2,2,figsize=(12,8),layout='constrained');ax=axs[0,0]
++ for d,label in [(bdata,'Baseline'),(hdata,'dt/2')]:ax.plot(np.cumsum(d['dt']),d['dt']*1e6,label=label,lw=1)
++ ax.set(xlabel='Physical time (s)',ylabel='Actual accepted dt (µs)',title='10 → 5 µs; saved interval = 500 µs');ax.legend()
++ ax=axs[0,1]
++ for d,label in [(bdata,'Baseline'),(hdata,'dt/2')]:ax.plot(d['t'],d['quality'][:,:,6].max(1)/R,label=label+' cumulative max/pass')
++ display=np.unique(np.r_[np.arange(0,len(stats),100),len(stats)-1,np.argmax(stats[:,:3],axis=0),np.argmax(stats[:,6])]);ax.plot(np.cumsum(hdata['dt'])[display],stats[display,2],alpha=.6,lw=.7,label='dt/2 endpoint net (stride100 + maxima)');ax.set(xlabel='Physical time (s)',ylabel='Projection / R',title='Per-pass maximum ≠ endpoint net');ax.legend(fontsize=8)
++ ax=axs[1,0]
++ for d,label in [(bdata,'Baseline'),(hdata,'dt/2')]:ax.plot(d['t'],d['largest'],label=label+' largest',lw=1.2);ax.plot(d['t'],d['near'],'--',label=label+' near-contact',lw=1)
++ ax.set(xlabel='Physical time (s)',ylabel='Particle fraction',ylim=(-.03,1.08),title='Time weighted, matched actual saved times');ax.legend(fontsize=8)
++ ax=axs[1,1];t=np.cumsum(hdata['dt']);ax.plot(t[display],stats[display,0],label='Actual accepted displacement');ax.plot(t[display],stats[display,1],alpha=.6,label='Step-start prediction');ax.set(xlabel='Physical time (s)',ylabel='Maximum displacement / R',title='dt/2 audit; display stride100 + maxima');ax.legend(fontsize=8)
++ fig.suptitle('F7 replay M0, 32 bubbles; fixed model / controls / initial IDs; near-field EXPLORATORY');figsave(fig,figs,'06_microbubble_timestep')
++ fig,axs=plt.subplots(1,3,figsize=(15,4.5),layout='constrained')
++ same=np.linalg.norm(hdata['x']-bdata['x'],axis=-1).max(1)/R
++ axs[0].plot(bdata['t'],same,label='Maximum same-ID separation / R');axs[0].plot(bdata['t'],aligned,label='RMS after rigid-pose alignment / R');axs[0].plot(bdata['t'],pairdiff,label='Pair-distance RMS difference / R');axs[0].set(xlabel='Physical time (s)',ylabel='Difference / R',title='Internal trajectories are sensitive');axs[0].legend(fontsize=8)
++ axs[1].plot(bdata['t'],edge_disagreement,color='#b33132');axs[1].set(xlabel='Physical time (s)',ylabel='Contact-neighbor edge Jaccard disagreement',ylim=(0,1),title='Cluster size alone hides rearrangement')
++ tm=np.cumsum(hdata['dt']);axs[2].plot(tm[display],stats[display,6],lw=.7,color='#8b4693',label='Stride100 + true maximum');ix=int(np.argmax(stats[:,6]));axs[2].scatter([tm[ix]],[stats[ix,6]],s=22,c='crimson',label=f'Max = {stats[ix,6]:.3g}');axs[2].legend(fontsize=8);axs[2].set_yscale('log');axs[2].set(xlabel='Physical time (s)',ylabel='dt / minimum positive gap-closing time',title='Raw positive gaps; no denominator floor')
++ fig.suptitle('No certified cluster AI labels: finite geometric tolerance does not establish internal time convergence')
++ figsave(fig,figs,'09_microbubble_internal_sensitivity')
++
++ y=js(base/'production_audit/Y_AUDIT.json');native=np.genfromtxt(base/'production_audit/Y_NATIVE_SPEED_TIMELINE.csv',delimiter=',',names=True,dtype=None,encoding='utf8');tr=np.load(base/'production_audit/Y_TRANSPORT_SPEED_TIMELINE.npz')
++ fig,axs=plt.subplots(1,3,figsize=(15,4),layout='constrained')
++ for source,label in [('saved_frame_force_audit','All nodes: saved-record maxima'),('detached_force_audit','Detached: each native step')]:
++  sel=native['source']==source;axs[0].plot(native['time_s'][sel]*1e3,native['max_node_speed_m_s'][sel],label=label,lw=.9)
++ axs[0].set(xlabel='Native time (ms)',ylabel='Full-step speed (m/s)',title='Native 0–2.33 ms');axs[0].legend(fontsize=8)
++ axs[1].scatter(tr['relative_time_s'][::100],tr['speed_m_s'][::100],s=2,alpha=.2,color='#286f96');axs[1].scatter([y['transport']['max_accepted_endpoint_COM_speed']['start_relative_time_s']],[y['transport']['max_accepted_endpoint_COM_speed']['m_s']],s=35,color='crimson',marker='x',label='Maximum including handoff');axs[1].legend(fontsize=8);axs[1].set(xlabel='Time after handoff (s)',ylabel='Accepted COM speed (m/s)',title='232,276 actual steps; display stride100')
++ axs[2].hist(tr['dt_s']*1e3,bins=60,color='#328692');axs[2].set(xlabel='Transport accepted dt (ms)',ylabel='Step count',title='Maximum 5 ms; displacement ≤20 µm');axs[2].set_yscale('log');figsave(fig,figs,'07_Y_native_transport_audit')
++ save(base/'TIMESTEP_AUDIT.json',dict(material=js(base/'MATERIAL_COMPARISONS.json') if (base/'MATERIAL_COMPARISONS.json').exists() else 'PENDING',microbubble=result,production=y,production_crosschecks=js(base/'production_audit/Y_CROSSCHECKS.json')))
++ print(json.dumps({k:v for k,v in result.items() if k in ['core_normalized_differences','cluster_metric_screen_pass','registered_geometric_gate_pass','maximum_same_ID_saved_position_difference_over_R','maximum_saved_COM_difference_over_R']},indent=2))
++if __name__=='__main__':
++ b=Path(sys.argv[1]);f=Path(sys.argv[2]);f.mkdir(parents=True,exist_ok=True);run(b,f)
+diff --git a/analysis/material_macro_audit_v1/update_document.py b/analysis/material_macro_audit_v1/update_document.py
+new file mode 100644
+index 0000000..6fc6545
+--- /dev/null
++++ b/analysis/material_macro_audit_v1/update_document.py
+@@ -0,0 +1,58 @@
++"""Task-specific conditional WSL edit, with immediate hash check and text backup."""
++import datetime,difflib,hashlib,json,os,stat,tempfile
++from pathlib import Path
++
++C=json.loads(Path('/home/lzy/projects/.macro_audit_current.json').read_text())
++b=Path(C['local']);p=Path('/home/lzy/projects/clot_rupture.md')
++checks=json.loads((b/'IMPLEMENTATION_CHECKS.json').read_text())
++assert all(checks[n]['independent_gradient'] and checks[n]['energy_residual_below5percent'] for n in ['M1','M2','M3','M3P','M4','M5','M6','T1','D1'])
++raw=p.read_bytes();before_hash=hashlib.sha256(raw).hexdigest()
++assert before_hash==json.loads((b/'provenance/local_start.json').read_text())['document_sha256'],'Concurrent edit: reread and merge before writing'
++s=raw.decode();before=s
++def replace(old,new):
++ global s
++ assert s.count(old)==1,old[:100]
++ s=s.replace(old,new)
++
++replace('这两个数交给 LPS 模型（之前讲过：K 管“胀”，G 管“歪”）。',
++ '这两个数交给 LPS 模型（之前讲过：K 管“胀”，G 管“歪”）。它们来自牛全血凝块的未损伤小应变映射，不等于完整 Yeoh 或损伤模型。\n\n**本轮检查**：内部点自由、只约束加载边界的小试样测得 $E=2.681$ kPa、$G=0.759$ kPa、$\\nu=0.4831$。E 比理论映射低约 4.0%，G 低约 19.2%，后者没有通过预设的 15% 筛查。原侧边固定试样的中心仍有横向应变，不能直接拿来算 K；补做固定横向周期盒的压缩，得到 $K=33.55$ kPa（用测得 G 换算；用输入 G 则为 33.31 kPa）。这些是有限试样结果，生产参数没有因此改动。')
++replace('**门槛 s₀₀ 怎么定**：做一个小方块（8×8×8 个点）的数值拉伸实验，量出它最大能承受多大应力；调 s₀₀，直到这个强度落进 Liu 2024 的实验范围。',
++ '**门槛 s₀₀ 怎么定**：旧标定在 8×8×8 点小方块中给全部节点规定仿射运动，得到约 6.78 kPa；旧界面约 1.96 kPa 来自规定刚体拉脱。这些历史结果保留，但不能当成内部自由试样已验证的材料强度。目前仍用本体 $s_{00}=0.15$、界面 $s_{00}\\approx0.140624859375$；界面参考是猪皮代理，不是人体血管内壁粘附。')
++start=s.index('反过来算，$s_{00}=0.15$');end=s.index('\n\n---',start)
++replace(s[start:end],
++ '这个公式属于键型模型，不能直接给当前 state-based LPS 指定断裂能；**0.2 J/m² 不是本模型已知的断裂能**。本轮重读 Liu 2024 正文和原始补充材料：18.27±1.45 J/m² 是最低加载率下的实验总断裂能；约 6–8 J/m² 是特定模型与强度条件下反演的 intrinsic work，两者不能混为同一个范围。\n\n**本轮实际拉伸**：600×600×1000 µm、点距 50 µm、作用半径 150.5 µm，内部点自由。无缺口、缺口和三层锚点拉脱的名义峰值分别为 **0.488、0.303、0.475 kPa**，都已越过峰值；前两者首断发生在夹具过渡角点，拉脱是本体先断、混合损伤，所以不能直接称为血块固有强度或纯界面粘附强度。加载采用 24 ms 平滑时程，不是论文慢速实验复现。\n\n断前/断后拓扑的储能变化已独立计算，能量残差在预设门槛内；但部分变化为负，缺口试样约 87% 的新断键不跨预设裂面，单裂纹新增面积无法可靠识别，因此 **Gc 仍未识别**。时间步 0.5→0.25 µs 的峰值差约 0.003%、整条应力曲线差约 4.78%；点距 50→40 µm 时曲线差约 44.2%、净拓扑能量差约 48.1%，不能宣称网格收敛。现在没有足够证据写成“强度对了但非常脆”，也不能据此认定必须加软化。')
++replace('意思是让力作用得够久，整个血块都能“感受到”它，而不是只有表面抖一下。',
++ '意思是让力作用得够久，整个血块都能“感受到”它，而不是只有表面抖一下。这个 200 Pa 脉冲仍是工程测试输入，尚未由微泡或 PZT 功率标定。\n\n**微泡补充核查**：平行项目当前 F7 路线采用 Euler 预测和 12 次接触投影。对一个可追溯的 32 泡成熟群集、0–1 s 工况，仅将实际步长从 10 µs 减到 5 µs（保存间隔是 500 µs）。粗粒度群集比例接近、接受穿透低于既有 0.01R 几何门槛，但同 ID 粒子位置最大差约 6.85R，内部接触轨迹未建立时间收敛。近场物理也未标定，不能据此认证群集 AI 标签或本节载荷。')
++replace(r'$F=15\,k\,\bar V\,\frac{d-r}{\delta}\quad(r<d),\qquad k=\frac{18K}{\pi\delta^4},\qquad d=1.0\,\Delta x$',
++ r'$F_i=15\,k\,V_i\bar V\,\frac{d-r}{\delta}\quad(r<d),\qquad k=\frac{18K}{\pi\delta^4},\qquad d=1.0\,\Delta x$'+'\n\n这里写的是 N：原生数组先给力密度，现有程序乘本点体积 $V_i$ 后才加外载、壁力和阻尼。本轮修正的是文字中漏写的体积因子，生产程序的转换顺序已核对正确。')
++old=next(t for t in s.split('\n\n') if t.startswith(r'$\Delta t=0.5\ \mu$s，共'))
++replace(old,r'$\Delta t=0.5\ \mu$s，共 4,660 步，即 2\.33 ms。单弹簧振子的 Verlet 稳定条件是 $\omega\Delta t<2$；当前壁弹簧 $\omega\Delta t=0.316$，材料纵波速度约 5.88 m/s，$c_L\Delta t/\Delta x=0.0588$。这些是有用的尺度筛查，不能单独证明整个非局部网络与断裂接触的稳定性。'+'\n\n**能量核对**：原生 PE 即使乘体积，仍未完整计入 LPS 偏能；不能只看变量名 U_J 就拿来算断裂能。本轮增加与锁定源码的力相容的只读势能评估，并独立记录外功、自由点动能、接触储能、数值阻尼、带符号拓扑能量和残差。没有改动生产受力与历史轨迹；依赖旧 PE 的能量解释需要复审。')
++replace('质心落在流场网格的某个四面体里，就用四个顶点的速度按距离加权平均：如果质心落在网格外面，不外推，这一步不给力。',
++ '质心落在流场网格的某个四面体里，就用四个顶点的速度按四面体重心坐标作线性加权（P1 插值）：如果质心落在网格外面，不外推，这一步不给力。')
++replace('新版碎块的速度和血流基本一致，代价是计算时间变成约 3 倍，因为每一步都要调用一次 Python。',
++ '新版末态碎块速度接近血流，但这不代表整个过程中都很慢。当前全点力记录有 2,104 个保存时刻，重建完整步速度后，已保存节点最大值为 **3.91997 m/s**（0.3795 ms，节点 364）；脱离节点的 4,068 个逐步记录中，游离组件质心最大值为 **3.72918 m/s**。没有每步保存的附着节点峰值仍未知，不能用末态中位数代替。4,661 个原生壁日志时刻中无活动罚接触，最小中心净距约 25.80 µm。计算时间变成约 3 倍的历史记录保留，原因是每一步都要调用一次 Python。')
++replace('- **定理**：这是线性常微分方程的精确解，所以就算步长比 τ 大很多也不会算炸。代码规定每步不超过 5 ms，且一步位移不超过 20 µm。',
++ '- **定理的范围**：这是单步内冻结 $\\mathbf u$ 和 τ 后的精确解，不是空间变流、接触和整段轨迹已收敛的证明。实际 232,276 条组件积分记录中，步长最大 5 ms、中位约 3.463 ms，接受位移不超过 20 µm；包含交接初态的质心速度最大约 0.02994 m/s。')
++replace('- **管壁处理**：如果碎块里某个点要钻进管壁 5 µm 以内，就沿法向把它推回来，并去掉朝向管壁的速度（不弹、不摩擦）。',
++ '- **管壁处理**：如果碎块里某个点要钻进管壁 5 µm 以内，就沿法向把它推回来，并去掉朝向管壁的速度（不弹、不摩擦）。实际有 1,025 次约束事件，最大位置修正约 0.221 µm；原生段的 20 µm 罚接触已切换成这里的 5 µm 约束。\n\n- **交接范围**：质心位置、速度、同态拖曳律和绝对时钟已核对连续；内部成员偏移与附着主体随后冻结，内部速度最多截断约 0.117 m/s。这不等于内部转动、变形也连续。')
++report=b/'REVIEW_LAMMPS_MATERIAL_MACRO_CALIBRATION_AND_TIMESTEP_AUDIT_V1.md'
++replace('所以结论是 **附着主体 \\+ 表面碎屑脱落**，还没有出现大块断裂。',
++ '所以结论是 **附着主体 \\+ 表面碎屑脱落**，还没有出现大块断裂。\n\n本轮 [材料与时间步审查]('+str(report)+') 保留了实际曲线、点阵状态和适用限制；数值检查通过不等于材料匹配或生物实验验证。下一轮唯一优先项是重审自由内部试样与旧仿射小单元的宏观强度映射及边界影响，再决定是否调整本构。')
++assert s!=before
++backup=b/'provenance/clot_rupture.immediate_before.md';assert not backup.exists(),'This task edit has already been attempted'
++backup.write_bytes(raw)
++diff=''.join(difflib.unified_diff(before.splitlines(True),s.splitlines(True),fromfile=str(backup),tofile=str(p)))
++(b/'provenance/clot_rupture.diff').write_text(diff)
++assert hashlib.sha256(p.read_bytes()).hexdigest()==before_hash,'File changed before write; backup and proposal retained'
++mode=stat.S_IMODE(p.stat().st_mode)
++with tempfile.NamedTemporaryFile(mode='w',encoding='utf-8',dir=p.parent,prefix='.clot_rupture_update_',delete=False) as f:
++ f.write(s);f.flush();os.fsync(f.fileno());tmp=Path(f.name)
++os.chmod(tmp,mode)
++assert hashlib.sha256(p.read_bytes()).hexdigest()==before_hash,'Concurrent edit just before replacement'
++os.replace(tmp,p)
++after_hash=hashlib.sha256(p.read_bytes()).hexdigest();assert p.read_text()==s
++(b/'provenance/clot_rupture.after.md').write_text(s)
++receipt=dict(status='UPDATED_ACTUAL_WSL_FILE',path=str(p),utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),before_sha256=before_hash,after_sha256=after_hash,immediate_backup=str(backup),diff=str(b/'provenance/clot_rupture.diff'),concurrent_change_detected=False,condition='Independent implementation/energy evidence checked; reliable mismatches and identifiability limits retained',scope='Existing sections IV-IX and final review link; original headings and historic observations preserved')
++(b/'DOCUMENT_UPDATE.json').write_text(json.dumps(receipt,indent=2,ensure_ascii=False))
++f=b/'FINAL_STATUS.json';d=json.loads(f.read_text());d['document_update']=receipt;f.write_text(json.dumps(d,indent=2,ensure_ascii=False))
++print(json.dumps(receipt,indent=2,ensure_ascii=False))
+diff --git a/analysis/material_macro_audit_v1/y_audit.py b/analysis/material_macro_audit_v1/y_audit.py
+new file mode 100644
+index 0000000..eb3fa0a
+--- /dev/null
++++ b/analysis/material_macro_audit_v1/y_audit.py
+@@ -0,0 +1,73 @@
++"""Read-only chunked audit of native full-force evidence and every transport row."""
++import csv,json,hashlib,sys,time
++from pathlib import Path
++import numpy as np
++from pd_clot.lammps_fragmentation.early_flow_coupling import DTYPE,MASS,DT
++from pd_clot.lammps_fragmentation.config import ROOT
++
++def clean(x):
++ if isinstance(x,dict):return {k:clean(v) for k,v in x.items()}
++ if isinstance(x,(list,tuple)):return [clean(v) for v in x]
++ if isinstance(x,np.ndarray):return x.tolist()
++ if isinstance(x,np.generic):return x.item()
++ return x
++
++def run(out):
++ started=time.perf_counter();base=ROOT/'verification/y_clot_point_cloud_and_early_flow_coupling_v1';case=base/'cases/C1_GAUSSIAN_A200';out.mkdir(exist_ok=True,parents=True)
++ allmetrics=[];audits={};inputs=[]
++ for name in ['saved_frame_force_audit','detached_force_audit']:
++  path=case/(name+'.bin');raw=np.memmap(path,dtype=DTYPE,mode='r');bound=np.r_[0,np.flatnonzero(np.diff(raw['step']))+1,len(raw)]
++  prevx=np.full((1927,3),np.nan);prevstep=np.full(1927,-99);maxnode={'speed_m_s':0};maxcom={'speed_m_s':0};maxdisp={'m':0};maxrel={'m_s':0}
++  full_peak=0.;visited=[]
++  for start,end in zip(bound[:-1],bound[1:]):
++   a=raw[start:end];step=int(a['step'][0]);ids=a['atom_id']-1;v=a['v_force_half_m_s']+.5*DT*(a['force_before_flow_N']+a['drag_N']+a['numerical_N'])/MASS
++   speed=np.linalg.norm(v,axis=1);q=int(speed.argmax())
++   if speed[q]>maxnode['speed_m_s']:maxnode=dict(speed_m_s=float(speed[q]),step=step,time_s=step*DT,atom_id=int(a['atom_id'][q]))
++   okay=prevstep[ids]==step-1
++   if okay.any():
++    ds=np.linalg.norm(a['x_m'][okay]-prevx[ids[okay]],axis=1);j=int(ds.argmax())
++    if ds[j]>maxdisp['m']:maxdisp=dict(m=float(ds[j]),step=step,atom_id=int(a['atom_id'][okay][j]),over_dx=float(ds[j]/50e-6))
++   prevx[ids]=a['x_m'];prevstep[ids]=step
++   free=a['detach_step']>=0;commax=0.
++   if free.any():
++    _,inv=np.unique(a['component_id'][free],return_inverse=True);counts=np.bincount(inv);cv=np.column_stack([np.bincount(inv,weights=v[free,d])/counts for d in range(3)]);cs=np.linalg.norm(cv,axis=1);j=int(cs.argmax());commax=float(cs[j])
++    if commax>maxcom['speed_m_s']:maxcom=dict(speed_m_s=commax,step=step,time_s=step*DT,component_id=int(np.unique(a['component_id'][free])[j]))
++    relative=np.linalg.norm(v[free]-cv[inv],axis=1).max()
++    if relative>maxrel['m_s']:maxrel=dict(m_s=float(relative),step=step)
++   allmetrics.append([name,step,step*DT,float(speed.max()),commax,float(np.linalg.norm(a['wall_N'],axis=1).max()),float(np.linalg.norm(a['drag_N'],axis=1).max())]);visited.append(step)
++  audits[name]=dict(rows=len(raw),saved_step_count=len(visited),first_step=min(visited),last_step=max(visited),max_node_full_step_speed=maxnode,max_free_COM_full_step_speed=maxcom,max_adjacent_accepted_position_change=maxdisp,max_component_internal_relative_speed=maxrel,coverage='All currently detached node records at every native step after first detachment' if name=='detached_force_audit' else 'All clot nodes only every20steps OR topology change; maximum over saved records, not certified whole-native-run maximum',velocity_reconstruction='v_full=v_force_half+0.5*dt*(force_before_flow+drag+numerical)/mass')
++  inputs.append(path)
++ with (out/'Y_NATIVE_SPEED_TIMELINE.csv').open('w') as f:
++  w=csv.writer(f);w.writerow(['source','step','time_s','max_node_speed_m_s','max_free_COM_speed_m_s','max_wall_force_N','max_drag_force_N']);w.writerows(allmetrics)
++ wall=[]
++ for p in sorted(case.glob('wall_rank*.csv')):
++  wall.extend(list(csv.DictReader(p.open())));inputs.append(p)
++ native_wall=dict(record_rows=len(wall),unique_steps=len(set(int(r['step']) for r in wall)),minimum_center_clearance_m=min(float(r['min_clearance_m']) for r in wall),maximum_contact_nodes=max(int(r['contact_nodes']) for r in wall),outside_node_steps=sum(int(r['outside_nodes']) for r in wall),normal_contact_displacement='No active native wall-contact steps if max_contact_nodes=0; near-wall normal incremental positions not separately saved for all attached nodes')
++ tr=base/'FRAGMENT_TRANSPORT_TRAJECTORIES.csv';dts=[];maxspeed={'m_s':0};maxdis={'m':0};clockerr=0.;maxdterr=0;prior={};tlist=[];vlist=[]
++ with tr.open() as f:
++  for r in csv.DictReader(f):
++   cid=int(r['component_id']);t=float(r['relative_time_s']);dt=float(r['dt_s']);v=np.array([float(r[c]) for c in ['vx_m_s','vy_m_s','vz_m_s']]);x=np.array([float(r[c]) for c in ['x_m','y_m','z_m']]);x0=np.array([float(r[c]) for c in ['start_x_m','start_y_m','start_z_m']]);v0=np.array([float(r[c]) for c in ['start_vx_m_s','start_vy_m_s','start_vz_m_s']]);sp=float(max(np.linalg.norm(v),np.linalg.norm(v0)));ds=float(np.linalg.norm(x-x0))
++   if sp>maxspeed['m_s']:maxspeed=dict(m_s=sp,component_id=cid,endpoint_relative_time_s=t,start_relative_time_s=t-dt)
++   if ds>maxdis['m']:maxdis=dict(m=ds,component_id=cid,relative_time_s=t)
++   clockerr=max(clockerr,abs(float(r['absolute_time_s'])-t-.00233));maxdterr=max(maxdterr,abs(t-prior.get(cid,0)-dt));prior[cid]=t;dts.append(dt);tlist.append(t);vlist.append(np.linalg.norm(v))
++ te=json.loads((base/'FRAGMENT_TRANSPORT_EVENTS.json').read_text());events=te['events'];comps=te['components']
++ transport=dict(rows=len(dts),components=len(prior),dt_quantiles_s=np.quantile(dts,[0,.5,.9,.99,1]),clock_offset_s=.00233,max_clock_error_s=clockerr,max_dt_reconstruction_error_s=maxdterr,max_accepted_endpoint_COM_speed=maxspeed,max_accepted_step_displacement=maxdis,maximum_recorded_wall_projection_m=max((e.get('constraint_correction_m',0) for e in events),default=0),wall_constraint_events=sum(e['event']=='WALL_CONSTRAINT' for e in events),minimum_accepted_center_clearance_m=min(c['minimum_accepted_center_clearance_m'] for c in comps),coverage='All component integrator rows, native endpoint+0 to5s; maxima accepted endpoints, no independent continuous-within-step extrema; rigid offsets, no internal modes')
++ np.savez_compressed(out/'Y_TRANSPORT_SPEED_TIMELINE.npz',relative_time_s=tlist,speed_m_s=vlist,dt_s=dts)
++ bound_code={}
++ for name in ['early_flow_coupling.py','early_flow_transport.py','native_y_wall_contact.py','y_clot_morphology_v3.py']:
++  p=ROOT/'pd_clot/lammps_fragmentation'/name;lines=p.read_text().splitlines();bound_code[name]=[{'line':i+1,'text':s} for i,s in enumerate(lines) if any(v in s for v in ['.5e-6','0.5e-6','4660','.00233'])];inputs.append(p)
++ cL=math.sqrt((100000/3+4*940/3)/1000) if False else np.sqrt((100000/3+4*940/3)/1000)
++ st=dict(cL_m_s=cL,cL_dt_over_dx=cL*DT/50e-6,dx_over_cL_s=50e-6/cL,wall_stiffness_N_m=50,wall_dt_omega=DT*np.sqrt(50/MASS),pair_single_contact_stiffness_N_m=15*(18*(100000/3)/(np.pi*(150.5e-6)**4))*(50e-6)**6/(150.5e-6))
++ st['pair_two_equal_mass_dt_omega']=DT*np.sqrt(2*st['pair_single_contact_stiffness_N_m']/MASS);st['scope']='Scale checks only; neighbor connectivity, dilatation coupling and contact network modes not certified by single-spring bounds'
++ hand=json.loads((base/'HANDOFF_CONTINUITY_AUDIT.json').read_text())
++ result=dict(native=audits,native_wall=native_wall,transport=transport,handoff_existing_audit=hand,stability=st,hardcoded_clocks=bound_code,force_terms='Attached: -500*m*v numerical damping; detached: shared COM fluid drag; wall: unilateral penalty+damping. Different meanings, not combined dissipation.',no_production_changes=True,wall_seconds=time.perf_counter()-started)
++ (out/'Y_AUDIT.json').write_text(json.dumps(clean(result),indent=2))
++ inputs += [tr,base/'FRAGMENT_TRANSPORT_EVENTS.json',case/'accepted_trajectory.npz']
++ hashes={}
++ for p in inputs:
++  h=hashlib.sha256()
++  with p.open('rb') as f:
++   for chunk in iter(lambda:f.read(8*1024*1024),b''):h.update(chunk)
++  hashes[str(p)]=dict(bytes=p.stat().st_size,sha256=h.hexdigest())
++ (out/'Y_INPUT_SHA256.json').write_text(json.dumps(hashes,indent=2));print(json.dumps(clean(result),indent=2)[:9000])
++if __name__=='__main__':run(Path(sys.argv[1]))
+diff --git a/analysis/material_macro_audit_v1/y_crosschecks.py b/analysis/material_macro_audit_v1/y_crosschecks.py
+new file mode 100644
+index 0000000..f94927b
+--- /dev/null
++++ b/analysis/material_macro_audit_v1/y_crosschecks.py
+@@ -0,0 +1,33 @@
++"""Additional read-only time-level and native normal-displacement checks."""
++import sys,json,csv
++from pathlib import Path
++import numpy as np
++from pd_clot.lammps_fragmentation.early_flow_coupling import DTYPE,DT,MASS
++from pd_clot.lammps_fragmentation.config import ROOT
++from pd_clot.lammps_fragmentation.native_y_wall_query import NativeYWallQuery
++from pd_clot.lammps_fragmentation.y_clot_morphology_v3 import load_geometry
++out=Path(sys.argv[1]);base=ROOT/'verification/y_clot_point_cloud_and_early_flow_coupling_v1';case=base/'cases/C1_GAUSSIAN_A200'
++tr=np.load(case/'accepted_trajectory.npz');lookup={int(s):i for i,s in enumerate(tr['step'])};raw=np.memmap(case/'saved_frame_force_audit.bin',mode='r',dtype=DTYPE);maxve=maxxe=0.;frames=0
++for chunk in raw.reshape(-1,1927):
++ step=int(chunk['step'][0])
++ if step not in lookup:continue
++ j=lookup[step];ids=chunk['atom_id']-1;v=chunk['v_force_half_m_s']+.5*DT*(chunk['force_before_flow_N']+chunk['drag_N']+chunk['numerical_N'])/MASS
++ maxve=max(maxve,float(np.max(abs(v-tr['velocity_m_s'][j,ids]))));maxxe=max(maxxe,float(np.max(abs(chunk['x_m']-tr['position_m'][j,ids]))));frames+=1
++assert frames==len(lookup) and maxve<1e-10 and maxxe<1e-14
++geo=load_geometry();b=geo['bonds'];e=np.load(case/'ONLINE_TOPOLOGY_EVENTS.npz')['step_and_initial_bond_index'];alive=np.ones(len(b),bool);maxrelative=0;stepmax=0
++for j,step in enumerate(tr['step']):
++ alive[e[e[:,0]<=step,1]]=False
++ v=tr['velocity_m_s'][j];ab=b[alive];rel=np.linalg.norm(v[ab[:,0]]-v[ab[:,1]],axis=1)
++ if rel.max(initial=0)>maxrelative:maxrelative=float(rel.max());stepmax=int(step)
++# Match the actual contact rows; query native wall normals only at those saved positions.
++te=json.loads((base/'FRAGMENT_TRANSPORT_EVENTS.json').read_text());contacts={(int(e['component_id']),float(e['time_s'])):e for e in te['events'] if e['event']=='WALL_CONSTRAINT'}
++hand=json.loads((base/'FRAGMENT_HANDOFF.json').read_text());end=np.load(case/'terminal_full_precision.npz')['position_m'];members={int(c['component_id']):end[np.array(c['member_atom_ids'])-1]-np.array(c['COM_xyz_m']) for c in hand['components']}
++q=NativeYWallQuery();maxnormal=0.;maxn=None;count=0
++for r in csv.DictReader((base/'FRAGMENT_TRANSPORT_TRAJECTORIES.csv').open()):
++ cid=int(r['component_id']);t=float(r['relative_time_s'])
++ if (cid,t) not in contacts:continue
++ old=np.array([float(r[k]) for k in ['start_x_m','start_y_m','start_z_m']]);new=np.array([float(r[k]) for k in ['x_m','y_m','z_m']]);sample=q.query(old+members[cid]);values=(new-old)@sample['inward_normal'].T;val=float(np.max(abs(values)));count+=1
++ if val>maxnormal:maxnormal=val;maxn=dict(component_id=cid,time_s=t,dt_s=float(r['dt_s']),abs_start_wall_normal_displacement_m=val)
++result=dict(native_saved_full_step_velocity_reconstruction=dict(frames=frames,max_velocity_error_m_s=maxve,max_coordinate_error_m=maxxe,status='PASS'),native_surviving_bond_max_relative_velocity=dict(m_s=maxrelative,step=stepmax,time_s=stepmax*DT,scope='234 native saved full-step trajectory frames; not every native step'),transport_contact_normal_displacement=dict(contact_rows_matched=count,expected=len(contacts),maximum=maxn,scope='Actual accepted endpoint translation projected onto native wall inward normals at starting member positions; signed normal can change duringstep; projection correction is separate'))
++assert count==len(contacts)
++(out/'Y_CROSSCHECKS.json').write_text(json.dumps(result,indent=2));print(json.dumps(result,indent=2))
+diff --git a/analysis/material_macro_audit_v1/energy.cpp b/analysis/material_macro_audit_v1/energy.cpp
+new file mode 100644
+index 0000000..4e128a1
+--- /dev/null
++++ b/analysis/material_macro_audit_v1/energy.cpp
+@@ -0,0 +1,20 @@
++// Read-only energy/force evaluator for the locked equal-volume, uniform-K/G LPS.
++// Never linked into LAMMPS; no trajectory changes. m is frozen initial weighted volume.
++#include <cmath>
++#include <vector>
++extern "C" double evaluate(int n,int nb,const double*x,const int*b,const unsigned char*alive,
++ const double*r0,const double*h,const double*m,double V,double K,double G,double*force) {
++ std::vector<double> theta(n,0.0), e(nb,0.0);
++ for(int k=0;k<nb;k++)if(alive[k]){int i=b[2*k],j=b[2*k+1];double r=0;
++  for(int d=0;d<3;d++){double z=x[3*j+d]-x[3*i+d];r+=z*z;}e[k]=std::sqrt(r)-r0[k];
++  if(std::abs(e[k])<2.2204e-16)e[k]=0;
++  theta[i]+=e[k]*V*h[k];theta[j]+=e[k]*V*h[k];}
++ double U=0;
++ for(int i=0;i<n;i++){theta[i]*=3/m[i];U+=0.5*(K-5*G/3)*V*theta[i]*theta[i];}
++ if(force)for(int q=0;q<3*n;q++)force[q]=0;
++ for(int k=0;k<nb;k++)if(alive[k]){int i=b[2*k],j=b[2*k+1];
++  U+=7.5*G*V*V*h[k]/r0[k]*e[k]*e[k]*(1/m[i]+1/m[j]);
++  if(force){double r=r0[k]+e[k];double f=V*V*h[k]*((3*K-5*G)*(theta[i]/m[i]+theta[j]/m[j])+15*G/r0[k]*(1/m[i]+1/m[j])*e[k]);
++   for(int d=0;d<3;d++){double z=f*(x[3*j+d]-x[3*i+d])/r;force[3*i+d]+=z;force[3*j+d]-=z;}}}
++ return U;
++}
+diff --git a/analysis/material_macro_audit_v1/energy_periodic.cpp b/analysis/material_macro_audit_v1/energy_periodic.cpp
+new file mode 100644
+index 0000000..4503b02
+--- /dev/null
++++ b/analysis/material_macro_audit_v1/energy_periodic.cpp
+@@ -0,0 +1,22 @@
++// Read-only energy/force evaluator for the locked equal-volume, uniform-K/G LPS.
++// Never linked into LAMMPS; no trajectory changes. m is frozen initial weighted volume.
++#include <cmath>
++#include <vector>
++static double core(int n,int nb,const double*x,const int*b,const unsigned char*alive,
++ const double*r0,const double*h,const double*m,double V,double K,double G,double*force,double L) {
++ std::vector<double> theta(n,0.0), e(nb,0.0);
++ for(int k=0;k<nb;k++)if(alive[k]){int i=b[2*k],j=b[2*k+1];double r=0;
++  for(int d=0;d<3;d++){double z=x[3*j+d]-x[3*i+d];if(d<2 && L>0)z-=L*std::round(z/L);r+=z*z;}e[k]=std::sqrt(r)-r0[k];
++  if(std::abs(e[k])<2.2204e-16)e[k]=0;
++  theta[i]+=e[k]*V*h[k];theta[j]+=e[k]*V*h[k];}
++ double U=0;
++ for(int i=0;i<n;i++){theta[i]*=3/m[i];U+=0.5*(K-5*G/3)*V*theta[i]*theta[i];}
++ if(force)for(int q=0;q<3*n;q++)force[q]=0;
++ for(int k=0;k<nb;k++)if(alive[k]){int i=b[2*k],j=b[2*k+1];
++  U+=7.5*G*V*V*h[k]/r0[k]*e[k]*e[k]*(1/m[i]+1/m[j]);
++  if(force){double r=r0[k]+e[k];double f=V*V*h[k]*((3*K-5*G)*(theta[i]/m[i]+theta[j]/m[j])+15*G/r0[k]*(1/m[i]+1/m[j])*e[k]);
++   for(int d=0;d<3;d++){double delta=x[3*j+d]-x[3*i+d];if(d<2 && L>0)delta-=L*std::round(delta/L);double z=f*delta/r;force[3*i+d]+=z;force[3*j+d]-=z;}}}
++ return U;
++}
++
++extern "C" double evaluate_periodic(int n,int nb,const double*x,const int*b,const unsigned char*alive,const double*r0,const double*h,const double*m,double V,double K,double G,double*force,double L){return core(n,nb,x,b,alive,r0,h,m,V,K,G,force,L);}

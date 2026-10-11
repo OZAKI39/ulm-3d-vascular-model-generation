@@ -1,0 +1,99 @@
+"""Write the scientific review from collected actual numerical records."""
+from pathlib import Path
+import json,difflib,hashlib
+C=json.loads(Path('/home/lzy/projects/.pvce_current.json').read_text());ROOT=Path(C['root']);B=Path(C['local'])
+def js(n):return json.loads((B/n).read_text())
+def main():
+ r=js('PVCE_ENERGY_RELEASE_RESULTS.json');e=js('PVCE_EQUILIBRIUM_AUDIT.json')['cases'];g=js('PVCE_ENERGY_GRADIENT_AUDIT.json');t=js('PVCE_TOPOLOGY_AUDIT.json');cost=js('provenance/COMPUTE_EXECUTION.json');fig='../../../results/lps_pvce_energy_release_feasibility_v1/'+C['run_id']+'/'
+ rows='\n'.join(f'| A{j} | {200+50*j} | {t["records"][j]["deleted"]} | {t["records"][j]["active_bonds"]} | {q["U_J"]:.16e} | {q["empirical_uncertainty_J"]:.8e} | {q["native_free_force_relative"]:.7e} |' for j,q in enumerate(e))
+ text=f'''# LPS_PVCE_ENERGY_RELEASE_FEASIBILITY_V1 科研审查
+
+本轮实际完成三个固定裂纹的静态平衡计算，建立了 **SPECIMEN_DEPENDENT_PVCE_G_DRIVE**。三态通过运行前冻结的力、能量平台、坐标、反力、拓扑和接触门槛；独立弹性能与原生力相容。这个结论仅适用于当前试样与参考归一化，不是材料 Gc，不是离散收敛认证。
+
+run_id：{C['run_id']}。服务器 `/workspace/y_clot/project`；WSL 精简回收位于当前报告所在目录。服务器分支 migration-20261009，HEAD cc5ee77149f55e58d715bb5a4660c6467231a826；WSL 分支 clot-clearance/y-clot-migration-sync-20261010，HEAD2504de80d317ac1048f5279fdf113bb2c2d1d344。没有commit/push、清理历史、原生重建或环境升级。
+
+## 1. 实现与三种真实虚拟切口
+
+真实参考点阵2880点、135180条唯一无向键，600×600×1000µm，dx50µm、δ150.5µm。在z=0逐条计算参考线段交点，对 x<tip 删除跨面键；恰在tip的浮点交点用1pm容差排除。每种切口独立从同一完整参考键表构造，删除集合严格嵌套。A0到A1、A1到A2各实际增加766条。原子ID=数组索引+1，参考bond ID=完整排序键表索引+1，所有ID及新增/继承集合保存于各态reference.npz。无重复、漏删、孤立节点，最低度数28，三态各一个连通分量。
+
+| 状态 | a (µm) | 删除键 | 活跃键 | U (J，完整值) | 经验数值误差尺度 (J) | 原生自由力相对残差 |
+|---|---:|---:|---:|---:|---:|---:|
+{rows}
+
+B为含边缘半单元的600µm厚度，不是最外点心间550µm；Δa50µm，所以每次新增投影面积 **BΔa=3e-8m²**。不乘2，不用删除键数×dx²。
+
+**与旧M5的两项明确区别在求解前已冻结**：历史浮点比较误含了34条恰位于x=-100µm前缘的键，旧A0切2570条，本轮按统一半开几何切2536条；历史预删键后初始化m，本轮用完整未切参考一次初始化m并在A0/A1/A2保持相同。这使有限差分只改变指定活跃相互作用，不同时改变参考材料归一化。历史数据原样保留，不将本轮A0宣称为旧M5逐项复现。
+
+原生适配使用受支持的extract_atom数组：将指定bond_type双端条目设0，并从1-2 special表删除对应伙伴；不改变参考r0历史或任何生产参数。随后 `run 1 pre no post no`、every1/checkno重建真实活跃邻居/键表，无时间积分fix。每次原生检查逐条核对活跃端点集合。这里原生nbonds计数仍含已关闭条目，**不能用该原始总计数当成存活键数**；本轮明确读取type>0的实际活跃连接。没有通过s00触发虚拟切割，没有关闭其余键的自然失效设置。
+
+源码发现：init_style会重置m初始化标志，delete_bonds自身也调用init。因此不能先普通delete_bonds、再普通run0而声称m仍相同；本轮隔离适配保留参考状态，所有最终theta和力已独立验证。不能把这个诊断适配不经检查直接搬到任意多MPI/restart流程。
+
+## 2. 原文、力与能量
+
+Zhang & Qiao原始用户PDF的Sections2.2、3.1–3.4和SENT_DL已读取；Eqs8/9/18固定开度取负储能导数，Eq14采用1e-8储能变化。本轮三维总能量额外除厚度B。原文ADR被同一能量的静态L-BFGS-B替代；不调用LAMMPS不完整PE的minimize。原文与用户补充文件哈希、阅读说明见 [literature/PAPER_READING.md](literature/PAPER_READING.md) 与 SOURCES.json。
+
+锁定G=940Pa,K=33333.333333Pa,rho1000kg/m³,s00=.15,alpha0，节点V=1.25e-13m³，质量1.25e-10kg。接口临界值保持.140624859375但本试样未使用。复用未改动energy.cpp与Energy类：
+
+`theta_i=3V/m_i*sum_alive(h*e)`
+
+`U=.5*(K-5G/3)*V*sum(theta²)+7.5G*V²*sum_unique_alive(h*e²/r0*(1/m_i+1/m_j))`
+
+m由完整参考邻域固定；theta和e项由当前存活键重算。native输出力密度乘V后与负梯度比较，双端1/m且无向键只计一次。三态全部原生力最大相对差 {g['max_force_relative']:.5e}；A0/A2实际裂尖与内部代表自由DOF共16组中心差分，最大绝对误差 {g['max_FD_absolute_N']:.5e}N，以该态最大真实原生分量归一的最大差 {g['max_FD_scaled_error']:.5e}。接近平衡时单自由DOF力接近零，其逐点相对差可能较大；原始值完整保留，不加隐蔽分母下限。
+
+native bond PE×V仍明显不完整：三态约0.945663、0.849525、0.753494pJ，而独立总储能约1.805512、1.619933、1.433416pJ；它未用于优化或G分子。节点能量密度从同一公式分配，求和恢复总U。未加入数值阻尼、累计外功、动能或断键计数作为能量。
+
+Liu2024正文40×4×3mm pure-shear、0.01s^-1下18.27±1.45J/m²为实验总撕裂能，与intrinsic work不同。用户原始补充DOCX和历史件SHA完全一致；TableS2只用于未损伤小应变G/K映射，没有Yeoh/Mullins/CZM扩展。当前微型低开度G不应向18.27J/m²调参。
+
+## 3. 平衡搜索、门槛与成本
+
+总开度2µm，在计算前依据名义应变0.002105及V3约77µm首断范围冻结，无幅度扫描。144+144端面节点仅z=±1µm，其余2592点xyz和端面xy自由，共8352自由度；无额外锚定、虚构表面或刚性横向约束。
+
+复用独立能量/梯度，优化变量以1µm、目标以1pJ缩放；L-BFGS-B maxiter6000、maxfun60000、maxcor30、maxls40、ftol0。回调达到预注册门槛后明确停止，SciPy状态99代表人为StopIteration，不用其通用success标志替代科学判断。门槛：相对自由力≤1e-6，绝对最大自由分量≤1e-13N，末10接受态储能跨度/U≤1e-8，最大坐标变化≤1e-10m，上下反力不平衡≤1e-6，无新增自然断键，无显著接触。
+
+三态原生最大自由力为1.15–1.74e-14N；末10态储能相对跨度约7.7e-13–1.16e-12；最大坐标变化0.67–1.21pm；反力不平衡约6.3–9.4e-9。全部通过。静态优化没有真实动力学K/U历史；原生无积分检查的K=0是构造值，未假装成动态松弛的证明。
+
+严格只有3个正式平衡计算，各155/158/162量级接受迭代，函数评估163、163、167次。A0/A1/A2墙钟分别 {e[0]['wall_seconds']:.3f}、{e[1]['wall_seconds']:.3f}、{e[2]['wall_seconds']:.3f}s；三个并发进程总墙钟 {cost['concurrent_wall_seconds']:.3f}s，各单MPI、OMP/BLAS1线程，单进程峰值RSS最大 {max(q['peak_RSS_MiB'] for q in e):.2f}MiB。另一个非平衡仿射预检查不算正式平衡；无平衡重跑，GPU未用于求解。开机复核cgroup15.36核、可用内存约53.7GB、磁盘约295.9GB，4090空闲。计算由独立supervisor任务托管，autorestart=false，已正常退出。
+
+开发中修正一次结果JSON的NumPy布尔量序列化，以及绘图空集合兼容/布局；均只涉及交付后处理，没有重启平衡、改变冻结门槛或材料。证据在provenance。
+
+## 4. 能量差、G与可解释范围
+
+`G_two=-(U1-U0)/(B*da)`；`G_three=-(-3U0+4U1-U2)/(2*B*da)`。
+
+G_two = **{r['G_two_J_m2']:.10e}J/m²**；G_three = **{r['G_three_J_m2']:.10e}J/m²**。两者绝对差 {r['absolute_difference_J_m2']:.8e}J/m²，以|G_three|为参照的相对差 **{r['relative_difference_to_G_three']*100:.6f}%**，通过冻结20%工程筛查。差异高于求解误差尺度，提示有限增量效应仍可分辨；小差异不代表理论二阶收敛。
+
+相邻U降低 {abs(r['neighbor_U_differences_J'][0]):.10e}与{abs(r['neighbor_U_differences_J'][1]):.10e}J。经验误差尺度定义为 `2*max(末10态U跨度, ||F_free||*||u_free||,100eps*U)`；相邻能差分别为传播误差的 {r['energy_difference_over_empirical_noise'][0]:.1f}、{r['energy_difference_over_empirical_noise'][1]:.1f}倍。线性传播后的G_two和G_three经验分辨尺度分别±{r['G_two_empirical_resolution_J_m2']:.5e}和±{r['G_three_empirical_resolution_J_m2']:.5e}J/m²。
+
+这些不是严格误差界、统计置信区间或全部模型误差；未估计网格/虚拟增量/有限域误差。原始JSON保留完整双精度，报告保留的数字不表示真实材料精度。
+
+三态实际接触对数、接触能、接触力均0；全优化评估的最大存活键伸长约.00535，远低于.15；自然断键为0。低幅纯张开诊断无需关闭自然失效。本轮不提供复杂接触下PVCE的验证。
+
+δ/B=.2508，δ/剩余韧带约.3763–.5017，裂纹平面距端面约3.156δ；非局部截断、边界与尺寸对G有实际影响。只有一种dx、一种δ和一个Δa，本轮三点只给a0=200µm附近一个局部估计，没有伪造完整G(a)曲线或额外幅度结果。
+
+**能作为当前模型与试样下的G_drive；不能作为材料Gc。** 没有临界自然增长、宏观实验约束、尺度收敛或独立断裂耗能参数识别。当前结果没有提供必须更换失效机制的新证据，亦不推翻V1–V3的自然裂纹定位/面积不可识别结论。
+
+## 5. 科学状态与交付
+
+逐项状态见 [FINAL_STATUS.json](FINAL_STATUS.json)，将实现、拓扑、平衡、力能量、能差、G、数值范围、材料Gc和生产保护分开。578个原生/旧分析/旧结果文件起止SHA相同。冻结设计、逐节点实际状态、三份原生输入、源码差异、运行记录、文件manifest及回收清单随本报告保存。原生文本body.data留服务器，WSL收回完整精度参考数组与状态，可由原writer重建，未复制无关历史。
+
+- [图1：真实点阵及三种虚拟切口]({fig}Fig1_virtual_crack_topologies.png)
+- [图2：真实优化迭代与平衡门槛]({fig}Fig2_equilibrium_convergence.png)
+- [图3：三态储能、误差尺度和两种G估计]({fig}Fig3_PVCE_energy_release.png)
+- [图4：A0/A2实际位移与独立能量密度，变形倍率1]({fig}Fig4_equilibrium_fields.png)
+- [静态浏览入口](OPEN_RESULTS.html)，全部四图同时提供SVG。
+
+实际WSL `/home/lzy/projects/clot_rupture.md`在本轮验证完成后条件性更新；写前备份、并发检查、写后读回与SHA见provenance/DOCUMENT_UPDATE.json、clot_rupture.before_write.md、clot_rupture.diff。生产代码、材料卡、旧V1–V3科学结论不改。
+
+**下一轮唯一优先事项**：为同一微型试样、裂纹和位移边界建立独立线弹性连续体G_drive参考，以评估非局部/有限域偏差；不自动开展。开发在本轮交付后停止。
+
+## 6. 复现范围
+
+现有实际case目录禁止覆盖。只读复核可运行 `source /workspace/y_clot/env.sh`、切换到 `/workspace/y_clot/project`，调用 `python -m analysis.lps_pvce_v1.analyze` 和 `python -m analysis.lps_pvce_v1.plots`（只写本轮诊断/图）。正式平衡复现需复制analysis/lps_pvce_v1到新run_id、改core.BASE及design中新目录并重新冻结；然后 `python -m analysis.lps_pvce_v1.design`，分别 `python -m analysis.lps_pvce_v1.run A0/A1/A2`。原启动脚本见provenance/launch.sh。不要直接运行in.lammps替代Python虚拟切割步骤：单独输入只建立完整参考，不会应用三个删除集合。
+'''
+ (B/'REVIEW_LPS_PVCE_ENERGY_RELEASE_FEASIBILITY_V1.md').write_text(text)
+ # Newly added code diff relative to absence, no production source changed.
+ diff=''
+ for p in sorted((ROOT/'analysis/lps_pvce_v1').glob('*.py')):diff+=''.join(difflib.unified_diff([],p.read_text().splitlines(True),fromfile='/dev/null',tofile=str(p.relative_to(ROOT))))
+ (B/'provenance/NEW_SOURCE.diff').write_text(diff)
+ print('review and source diff written')
+if __name__=='__main__':main()
