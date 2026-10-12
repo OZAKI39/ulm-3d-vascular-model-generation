@@ -1,5 +1,21 @@
 # MEVO acoustic–microbubble simulator
 
+## Current delivery — F10K, synchronized 2026-10-13
+
+当前完整科研交付为 F10K，原始提交 `850fd2df3225351f4fe9564f39cbe72a38662b30`。
+本分支同步 F6–F10K 最新代码、配置、报告、关键数据、成功/失败日志与图表；
+以下旧阶段说明保留为历史，不代表当前开发状态。
+
+- [当前项目交接与科学边界](docs/CURRENT_PROJECT_STATE_20261013.md)
+- [F10K 完整报告](docs/FAST_PZT_F10K_DEVELOPMENT.md)、[范围矩阵](docs/FAST_PZT_F10K_SCIENTIFIC_SCOPE.md)、[CPU/GPU 性能](docs/FAST_PZT_F10K_SCALING.md)
+- [四组英文科研图](results/fast_pzt/f10k/figures)、[分层科学验收](results/fast_pzt/f10k/analysis/FINAL_GATE.json)
+- [本次同步范围、排除清单与哈希验证](sync/20261013/README.md)
+- [科研进度文档快照](docs/MICROBUBBLE_AGGREGATION_PROGRESS_20261013.md)
+
+已取得一个持续图聚合的有限数值正例，严格连边仍 FAIL；目标导航未建立，
+物理未校准，`training_ready=false`。本次只同步数据，没有启动新计算。
+这是经过筛选的 Git 交付，完整历史求解审计仍需按排除清单取回原数据。
+
 ## Stage 5A-R2 — motion recovery and measured validation
 
 本分支从已审查提交 `7c39828d93509fff5551b7a16537ca3aa4ee9c23` 独立开发。R2 的实际推进、科学量与性能结论分别见 [最终报告](results/stage5/motion_solver_r2/final/REPORT.md) 和 [机器可读 gate](results/stage5/motion_solver_r2/final/MOTION_SOLVER_R2_GATE.json)。下方 Stage 5A 失败结论保留其原始含义，不由 R2 回写。

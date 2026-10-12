@@ -1,8 +1,30 @@
-# Current MEVO acoustic–microbubble project · 2026-10-10
+# Current MEVO acoustic–microbubble project · 2026-10-13
+
+The latest scientific delivery is **F10K**, from local commit
+`850fd2df3225351f4fe9564f39cbe72a38662b30`. Start with the
+[current handoff](computation_examples/mevo_acoustic_microbubbles/docs/CURRENT_PROJECT_STATE_20261013.md)
+and [this synchronization's actual scope and hashes](computation_examples/mevo_acoustic_microbubbles/sync/20261013/README.md).
+
+This new branch adds current F6–F10K source, configurations, reports, compact
+success/failure evidence, selected original trajectories, publication PNG/PDFs,
+and five small immutable F10K execution-source archives. It excludes about
+1.862 GB of repeated or bulk local results from the new upload. The published
+F5 synchronization is the parent; bulky intervening local result history is not
+an ancestor of this branch. Older already-public files are inherited unchanged.
+
+F10K has one limited persistent graph-merge positive and valid CPU/GPU fixed-state
+comparisons through N=512. Strict edge timing still fails; prescribed-target
+navigation, persistent splitting and physical calibration remain unresolved.
+**EXPLORATORY / PHYSICS_UNCALIBRATED / training_ready=false.** No scientific
+simulation was started for this synchronization. Full-original-archive validators
+require the deliberately omitted files; use the new packaging verifier for this
+curated Git tree. Other repository projects are unchanged.
+
+## Historical synchronization context — 2026-10-10
 
 Start with the [current project and server handoff](computation_examples/mevo_acoustic_microbubbles/docs/CURRENT_PROJECT_STATE_20261010.md).
 
-The active baseline is F5: the original Y vessel, stored acoustic and CFD fields,
+The baseline at that synchronization was F5: the original Y vessel, stored acoustic and CFD fields,
 32-bubble aggregation with flow, followed by ultrasound release and a matched
 no-flow continuation. Source delivery remains `66d4cebec18555a26bc9a8035cc3082756d0e76f`;
 the actual scientific trajectories were computed at `ee6b35dce83bd3583457a7e85c163b6886e59ce5`.

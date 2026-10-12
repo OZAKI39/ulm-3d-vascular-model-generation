@@ -1,0 +1,84 @@
+{
+  "baseline_commit": "81fe1206d623f04ea7e3d3a78021251890185c9e",
+  "duration_s": 0.01,
+  "dt_s": 1e-05,
+  "sample_s": 5e-05,
+  "N": 32,
+  "batch_sizes": [
+    1,
+    4,
+    16
+  ],
+  "conditional_batch_size": 64,
+  "batch_equality": "bitwise all sampled state, forces, velocities, diagnostics and sorted events; zero tolerance",
+  "batch_controls": "one common event schedule per family; asynchronous per-member controls unsupported",
+  "initial_variants": "BENCHMARK_ONLY: translations along Y of 0, +0.2, -0.2, +0.4 micrometres, repeated as needed; no independent training samples",
+  "failure_policy": "global device error aborts whole batch; all members rejected, individual diagnostic causes retained; no unaffected member marked PASS",
+  "modes": {
+    "Q0": [
+      1,
+      1
+    ],
+    "Q1": [
+      2,
+      1
+    ],
+    "Q2": [
+      1,
+      2
+    ],
+    "Q3": [
+      2,
+      2
+    ]
+  },
+  "multirate_group_gates": {
+    "max_centroid_distance_m": 1e-08,
+    "max_paired_z_error_m": 1e-08
+  },
+  "multirate_morphology_gates": {
+    "max_particle_error_m": 1.78e-07,
+    "max_aligned_rmsd_m": 8.9e-08,
+    "max_rg_relative": 0.01,
+    "max_tensor_relative": 0.02,
+    "max_aspect_relative": 0.02,
+    "largest_fraction_difference": 0,
+    "edge_events_exact": true
+  },
+  "rationale": "Group 10 nm is above the observed 10/5 us centroid sensitivity but below one tenth of the paired Z signal. Morphology requires max ID error <=0.1R, aligned RMSD <=0.05R and 1-2% shape differences: deliberately stricter than unresolved F10A particle sensitivity. Exact edge-event agreement is required for morphology truth; a centroid pass alone cannot admit full morphology.",
+  "contact_budgets": {
+    "max_residual_over_R": 0.01,
+    "max_single_pass_over_R": 0.1
+  },
+  "q4_condition": "Only after q2 group AND morphology PASS; no full Cartesian matrix",
+  "engineering_speed_gate": 2.0,
+  "training_ready": false,
+  "physics_scope": "EXPLORATORY",
+  "F10A_dt_sensitivity": {
+    "OFF": {
+      "centroid_distance_m": 4.9748926237525485e-11,
+      "rg_relative": 1.2619815459302686e-07,
+      "tensor_relative": 1.2261283206643447e-06,
+      "aligned_internal_rmsd_m": 3.754978988630628e-12,
+      "max_particle_error_m": 5.724306590540653e-11,
+      "max_aspect_relative": 2.818614316391077e-07
+    },
+    "S_1000": {
+      "centroid_distance_m": 1.6993521533382706e-09,
+      "rg_relative": 0.02228725738738513,
+      "tensor_relative": 0.16879745815205108,
+      "aligned_internal_rmsd_m": 2.0090014727527323e-06,
+      "max_particle_error_m": 3.977849621515212e-06,
+      "max_aspect_relative": 0.05397832996381402
+    },
+    "O_1000": {
+      "centroid_distance_m": 3.8968325679699765e-09,
+      "rg_relative": 0.01961990666246538,
+      "tensor_relative": 0.1719079732907387,
+      "aligned_internal_rmsd_m": 1.7812804387181558e-06,
+      "max_particle_error_m": 4.1818238609782715e-06,
+      "max_aspect_relative": 0.0541489004640574
+    }
+  },
+  "profiling": "Warp event-instrumented per-launch activities are profiler spans, not CUPTI pure-kernel durations; unmeasured pure kernel time remains null. Unprofiled wall times are separate."
+}

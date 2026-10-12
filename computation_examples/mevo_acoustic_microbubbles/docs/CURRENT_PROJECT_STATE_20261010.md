@@ -1,6 +1,16 @@
 # Current acoustic–microbubble project · 2026-10-10
 
-This is the current entry point for the existing project. The active model is F5,
+F6 development on `dev/fast-pzt-f6-target-navigation-20261010` is now recorded in
+[the F6 report](FAST_PZT_F6_DEVELOPMENT.md). All17 formal trajectories and the key
+10/5µs group-level checks pass numerically. Prescribed-target navigation passes
+only for the no-flow consistent-gradient/local-mobility feedback case; slow-flow
+dwell, tested Y-CFD navigation, RPY robustness and legacy-gradient dwell do not
+pass the navigation criterion. Physics remains EXPLORATORY and translation
+UNCALIBRATED. Results are archived in WSL with hashes. F1–F5 sources/defaults are
+unchanged; the following F5 synchronization/migration record is retained as dated
+context, not the identity of the new F6 runs.
+
+At the original synchronization snapshot the active model was F5,
 using the original Y vessel, stored acoustic basis/response table, and prescribed
 steady CFD. This synchronization preserves the delivered numerical sources and
 actual results; it introduces no new physical model or scientific trajectory.

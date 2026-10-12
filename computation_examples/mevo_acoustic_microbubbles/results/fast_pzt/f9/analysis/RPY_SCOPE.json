@@ -1,0 +1,53 @@
+{
+  "status": "REVIEW_COMPLETE_NO_NEW_RUN",
+  "classification": "NOT_ADMITTED",
+  "sources": {
+    "results/fast_pzt/f8/contact_v1/CHECKS.json": "2340102c6f6e8eb17df5eaf76f2a8186cff58a282667f6935b45d4f8d270178a",
+    "src/mevo_mb/fast_sim/f8_contact.py": "4a4db35e2944f163e165325cf510dc57070630655a48fef3b74caff48cf74200"
+  },
+  "saved_actual32": {
+    "n": 32,
+    "reference_kind": "real saved F7 initial32 + actual free RPY 10us prediction",
+    "overlap_before_m": 1.9582794455550245e-08,
+    "overlap_PBD_m": 2.9870647540129465e-09,
+    "overlap_candidate_m": 2.4169426202398913e-10,
+    "projected_residual_m": 3.493011645977902e-10,
+    "refined_projected_residual_m": 1.7442972087999587e-14,
+    "max_increment_bound_m": 1.8663517244482282e-08,
+    "mean_PBD_correction_m": [
+      6.906958114817781e-23,
+      2.117582368135751e-21,
+      -1.2705494208814505e-21
+    ],
+    "mean_candidate_correction_m": [
+      1.231050008362155e-09,
+      -1.7871132470151564e-09,
+      -1.2454801187652361e-09
+    ],
+    "relative_correction_rms_m": 1.6867993463063218e-08,
+    "correction_difference_rms_m": 1.028968874587845e-08,
+    "nonnegative_multipliers": true,
+    "net_contact_impulse_N_s": [
+      6.162975822039155e-32,
+      9.367723249499515e-31,
+      1.7749370367472766e-30
+    ],
+    "relative_net_torque": 1.236052668899646e-17,
+    "CPU_NNLS_max_difference_m": null,
+    "rotation_covariance_error_m": 8.61198415244271e-22,
+    "ID_permutation_difference_m": 3.8996024955336573e-10,
+    "candidate_setup_wall_s": 0.0045532165095210075,
+    "candidate_solver_wall_s": 0.16148150525987148,
+    "candidate_GPU_launch_span_s": 0.16134042358398437,
+    "PBD_setup_wall_s": 0.00030685216188430786,
+    "PBD_solver_wall_s": 0.0004041716456413269,
+    "PBD_GPU_launch_span_s": 0.00029491201043128966,
+    "setup_inclusive_ratio": 233.51499628007377,
+    "force_law": "dx = M_RPY J^T impulse; central normal equal/opposite impulses; group mean is not forced to zero",
+    "numerical_small_state_pass": true
+  },
+  "reusable": "Frozen-state residuals and signed displacement; mean RPY correction [1.231,-1.787,-1.245]nm versus central PBD near zero.",
+  "scope": "F7 no-flow initial-state free-RPY prediction, not this Y trajectory. Cannot multiply one contact correction by a step count or infer Y wall causation.",
+  "visible_bottleneck": "CPU dense 96x96 mobility and 96x496 columns; dim=1 GPU kernel performs 16 ordered passes over 496 constraints with 96-coordinate updates. Serial update dependency requires validated scheduling, not an untested dim increase.",
+  "F10_priority": "First bound geometry/contact splitting sensitivity on these recorded near-wall states and implement complete-state restart. Only then reconsider a separate small parallel contact prototype; no full RPY navigation refactor is justified by F9."
+}
