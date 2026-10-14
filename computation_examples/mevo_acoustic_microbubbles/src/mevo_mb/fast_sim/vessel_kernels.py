@@ -14,11 +14,6 @@ def f32(x: wp.vec3d):
 
 
 @wp.func
-def f64(x: wp.vec3):
-    return wp.vec3d(wp.float64(x[0]), wp.float64(x[1]), wp.float64(x[2]))
-
-
-@wp.func
 def closest_segment(p: wp.vec3d, a: wp.vec3d, b: wp.vec3d):
     e = b - a
     t = wp.clamp(

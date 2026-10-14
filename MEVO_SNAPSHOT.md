@@ -1,4 +1,23 @@
-# Current MEVO acoustic–microbubble project · 2026-10-13
+# Current MEVO acoustic–microbubble project · 2026-10-14
+
+Latest completed delivery: **F10Q**, including the subsequent four-PZT/per-bubble
+force summary, from source `41ae8ed2b88f2cbbed834fffccaa0b5de6e91589`.
+Start with the [current handoff](computation_examples/mevo_acoustic_microbubbles/docs/CURRENT_PROJECT_STATE_20261014.md)
+and [sync scope and hashes](computation_examples/mevo_acoustic_microbubbles/sync/20261014/README.md).
+
+This branch adds F10L–F10Q code, configs, data, logs, failures, final PNG/PDFs,
+source execution archives and the unchanged Chinese progress document.
+Original convergence field caches and recent complete trajectories are retained;
+50 redundant/intermediate files (27.4 MB) are omitted with recovery hashes. No new
+simulation is run. The published F10K sync is the parent; uncurated development
+history is not uploaded.
+
+The simplified model reaches the short X target. Y misses its target and fails
+shape/particle-ID convergence; the strong-control full window remains rejected.
+**EXPLORATORY / HOMOGENEOUS_WATER_CONTROL_PROXY /
+PHYSICS_UNCALIBRATED / training_ready=false.**
+
+## Historical synchronization context — 2026-10-13
 
 The latest scientific delivery is **F10K**, from local commit
 `850fd2df3225351f4fe9564f39cbe72a38662b30`. Start with the

@@ -1,0 +1,17 @@
+scripts/straight_tube_exp1/f10o/delivery.py:42:WaterB2每步调用原F10H geometric_contact和F10G resistance。刚度保持0.04641319518378658 N/m，非线性残差1e-13 m、最多24次更新、20次线搜索，都是F10K轨迹参考原值。没有重写PCG、本构或润滑。GPU仍计算原声学力；同一R3 cavity_project对预测及B2提案均检查。任何非零壁修正直接拒绝这个远壁参考，不串接PBD。14项实际接口核对通过，包括CPU/GPU三种控制力输入、封闭X拒绝、顶部数值域拒绝、低于/高于APECSS表拒绝。
+scripts/straight_tube_exp1/f10o/delivery.py:95:The adapter directly imports original F10H geometric_contact and F10G resistance. R3 GPU walls inspect both predictions and final proposals, and any correction rejects the interior prototype. Pressure/APECSS violations also fail closed. M0 uses two local lubrication iterations and PBD; B2 uses the same resistance model solved as a matrix and the geometric unilateral spring. Cross-model contrasts are not numerical error estimates.
+scripts/straight_tube_exp1/f10o/run.py:14:from mevo_mb.fast_sim.water_b2 import WaterB2
+scripts/straight_tube_exp1/f10o/run.py:35:        return WaterB2(self.x0, self.physics, self.response, self.bases[cache], self.cavity)
+src/mevo_mb/fast_sim/water_b2.py:14:from .f10h_contact import geometric_contact
+src/mevo_mb/fast_sim/water_b2.py:20:class WaterB2:
+src/mevo_mb/fast_sim/water_b2.py:91:        op = resistance(self.x, self.radius)
+src/mevo_mb/fast_sim/water_b2.py:93:        result = geometric_contact(
+src/mevo_mb/fast_sim/f10g_contact.py:23:def resistance(x, radius, activation=0.1, floor=0.001):
+src/mevo_mb/fast_sim/f10g_contact.py:166:def contact_geometry(x, radius):
+src/mevo_mb/fast_sim/f10g_contact.py:201:    B, pairs, gaps = contact_geometry(x, radius)
+src/mevo_mb/fast_sim/f10g_contact.py:296:    B, pairs, gaps = contact_geometry(x, radius)
+src/mevo_mb/fast_sim/f10h_contact.py:10:from .f10g_contact import contact_geometry, normals, overlaps
+src/mevo_mb/fast_sim/f10h_contact.py:13:def geometric_contact(x, free, radius, zeta, dt, kc, A, max_iterations=24, atol_m=1e-13):
+src/mevo_mb/fast_sim/f10h_contact.py:38:        B, pairs, gaps = contact_geometry(y, 1.0)
+src/mevo_mb/fast_sim/f10h_contact.py:82:    B, pairs, gap = contact_geometry(positions, radius)
+src/mevo_mb/fast_sim/f10h_contact.py:89:    B0, _, g0 = contact_geometry(x, radius)

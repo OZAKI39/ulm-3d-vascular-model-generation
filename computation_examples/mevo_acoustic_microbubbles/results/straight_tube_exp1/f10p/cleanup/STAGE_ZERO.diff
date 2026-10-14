@@ -1,0 +1,84 @@
+commit 546f286f1087fce88aa6e23e6d74cd873d7a7a0c
+Author:     OZAKI39 <2530371921@qq.com>
+AuthorDate: Wed Oct 14 00:57:55 2026 +0200
+Commit:     OZAKI39 <2530371921@qq.com>
+CommitDate: Wed Oct 14 00:57:55 2026 +0200
+
+    F10P: audit active entries and preserve all historical science before algorithm work
+
+diff --git a/computation_examples/mevo_acoustic_microbubbles/docs/F10P_ACTIVE_CODE_MAP.md b/computation_examples/mevo_acoustic_microbubbles/docs/F10P_ACTIVE_CODE_MAP.md
+new file mode 100644
+index 000000000..74b47095e
+--- /dev/null
++++ b/computation_examples/mevo_acoustic_microbubbles/docs/F10P_ACTIVE_CODE_MAP.md
+@@ -0,0 +1,22 @@
++# F10P active code map
++
++Complete baseline: F10O `98cf17b8ecd03e831628ed7005a8e1c83d354a40`. Read this map and F10O_ACTIVE_CODE_MAP.md rather than historical stage trees.
++
++| Purpose | Reused source |
++|---|---|
++| Four independent sources and exact cubic gradient | acoustics/water_disc_proxy.py, fast_sim/cubic_field.py |
++| Strict APECSS and F2 primary/secondary forces | fast_sim/water_b2.py: fields/control, water_control_engine.py, models.py, nearfield.py |
++| Original symmetric pair resistance | fast_sim/f10g_contact.py: resistance, contact_geometry |
++| Protected B2 reference | fast_sim/f10h_contact.py: geometric_contact; water_b2.py |
++| Protected M0/PBD | fast_sim/water_control_engine.py and inherited engines |
++| R3 cavity and GPU wall checks | coupling/pdms_cavity.py, fast_sim/pdms_cavity_engine.py, water_b2.py: wall_check |
++| Fixed-ID shape and topology analysis | scripts/straight_tube_exp1/f10o/analyze.py; fast_sim/morphodynamics.py |
++| Exact inputs, historical failures | results/straight_tube_exp1/f10n and f10o; never overwritten |
++
++Planned opt-in additions: fast_sim/hard_sphere.py and water_hard_sphere.py; scripts/straight_tube_exp1/f10p/{run,analyze,figures,verify}. These are new entrances, not changes to historical defaults.
++
++## Bounded cleanup decision
++
++本轮无新增安全删除对象。F10O already removed its sole proved unused f64 helper. Targeted inspection of the current adapter, force, resistance, contact, wall and analysis imports shows functioning callers or historical reproduction dependencies. Standalone CLI functions without inbound imports are not dead code. Historical references, failed proposals, fields, response tables, snapshots and documents remain intact. No broad historical source scan or speculative pruning is warranted.
++
++The separate stage-zero commit records this map, reference searches, baseline identity and successful original F10O read-only verification. No numerical source changes belong in that commit.
+diff --git a/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10p/cleanup/BASELINE.json b/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10p/cleanup/BASELINE.json
+new file mode 100644
+index 000000000..83560023d
+--- /dev/null
++++ b/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10p/cleanup/BASELINE.json
+@@ -0,0 +1,18 @@
++{
++  "commit": "98cf17b8ecd03e831628ed7005a8e1c83d354a40",
++  "original_verification": {
++    "status": "PASS",
++    "checks": {
++      "cleanup_precedes_bridge_and_original_F10N_unchanged": true,
++      "original_inputs_full_precision_controls_and_preregistered_targets": true,
++      "all_62_remote_artifacts_exact_hashes": true,
++      "immutable_executions_12_runs_original_budgets_and_preserved_failures": true,
++      "scientific_failure_not_promoted_to_navigation_or_AI_pass": true,
++      "four_opened_data_driven_PNG_and_PDF_pairs": true,
++      "progress_original_bytes_formulas_and_heading_structure_preserved": true
++    },
++    "scope": "Engineering and evidence integrity only; strong scientific admission remains FAIL"
++  },
++  "applicable_local_AGENTS": [],
++  "decision": "本轮无新增安全删除对象"
++}
+\ No newline at end of file
+diff --git a/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10p/cleanup/REFERENCES.txt b/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10p/cleanup/REFERENCES.txt
+new file mode 100644
+index 000000000..1ac984208
+--- /dev/null
++++ b/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10p/cleanup/REFERENCES.txt
+@@ -0,0 +1,17 @@
++scripts/straight_tube_exp1/f10o/delivery.py:42:WaterB2每步调用原F10H geometric_contact和F10G resistance。刚度保持0.04641319518378658 N/m，非线性残差1e-13 m、最多24次更新、20次线搜索，都是F10K轨迹参考原值。没有重写PCG、本构或润滑。GPU仍计算原声学力；同一R3 cavity_project对预测及B2提案均检查。任何非零壁修正直接拒绝这个远壁参考，不串接PBD。14项实际接口核对通过，包括CPU/GPU三种控制力输入、封闭X拒绝、顶部数值域拒绝、低于/高于APECSS表拒绝。
++scripts/straight_tube_exp1/f10o/delivery.py:95:The adapter directly imports original F10H geometric_contact and F10G resistance. R3 GPU walls inspect both predictions and final proposals, and any correction rejects the interior prototype. Pressure/APECSS violations also fail closed. M0 uses two local lubrication iterations and PBD; B2 uses the same resistance model solved as a matrix and the geometric unilateral spring. Cross-model contrasts are not numerical error estimates.
++scripts/straight_tube_exp1/f10o/run.py:14:from mevo_mb.fast_sim.water_b2 import WaterB2
++scripts/straight_tube_exp1/f10o/run.py:35:        return WaterB2(self.x0, self.physics, self.response, self.bases[cache], self.cavity)
++src/mevo_mb/fast_sim/water_b2.py:14:from .f10h_contact import geometric_contact
++src/mevo_mb/fast_sim/water_b2.py:20:class WaterB2:
++src/mevo_mb/fast_sim/water_b2.py:91:        op = resistance(self.x, self.radius)
++src/mevo_mb/fast_sim/water_b2.py:93:        result = geometric_contact(
++src/mevo_mb/fast_sim/f10g_contact.py:23:def resistance(x, radius, activation=0.1, floor=0.001):
++src/mevo_mb/fast_sim/f10g_contact.py:166:def contact_geometry(x, radius):
++src/mevo_mb/fast_sim/f10g_contact.py:201:    B, pairs, gaps = contact_geometry(x, radius)
++src/mevo_mb/fast_sim/f10g_contact.py:296:    B, pairs, gaps = contact_geometry(x, radius)
++src/mevo_mb/fast_sim/f10h_contact.py:10:from .f10g_contact import contact_geometry, normals, overlaps
++src/mevo_mb/fast_sim/f10h_contact.py:13:def geometric_contact(x, free, radius, zeta, dt, kc, A, max_iterations=24, atol_m=1e-13):
++src/mevo_mb/fast_sim/f10h_contact.py:38:        B, pairs, gaps = contact_geometry(y, 1.0)
++src/mevo_mb/fast_sim/f10h_contact.py:82:    B, pairs, gap = contact_geometry(positions, radius)
++src/mevo_mb/fast_sim/f10h_contact.py:89:    B0, _, g0 = contact_geometry(x, radius)

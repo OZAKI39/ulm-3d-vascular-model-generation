@@ -11,12 +11,24 @@ from . import f3_kernels as f3
 
 
 class F3Simulator(F2Simulator):
-    def __init__(self, *args, execution_mode="stable_reduction", **kwargs):
+    def __init__(self, *args, execution_mode="stable_reduction", parameterized_m0=False, **kwargs):
         if execution_mode not in ["fast_atomic", "stable_reduction", "stable_pairs", "stable_components"]:
             raise ValueError("Unknown numerical execution mode")
         self.execution_mode = execution_mode
         super().__init__(*args, **kwargs)
-        if asdict(self.p) != asdict(F2Physics()):
+        actual, frozen = asdict(self.p), asdict(F2Physics())
+        if parameterized_m0:
+            # Explicit F10L opt-in: physical inputs still require a matching
+            # response table. Numerical/near-field/contact choices stay frozen.
+            for key in (
+                "radius_m",
+                "frequency_Hz",
+                "density_kg_m3",
+                "viscosity_Pa_s",
+                "radial_effective_viscosity_Pa_s",
+            ):
+                frozen[key] = actual[key]
+        if actual != frozen:
             raise ValueError("F3 experiment physics is frozen to selected F2 model")
         self.pair_buffer = wp.zeros((self.total, self.n), dtype=wp.vec3d, device=self.device)
         start = perf_counter()

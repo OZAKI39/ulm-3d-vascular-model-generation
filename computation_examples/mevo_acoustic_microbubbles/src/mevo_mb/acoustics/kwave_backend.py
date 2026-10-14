@@ -104,11 +104,18 @@ class KWaveCW:
         self.axes = grid_axes(grid["shape"], grid["spacing_m"])
         self.kgrid = kWaveGrid(grid["shape"], grid["spacing_m"])
         f = a["frequency_Hz"]
-        c = config["medium"]["sound_speed_m_s"]
+        from .spatial_medium import speed_bounds
+
+        c_min, c = speed_bounds(config["medium"], grid["shape"])
+        self.c_min, self.c_max = c_min, c
+        if ("maps_h5" in config["medium"] or "sound_speed_map" in config["medium"]) and a[
+            "backend"
+        ] != "python":
+            raise ValueError("Spatial source scaling is verified only for the Python backend")
         self.samples_per_period = int(np.ceil(c / (a["CFL"] * min(grid["spacing_m"]) * f)))
         self.dt_s = 1.0 / (self.samples_per_period * f)
         diagonal = np.linalg.norm(np.array(grid["shape"]) * grid["spacing_m"])
-        settle_periods = int(np.ceil(a["transit_multiples"] * diagonal / c * f))
+        settle_periods = int(np.ceil(a["transit_multiples"] * diagonal / c_min * f))
         self.Nt = int((a["ramp_periods"] + settle_periods + a["recording_periods"]) * self.samples_per_period)
         self.kgrid.setTime(self.Nt, self.dt_s)
         self.record_samples = int(a["recording_periods"] * self.samples_per_period)
@@ -156,7 +163,7 @@ class KWaveCW:
         self.weights_sha256 = hashlib.sha256(cache.read_bytes()).hexdigest()
 
     def run(self, control_Pa: np.ndarray, label: str) -> tuple[np.ndarray, np.ndarray, dict]:
-        from kwave.kmedium import kWaveMedium
+        from .spatial_medium import make_medium
         from kwave.ksensor import kSensor
         from kwave.ksource import kSource
         from kwave.kspaceFirstOrder import kspaceFirstOrder
@@ -178,7 +185,7 @@ class KWaveCW:
         sensor = kSensor(mask=self.sensor_mask)
         sensor.record = ["p"]
         sensor.record_start_index = self.record_start + 1  # public k-Wave convention: 1-based
-        medium = kWaveMedium(sound_speed=med["sound_speed_m_s"], density=med["density_kg_m3"])
+        medium = make_medium(med, c["grid"]["shape"])
         backend, device = a["backend"], a["device"]
         solver_source = source
         cpp_source_compatibility = False
@@ -302,7 +309,7 @@ class KWaveCW:
             "grid_dimensions": c["grid"]["shape"],
             "grid_spacing_m": c["grid"]["spacing_m"],
             "CFL_requested": a["CFL"],
-            "CFL_actual": med["sound_speed_m_s"] * self.dt_s / min(c["grid"]["spacing_m"]),
+            "CFL_actual": self.c_max * self.dt_s / min(c["grid"]["spacing_m"]),
             "dt_s": self.dt_s,
             "Nt": self.Nt,
             "samples_per_period": self.samples_per_period,

@@ -1,3 +1,5 @@
+Current research delivery: **F10Q (2026-10-14)**. See the [current handoff](docs/CURRENT_PROJECT_STATE_20261014.md) and [curated synchronization scope](sync/20261014/README.md). Earlier stage descriptions below remain historical.
+
 # MEVO acoustic–microbubble simulator
 
 ## Current delivery — F10K, synchronized 2026-10-13
