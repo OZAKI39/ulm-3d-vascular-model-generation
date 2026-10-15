@@ -1,3 +1,5 @@
+> 当前 clot 代码与科研证据：[2026-10-15 快照入口](github_sync_20261015/README.md)。以下保留此前阶段说明。
+
 # clot_clearance — isolated straight-pipe NOSB-PD demo
 
 Open [OPEN_RESULTS.html](OPEN_RESULTS.html) for the offline interactive result, animation and figures. Read [REPORT_ZH.md](REPORT_ZH.md) for the actual results. All development and outputs are in this folder; the existing BraVa case, shared physical code, original PDF and SimVascular source remain untouched.

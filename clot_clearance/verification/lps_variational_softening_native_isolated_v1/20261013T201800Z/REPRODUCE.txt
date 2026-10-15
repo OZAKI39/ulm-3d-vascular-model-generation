@@ -1,0 +1,53 @@
+LPS_VARIATIONAL_SOFTENING_NATIVE_ISOLATED_V1 — reproduction and immutable evidence
+Accepted run: 20261013T201800Z. Never rerun into this accepted directory.
+Server project is flat /workspace/y_clot/project. First read /etc/vast-agents-guide.md,
+/workspace/y_clot/project/AGENTS.md and /workspace/y_clot/README_MIGRATION_ZH.txt.
+Use the existing isolated clot environment; no global installation or env.sh edits.
+
+1. Verify PAYLOAD_MANIFEST.json hashes (paths relative to project root),
+ISOLATED_BINARY_IDENTITY.json, SOURCE_AND_LIBRARY_IDENTITY.json and the previous
+accepted 127-file manifest. Baseline prior-run asset SHA is the hard admission gate.
+Complete baseline source remains at the path in BASE_SOURCE_TREE_MANIFEST.json.
+This artifact set intentionally does not copy the multi-package full source/build to WSL.
+The final library is also preserved at isolated_library/liblammps.so.
+
+2. Fresh reproduction: copy analysis/native_softening_v1 to a new analysis directory.
+In that copy's common.py assign a NEW RUN and A to that NEW analysis directory.
+Leave PREV/OLD and all material constants unchanged. prepare.py rejects an existing O.
+The fresh-build wrapper tolerates absent SETUP_RECOVERY.json; the originally executed
+wrapper is archived in implementation_history/build_recipe_before_portability_fix.
+This wrapper-only portability cleanup does not change C++ or compiled-library identity.
+
+3. In a dedicated shell (replace paths with the new run/copy):
+source /workspace/y_clot/env.sh
+export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+python "$task_analysis/prepare.py"
+python "$task_analysis/build.py"
+export LD_LIBRARY_PATH="$task_output/build:$LD_LIBRARY_PATH"
+export LAMMPS_LIBRARY_PATH="$task_output/build"
+python "$task_analysis/checks.py"
+python "$task_analysis/paths.py"
+python "$task_analysis/components.py"
+python "$task_analysis/identity.py" sort
+mpirun --allow-run-as-root -np 2 python "$task_analysis/identity.py" mpi
+python "$task_analysis/restart.py"
+python "$task_analysis/contact.py"
+python "$task_analysis/contract_checks.py"
+python "$task_analysis/postprocess.py"
+python "$task_analysis/figures.py"
+Run each command only if its predecessor succeeded; use `set -e` in scripts.
+The wrapper checks actual /proc/self/maps library SHA; do not fall back to production.
+No Velocity-Verlet integration or physical dt is used: accepted-state kinematic protocol.
+
+4. New-run document update, visual review and sealing require new real before/after
+checks. Do not reuse this run's WSL/visual PASS record in another run. finalize.py
+assembles this run's evidence and is not a universal fresh-run scientific driver.
+Binary bitwise identity across another compiler/build path is not promised;
+compare declared source/build identity and FP64 mechanical gates.
+
+5. Native interface: new bpm/peri/variational + versioned reference.native;
+`lpsvar_action`: op1 diagnostic state import before any accepted commit, op2 explicit
+collective accepted-state commit between runs; repeated identical token is a no-op.
+`lpsvar_output`: read-only FP64 force/energy/history. See native.py and implementation
+audit for units (N/m3 native f, multiply V for N; complete ebond U/V, exported U in J).
+All 2MPI API operations must be called collectively; this is not a production API.

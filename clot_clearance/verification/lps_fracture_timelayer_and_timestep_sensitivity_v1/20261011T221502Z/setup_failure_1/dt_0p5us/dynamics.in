@@ -1,0 +1,18 @@
+# Official BPM peri accumulates N/m^3: convert to nodal N BEFORE external forces.
+variable si_fx atom fx*d_vfrac
+variable si_fy atom fy*d_vfrac
+variable si_fz atom fz*d_vfrac
+fix si_force all setforce v_si_fx v_si_fy v_si_fz
+velocity all set 0 0 0 units box
+group driven id 90
+group free subtract all driven
+variable zero equal 0
+variable disp equal 1.5000000000000012e-05*0.5*(1-cos(PI*min(time/1.0000000000000001e-05,1)))
+variable speed equal (time<1.0000000000000001e-05)*1.5000000000000012e-05*PI/(2*1.0000000000000001e-05)*sin(PI*min(time/1.0000000000000001e-05,1))
+fix drive driven move variable v_disp v_zero v_zero v_speed v_zero v_zero units box
+fix integrate free nve
+fix half_read all external pf/callback 1 1
+fix full_read all audit/readonly/finalv3
+thermo_style custom step time atoms bonds ke pe
+thermo_modify flush yes
+run 100

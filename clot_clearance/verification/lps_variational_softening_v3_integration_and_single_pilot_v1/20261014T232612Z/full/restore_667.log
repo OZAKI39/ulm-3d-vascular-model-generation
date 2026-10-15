@@ -1,0 +1,101 @@
+LAMMPS (30 Sep 2026)
+  using 1 OpenMP thread(s) per MPI task
+atom_modify map array sort 0 0
+read_restart /workspace/y_clot/project/verification/lps_variational_softening_v3_integration_and_single_pilot_v1/20261014T232612Z/full/checkpoints/accepted_slot_0.restart
+Reading restart file ...
+  restart file = 30 Sep 2026, LAMMPS = 30 Sep 2026
+  restoring atom style bond from restart
+  orthogonal box = (-0.007202 -0.001152 9.8e-05) to (-0.004748 0.001302 0.002002)
+  1 by 1 by 1 MPI processor grid
+  restoring pair style bpm/peri from restart
+  restoring bond style bpm/peri/variational from restart
+  3488 atoms
+  150921 bonds
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    0        1        1       
+  special bond factors coul:  1        1        1       
+   122 = max # of 1-2 neighbors
+   302 = max # of special neighbors
+  special bonds CPU = 0.004 seconds
+  read_restart CPU = 0.102 seconds
+lattice sc 5.0000000000000002e-05
+Lattice spacing in x,y,z = 5e-05 5e-05 5e-05
+neighbor 0.0001 bin
+neigh_modify every 1 delay 0 check no
+comm_modify cutoff 0.00045149999999999997
+fix props all property/atom d_vfrac d_theta ghost yes
+Resetting peratom fix info from restart file:
+  fix style: property/atom, fix ID: props
+set group all d_vfrac 1.2500000000000002e-13
+Setting atom values ...
+  3488 settings made for d_vfrac
+
+special_bonds lj 0 1 1 coul 1 1 1
+timestep 2.4999999999999999e-07
+thermo 100000
+thermo_style custom step time atoms bonds pe ebond epair ke
+thermo_modify lost error norm no
+
+group clot type 1
+1927 atoms in group clot
+group anchors type 2
+1561 atoms in group anchors
+fix integrate clot nve
+fix coordinator all LPS/VARIATIONAL/DYNAMIC 1000
+fix v3forces clot external pf/callback 1 1
+run 0
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+All restart file peratom fix info was re-assigned
+Neighbor list info ...
+  update: every = 1 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 0.0002505
+  ghost atom cutoff = 0.0004515
+  binsize = 0.00012525, bins = 20 20 16
+  1 neighbor lists, perpetual/occasional/extra = 1 0 0
+  (1) pair bpm/peri, perpetual
+      attributes: half, newton on
+      pair build: half/bin/newton
+      stencil: half/bin/3d
+      bin: standard
+Per MPI rank memory allocation (min/avg/max) = 61.75 | 61.75 | 61.75 Mbytes
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+      2372   0.0004265           3488      150921   49525.358      48364.072      1161.2862      3.9047686e-08
+Loop time of 8.7e-07 on 1 procs for 0 steps with 3488 atoms
+
+114.9% CPU use with 1 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0          | 0          | 0          |   0.0 |  0.00
+Bond    | 0          | 0          | 0          |   0.0 |  0.00
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0          | 0          | 0          |   0.0 |  0.00
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 8.7e-07    |            |       |100.00
+
+Nlocal:           3488 ave        3488 max        3488 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:              0 ave           0 max           0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:         550316 ave      550316 max      550316 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 550316
+Ave neighs/atom = 157.77408
+Ave special neighs/atom = 86.537271
+Neighbor list builds = 0
+Dangerous builds not checked
+write_restart /workspace/y_clot/project/verification/lps_variational_softening_v3_integration_and_single_pilot_v1/20261014T232612Z/full/checkpoints/accepted_slot_1.restart.pending
+System init for write_restart ...
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+timestep 1.2499999999999999e-07
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+      2372   0.0004265           3488      150921   49525.358      48364.072      1161.2862      3.9047686e-08
+      2373   0.000426625         3488      150916   49537.126      48371.435      1165.6917      3.9060455e-08
+Loop time of 0.0713743 on 1 procs for 1 steps with 3488 atoms
+
+Total wall time: 0:00:00

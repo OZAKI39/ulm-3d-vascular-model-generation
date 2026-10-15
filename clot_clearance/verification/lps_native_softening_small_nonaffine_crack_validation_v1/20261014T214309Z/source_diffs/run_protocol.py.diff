@@ -1,0 +1,12 @@
+--- prior/run_protocol.py
++++ no_rss_limit/run_protocol.py
+@@ -49,7 +49,8 @@
+    if s['step']%400==0:journal.checkpoint(ns,s,'periodic_400_accepted_steps')
+    if s['step']%200==0:
+     elapsed=time.perf_counter()-start;rss=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss*1024;bytes_now=sum(p.stat().st_size for p in (O/'full').rglob('*') if p.is_file());print('STEP',s['step'],'t_ms',s['time']*1e3,'new_failed_total',row['total_natural_failed'],'components',row['components'],'max_dd',row['max_dd'],'relR',row['relative_R'],'wall_s',elapsed,flush=True)
+-    assert elapsed<=freeze['budget']['main_wall_s'] and rss<=freeze['budget']['RSS_stop_GiB']*1024**3 and bytes_now<=freeze['budget']['output_limit_GiB']*1024**3,'RESOURCE_BUDGET'
++    assert freeze['budget']['RSS_stop_GiB'] is None,'USER_AUTHORIZED_NO_RSS_LIMIT'
++    assert elapsed<=freeze['budget']['main_wall_s'] and bytes_now<=freeze['budget']['output_limit_GiB']*1024**3,'WALL_OR_OUTPUT_BUDGET'
+  except Exception as exc:stop.append(repr(exc));journal.failure(exc,traceback.format_exc())
+  finally:
+   engine.save();ns=engine.ns;s=journal.last

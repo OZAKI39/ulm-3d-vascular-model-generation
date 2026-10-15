@@ -1,0 +1,221 @@
+--- baseline/src/BPM/bond_bpm_peri_variational.h
++++ dynamic/src/BPM/bond_bpm_peri_variational.h
+@@ -23,6 +23,14 @@
+   void read_restart(FILE *) override;
+   int action(int,long long,const double *,const double *);
+   int output(int,double *);
++  void attach_dynamic(bool);
++  int dynamic_commit(long long);
++  double physical_volume() const { return V; }
++ private:
++  bool dynamic_attached=false,cache_valid=false;
++  long long cache_hits=0,zero_graph_skips=0,last_new_failures=0;
++  std::vector<double> cache_x;
++  int commit_state(long long);
+  private:
+   int n=0,nb=0;
+   bool ready=false,imported=false;
+--- baseline/src/BPM/bond_bpm_peri_variational.cpp
++++ dynamic/src/BPM/bond_bpm_peri_variational.cpp
+@@ -66,6 +66,12 @@
+ }
+ void BondBPMPeriVariational::evaluate(){
+  auto start=std::chrono::steady_clock::now();gather();
++ if(std::all_of(failed.begin(),failed.end(),[](int q){return q==1;})) {
++  U=0;std::fill(fn.begin(),fn.end(),0);std::fill(theta.begin(),theta.end(),0);
++  std::fill(v.begin(),v.end(),0);std::fill(tdir.begin(),tdir.end(),0);
++  zero_graph_skips++;cache_x=x;cache_valid=true;
++  seconds+=std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();return;
++ }
+  std::vector<double> numerator(n,0),denominator(n,1/A),w(2*nb),hh(2*nb),den(2*nb);
+  for(int q=0;q<2*nb;q++){int b=q%nb,a=q<nb?ei[b]:ej[b];den[q]=D[q]*d[b]+k[q]*(1-d[b]);w[q]=k[q]*(1-d[b])/den[q];hh[q]=d[b]/den[q];numerator[a]+=L[q]*w[q]*e[b];denominator[a]+=L[q]*L[q]*hh[q];}
+  for(int a=0;a<n;a++)numerator[a]/=denominator[a];
+@@ -73,10 +79,12 @@
+  for(int q=0;q<2*nb;q++){int b=q%nb,a=q<nb?ei[b]:ej[b];double coupling=L[q]*numerator[a],g=D[q]*e[b]+coupling;v[q]=w[q]*e[b]-hh[q]*coupling;tdir[q]=w[q]*g;theta[a]+=L[q]*v[q];double z=g/den[q];U+=.5*D[q]*v[q]*v[q]+.5*k[q]*(1-d[b])*d[b]*z*z;}
+  for(double t:theta)U+=.5*A*t*t;
+  for(int b=0;b<nb;b++){double t=tdir[b]+tdir[b+nb];for(int c=0;c<3;c++){double f=t*dir[3*b+c];fn[3*ei[b]+c]+=f;fn[3*ej[b]+c]-=f;}}
+- evaluations++;seconds+=std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();
++ cache_x=x;cache_valid=true;evaluations++;seconds+=std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();
+ }
+ void BondBPMPeriVariational::compute(int ef,int vf){
+- ev_init(ef,vf);evaluate();
++ ev_init(ef,vf);
++ if(cache_valid){gather();if(x==cache_x)cache_hits++;else evaluate();}
++ else evaluate();
+  // Native BPM uses force density. Exported fn,U retain physical N,J.
+  for(int a=0;a<atom->nlocal;a++){int i=ordinal.at(atom->tag[a]);for(int c=0;c<3;c++)atom->f[a][c]+=fn[3*i+c]/V;}
+  if(eflag_global)energy=comm->me==0?U/V:0;
+@@ -99,24 +107,43 @@
+ int BondBPMPeriVariational::action(int op,long long tok,const double *kk,const double *dd){
+  if(update->whichflag!=0)return -1; // Only between accepted run segments, never inside force evaluation.
+  if(op==1){
++  if(dynamic_attached)return -7;
+   if(imported||commits)return -2;
+   if(comm->me==0){std::copy(kk,kk+nb,kap.begin());std::copy(dd,dd+nb,d.begin());}
+   MPI_Bcast(kap.data(),nb,MPI_DOUBLE,0,world);MPI_Bcast(d.data(),nb,MPI_DOUBLE,0,world);
+-  for(int b=0;b<nb;b++)failed[b]=(d[b]==1);validate();imported=true;sync_topology();return 0;
++  for(int b=0;b<nb;b++)failed[b]=(d[b]==1);validate();imported=true;cache_valid=false;sync_topology();return 0;
+  }
+  if(op!=2)return -3;
++ if(dynamic_attached)return -7;
++ return commit_state(tok);
++}
++void BondBPMPeriVariational::attach_dynamic(bool attached){
++ if(attached && dynamic_attached)error->all(FLERR,"Only one variational dynamic coordinator is allowed");
++ dynamic_attached=attached;
++}
++int BondBPMPeriVariational::dynamic_commit(long long step){
++ if(!dynamic_attached || update->whichflag!=1 || update->setupflag)return -8;
++ if(commits && step!=token+1)return -9;
++ int result=commit_state(step);
++ return result==0?int(last_new_failures):-10;
++}
++int BondBPMPeriVariational::commit_state(long long tok){
+  long long low=tok,high=tok;MPI_Allreduce(MPI_IN_PLACE,&low,1,MPI_LONG_LONG,MPI_MIN,world);MPI_Allreduce(MPI_IN_PLACE,&high,1,MPI_LONG_LONG,MPI_MAX,world);if(low!=high || tok<token)return -4;
+  evaluate();if(tok==token)return x==accepted_x?1:-5;
+  double oldU=U;std::vector<double> nextk(nb),nextd(nb);
+  for(int b=0;b<nb;b++){nextk[b]=std::max(kap[b],std::max(e[b]/r[b],0.));double z=nextk[b];nextd[b]=z<=s0?0:(z>=sc?1:sc*(z-s0)/(z*(sc-s0)));if(nextd[b]<d[b]-2e-13)return -6;}
+- kap.swap(nextk);d.swap(nextd);evaluate();lastdrop=oldU-U;Diss+=lastdrop;
+- for(int b=0;b<nb;b++)if(d[b]==1&&!failed[b]){failed[b]=1;events++;}
+- sync_topology();token=tok;commits++;accepted_x=x;return 0;
++ bool changed=nextd!=d;
++ kap.swap(nextk);d.swap(nextd);
++ if(changed)evaluate();
++ lastdrop=oldU-U;Diss+=lastdrop;last_new_failures=0;
++ for(int b=0;b<nb;b++)if(d[b]==1&&!failed[b]){failed[b]=1;events++;last_new_failures++;}
++ if(last_new_failures)sync_topology();token=tok;commits++;accepted_x=x;return 0;
+ }
+ int BondBPMPeriVariational::output(int field,double *out){
+  const std::vector<double>* p=nullptr;
+  switch(field){case 0:p=&fn;break;case 1:p=&x;break;case 2:p=&kap;break;case 3:p=&d;break;case 4:p=&m;break;case 5:p=&v;break;case 6:p=&tdir;break;case 7:p=&theta;break;
+  case 8:{double s[]={U,Diss,lastdrop,double(events),double(commits),double(token),double(evaluations),seconds,double(n),double(nb)};std::copy(s,s+10,out);return 10;}
++ case 11:{double s[]={double(cache_hits),double(zero_graph_skips),double(last_new_failures),V,double(dynamic_attached)};std::copy(s,s+5,out);return 5;}
+  case 9:for(int b=0;b<nb;b++)out[b]=double(bid[b]);return nb;
+  case 10:for(int b=0;b<nb;b++)out[b]=failed[b];return nb;
+  default:return -1;}
+@@ -136,7 +163,7 @@
+  s>>token>>commits>>events>>Diss>>lastdrop>>imported;tags.resize(n);m.resize(n);bid.resize(nb);ei.resize(nb);ej.resize(nb);types.resize(nb);r.resize(nb);h.resize(nb);kap.resize(nb);d.resize(nb);failed.resize(nb);
+  for(int a=0;a<n;a++)s>>tags[a]>>m[a];for(int b=0;b<nb;b++)s>>bid[b]>>ei[b]>>ej[b]>>types[b]>>r[b]>>h[b]>>kap[b]>>d[b]>>failed[b];
+  size_t count;s>>count;if(count!=0&&count!=size_t(3*n))error->all(FLERR,"Incomplete variational accepted-state coordinates");accepted_x.resize(count);for(double &z:accepted_x)s>>z;
+- if(!s)error->all(FLERR,"Truncated variational restart");ready=true;allocate();setflag[1]=1;validate();
++ if(!s)error->all(FLERR,"Truncated variational restart");ready=true;cache_valid=false;allocate();setflag[1]=1;validate();
+ }
+ void BondBPMPeriVariational::write_restart(FILE *fp){std::string s=serialize();int size=s.size();fwrite(&size,sizeof(int),1,fp);fwrite(s.data(),1,size,fp);}
+ void BondBPMPeriVariational::read_restart(FILE *fp){int size=0;if(comm->me==0)utils::sfread(FLERR,&size,sizeof(int),1,fp,nullptr,error);MPI_Bcast(&size,1,MPI_INT,0,world);if(size<32||size>200000000)error->all(FLERR,"Invalid variational restart payload");std::string s(size,'\0');if(comm->me==0)utils::sfread(FLERR,&s[0],1,size,fp,nullptr,error);MPI_Bcast(&s[0],size,MPI_CHAR,0,world);deserialize(s);}
+--- baseline/src/BPM/fix_lps_variational_dynamic.h
++++ dynamic/src/BPM/fix_lps_variational_dynamic.h
+@@ -0,0 +1,25 @@
++// Internal isolated research coordinator; GPL-compatible LAMMPS extension.
++#ifdef FIX_CLASS
++FixStyle(LPS/VARIATIONAL/DYNAMIC,FixLPSVariationalDynamic);
++#else
++#ifndef LMP_FIX_LPS_VARIATIONAL_DYNAMIC_H
++#define LMP_FIX_LPS_VARIATIONAL_DYNAMIC_H
++#include "fix.h"
++namespace LAMMPS_NS {
++class BondBPMPeriVariational;
++class FixLPSVariationalDynamic : public Fix {
++ public:
++  FixLPSVariationalDynamic(class LAMMPS *, int, char **);
++  ~FixLPSVariationalDynamic() override;
++  int setmask() override;
++  void init() override;
++  void setup(int) override;
++  void post_integrate() override;
++  void post_force(int) override;
++ private:
++  BondBPMPeriVariational *material;
++  double rho;
++};
++}
++#endif
++#endif
+--- baseline/src/BPM/fix_lps_variational_dynamic.cpp
++++ dynamic/src/BPM/fix_lps_variational_dynamic.cpp
+@@ -0,0 +1,74 @@
++// Physical SI force conversion and one damage commit per native Verlet drift.
++#include "fix_lps_variational_dynamic.h"
++#include "bond_bpm_peri_variational.h"
++#include "atom.h"
++#include "error.h"
++#include "force.h"
++#include "modify.h"
++#include "update.h"
++#include "utils.h"
++#include <cmath>
++#include <cstring>
++using namespace LAMMPS_NS;
++using namespace FixConst;
++
++FixLPSVariationalDynamic::FixLPSVariationalDynamic(LAMMPS *lmp, int narg, char **arg) :
++    Fix(lmp, narg, arg), material(nullptr), rho(0)
++{
++  if(narg!=4 || igroup!=0)
++    error->all(FLERR,"LPS/VARIATIONAL/DYNAMIC requires group all and physical density");
++  rho=utils::numeric(FLERR,arg[3],false,lmp);
++  if(!(rho>0))error->all(FLERR,"Variational dynamic density must be positive");
++  force_reneighbor=1;
++  next_reneighbor=-1;
++}
++FixLPSVariationalDynamic::~FixLPSVariationalDynamic()
++{
++  if(material && force && force->bond==material)material->attach_dynamic(false);
++}
++int FixLPSVariationalDynamic::setmask()
++{
++  return POST_INTEGRATE | POST_FORCE;
++}
++void FixLPSVariationalDynamic::init()
++{
++  if(std::strcmp(update->integrate_style,"verlet")!=0)
++    error->all(FLERR,"Variational dynamic coordinator supports Verlet only");
++  auto *bond=dynamic_cast<BondBPMPeriVariational *>(force->bond);
++  if(!bond)error->all(FLERR,"Variational dynamic coordinator requires its isolated bond style");
++  if(material && material!=bond)
++    error->all(FLERR,"Cannot replace variational material during dynamic history");
++  if(!material){material=bond;material->attach_dynamic(true);}
++  int nve_count=0;
++  for(auto *fix : modify->get_fix_list()) {
++    if(fix==this)continue;
++    if(std::strcmp(fix->style,"nve")==0){nve_count++;continue;}
++    if(std::strcmp(fix->style,"move")==0 || std::strcmp(fix->style,"property/atom")==0)continue;
++    error->all(FLERR,"Unadmitted fix alongside isolated variational dynamic force conversion");
++  }
++  if(nve_count!=1)error->all(FLERR,"Variational dynamics requires one free-node fix nve");
++  const double mass=rho*material->physical_volume();
++  for(int i=0;i<atom->nlocal;i++) {
++    double actual=atom->rmass?atom->rmass[i]:atom->mass[atom->type[i]];
++    if(std::abs(actual-mass)>1e-12*mass)
++      error->all(FLERR,"Variational dynamics requires physical rho times volume masses");
++  }
++}
++void FixLPSVariationalDynamic::setup(int vflag)
++{
++  // Setup computed a fresh density force. It is not an accepted physical step.
++  post_force(vflag);
++}
++void FixLPSVariationalDynamic::post_integrate()
++{
++  int failures=material->dynamic_commit(update->ntimestep);
++  if(failures<0)error->all(FLERR,"Invalid or duplicate variational physical-step commit");
++  if(failures)next_reneighbor=update->ntimestep;
++}
++void FixLPSVariationalDynamic::post_force(int)
++{
++  // After reverse communication; both pair and bond use the same volume convention.
++  const double volume=material->physical_volume();
++  for(int i=0;i<atom->nlocal;i++)
++    for(int j=0;j<3;j++)atom->f[i][j]*=volume;
++}
+--- baseline/src/.gitignore
++++ dynamic/src/.gitignore
+@@ -2005,3 +2005,9 @@
+ /pair_bondval.h
+ /pair_bondval_vec.cpp
+ /pair_bondval_vec.h
++
++# Isolated variational research package copies (legacy make)
++/bond_bpm_peri_variational.h
++/bond_bpm_peri_variational.cpp
++/fix_lps_variational_dynamic.h
++/fix_lps_variational_dynamic.cpp

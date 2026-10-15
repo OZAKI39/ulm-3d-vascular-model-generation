@@ -1,0 +1,14 @@
+Use the locked server environment: source /workspace/y_clot/env.sh; cd /workspace/y_clot/project
+Never run make_patch/build scripts against accepted output paths. For a fresh reproduction clone analysis/native_state_v1 into a new task directory and replace config.run plus the explicit frozen run paths in build/replay shell wrappers. Retain material/input constants and source hashes. Original production source must match SOURCE_AND_BINARY_IDENTITY.
+1. capture.py records environment/SHA and protected baselines; DESIGN_FREEZE copied before tests.
+2. Compile probe.cpp with mpicxx -std=c++17 -O2 -shared -fPIC -DLAMMPS_SMALLBIG -DOMPI_SKIP_MPICXX, exact source/src + third_party includes, and -L<production build> -llammps. Output probe_original.so in the new run only.
+3. python -m analysis.native_state_v1.diagnose sort original
+   mpiexec -np 2 python -m analysis.native_state_v1.diagnose migration original
+   python -m analysis.native_state_v1.diagnose fracture original
+4. Original cross-rank fracture reproduction: mpiexec -np 2 python -m analysis.native_state_v1.diagnose mpi_fracture original (known SIGSEGV; isolated process, writes only new run).
+5. Final source changes: BUGFIX_SOURCE_DIFF.patch against an independent copy of the exact recorded production source. cmake Release BUILD_MPI=ON BUILD_SHARED_LIBS=ON PKG_BPM=ON PKG_MOLECULE=ON DOWNLOAD_POTENTIALS=OFF MPI_CXX_COMPILER=/workspace/y_clot/deps/openmpi/bin/mpicxx. Build --parallel 8 only after rechecking quota/jobs. Do not overwrite production or intermediate lib. Compile probe_final.so using final headers.
+6. Set LD_LIBRARY_PATH=<new final build>:$LD_LIBRARY_PATH. Run sort final, 2-rank migration final, fracture final, 2-rank mpi_fracture final. audits.py compares full precision states against the locked existing independent energy.cpp/energy.so.
+7. postprocess.py only reads historical accepted V3 and writes a new POSTPROCESS_OLD_NEW_COMPARISON. figures.py uses saved NPZ/JSON and generates static plots. final_checks.py rehashes protected records.
+8. DO NOT rerun replay.py this round. One attempt already consumed and failed; final build has no full V3 trajectory. Next round needs a fresh independent case and streamed observer logs. The archived replay.py preserves exactly the attempted input and buffered observer which lost buffered state at native crash.
+9. deliver.py is a one-time guarded actual WSL document update, not a generic rerunnable scientific test. The existing backup/diff/SHA are the documentary evidence; do not reapply duplicate text.
+Dependencies: server private Python NumPy/SciPy/mpi4py/LAMMPS/VTK and existing C++ Energy library; plotting matplotlib. No AI-generated scientific imagery or coordinate editing.

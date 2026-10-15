@@ -1,0 +1,30 @@
+EVIDENCE-FIRST REPRODUCTION; no automatic new scientific run.
+1. Read FINAL_STATUS.json, design freeze, this round's source patch and report.
+2. Actual environment: source /workspace/y_clot/env.sh
+   Set LD_LIBRARY_PATH=/workspace/y_clot/project/verification/lps_native_softening_dynamic_commit_and_small_crack_v1/20261013T214800Z/build:$LD_LIBRARY_PATH
+   Set PYTHONPATH=/workspace/y_clot/project/verification/lps_native_softening_dynamic_commit_and_small_crack_v1/20261013T214800Z/source/python:$PYTHONPATH
+   Original production paths and env.sh remain unchanged.
+3. Actual source: /workspace/y_clot/project/verification/lps_native_softening_dynamic_commit_and_small_crack_v1/20261013T214800Z/source; exact four BPM C++ files in source_snapshot and NATIVE_SOURCE_PATCH.diff.
+   Upstream base is prior accepted source /workspace/y_clot/project/verification/lps_variational_softening_native_isolated_v1/20261013T201800Z/source. Do not overwrite it.
+   Rebuild only in a NEW isolated directory with the CMake command saved in BUILD_RESOURCES.json.
+   The final patch includes src/.gitignore bookkeeping; C++ used in all dynamic runs is unchanged.
+   Do not rerun p0_cleanup.py/p1_freeze.py or overwrite the sealed run directory.
+4. Actual scientific execution sequence:
+   P0 p0_cleanup.py -> P1 p1_freeze.py -> build.py -> p2_checks.py.
+   dynamic_run.py used final library SHA 866065394c48ebc8a6d32f147bde992a325c2a503a49d50392243eee10fea9bd.
+   Zero-step input min/max syntax failure archived under setup_attempt_min_syntax.
+   main trajectory step0..170 in dynamic341_trajectory.npz.
+   Trial assertion repaired (history invariant, U changes under changed x); continue_main.py resumes saved step170 without physical replay.
+   continuation trajectory step170..244; stop at registered max-damage increment.
+   half_window.py runs only saved step210 at dt/2 for68 steps, ending same physical122us.
+   postprocess.py merges the same-case segments and independently reconstructs every main state.
+   stop_state_checks.py reloads frozen native endpoint topologies and does fixed-history energy finite differences; no new dynamic steps.
+5. Raw FP64 main_accepted_trajectory.npz is the combined primary evidence. Physical time is the time_s column; dt/2 integer step IDs differ.
+   d/kappa/force/x/v remain full precision. Complete failure event IDs in FIRST_SOFTENING_AND_FAILURE_EVENTS.json and segment EVENTS files.
+6. For a future authorized replay, choose a NEW run_id and adjust only output paths in a private copy of common.py;
+   preserve scientific design/material/input and point to immutable reference files. Existing scripts deliberately refuse overwriting completed main runs.
+   Do not silently bypass P0 active-index conflict guards; preserve existing active index and make a separate reproduction sandbox.
+7. Payload verification (read-only): compare each relative path to SHA256 in PAYLOAD_MANIFEST.json.
+   Server retains the full source/build tree; local package omits compiled object caches and duplicate upstream source, retaining actual binary and touched sources/core hooks.
+   Frozen offline model.py and original geometry are copied into source_snapshot/provenance for dependency clarity.
+8. No P4, no dt/4, no full V3, no production deployment. A fresh longer scientific protocol needs the next research instruction.

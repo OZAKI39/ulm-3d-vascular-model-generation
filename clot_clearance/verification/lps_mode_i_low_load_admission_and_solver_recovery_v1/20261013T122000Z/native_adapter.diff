@@ -1,0 +1,28 @@
+--- original_native_a.py
++++ task_native_adapter.py
+@@ -1,3 +1,5 @@
++# Task-only adapter: original fixed-topology Native; adds an audited per-atom
++# dead force AFTER the single volume conversion, initialized before run 0.
+ """Task-only static branch adapter: copied V1 native check with break no.
+ One explicit input change; source/material/criterion never modified.
+ """
+@@ -22,7 +24,7 @@
+  neighbor {2*DX:.17g} bin
+  neigh_modify every 1 delay 0 check no
+  comm_modify cutoff {3*DELTA:.17g}
+- fix props all property/atom d_vfrac d_theta d_damage ghost yes
++ fix props all property/atom d_vfrac d_theta d_damage d_loadz ghost yes
+  set group all d_vfrac {DX**3:.17g}
+  pair_style bpm/peri contact_distance_factor 1.0
+  pair_coeff * * {18*K/(math.pi*DELTA**4):.17g} {DELTA:.17g}
+@@ -31,7 +33,10 @@
+  bond_coeff 2 lps {K:.17g} {G} {DELTA:.17g} .140624859375 0
+  bond_coeff 3 lps {K:.17g} {G} {DELTA:.17g} 1 0
+  velocity all set 0 0 0 units box
++ set group all d_loadz 0
+  {force_conversion()}
++ variable lowload atom d_loadz
++ fix lowload all addforce 0 0 v_lowload
+  timestep 5e-7
+  compute contactPE all pe pair
+  compute bondPE all pe bond

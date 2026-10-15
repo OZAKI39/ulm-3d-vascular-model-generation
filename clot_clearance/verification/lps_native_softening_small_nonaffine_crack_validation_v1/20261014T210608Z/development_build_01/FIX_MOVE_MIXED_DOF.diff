@@ -1,0 +1,30 @@
+--- validated/fix_move.cpp
++++ isolated_small_crack/fix_move.cpp
+@@ -1682,15 +1682,19 @@
+ 
+ void FixMove::reset_dt()
+ {
+-  // Isolated event integrator: only fully prescribed equal-variable motion.
+-  // These six expressions use native cumulative `time`; no elapsed-step*dt
+-  // displacement or partially integrated component is admitted here.
+-  if (mstyle != VARIABLE || !xvarstr || !yvarstr || !zvarstr ||
+-      !vxvarstr || !vyvarstr || !vzvarstr ||
+-      xvarstyle != EQUAL || yvarstyle != EQUAL || zvarstyle != EQUAL ||
+-      vxvarstyle != EQUAL || vyvarstyle != EQUAL || vzvarstyle != EQUAL)
++  // Isolated mixed-DOF extension: each Cartesian component must be either
++  // a pair of equal-style cumulative-time expressions or two NULLs.
++  // NULL components retain the existing native Verlet kick/drift/kick.
++  // Displacement-only, velocity-only and atom-style expressions are rejected.
++  auto admitted = [&](char *position, char *velocity, int ps, int vs) {
++    return (!position && !velocity) ||
++           (position && velocity && ps == EQUAL && vs == EQUAL);
++  };
++  if (mstyle != VARIABLE || !admitted(xvarstr,vxvarstr,xvarstyle,vxvarstyle) ||
++      !admitted(yvarstr,vyvarstr,yvarstyle,vyvarstyle) ||
++      !admitted(zvarstr,vzvarstr,zvarstyle,vzvarstyle))
+     error->all(FLERR, Error::NOLASTLINE,
+-               "Variable dt requires six prescribed equal variables in isolated fix move");
++               "Variable dt requires paired equal variables or paired NULLs in isolated fix move");
+   dt = dtv = update->dt;
+   dtf = 0.5 * update->dt * force->ftm2v;
+ }

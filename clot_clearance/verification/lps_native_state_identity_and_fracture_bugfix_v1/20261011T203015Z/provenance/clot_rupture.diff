@@ -1,0 +1,33 @@
+--- /home/lzy/projects/clot_rupture.md (before)
++++ /home/lzy/projects/clot_rupture.md (after)
+@@ -174,6 +174,14 @@
+ 
+ ---
+ 
++**本轮原生求解器身份与断键审查（20261011T203015Z）**：已在实际生产库的341点小试样中复现参考加权体积 `wvolume` 的身份错配。真实排序后153个点错误；两MPI中49个点换rank，85个点的m错误。相应最大节点力误差约为独立参考力尺度的60.27%和63.40%。断后扩容、重新run及restart还会按剩余键重算m。这些是状态管理问题，不能通过改材料阈值补偿。
++
++独立诊断版本把初始m及初始化标记交给LAMMPS正式的每原子属性存储，随ID排序、迁移、ghost通信、扩容和restart保存；断键后仍保留初始参考m。最终小试样m/theta/力约10⁻¹⁵相对误差，独立C++储能梯度与节点力通过冻结门槛，缺陷触发前的弹性状态与原版逐位一致。**生产源码和共享库未覆盖。** 原生PE×V的既有偏能计量限制仍存在，不用它计算Gc。
++
++受控5键事件中，断键当步与同坐标断后重算的力差最大4.411 µN（31.85%参考力尺度）。原生力精确符合“断前theta、断后存活键”的显式顺序；下一次力计算恢复固定拓扑一致性。暂记为显式时间层限制，没有改变theta顺序或失效判据。估算ΔFΔt约2.21×10⁻¹² N·s，不是实测动力学速度跳变；正常拓扑储能释放另算。
++
++唯一一次V3对照在后续跨MPI断键路径段错误停止：已保存到第320步的坐标、速度、拓扑与旧基线相同，43个完整力审计时刻到第327步也相同，首次bulk断键同为第241步。未到首次脱离，不能报告末态碎片改善。补充的小试样在**原生产库**也复现同一崩溃：`process_broken`把ghost索引当作本地键数组索引。最终独立版本增加“只修改本进程拥有端点”的两处边界检查，4条跨MPI场景断键、独立力及两rankrestart通过。**最终版本未再跑V3，完整动力学认证尚未完成。** G、K、s00、接触、200 Pa载荷和阻力参数都未改；材料Gc仍未识别。
++
+ # ⑥ 外加剪切：模拟微泡对血块表面的“刮”
+ 
+ **完整公式**（作用在表面点 $i$上）：$\mathbf F_i^{\text{load}}(t)=A_i\;\tau_0\;g(t)\;\exp\!\Big(-\frac{\|\mathbf x_i(t)-\mathbf c\|^2}{2\sigma^2}\Big)\;(\mathbf I-\mathbf n_i\mathbf n_i^{\top})\,\mathbf e_x$
+@@ -336,6 +344,8 @@
+ 
+ # 碎块统计和本次结果
+ 
++**本轮统计语义修正**：上述历史217点、208个游离分量及真实轨迹完全不变。旧 `largest_free_fraction=0.88739` 实际是“全部分量中的最大值”，对应1710点附着主体；真正最大游离块是4点，质量占比0.2076%。旧≥3点分量数2包含附着主体，真正游离≥3点分量数为1。213个游离点属于1–2点未解析碎屑，不能称为已解析微栓。新增ATTACHMENT_AWARE_V2字段明确区分附着/游离，234个历史保存帧逐拓扑核对；旧字段数值、CSV/NPZ和AI标签保留。≥200/300 µm游离块仍为零。
++
+ 碎块大小用等效球直径 $d_{\text{eq}}=(6N_k\Delta x^3/\pi)^{1/3}$ 衡量。
+ 
+ - 第一次内部弹簧断开：0\.1205 ms；第一次有碎块脱落：0\.2965 ms。
+@@ -354,3 +364,6 @@
+ 
+ 
+ 本轮 [含栓牵引映射与 LPS 失效可行性共同报告](/home/lzy/projects/temp_storage/y_clot_github_sync_20261010/clot_clearance/verification/y_clot_traction_mapping_and_lps_failure_feasibility_v1/20261011T184653Z/COMBINED_REVIEW.md) 和 [七组真实审查图、节点力与分项报告](/home/lzy/projects/temp_storage/y_clot_github_sync_20261010/clot_clearance/verification/y_clot_traction_mapping_and_lps_failure_feasibility_v1/20261011T184653Z/OPEN_RESULTS.html) 保存完整证据。下一轮唯一优先项是：用现有 V3 完整态、禁止断键，做一次原生静态受载接口验证，核对本轮节点力的单位、总载荷、约束反力/力矩及小变形响应，并排除碎片阻力重复作用；不自动运行。
++
++
++本轮 [原生身份与断键缺陷审查（含25项回答）](/home/lzy/projects/temp_storage/clot_github_sync_20261011/clot_clearance/verification/lps_native_state_identity_and_fracture_bugfix_v1/20261011T203015Z/REVIEW_LPS_NATIVE_STATE_IDENTITY_AND_FRACTURE_BUGFIX_V1.md) 和 [四组实际图及数据](/home/lzy/projects/temp_storage/clot_github_sync_20261011/clot_clearance/results/lps_native_state_identity_and_fracture_bugfix_v1/20261011T203015Z/OPEN_RESULTS.html) 保存源码补丁、失败运行、独立验证与完整精度状态。此前静态加载接口建议暂缓；**下一轮唯一优先项**是使用最终“参考m身份＋owned端点检查”诊断库，对原C1工况做一次带逐步ID/迁移/力日志的完整V3验证。本轮不再追加运行，不自动调材料或启动CFD/微泡/AI任务。

@@ -1,0 +1,494 @@
+--- /dev/null
++++ analysis/static_cfd_v1/README.md
+@@ -0,0 +1 @@
++Task-isolated native static CFD engineering audit. The final diagnostic native library and production files are unchanged. See the run review, design freeze, real commands and source/method audit. Scripts are one-shot against the run config; reproduce only in a new run folder. A first sorting-assertion error is documented and corrected without repeating native force evaluations. No production deployment.
+--- /dev/null
++++ analysis/static_cfd_v1/analyze.py
+@@ -0,0 +1,34 @@
++from common import *
++import numpy as np
++from scipy.sparse import coo_matrix
++from scipy.sparse.csgraph import connected_components
++r=np.load(O/'REFERENCE_AND_LOAD.npz');q=np.load(O/'CLOT_STATIC_DISPLACEMENTS.npz');X=r['X'];x=q['position_m'];b=r['bonds'];bt=r['bond_types'];rr=r['reference_lengths_m'];h=r['h'];m=r['reference_m'];u=q['displacement_m'];theta=q['native_theta'];s=q['stretch'];util=q['critical_utilization'];i,j=b.T;dr=np.linalg.norm(x[j]-x[i],axis=1)-rr;dr[abs(dr)<2.2204e-16]=0
++# Pair contribution in N from the locked original LPS law, with observed native theta/m.
++mag=V*V*h*((3*K-5*G)*(theta[i]/m[i]+theta[j]/m[j])+15*G/rr*(1/m[i]+1/m[j])*dr);bf=mag[:,None]*(x[j]-x[i])/np.linalg.norm(x[j]-x[i],axis=1)[:,None];parts=np.zeros((3,N,3))
++for typ in [1,2,3]:
++ mask=bt==typ;np.add.at(parts[typ-1],i[mask],bf[mask]);np.add.at(parts[typ-1],j[mask],-bf[mask])
++fi=q['native_force_total_N']-q['force_CFD_N'];diff=parts.sum(0)-fi;assert np.linalg.norm(diff,axis=1).max()<1e-17
++out={'accepted_static':bool(q['accepted']),'original_bonds':len(b),'new_breaks':0,'unmodified_native_thresholds':True,'pair_force_definition':'Force on lower-ID endpoint due to this original bond, from native observed theta and fixed m; N. Not stress.','pair_force_reconstruction_max_error_N':float(np.linalg.norm(diff,axis=1).max()),'typed':{}}
++for typ,name in [(1,'bulk'),(2,'interface'),(3,'anchor_anchor_numerical')]:
++ inds=np.flatnonzero(bt==typ);k=int(inds[np.argmax(s[inds])]);kp=int(inds[np.argmax(abs(mag[inds]))]);out['typed'][name]={'count':len(inds),'max_stretch':float(s[k]),'min_stretch':float(s[inds].min()),'max_critical_utilization':float(util[k]),'max_stretch_bond_endpoint_atom_ids':(b[k]+1).tolist(),'max_stretch_reference_midpoint_m':X[b[k]].mean(0).tolist(),'max_stretch_current_midpoint_m':x[b[k]].mean(0).tolist(),'max_pair_force_magnitude_N':float(abs(mag[kp])),'max_pair_force_endpoint_atom_ids':(b[kp]+1).tolist(),'is_clot_bulk':typ==1,'status':'PASS_SUBCRITICAL_UNCHANGED' if util[inds].max()<1 else 'FAIL_SUPERCRITICAL'}
++# All interface lower IDs are material, upper IDs fixed anchors.
++mask=bt==2;assert np.all(i[mask]<NC) and np.all(j[mask]>=NC)
++normal=r['wall_normal'][i[mask]];proj=np.sum(bf[mask]*normal,axis=1);tang=bf[mask]-proj[:,None]*normal
++out['interface_wall_projection']={'definition':'Project actual bond force on material endpoint onto nearest original Y-wall inward normal at that material point; discrete wall-normal/tangent force, not continuum stress or CFD surface shear.','max_abs_normal_N':float(abs(proj).max()),'max_tangential_N':float(np.linalg.norm(tang,axis=1).max()),'normal_sum_scalar_N':float(proj.sum()),'interface_force_on_material_sum_N':parts[1,:NC].sum(0).tolist(),'native_anchor_internal_force_sum_N':fi[NC:].sum(0).tolist()}
++adj=coo_matrix((np.ones(2*np.sum(bt==1)),(np.r_[i[bt==1],j[bt==1]],np.r_[j[bt==1],i[bt==1]])),shape=(NC,NC));ncomp,labels=connected_components(adj);attached=[]
++for lab in range(ncomp):attached.append(bool(np.any(labels[i[bt==2]]==lab)))
++out['topology']={'material_connected_components':int(ncomp),'attached_components':sum(attached),'free_components':sum(not z for z in attached),'typed_endpoint_identity_verified_native':True,'damage_events':0}
++dump(O/'BULK_INTERFACE_STRETCH_AUDIT.json',out)
++np.savez_compressed(O/'BOND_RESPONSE.npz',endpoint_atom_ids=b+1,bond_types=bt,force_on_first_endpoint_N=bf,force_scalar_N=mag,nodal_force_by_type_N=parts,interface_normal_scalar_N=proj,interface_tangential_N=tang)
++un=np.linalg.norm(u[:NC],axis=1);near=r['wall_clearance_m']<=DELTA;support=r['support_node'];regions={}
++for name,mask in [('all_material',np.ones(NC,bool)),('loaded_surface',support),('not_directly_loaded',~support),('near_wall_clearance_le_horizon',near),('interior_not_loaded_and_clearance_gt_horizon',(~support)&(~near))]:
++ ids=np.flatnonzero(mask);regions[name]={'count':len(ids),'mean_m':float(un[ids].mean()) if len(ids) else None,'max_m':float(un[ids].max()) if len(ids) else None,'percentiles_0_25_50_75_100_m':np.percentile(un[ids],[0,25,50,75,100]).tolist() if len(ids) else [],'atom_ids':(ids+1).tolist()}
++force=np.load(O/'source_inputs/CLOT_NODAL_TRACTION_FORCES.npz');ranking={}
++for name in ['pressure','shear','viscous_normal','total']:
++ fn=np.linalg.norm(force[name+'_force_N'],axis=1);order=np.argsort(fn)[::-1][:10];ranking[name]={'top10_atom_ids':(order+1).tolist(),'top10_force_magnitudes_N':fn[order].tolist(),'top10_reference_coordinates_m':X[order].tolist(),'sum_abs_nodal_forces_N':float(fn.sum()),'top10_abs_force_fraction':float(fn[order].sum()/fn.sum())}
++trans=np.linalg.norm(parts[1,:NC],axis=1);ids=np.argsort(trans)[::-1][:10];ranking['interface_transfer']={'top10_material_atom_ids':(ids+1).tolist(),'top10_interface_force_magnitudes_N':trans[ids].tolist(),'top10_reference_coordinates_m':X[ids].tolist()}
++scale=json.loads((O/'STATIC_LOAD_DESIGN_FREEZE.json').read_text())['scales'];dispstats={'accepted':bool(q['accepted']),'regions':regions,'region_semantics':'Loaded vs not directly loaded partition material; near-wall overlaps loaded. Interior = not loaded and clearance > horizon. No inferred exposure from image.','force_regions':ranking,'mean_displacement_vector_m':u[:NC].mean(0).tolist(),'max_displacement_over_dx':float(un.max()/DX),'coordinate_ulp_m':float(abs(np.spacing(X)).max()),'native_extension_roundoff_clamp_m':2.2204e-16,'last10_max_position_change_m':float(np.linalg.norm(q['last10_positions_m'][-1]-q['last10_positions_m'][0],axis=1).max()),'anchor_max_displacement_m':float(np.linalg.norm(u[NC:],axis=1).max())}
++dump(O/'ELASTIC_RESPONSE_REGIONS.json',dispstats)
++identity=json.loads((O/'SOURCE_AND_LIBRARY_IDENTITY.json').read_text());identity['runtime_records']={str(p.relative_to(O)):json.loads(p.read_text()) for p in O.glob('native*/LOADED_LIBRARY_rank*.json')};identity['status']='PASS_DISK_AND_ACTUAL_LOADED_LIBRARY_IDENTITY';dump(O/'SOURCE_AND_LIBRARY_IDENTITY.json',identity)
++checks={'source_registration':'PASS','native_library_maps':'PASS','unit_and_callback_order':'PASS','sort_and_owner_migration':'PASS_REPAIRED_AUDIT_ASSERTION_FROM_SAVED_NATIVE_STATES','one_small_implementation_repair':True,'native_repeated_for_repair':False,'production_native_CPP_changes':False,'new_CPP':False,'original_CFD_physics_changed':False,'mapping_changed':False,'theta_order_changed':False,'reference_m_changed':False,'anchor_setforce_cleared':False,'native_force_reconstruction_max_error_N':out['pair_force_reconstruction_max_error_N'],'new_fracture':False,'topology':out['topology'],'independent_gradient':json.loads((O/'INDEPENDENT_LPS_ENERGY_AUDIT.json').read_text())['status'],'static_equilibrium':json.loads((O/'STATIC_EQUILIBRIUM_AUDIT.json').read_text())['status'],'no_dynamic_integrator':True,'production_deployed':False}
++dump(O/'IMPLEMENTATION_CHECKS.json',checks);print(json.dumps({'bond_response':out,'regions':{k:{kk:vv for kk,vv in v.items() if kk!='atom_ids'} for k,v in regions.items()}},indent=2))
+--- /dev/null
++++ analysis/static_cfd_v1/common.py
+@@ -0,0 +1,14 @@
++from pathlib import Path
++import json,hashlib
++C=json.loads(Path(__file__).with_name('config.json').read_text());R=Path(C['server']);O=R/'verification'/C['task']/C['run'];F=R/'results'/C['task']/C['run'];MAP=R/C['mapping'];CFD=R/C['cfd'];PRIOR=R/C['prior_bugfix'];V3=R/C['prior_v3'];S=PRIOR/'source_owner_fix';B=PRIOR/'build_owner_fix';PROD=R/'tools/lammps-native-y-wall-shared-v1-build/liblammps.so';EXPECTED=C['library_sha256'];GDIR=R/'verification/y_clot_realistic_morphology_wall_contact_and_flow_transport_v1';DX=50e-6;DELTA=150.5e-6;V=DX**3;K=100000/3;G=940.;N=3488;NC=1927
++
++def sha(p):
++ h=hashlib.sha256()
++ with Path(p).open('rb') as f:
++  for a in iter(lambda:f.read(4194304),b''):h.update(a)
++ return h.hexdigest()
++def dump(p,obj):Path(p).write_text(json.dumps(obj,ensure_ascii=False,indent=2,allow_nan=False))
++def loaded(L):
++ import sys,lammps,mpi4py
++ paths=sorted({s.split()[-1] for s in Path('/proc/self/maps').read_text().splitlines() if 'liblammps.so' in s or 'libmpi.so' in s});libs={p:sha(p) for p in paths};ll=[p for p in paths if 'liblammps' in p];assert len(ll)==1 and libs[ll[0]]==EXPECTED and Path(ll[0]).parent==B
++ return dict(python=sys.executable,python_version=sys.version,lammps_python=lammps.__file__,mpi4py=mpi4py.__file__,lammps_version=L.version(),actual_libraries=libs)
+--- /dev/null
++++ analysis/static_cfd_v1/config.json
+@@ -0,0 +1,11 @@
++{
++  "run": "20261012T185858Z",
++  "task": "y_clot_native_static_cfd_load_interface_v1",
++  "local": "/home/lzy/projects/temp_storage/clot_github_sync_20261011/clot_clearance",
++  "server": "/workspace/y_clot/project",
++  "prior_bugfix": "verification/lps_native_state_identity_and_fracture_bugfix_v1/20261011T203015Z",
++  "prior_v3": "verification/lps_final_native_bugfix_full_v3_regression_v1/20261011T211309Z",
++  "mapping": "verification/y_clot_cfd_to_lammps_conservative_traction_map_v1/20261011T184653Z",
++  "cfd": "verification/y_clot_present_cfd_baseline_v1/20261011T154854Z",
++  "library_sha256": "00b246ebe4224e648c27b74afb64fc22b9cea4ba6ffb23f7c40d96c37ca22ae9"
++}--- /dev/null
++++ analysis/static_cfd_v1/figures.py
+@@ -0,0 +1,62 @@
++from common import *
++import numpy as np,matplotlib
++matplotlib.use('Agg')
++import matplotlib.pyplot as plt
++from matplotlib.lines import Line2D
++from matplotlib.colors import Normalize
++from matplotlib.ticker import MaxNLocator
++import csv,html
++plt.rcParams.update({'font.family':'DejaVu Sans','font.size':12,'axes.titlesize':14,'axes.labelsize':12,'xtick.labelsize':10,'ytick.labelsize':10,'legend.fontsize':11,'axes.spines.top':False,'axes.spines.right':False,'svg.fonttype':'none','savefig.facecolor':'white','axes.grid':True,'grid.color':'#aeb9c4','grid.alpha':.65})
++F.mkdir(parents=True,exist_ok=True);r=np.load(O/'REFERENCE_AND_LOAD.npz');q=np.load(O/'CLOT_STATIC_DISPLACEMENTS.npz');mp=np.load(O/'source_inputs/CLOT_NODAL_TRACTION_FORCES.npz');X=r['X'];x=q['position_m'];u=q['displacement_m'];sup=r['support_node'];ids=np.arange(1,N+1);norm=np.linalg.norm(u[:NC],axis=1)*1e9;loaded=np.load(O/'native_interface/reference_loaded_after_migration.npz');base=np.load(O/'native_interface/reference_unloaded.npz');delta=loaded['force']-base['force'];load=r['force_N'];bal=json.loads((O/'FORCE_MOMENT_BALANCE.json').read_text());audit=json.loads((O/'STATIC_EQUILIBRIUM_AUDIT.json').read_text());ener=json.loads((O/'INDEPENDENT_LPS_ENERGY_AUDIT.json').read_text());stretch=json.loads((O/'BULK_INTERFACE_STRETCH_AUDIT.json').read_text());hist=list(csv.DictReader((O/'STATIC_CONVERGENCE.csv').open()));fr=json.loads((O/'STATIC_LOAD_DESIGN_FREEZE.json').read_text());accepted=bool(q['accepted']);status='STATIC EQUILIBRIUM VERIFIED' if accepted else 'CANDIDATE ONLY - STATIC EQUILIBRIUM NOT ESTABLISHED';c=['#ce4757','#397fb8','#20a5a0'];footer='NO FRACTURE  |  CLOT-PRESENT CFD BACKGROUND LOAD ONLY\nNO MICROBUBBLE STREAMING  |  NO TWO-WAY FSI';saved=[]
++lim=np.array([X.min(0),X.max(0)])*1e3;pad=.06*np.ptp(lim,axis=0);lims=np.array([lim[0]-pad,lim[1]+pad]);arrowids=np.flatnonzero(sup)[::7]
++def ax3(fig,spec,title):
++ ax=fig.add_subplot(spec,projection='3d',computed_zorder=False);ax.set_title(title,pad=17);ax.view_init(elev=18,azim=-58);ax.set_box_aspect(np.maximum(np.ptp(lims,axis=0),.4));ax.set(xlim=lims[:,0],ylim=lims[:,1],zlim=lims[:,2]);ax.set_xlabel('x (mm)',labelpad=9);ax.set_ylabel('y (mm)',labelpad=9);ax.set_zlabel('z (mm)',labelpad=9)
++ for a in [ax.xaxis,ax.yaxis,ax.zaxis]:a.set_major_locator(MaxNLocator(4));a.pane.fill=True;a.pane.set_facecolor('#f0f3f7');a._axinfo['grid']['color']=(.46,.51,.57,.6);a._axinfo['grid']['linewidth']=.8
++ ax.tick_params(pad=1);return ax
++def scatter(ax,Y,idx,col,s=8,alpha=.7,**kwargs):return ax.scatter(*(Y[idx]*1e3).T,c=col,s=s,alpha=alpha,depthshade=False,rasterized=True,**kwargs)
++def scaffold(ax):
++ scatter(ax,X,np.arange(NC,N),'#a1a9b1',s=5,alpha=.23);scatter(ax,X,np.flatnonzero(~sup),'#736a9f',s=8,alpha=.4);scatter(ax,X,np.flatnonzero(sup),'#e6c185',s=11,alpha=.9)
++def arrows(ax,ff,color,scale=4e4):
++ # Fixed gain metres per newton; subset of original IDs, no normalized directions.
++ ax.quiver(*(X[arrowids]*1e3).T,*(ff[arrowids]*scale*1e3).T,color=color,linewidth=1.3,arrow_length_ratio=.3,normalize=False,zorder=20)
++def save(fig,name,caption):
++ fig.text(.5,.027,footer,ha='center',fontsize=11,color='#3a4859');fig.savefig(F/(name+'.png'),dpi=260,bbox_inches='tight');fig.savefig(F/(name+'.svg'),bbox_inches='tight');plt.close(fig);saved.append({'name':name,'caption':caption})
++fig=plt.figure(figsize=(16,12));gs=fig.add_gridspec(2,2,left=.035,right=.97,bottom=.12,top=.91,wspace=.02,hspace=.2);fig.suptitle('1  |  CFD traction enters the native V3 atom array',fontsize=21,y=.985);fig.text(.5,.947,'1,927 material points  •  1,561 fixed anchors  •  580 loaded IDs  |  physical load ×1',ha='center',fontsize=13)
++for z,(name,title,color,gain) in enumerate([('pressure','a  Original mapped pressure',c[0],4e4),('shear','b  Original mapped viscous shear',c[1],4e5),('total','c  Original mapped total', '#b07827',4e4),('native','d  Measured native force increment',c[2],4e4)]):
++ ax=ax3(fig,gs[z//2,z%2],title);scaffold(ax);ff=delta[:NC] if name=='native' else mp[name+'_force_N'];arrows(ax,ff,color,gain);ax.text2D(.01,.96,f'Max node force: {np.linalg.norm(ff,axis=1).max()*1e9:.3g} nN\nArrow display gain: {gain:.0e} m/N',transform=ax.transAxes,fontsize=10,color=color)
++fig.legend(handles=[Line2D([],[],marker='o',ls='',color='#a1a9b1',label='Fixed anchors'),Line2D([],[],marker='o',ls='',color='#736a9f',label='Unloaded material'),Line2D([],[],marker='o',ls='',color='#e6c185',label='Loaded material')],loc='lower center',bbox_to_anchor=(.5,.072),ncol=3,frameon=False)
++save(fig,'Fig1_native_load_identity','All original points shown. Arrows use every seventh loaded ID in increasing ID order (83 arrows); individual physical N values are unchanged. Total includes pressure, shear and viscous normal. Native arrows are measured same-position force differences after actual MPI ownership migration. Arrow gains only affect drawing.')
++fig=plt.figure(figsize=(17,10));gs=fig.add_gridspec(2,3,left=.07,right=.975,bottom=.15,top=.89,wspace=.32,hspace=.40);fig.suptitle('2  |  Native load identity, anchor reactions and equilibrium',fontsize=20,y=.985);fig.text(.5,.945,status,ha='center',color='#167765',fontsize=13)
++ax=fig.add_subplot(gs[0,0]);ax.plot(ids,np.linalg.norm(load,axis=1)*1e9,color=c[0],lw=1.2,label='Mapped N');ax.plot(ids[::5],np.linalg.norm(delta,axis=1)[::5]*1e9,'.',ms=2,color=c[2],label='Native ΔF (every fifth ID)');ax.axvline(NC,color='gray',ls=':');ax.set(xlabel='Real atom ID',ylabel='Node force (nN)',title='a  Actual native force difference');ax.legend(fontsize=9)
++ax=fig.add_subplot(gs[0,1]);error=np.linalg.norm(delta-load,axis=1);ax.plot(ids,error*1e18,c=c[2]);ax.set(xlabel='Real atom ID',ylabel='|ΔF − Fmap| (10⁻¹⁸ N)',title='b  Per-ID loading error');ax.set_ylim(-.05,1.05);ax.axhline(1,color=c[0],ls='--',label='Frozen limit');ax.text(.04,.71,'All 3,488 errors = 0\nNo unique worst-error location\nID 1 is a tied maximum',transform=ax.transAxes,fontsize=11);ax.legend(fontsize=9)
++ax=ax3(fig,gs[0,2],'c  Native free-node residual');scatter(ax,X,np.arange(NC,N),'#adb4be',s=4,alpha=.18);res=np.linalg.norm(q['native_force_total_N'][:NC],axis=1)*1e12;z=scatter(ax,x,np.arange(NC),res,s=13,alpha=1,cmap='viridis');ii=int(np.argmax(res));ax.scatter(*(x[ii]*1e3),marker='*',s=110,color='#cf334c');ax.text2D(.01,.93,f'Max: {res[ii]:.4f} pN at ID {ii+1}',transform=ax.transAxes,fontsize=10);fig.colorbar(z,ax=ax,orientation='horizontal',shrink=.58,pad=.06,fraction=.035,label='Residual (pN)')
++ax=fig.add_subplot(gs[1,0]);xx=np.arange(3)
++for off,k,color,label in [(-.25,'external_force_N',c[0],'CFD external'),(0,'anchor_reaction_N',c[1],'Native anchor reaction'),(.25,'force_residual_N',c[2],'Residual')]:ax.bar(xx+off,np.array(bal[k])*1e6,width=.23,color=color,label=label)
++ax.set(xticks=xx,xticklabels=['x','y','z'],ylabel='Force (µN)',title='d  Independent force balance');ax.legend(fontsize=9);ax.text(.03,.03,f'|residual| = {bal["force_residual_norm_N"]*1e12:.3f} pN',transform=ax.transAxes,fontsize=10)
++ax=fig.add_subplot(gs[1,1])
++for off,k,color,label in [(-.25,'external_reference_moment_Nm',c[0],'External, reference x'),(0,'external_current_moment_Nm',c[2],'External, current x'),(.25,'anchor_reaction_moment_Nm',c[1],'Anchor reaction')]:ax.bar(xx+off,np.array(bal[k])*1e12,width=.23,color=color,label=label)
++ax.set(xticks=xx,xticklabels=['x','y','z'],ylabel='Moment (pN m)',title='e  Same original reference point x₀');ax.legend(fontsize=9)
++ax=fig.add_subplot(gs[1,2]);vals=[bal['force_scaled_error'],bal['reference_moment_scaled_error'],bal['current_moment_scaled_error'],audit['native_free_force_L2_over_load_L2']];ax.bar(np.arange(4),vals,color=[c[0],c[1],c[2],'#7062a0']);ax.axhline(1e-5,color='#b03245',ls='--',label='Frozen relative limit');ax.set(yscale='log',xticks=np.arange(4),xticklabels=['Global F','M (ref.)','M (current)','Free L2'],ylabel='Dimensionless residual',title='f  Explicit, fixed normalization');ax.tick_params(axis='x',labelsize=9);ax.legend(fontsize=9)
++save(fig,'Fig2_native_force_and_reactions','Anchor reaction is recovered from actual native constrained-DOF internal forces. Reference/current moment conventions use the same frozen x0. Force scale is original surface sum of force magnitudes; moment scale adds the original length scale. Exact zero loading errors are displayed on a linear axis, without artificial floors.')
++fig=plt.figure(figsize=(18,7.8));gs=fig.add_gridspec(1,3,left=.02,right=.90,bottom=.24,top=.81,wspace=.03);fig.suptitle('3  |  Real V3 elastic displacement under the original CFD load',fontsize=20,y=.98);fig.text(.5,.916,f'Max |u| = {norm.max():.4f} nm  |  mean |u| = {norm.mean():.4f} nm  |  anchor displacement = 0',ha='center',fontsize=14);fig.text(.5,.866,status,ha='center',color='#167765',fontsize=12)
++ax=ax3(fig,gs[0,0],'a  Original reference points');scaffold(ax)
++colorlim=Normalize(0,norm.max())
++for sp,mult,title in [(gs[0,1],1,'b  True equilibrium position  ×1'),(gs[0,2],2000,'c  Displacement display only  ×2,000')]:
++ ax=ax3(fig,sp,title);Y=X+mult*u;scatter(ax,X,np.arange(NC,N),'#a1a9b1',s=5,alpha=.2);z=scatter(ax,Y,np.arange(NC),norm,s=12,alpha=.92,cmap='viridis',norm=colorlim);scatter(ax,Y,np.flatnonzero(sup),'none',s=17,alpha=.7,edgecolors='#df9b27',linewidths=.4);sel=np.arange(NC)[::24];ax.quiver(*(X[sel]*1e3).T,*(u[sel]*mult*1e3).T,color='#a13066',linewidth=.9,arrow_length_ratio=.28,normalize=False,zorder=20)
++fig.colorbar(z,cax=fig.add_axes([.953,.32,.013,.38]),label='True displacement (nm), both panels')
++fig.text(.5,.14,'Gold outlines: the same 580 loaded IDs  •  Magenta arrows: displacement direction\nReference coordinates and axis limits are identical; ×2,000 affects displayed displacement only.',ha='center',fontsize=11)
++save(fig,'Fig3_true_V3_displacement','Actual original V3 discrete point cloud; no medical shell. The true-scale equilibrium view is retained. Auxiliary coordinates are X + 2000u with the same world-coordinate limits; colors always represent unscaled nm. Anchors are fixed in every view.')
++fig=plt.figure(figsize=(16.8,11));gs=fig.add_gridspec(2,3,left=.06,right=.97,bottom=.15,top=.88,wspace=.29,hspace=.34);fig.suptitle('4  |  Bulk / interface response and bounded static convergence',fontsize=20,y=.98);fig.text(.5,.937,'Original G, K, s₀₀ and 157,637 typed bonds preserved  |  0 new breaks',ha='center',fontsize=13)
++b=q['bonds'];bt=q['bond_types'];mid=(X[b[:,0]]+X[b[:,1]])/2
++for col,typ,name in [(0,1,'a  Bulk bond utilization'),(1,2,'b  Interface bond utilization')]:
++ ax=ax3(fig,gs[0,col],name);idx=np.flatnonzero(bt==typ);order=np.argsort(q['critical_utilization'][idx]);idx=idx[order];z=scatter(ax,mid,idx,q['critical_utilization'][idx]*100,s=2,alpha=.6,cmap='magma');fig.colorbar(z,ax=ax,orientation='horizontal',shrink=.63,pad=.06,fraction=.035,label='Signed s / s₀₀ (%)');ax.text2D(.03,.94,f'Max = {q["critical_utilization"][idx].max()*100:.4f}%\nFailure threshold = 100%',transform=ax.transAxes,fontsize=10)
++ax=fig.add_subplot(gs[0,2]);xx=np.arange(len(hist));uu=np.array([float(z['U_LPS_J']) for z in hist])*1e15;ww=np.array([float(z['dead_load_work_F_dot_u_J']) for z in hist])*1e15;pp=np.array([float(z['Pi_J']) for z in hist])*1e15;ax.plot(xx,uu,label='Full independent U');ax.plot(xx,ww,label='Constant-load F·u');ax.plot(xx,pp,label='Π = U − F·u');ax.set(xlabel='Accepted optimizer iteration',ylabel='Energy (fJ)',title='c  Full LPS energy and external potential');ax.legend(fontsize=9);ax.text(.06,.17,f'U₀ = 0; ΔU = {ener["DeltaU_J"]*1e15:.5f} fJ',transform=ax.transAxes,fontsize=10)
++ax=fig.add_subplot(gs[1,0]);ax.semilogy(xx,[float(z['free_force_max_N']) for z in hist],label='Max free-node force');ax.axhline(fr['gates']['free_max_force_N'],color=c[0],ls='--',label='Frozen max-force limit');ax.set(xlabel='Accepted optimizer iteration',ylabel='Residual force (N)',title='d  Absolute free-force convergence');ax.legend(fontsize=9)
++ax=fig.add_subplot(gs[1,1]);ax.semilogy(xx,[float(z['free_force_L2_relative']) for z in hist],label='Free force L2 / load L2');ax.semilogy(xx,np.array([float(z['global_force_residual_N']) for z in hist])/fr['scales']['face_absolute_force_sum_N'],label='Global force residual');ax.axhline(1e-5,color=c[0],ls='--',label='Frozen relative limit');ax.set(xlabel='Accepted optimizer iteration',ylabel='Dimensionless residual',title='e  Relative force convergence');ax.legend(fontsize=9)
++ax=fig.add_subplot(gs[1,2]);good=[(k,z) for k,z in enumerate(hist) if z['last10_max_position_change_m']];ax.semilogy([k for k,z in good],[float(z['last10_max_position_change_m'])/fr['gates']['last10_displacement_m'] for k,z in good],label='10-state displacement / limit');ax.semilogy([k for k,z in good],[float(z['last10_U_span_J'])/fr['gates']['last10_U_span_J'] for k,z in good],label='10-state energy span / limit');ax.axhline(1,color=c[0],ls='--');ax.set(xlabel='Accepted optimizer iteration',ylabel='Value / frozen limit',title='f  Independent plateau criteria');ax.legend(fontsize=9)
++save(fig,'Fig4_material_and_convergence','Bulk type 1 and interface type 2 are separated; anchor-anchor type 3 is excluded from clot material maps. Every bond midpoint is displayed with critical utilization; values are far below 100%. No fracture or Gc inference. Objective smallness alone is not convergence evidence. Read Figure 2 for separately measured force and moment closure.')
++dump(F/'FIGURE_MANIFEST.json',{'run':C['run'],'input_SHA256':{p.name:sha(p) for p in [O/'CLOT_STATIC_DISPLACEMENTS.npz',O/'FORCE_MOMENT_BALANCE.json',O/'STATIC_CONVERGENCE.csv',O/'source_inputs/CLOT_NODAL_TRACTION_FORCES.npz']},'arrows_displayed_atom_ids':(arrowids+1).tolist(),'physical_load_scale':1,'displacement_aux_display_scale':2000,'figures':saved})
++review='../../../verification/'+C['task']+'/'+C['run']+'/REVIEW_Y_CLOT_NATIVE_STATIC_CFD_LOAD_INTERFACE_V1.md'
++page='<!doctype html><meta charset="utf-8"><title>V3 native static CFD audit</title><style>body{max-width:1500px;margin:32px auto;font:17px/1.65 system-ui;background:#f5f7fa;color:#223244;padding:0 24px}img{width:100%;background:white}section{background:white;padding:20px;margin:24px 0;border:1px solid #d7dee7;border-radius:10px}a{color:#126b9a}h1{line-height:1.2}</style><h1>V3：原生静态 CFD 载荷接口</h1><p>'+status+f' · {C["run"]}</p><p>原载荷 ×1；最大位移 {norm.max():.4f} nm；无断裂、无微泡声流、非双向 FSI。</p><p><a href="'+review+'">中文完整报告（33项回答）</a></p>'
++for z in saved:page+='<section><h2>'+html.escape(z['name'])+'</h2><a href="'+z['name']+'.png"><img src="'+z['name']+'.png"></a><p>'+html.escape(z['caption'])+'</p><a href="'+z['name']+'.svg">SVG</a></section>'
++(F/'OPEN_RESULTS.html').write_text(page);(O/'OPEN_RESULTS.html').write_text('<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=../../../results/'+C['task']+'/'+C['run']+'/OPEN_RESULTS.html"><a href="../../../results/'+C['task']+'/'+C['run']+'/OPEN_RESULTS.html">Open actual scientific figures</a>');print('Four figure groups rendered')
+--- /dev/null
++++ analysis/static_cfd_v1/finish_interface_audit.py
+@@ -0,0 +1,13 @@
++from common import *
++import numpy as np
++from types import SimpleNamespace
++p=O/'native_interface';r=np.load(O/'REFERENCE_AND_LOAD.npz');X=r['X'];f=r['force_N'];n=SimpleNamespace(ref=r)
++base=np.load(p/'reference_unloaded.npz');loaded0=np.load(p/'reference_loaded.npz');loaded1=np.load(p/'reference_loaded_after_migration.npz')
++db=json.loads((p/'reference_unloaded.json').read_text());d0=json.loads((p/'reference_loaded.json').read_text());d1=json.loads((p/'reference_loaded_after_migration.json').read_text())
++delta=loaded0['force']-base['force'];delta1=loaded1['force']-base['force'];eps=float(np.linalg.norm(delta-f,axis=1).max());eps1=float(np.linalg.norm(delta1-f,axis=1).max());moved=np.flatnonzero(loaded0['owner']!=loaded1['owner'])+1
++assert len(moved)>0 and eps<1e-18 and eps1<1e-18 and sum(d1['nonidentity_permutation_counts'])>0
++assert np.array_equal(base['x'],X) and np.array_equal(loaded0['x'],X) and np.array_equal(loaded1['x'],X)
++x0=n.ref['reference_point_m'];nm=np.linalg.norm(f,axis=1);err=np.linalg.norm(delta-f,axis=1);audit={'status':'PASS_REAL_ID_LOAD_SORT_AND_OWNERSHIP_MIGRATION','loaded_nodes':int(np.count_nonzero(nm)),'unloaded_material_nodes':int(np.sum(nm[:NC]==0)),'anchor_nodes':N-NC,'max_per_ID_vector_error_N':eps,'max_per_ID_error_after_real_migration_N':eps1,'worst_atom_id':int(np.argmax(err)+1),'loaded_max_error_N':float(err[nm>0].max()),'unloaded_material_max_error_N':float(err[:NC][nm[:NC]==0].max()),'anchor_max_direct_CFD_force_N':float(np.linalg.norm(delta[NC:],axis=1).max()),'component_max_errors_N':abs(delta-f).max(0).tolist(),'mapped_force_N':f.sum(0).tolist(),'native_increment_sum_N':delta.sum(0).tolist(),'mapped_reference_moment_Nm':np.cross(X-x0,f).sum(0).tolist(),'native_increment_moment_Nm':np.cross(X-x0,delta).sum(0).tolist(),'migration_atom_ids':moved.tolist(),'migration_loaded_atom_count':int(np.sum(nm[moved-1]>0)),'migration_count':len(moved),'state_diagnostics':[db,d0,d1],'no_dynamic_integration':True,'same_physical_coordinates':True,'one_physical_load':True}
++dump(O/'ATOM_ID_LOAD_APPLICATION_AUDIT.json',audit);dump(O/'NATIVE_FORCE_UNIT_AUDIT.json',{'status':'PASS_N_AFTER_SINGLE_VOLUME_CONVERSION','load_unit':'N','internal_force_density_unit':'N/m^3','original_conversion_applied_once':True,'CFD_force_volume_multiplications':0,'callback_owned_only':True,'external_fix_applies_once_per_evaluation':True,'post_force_increment_errors_N':[d0['post_force_increment_error_N'],d1['post_force_increment_error_N']],'source_evidence':'fix_external.cpp POST_FORCE owned loop; fix si_force precedes nativewall and cfdload in actual saved deck','anchor_reaction_readout':'No anchor force-clearing fix; constrained DOFs fixed by optimizer; reaction = minus actual native internal anchor force'})
++residual=np.linalg.norm(base['force'][:NC],axis=1);fr=json.loads((O/'STATIC_LOAD_DESIGN_FREEZE.json').read_text());assert residual.max()<fr['gates']['unloaded_max_force_N'] and db['wall_active_nodes']==0 and db['contact_pairs']==0
++dump(O/'UNLOADED_REFERENCE_AUDIT.json',{'status':'PASS_REFERENCE_EQUILIBRIUM_NO_RELAXATION_REQUIRED','max_material_force_N':float(residual.max()),'max_all_force_N':float(np.linalg.norm(base['force'],axis=1).max()),'anchor_internal_force_sum_N':base['force'][NC:].sum(0).tolist(),'reference_m_max_relative':db['m_max_relative'],'wall_min_clearance_m':db['wall_min_clearance_m'],'contact_pairs':db['contact_pairs'],'wall_active_nodes':db['wall_active_nodes'],'dynamic_steps':0,'initial_strain_reference':'Original V3 positions exactly, original body.data; all bonds initialized there','states':3})
+--- /dev/null
++++ analysis/static_cfd_v1/freeze.py
+@@ -0,0 +1,9 @@
++from common import *
++import numpy as np,time
++assert not (O/'STATIC_LOAD_DESIGN_FREEZE.json').exists()
++assert not (O/'native_interface').exists()
++r=np.load(O/'REFERENCE_AND_LOAD.npz');a=json.loads((O/'CFD_LOAD_SOURCE_AUDIT.json').read_text());t=a['components']['total'];L=t['length_scale_m'];us=float(np.linalg.norm(r['force_N'].sum(0))/(G*L));es=t['face_absolute_force_sum_N']*us
++b=r['bonds'];assert np.all(np.diff(b[:,0]*N+b[:,1])>0)
++freeze={'task':C['task'],'run':C['run'],'frozen_at_epoch':time.time(),'library_sha256':EXPECTED,'production_library_sha256':sha(PROD),'source_CFD':C['cfd'],'source_mapping':C['mapping'],'source_sha256':{p.name:sha(p) for p in (O/'source_inputs').iterdir() if p.is_file()},'counts':{'material':NC,'anchor':N-NC,'bonds':len(b)},'loaded_material_atom_ids':(np.flatnonzero(r['support_node'])+1).tolist(),'anchor_atom_ids':list(range(NC+1,N+1)),'unloaded_material_atom_ids':(np.flatnonzero(~r['support_node'])+1).tolist(),'material':{'G_Pa':G,'K_Pa':K,'density_kg_m3':1000,'dx_m':DX,'horizon_m':DELTA,'nodal_volume_m3':V,'bulk_s00':.15,'interface_s00':.140624859375,'anchor_s00':1.,'alpha':0.,'reference_m':'Original complete V3 bonds; fixed per real ID','theta':'Original explicit algorithm unchanged; no broken bonds'},'load':{'unit':'N','components':a['components'],'physical_scale_factor':1.,'type':'constant spatial vectors attached to original material IDs, dead load','mapping_recomputed':False,'pressure_reference_changed':False,'callbacks':'fix external pf/callback 1 1, owned only','post_force_order':['native LPS and pair force density','existing si_force multiplies d_vfrac once','existing wall force N','CFD mapped node force N added once'],'CFD_volume_multiplication_count':0,'no_other_applied_load':True},'constraints':'Anchor positions exactly fixed; raw native anchor internal force retained, reaction = minus that measured force','reference_point_m':r['reference_point_m'].tolist(),'moment_conventions':['original reference coordinates','current coordinates separately; physical central force moment balance'],'no_fracture':'Unchanged break-enabled native library and original thresholds; all independent trials and each native state checked below original criterion, endpoint identity verifies zero changes','method':'One scaled L-BFGS-B minimization of full independent U_LPS - F dot u, then native loaded-force/reaction check. No time integrator. Zero-load run 0 is reference only.','contact_no_activation_bounds':{'wall_min_reference_clearance_m':a['unloaded_geometric_wall_min_clearance_m'],'wall_radius_m':20e-6,'nonbonded_min_reference_distance_m':a['unloaded_nonbonded_min_distance_m_within_2dx'],'pair_cutoff_m':DX,'per_trial_guard':'wall_clearance - |u_i| > 20 um and min_nonbonded_distance - 2 max|u| > dx; stop before any nonzero omitted energy'},'scales':{'displacement_m':us,'energy_J':es,'nodal_force_L2_N':a['nodal_force_L2_N'],'face_absolute_force_sum_N':t['face_absolute_force_sum_N'],'length_m':L},'gates':{'unloaded_max_force_N':1e-15,'load_per_ID_max_error_N':1e-18,'reference_m_max_relative':2e-12,'free_max_force_N':1e-13,'free_force_L2_relative':1e-5,'global_force_abs_N':1e-11,'global_force_scaled':1e-5,'global_moment_abs_Nm':1e-14,'global_moment_scaled':1e-5,'last10_displacement_m':1e-11,'last10_U_span_J':es*1e-7,'native_independent_L2_over_load':1e-6,'FD_over_load_L2':1e-5,'max_stretch_utilization_strictly_below':1.,'new_breaks':0,'anchor_motion_m':0},'optimizer':{'maxiter':2000,'maxfun':2500,'maxcor':30,'maxls':40,'ftol':0.,'gtol':0.},'budget':{'formal_equilibrium_attempts':1,'max_function_evaluations':2500,'wall_seconds':300,'interface_wall_seconds':180,'solve_process_wall_seconds':360,'process_tree_max_RSS_bytes':4*1024**3,'max_trial_displacement_m':2e-6,'MPI_interface':2,'MPI_static':1,'OMP_BLAS_threads':1,'GPU':False,'implementation_repairs_max':1},'failure_policy':'Keep candidate as nonaccepted, no physics or tolerance change, no extra equilibrium for small displacement; one local implementation repair only for documented bug','implementation_source_sha256':{p.name:sha(p) for p in Path(__file__).parent.glob('*.py')},'required_deliverables':['native per-ID reference load difference and migration','native loaded candidate and reactions','independent energy and FD checks','bulk/interface stretch and true displacements','four figure groups PNG/SVG and HTML','33-answer Chinese report, 19 independent statuses','guarded WSL document update and manifests'],'acceptance_scope':'Engineering static interface only, not production deployment or experimental validation'}
++dump(O/'STATIC_LOAD_DESIGN_FREEZE.json',freeze)
++print(json.dumps({'freeze_SHA256':sha(O/'STATIC_LOAD_DESIGN_FREEZE.json'),'scales':freeze['scales'],'gates':freeze['gates']},indent=2))
+--- /dev/null
++++ analysis/static_cfd_v1/interface.py
+@@ -0,0 +1,17 @@
++from common import *
++from native import Native
++from mpi4py import MPI
++import numpy as np,time,resource
++comm=MPI.COMM_WORLD;assert comm.size==2;rank=comm.rank;t=time.perf_counter();p=O/'native_interface';n=Native(p,comm);X=n.X
++base,db=n.evaluate(X,'reference_unloaded',False,initial=True);loaded0,d0=n.evaluate(X,'reference_loaded',True)
++# The balance command migrates actual owned atoms at identical reference coordinates.
++# It may call init; every coordinate remains reference, so no deformed reference reset.
++n.L.command('balance 1.0 x 0.37');loaded1,d1=n.evaluate(X,'reference_loaded_after_migration',True)
++f=n.load;delta=loaded0['force']-base['force'];delta1=loaded1['force']-base['force'];eps=float(np.linalg.norm(delta-f,axis=1).max());eps1=float(np.linalg.norm(delta1-f,axis=1).max());moved=np.flatnonzero(loaded0['owner']!=loaded1['owner'])+1;assert len(moved)>0;assert eps<1e-18 and eps1<1e-18;assert sum(d1['nonidentity_permutation_counts'])>0
++if rank==0:
++ x0=n.ref['reference_point_m'];nm=np.linalg.norm(f,axis=1);err=np.linalg.norm(delta-f,axis=1);audit={'status':'PASS_REAL_ID_LOAD_SORT_AND_OWNERSHIP_MIGRATION','loaded_nodes':int(np.count_nonzero(nm)),'unloaded_material_nodes':int(np.sum(nm[:NC]==0)),'anchor_nodes':N-NC,'max_per_ID_vector_error_N':eps,'max_per_ID_error_after_real_migration_N':eps1,'worst_atom_id':int(np.argmax(err)+1),'loaded_max_error_N':float(err[nm>0].max()),'unloaded_material_max_error_N':float(err[:NC][nm[:NC]==0].max()),'anchor_max_direct_CFD_force_N':float(np.linalg.norm(delta[NC:],axis=1).max()),'component_max_errors_N':abs(delta-f).max(0).tolist(),'mapped_force_N':f.sum(0).tolist(),'native_increment_sum_N':delta.sum(0).tolist(),'mapped_reference_moment_Nm':np.cross(X-x0,f).sum(0).tolist(),'native_increment_moment_Nm':np.cross(X-x0,delta).sum(0).tolist(),'migration_atom_ids':moved.tolist(),'migration_loaded_atom_count':int(np.sum(nm[moved-1]>0)),'migration_count':len(moved),'state_diagnostics':[db,d0,d1],'no_dynamic_integration':True,'same_physical_coordinates':True,'one_physical_load':True}
++ dump(O/'ATOM_ID_LOAD_APPLICATION_AUDIT.json',audit);dump(O/'NATIVE_FORCE_UNIT_AUDIT.json',{'status':'PASS_N_AFTER_SINGLE_VOLUME_CONVERSION','load_unit':'N','internal_force_density_unit':'N/m^3','original_conversion_applied_once':True,'CFD_force_volume_multiplications':0,'callback_owned_only':True,'external_fix_applies_once_per_evaluation':True,'post_force_increment_errors_N':[d0['post_force_increment_error_N'],d1['post_force_increment_error_N']],'source_evidence':'fix_external.cpp POST_FORCE owned loop; fix si_force precedes nativewall and cfdload in actual saved deck','anchor_reaction_readout':'No anchor force-clearing fix; constrained DOFs fixed by optimizer; reaction = minus actual native internal anchor force'})
++ residual=np.linalg.norm(base['force'][:NC],axis=1);fr=json.loads((O/'STATIC_LOAD_DESIGN_FREEZE.json').read_text());assert residual.max()<fr['gates']['unloaded_max_force_N'] and db['wall_active_nodes']==0 and db['contact_pairs']==0
++ dump(O/'UNLOADED_REFERENCE_AUDIT.json',{'status':'PASS_REFERENCE_EQUILIBRIUM_NO_RELAXATION_REQUIRED','max_material_force_N':float(residual.max()),'max_all_force_N':float(np.linalg.norm(base['force'],axis=1).max()),'anchor_internal_force_sum_N':base['force'][NC:].sum(0).tolist(),'reference_m_max_relative':db['m_max_relative'],'wall_min_clearance_m':db['wall_min_clearance_m'],'contact_pairs':db['contact_pairs'],'wall_active_nodes':db['wall_active_nodes'],'dynamic_steps':0,'initial_strain_reference':'Original V3 positions exactly, original body.data; all bonds initialized there','states':3})
++n.close();q=resource.getrusage(resource.RUSAGE_SELF);dump(p/f'PERFORMANCE_rank{rank}.json',{'wall_s':time.perf_counter()-t,'CPU_user_s':q.ru_utime,'CPU_system_s':q.ru_stime,'max_RSS_KiB':q.ru_maxrss,'native_instances_on_rank':1,'force_states':3,'dynamic_steps':0});comm.Barrier()
++if rank==0:print('Native interface / actual sorting and ownership migration PASS',flush=True)
+--- /dev/null
++++ analysis/static_cfd_v1/launch.py
+@@ -0,0 +1,23 @@
++from common import *
++import os,sys,subprocess,time,psutil,signal
++fr=json.loads((O/'STATIC_LOAD_DESIGN_FREEZE.json').read_text());assert sha(B/'liblammps.so')==EXPECTED
++with (O/'CAMPAIGN_LAUNCHED.json').open('x') as fp:json.dump({'epoch':time.time(),'freeze_sha256':sha(O/'STATIC_LOAD_DESIGN_FREEZE.json'),'physical_load_cases':1},fp)
++env=os.environ.copy();env['LD_LIBRARY_PATH']=str(B)+os.pathsep+env.get('LD_LIBRARY_PATH','');env.update(OMP_NUM_THREADS='1',OPENBLAS_NUM_THREADS='1',MKL_NUM_THREADS='1',PYTHONUNBUFFERED='1')
++recs=[]
++for name,cmd,budget in [('interface',['mpiexec','--allow-run-as-root','-n','2',sys.executable,str(Path(__file__).with_name('interface.py'))],fr['budget']['interface_wall_seconds']),('solve',[sys.executable,str(Path(__file__).with_name('solve.py'))],fr['budget']['solve_process_wall_seconds'])]:
++ dump(O/(name+'_RUN_COMMAND.json'),{'argv':cmd,'cwd':str(R),'process_environment':{k:env.get(k) for k in ['LD_LIBRARY_PATH','PYTHONPATH','MPI4PY_LIBMPI','OMP_NUM_THREADS','OPENBLAS_NUM_THREADS']},'freeze_sha256':sha(O/'STATIC_LOAD_DESIGN_FREEZE.json')});t=time.perf_counter();peak=0;stop=None
++ with (O/(name+'_launcher.log')).open('w') as log:
++  p=subprocess.Popen(cmd,cwd=R,env=env,stdout=log,stderr=subprocess.STDOUT,start_new_session=True);pr=psutil.Process(p.pid)
++  while p.poll() is None:
++   try:peak=max(peak,sum(q.memory_info().rss for q in [pr]+pr.children(recursive=True)))
++   except psutil.Error:pass
++   if time.perf_counter()-t>budget or peak>fr['budget']['process_tree_max_RSS_bytes']:
++    stop='FROZEN_WALL_OR_MEMORY_BUDGET';os.killpg(p.pid,signal.SIGTERM)
++    try:p.wait(timeout=5)
++    except subprocess.TimeoutExpired:os.killpg(p.pid,signal.SIGKILL)
++    break
++   time.sleep(.1)
++  rc=p.wait()
++ recs.append({'phase':name,'exit_code':rc,'wall_s':time.perf_counter()-t,'process_tree_peak_RSS_bytes_sampled':peak,'budget_stop':stop});dump(O/'CAMPAIGN_PERFORMANCE.json',{'records':recs})
++ if rc:sys.exit(rc)
++print('STATIC_CFD_CAMPAIGN_FINISHED',recs,flush=True)
+--- /dev/null
++++ analysis/static_cfd_v1/launch_repair1.py
+@@ -0,0 +1,23 @@
++from common import *
++import os,sys,subprocess,time,psutil,signal
++fr=json.loads((O/'STATIC_LOAD_DESIGN_FREEZE.json').read_text());assert sha(B/'liblammps.so')==EXPECTED
++with (O/'CAMPAIGN_REPAIR_LAUNCHED.json').open('x') as fp:json.dump({'epoch':time.time(),'freeze_sha256':sha(O/'STATIC_LOAD_DESIGN_FREEZE.json'),'physical_load_cases':1},fp)
++env=os.environ.copy();env['LD_LIBRARY_PATH']=str(B)+os.pathsep+env.get('LD_LIBRARY_PATH','');env.update(OMP_NUM_THREADS='1',OPENBLAS_NUM_THREADS='1',MKL_NUM_THREADS='1',PYTHONUNBUFFERED='1')
++recs=[]
++for name,cmd,budget in [('finish_interface_audit',[sys.executable,str(Path(__file__).with_name('finish_interface_audit.py'))],30),('solve',[sys.executable,str(Path(__file__).with_name('solve.py'))],fr['budget']['solve_process_wall_seconds'])]:
++ dump(O/(name+'_RUN_COMMAND.json'),{'argv':cmd,'cwd':str(R),'process_environment':{k:env.get(k) for k in ['LD_LIBRARY_PATH','PYTHONPATH','MPI4PY_LIBMPI','OMP_NUM_THREADS','OPENBLAS_NUM_THREADS']},'freeze_sha256':sha(O/'STATIC_LOAD_DESIGN_FREEZE.json')});t=time.perf_counter();peak=0;stop=None
++ with (O/(name+'_launcher.log')).open('w') as log:
++  p=subprocess.Popen(cmd,cwd=R,env=env,stdout=log,stderr=subprocess.STDOUT,start_new_session=True);pr=psutil.Process(p.pid)
++  while p.poll() is None:
++   try:peak=max(peak,sum(q.memory_info().rss for q in [pr]+pr.children(recursive=True)))
++   except psutil.Error:pass
++   if time.perf_counter()-t>budget or peak>fr['budget']['process_tree_max_RSS_bytes']:
++    stop='FROZEN_WALL_OR_MEMORY_BUDGET';os.killpg(p.pid,signal.SIGTERM)
++    try:p.wait(timeout=5)
++    except subprocess.TimeoutExpired:os.killpg(p.pid,signal.SIGKILL)
++    break
++   time.sleep(.1)
++  rc=p.wait()
++ recs.append({'phase':name,'exit_code':rc,'wall_s':time.perf_counter()-t,'process_tree_peak_RSS_bytes_sampled':peak,'budget_stop':stop});dump(O/'REPAIR_AND_SOLVE_PERFORMANCE.json',{'records':recs})
++ if rc:sys.exit(rc)
++print('STATIC_CFD_CAMPAIGN_FINISHED',recs,flush=True)
+--- /dev/null
++++ analysis/static_cfd_v1/native.py
+@@ -0,0 +1,84 @@
++"""Task-isolated static native evaluator. No time integrator and no production changes."""
++from common import *
++import numpy as np,ctypes as ct,traceback
++from mpi4py import MPI
++from lammps import lammps
++from pd_clot.lammps_fragmentation.lammps_writer import force_conversion
++from pd_clot.lammps_fragmentation.native_y_wall_contact import WallCallback
++
++class Native:
++ def __init__(self,out,comm=MPI.COMM_WORLD):
++  self.comm=comm;self.rank=comm.rank;self.out=out;out.mkdir(parents=True,exist_ok=True);self.ref=np.load(O/'REFERENCE_AND_LOAD.npz');self.X=self.ref['X'];self.load=self.ref['force_N'];self.enabled=False;self.calls=0;self.eval_index=0
++  self.L=lammps(comm=comm,cmdargs=['-log',str(out/'log.lammps'),'-screen','none']);dump(out/f'LOADED_LIBRARY_rank{self.rank}.json',loaded(self.L))
++  self.probe=ct.CDLL(str(O/'observer.so'));self.probe.observe.argtypes=[ct.c_void_p,ct.c_int];self.probe.observe.restype=ct.POINTER(ct.c_double);self.probe.counter.argtypes=[ct.c_void_p,ct.c_int];self.probe.counter.restype=ct.c_longlong;self.probe.permutation.argtypes=[ct.c_void_p];self.probe.permutation.restype=ct.POINTER(ct.c_int);self.probe.endpoint_records.argtypes=[ct.c_void_p,ct.c_void_p,ct.c_int];self.probe.endpoint_records.restype=ct.c_int;self.probe.contact_readout.argtypes=[ct.c_void_p,ct.c_void_p,ct.c_void_p,ct.c_int];self.probe.contact_readout.restype=ct.c_int
++  original=(O/'provenance/original_C1.in.lammps').read_text().splitlines();elastic='\n'.join(l for l in original if l.startswith(('pair_style ','pair_coeff ','bond_coeff ')))
++  deck=f'''# Static evaluator; original V3 geometry and elastic/contact/critical parameters.
++units si
++dimension 3
++boundary m m m
++atom_style bond
++processors {comm.size} 1 1
++atom_modify map array sort 1 {DX:.17g}
++newton on off
++special_bonds lj 0 1 1 coul 1 1 1
++lattice sc {DX:.17g}
++read_data {O/'source_inputs/body.data'} extra/bond/per/atom 160 extra/special/per/atom 180
++neighbor {2*DX:.17g} bin
++neigh_modify every 1 delay 0 check no
++comm_modify cutoff {3*DELTA:.17g}
++fix props all property/atom d_vfrac d_theta d_damage ghost yes
++set group all d_vfrac {V:.17g}
++group clot type 1
++group anchors type 2
++bond_style bpm/peri
++{elastic}
++velocity all set 0 0 0 units box
++{force_conversion()}
++fix wallprops all property/atom d_wclear d_wpen d_wtri ghost yes
++fix nativewall clot external pf/callback 1 1
++fix cfdload all external pf/callback 1 1
++timestep 5e-7
++compute contactPE all pe pair
++compute bondPE all pe bond
++thermo 1
++thermo_style custom step atoms bonds ke c_contactPE c_bondPE
++thermo_modify lost error lost/bond error
++# No nve, no damping, no streaming or drag; anchor coordinates constrained by static optimizer.
++# No anchor setforce: physical internal force is retained for reaction recovery.
++'''
++  if self.rank==0:(out/'in.lammps').write_text(deck+'# Python callbacks are registered before run 0. Subsequent run 1 pre no post no are force evaluations, not dynamic steps.\n')
++  self.L.commands_string(deck);self.wall=WallCallback(self.L,comm,out,NC);self.L.set_fix_external_callback('nativewall',self.wall.callback);self.L.set_fix_external_callback('cfdload',self.callback);self.L.command('run 0')
++ def callback(self,caller,step,nlocal,tags,x,fext):
++  try:
++   ids=np.asarray(tags[:nlocal],dtype=int);assert np.all((ids>=1)&(ids<=N));fext[:]=0
++   self.before=self.L.numpy.extract_atom('f')[:nlocal].copy();self.callback_ids=ids.copy();self.applied=self.load[ids-1].copy() if self.enabled else np.zeros((nlocal,3));fext[:nlocal]=self.applied;self.calls+=1
++  except BaseException:
++   (self.out/f'CALLBACK_ERROR_rank{self.rank}.txt').write_text(traceback.format_exc());self.comm.Abort(47)
++ def evaluate(self,x,label,enabled=True,initial=False):
++  L=self.L;self.enabled=bool(enabled);b=self.ref['bonds'];r=self.ref['reference_lengths_m'];s=(np.linalg.norm(x[b[:,1]]-x[b[:,0]],axis=1)-r)/r;crit=np.choose(self.ref['bond_types']-1,[.15,.140624859375,1.]);assert np.max(s/crit)<1,'SUBCRITICAL_GUARD'
++  assert np.array_equal(x[NC:],self.X[NC:]),'ANCHOR_MOVEMENT'
++  if not initial:
++   xx=np.ascontiguousarray(x,dtype=np.float64);L.scatter_atoms('x',1,3,xx.ctypes.data_as(ct.POINTER(ct.c_double)));L.command('run 1 pre no post no');self.eval_index+=1
++  nl=L.extract_global('nlocal');ng=L.extract_global('nghost');nt=nl+ng;allids=L.numpy.extract_atom('id')[:nt].astype(int).copy();ids=allids[:nl];assert np.array_equal(ids,self.callback_ids)
++  mm=np.ctypeslib.as_array(self.probe.observe(L.lmp,0),shape=(nt,)).copy();theta=np.ctypeslib.as_array(self.probe.observe(L.lmp,1),shape=(nt,)).copy();refm=self.ref['reference_m'][allids-1];merr=float(np.max(abs(mm-refm)/refm));assert merr<2e-12
++  f=L.numpy.extract_atom('f')[:nl].copy();actual_x=L.numpy.extract_atom('x')[:nl].copy();v=L.numpy.extract_atom('v')[:nl].copy();assert np.array_equal(actual_x,x[ids-1]);assert not np.any(v)
++  endpoints=np.empty((2*len(b),3),np.int32);ne=self.probe.endpoint_records(L.lmp,endpoints.ctypes.data,len(endpoints));assert ne>=0;endpoints=endpoints[:ne].copy()
++  pairs=np.sort(endpoints[:,:2].astype(np.int64)-1,axis=1);keys=b[:,0]*N+b[:,1];ki=np.searchsorted(keys,pairs[:,0]*N+pairs[:,1]);assert np.all(ki<len(b));assert np.array_equal(keys[ki],pairs[:,0]*N+pairs[:,1]);assert np.array_equal(self.ref['bond_types'][ki],endpoints[:,2])
++  deg=np.bincount(b.ravel(),minlength=N);ndeg=np.bincount(endpoints[:,0]-1,minlength=N);assert np.array_equal(ndeg[ids-1],deg[ids-1]);assert len(np.unique((endpoints[:,0].astype(np.int64)-1)*N+endpoints[:,1]-1))==ne
++  cf=np.zeros((nt,3));ce=np.empty((len(b),2),np.int32);npair=self.probe.contact_readout(L.lmp,cf.ctypes.data,ce.ctypes.data,len(ce));assert npair>=0;cglobal=np.zeros((N,3));np.add.at(cglobal,allids-1,cf*V)
++  nbin=int(self.probe.counter(L.lmp,3));perm=np.ctypeslib.as_array(self.probe.permutation(L.lmp),shape=(nl,)).copy() if nbin>1 else np.arange(nl)
++  packets=self.comm.allgather({'ids':ids,'x':actual_x,'force':f,'before':self.before,'applied':self.applied,'m':mm[:nl],'theta':theta[:nl],'merr':merr,'endpoints':ne,'contact_force':cglobal,'contact_edges':ce[:npair].copy(),'nonidentity_permutation':int(np.count_nonzero(perm!=np.arange(nl))),'ghost_count':ng})
++  assert np.array_equal(np.sort(np.concatenate([p['ids'] for p in packets])),np.arange(1,N+1));assert sum(p['endpoints'] for p in packets)==2*len(b)
++  arrays={k:np.zeros((N,3)) for k in ['x','force','before','applied']};arrays.update(m=np.zeros(N),theta=np.zeros(N),owner=np.zeros(N,int));contact=np.zeros((N,3))
++  for rank,p in enumerate(packets):
++   for k in ['x','force','before','applied','m','theta']:arrays[k][p['ids']-1]=p[k]
++   arrays['owner'][p['ids']-1]=rank;contact+=p['contact_force']
++  arrays['contact_force_N']=contact;arrays['wall_force_N']=np.zeros((N,3));arrays['wall_clearance_m']=np.zeros(NC)
++  wr=self.comm.allgather((ids[ids<=NC],self.wall.clearance[ids[ids<=NC]-1].copy(),self.wall.normal[ids[ids<=NC]-1].copy()))
++  from pd_clot.lammps_fragmentation.native_y_wall_contact import penalty
++  for ii,clear,normal in wr:arrays['wall_clearance_m'][ii-1]=clear;arrays['wall_force_N'][ii-1]=penalty(clear,normal,np.zeros((len(ii),3)))
++  expected=self.load if enabled else np.zeros_like(self.load);derr=float(np.linalg.norm(arrays['force']-arrays['before']-expected,axis=1).max());assert derr<1e-18
++  diag={'label':label,'native_force_evaluation_counter':int(L.extract_global('ntimestep')),'physical_dynamic_steps':0,'CFD_enabled':bool(enabled),'MPI_ranks':self.comm.size,'owned_counts':[len(p['ids']) for p in packets],'ghost_counts':[p['ghost_count'] for p in packets],'nonidentity_permutation_counts':[p['nonidentity_permutation'] for p in packets],'m_max_relative':max(p['merr'] for p in packets),'post_force_increment_error_N':derr,'bonds':len(b),'new_breaks':0,'contact_pairs':sum(len(p['contact_edges']) for p in packets),'pair_contact_PE_J':float(L.extract_compute('contactPE',0,0))*V,'native_bond_PE_times_V_J':float(L.extract_compute('bondPE',0,0))*V,'wall_active_nodes':int(np.sum(np.linalg.norm(arrays['wall_force_N'],axis=1)>0)),'wall_min_clearance_m':float(arrays['wall_clearance_m'].min()),'KE_J':float(L.get_thermo('ke'))}
++  if self.rank==0:np.savez_compressed(self.out/(label+'.npz'),**arrays);dump(self.out/(label+'.json'),diag)
++  return arrays,diag
++ def close(self):self.wall.close();self.L.close()
+--- /dev/null
++++ analysis/static_cfd_v1/preflight.py
+@@ -0,0 +1,48 @@
++from common import *
++import numpy as np,subprocess,sys,shutil,time
++from scipy.spatial import cKDTree
++O.mkdir(parents=True,exist_ok=True);F.mkdir(parents=True,exist_ok=True);assert not (O/'PREFLIGHT.json').exists()
++start=time.perf_counter();commands=[]
++for a in [['pwd'],['git','status','--short'],['git','branch','--show-current'],['git','rev-parse','HEAD'],['ps','-eo','pid,comm,pcpu,pmem,etimes'],['df','-h','.'],['lscpu'],['free','-b'],['nvidia-smi','--query-gpu=name,memory.used,utilization.gpu','--format=csv'],['ldd',str(B/'liblammps.so')]]:
++ r=subprocess.run(a,capture_output=True,text=True);commands.append({'argv':a,'returncode':r.returncode,'stdout':r.stdout,'stderr':r.stderr})
++cgroup={p:Path(p).read_text().strip() for p in ['/sys/fs/cgroup/cpu/cpu.cfs_quota_us','/sys/fs/cgroup/cpu/cpu.cfs_period_us','/sys/fs/cgroup/memory/memory.limit_in_bytes','/sys/fs/cgroup/memory/memory.usage_in_bytes']}
++dump(O/'PREFLIGHT.json',{'commands':commands,'python':sys.executable,'python_version':sys.version,'cgroup':cgroup,'new_native_instances':0})
++meta=json.loads((MAP/'CLOT_NODAL_TRACTION_METADATA.json').read_text());sources={str(R/p):s for p,s in meta['source_SHA'].items()};sources[str(MAP/meta['file'])]=meta['force_sha256'];sources[str(MAP/'CFD_TO_LAMMPS_MAPPING_MATRIX.npz')]=meta['map_sha256']
++sourcecheck={p:{'expected':s,'actual':sha(p),'bytes':Path(p).stat().st_size} for p,s in sources.items()};assert all(a['expected']==a['actual'] for a in sourcecheck.values())
++a=np.load(MAP/meta['file']);g=np.load(GDIR/'V3_MATERIAL_POINTS_AND_BONDS.npz');s=np.load(CFD/'refined/CLOT_SURFACE_TRACTIONS.npz');m=np.load(MAP/'CFD_TO_LAMMPS_MAPPING_MATRIX.npz');x0=a['reference_point_m'];X=g['X'];b=g['bonds'];types=g['bond_types'];nc=int(g['clot_count']);assert nc==NC and len(X)==N and len(b)==157637
++np.testing.assert_array_equal(a['material_atom_id'],np.arange(1,NC+1));np.testing.assert_array_equal(a['anchor_atom_id'],np.arange(NC+1,N+1));np.testing.assert_array_equal(a['reference_coordinates_m'],X[:NC]);np.testing.assert_array_equal(a['anchor_reference_coordinates_m'],X[NC:]);np.testing.assert_array_equal(a['support_node'],np.linalg.norm(a['total_force_N'],axis=1)>0);np.testing.assert_array_equal(x0,meta['reference_point_m']);assert a['support_node'].sum()==580
++fullforce=np.zeros((N,3));fullforce[:NC]=a['total_force_N'];np.testing.assert_allclose(fullforce[:NC],a['pressure_force_N']+a['shear_force_N']+a['viscous_normal_force_N'],rtol=0,atol=1e-23)
++components={};length=float(m['length_scale_m']);Q=s['quadrature_coordinates_m'];Aq=s['quadrature_area_m2'];normal=s['n_clot']
++fields={'pressure':-s['quadrature_pressure_Pa'][:,:,None]*normal[:,None,:],'shear':np.repeat(s['tangential_traction_Pa'][:,None,:],3,axis=1),'viscous_normal':np.repeat(s['viscous_normal_traction_Pa'][:,None,:],3,axis=1),'total':s['quadrature_total_traction_Pa']}
++for name,traction in fields.items():
++ fq=traction*Aq[:,:,None];face=fq.sum(1);Fs=face.sum(0);Ms=np.cross(Q-x0,fq).sum((0,1));fn=a[name+'_force_N'];Fn=fn.sum(0);Mn=np.cross(X[:NC]-x0,fn).sum(0);scale=float(np.linalg.norm(face,axis=1).sum());fe=float(np.linalg.norm(Fn-Fs));me=float(np.linalg.norm(Mn-Ms));assert fe/scale<1e-8 and me/(scale*length)<1e-8
++ components[name]={'surface_force_N':Fs.tolist(),'surface_moment_Nm':Ms.tolist(),'mapped_force_N':Fn.tolist(),'mapped_reference_moment_Nm':Mn.tolist(),'force_error_N':fe,'moment_error_Nm':me,'face_absolute_force_sum_N':scale,'length_scale_m':length,'force_scaled_error':fe/scale,'moment_scaled_error':me/(scale*length)}
++r0=np.linalg.norm(X[b[:,1]]-X[b[:,0]],axis=1);h=np.where(abs(r0-DELTA)<=DX/2,(DELTA+DX/2-r0)/DX,1.);refm=np.bincount(b.ravel(),weights=np.repeat(V*r0*h,2),minlength=N)
++# Read original data identities, not a newly generated geometry.
++body=GDIR/'cases/C1_GAUSSIAN_A200/body.data';lines=body.read_text().splitlines();ia=next(i for i,l in enumerate(lines) if l.startswith('Atoms'));ib=next(i for i,l in enumerate(lines) if l.strip()=='Bonds');ar=np.array([[float(x) for x in l.split()] for l in lines[ia+1:ib] if l.strip()]);bb=np.array([[int(x) for x in l.split()] for l in lines[ib+1:] if l.strip()]);ar=ar[np.argsort(ar[:,0])];np.testing.assert_array_equal(ar[:,0],np.arange(1,N+1));np.testing.assert_allclose(ar[:,3:6],X,rtol=0,atol=1e-17);np.testing.assert_array_equal(bb[:,1],types);np.testing.assert_array_equal(bb[:,2:4]-1,b);assert np.all(ar[:NC,2]==1) and np.all(ar[NC:,2]==2)
++# Detect nearest nonbonded pairs in a bounded radius; no contact assumptions from images.
++p=cKDTree(X).query_pairs(2*DX,output_type='ndarray');pk=p[:,0]*N+p[:,1];bk=b[:,0]*N+b[:,1];p=p[~np.isin(pk,bk)];rr=np.linalg.norm(X[p[:,1]]-X[p[:,0]],axis=1)
++from pd_clot.lammps_fragmentation.native_y_wall_query import NativeYWallQuery
++wall=NativeYWallQuery();w=wall.query(X[:NC]);assert w['inside_lumen'].all()
++np.savez_compressed(O/'REFERENCE_AND_LOAD.npz',X=X,bonds=b,bond_types=types,reference_m=refm,reference_lengths_m=r0,h=h,material_ids=a['material_atom_id'],anchor_ids=a['anchor_atom_id'],force_N=fullforce,support_node=a['support_node'],reference_point_m=x0,wall_clearance_m=w['clearance_m'],wall_normal=w['inward_normal'],near_nonbonded_pairs=p,near_nonbonded_reference_distances_m=rr)
++check={'status':'PASS_SOURCE_SHA_REGISTRATION_AND_CONSERVATION','files':sourcecheck,'metadata_sha256':sha(MAP/'CLOT_NODAL_TRACTION_METADATA.json'),'source_CFD':meta['source_CFD'],'mapping_run':meta['run_id'],'physical_load_cases':1,'mapping_recomputed':False,'CFD_rerun':False,'clot_count':NC,'anchor_count':N-NC,'loaded_clot_count':580,'unloaded_clot_count':1347,'bonds':len(b),'bond_type_counts':{str(k):int(np.sum(types==k)) for k in [1,2,3]},'unit':meta['force_units'],'coordinates':meta['coordinates'],'coordinate_transform':meta['coordinate_transform'],'pressure_convention':meta['pressure'],'reference_point_m':x0.tolist(),'surface_faces':len(s['triangle_area_m2']),'surface_area_m2':float(s['triangle_area_m2'].sum()),'components':components,'nodal_force_L2_N':float(np.linalg.norm(fullforce)),'nodal_force_max_N':float(np.linalg.norm(fullforce,axis=1).max()),'unloaded_geometric_wall_min_clearance_m':float(w['clearance_m'].min()),'unloaded_nonbonded_min_distance_m_within_2dx':float(rr.min()),'wall_source_paths':str(wall.sources),'no_native_calls_yet':True}
++dump(O/'CFD_LOAD_SOURCE_AUDIT.json',check)
++files=[B/'liblammps.so',PROD,Path('/workspace/y_clot/env.sh'),PRIOR/'BUGFIX_SOURCE_DIFF.patch',R/'analysis/material_macro_audit_v1/energy.cpp',R/'analysis/material_macro_audit_v1/energy.so',R/'pd_clot/lammps_fragmentation/macro_lab_v1.py',V3/'observer.so',R/'analysis/final_v3_v1/observer.cpp']+[S/'src'/n for n in ['BPM/bond_bpm_peri.cpp','BPM/bond_bpm_peri.h','BPM/bond_bpm.cpp','BPM/pair_bpm_peri.cpp','fix_external.cpp','fix_setforce.cpp','verlet.cpp','balance.cpp']]+[R/'pd_clot/lammps_fragmentation'/n for n in ['lammps_writer.py','native_y_wall_contact.py','native_y_wall_query.py','early_flow_coupling.py']]
++identity={str(p):sha(p) for p in files};assert identity[str(B/'liblammps.so')]==EXPECTED;assert identity[str(PROD)]=='d1b2f53d6b942d1ca9277a8b8cd9c195ce75ea6f616681ec21c311e4faf3b41a'
++dump(O/'SOURCE_AND_LIBRARY_IDENTITY.json',{'status':'DISK_IDENTITY_PASS_RUNTIME_PENDING','files_sha256':identity,'expected_library_sha256':EXPECTED,'production_sha256':sha(PROD),'original_C1_maps':[json.loads((V3/'C1_final'/f'LOADED_LIBRARY_rank{i}.json').read_text()) for i in [0,1]],'native_CXX_modified':False})
++prov=O/'provenance';prov.mkdir();inp=O/'source_inputs';inp.mkdir()
++for p in files:
++ if '.so' not in p.name:shutil.copy2(p,prov/p.name)
++for p in [R/'AGENTS.md',R/'PROJECT_ACTIVE_CONTEXT.md',Path('/workspace/y_clot/README_MIGRATION_ZH.txt'),Path('/etc/vast-agents-guide.md')]:shutil.copy2(p,prov/p.name)
++for p in [MAP/meta['file'],MAP/'CFD_TO_LAMMPS_MAPPING_MATRIX.npz',MAP/'CLOT_NODAL_TRACTION_METADATA.json',MAP/'CONSERVATIVE_MAPPING_AUDIT.json',MAP/'INDEPENDENT_VERIFICATION.json',CFD/'refined/CLOT_SURFACE_TRACTIONS.npz',GDIR/'V3_MATERIAL_POINTS_AND_BONDS.npz',body]:shutil.copy2(p,inp/p.name)
++shutil.copy2(V3/'observer.so',O/'observer.so');shutil.copy2(V3/'C1_final/in.lammps',prov/'original_C1.in.lammps')
++prev=R/'verification/lps_fracture_timelayer_and_timestep_sensitivity_v1/20261011T221502Z';protected=json.loads((prev/'HISTORICAL_PROTECTION_BEFORE.json').read_text())
++for base in [prev,MAP,CFD]:
++ for p in base.rglob('*'):
++  if p.is_file():protected[str(p)]={'sha256':sha(p),'bytes':p.stat().st_size}
++for p in files+list(map(Path,sources)):
++ protected[str(p)]={'sha256':sha(p),'bytes':p.stat().st_size}
++# Verify inherited historical entries before adopting this round's protection baseline.
++assert all(Path(p).is_file() and sha(p)==rec['sha256'] for p,rec in protected.items())
++dump(O/'HISTORICAL_PROTECTION_BEFORE.json',protected)
++print(json.dumps({'source':check['status'],'components':components,'Fmax':check['nodal_force_max_N'],'F_L2':check['nodal_force_L2_N'],'wall_clearance':check['unloaded_geometric_wall_min_clearance_m'],'nonbonded_distance':check['unloaded_nonbonded_min_distance_m_within_2dx'],'bond_types':check['bond_type_counts'],'protected_files':len(protected),'protected_bytes':sum(q['bytes'] for q in protected.values()),'wall_s':time.perf_counter()-start}))
+--- /dev/null
++++ analysis/static_cfd_v1/protect.py
+@@ -0,0 +1,11 @@
++from common import *
++import time,subprocess
++start=time.perf_counter();before=json.loads((O/'HISTORICAL_PROTECTION_BEFORE.json').read_text());changed=[];missing=[];total=0
++for name,old in before.items():
++ p=Path(name)
++ if not p.is_file():missing.append(name);continue
++ total+=p.stat().st_size
++ if sha(p)!=old['sha256'] or p.stat().st_size!=old['bytes']:changed.append(name)
++out={'status':'PASS_ALL_PROTECTED_SHA_UNCHANGED' if not changed and not missing else 'FAIL_PROTECTION','checked_files':len(before),'checked_bytes':total,'changed':changed,'missing':missing,'wall_seconds':time.perf_counter()-start,'production_sha256':sha(PROD),'final_diagnostic_sha256':sha(B/'liblammps.so'),'env_sha256':sha('/workspace/y_clot/env.sh'),'no_production_deployment':True,'no_git_push':True,'no_old_CFD_or_fragmentation_overwrite':not changed}
++dump(O/'HISTORICAL_PROTECTION_AFTER.json',out)
++(O/'FINAL_GIT_STATUS.txt').write_text(subprocess.check_output(['git','status','--short'],cwd=R,text=True));print(json.dumps(out,indent=2));assert out['status'].startswith('PASS')
+--- /dev/null
++++ analysis/static_cfd_v1/solve.py
+@@ -0,0 +1,71 @@
++"""One pre-registered full CFD dead-load equilibrium with independent energy/native verification."""
++from common import *
++import numpy as np,time,resource,csv,sys
++from scipy.optimize import minimize
++from scipy.spatial import cKDTree
++from native import Native
++from mpi4py import MPI
++from pd_clot.lammps_fragmentation.macro_lab_v1 import Energy
++assert MPI.COMM_WORLD.size==1
++assert json.loads((O/'ATOM_ID_LOAD_APPLICATION_AUDIT.json').read_text())['status'].startswith('PASS')
++assert json.loads((O/'UNLOADED_REFERENCE_AUDIT.json').read_text())['status'].startswith('PASS')
++assert not (O/'STATIC_SOLVE_STARTED.json').exists();t=time.perf_counter();cpu=time.process_time();freeze=json.loads((O/'STATIC_LOAD_DESIGN_FREEZE.json').read_text());dump(O/'STATIC_SOLVE_STARTED.json',{'epoch':time.time(),'formal_equilibrium_attempt':1,'freeze_sha256':sha(O/'STATIC_LOAD_DESIGN_FREEZE.json')})
++r=np.load(O/'REFERENCE_AND_LOAD.npz');X=r['X'];b=r['bonds'];types=r['bond_types'];fl=r['force_N'];x0=r['reference_point_m'];alive=np.ones(len(b),np.uint8);e=Energy({'X':X,'bonds':b},DX,R/'analysis/material_macro_audit_v1/energy.so');uscale=freeze['scales']['displacement_m'];escale=freeze['scales']['energy_J'];fscale=freeze['scales']['nodal_force_L2_N'];gates=freeze['gates'];lim=freeze['budget'];contact0=freeze['contact_no_activation_bounds'];n=Native(O/'native_static');native0,diag0=n.evaluate(X,'unloaded',False,initial=True)
++U0,f0=e.eval(np.ascontiguousarray(X),alive,True);assert np.linalg.norm(f0,axis=1).max()<gates['unloaded_max_force_N'];dump(O/'INDEPENDENT_REFERENCE_ENERGY.json',{'U0_J':U0,'max_independent_force_N':float(np.linalg.norm(f0,axis=1).max()),'native_m_error':diag0['m_max_relative']})
++numcalls=0;hist=[];states=[];last=None;maxtrial=0.;maxu=0.;end_reason=None
++class BudgetStop(Exception):pass
++
++def unpack(q):
++ x=X.copy();x[:NC]+=q.reshape(NC,3)*uscale;return np.ascontiguousarray(x)
++def evaluate(q):
++ global numcalls,last,maxtrial,maxu
++ numcalls+=1
++ if numcalls>lim['max_function_evaluations'] or time.perf_counter()-t>lim['wall_seconds']:raise BudgetStop('FROZEN_COMPUTE_BUDGET')
++ x=unpack(q);un=np.linalg.norm(x-X,axis=1);um=float(un.max());maxu=max(maxu,um)
++ if um>lim['max_trial_displacement_m']:raise BudgetStop('TRIAL_DISPLACEMENT_STOP')
++ stretch=(np.linalg.norm(x[b[:,1]]-x[b[:,0]],axis=1)-r['reference_lengths_m'])/r['reference_lengths_m'];util=stretch/np.choose(types-1,[.15,.140624859375,1.]);maxtrial=max(maxtrial,float(util.max()))
++ if util.max()>=1:raise BudgetStop('NATURAL_BREAK_CRITERION_REACHED')
++ # Conservative distance lower bounds; all trials remain in a proven inactive contact region.
++ if np.min(r['wall_clearance_m']-un[:NC])<=20e-6 or contact0['nonbonded_min_reference_distance_m']-2*um<=DX:raise BudgetStop('CONTACT_REGION_ENTERED_REQUIRES_SEPARATE_MODEL_AUDIT')
++ U,fi=e.eval(x,alive,True);work=float(np.sum(fl*(x-X)));Pi=U-work;res=fi+fl
++ if not np.isfinite(Pi) or not np.isfinite(res).all():raise BudgetStop('NONFINITE')
++ last=(q.copy(),x,U,fi,work,Pi,res)
++ return Pi/escale,(-res[:NC]*uscale/escale).ravel()
++def record(q):
++ if last is None or not np.array_equal(q,last[0]):evaluate(q)
++ _,x,U,fi,work,Pi,res=last;states.append((x.copy(),U,Pi));states[:]=states[-10:];reaction=-fi[NC:];fb=fl.sum(0)+reaction.sum(0);mc=np.cross(x-x0,fl).sum(0)+np.cross(X[NC:]-x0,reaction).sum(0);mr=np.cross(X-x0,fl).sum(0)+np.cross(X[NC:]-x0,reaction).sum(0)
++ row={'iteration':len(hist),'function_evaluations':numcalls,'U_LPS_J':U,'dead_load_work_F_dot_u_J':work,'Pi_J':Pi,'free_force_max_N':float(np.linalg.norm(res[:NC],axis=1).max()),'free_force_L2_relative':float(np.linalg.norm(res[:NC])/fscale),'global_force_residual_N':float(np.linalg.norm(fb)),'current_moment_residual_Nm':float(np.linalg.norm(mc)),'reference_moment_residual_Nm':float(np.linalg.norm(mr)),'last10_max_position_change_m':float(np.max(np.linalg.norm(x-states[0][0],axis=1))) if len(states)==10 else None,'last10_U_span_J':float(max(z[1] for z in states)-min(z[1] for z in states)) if len(states)==10 else None,'max_displacement_m':float(np.linalg.norm(x[:NC]-X[:NC],axis=1).max())}
++ hist.append(row)
++ with (O/'STATIC_CONVERGENCE.csv').open('w') as fp:w=csv.DictWriter(fp,fieldnames=list(row));w.writeheader();w.writerows(hist)
++ if len(hist)%50==0:print(json.dumps(row),flush=True)
++ ok=row['free_force_max_N']<=gates['free_max_force_N'] and row['free_force_L2_relative']<=gates['free_force_L2_relative'] and row['global_force_residual_N']<=gates['global_force_abs_N'] and row['current_moment_residual_Nm']<=gates['global_moment_abs_Nm'] and row['last10_max_position_change_m'] is not None and row['last10_max_position_change_m']<=gates['last10_displacement_m'] and row['last10_U_span_J']<=gates['last10_U_span_J']
++ return ok
++q0=np.zeros(NC*3);evaluate(q0);record(q0)
++def callback(intermediate_result):
++ if record(intermediate_result.x):raise StopIteration
++result=None
++try:
++ result=minimize(evaluate,q0,jac=True,method='L-BFGS-B',callback=callback,options=freeze['optimizer']);q=result.x;end_reason=str(result.message)
++except BudgetStop as ex:
++ end_reason=str(ex);q=last[0] if last is not None else q0
++# The last valid evaluated candidate is retained on budget stop; this does not certify equilibrium.
++x=unpack(q)
++if last is None or not np.array_equal(last[0],q):evaluate(q)
++if not np.array_equal(states[-1][0],x):record(q)
++_,x,U,fi,work,Pi,res=last;native,diag=n.evaluate(x,'loaded_candidate',True);rn=native['force'];reaction=-rn[NC:];Fext=fl.sum(0);Freac=reaction.sum(0);Fb=Fext+Freac;Mext_ref=np.cross(X-x0,fl).sum(0);Mext_cur=np.cross(x-x0,fl).sum(0);Mr=np.cross(X[NC:]-x0,reaction).sum(0);Mbr=Mext_ref+Mr;Mbc=Mext_cur+Mr;native_error=rn-(fi+fl);force_cons=float(np.linalg.norm(native_error)/fscale);stretch=(np.linalg.norm(x[b[:,1]]-x[b[:,0]],axis=1)-r['reference_lengths_m'])/r['reference_lengths_m'];critical=np.choose(types-1,[.15,.140624859375,1.]);util=stretch/critical
++Fs=freeze['scales']['face_absolute_force_sum_N'];Ms=Fs*freeze['scales']['length_m'];row=hist[-1]
++checks={'free_force_absolute':float(np.linalg.norm(rn[:NC],axis=1).max())<=gates['free_max_force_N'],'free_force_relative':float(np.linalg.norm(rn[:NC])/fscale)<=gates['free_force_L2_relative'],'global_force_absolute':float(np.linalg.norm(Fb))<=gates['global_force_abs_N'],'global_force_relative':float(np.linalg.norm(Fb)/Fs)<=gates['global_force_scaled'],'global_current_moment_absolute':float(np.linalg.norm(Mbc))<=gates['global_moment_abs_Nm'],'global_current_moment_relative':float(np.linalg.norm(Mbc)/Ms)<=gates['global_moment_scaled'],'global_reference_moment_absolute':float(np.linalg.norm(Mbr))<=gates['global_moment_abs_Nm'],'global_reference_moment_relative':float(np.linalg.norm(Mbr)/Ms)<=gates['global_moment_scaled'],'position_plateau':row['last10_max_position_change_m'] is not None and row['last10_max_position_change_m']<=gates['last10_displacement_m'],'energy_plateau':row['last10_U_span_J'] is not None and row['last10_U_span_J']<=gates['last10_U_span_J'],'native_energy_gradient':force_cons<=gates['native_independent_L2_over_load'],'subcritical':float(util.max())<1,'topology':diag['new_breaks']==0 and diag['bonds']==len(b),'anchors_fixed':np.array_equal(x[NC:],X[NC:]),'contact_inactive':diag['contact_pairs']==0 and diag['wall_active_nodes']==0,'finite':bool(np.isfinite(x).all() and np.isfinite(rn).all())}
++accepted=all(checks.values());disp=x-X;norm=np.linalg.norm(disp[:NC],axis=1);imax=int(np.argmax(norm));dump(O/'STATIC_EQUILIBRIUM_AUDIT.json',{'status':'PASS_STATIC_EQUILIBRIUM' if accepted else 'STATIC_EQUILIBRIUM_NOT_ESTABLISHED','accepted':accepted,'gates':checks,'criteria':gates,'iterations':len(hist)-1,'function_evaluations':numcalls,'optimizer_status':int(result.status) if result is not None else None,'optimizer_exit_reason':end_reason,'last':row,'max_native_free_force_N':float(np.linalg.norm(rn[:NC],axis=1).max()),'native_free_force_L2_over_load_L2':float(np.linalg.norm(rn[:NC])/fscale),'native_independent_error_L2_over_load_L2':force_cons,'native_max_force_difference_N':float(np.linalg.norm(native_error,axis=1).max()),'max_displacement_m':float(norm[imax]),'max_displacement_atom_id':imax+1,'max_displacement_reference_position_m':X[imax].tolist(),'mean_displacement_m':float(norm.mean()),'mean_displacement_vector_m':disp[:NC].mean(0).tolist(),'max_all_trial_utilization':maxtrial,'max_all_trial_displacement_m':maxu,'formal_equilibrium_attempts':1,'no_dynamic_integration':True,'candidate_file':'CLOT_STATIC_DISPLACEMENTS.npz','native_state':diag})
++np.savez_compressed(O/'CLOT_STATIC_DISPLACEMENTS.npz',atom_id=np.arange(1,N+1),reference_coordinates_m=X,position_m=x,displacement_m=disp,force_CFD_N=fl,native_force_total_N=rn,independent_internal_force_N=fi,reference_m=r['reference_m'],native_m=native['m'],native_theta=native['theta'],accepted=np.array(accepted),anchors=np.arange(N)>=NC,support_node=np.r_[r['support_node'],np.zeros(N-NC,bool)],bonds=b,bond_types=types,stretch=stretch,critical_utilization=util,last10_positions_m=np.array([z[0] for z in states]),last10_energy_J=np.array([z[1] for z in states]))
++np.savez_compressed(O/'CLOT_STATIC_REACTIONS.npz',anchor_atom_id=np.arange(NC+1,N+1),anchor_position_m=x[NC:],native_anchor_internal_force_N=rn[NC:],constraint_reaction_N=reaction,reference_point_m=x0,external_force_N=fl,wall_force_N=native['wall_force_N'],pair_contact_force_N=native['contact_force_N'],accepted=np.array(accepted))
++dump(O/'FORCE_MOMENT_BALANCE.json',{'reference_point_m':x0.tolist(),'external_force_N':Fext.tolist(),'anchor_reaction_N':Freac.tolist(),'force_residual_N':Fb.tolist(),'force_residual_norm_N':float(np.linalg.norm(Fb)),'force_scaled_error':float(np.linalg.norm(Fb)/Fs),'external_reference_moment_Nm':Mext_ref.tolist(),'external_current_moment_Nm':Mext_cur.tolist(),'anchor_reaction_moment_Nm':Mr.tolist(),'reference_moment_residual_Nm':Mbr.tolist(),'current_moment_residual_Nm':Mbc.tolist(),'reference_moment_scaled_error':float(np.linalg.norm(Mbr)/Ms),'current_moment_scaled_error':float(np.linalg.norm(Mbc)/Ms),'configuration_moment_shift_Nm':(Mext_cur-Mext_ref).tolist(),'force_scale_N':Fs,'moment_scale_Nm':Ms,'current_configuration_is_physical_torque_balance':True,'reference_configuration_is_original_mapping_convention':True,'reaction_source':'Minus independently read native anchor internal force, not minus total external force','other_external_wall_force_N':native['wall_force_N'].sum(0).tolist()})
++dump(O/'ANCHOR_REACTION_AUDIT.json',{'status':'PASS_NATIVE_INTERNAL_FORCE_CONSTRAINT_RECOVERY' if accepted else 'CANDIDATE_REACTION_ONLY','anchor_count':N-NC,'anchor_max_displacement_m':float(np.linalg.norm(disp[NC:],axis=1).max()),'reaction_sum_N':Freac.tolist(),'max_anchor_reaction_N':float(np.linalg.norm(reaction,axis=1).max()),'max_anchor_reaction_atom_id':int(np.argmax(np.linalg.norm(reaction,axis=1))+NC+1),'method':'Fixed all anchor coordinates in optimizer, no nve and no setforce clearing; reaction is negative of actual constrained-DOF native internal force','CFD_load_on_anchors_N':float(np.linalg.norm(fl[NC:])),'inferred_from_external_sum':False})
++# Few independent energy-gradient/path checks at the candidate; zero additional equilibria.
++direction=disp.copy();direction/=np.linalg.norm(direction);fd=[]
++for eps in [1e-10,5e-11]:
++ du=(e.eval(np.ascontiguousarray(x+eps*direction),alive)-e.eval(np.ascontiguousarray(x-eps*direction),alive))/(2*eps);pred=-float(np.sum(fi*direction));fd.append({'step_m':eps,'directional_gradient_N':du,'minus_force_dot_direction_N':pred,'error_over_load_L2':abs(du-pred)/fscale})
++points,weights=np.polynomial.legendre.leggauss(5);pathwork=0.
++for z,w in zip((points+1)/2,weights/2):
++ _,fp=e.eval(np.ascontiguousarray(X+z*disp),alive,True);pathwork-=w*float(np.sum(fp*disp))
++dump(O/'INDEPENDENT_LPS_ENERGY_AUDIT.json',{'status':'PASS_GRADIENT_CHECK' if force_cons<=gates['native_independent_L2_over_load'] and max(a['error_over_load_L2'] for a in fd)<=gates['FD_over_load_L2'] else 'FORCE_ENERGY_MISMATCH','U_reference_J':U0,'U_loaded_J':U,'DeltaU_J':U-U0,'constant_dead_load_F_dot_u_J':work,'external_potential_J':-work,'total_potential_Pi_J':Pi,'independent_internal_path_work_J':pathwork,'path_work_minus_DeltaU_J':pathwork-(U-U0),'half_F_dot_u_J':.5*work,'DeltaU_minus_half_F_dot_u_J':U-U0-.5*work,'half_work_scope':'Small-displacement linearity diagnostic only; no separately simulated ramped-load path','finite_difference':fd,'native_independent_L2_over_load':force_cons,'native_PE_times_volume_J_excluded_from_objective':diag['native_bond_PE_times_V_J'],'pair_contact_energy_J':diag['pair_contact_PE_J'],'wall_contact_energy_J':0.,'numerical_damping_work_J':0.,'Gc':'NOT_CALIBRATED_NO_FRACTURE','kinetic_energy':'No time integrator; KE=0 is not used as evidence of static equilibrium'})
++n.close();qres=resource.getrusage(resource.RUSAGE_SELF);dump(O/'SOLVE_PERFORMANCE.json',{'formal_equilibrium_attempts':1,'optimizer_iterations':len(hist)-1,'function_evaluations':numcalls,'native_instances':1,'native_force_states':2,'dynamic_steps':0,'wall_s':time.perf_counter()-t,'CPU_s':time.process_time()-cpu,'peak_RSS_KiB':qres.ru_maxrss,'MPI_ranks':1,'OMP_BLAS_threads':1,'GPU_used':False,'exit_reason':end_reason});print(json.dumps({'accepted':accepted,'checks':checks,'last':row,'native_force_consistency':force_cons,'maxu_m':float(norm[imax]),'wall_s':time.perf_counter()-t}),flush=True)
+--- /dev/null
++++ analysis/static_cfd_v1/start_managed.py
+@@ -0,0 +1,13 @@
++from common import *
++import subprocess
++assert (O/'STATIC_LOAD_DESIGN_FREEZE.json').exists() and not (O/'CAMPAIGN_LAUNCHED.json').exists()
++name='clot_static_cfd_'+C['run']+'_formal';script=O/'managed_formal_run.sh';script.write_text('#!/bin/bash\nset -e\nsource /workspace/y_clot/env.sh\ncd /workspace/y_clot/project\nexec python -u analysis/static_cfd_v1/launch.py\n');script.chmod(0o755)
++p=Path('/etc/supervisor/conf.d')/(name+'.conf');assert not p.exists();p.write_text(f'[program:{name}]\ncommand=/bin/bash {script}\ndirectory={R}\nautostart=false\nautorestart=false\nstartsecs=0\nstartretries=0\nstdout_logfile={O}/supervisor.log\nredirect_stderr=true\nstdout_logfile_maxbytes=0\nstopasgroup=true\nkillasgroup=true\n')
++code="""import xmlrpc.client,supervisor.xmlrpc
++r=xmlrpc.client.ServerProxy('http://127.0.0.1',transport=supervisor.xmlrpc.SupervisorTransport(None,None,'unix:///var/run/supervisor.sock'))
++print(r.supervisor.reloadConfig())
++r.supervisor.addProcessGroup(NAME)
++print(r.supervisor.startProcess(NAME,False))
++print(r.supervisor.getProcessInfo(NAME))
++""".replace('NAME',repr(name))
++q=subprocess.run(['/usr/bin/python3','-c',code],capture_output=True,text=True);(O/'MANAGED_START.txt').write_text(q.stdout+q.stderr);print(q.stdout,q.stderr);assert q.returncode==0
+--- /dev/null
++++ analysis/static_cfd_v1/start_repair1.py
+@@ -0,0 +1,13 @@
++from common import *
++import subprocess
++assert (O/'STATIC_LOAD_DESIGN_FREEZE.json').exists() and not (O/'CAMPAIGN_REPAIR_LAUNCHED.json').exists()
++name='clot_static_cfd_'+C['run']+'_repair1';script=O/'managed_repair1_run.sh';script.write_text('#!/bin/bash\nset -e\nsource /workspace/y_clot/env.sh\ncd /workspace/y_clot/project\nexec python -u analysis/static_cfd_v1/launch_repair1.py\n');script.chmod(0o755)
++p=Path('/etc/supervisor/conf.d')/(name+'.conf');assert not p.exists();p.write_text(f'[program:{name}]\ncommand=/bin/bash {script}\ndirectory={R}\nautostart=false\nautorestart=false\nstartsecs=0\nstartretries=0\nstdout_logfile={O}/supervisor_repair1.log\nredirect_stderr=true\nstdout_logfile_maxbytes=0\nstopasgroup=true\nkillasgroup=true\n')
++code="""import xmlrpc.client,supervisor.xmlrpc
++r=xmlrpc.client.ServerProxy('http://127.0.0.1',transport=supervisor.xmlrpc.SupervisorTransport(None,None,'unix:///var/run/supervisor.sock'))
++print(r.supervisor.reloadConfig())
++r.supervisor.addProcessGroup(NAME)
++print(r.supervisor.startProcess(NAME,False))
++print(r.supervisor.getProcessInfo(NAME))
++""".replace('NAME',repr(name))
++q=subprocess.run(['/usr/bin/python3','-c',code],capture_output=True,text=True);(O/'MANAGED_REPAIR_START.txt').write_text(q.stdout+q.stderr);print(q.stdout,q.stderr);assert q.returncode==0

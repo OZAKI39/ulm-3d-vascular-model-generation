@@ -1,0 +1,9 @@
+from common import *
+from datetime import datetime,timezone
+old=json.loads((PREV/'FULL_PROTOCOL_TIMESTEP_DESIGN_FREEZE.json').read_text())
+drivers=['common.py','native.py','event_integrator.py','replay.py','run_protocol.py']
+freeze=dict(task=TASK,run_id=RUN,frozen_utc=datetime.now(timezone.utc).isoformat(),library_sha256=sha(LIB),driver_sha256={n:sha(A/n) for n in drivers},dt_base_s=BASE,minimum_h_s=MIN_H,checkpoint_predictor_trigger=CHECKPOINT_TRIGGER,damage_admission=.10,material=old['material'],gates=old['gates'],boundary=old['boundary'],actual_analytic_expression=old['actual_analytic_expression'],reference_sha256=old['reference_sha256'],ledger=old['ledger'],normalization=old['normalization'],budget=dict(main_wall_s=300,RSS_stop_GiB=4,payload_limit_MiB=600,MPI_ranks=1,threads=1),local_window_s=[.00064025,.000643],local_ledger_anchor='Prior actual prefix through 640.25us; full run uses fresh zero-damage t0 and never this prefix',checkpoint='Read-only native-VV drift/history forecast >=0.075 or any subdivided candidate; actual native candidate gate remains 0.10. Unexpected uncheckpointed violation stops.',rollback='Native binary restart including custom variational history, reference graph, special exclusions and fix move original positions. Physical state/energy/counters/time verified. Force evaluation/cache counters are diagnostics and reset on restart.',interval_strategy='LIFO dyadic subinterval queue covers each base interval exactly; resume base after queue empty',precision='Same original scientific gates; predictor coordinate consistency 2e-18m; interval floating tolerance 1e-15s',no_new_contact_calibration=True)
+for n,h in freeze['reference_sha256'].items():assert sha(O/'provenance'/n)==h
+with (O/'EVENT_INTEGRATOR_FREEZE.json').open('x') as f:json.dump(freeze,f,indent=2)
+(O/'EVENT_INTEGRATOR_FREEZE.sha256').write_text(sha(O/'EVENT_INTEGRATOR_FREEZE.json')+'\n')
+print('FROZEN',sha(O/'EVENT_INTEGRATOR_FREEZE.json'))

@@ -1,0 +1,82 @@
+{
+  "run_id": "20261013T201800Z",
+  "model": "EXACT_FROZEN_ENDPOINT_STAR_VARIATIONAL_COMPLIANCE",
+  "model_provenance": {
+    "status": "PASS",
+    "verified_assets": 127,
+    "manifest_sha256": "3265476d2e6b464f0e2b771fc52731310f97bdc746e54287654725a2abff6985",
+    "formal_model_sha256": "3eb1396b376cf30e40586c26ba649909ab9382d9eac9607666359258273acf74",
+    "definition_sha256": "d3fceb2b54c93d30888ad1e345f258b99afcb7148076ebe725cded54ec5a3d31",
+    "evolution_sha256": "34c8d3b50e5b412f458820d295f95839345ed5bd47e8b24f64eea392e7a34ce1",
+    "reference_sha256": "8f0561f104305eae1368686b93b3daa5b6419cbf946502ca85279e77250be11e",
+    "frozen_sources": {
+      "common.py": "ef8cc3a77389c0dfd84bc69ec5fa3ac3d7f558b0d0933eeaafd9d30fffd9bc69",
+      "prepare.py": "9e48c31e41d71cff629fb7dc1e88ae88c94d813428b1e64d574384285b906e8b",
+      "model.py": "3eb1396b376cf30e40586c26ba649909ab9382d9eac9607666359258273acf74",
+      "checks.py": "f1050d1f6fe77d5aeebe330920f694ed3239d53050d0d8239a297b5420b312bc",
+      "freeze.py": "43925f475bb437da9cbe9861b5f8959919f9663e4eea934047abb46f6445d721",
+      "run.py": "d32c44ab7c17c55a2d0bad56d634358eca0f312b2e7596524b9563e401854c63"
+    }
+  },
+  "material": {
+    "K_Pa": 33333.333333333336,
+    "G_Pa": 940.0,
+    "rho": 1000,
+    "dx": 5e-05,
+    "horizon": 0.0001505,
+    "alpha": 0,
+    "s_onset": 0.15,
+    "sc": [
+      0.18,
+      0.24
+    ]
+  },
+  "interface": "new BondStyle bpm/peri/variational plus explicit collective C API for diagnostic import, accepted commit and read-only export; old bpm/peri files unchanged",
+  "units": "native atom f retains original force-density convention N/m3; exported force N and complete U J; native bond energy U/V",
+  "storage": "replicated small-reference graph keyed by original bond ID + immutable endpoint tags + type + zero image; reject duplicate endpoints, periodicity, variable volumes, >4096 nodes; no production scaling claim",
+  "MPI": "collect only owned coordinates by immutable atom tag with Allreduce and unique-owner assertion; identical replicated graph/history across ranks, collective commit once per monotonically increasing token; forces added only to owned atoms; no ghost/local-index history",
+  "restart": "versioned native bond-style payload stores full original graph, fixed m,V,r,taper,kappa,d,failed flags,cumulative D,event and token counters; missing/wrong version rejected",
+  "commit_order": "TRIAL compute never mutates history; explicit accepted commit at fixed current coordinates evaluates U_old, updates kappa/d, evaluates U_new, accumulates signed D, removes newly failed native owned bonds and their 1-2 exclusions once; next run0 rebuilds neighbors. Repeat accepted token at unchanged coordinates is no-op; different coordinates rejected.",
+  "local_solver": "exact diagonal-plus-rank-one closed endpoint solve copied algebraically from frozen model.py; check 6 endpoint stars against dense solve",
+  "force_parity_relative": 2e-10,
+  "force_parity_absolute_N": 2e-17,
+  "energy_parity_relative": 2e-10,
+  "energy_parity_absolute_J": 1e-20,
+  "gradient_relative_global": 3e-06,
+  "gradient_absolute_N": 2e-12,
+  "gradient_steps_m": [
+    5e-10,
+    1e-10
+  ],
+  "history_abs": 2e-13,
+  "work_balance_relative": 2e-08,
+  "zero_cross_force_N": 0.0,
+  "reference_paths": {
+    "instant_reference": "5b50f53b0dabf7100c0ad740166b1e55dc2b8819d2d1a8bcbd0214660a29e8c6",
+    "soft_sc018": "a4e209d75aea36c08ece3a861f906059ad4b6749ecd397319882da64b9a308bb",
+    "soft_sc024": "c11cf621c8c074e5caee5eafc95ffb716e838a4363336435a370904a9c892ab5",
+    "planar_partial_sc024": "126dedf4571da6b087f335bcaa34b64d7d41ae694759607eaa0204feae5c410f"
+  },
+  "admission": [
+    "identity",
+    "undamaged",
+    "partial",
+    "gradient",
+    "two sc native controlled paths",
+    "complete separation",
+    "sorting / 2MPI migration / restart",
+    "conditional contact"
+  ],
+  "budget": {
+    "compile_jobs": 12,
+    "compile_max_seconds": 900,
+    "test_threads": 1,
+    "MPI_ranks": 2,
+    "main_nodes": 341,
+    "formal_loading_paths": 2,
+    "numerical_bug_repair_budget": 1,
+    "no_V3": true,
+    "no_large_ModeI": true,
+    "no_GPU": true
+  }
+}

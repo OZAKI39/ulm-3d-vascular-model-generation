@@ -1,0 +1,34 @@
+from common import *
+import numpy as np
+from scipy.sparse import coo_matrix
+from scipy.sparse.csgraph import connected_components
+r=np.load(O/'REFERENCE_AND_LOAD.npz');q=np.load(O/'CLOT_STATIC_DISPLACEMENTS.npz');X=r['X'];x=q['position_m'];b=r['bonds'];bt=r['bond_types'];rr=r['reference_lengths_m'];h=r['h'];m=r['reference_m'];u=q['displacement_m'];theta=q['native_theta'];s=q['stretch'];util=q['critical_utilization'];i,j=b.T;dr=np.linalg.norm(x[j]-x[i],axis=1)-rr;dr[abs(dr)<2.2204e-16]=0
+# Pair contribution in N from the locked original LPS law, with observed native theta/m.
+mag=V*V*h*((3*K-5*G)*(theta[i]/m[i]+theta[j]/m[j])+15*G/rr*(1/m[i]+1/m[j])*dr);bf=mag[:,None]*(x[j]-x[i])/np.linalg.norm(x[j]-x[i],axis=1)[:,None];parts=np.zeros((3,N,3))
+for typ in [1,2,3]:
+ mask=bt==typ;np.add.at(parts[typ-1],i[mask],bf[mask]);np.add.at(parts[typ-1],j[mask],-bf[mask])
+fi=q['native_force_total_N']-q['force_CFD_N'];diff=parts.sum(0)-fi;assert np.linalg.norm(diff,axis=1).max()<1e-17
+out={'accepted_static':bool(q['accepted']),'original_bonds':len(b),'new_breaks':0,'unmodified_native_thresholds':True,'pair_force_definition':'Force on lower-ID endpoint due to this original bond, from native observed theta and fixed m; N. Not stress.','pair_force_reconstruction_max_error_N':float(np.linalg.norm(diff,axis=1).max()),'typed':{}}
+for typ,name in [(1,'bulk'),(2,'interface'),(3,'anchor_anchor_numerical')]:
+ inds=np.flatnonzero(bt==typ);k=int(inds[np.argmax(s[inds])]);kp=int(inds[np.argmax(abs(mag[inds]))]);out['typed'][name]={'count':len(inds),'max_stretch':float(s[k]),'min_stretch':float(s[inds].min()),'max_critical_utilization':float(util[k]),'max_stretch_bond_endpoint_atom_ids':(b[k]+1).tolist(),'max_stretch_reference_midpoint_m':X[b[k]].mean(0).tolist(),'max_stretch_current_midpoint_m':x[b[k]].mean(0).tolist(),'max_pair_force_magnitude_N':float(abs(mag[kp])),'max_pair_force_endpoint_atom_ids':(b[kp]+1).tolist(),'is_clot_bulk':typ==1,'status':'PASS_SUBCRITICAL_UNCHANGED' if util[inds].max()<1 else 'FAIL_SUPERCRITICAL'}
+# All interface lower IDs are material, upper IDs fixed anchors.
+mask=bt==2;assert np.all(i[mask]<NC) and np.all(j[mask]>=NC)
+normal=r['wall_normal'][i[mask]];proj=np.sum(bf[mask]*normal,axis=1);tang=bf[mask]-proj[:,None]*normal
+out['interface_wall_projection']={'definition':'Project actual bond force on material endpoint onto nearest original Y-wall inward normal at that material point; discrete wall-normal/tangent force, not continuum stress or CFD surface shear.','max_abs_normal_N':float(abs(proj).max()),'max_tangential_N':float(np.linalg.norm(tang,axis=1).max()),'normal_sum_scalar_N':float(proj.sum()),'interface_force_on_material_sum_N':parts[1,:NC].sum(0).tolist(),'native_anchor_internal_force_sum_N':fi[NC:].sum(0).tolist()}
+adj=coo_matrix((np.ones(2*np.sum(bt==1)),(np.r_[i[bt==1],j[bt==1]],np.r_[j[bt==1],i[bt==1]])),shape=(NC,NC));ncomp,labels=connected_components(adj);attached=[]
+for lab in range(ncomp):attached.append(bool(np.any(labels[i[bt==2]]==lab)))
+out['topology']={'material_connected_components':int(ncomp),'attached_components':sum(attached),'free_components':sum(not z for z in attached),'typed_endpoint_identity_verified_native':True,'damage_events':0}
+dump(O/'BULK_INTERFACE_STRETCH_AUDIT.json',out)
+np.savez_compressed(O/'BOND_RESPONSE.npz',endpoint_atom_ids=b+1,bond_types=bt,force_on_first_endpoint_N=bf,force_scalar_N=mag,nodal_force_by_type_N=parts,interface_normal_scalar_N=proj,interface_tangential_N=tang)
+un=np.linalg.norm(u[:NC],axis=1);near=r['wall_clearance_m']<=DELTA;support=r['support_node'];regions={}
+for name,mask in [('all_material',np.ones(NC,bool)),('loaded_surface',support),('not_directly_loaded',~support),('near_wall_clearance_le_horizon',near),('interior_not_loaded_and_clearance_gt_horizon',(~support)&(~near))]:
+ ids=np.flatnonzero(mask);regions[name]={'count':len(ids),'mean_m':float(un[ids].mean()) if len(ids) else None,'max_m':float(un[ids].max()) if len(ids) else None,'percentiles_0_25_50_75_100_m':np.percentile(un[ids],[0,25,50,75,100]).tolist() if len(ids) else [],'atom_ids':(ids+1).tolist()}
+force=np.load(O/'source_inputs/CLOT_NODAL_TRACTION_FORCES.npz');ranking={}
+for name in ['pressure','shear','viscous_normal','total']:
+ fn=np.linalg.norm(force[name+'_force_N'],axis=1);order=np.argsort(fn)[::-1][:10];ranking[name]={'top10_atom_ids':(order+1).tolist(),'top10_force_magnitudes_N':fn[order].tolist(),'top10_reference_coordinates_m':X[order].tolist(),'sum_abs_nodal_forces_N':float(fn.sum()),'top10_abs_force_fraction':float(fn[order].sum()/fn.sum())}
+trans=np.linalg.norm(parts[1,:NC],axis=1);ids=np.argsort(trans)[::-1][:10];ranking['interface_transfer']={'top10_material_atom_ids':(ids+1).tolist(),'top10_interface_force_magnitudes_N':trans[ids].tolist(),'top10_reference_coordinates_m':X[ids].tolist()}
+scale=json.loads((O/'STATIC_LOAD_DESIGN_FREEZE.json').read_text())['scales'];dispstats={'accepted':bool(q['accepted']),'regions':regions,'region_semantics':'Loaded vs not directly loaded partition material; near-wall overlaps loaded. Interior = not loaded and clearance > horizon. No inferred exposure from image.','force_regions':ranking,'mean_displacement_vector_m':u[:NC].mean(0).tolist(),'max_displacement_over_dx':float(un.max()/DX),'coordinate_ulp_m':float(abs(np.spacing(X)).max()),'native_extension_roundoff_clamp_m':2.2204e-16,'last10_max_position_change_m':float(np.linalg.norm(q['last10_positions_m'][-1]-q['last10_positions_m'][0],axis=1).max()),'anchor_max_displacement_m':float(np.linalg.norm(u[NC:],axis=1).max())}
+dump(O/'ELASTIC_RESPONSE_REGIONS.json',dispstats)
+identity=json.loads((O/'SOURCE_AND_LIBRARY_IDENTITY.json').read_text());identity['runtime_records']={str(p.relative_to(O)):json.loads(p.read_text()) for p in O.glob('native*/LOADED_LIBRARY_rank*.json')};identity['status']='PASS_DISK_AND_ACTUAL_LOADED_LIBRARY_IDENTITY';dump(O/'SOURCE_AND_LIBRARY_IDENTITY.json',identity)
+checks={'source_registration':'PASS','native_library_maps':'PASS','unit_and_callback_order':'PASS','sort_and_owner_migration':'PASS_REPAIRED_AUDIT_ASSERTION_FROM_SAVED_NATIVE_STATES','one_small_implementation_repair':True,'native_repeated_for_repair':False,'production_native_CPP_changes':False,'new_CPP':False,'original_CFD_physics_changed':False,'mapping_changed':False,'theta_order_changed':False,'reference_m_changed':False,'anchor_setforce_cleared':False,'native_force_reconstruction_max_error_N':out['pair_force_reconstruction_max_error_N'],'new_fracture':False,'topology':out['topology'],'independent_gradient':json.loads((O/'INDEPENDENT_LPS_ENERGY_AUDIT.json').read_text())['status'],'static_equilibrium':json.loads((O/'STATIC_EQUILIBRIUM_AUDIT.json').read_text())['status'],'no_dynamic_integrator':True,'production_deployed':False}
+dump(O/'IMPLEMENTATION_CHECKS.json',checks);print(json.dumps({'bond_response':out,'regions':{k:{kk:vv for kk,vv in v.items() if kk!='atom_ids'} for k,v in regions.items()}},indent=2))

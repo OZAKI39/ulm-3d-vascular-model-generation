@@ -1,0 +1,52 @@
+"""Durable accepted-state journal. Failure output NEVER calls the native instance."""
+from common import *
+import csv,time,resource,traceback
+class Journal:
+ def __init__(self,folder,columns):
+  self.folder=Path(folder);self.folder.mkdir(exist_ok=True);(self.folder/'checkpoints').mkdir(exist_ok=True)
+  self.start=time.perf_counter();self.cpu0=time.process_time();self.last=None;self.last_row=None;self.attempt=None;self.latest=None;self.records=0;self.checkpoints=0;self.checkpoint_wall_s=0.;self.columns=columns
+  self.events=(self.folder/'events.jsonl').open('w');self.trials=(self.folder/'trials.jsonl').open('w');self.nodes=(self.folder/'accepted_nodes.bin').open('wb');self.damage=(self.folder/'damage_updates.bin').open('wb');self.contacts=(self.folder/'contact_pairs.bin').open('wb');self.table=(self.folder/'accepted_scalars.csv').open('w',newline='');self.writer=csv.writer(self.table);self.writer.writerow(columns)
+  self.damage_dtype=np.dtype([('step','<i4'),('bond_id','<i4'),('kappa','<f8'),('d','<f8')]);self.contact_dtype=np.dtype([('step','<i4'),('i','<i4'),('j','<i4'),('distance_m','<f8')])
+  dump(self.folder/'STREAM_LAYOUT.json',dict(nodes_dtype='<f8',nodes_per_record_shape=[4,341,3],node_fields=['x','velocity','force','material_force'],record_order='accepted_scalars.csv rows including initial',damage_dtype=self.damage_dtype.descr,damage_scope='only changed d; full kappa reconstructible from recorded x and frozen history rule, full kappa at checkpoints/keyframes',contact_dtype=self.contact_dtype.descr))
+ def line(self,stream,z):
+  def cv(a):return a.tolist() if isinstance(a,np.ndarray) else a.item() if isinstance(a,np.generic) else str(a)
+  stream.write(json.dumps(z,default=cv,allow_nan=False,separators=(',',':'))+'\n');stream.flush()
+ def event(self,kind,data):self.line(self.events,dict(kind=kind,**data))
+ def trial_start(self,number,state,h,depth,clearance):
+  self.attempt=dict(trial=number,last_accepted_step=int(state['step']),last_accepted_time_s=float(state['time']),candidate_step=int(state['step'])+1,candidate_time_s=float(state['time'])+h,h_s=h,depth=depth,predicted_clearance_m=clearance)
+  self.line(self.trials,dict(kind='TRIAL_START',**self.attempt))
+ def trial_result(self,record):self.line(self.trials,dict(kind='TRIAL_DAMAGE_CHECK',**record))
+ def accept(self,s,row,previous=None,new_soft=None,new_fail=None,pairs=None,errors=None):
+  assert np.array_equal(s['atom_ids'],np.arange(1,342))
+  if previous is not None:
+   changes=np.flatnonzero(s['d']!=previous['d']);hist=np.empty(len(changes),self.damage_dtype);hist['step']=s['step'];hist['bond_id']=changes+1;hist['kappa']=s['kappa'][changes];hist['d']=s['d'][changes];self.damage.write(hist.tobytes())
+  if pairs is not None and len(pairs):
+   c=np.empty(len(pairs),self.contact_dtype);c['step']=s['step'];c['i']=pairs[:,0]+1;c['j']=pairs[:,1]+1;c['distance_m']=np.linalg.norm(s['x'][pairs[:,1]]-s['x'][pairs[:,0]],axis=1);self.contacts.write(c.tobytes())
+  self.nodes.write(np.asarray([s[k] for k in ['x','velocity','force','material_force']],dtype='<f8').tobytes());self.writer.writerow(row)
+  for stream in [self.nodes,self.damage,self.contacts,self.table]:stream.flush()
+  self.last=s;self.last_row=row;self.records+=1
+  self.event('ACCEPTED_STATE',dict(step=s['step'],time_s=s['time'],record=self.records-1,new_soft_ids=[] if new_soft is None else new_soft+1,new_failed_ids=[] if new_fail is None else new_fail+1,atom_count=len(s['atom_ids']),native_bonds=s['native_bonds'],xyz_min_m=s['x'].min(0),xyz_max_m=s['x'].max(0),errors=errors or {}))
+  dump(self.folder/'LAST_ACCEPTED.json',dict(step=s['step'],time_s=s['time'],node_record=self.records-1,ledger=dict(zip(self.columns,row)),peak_RSS_bytes=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss*1024,wall_s=time.perf_counter()-self.start,CPU_s=time.process_time()-self.cpu0,last_accepted_in_memory_full_history=True,nearest_native_checkpoint=self.latest))
+ def register_checkpoint(self,path,s,reason,ns=None):
+  statepath=Path(str(path)+'.state.npz');save_state(statepath,s)
+  self.latest=dict(restart=str(path),restart_sha256=sha(path),state=str(statepath),state_sha256=sha(statepath),step=int(s['step']),time_s=float(s['time']),reason=reason)
+  dump(self.folder/'LATEST_NATIVE_CHECKPOINT.json',self.latest);self.event('ACCEPTED_CHECKPOINT',self.latest)
+ def checkpoint(self,ns,s,reason):
+  start=time.perf_counter();slot=self.checkpoints%2;path=self.folder/'checkpoints'/f'accepted_slot_{slot}.restart';tmp=Path(str(path)+'.pending')
+  ns.l.command(f'write_restart {tmp}')
+  # No attempt may overwrite last-known valid restart before successful write.
+  os.replace(tmp,path);self.checkpoints+=1;self.register_checkpoint(path,s,reason,ns);self.checkpoint_wall_s+=time.perf_counter()-start
+  self.flush(sync=True)
+ def flush(self,sync=False):
+  for stream in [self.events,self.trials,self.nodes,self.damage,self.contacts,self.table]:
+   if not stream.closed:stream.flush();os.fsync(stream.fileno()) if sync else None
+ def failure(self,exc,trace=''):
+  # Deliberately no native argument, gather, thermo query, or write_restart here.
+  self.flush(sync=True)
+  if self.last is not None:save_state(self.folder/'last_accepted.npz',self.last)
+  record=dict(status='FAILED',exception_type=type(exc).__name__,exception=str(exc),attempt=self.attempt,last_accepted_step=None if self.last is None else self.last['step'],last_accepted_time_s=None if self.last is None else self.last['time'],accepted_records=self.records,nearest_valid_native_checkpoint=self.latest,failed_candidate_not_accepted=True,native_calls_after_exception=0,unavailable=['Incomplete candidate native state intentionally not queried'],wall_s=time.perf_counter()-self.start,CPU_s=time.process_time()-self.cpu0,peak_RSS_bytes=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss*1024)
+  dump(self.folder/'FAILURE_RECORD.json',record);(self.folder/'EXCEPTION.txt').write_text(trace);self.event('FAILURE',record);return record
+ def finish(self):
+  if self.last is not None:save_state(self.folder/'last_accepted.npz',self.last)
+  self.flush(sync=True)
+  for stream in [self.events,self.trials,self.nodes,self.damage,self.contacts,self.table]:stream.close()

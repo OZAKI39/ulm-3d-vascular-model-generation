@@ -1,0 +1,72 @@
+LPS_3D_FRACTURE_SURFACE_ENERGY_IDENTIFICATION_V1
+Actual server root: /workspace/y_clot/project (flat project; do not append clot_clearance)
+Accepted run_id: 20261012T215617Z
+
+Connection:
+ssh -p 15283 -i /home/lzy/.ssh/vast_step3b_ed25519 -o IdentitiesOnly=yes -o BatchMode=yes root@95.3.33.46
+source /workspace/y_clot/env.sh
+cd /workspace/y_clot/project
+
+Read /etc/vast-agents-guide.md, project AGENTS.md and migration entry before working.
+Scientific scripts use only NumPy plus existing independent LPS energy_y.so.
+Figures use Matplotlib. PDF reading occurred in WSL, in an isolated PyMuPDF venv;
+the complete original PDF was not uploaded to, or read on, the server.
+No installation or native compilation was needed on the server.
+
+Executed once in order, with OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1:
+python analysis/fracture_surface_v1/preflight.py
+python analysis/fracture_surface_v1/prepare.py
+python analysis/fracture_surface_v1/integrate.py
+python analysis/fracture_surface_v1/native_input_check.py
+python analysis/fracture_surface_v1/figures.py
+python analysis/fracture_surface_v1/checks.py
+
+Exceptions/sequence details:
+- First preflight stopped at a stale SOURCE.json path before any design freeze or ideal integral.
+  Its path probe and note are preserved. The successful preflight used the actual migrated source path.
+- PAPER_EQUATION_AUDIT.md and LITERATURE_SOURCE_IDENTITY.json were prepared from WSL paper reading
+  and delivered before prepare.py froze the design.
+- integrate.py ran exactly once and performs exactly the frozen main plane plus one control.
+- native_input_check.py is supplementary archival readback; it does not rerun any ideal integral.
+- figures.py was rendered 3 times solely to improve point/label visibility. Resources preserve the
+  render history; all renders read the same accepted NPZ without re-evaluating the energy integral.
+- After checks passed, WSL only:
+  python /home/lzy/projects/temp_storage/clot_github_sync_20261011/clot_clearance/analysis/fracture_surface_v1/update_wsl_document.py
+  This guarded one-shot update must NOT be rerun to reproduce numerical results.
+- report.py assembles the final report/status after document readback is synced into this run.
+- package.py creates the final SHA inventory. Transfer verification is a separate WSL readback.
+
+Mandatory identities:
+Final double-fix liblammps.so (only dlopen for identity; ZERO LAMMPS instances):
+verification/lps_native_state_identity_and_fracture_bugfix_v1/20261011T203015Z/build_owner_fix/liblammps.so
+SHA256 00b246ebe4224e648c27b74afb64fc22b9cea4ba6ffb23f7c40d96c37ca22ae9
+Independent existing energy library:
+analysis/dual_track_v1/energy_y.so
+SHA256 d1e4f7fcc5b797ac349af5008fbd7e8693bb0e88443378a95940374fd9e3f19f
+Pristine reference (DO NOT filter by alive masks):
+verification/lps_wide_pure_shear_pvce_feasibility_v1/20261011T154854Z/reference_topology.npz
+SHA256 ef145b6d6db6c17584dce6cbea1fa1b9d95847d71a69265a73df6334d1695c03
+Exact copies of reference NPZ, saved historical states, historical design and material values are
+in source_inputs/. Original source copies are in provenance/. Large native library and raw 18.85 MB
+body.data are identified by SHA instead of duplicated; actual IDs/coordinates/bonds were read back.
+
+To reproduce in a separate new output, only if later authorized:
+1. Copy analysis/fracture_surface_v1 into a NEW analysis directory. Do not edit accepted source.
+2. Change only the new copy's config.json run to a NEW UTC identifier; preserve original material,
+   actual source/root, wide reference and prior source identities.
+3. Create the new verification/results folders, copy the paper audit and literature identity there,
+   and execute the new copy's preflight.py, prepare.py and integrate.py in sequence. Do not write
+   into the accepted run. The scripts refuse to overwrite design/formal results.
+4. Compare actual float64 arrays/results and the two-form identity, not the compressed NPZ bytes
+   (ZIP headers/timestamps can differ). The reference input file SHA must match exactly.
+5. For mere review or rerendering, use saved LAMBDA_AND_ENERGY_DENSITY.npz and figures.py only;
+   no native call or new integration is needed.
+
+Frozen mathematics and limits:
+K=100000/3 Pa, G=940 Pa, s00=0.15, alpha=0, dx=50e-6 m, delta=150.5e-6 m.
+ROI X=[-0.75,0.75) mm, full periodic Y=0.4 mm. A=30*dx*0.0004=6e-7 m².
+Planes z=0 and z=dx only. Same grid phase, not a phase-convergence test.
+Every node uses its entire pristine reference family including neighbors beyond ROI X edges.
+No extra two-sided factor. No physical coordinates are invented for the ideal extension state.
+No new dynamics/equilibrium/CFD/AI/microbubble work, no parameter scan and no production changes.
+Gc remains unmeasured. Stop after nominal identification.

@@ -6,6 +6,7 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 from .config import dump
+from .fragment_semantics import component_metrics
 
 def read_dump(path):
     with Path(path).open() as f:
@@ -62,6 +63,7 @@ def analyze_fragments(case):
             maximum_sampled_stretch=max(maximum_sampled_stretch,sampled)
             amp=.5*(1-np.cos(np.pi*min(step*r['dt_s']/r['ramp_time_s'],1.)))
             rows.append(dict(step=int(step),time_s=step*r['dt_s'],load_fraction=float(amp),broken_bond_count=int((~alive).sum()),broken_bond_fraction=float((~alive).mean()),N_fragments=int(nc),resolved_fragments=int((counts>=r['resolved_fragment_min_nodes']).sum()),largest_fragment_fraction=largest,FI=1-largest,median_fragment_volume_m3=float(np.median(volume)),sampled_max_surviving_bond_stretch=sampled,max_speed_m_s=float(np.linalg.norm(vel,axis=1).max())))
+            rows[-1].update(component_metrics(counts,anchored,r['dx_m'],component_mass=mass,component_volume=volume))
             steps.append(step);positions.append(X);velocities.append(vel);damage.append(a[:,cols.index('d_damage')]);labels_all.append(stable);fragments=frag
     trajectory=dict(step=np.array(steps),position_m=np.array(positions),velocity_m_s=np.array(velocities),damage=np.array(damage),component_id=np.array(labels_all),base=g['base'],surface=g['surface'],volume_m3=g['volume'],mass_kg=g['mass'])
     np.savez_compressed(p/'accepted_trajectory.npz',**trajectory)

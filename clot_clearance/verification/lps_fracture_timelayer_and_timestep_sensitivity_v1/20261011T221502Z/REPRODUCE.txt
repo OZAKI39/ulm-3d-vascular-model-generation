@@ -1,0 +1,42 @@
+本轮是已完成、已封存的有限审计。以下说明便于复核，不授权新增仿真。
+
+1. 查看入口
+  OPEN_RESULTS.html：四组实际科研图、历史静态补充图、中文28问及证据链接。
+  FINAL_STATUS.json：各项独立结论和未解决范围。
+  FILE_MANIFEST.json / SHA256SUMS：交付文件身份。
+
+2. 原生身份与依赖
+  source /workspace/y_clot/env.sh
+  cd /workspace/y_clot/project
+  Python /workspace/y_clot/envs/clot/bin/python，3.13.11；OpenMPI /workspace/y_clot/deps/openmpi，4.1.6。
+  诊断库 verification/lps_native_state_identity_and_fracture_bugfix_v1/20261011T203015Z/build_owner_fix/liblammps.so
+  库SHA 00b246ebe4224e648c27b74afb64fc22b9cea4ba6ffb23f7c40d96c37ca22ae9。
+  复用上轮observer.so；本轮副本及源码在observer.so、provenance/，SHA见IMPLEMENTATION_CHECKS。
+  独立势能依赖pd_clot/lammps_fragmentation/macro_lab_v1.py及analysis/material_macro_audit_v1/energy.so。
+  能量源码/调用模块快照在provenance/；二进制身份见SOURCE_AND_LIBRARY_IDENTITY。
+  完整求解器树和历史结果保留在原路径；本交付未重复复制巨大构建树。
+
+3. 实际已执行的命令与环境
+  dt_0p5us/RUN_COMMAND.json、dt_0p25us/RUN_COMMAND.json 保存真实argv、cwd、LD_LIBRARY_PATH和冻结SHA。
+  实际driver.py参数分别为dt_0p5us与dt_0p25us。
+  各case保存reference_initialization.in、dynamics.in、body.data、native_states.npz、事件和日志。
+  native_states：FP64 x、force_N、v_half、v_full、theta_native、m；每步拓扑为packed mask。
+  原始atom ID对应数组下标+1；原始bond ID对应reference.npz的键表行下标+1，未用当前局部列表序号代替。
+  已接受状态包括初始步，分别101/201条。初始run 0用于参考初始化；动力积分中不插入run 0。
+  不能重跑launch.py/start_managed.py/driver.py覆盖本轮；它们具有重复运行保护。
+  setup_failure_1为零动力步失败历史，不是第三个成功算例，不删除或重命名为成功。
+
+4. 只读式数据复核与离线后处理
+  在项目根目录运行：sha256sum -c verification/lps_fracture_timelayer_and_timestep_sensitivity_v1/20261011T221502Z/SHA256SUMS
+  原分析程序：analysis/timelayer_v1/static_analysis.py、analyze.py、additional_checks.py。
+  原绘图程序：analysis/timelayer_v1/figure_static.py、figures.py。
+  这些程序不启动LAMMPS动态实例，但会写分析输出；若需要再生成，应复制到新验证目录并把common.py/config.json的输出目录指向新目录。
+  不要重新运行preflight.py或freeze.py来替换原设计及身份清单。
+  reproduction_code/保留本轮执行和交付代码；原生C++没有改动，所以不存在新原生修复patch。
+  导出图为PNG/SVG，不依赖网络资源，不需要视频播放器。
+
+5. 文档与边界
+  document_provenance保存实际WSL文件更新前后及diff；SHA见DOCUMENT_UPDATE_AUDIT.json。
+  对历史静态试样增加连续时程的授权及数学冻结分别在DYNAMIC_ADAPTATION_AUTHORIZATION和TIMESTEP_DESIGN_FREEZE。
+  明确区分正常拓扑释放、lag力差、原生实际动量、夹具功及有符号离散能量项；本轮不测量材料Gc。
+  两级dt不足以证明全局收敛；不自动追加dt/4、完整V3或新theta算法。

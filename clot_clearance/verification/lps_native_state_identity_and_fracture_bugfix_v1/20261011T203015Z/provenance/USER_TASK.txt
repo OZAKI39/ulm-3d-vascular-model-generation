@@ -1,0 +1,1061 @@
+# LPS_NATIVE_STATE_IDENTITY_AND_FRACTURE_BUGFIX_V1
+
+你是 Y 形血管—LAMMPS 血栓碎裂—微泡群集—AI 反向控制项目的科研计算开发负责人。
+
+请在 WSL 中通过 SSH 使用当前服务器，针对最新 GitHub 同步分支中发现的 LAMMPS 血栓撕裂潜在 bug，完成**源码核查、最小复现、必要修复、独立验证及科研结果分析**。
+
+本轮必须进行实际开发，而不仅是提出建议。
+
+但是，所有原生 C++ 修改必须有明确的缺陷证据。不能将尚未确认的风险直接当作 bug 修复，更不能通过改变材料参数或断裂阈值来制造更大的血栓碎块。
+
+本轮任务名：
+
+`LPS_NATIVE_STATE_IDENTITY_AND_FRACTURE_BUGFIX_V1`
+
+核心目标：
+
+1. 排除或修复 LPS 参考加权体积 `wvolume` 随原子排序、MPI 迁移或 restart 发生错误的风险。
+2. 检验断键当步 LPS 膨胀量与存活键拓扑之间的时间层一致性；确认有实际问题后进行最小修复。
+3. 修复碎屑统计中附着与游离连通分量的语义混淆，保护历史结果。
+4. 仅在原生力学 bug 得到证实和修复后，进行一次必要的 V3 血栓代表性断裂对照。
+5. 生成实际科研可视化，完成条件性 WSL 科研文档更新。
+
+本轮不开发新的材料本构，也不研究更大的试样。
+
+---
+
+## 一、服务器环境及最新代码
+
+SSH：
+
+`ssh -p 15283 root@95.3.33.46`
+
+需要端口转发时：
+
+`ssh -p 15283 -L 8080:localhost:8080 root@95.3.33.46`
+
+服务器：
+
+- 根目录：`/workspace/y_clot`
+- 环境入口：`source /workspace/y_clot/env.sh`
+- 实际代码：`/workspace/y_clot/project`
+
+注意服务器项目为平铺的 clot 工程，不要错误地在 `/workspace/y_clot/project` 后再附加 `clot_clearance/`。
+
+WSL 科研文档：
+
+`/home/lzy/projects/clot_rupture.md`
+
+服务器硬件：
+
+- AMD Ryzen 9 7950X3D 16-Core
+- NVIDIA RTX 4090 24GB
+
+参考最新 GitHub：
+
+https://github.com/OZAKI39/ulm-3d-vascular-model-generation/tree/clot-clearance/research-sync-20261011
+
+参考同步提交：
+
+`32e95bf69b76d1856e5f872f5e5d099522a14959`
+
+该 GitHub 分支为 2026-10-11 研究快照。
+
+完整原生 LAMMPS 源码、编译库、部分逐步力审计和大型中间数据在服务器，不能因为 GitHub 未上传而认定不存在。
+
+开始前必须核对：
+
+- `pwd`
+- `git status --short`
+- `git branch --show-current`
+- `git rev-parse HEAD`
+- 实际 LAMMPS 原生源码版本与 SHA
+- 实际运行的 `liblammps.so` 和二进制哈希
+- 当前 CPU cgroup 和内存
+- 正在运行的其他科研任务
+- Python/LAMMPS/MPI 版本与加载路径
+
+严禁：
+
+- `git reset --hard`
+- `git clean`
+- 擅自 `git stash`
+- `rsync --delete`
+- 覆盖已经接受的原生轨迹
+- 删除历史科研数据
+- 覆盖生产 LAMMPS 共享库
+- 未授权 git push
+- 擅自终止其他科研任务
+
+必须在新的实验目录中执行诊断和编译。
+
+---
+
+## 二、必须先读取的源代码和科研证据
+
+优先阅读：
+
+- `PROJECT_ACTIVE_CONTEXT.md`
+- `AGENTS.md`
+- `github_sync_20261011/README.md`
+- `github_sync_20261011/SOURCE_FILES.json`
+- `github_sync_20261010/native_patches/lammps/SOURCE.json`
+- 当前原生编译及补丁来源记录
+
+然后检查：
+
+`pd_clot/lammps_fragmentation/calibrate_failure.py`
+
+`pd_clot/lammps_fragmentation/lammps_writer.py`
+
+`pd_clot/lammps_fragmentation/y_v3_cases.py`
+
+`pd_clot/lammps_fragmentation/early_flow_coupling.py`
+
+`pd_clot/lammps_fragmentation/native_y_wall_contact.py`
+
+`pd_clot/lammps_fragmentation/detached_fragment_metrics.py`
+
+`pd_clot/lammps_fragmentation/failure_map.py`
+
+`pd_clot/lammps_fragmentation/fragment_analysis.py`
+
+`pd_clot/lammps_fragmentation/failure_classifier.py`
+
+同时检查真正编译使用的：
+
+- `src/BPM/bond_bpm_peri.cpp`
+- `src/BPM/bond_bpm_peri.h`
+- `src/BPM/bond_bpm.cpp`
+- `src/BPM/pair_bpm_peri.cpp`
+- 与原子排序、通信、restart有关的LAMMPS内部代码
+
+参考上游源码版本：
+
+https://github.com/lammps/lammps/tree/8de817dd79bfe4525d5d39246a212d833e6dee07
+
+以上仅为已记录的原始源码参考。
+
+**最终以服务器实际编译版本为准。**
+
+如果服务器源码与GitHub记录不一致，先生成差异报告，不得直接使用上游版本覆盖服务器。
+
+### 需要复用的历史证据
+
+重点读取：
+
+1. V3 Y血栓真实断裂运行。
+2. `y_clot_point_cloud_and_early_flow_coupling_v1`
+3. 历史 contact cascade 因果诊断。
+4. LAMMPS宏观材料实验室V1。
+5. PVCE独立LPS储能与原生力一致性诊断。
+6. 最近宽薄PVCE和原生力验证结果。
+
+当前代表性V3历史运行：
+
+- 1927个材料点。
+- 1561个固定壁面锚点。
+- dx=50µm。
+- horizon=150.5µm。
+- dt=0.5µs。
+- 共4660步。
+- 首次bulk断键约0.1205ms，第241步。
+- 首次脱离约0.2965ms，第593步。
+- 末态217个游离材料点。
+- 未形成可靠的≥200µm游离大块。
+
+这些是历史参考结果。
+
+不要重新运行旧基线来替代已经保存的数据。
+
+---
+
+# 三、P0：原生LPS加权体积与原子身份审计
+
+## 3.1 本轮最重要的代码问题
+
+当前原生LPS使用参考加权体积：
+
+`wvolume[i]`
+
+来计算：
+
+- 非局部膨胀量theta。
+- 体积弹性响应。
+- 剪切相关力项。
+- LPS储能和内力。
+
+静态源码检查发现：
+
+`wvolume`、`theta` 和 `winv` 等内部数组以LAMMPS本地atom index为索引。
+
+其中：
+
+- wvolume只在特定条件下重建。
+- 正常执行会前向通信到ghost。
+- 当前尚未确认它是否随原子排序、跨MPI迁移和restart正确保持与atom ID的关系。
+
+LAMMPS默认可能每1000步进行一次空间排序。
+
+目前生产输入中：
+
+`atom_modify map array`
+
+并不等于关闭空间排序。
+
+因此必须检查：
+
+**相同atom ID是否始终对应同一个参考加权体积m。**
+
+不能仅凭代码中存在`forward_comm`就认为它已经正确处理本地原子重排。
+
+同时，不要把“断键后不重新计算原始参考m”直接判为bug。
+
+当前PVCE已经明确使用完整初始参考邻域的固定m约定。若原生求解器采用同样约定，断键之后保留参考m可以是预期设计。
+
+真正需要排除的是原子身份错配，而不是为了断裂改变原有参考归一化。
+
+## 3.2 先做纯源码审计
+
+追踪：
+
+1. wvolume何时分配。
+2. wvolume何时初始化。
+3. wvolume何时重新计算。
+4. wvolume_setup何时复位。
+5. Atom::sort是否移动对应内部状态。
+6. MPI exchange是否迁移这些内部状态。
+7. ghost数组如何更新。
+8. 原生数组扩容后是否保持正确状态。
+9. restart是否保存或恢复参考m。
+10. 断键和邻居表更新后是否错误改变m定义。
+
+输出每条路径的具体文件、函数和代码行。
+
+必须明确区分：
+
+- `SORT_IDENTITY`
+- `MPI_MIGRATION_IDENTITY`
+- `GHOST_COMMUNICATION`
+- `ARRAY_GROWTH`
+- `RESTART_IDENTITY`
+- `REFERENCE_M_AFTER_BREAK`
+
+若已有机制保证某一项安全，应给出实际证据并标记通过，而不是为了完成任务强行修改源码。
+
+## 3.3 最小原生复现
+
+构建一个很小的三维非均匀邻域LPS试样。
+
+试样必须同时有：
+
+- 内部材料点。
+- 自由表面点。
+- 角点。
+- 不同参考邻居数量。
+- 明显不同的真实参考m。
+
+使用完全相同的原始参考点与键。
+
+先独立按参考atom ID计算：
+
+`m_reference_by_atom_id`
+
+保留：
+
+- 原始参考键。
+- 各键初始长度。
+- 各键体积积分权重。
+- 参考节点体积。
+- 原始atom ID。
+
+不得以当前LAMMPS错误数组本身作为唯一参考。
+
+执行必要的三个状态检查：
+
+### T0：初始化
+
+在尚无自然断键时比较：
+
+- 原生m。
+- 独立参考m。
+- theta。
+- 原生力。
+- 独立LPS力。
+- 独立储能。
+
+### T1：强制原子重排
+
+在隔离诊断输入中，采用可以真实触发Atom::sort的设置。
+
+例如使用较短排序频率，并记录是否真的发生了非恒等排列。
+
+比较同一个atom ID在排序前后的m。
+
+不能只设置`atom_modify sort 1`就假定发生了排序；必须记录实际原子排列变化。
+
+### T2：两MPI真实迁移
+
+采用两个MPI进程和受控小幅运动，让部分真实atom跨处理器拥有域边界。
+
+在不引入自然断裂的条件下检查迁移前后：
+
+- atom ID。
+- 归属rank。
+- 参考m。
+- theta。
+- 原生节点力。
+- 独立力。
+- 储能。
+
+坐标存在真实变化时，必须在相同物理坐标下比较参考计算与原生计算。
+
+不能将不同坐标下的正常力变化误判为bug。
+
+最后，检查该测试是否真实触发了MPI迁移。
+
+必要时包含一次极小restart恢复检查，但不得展开大量restart循环。
+
+## 3.4 数值验收
+
+验收门槛必须在修复前冻结。
+
+参考m是固定参考量，因此在同一参考模型下：
+
+`m_i(t) = m_i(reference)`
+
+对于所有仍存在的atom ID都应保持符合浮点误差的身份一致性，除非源码原本声明了另一种明确的更新模型。
+
+力、theta与能量应与独立计算一致。
+
+比较时同时报告：
+
+- 最大绝对误差。
+- 有明确定义参考尺度的相对误差。
+- 出错节点数量。
+- 错误是否集中于表面和角点。
+- 错误第一次出现的排序或迁移事件。
+- 是否存在ghost状态错位。
+
+不得通过任意大的隐藏分母下限掩盖接近零的力或m。
+
+---
+
+# 四、如果P0被证实，修复原生状态管理
+
+只有P0复现确认后，才修改C++。
+
+优先采用最小、可维护的修复方式。
+
+候选实现方向：
+
+**将参考m存入能够跟随atom ID进行排序、通信及restart恢复的每原子状态存储机制。**
+
+可优先研究LAMMPS已有的`fix property/atom`或与现有bond style相容的正式迁移/重排接口。
+
+不要事先强制选择某一种实现。
+
+需要满足：
+
+1. 原始参考m保持正确。
+2. Atom::sort后身份不变。
+3. MPI迁移后身份不变。
+4. ghost通信正确。
+5. restart恢复正确。
+6. 原子数组扩容安全。
+7. 断键不会无依据地改变固定参考m。
+8. 生产材料参数不变。
+9. 生产接触行为不变。
+10. 原生LPS力仍与独立能量梯度一致。
+
+特别注意：
+
+**不能在断键之后简单根据当前存活键重新计算初始参考m，并把它当作修复。**
+
+这会改变LPS断裂后的物理定义，不能视为单纯的原子身份bugfix。
+
+如果需要新增参考m状态变量，必须防止与现有`d_vfrac`、`d_s0`、`d_smin`及其他内部状态重复或冲突。
+
+原生修复代码必须有清楚注释和独立补丁。
+
+### 编译要求
+
+在服务器独立目录编译诊断版LAMMPS。
+
+不覆盖：
+
+- 原有liblammps.so。
+- 原有可执行文件。
+- 原生SOURCE.json对应的接受版本。
+- 历史运行依赖库。
+
+保存：
+
+- 原始C++ SHA。
+- 修复后C++ SHA。
+- 编译命令。
+- 编译器和MPI身份。
+- 原生补丁diff。
+- 新库SHA。
+- 最小复现指令。
+
+如果发现问题实际上不存在：
+
+不创建虚假的修复补丁。
+
+记录：
+
+`WVOLUME_IDENTITY_BUG_NOT_REPRODUCED`
+
+并继续下一项。
+
+---
+
+# 五、P1：断键当步的theta与拓扑更新时间层
+
+## 5.1 已发现的源码顺序
+
+当前原生LPS大致执行：
+
+1. 计算当前存活键对应的dilatation。
+2. 进入bond force loop。
+3. 判断键是否超过`s00`。
+4. 对超过阈值的键调用`process_broken`。
+5. 继续计算其他键的弹性力。
+
+因此，一些仍然存活的键在断键同一步中，可能使用包含刚断开键影响的theta。
+
+这是一项值得检查的时间层一致性问题。
+
+但它**可能属于显式断裂算法的离散更新策略**。
+
+不能仅凭计算顺序不同于另一种算法就宣布存在严重bug。
+
+## 5.2 只进行一个最小断键试样
+
+使用已有LPS小型试样生成器。
+
+保持：
+
+- G=940Pa。
+- K=33333.333333Pa。
+- s00=0.15。
+- alpha=0。
+- dx=50µm。
+- horizon=150.5µm。
+
+构建一个能通过受控变形触发少量断键的独立小试样。
+
+只需要记录：
+
+- 首次断键前接受状态。
+- 首次断键时实际坐标。
+- 当前存活键拓扑。
+- 原生节点力。
+- 当前theta。
+- 断键事件及真实atom IDs。
+- 同一坐标下、断后固定拓扑重新计算的节点力与theta。
+
+重点比较：
+
+`F_native_at_break`
+
+和：
+
+`F_recomputed_on_postbreak_topology`
+
+记录：
+
+- 最大节点力差。
+- 力差空间分布。
+- 键失效是否改变其他邻居力。
+- 动量及力矩平衡。
+- 本步能量变化。
+- 是否出现明显非物理冲量。
+
+注意不能将正常的断裂能释放全部当成数值错误。
+
+需要区分由实际拓扑变化引起的物理力重新分配，与使用不一致时间层造成的算法误差。
+
+## 5.3 何时允许修复
+
+只有在以下条件成立时，才修改原生算法：
+
+- 存在可重复的断键同一步内力不一致。
+- 误差超出预注册的数值尺度。
+- 该不一致不能用当前显式算法的既定时间离散解释。
+- 可以提出明确的修复定义。
+- 修复不改变材料失效准则。
+
+可评估一种两阶段更新方法：
+
+1. 根据当前接受状态确定待断键集合。
+2. 同步提交当前时间层的断键。
+3. 在更新后的存活键拓扑上重新计算theta。
+4. 在同一更新拓扑上计算弹性内力。
+
+但是，这只是候选修复方向。
+
+实际实现必须检查：
+
+- LAMMPS bond list的数据结构。
+- MPI跨域断键一致性。
+- `process_broken`调用次数。
+- bond history。
+- special bonds/contact更新。
+- 力与能量定义。
+- restart及事件日志。
+- 时间积分器与断裂更新时刻。
+
+不能因为方案看起来更直观，就忽略它可能改变当前显式算法的数值含义。
+
+若只有小的、可解释的一阶时间离散误差，记录：
+
+`FRACTURE_TIME_LAYER = EXPLICIT_SCHEME_LIMITATION`
+
+不修改源码。
+
+若确认实质bug，则只进行一次最小修复和必要复验。
+
+不开展新的断裂机制研究。
+
+---
+
+# 六、P1：修复碎屑统计语义
+
+这一部分可以与原生审计独立进行。
+
+重点检查：
+
+`detached_fragment_metrics.py`
+
+`failure_map.py`
+
+`failure_classifier.py`
+
+及所有引用：
+
+- `debris_fraction`
+- `resolved_fragment_count`
+- `largest_free_fraction`
+- `FI_free`
+- detached mass
+- largest detached component
+
+的报告和AI标签代码。
+
+## 6.1 当前确认的语义问题
+
+现有部分统计使用：
+
+`counts[counts<=2]`
+
+`(counts>=3).sum()`
+
+`counts.max()`
+
+没有限制为游离组件。
+
+因此这些指标可能包含仍附着的主体或附着小组件。
+
+但是，某些历史统计本来就有意使用“全部组件”口径。
+
+所以不能直接把所有旧字段统一改成游离统计，更不能静默改写旧结果。
+
+首先追踪这些字段的历史定义及下游使用。
+
+## 6.2 建立清楚的新指标
+
+保留需要维持历史兼容性的字段和数值。
+
+新增或明确以下统计：
+
+- `all_tiny_component_mass_fraction`
+- `detached_tiny_component_mass_fraction`
+- `attached_tiny_component_mass_fraction`
+- `detached_component_count`
+- `resolved_detached_component_count`
+- `largest_detached_nodes`
+- `largest_detached_mass_fraction`
+- `largest_attached_component_mass_fraction`
+
+如果历史`largest_free_fraction`实际表示全部组件最大值，应明确标为legacy语义，不能在文档中继续解释为最大游离组件。
+
+真正的最大游离组件必须由：
+
+`free = ~attached`
+
+筛选后计算。
+
+类似地，200µm与300µm等效球径门槛继续只对真正的游离组件计算。
+
+注意：
+
+1–2个材料点仍属于数值未解析碎屑，不能因为统计修复就提升为有真实生物物理意义的小微栓。
+
+## 6.3 最小单元测试
+
+只需构造少量人工连通图，检查：
+
+- 全部节点仍附着。
+- 一个大附着主体加几个游离单节点。
+- 一个大附着主体加一个34节点游离块。
+- 同时存在附着小组件与游离小组件。
+- 多个界面键断裂但主体仍连接壁面。
+
+验证：
+
+- 分量大小。
+- 附着身份。
+- 游离数量。
+- 脱落质量。
+- 尺寸门槛。
+- 总材料点数量守恒。
+
+修复后输出旧口径与新口径的逐项对照。
+
+只用历史现成数据重算后处理，不重跑LAMMPS。
+
+如果新指标导致旧分类结果变化，单独标记为：
+
+`POSTPROCESS_CLASSIFICATION_SEMANTICS_CHANGED`
+
+保存分类规则版本和变化原因。
+
+不覆盖原始CSV、NPZ、报告或AI标签。
+
+---
+
+# 七、其他问题：只做轻量回归，不扩大范围
+
+## 7.1 原生接触
+
+保持当前工程候选：
+
+`contact_distance_factor=1.0`
+
+保持已有Y血管壁罚力参数。
+
+不重新开展：
+
+- 1.35dx与1.0dx接触扫描。
+- 新壁面刚度标定。
+- 接触关闭的大型反事实研究。
+
+仅检查本轮原生代码修复是否意外改变：
+
+- 非键合排斥。
+- 新断键后接触恢复。
+- 壁面接触。
+- 动量及力矩。
+- 原有接触参数身份。
+
+## 7.2 外部Gaussian载荷
+
+不改变：
+
+- 200Pa历史载荷预算。
+- Gaussian空间定义。
+- 加载持续时间。
+- 参考表面切向定义。
+
+不将新含栓CFD加载接入本轮bugfix试验。
+
+## 7.3 早期流体阻力
+
+保留现有：
+
+- 第一次真实拓扑脱离当步施加阻力。
+- 仅游离组件接受背景拖曳。
+- 附着组件保留数值阻尼。
+- 原生与长时COM交接。
+
+轻量核对修复后这套机制能否继续使用真实atom ID及当前存活键拓扑。
+
+不要修改拖曳系数、碎片水动力模型或背景流场。
+
+特别注意旧人工Gaussian加载与拖曳可能同时作用于历史表面节点。这是独立的工程载荷定义问题，不能与本轮wvolume修复混为一谈。
+
+---
+
+# 八、仅在必要时运行一次V3代表性断裂对照
+
+这是条件性计算，不是强制执行。
+
+只有在原生求解器确实发现实质缺陷、修复通过小试样验证之后，才考虑一次V3对照。
+
+优先使用：
+
+`y_clot_point_cloud_and_early_flow_coupling_v1`
+
+对应的真实C1代表性工况。
+
+保持：
+
+- 原始V3几何。
+- 1927血栓点。
+- 1561壁锚点。
+- 原材料参数。
+- 原断裂阈值。
+- 原200Pa人工Gaussian加载。
+- 原0.5µs时间步。
+- 原4660步时长。
+- 原1.0dx接触。
+- 原壁面处理。
+- 原早期流体阻力。
+- 原MPI配置。
+
+除了已经得到证据支持的bugfix，不允许改变物理和数值配置。
+
+直接复用历史原始运行作为对照，不再重跑一遍旧版本。
+
+新结果必须写入独立目录。
+
+### 最多一个正式V3完整对照
+
+若原生修复只影响排序/迁移以后的状态，重点比较：
+
+- 第一次原子排序或迁移之前的状态。
+- 首次bulk断键时间。
+- 首次interface断键时间。
+- 第一次拓扑脱离时间。
+- 后续断键数量与时序。
+- 断裂区域。
+- 游离节点数。
+- 最大真实游离组件。
+- 1–2节点未解析碎屑质量。
+- 最大节点速度及动能。
+- 接触事件。
+- 壁锚点反力。
+- 是否形成≥200µm游离组件。
+
+对分叉性很强的动态断裂轨迹，不要求修复前后最终坐标逐位相同。
+
+但必须确认两者的初始条件和非目标代码配置一致，并解释第一个有意义的力学差异从何时开始。
+
+如果只有后处理统计问题得到修复：
+
+**不要运行新的V3原生计算。**
+
+若小试样尚未通过原生力—能量一致性检查：
+
+不得运行V3正式对照。
+
+如果确有修复，但只需要短时对照就能充分确认其作用，可在达到预定目标时停止，不必强制运行4660步。
+
+不要追加第二个或第三个高载V3测试。
+
+---
+
+# 九、计算预算与资源使用
+
+优先复用现有独立LPS能量程序、原生源码、Python接口及审计工具。
+
+建议：
+
+- 原生源码审计：静态分析，不启动计算。
+- wvolume诊断：一个小型参考试样，必要的排序及两MPI迁移检查。
+- theta时间层诊断：一个最小受控断键试样。
+- 后处理：几个确定性连通图测试和历史数据只读重算。
+- 原生修复：只在缺陷确认后进行。
+- V3对照：最多一个，且必须通过前置门槛。
+- 不做不同材料参数、horizon、点距和时间步的全面扫描。
+
+如确需编译原生修复版，可利用服务器可用CPU核数并行编译。
+
+运行前重新确认实际cgroup和其他任务占用，避免资源争抢。
+
+RTX4090并不是本轮必须使用的计算资源。
+
+不为GPU利用率开发CUDA版本。
+
+不开展MPI性能压力测试。
+
+记录实际：
+
+- 新增原生算例数。
+- 墙钟时间。
+- CPU资源。
+- 峰值内存。
+- 编译耗时。
+- 输出规模。
+
+遇到明确无法复现或无法解释的状态，不无限追加算例。
+
+---
+
+# 十、必须生成的科研可视化
+
+本轮至少生成三组核心图，第四组仅在完成V3对照时生成。
+
+## 图1：wvolume原子身份审计
+
+展示：
+
+- 原始参考材料点及atom ID。
+- 初始参考m空间分布。
+- 排序或MPI迁移前后的同ID m。
+- 原生m与独立参考m误差。
+- 错误区域与邻域数量关系。
+- 修复前后对照（仅在确有修复时）。
+
+若问题没有复现，图中清楚展示实际触发的排序/迁移事件及通过证据。
+
+不能用未触发的排序过程宣称安全。
+
+## 图2：断键时间层与原生力
+
+展示：
+
+- 首次断键前后真实状态。
+- 真实断键ID和参考位置。
+- 断键当步的theta和固定断后拓扑theta。
+- 原生力与独立重新计算力的差异。
+- 力差是否具有空间集中。
+- 能量变化及可能的冲量。
+
+如果只进行了时间层诊断而没有修改本构，明确标记：
+
+`DIAGNOSTIC_ONLY`
+
+不能绘制虚构的修复后曲线。
+
+## 图3：游离与附着分量统计修复
+
+展示：
+
+- 附着主体与游离碎片的真实连通图。
+- 历史统计口径。
+- 新的明确游离统计口径。
+- 脱离质量、游离分量数。
+- ≥200µm门槛结果。
+- 哪些历史字段需要语义说明。
+
+使用实际1927材料点、真实断键和存活键。
+
+只修改统计方法，不改变材料点坐标或碎片形状。
+
+## 图4：V3原生对照（条件性）
+
+若执行V3对照，生成：
+
+- 修复前后同一物理时间的真实点阵与存活键。
+- 断键时序。
+- 最大节点速度。
+- 游离质量。
+- 分量尺寸。
+- 数值异常事件。
+- 真实断裂位置。
+
+固定相机和物理尺度。
+
+没有执行V3对照时，不生成假定的改善图，明确写：
+
+`V3_REPLAY_NOT_RUN`
+
+所有图优先输出PNG/SVG，附一个静态：
+
+`OPEN_RESULTS.html`
+
+无需新的视频渲染管线。
+
+如有必要，仅制作短的诊断动画，不生成大型4K视频。
+
+---
+
+# 十一、必须输出的文件
+
+建议服务器目录：
+
+`/workspace/y_clot/project/verification/lps_native_state_identity_and_fracture_bugfix_v1/<run_id>/`
+
+以及：
+
+`/workspace/y_clot/project/results/lps_native_state_identity_and_fracture_bugfix_v1/<run_id>/`
+
+交付：
+
+- `REVIEW_LPS_NATIVE_STATE_IDENTITY_AND_FRACTURE_BUGFIX_V1.md`
+- `FINAL_STATUS.json`
+- `DESIGN_FREEZE.json`
+- `SOURCE_AND_BINARY_IDENTITY.json`
+- `WVOLUME_SOURCE_AUDIT.md`
+- `WVOLUME_IDENTITY_TEST.json`
+- `MPI_SORT_MIGRATION_AUDIT.json`
+- `RESTART_IDENTITY_AUDIT.json`（必要时）
+- `FRACTURE_TIME_LAYER_AUDIT.json`
+- `NATIVE_FORCE_ENERGY_AUDIT.json`
+- `FRAGMENT_STATISTICS_SEMANTIC_AUDIT.json`
+- `POSTPROCESS_OLD_NEW_COMPARISON.csv`
+- `V3_REPLAY_COMPARISON.json`（仅在执行时）
+- `IMPLEMENTATION_CHECKS.json`
+- `BUGFIX_SOURCE_DIFF.patch`（仅在确有原生修复时）
+- `REPRODUCE.txt`
+- `OPEN_RESULTS.html`
+- 必要科研图、完整精度诊断状态及文件SHA
+
+所有结果必须对应真实源码与真实执行记录。
+
+如果某项未运行或未通过，保留：
+
+`NOT_RUN`
+
+`NOT_REPRODUCED`
+
+`INCONCLUSIVE`
+
+`FAILED`
+
+等明确状态，不用空缺或零代替。
+
+不得修改历史接受数据。
+
+---
+
+# 十二、WSL科研文档更新
+
+本轮通过必要验证后，更新：
+
+`/home/lzy/projects/clot_rupture.md`
+
+必须在实际WSL文件中修改，不能只修改服务器同名路径。
+
+更新前：
+
+1. 读取最新原文。
+2. 保存原文备份。
+3. 保存SHA256。
+4. 检查并发修改。
+5. 确定需要修改的实际章节。
+
+更新内容仅限：
+
+- LAMMPS原生求解器缺陷调查。
+- 已确认的wvolume状态及修复结果。
+- theta断键时间层结论。
+- 碎屑统计语义修复。
+- 必要的V3对照结果。
+- 仍然无法解释的材料或数值限制。
+
+保持原文：
+
+- 标题编号。
+- 中文叙述风格。
+- 表格结构。
+- 参数单位。
+- 历史科研结论。
+
+若原生问题没有证实，写明“未复现”或“尚不确定”，不能写成已成功修复。
+
+如果修复后的V3仍主要产生碎屑，必须如实保留，不得将其解释成bugfix失败；应区分数值正确性与真实物理断裂形态。
+
+写入后：
+
+- 保存before备份。
+- 保存diff。
+- 保存修改前后SHA。
+- 重新读取确认。
+- 记录实际WSL路径。
+
+如果WSL文件无法访问：
+
+标记`DOCUMENT_UPDATE_BLOCKED`，提供待应用补丁，不虚称已经更新。
+
+---
+
+# 十三、必要技术资源
+
+当前GitHub代码：
+
+https://github.com/OZAKI39/ulm-3d-vascular-model-generation/tree/clot-clearance/research-sync-20261011
+
+锁定上游：
+
+https://github.com/lammps/lammps/tree/8de817dd79bfe4525d5d39246a212d833e6dee07
+
+当前BPM/PERI：
+
+https://docs.lammps.org/bond_bpm_peri.html
+
+https://docs.lammps.org/pair_bpm_peri.html
+
+LAMMPS原子排序：
+
+https://docs.lammps.org/atom_modify.html
+
+原子属性及迁移：
+
+https://docs.lammps.org/fix_property_atom.html
+
+LAMMPS restart：
+
+https://docs.lammps.org/read_restart.html
+
+LAMMPS Python接口：
+
+https://docs.lammps.org/Python_module.html
+
+参考原生文件：
+
+https://github.com/lammps/lammps/blob/8de817dd79bfe4525d5d39246a212d833e6dee07/src/BPM/bond_bpm_peri.cpp
+
+https://github.com/lammps/lammps/blob/8de817dd79bfe4525d5d39246a212d833e6dee07/src/BPM/bond_bpm.cpp
+
+https://github.com/lammps/lammps/blob/8de817dd79bfe4525d5d39246a212d833e6dee07/src/atom.cpp
+
+请优先依据服务器锁定原生源码实施，不直接拉取最新版LAMMPS替换原始版本。
+
+---
+
+# 十四、最终必须回答的问题
+
+用中文给出清楚的科研技术报告。
+
+1. 当前原生`wvolume`是否存在实际原子身份错配？
+2. 默认原子排序是否在历史V3运行中发生？
+3. 当前MPI运行是否存在材料点跨域迁移？
+4. 原生m在排序、迁移、重启后是否保持正确？
+5. 如果发现bug，实际修复了哪些C++代码？
+6. 修复后的原生m、theta和力是否与独立参考一致？
+7. 修复是否改变断键前的真实弹性响应？
+8. 断键同一步theta是否存在实际数值不一致？
+9. 这一不一致是明确bug还是显式算法的时间层限制？
+10. 是否进行了断键时间层修复？依据是什么？
+11. 原有LPS材料参数和失效判据是否保持不变？
+12. 哪些碎片统计字段存在语义错误？
+13. 修复后真实游离质量和碎块数量是否变化？
+14. 原始LAMMPS断键拓扑是否受到后处理修复影响？
+15. 是否进行了新的V3代表性断裂对照？
+16. 如果执行，修复前后首次断裂、断键数量、速度及碎块尺寸有什么差异？
+17. 是否有新证据表明此前的小碎屑主要由求解器bug造成？
+18. 目前还有哪些无法通过bugfix解决的材料或载荷限制？
+19. 修复后的代码是否通过必要原生和独立力学验证？
+20. 实际新增几次计算、耗时和计算资源是多少？
+21. 原始源码、原生库及历史结果是否受到保护？
+22. 是否生成了完整必要的科研可视化？
+23. WSL `clot_rupture.md` 是否真正更新？
+24. 源码补丁、备份、diff、SHA及复现命令在哪里？
+25. 下一轮唯一最值得优先开展的任务是什么？
+
+最终必须分别报告：
+
+- `WVOLUME_IDENTITY`
+- `ATOM_SORT_SAFETY`
+- `MPI_MIGRATION_SAFETY`
+- `RESTART_SAFETY`
+- `LPS_FORCE_ENERGY_CONSISTENCY`
+- `FRACTURE_TIME_LAYER`
+- `POSTPROCESS_FRAGMENT_SEMANTICS`
+- `NATIVE_BUGFIX_VALIDATION`
+- `V3_REPLAY_STATUS`
+- `MATERIAL_GC`
+- `PRODUCTION_LIBRARY_UNCHANGED`
+- `HISTORICAL_DATA_PROTECTED`
+
+不能用一个总PASS代替所有科学结论。
+
+**本轮最重要的成功条件是确认并修复真实影响求解正确性的代码缺陷，而不是让血栓一定形成大碎块。**
+
+如果没有发现原生缺陷，也应保存充分的反证，避免后续反复怀疑同一问题。
+
+任务完成后停止，不自动修改材料本构、不启动新的CFD、微泡模拟或AI大规模参数扫描。

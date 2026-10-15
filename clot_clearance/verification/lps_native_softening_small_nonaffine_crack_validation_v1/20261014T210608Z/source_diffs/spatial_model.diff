@@ -1,0 +1,24 @@
+--- frozen/model.py
++++ small_crack_v1/spatial_model.py
+@@ -6,7 +6,7 @@
+ import numpy as np
+ from scipy.sparse import coo_matrix
+ 
+-class SofteningLPS:
++class SpatialLPS:
+  def __init__(self,ref,K=1e5/3,G=940.):
+   self.X=ref['X'].copy(); self.b=ref['bonds'].copy(); self.r=ref['r0'].copy()
+   self.m=ref['m'].copy();self.h=ref['taper'].copy();self.V=float(ref['V'][0]);self.K=K;self.G=G
+@@ -56,10 +56,11 @@
+   penalty=.5*np.sum(self.krefdir*q*dd*((self.Ddir*ee+coupling)/den)**2)
+   U_local=.5*np.dot(self.Ddir,v*v);U_volume=.5*self.A*np.dot(theta,theta)
+   U=U_local+U_volume+penalty
++  node_energy=.5*np.bincount(self.center,weights=self.Ddir*v*v+self.krefdir*q*dd*((self.Ddir*ee+coupling)/den)**2,minlength=self.n)+.5*self.A*theta*theta
+   # Shared irreversible edge damage; Y is the SUM of endpoint-star derivatives.
+   Ydir=.5*self.krefdir*((self.Ddir*ee+coupling)/den)**2
+   Y=Ydir[:self.nb]+Ydir[self.nb:]
+-  return dict(U=float(U),force=self.assemble(t,di),theta=theta,t=t,e=e,v=v,Y=Y,
++  return dict(U=float(U),node_energy=node_energy,force=self.assemble(t,di),theta=theta,t=t,e=e,v=v,Y=Y,
+               U_local=float(U_local),U_volume=float(U_volume),U_compliance=float(penalty),
+               dual_energy_error_J=float(U-.5*np.dot(e,t)),d=d)
+  def update(self,x,kappa,s_onset=.15,s_complete=.24):

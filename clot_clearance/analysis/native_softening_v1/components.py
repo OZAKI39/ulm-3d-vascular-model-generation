@@ -1,0 +1,7 @@
+from native import *
+import resource
+assert json.loads((O/'NATIVE_LOADING_UNLOADING_RELOADING.json').read_text())['status']=='PASS'
+start=time.perf_counter();ref=np.load(PREV/'provenance/reference.npz');X=ref['X'];b=ref['bonds'];mask=X[:,0]<-30e-6;cross=mask[b[:,0]]!=mask[b[:,1]];d=cross.astype(float)
+ns=Native('component_independence');ns.import_state(d*.24,d);before=ns.eval(X);xx=X.copy();xx[mask,1]*=1.002;xx[mask,0]-=40e-6;after=ns.eval(xx);leak=float(np.linalg.norm(after['force'][~mask]-before['force'][~mask]));t=after['tdir'][:12047]+after['tdir'][12047:];crossforce=float(abs(t[cross]).max());np.savez_compressed(O/'component_independence.npz',reference_X=X,bonds=b,cross=cross,mask=mask,x_before=before['x'],x_after=after['x'],force_before=before['force'],force_after=after['force'],d=d,kappa=after['kappa'],edge_force_N=t,bond_ids=after['bond_ids']);ns.close()
+passed=leak==0 and crossforce==0 and after['bonds']==12047-int(cross.sum());dump(O/'FULL_DAMAGE_COMPONENT_INDEPENDENCE.json',dict(status='PASS' if passed else 'FAIL',cross_bonds=int(cross.sum()),native_active_bonds=after['bonds'],cross_noncontact_force_N=crossforce,remote_component_force_change_N=leak,diagnostic_imposed_cut=True,actual_separated_coordinates=True));assert passed
+dump(O/'COMPONENT_RESOURCES.json',dict(wall_s=time.perf_counter()-start,RSS_KiB=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,native_instances=1))

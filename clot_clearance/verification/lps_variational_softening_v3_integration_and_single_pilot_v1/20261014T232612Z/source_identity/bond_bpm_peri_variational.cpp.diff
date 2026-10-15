@@ -1,0 +1,77 @@
+--- baseline/bond_bpm_peri_variational.cpp
++++ typed/bond_bpm_peri_variational.cpp
+@@ -33,16 +33,27 @@
+  if(!f)error->all(FLERR,"Incomplete variational reference file");kap.assign(nb,0);d.assign(nb,0);failed.assign(nb,0);ready=true;
+ }
+ void BondBPMPeriVariational::coeff(int argc,char **argv){
+- if(argc!=6 || std::string(argv[0])!="1" || atom->nbondtypes!=1)error->all(FLERR,"variational supports one frozen type: 1 K G horizon s0 sc");
+- K=utils::numeric(FLERR,argv[1],false,lmp);G=utils::numeric(FLERR,argv[2],false,lmp);delta=utils::numeric(FLERR,argv[3],false,lmp);s0=utils::numeric(FLERR,argv[4],false,lmp);sc=utils::numeric(FLERR,argv[5],false,lmp);
+- allocate();setflag[1]=1;validate();
++ if(argc!=6)error->all(FLERR,"variational typed coefficients require type K G horizon s0 sc");
++ int t=utils::inumeric(FLERR,argv[0],false,lmp);
++ if(t<1||t>atom->nbondtypes)error->all(FLERR,"Explicit original bond type required");
++ double kk=utils::numeric(FLERR,argv[1],false,lmp),gg=utils::numeric(FLERR,argv[2],false,lmp),hh=utils::numeric(FLERR,argv[3],false,lmp);
++ double on=utils::numeric(FLERR,argv[4],false,lmp),done=utils::numeric(FLERR,argv[5],false,lmp);
++ if(!(kk>5*gg/3 && gg>0 && hh>0 && done>on && on>0))error->all(FLERR,"Invalid mixed variational coefficients");
++ if(onset_by_type.empty()){onset_by_type.assign(atom->nbondtypes+1,0);complete_by_type.assign(atom->nbondtypes+1,0);K=kk;G=gg;delta=hh;}
++ else if(K!=kk||G!=gg||delta!=hh)error->all(FLERR,"Typed damage requires shared frozen elastic moduli and horizon");
++ allocate();if(setflag[t])error->all(FLERR,"Cannot change frozen typed coefficients");
++ onset_by_type[t]=on;complete_by_type[t]=done;setflag[t]=1;
++ bool all=true;for(int q=1;q<=atom->nbondtypes;q++)all=all&&setflag[q];
++ if(all){s0=onset_by_type[1];sc=complete_by_type[1];validate();}
+ }
+ void BondBPMPeriVariational::validate(){
+  if(!ready || !(G>0 && K>5*G/3 && sc>s0 && s0>0 && delta>0))error->all(FLERR,"Invalid variational positive-energy parameters or absent history");
++ if(onset_by_type.size()!=size_t(atom->nbondtypes+1))error->all(FLERR,"Missing typed damage coefficients");
++ for(int t=1;t<=atom->nbondtypes;t++)if(!setflag[t]||!(complete_by_type[t]>onset_by_type[t]&&onset_by_type[t]>0))error->all(FLERR,"Incomplete typed damage card");
+  std::set<long long> ids;edgekey.clear();ordinal.clear();for(int a=0;a<n;a++)if(tags[a]<=0||!(m[a]>0)||!ordinal.emplace(tags[a],a).second)error->all(FLERR,"Invalid reference node");
+  std::vector<double> mr(n,0);
+  for(int b=0;b<nb;b++){
+-  if(bid[b]<=0||!ids.insert(bid[b]).second||ei[b]<0||ej[b]<0||ei[b]>=n||ej[b]>=n||types[b]!=1||!(r[b]>0 && h[b]>0)||!std::isfinite(kap[b])||kap[b]<0||!std::isfinite(d[b])||d[b]<0||d[b]>1||failed[b]!=(d[b]==1))error->all(FLERR,"Invalid original bond/history record");
++  if(bid[b]<=0||!ids.insert(bid[b]).second||ei[b]<0||ej[b]<0||ei[b]>=n||ej[b]>=n||types[b]<1||types[b]>atom->nbondtypes||!(r[b]>0 && h[b]>0)||!std::isfinite(kap[b])||kap[b]<0||!std::isfinite(d[b])||d[b]<0||d[b]>1||failed[b]!=(d[b]==1))error->all(FLERR,"Invalid original bond/history record");
+   auto key=std::minmax(tags[ei[b]],tags[ej[b]]);if(!edgekey.emplace(key,b).second)error->all(FLERR,"Duplicate endpoint pairs not supported; refusing identity collision");
+   mr[ei[b]]+=h[b]*r[b]*V;mr[ej[b]]+=h[b]*r[b]*V;
+  }
+@@ -131,7 +142,7 @@
+  long long low=tok,high=tok;MPI_Allreduce(MPI_IN_PLACE,&low,1,MPI_LONG_LONG,MPI_MIN,world);MPI_Allreduce(MPI_IN_PLACE,&high,1,MPI_LONG_LONG,MPI_MAX,world);if(low!=high || tok<token)return -4;
+  evaluate();if(tok==token)return x==accepted_x?1:-5;
+  double oldU=U;std::vector<double> nextk(nb),nextd(nb);
+- for(int b=0;b<nb;b++){nextk[b]=std::max(kap[b],std::max(e[b]/r[b],0.));double z=nextk[b];nextd[b]=z<=s0?0:(z>=sc?1:sc*(z-s0)/(z*(sc-s0)));if(nextd[b]<d[b]-2e-13)return -6;}
++ for(int b=0;b<nb;b++){nextk[b]=std::max(kap[b],std::max(e[b]/r[b],0.));double z=nextk[b],on=onset_by_type[types[b]],done=complete_by_type[types[b]];nextd[b]=z<=on?0:(z>=done?1:done*(z-on)/(z*(done-on)));if(nextd[b]<d[b]-2e-13)return -6;}
+  bool changed=nextd!=d;
+  kap.swap(nextk);d.swap(nextd);
+  if(changed)evaluate();
+@@ -144,6 +155,9 @@
+  switch(field){case 0:p=&fn;break;case 1:p=&x;break;case 2:p=&kap;break;case 3:p=&d;break;case 4:p=&m;break;case 5:p=&v;break;case 6:p=&tdir;break;case 7:p=&theta;break;
+  case 8:{double s[]={U,Diss,lastdrop,double(events),double(commits),double(token),double(evaluations),seconds,double(n),double(nb)};std::copy(s,s+10,out);return 10;}
+  case 11:{double s[]={double(cache_hits),double(zero_graph_skips),double(last_new_failures),V,double(dynamic_attached)};std::copy(s,s+5,out);return 5;}
++ case 12:for(int b=0;b<nb;b++)out[b]=double(types[b]);return nb;
++ case 13:for(int b=0;b<nb;b++)out[b]=onset_by_type[types[b]];return nb;
++ case 14:for(int b=0;b<nb;b++)out[b]=complete_by_type[types[b]];return nb;
+  case 9:for(int b=0;b<nb;b++)out[b]=double(bid[b]);return nb;
+  case 10:for(int b=0;b<nb;b++)out[b]=failed[b];return nb;
+  default:return -1;}
+@@ -152,18 +166,20 @@
+ double BondBPMPeriVariational::equilibrium_distance(int){return delta;}
+ double BondBPMPeriVariational::single(int,double,int,int,double &ff){ff=0;error->all(FLERR,"variational is state-coupled; single-bond energy query unsupported");return 0;}
+ std::string BondBPMPeriVariational::serialize()const{
+- std::ostringstream s;s<<std::setprecision(17)<<"LPSVAR_RESTART_V1\n"<<n<<' '<<nb<<' '<<V<<' '<<K<<' '<<G<<' '<<delta<<' '<<s0<<' '<<sc<<'\n'<<token<<' '<<commits<<' '<<events<<' '<<Diss<<' '<<lastdrop<<' '<<imported<<'\n';
++ std::ostringstream s;s<<std::setprecision(17)<<"LPSVAR_TYPED_RESTART_V2\n"<<n<<' '<<nb<<' '<<V<<' '<<K<<' '<<G<<' '<<delta<<' '<<s0<<' '<<sc<<'\n'<<token<<' '<<commits<<' '<<events<<' '<<Diss<<' '<<lastdrop<<' '<<imported<<'\n';
++ s<<atom->nbondtypes<<'\n';for(int t=1;t<=atom->nbondtypes;t++)s<<onset_by_type[t]<<' '<<complete_by_type[t]<<'\n';
+  for(int a=0;a<n;a++)s<<tags[a]<<' '<<m[a]<<'\n';
+  for(int b=0;b<nb;b++)s<<bid[b]<<' '<<ei[b]<<' '<<ej[b]<<' '<<types[b]<<' '<<r[b]<<' '<<h[b]<<' '<<kap[b]<<' '<<d[b]<<' '<<failed[b]<<'\n';
+  s<<accepted_x.size()<<'\n';for(double z:accepted_x)s<<z<<' ';s<<'\n';return s.str();
+ }
+ void BondBPMPeriVariational::deserialize(const std::string &text){
+  std::istringstream s(text);std::string magic;s>>magic>>n>>nb>>V>>K>>G>>delta>>s0>>sc;
+- if(magic!="LPSVAR_RESTART_V1"||n<1||n>4096||nb<1||nb>1000000)error->all(FLERR,"Missing or incompatible variational restart history");
++ if(magic!="LPSVAR_TYPED_RESTART_V2"||n<1||n>4096||nb<1||nb>1000000)error->all(FLERR,"Missing or incompatible variational restart history");
+  s>>token>>commits>>events>>Diss>>lastdrop>>imported;tags.resize(n);m.resize(n);bid.resize(nb);ei.resize(nb);ej.resize(nb);types.resize(nb);r.resize(nb);h.resize(nb);kap.resize(nb);d.resize(nb);failed.resize(nb);
++ int nt;s>>nt;if(nt!=atom->nbondtypes)error->all(FLERR,"Restart bond type mismatch");onset_by_type.assign(nt+1,0);complete_by_type.assign(nt+1,0);for(int t=1;t<=nt;t++)s>>onset_by_type[t]>>complete_by_type[t];
+  for(int a=0;a<n;a++)s>>tags[a]>>m[a];for(int b=0;b<nb;b++)s>>bid[b]>>ei[b]>>ej[b]>>types[b]>>r[b]>>h[b]>>kap[b]>>d[b]>>failed[b];
+  size_t count;s>>count;if(count!=0&&count!=size_t(3*n))error->all(FLERR,"Incomplete variational accepted-state coordinates");accepted_x.resize(count);for(double &z:accepted_x)s>>z;
+- if(!s)error->all(FLERR,"Truncated variational restart");ready=true;cache_valid=false;allocate();setflag[1]=1;validate();
++ if(!s)error->all(FLERR,"Truncated variational restart");ready=true;cache_valid=false;allocate();for(int t=1;t<=atom->nbondtypes;t++)setflag[t]=1;validate();
+ }
+ void BondBPMPeriVariational::write_restart(FILE *fp){std::string s=serialize();int size=s.size();fwrite(&size,sizeof(int),1,fp);fwrite(s.data(),1,size,fp);}
+ void BondBPMPeriVariational::read_restart(FILE *fp){int size=0;if(comm->me==0)utils::sfread(FLERR,&size,sizeof(int),1,fp,nullptr,error);MPI_Bcast(&size,1,MPI_INT,0,world);if(size<32||size>200000000)error->all(FLERR,"Invalid variational restart payload");std::string s(size,'\0');if(comm->me==0)utils::sfread(FLERR,&s[0],1,size,fp,nullptr,error);MPI_Bcast(&s[0],size,MPI_CHAR,0,world);deserialize(s);}

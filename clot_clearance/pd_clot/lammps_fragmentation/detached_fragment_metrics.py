@@ -12,6 +12,7 @@ from .config import dump
 from .fragment_analysis import read_dump,_events
 from .failure_map import csv_out
 from .failure_classifier import classify
+from .fragment_semantics import component_metrics, classify_detached_v2
 
 def equivalent_diameter_um(nodes,dx):
     return (6*np.asarray(nodes)*dx**3/np.pi)**(1/3)*1e6
@@ -83,6 +84,8 @@ def analyze(path,out,name,g,factor,*,shape_min_nodes=114,classify_fn=classify):
             previous=current;prev_tracks=track_per_node;track_frames.append(track_per_node);label_frames.append(stable[labels]);attachment_frames.append(attached[labels])
             free=~attached;largest=int(counts[free].max()) if free.any() else 0
             row=dict(case_id=name,step=step,time_s=t,bulk_broken_fraction=float((~alive[typ==1]).mean()),interface_broken_fraction=float((~alive[typ==2]).mean()),debris_fraction=float(counts[counts<=2].sum()/n),debris_1_2node_fraction=float(counts[counts<=2].sum()/n),median_fragment_nodes=float(np.median(counts)),largest_free_fraction=float(counts.max()/n),resolved_fragment_count=int((counts>=3).sum()),largest_attached_component_fraction=float(counts[attached].max()/n) if attached.any() else 0.,total_attached_fraction=float(counts[attached].sum()/n),largest_detached_nodes=largest,largest_detached_d_eq_um=float(equivalent_diameter_um(largest,dx)),largest_detached_mass_kg=largest*mass,clot_KE_J=float(.5*mass*np.sum(V[:n]**2)))
+            row.update(component_metrics(counts,attached,dx,r['rho_kg_m3']))
+            row['failure_mode_detached_v2']=classify_detached_v2(row)
             row['failure_mode']=classify_fn(row)
             for diameter,limit in thresholds.items():
                 selected=free&(counts>=limit);row['N_detached_ge'+diameter]=int(selected.sum());row['mass_detached_ge'+diameter+'_kg']=float(counts[selected].sum()*mass);row['mass_fraction_detached_ge'+diameter]=float(counts[selected].sum()/n)

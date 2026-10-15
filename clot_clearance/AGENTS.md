@@ -1,6 +1,6 @@
-# Current clot research snapshot (2026-10-11)
+# Current clot research snapshot (2026-10-15)
 
-Read `github_sync_20261011/README.md` for current scientific scope and export limitations. The new clot-resolved CFD and conservative nodal map are offline; historical fragmentation trajectories retain their original unobstructed background flow. Surface correction / energy failure is not production-certified.
+Read `github_sync_20261015/README.md` and `ACTIVE_DEVELOPMENT_ENTRYPOINTS.md` for the latest V3 variational-softening pilot and export boundaries. One historical C1 case completed 2.33 ms with numerical gates passed; contact accuracy, interface softening, macroscopic strength and Gc remain uncalibrated. This is an exploratory sample, not formal AI training data. The full-server manifests include intentionally omitted native files; use this export snapshot manifest for clone verification.
 
 Use new output directories for experiments or replay. Preserve accepted scientific data and existing SHA manifests. `pd_clot/portable_paths.py` resolves archived asset paths; `Y_CLOT_DEPENDENCY_ROOT` and `Y_CLOT_FONT_DIR` can override dependency/font roots.
 

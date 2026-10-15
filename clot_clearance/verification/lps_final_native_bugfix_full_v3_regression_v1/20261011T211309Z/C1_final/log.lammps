@@ -1,0 +1,2952 @@
+LAMMPS (30 Sep 2026)
+  using 1 OpenMP thread(s) per MPI task
+# EXPLORATORY_ONLY; verified existing modified 1.0dx stable_30Sep2026
+units si
+dimension 3
+boundary m m m
+atom_style bond
+atom_modify map array
+newton on off
+special_bonds lj 0 1 1 coul 1 1 1
+lattice sc 5.0000000000000002e-05
+Lattice spacing in x,y,z = 5e-05 5e-05 5e-05
+read_data body.data extra/bond/per/atom 160 extra/special/per/atom 180
+Reading data file ...
+  orthogonal box = (-0.007202 -0.001152 9.8e-05) to (-0.004748 0.001302 0.002002)
+  1 by 2 by 1 MPI processor grid
+  reading atoms ...
+  3488 atoms
+  scanning bonds ...
+  282 = max bonds/atom
+  orthogonal box = (-0.007202 -0.001152 9.8e-05) to (-0.004748 0.001302 0.002002)
+  1 by 2 by 1 MPI processor grid
+  reading bonds ...
+  157637 bonds
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    0        1        1       
+  special bond factors coul:  1        1        1       
+   122 = max # of 1-2 neighbors
+   302 = max # of special neighbors
+  special bonds CPU = 0.003 seconds
+  read_data CPU = 0.145 seconds
+neighbor 0.0001 bin
+neigh_modify every 1 delay 0 check yes
+comm_modify cutoff 0.00045149999999999997
+fix props all property/atom d_vfrac d_damage d_area d_refz ghost yes
+set group all d_vfrac 1.2500000000000002e-13
+Setting atom values ...
+  3488 settings made for d_vfrac
+set group all d_area 0
+Setting atom values ...
+  3488 settings made for d_area
+variable initialz atom z
+set group all d_refz v_initialz
+Setting atom values ...
+  3488 settings made for d_refz
+group clot type 1
+1927 atoms in group clot
+group anchors type 2
+1561 atoms in group anchors
+pair_style bpm/peri contact_distance_factor 1.0
+pair_coeff * * 3.7226771877469815e+20 0.0001505
+bond_style bpm/peri store/local breaks 20 time id1 id2 x y z x/ref y/ref z/ref
+bond_coeff 1 lps 33333.333333333336 940 0.0001505 0.14999999999999999 0
+bond_coeff 2 lps 33333.333333333336 940 0.0001505 0.14062485937499999 0
+bond_coeff 3 lps 33333.333333333336 940 0.0001505 1.0 0
+velocity all set 0 0 0 units box
+# Official BPM peri accumulates N/m^3: convert to nodal N BEFORE external forces.
+variable si_fx atom fx*d_vfrac
+variable si_fy atom fy*d_vfrac
+variable si_fz atom fz*d_vfrac
+fix si_force all setforce v_si_fx v_si_fy v_si_fz
+
+fix tangent_props all property/atom d_tx d_ty d_tz ghost yes
+set group all d_tx 0
+Setting atom values ...
+  3488 settings made for d_tx
+set group all d_ty 0
+Setting atom values ...
+  3488 settings made for d_ty
+set group all d_tz 0
+Setting atom values ...
+  3488 settings made for d_tz
+group surface id 1 2 3 4 5 6 7 8 10 12 14 16 17 18 19 20 21 23 26 29 30 33 36 39 42 44 46 47 48 50 51 54 58 59 63 68 69 73 77 81 82 85 88 90 91 92 93 95 98 103 104 109 110 116 117 123 124 130 131 136 141 145 149 151 153 154 155 156 157 159 162 163 168 175 176 184 185 193 201 208 214 219 224 227 230 233 234 236 239 243 249 250 257 258 267 268 278 279 288 296 303 309 315 319 322 325 327 328 330 333 337 338 344 345 353 354 364 365 376 386 395 403 410 416 421 425 428 431 433 435 438 439 443 450 451 459 460 470 482 483 493 502 511 519 520 527 533 538 542 544 545 546 548 550 553 554 558 565 566 574 584 595 605 614 624 625 634 643 650 656 661 664 666 667 669 672 675 679 680 686 694 703 713 723 733 744 755 765 766 773 779 784 787 789 791 793 796 799 803 809 816 824 833 842 852 853 864 876 877 887 895 896 902 907 910 913 915 916 918 921 924 928 934 941 949 957 966 976 977 988 1000 1001 1011 1019 1026 1032 1036 1039 1041 1042 1043 1045 1048 1051 1055 1061 1068 1076 1084 1093 1103 1114 1126 1127 1137 1145 1152 1158 1162 1165 1167 1168 1169 1171 1174 1177 1181 1187 1194 1202 1210 1219 1228 1238 1239 1249 1259 1260 1267 1273 1282 1285 1287 1288 1289 1291 1294 1297 1301 1307 1314 1322 1331 1340 1349 1358 1367 1368 1376 1383 1389 1394 1398 1401 1403 1404 1405 1407 1409 1412 1416 1422 1429 1430 1438 1448 1457 1465 1473 1481 1488 1494 1499 1503 1507 1509 1511 1512 1513 1515 1518 1522 1528 1535 1536 1544 1554 1563 1571 1578 1585 1591 1596 1600 1604 1606 1608 1611 1613 1616 1619 1620 1625 1632 1640 1649 1657 1664 1670 1676 1681 1685 1689 1692 1694 1696 1697 1698 1699 1701 1704 1709 1715 1722 1723 1730 1737 1743 1748 1753 1757 1760 1763 1766 1767 1768 1769 1770 1771 1773 1775 1779 1784 1785 1790 1796 1802 1807 1812 1816 1820 1823 1825 1827 1829 1830 1831 1832 1835 1839 1843 1844 1848 1849 1853 1857 1861 1864 1867 1869 1871 1872 1873 1875 1878 1881 1884 1887 1890 1893 1896 1898 1899 1900 1901 1902 1904 1906 1908 1910 1912 1914 1916 1918 1919 1920 1921 1922 1923 1924 1925 1926 1927
+453 atoms in group surface
+set atom 1 d_area 7.2681170314422884e-09 d_tx 0.47193149425562564 d_ty -0.051199474781757764 d_tz -0.4965790700053217
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 2 d_area 5.6038776092835646e-09 d_tx 0.44303828339842055 d_ty -0.0047524065230840273 d_tz -0.49672203240247031
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 3 d_area 5.2206276085246377e-09 d_tx 0.42040953358854549 d_ty 0.031627127177168757 d_tz -0.49261047743925052
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 4 d_area 7.7619478378556347e-09 d_tx 0.45248375212865799 d_ty 0.044545021447115862 d_tz -0.49573979793083522
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 5 d_area 9.4712030741418819e-09 d_tx 0.58034402928731077 d_ty -0.11476523312731648 d_tz -0.479972684871871
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 6 d_area 4.8662458652269419e-09 d_tx 0.42187369729422997 d_ty -0.14811758140394068 d_tz -0.47112361743450465
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 7 d_area 1.6390348023230153e-09 d_tx 0.46436823817786177 d_ty -0.10343958521322362 d_tz -0.48788382813982123
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 8 d_area 3.3747647663205199e-09 d_tx 0.35922695517240211 d_ty -0.063136919568256733 d_tz -0.4756013869170258
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 10 d_area 4.0809544609090439e-09 d_tx 0.3516154331443373 d_ty -0.032205995227385945 d_tz -0.47638723134701155
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 12 d_area 3.4836423887861127e-09 d_tx 0.35705208201355498 d_ty 0.046361046533630733 d_tz -0.47688210923418706
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 14 d_area 3.9816540848434831e-09 d_tx 0.38915489077612553 d_ty 0.077556442956789082 d_tz -0.48135055823904244
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 16 d_area 4.147152159323991e-09 d_tx 0.43261712650814144 d_ty 0.1140907883607033 d_tz -0.4821232626322996
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 17 d_area 1.8991678599108847e-09 d_tx 0.44287938284383532 d_ty 0.089491281940606987 d_tz -0.48859855254833262
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 18 d_area 5.3995759723712014e-09 d_tx 0.48784131624517224 d_ty 0.11532612192630087 d_tz -0.48636617070967236
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 19 d_area 9.1010586655301088e-09 d_tx 0.54317266733027592 d_ty 0.12047763857468209 d_tz -0.48334383144823279
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 20 d_area 9.0664919520780386e-09 d_tx 0.64478636984814952 d_ty -0.18494475100227217 d_tz -0.44139817192972419
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 21 d_area 2.9989313575296495e-09 d_tx 0.50939692918099844 d_ty -0.21708697689381479 d_tz -0.45031649113159478
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 23 d_area 5.2874810025675909e-09 d_tx 0.41395393673788361 d_ty -0.22180348951278417 d_tz -0.43977185794118751
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 26 d_area 3.1850297163700503e-09 d_tx 0.31559760940679749 d_ty -0.10243480467215951 d_tz -0.45332424282767902
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 29 d_area 5.7614671665904698e-09 d_tx 0.27714045335812465 d_ty -0.0016351174667590619 d_tz -0.44758345463326449
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 30 d_area 1.6994526853185764e-09 d_tx 0.3125792671069243 d_ty -0.027370034779863273 d_tz -0.46273572379704092
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 33 d_area 2.7950407568045161e-09 d_tx 0.33537367721264988 d_ty 0.075613161026522172 d_tz -0.46602663413703355
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 36 d_area 3.43298843345795e-09 d_tx 0.38308910266841711 d_ty 0.12524708586089012 d_tz -0.46972865525586027
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 39 d_area 4.8308665363464882e-09 d_tx 0.44589328708196141 d_ty 0.1498587487524641 d_tz -0.47393545872782161
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 42 d_area 2.6767110930490436e-09 d_tx 0.48969282756524113 d_ty 0.170823300048844 d_tz -0.46980119450340146
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 44 d_area 3.9680851724874817e-09 d_tx 0.5326247158528683 d_ty 0.17538972673574657 d_tz -0.46709107427896734
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 46 d_area 7.8325483681470329e-09 d_tx 0.59576191133671996 d_ty 0.15710962327439187 d_tz -0.46491528541414612
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 47 d_area 8.8756132585681662e-09 d_tx 0.78382811678493236 d_ty -0.19220041556713363 d_tz -0.36400631914589054
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 48 d_area 4.0006407184729111e-09 d_tx 0.67800727109200332 d_ty -0.28647550471619376 d_tz -0.36911406995125506
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 50 d_area 4.165604903105842e-09 d_tx 0.55545190919031096 d_ty -0.32665230543726903 d_tz -0.37446409323146934
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 51 d_area 1.9457968385592847e-09 d_tx 0.55248599779163055 d_ty -0.27747383488931349 d_tz -0.4126178510288121
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 54 d_area 2.925065609451029e-09 d_tx 0.39919151066476188 d_ty -0.2697897507694903 d_tz -0.40871889956017876
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 58 d_area 4.9023944927448764e-09 d_tx 0.2809620518044974 d_ty -0.18078538790156307 d_tz -0.41150822685772098
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 59 d_area 1.2208660091040724e-09 d_tx 0.2924778137578905 d_ty -0.1525974155470198 d_tz -0.42854237945116397
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 63 d_area 3.5546509797326426e-09 d_tx 0.23365817628930718 d_ty 0.01192568995298428 d_tz -0.42298913799482779
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 68 d_area 5.0885586001973835e-09 d_tx 0.32769851942769379 d_ty 0.19002667399234863 d_tz -0.42918767801976426
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 69 d_area 8.175979092141399e-10 d_tx 0.33091726960140688 d_ty 0.13406528111815655 d_tz -0.451040497826599
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 73 d_area 3.2897090825825011e-09 d_tx 0.39907926530520488 d_ty 0.18399517068864449 d_tz -0.45382902339087933
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 77 d_area 3.7881023672999259e-09 d_tx 0.47985578052560329 d_ty 0.19748895879462569 d_tz -0.45890339024241472
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 81 d_area 3.5080043442268807e-09 d_tx 0.55956397329338148 d_ty 0.21783339444657343 d_tz -0.44609499588023727
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 82 d_area 1.4750210261104758e-09 d_tx 0.52526114297983173 d_ty 0.19654612336295219 d_tz -0.45905500329083399
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 85 d_area 3.8057595825457278e-09 d_tx 0.57969637436611676 d_ty 0.20269058852598146 d_tz -0.45007223113172284
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 88 d_area 4.3915500940008356e-09 d_tx 0.62372168948923024 d_ty 0.19752520623522427 d_tz -0.44235363280034518
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 90 d_area 4.5892397124669412e-09 d_tx 0.65158726664814925 d_ty 0.18936214309155491 d_tz -0.43722223108382352
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 91 d_area 8.7346188938550401e-09 d_tx 0.70959099372307943 d_ty 0.16805303188579784 d_tz -0.42169870028749573
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 92 d_area 7.6896605289912617e-09 d_tx 0.87024826890991691 d_ty -0.16590445483282562 d_tz -0.29221897822665932
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 93 d_area 4.6143089010637667e-09 d_tx 0.81102790382751444 d_ty -0.2518299482653828 d_tz -0.29973875324575072
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 95 d_area 4.0172172642284432e-09 d_tx 0.74715917489251704 d_ty -0.30984172255553566 d_tz -0.30481215400680578
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 98 d_area 4.1540970108085133e-09 d_tx 0.67425036541710492 d_ty -0.35570711556161327 d_tz -0.3051380967543097
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 103 d_area 4.8941084503707453e-09 d_tx 0.52174919869421954 d_ty -0.37520770874716919 d_tz -0.32976680799143332
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 104 d_area 1.7406733772732824e-09 d_tx 0.47731024988514714 d_ty -0.34608605390243463 d_tz -0.36015221578378021
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 109 d_area 5.1262490072790825e-09 d_tx 0.30768431826798748 d_ty -0.2715121541894257 d_tz -0.37322356394977119
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 110 d_area 1.8231646623828892e-09 d_tx 0.27587865369080256 d_ty -0.21380841324239527 d_tz -0.39249915229885762
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 116 d_area 3.7807753512205228e-09 d_tx 0.206011929398626 d_ty 0.072248077178615519 d_tz -0.39793370011608015
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 117 d_area 1.7958418195744701e-09 d_tx 0.20884617364905267 d_ty 0.020299208840263625 d_tz -0.40597708250794351
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 123 d_area 3.6251182983890578e-09 d_tx 0.38626547229477992 d_ty 0.31912462027537342 d_tz -0.36772807064700574
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 124 d_area 2.1882573631443619e-09 d_tx 0.3229826553659334 d_ty 0.24088644604162149 d_tz -0.40079742989712558
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 130 d_area 4.7802688490349831e-09 d_tx 0.50292841089433615 d_ty 0.3064347377732381 d_tz -0.3950812269590655
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 131 d_area 1.0208017472982339e-09 d_tx 0.45271313305103889 d_ty 0.24867333777172188 d_tz -0.43119082005026788
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 136 d_area 4.8988300383248884e-09 d_tx 0.55756054020847656 d_ty 0.24875173482857446 d_tz -0.42989459013888848
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 141 d_area 1.6319032028429853e-09 d_tx 0.61813296626024039 d_ty 0.23713732853924702 d_tz -0.42404066986059974
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 145 d_area 4.7661584440928984e-09 d_tx 0.63708685308092372 d_ty 0.21716068483940135 d_tz -0.42900866153546535
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 149 d_area 4.7896330005863934e-10 d_tx 0.6676900111548314 d_ty 0.21008406630669321 d_tz -0.42159784776838877
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 151 d_area 4.5665893672137645e-09 d_tx 0.70125586034507081 d_ty 0.21440399958065431 d_tz -0.4043847223135219
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 153 d_area 1.5783063699373473e-09 d_tx 0.72694656248810996 d_ty 0.20595805782822291 d_tz -0.39506523029805696
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 154 d_area 9.7448107501949737e-09 d_tx 0.78844624484173453 d_ty 0.14772248781911801 d_tz -0.38075823094088551
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 155 d_area 5.8076450517740749e-09 d_tx 0.92746043313226956 d_ty -0.12001346588130669 d_tz -0.22994422391860372
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 156 d_area 2.0643461883537956e-09 d_tx 0.89860321397126142 d_ty -0.18407518473570933 d_tz -0.23923169559298627
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 157 d_area 2.6950412981926718e-09 d_tx 0.87342236538103901 d_ty -0.22867811571839317 d_tz -0.24137534344815534
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 159 d_area 2.9136300229685358e-09 d_tx 0.8455390667910202 d_ty -0.27116567621386101 d_tz -0.23889731971010128
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 162 d_area 4.5597020087842818e-09 d_tx 0.80646211335162687 d_ty -0.3255771380186408 d_tz -0.22378672945383851
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 163 d_area 9.9233969076230894e-10 d_tx 0.79901402332884364 d_ty -0.31445653913675831 d_tz -0.24841034367922391
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 168 d_area 4.7617359317038974e-09 d_tx 0.70669888211980481 d_ty -0.37989104424849834 d_tz -0.25091505859594893
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 175 d_area 5.1369843338340725e-09 d_tx 0.50458852046937008 d_ty -0.37919329736091584 d_tz -0.32587020225307228
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 176 d_area 2.5415200782009989e-09 d_tx 0.45486297013462773 d_ty -0.36932733368248533 d_tz -0.33400594175840453
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 184 d_area 5.660705232683498e-09 d_tx 0.26074318679583142 d_ty 0.19755971985283771 d_tz -0.39207950013620169
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 185 d_area 1.612064790829172e-09 d_tx 0.20310420565546539 d_ty 0.087133234219040151 d_tz -0.39276034269648152
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 193 d_area 4.2360234653835219e-09 d_tx 0.53244890774354503 d_ty 0.38598141619463344 d_tz -0.31617307718816939
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 201 d_area 4.4026562599540692e-09 d_tx 0.62561215227644762 d_ty 0.34999025312879495 d_tz -0.33425799902967251
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 208 d_area 4.7885064366204129e-09 d_tx 0.64557728724179486 d_ty 0.27984676910323991 d_tz -0.38793432338708805
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 214 d_area 2.5488796823748052e-09 d_tx 0.66061174059534811 d_ty 0.24993149208559748 d_tz -0.40216677889502456
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 219 d_area 4.4438346520834878e-09 d_tx 0.66862134746125457 d_ty 0.22601947747466536 d_tz -0.4128947044737073
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 224 d_area 3.2252502594081325e-09 d_tx 0.6879792861623617 d_ty 0.21918456645181988 d_tz -0.40819347594396543
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 227 d_area 4.2975733941836244e-09 d_tx 0.73839931340140885 d_ty 0.22332268678092898 d_tz -0.37854028179136218
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 230 d_area 4.848419797717283e-09 d_tx 0.77131739120190745 d_ty 0.20835331222348813 d_tz -0.36465842992709324
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 233 d_area 4.7461375722706063e-09 d_tx 0.94279161885782592 d_ty -0.11738121630293594 d_tz -0.20039269529728165
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 234 d_area 4.6341590620938592e-09 d_tx 0.93097362612142287 d_ty -0.16513589592244596 d_tz -0.19233270513784981
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 236 d_area 4.0333828455526064e-09 d_tx 0.92997749469847446 d_ty -0.18547695660643082 d_tz -0.17526452185436614
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 239 d_area 6.1346126112659979e-09 d_tx 0.9156997640642891 d_ty -0.22015127326896852 d_tz -0.1694907756632979
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 243 d_area 3.2843856039499817e-09 d_tx 0.91906432469191679 d_ty -0.22843684810542522 d_tz -0.14900234292844744
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 249 d_area 4.5316617285360397e-09 d_tx 0.87915085236412449 d_ty -0.2842999301614737 d_tz -0.15943080273817556
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 250 d_area 1.0880996643569726e-09 d_tx 0.88482234657086589 d_ty -0.27317578286807515 d_tz -0.16518702501742266
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 257 d_area 5.4559694091546398e-09 d_tx 0.75787597966302001 d_ty -0.35810962198895152 d_tz -0.23506909144285199
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 258 d_area 1.1004732378816446e-09 d_tx 0.87913202053239203 d_ty -0.28651074222319795 d_tz -0.15546866435953613
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 267 d_area 6.0080350228532503e-09 d_tx 0.42299003184913353 d_ty 0.093779218231719835 d_tz -0.4850514643140974
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 268 d_area 1.7208237137347499e-09 d_tx 0.26224635883024916 d_ty 0.10377160859214042 d_tz -0.42743965581205151
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 278 d_area 4.7360369306851122e-09 d_tx 0.74832446297547206 d_ty 0.37399752921799495 d_tz -0.22013815940626569
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 279 d_area 3.4022647594761328e-09 d_tx 0.73830119367478197 d_ty 0.37266641589930916 d_tz -0.23309286465685128
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 288 d_area 3.823925703655481e-09 d_tx 0.76155831045487077 d_ty 0.32922310425876977 d_tz -0.27055387236964973
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 296 d_area 4.5431336789656475e-09 d_tx 0.70316104134200674 d_ty 0.288063910284936 d_tz -0.35460509707586513
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 303 d_area 2.4466933780933654e-09 d_tx 0.6786487185194876 d_ty 0.25979454784191963 d_tz -0.38806111410827732
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 309 d_area 4.5521260019220506e-09 d_tx 0.65167385677452638 d_ty 0.23848694667022957 d_tz -0.41245486715403373
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 315 d_area 4.4189866362853872e-09 d_tx 0.7048079665653959 d_ty 0.23997076588567567 d_tz -0.3879016993409411
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 319 d_area 1.960880925123818e-09 d_tx 0.75529866192560435 d_ty 0.23321264965013555 d_tz -0.36115710329738648
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 322 d_area 3.845571097882195e-09 d_tx 0.78892049923797791 d_ty 0.22357954833636695 d_tz -0.34137535160843657
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 325 d_area 7.3383029608860334e-09 d_tx 0.80147571860176159 d_ty 0.17806917181155377 d_tz -0.35693663463407455
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 327 d_area 7.2025446723543853e-09 d_tx 0.95308629661950894 d_ty -0.097247721787283359 d_tz -0.18776498188640367
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 328 d_area 4.0199646031094191e-09 d_tx 0.956567364709352 d_ty -0.13221892836531821 d_tz -0.15512703331232891
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 330 d_area 3.1294235579855264e-09 d_tx 0.96758899520341168 d_ty -0.127558212038271 d_tz -0.12283905773923577
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 333 d_area 4.6842929369899857e-09 d_tx 0.97318539263835468 d_ty -0.12733465847372383 d_tz -0.099405578037986414
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 337 d_area 5.3526772560576063e-09 d_tx 0.9712430258174255 d_ty -0.14361832370828162 d_tz -0.085462200496245547
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 338 d_area 9.0644201992738743e-10 d_tx 0.97735596155714777 d_ty -0.12391852268801884 d_tz -0.082313338534345956
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 344 d_area 4.7000492306253057e-09 d_tx 0.97686537124566952 d_ty -0.13334520544484704 d_tz -0.069415228095867476
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 345 d_area 1.6440906884941696e-09 d_tx 0.9879411524179883 d_ty -0.096009324131012888 d_tz -0.051919567187252852
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 353 d_area 3.2727088085414728e-09 d_tx 0.97458316039057524 d_ty -0.13520855196130441 d_tz -0.080557255106047193
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 354 d_area 2.3030913387741927e-09 d_tx 0.9860658865371168 d_ty -0.10431373799558497 d_tz -0.053465858360968135
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 364 d_area 4.8468685090902614e-09 d_tx 0.86596917256160233 d_ty 0.020677641627693453 d_tz -0.34005734791545505
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 365 d_area 1.018817056306861e-09 d_tx 0.9493510052143721 d_ty 0.19261364625074351 d_tz -0.10480294552552803
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 376 d_area 3.681734315623598e-09 d_tx 0.93493484665399962 d_ty 0.21525930537577573 d_tz -0.12039564201083168
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 386 d_area 4.5770178617649114e-09 d_tx 0.86039872999104705 d_ty 0.27104916793074135 d_tz -0.21597477627003842
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 395 d_area 4.494866847204714e-09 d_tx 0.69464542736209389 d_ty 0.27082294376910965 d_tz -0.37251589326532303
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 403 d_area 4.5270917059411239e-09 d_tx 0.61258467913906423 d_ty 0.25900322381170571 d_tz -0.41260395063341004
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 410 d_area 1.0322490562820415e-09 d_tx 0.60150009644576796 d_ty 0.24807052074813346 d_tz -0.42208855369134302
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 416 d_area 4.8681185207192662e-09 d_tx 0.67447562753694568 d_ty 0.27647108350649113 d_tz -0.3783146777225751
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 421 d_area 4.7006197604899321e-09 d_tx 0.76291801660364811 d_ty 0.25246153019556056 d_tz -0.3422532575688943
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 425 d_area 2.1320067489629018e-09 d_tx 0.80143391223971383 d_ty 0.22969204564083576 d_tz -0.32615818358764009
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 428 d_area 3.6182915315173614e-09 d_tx 0.82270663709359204 d_ty 0.19985158677836598 d_tz -0.3254531757993982
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 431 d_area 8.7740580286586186e-09 d_tx 0.84100016500553076 d_ty 0.15109308276275946 d_tz -0.33300115286203841
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 433 d_area 3.1936179109391076e-09 d_tx 0.97032790215136477 d_ty -0.10713325629180458 d_tz -0.1315831670625493
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 435 d_area 3.0334634611222869e-09 d_tx 0.983642105892366 d_ty -0.089845799694590625 d_tz -0.089543540723141496
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 438 d_area 4.6707482602285491e-09 d_tx 0.9970172852778153 d_ty -0.04383067606719742 d_tz -0.032445184088908084
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 439 d_area 1.5958668872726654e-09 d_tx 0.99196357557273906 d_ty -0.067521958864346907 d_tz -0.058417680378522956
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 443 d_area 2.6511647336516008e-09 d_tx 0.99965300018896197 d_ty -0.015818755287480821 d_tz -0.0098308892438035249
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 450 d_area 3.4900656052613182e-09 d_tx 0.99687173605992974 d_ty 0.049182471908222988 d_tz 0.026449241232753797
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 451 d_area 2.6479590937252173e-09 d_tx 0.99984058803810738 d_ty 0.010959813112922817 d_tz 0.006266501914855253
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 459 d_area 4.1905129753577142e-09 d_tx 0.96730033064954435 d_ty 0.15175642558288019 d_tz 0.092738278338204458
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 460 d_area 1.3843136229540681e-09 d_tx 0.99486400222138771 d_ty 0.063170760601209908 d_tz 0.033452568070255005
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 470 d_area 4.7342183064535677e-09 d_tx 0.83171031518835559 d_ty -0.014051148522850401 d_tz 0.37385937466222585
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 482 d_area 4.6206672804770034e-09 d_tx 0.99727506101544017 d_ty -0.043865733799668898 d_tz 0.028165778709399542
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 483 d_area 3.0230781342996716e-09 d_tx 0.98487506107421752 d_ty 0.097799641471154858 d_tz -0.073016472637257954
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 493 d_area 1.9954652726692744e-09 d_tx 0.86197654925591394 d_ty 0.21526244595595984 d_tz -0.26950891849777142
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 502 d_area 3.9993482962666015e-09 d_tx 0.56471513291592068 d_ty 0.17956830719146943 d_tz -0.462133286643653
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 511 d_area 3.4593983147512961e-09 d_tx 0.47852892784189316 d_ty 0.22917645428380112 d_tz -0.44386613507034528
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 519 d_area 3.6392389714404359e-09 d_tx 0.53559635450497889 d_ty 0.30260101855638161 d_tz -0.39644107142751539
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 520 d_area 1.9187027108977688e-09 d_tx 0.56950794812840799 d_ty 0.27608905624926416 d_tz -0.41102734479152248
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 527 d_area 5.1380397991705601e-09 d_tx 0.67739060470258261 d_ty 0.31603527739872112 d_tz -0.34446230098918734
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 533 d_area 3.7044441510092118e-09 d_tx 0.7579151928663389 d_ty 0.28150219007042998 d_tz -0.32285642362243727
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 538 d_area 3.9952538181523067e-09 d_tx 0.80466536727539628 d_ty 0.25011591803593258 d_tz -0.30760533403696133
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 542 d_area 3.7993079327975818e-09 d_tx 0.84502316220912854 d_ty 0.20140561703101062 d_tz -0.3006572716026859
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 544 d_area 1.8341710461320931e-09 d_tx 0.86907210699917981 d_ty 0.16472925707990471 d_tz -0.2943638084022705
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 545 d_area 7.9465368206230515e-09 d_tx 0.88785449897343716 d_ty 0.12026219445938564 d_tz -0.29172914185915144
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 546 d_area 1.0537797592555733e-08 d_tx 0.96844771081113623 d_ty -0.08547070709503872 d_tz -0.15248442695724748
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 548 d_area 1.0466662550867161e-09 d_tx 0.98317374676157299 d_ty -0.082872730685484647 d_tz -0.098362802670087027
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 550 d_area 3.2657837313331572e-09 d_tx 0.99387108765687149 d_ty -0.054064292207843589 d_tz -0.056288551986027328
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 553 d_area 4.1914696383968953e-09 d_tx 0.99826560343339421 d_ty 0.03186955169930776 d_tz 0.026752945812390745
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 554 d_area 1.5220146623190607e-09 d_tx 0.99898613005781622 d_ty -0.023485860040779061 d_tz -0.021476880315099346
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 558 d_area 4.4779968305322905e-09 d_tx 0.986612938188003 d_ty 0.094391625918349265 d_tz 0.065559662480286898
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 565 d_area 3.0900735476991228e-09 d_tx 0.93699429598843897 d_ty 0.20705275713743682 d_tz 0.12714220792228736
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 566 d_area 2.8465917858921211e-09 d_tx 0.96667926262036985 d_ty 0.1521869351335125 d_tz 0.095129399318906266
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 574 d_area 5.00856991324973e-09 d_tx 0.86530292441727896 d_ty 0.28219663742648593 d_tz 0.19214273662402176
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 584 d_area 5.9073180296604452e-09 d_tx 0.55942992971319383 d_ty -0.01275778566396726 d_tz 0.49629156990547107
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 595 d_area 2.877002371296041e-09 d_tx 0.98519640411090847 d_ty -0.073771161636827093 d_tz 0.095615193084557099
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 605 d_area 2.3742916423134942e-10 d_tx 0.93046659855603897 d_ty 0.12288040634908515 d_tz -0.22270813470342241
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 614 d_area 4.5957692310034584e-09 d_tx 0.52827148712359873 d_ty -0.084415763300738814 d_tz -0.4920108758169619
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 624 d_area 4.2954658805095041e-09 d_tx 0.36293288181524519 d_ty 0.20044114438288985 d_tz -0.43707659826511414
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 625 d_area 1.2401948230202633e-09 d_tx 0.3892898990194551 d_ty 0.21277701802933663 d_tz -0.43871313422260422
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 634 d_area 4.5236135865298722e-09 d_tx 0.58875095761392016 d_ty 0.34751143347683267 d_tz -0.34836628873283515
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 643 d_area 2.8154685019472584e-09 d_tx 0.71835575376059069 d_ty 0.33735897809122051 d_tz -0.29750577255053651
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 650 d_area 5.2361313374099564e-09 d_tx 0.7931545770684878 d_ty 0.29473362608918402 d_tz -0.27783535339498661
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 656 d_area 3.6162263638114575e-09 d_tx 0.84140842033152086 d_ty 0.24831312437322497 d_tz -0.26791954536902102
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 661 d_area 4.864802720489818e-09 d_tx 0.87534227282008192 d_ty 0.20758336460322008 d_tz -0.25695782722902566
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 664 d_area 4.3717680903951335e-09 d_tx 0.89563363563689269 d_ty 0.15743088487930845 d_tz -0.26208689940333219
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 666 d_area 5.7658543413174855e-09 d_tx 0.9097967888872095 d_ty 0.10630058790153207 d_tz -0.26602025642706328
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 667 d_area 7.2609688871874799e-09 d_tx 0.9764847032357532 d_ty -0.071588335894437277 d_tz -0.13355687083112358
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 669 d_area 5.2579652860926789e-09 d_tx 0.99298072139488802 d_ty -0.051334701678096346 d_tz -0.065838869496647953
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 672 d_area 1.782253759473649e-09 d_tx 0.99934897159682234 d_ty -0.016966496108296213 d_tz -0.019045802030973995
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 675 d_area 3.0739587628641624e-09 d_tx 0.9984576183070667 d_ty 0.027756042877144803 d_tz 0.027741752566280635
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 679 d_area 4.1052368666079466e-09 d_tx 0.95600214329232536 d_ty 0.15973450993962454 d_tz 0.12863487725789452
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 680 d_area 1.0135639993037459e-09 d_tx 0.97974300146409521 d_ty 0.1040363251536942 d_tz 0.094989976285585032
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 686 d_area 4.2512005328560851e-09 d_tx 0.8908659070399304 d_ty 0.24744287715345331 d_tz 0.18972576330027904
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 694 d_area 4.1811109211611629e-09 d_tx 0.77037138691028484 d_ty 0.31143206169859211 d_tz 0.28268247927024653
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 703 d_area 4.7707748579506784e-09 d_tx 0.53863487405235411 d_ty 0.16368105211620435 d_tz 0.47086713591531448
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 713 d_area 3.746593475602536e-09 d_tx 0.76317339728922429 d_ty -0.062406566013424626 d_tz 0.42052964637188212
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 723 d_area 3.2237372956783753e-09 d_tx 0.96878592912320305 d_ty -0.053454870030391392 d_tz -0.16547606934577949
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 733 d_area 4.7922812005502078e-09 d_tx 0.65257908329562531 d_ty -0.35750400394358128 d_tz -0.3145004141570793
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 744 d_area 4.4257389101465726e-09 d_tx 0.45984396694225271 d_ty 0.2913486331225088 d_tz -0.40435561945731729
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 755 d_area 3.7912714037022812e-09 d_tx 0.74160654473938981 d_ty 0.34603760132484651 d_tz -0.26811239435811213
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 765 d_area 4.5929399897970043e-09 d_tx 0.82877820975623406 d_ty 0.30081967136882437 d_tz -0.22674305746160847
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 766 d_area 1.6109658202254558e-09 d_tx 0.83067968264902725 d_ty 0.29230569839223269 d_tz -0.2349645210889672
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 773 d_area 3.2337515554361644e-09 d_tx 0.88710879414248645 d_ty 0.23818926269862498 d_tz -0.20835704123603657
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 779 d_area 3.1120662283045572e-09 d_tx 0.91628115500225171 d_ty 0.19809250985273369 d_tz -0.19357003262446354
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 784 d_area 3.5278260344983816e-09 d_tx 0.92042069981916819 d_ty 0.17215277259820971 d_tz -0.20882973459330439
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 787 d_area 1.3090540457765459e-09 d_tx 0.92884020124946731 d_ty 0.14454769792676378 d_tz -0.21260772520392901
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 789 d_area 7.8947515023629332e-09 d_tx 0.91972982544244875 d_ty 0.11488294647066988 d_tz -0.24622912549954099
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 791 d_area 3.6199723107787769e-09 d_tx 0.98650766467083417 d_ty -0.055230975382980066 d_tz -0.10129082670595511
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 793 d_area 3.6331211336671769e-09 d_tx 0.99816059753523001 d_ty -0.024785046098615524 d_tz -0.034953119363399295
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 796 d_area 1.5920006045293737e-09 d_tx 0.99981759916915491 d_ty 0.0083202590820869102 d_tz 0.010636768756955618
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 799 d_area 3.2176666355998661e-09 d_tx 0.99465058744890289 d_ty 0.048129141347265966 d_tz 0.054812243975503917
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 803 d_area 4.2469173403826953e-09 d_tx 0.96937608337684544 d_ty 0.11923982670955331 d_tz 0.12437023791923973
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 809 d_area 2.6085986437627636e-09 d_tx 0.92329036130832121 d_ty 0.1981144429018917 d_tz 0.17769619449257773
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 816 d_area 2.8712524837675305e-09 d_tx 0.83814092817417407 d_ty 0.25620244909027079 d_tz 0.264614847984113
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 824 d_area 4.6268267478627233e-09 d_tx 0.72907810892483915 d_ty 0.15863588154122907 d_tz 0.41516006202313904
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 833 d_area 1.8087583652863206e-09 d_tx 0.7966135406954753 d_ty 0.11446492727080099 d_tz 0.38589919396259931
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 842 d_area 3.9409565062290155e-09 d_tx 0.99725842091701344 d_ty 0.037497977172087506 d_tz 0.036441247716288337
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 852 d_area 5.0119065318348421e-09 d_tx 0.83938735145946386 d_ty -0.31060263902591584 d_tz -0.19581171134400255
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 853 d_area 1.7492576479722998e-09 d_tx 0.97077468428903901 d_ty -0.1501846472359607 d_tz -0.076261185193817277
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 864 d_area 6.0225762222240833e-09 d_tx 0.727364509687908 d_ty 0.29344513139810563 d_tz -0.33495572034692239
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 876 d_area 4.5023391006285275e-09 d_tx 0.90948470135369441 d_ty 0.23891188414017595 d_tz -0.15888168860465585
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 877 d_area 2.2071364527259092e-09 d_tx 0.92992221996246338 d_ty 0.21291867763535116 d_tz -0.14082798548783079
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 887 d_area 3.9097113328868918e-09 d_tx 0.95969466250160185 d_ty 0.16163648327704461 d_tz -0.11204670696351599
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 895 d_area 5.6021361849445608e-09 d_tx 0.95027672811623465 d_ty 0.17147697633509271 d_tz -0.13359084812932556
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 896 d_area 7.226399117254693e-10 d_tx 0.96607287119284513 d_ty 0.13447707056586117 d_tz -0.12121054504490116
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 902 d_area 2.1781150819553842e-09 d_tx 0.9556758722890577 d_ty 0.14620118881403357 d_tz -0.14486100856672812
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 907 d_area 1.3017911022828339e-09 d_tx 0.96938242843743094 d_ty 0.11382978384672109 d_tz -0.12931711481311664
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 910 d_area 4.5381237081309997e-09 d_tx 0.95900040984099211 d_ty 0.1181096322949327 d_tz -0.15927566833938298
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 913 d_area 4.3058591043937067e-09 d_tx 0.9498986321622459 d_ty 0.094848851112001489 d_tz -0.19645588874165509
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 915 d_area 1.0888275324432874e-08 d_tx 0.9832570058247263 d_ty -0.047935438543791023 d_tz -0.11901621760472342
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 916 d_area 2.2919974108482363e-09 d_tx 0.99558380569880789 d_ty -0.030126935606438063 d_tz -0.059068259497396303
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 918 d_area 3.0702199472329193e-09 d_tx 0.99975913651245485 d_ty -0.0084752560848191695 d_tz -0.012999057912873941
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 921 d_area 1.5085298479356812e-09 d_tx 0.9996508056178709 d_ty 0.010783612878922263 d_tz 0.015257330654151613
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 924 d_area 4.5514538238651537e-09 d_tx 0.99636276354828002 d_ty 0.036827896997872582 d_tz 0.047620509924069444
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 928 d_area 3.8151800903903931e-09 d_tx 0.98513648240164475 d_ty 0.078397814338915781 d_tz 0.092175789390921303
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 934 d_area 3.2299542931714864e-09 d_tx 0.95691879026137738 d_ty 0.1429141436973542 d_tz 0.14422470883080815
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 941 d_area 3.9499377039432988e-09 d_tx 0.92501356582516081 d_ty 0.16327339197583798 d_tz 0.20665253044007476
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 949 d_area 1.2741759205862211e-09 d_tx 0.94075327844360901 d_ty 0.096356726236487014 d_tz 0.21552709539683684
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 957 d_area 3.2916609319991173e-09 d_tx 0.94542463904098839 d_ty 0.10186786411048265 d_tz 0.20302667114636302
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 966 d_area 3.9412395273119493e-09 d_tx 0.98645899094761413 d_ty 0.095105558983423655 d_tz 0.065670257930661613
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 976 d_area 6.1905836876264487e-09 d_tx 0.98308966809492859 d_ty 0.11374324042127026 d_tz 0.060719418956383879
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 977 d_area 1.9543543801286659e-09 d_tx 0.99751752659939696 d_ty 0.045789902792918523 d_tz 0.019483211455852238
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 988 d_area 5.5596303711844961e-09 d_tx 0.99874556965410555 d_ty -0.027537043849825301 d_tz 0.022238884109023822
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1000 d_area 3.6909002353395399e-09 d_tx 0.99965415066358365 d_ty 0.015807480141260866 d_tz -0.0097904696637332138
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1001 d_area 1.5459612324470581e-09 d_tx 0.99904873645486847 d_ty 0.025934643351641452 d_tz -0.016665920827315495
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1011 d_area 3.1721714753327945e-09 d_tx 0.99929753441128066 d_ty 0.021910171984347675 d_tz -0.014896861898812206
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1019 d_area 3.8859483214276457e-09 d_tx 0.99956686850032062 d_ty 0.016531706993541506 d_tz -0.012635132000224357
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1026 d_area 5.0824928345430685e-09 d_tx 0.99643897946039028 d_ty 0.044403533931980647 d_tz -0.039707251814720165
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1032 d_area 4.6721876718764182e-09 d_tx 0.99430870096871427 d_ty 0.050753159044202495 d_tz -0.055524994314777844
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1036 d_area 3.3126588140118027e-09 d_tx 0.98150670247692506 d_ty 0.076251760017636477 d_tz -0.11107188917098104
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1039 d_area 2.4157238022742756e-09 d_tx 0.97872718480717713 d_ty 0.068186818248511111 d_tz -0.12716461907204937
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1041 d_area 1.1237798492751428e-08 d_tx 0.96589455394965296 d_ty 0.05426767358245746 d_tz -0.17319724075169829
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1042 d_area 5.8740480657307317e-09 d_tx 0.99715833114938945 d_ty -0.019080540687441853 d_tz -0.049694333035355844
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1043 d_area 1.8806160158602941e-09 d_tx 0.9994014282896001 d_ty -0.010600425283526249 d_tz -0.02204187846159672
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1045 d_area 4.1731640392526927e-09 d_tx 0.99994207660373435 d_ty 0.0038822904456755829 d_tz 0.0065458278346804729
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1048 d_area 1.55935947600127e-09 d_tx 0.99955884897133873 d_ty 0.011863502366470246 d_tz 0.017326676716323052
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1051 d_area 3.11606983380305e-09 d_tx 0.99929194815642575 d_ty 0.015879617142385848 d_tz 0.02133982815236073
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1055 d_area 3.7036020137455366e-09 d_tx 0.99937996308184052 d_ty 0.015724073497432097 d_tz 0.019297823323550487
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1061 d_area 3.7623309058262612e-09 d_tx 0.99954223041283718 d_ty 0.014596784269233443 d_tz 0.015636301454160232
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1068 d_area 3.6266453318491471e-09 d_tx 0.99940213358232943 d_ty -0.014710522987562581 d_tz -0.019522025685095631
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1076 d_area 2.0401435394659912e-09 d_tx 0.99028294207809986 d_ty -0.03646217730911698 d_tz -0.091066713639623084
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1084 d_area 3.8514040774206384e-09 d_tx 0.99915130377490258 d_ty 0.013406467404516051 d_tz 0.025850388228160461
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1093 d_area 3.8788775513386952e-09 d_tx 0.93641882018470401 d_ty 0.19278181416856266 d_tz 0.14957869338401361
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1103 d_area 5.3519265238516126e-09 d_tx 0.82760147007719298 d_ty 0.33586098378653001 d_tz 0.17284292398940218
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1114 d_area 6.5776693219457418e-09 d_tx 0.53644295917751483 d_ty -0.14829647720771741 d_tz 0.47610930002906571
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1126 d_area 3.8684558249162029e-09 d_tx 0.92712138771116992 d_ty -0.21558704771663864 d_tz 0.14522239846700033
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1127 d_area 2.2370335654851283e-09 d_tx 0.95480501662924933 d_ty -0.17369432501697668 d_tz 0.11394155653564284
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1137 d_area 3.8057327965064369e-09 d_tx 0.96543776164148754 d_ty -0.14968395821880345 d_tz 0.10470149325636857
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1145 d_area 5.1564273816824019e-09 d_tx 0.97446664601293975 d_ty -0.1231676442795385 d_tz 0.098545082190136454
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1152 d_area 3.5043819869340106e-09 d_tx 0.98551808110329686 d_ty -0.085357984984357343 d_tz 0.083583534988553199
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1158 d_area 5.4374942107407183e-09 d_tx 0.99730641512792551 d_ty -0.032507887634543133 d_tz 0.040367892119249883
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1162 d_area 3.1139165909267308e-09 d_tx 0.99899496976650093 d_ty 0.016757587650638426 d_tz -0.026892441388985215
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1165 d_area 1.7821616650923707e-09 d_tx 0.99399796524115247 d_ty 0.035538008825379531 d_tz -0.068578861658154619
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1167 d_area 6.9781661410766176e-09 d_tx 0.99285982380932003 d_ty 0.024863496235387396 d_tz -0.080442529980097627
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1168 d_area 7.7560560727317179e-09 d_tx 0.99995655208984657 d_ty 0.0022389692408531108 d_tz 0.0061994386174142567
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1169 d_area 1.4835312008140918e-09 d_tx 0.99899122086392089 d_ty 0.013331175100845241 d_tz 0.028810436844385306
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1171 d_area 3.9393295955668071e-09 d_tx 0.99758804150893443 d_ty 0.024553997071815829 d_tz 0.042464599080884513
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1174 d_area 2.0283365311121684e-09 d_tx 0.99787975746269542 d_ty 0.026050142568047923 d_tz 0.037909592203979103
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1177 d_area 3.6199871252841642e-09 d_tx 0.99951238169348167 d_ty 0.013475397478255874 d_tz 0.017486972228160872
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1181 d_area 3.5166730966203908e-09 d_tx 0.99773032264557127 d_ty -0.031575432934710254 d_tz -0.035602218387639162
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1187 d_area 3.5031207976251331e-09 d_tx 0.98776398273805299 d_ty -0.077465846057419283 d_tz -0.078008588233094645
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1194 d_area 4.2871802454901833e-09 d_tx 0.94242157546379379 d_ty -0.15527264058631732 d_tz -0.17364779483047543
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1202 d_area 9.7722758268248957e-10 d_tx 0.8782843507903999 d_ty -0.15577613035885746 d_tz -0.28746260131972973
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1210 d_area 3.1959896658437502e-09 d_tx 0.95944102085732197 d_ty -0.033144436326057895 d_tz -0.19446180780351113
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1219 d_area 2.3566487495243593e-09 d_tx 0.92033035007237973 d_ty 0.12786238374833561 d_tz 0.2386914485904848
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1228 d_area 4.4638731696140517e-09 d_tx 0.57271985309224527 d_ty 0.33830217225181375 d_tz 0.36092030036553285
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1238 d_area 5.5340792254863542e-09 d_tx 0.3079069210388643 d_ty -0.045845105456286957 d_tz 0.45934570349675924
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1239 d_area 1.3626578914067598e-09 d_tx 0.26465309356307187 d_ty -0.076929611532559519 d_tz 0.43438884481535356
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1249 d_area 5.2879703901126609e-09 d_tx 0.67382723604661587 d_ty -0.34814422269934553 d_tz 0.31397403110681404
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1259 d_area 4.0753685723664303e-09 d_tx 0.82575599326968907 d_ty -0.29577882710699305 d_tz 0.23748245889768319
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1260 d_area 1.3896245845226532e-09 d_tx 0.88925258079419844 d_ty -0.24217318161619095 d_tz 0.19958601767395276
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1267 d_area 2.7252315351113377e-09 d_tx 0.92136242477083119 d_ty -0.19649881975861683 d_tz 0.18396173739317698
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1273 d_area 3.3483869096010119e-09 d_tx 0.95198964165908584 d_ty -0.1372038579698561 d_tz 0.16395263093673951
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1282 d_area 4.7030666334201322e-09 d_tx 0.99424289588695003 d_ty -0.037728707548177906 d_tz 0.065578231845830809
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1285 d_area 1.1216254273268249e-09 d_tx 0.99950004867847619 d_ty -0.0092714528045907095 d_tz 0.020340637479983832
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1287 d_area 7.3390152911544716e-09 d_tx 0.99972968834523401 d_ty 0.0046666239218475791 d_tz -0.015762652300526026
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1288 d_area 6.8425659121043757e-09 d_tx 0.99592050661887987 d_ty 0.02060090541351187 d_tz 0.060319597238517861
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1289 d_area 2.1945825308690905e-09 d_tx 0.99005579273934263 d_ty 0.039921091879680876 d_tz 0.090838463360784494
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1291 d_area 4.3108724997335498e-09 d_tx 0.98883871477902341 d_ty 0.051438611317051526 d_tz 0.091601201951534775
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1294 d_area 2.9466888180615705e-09 d_tx 0.99142847423722191 d_ty 0.053212518557599231 d_tz 0.075276042521065428
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1297 d_area 3.4489850371041254e-09 d_tx 0.99735810727416685 d_ty 0.033122737703775385 d_tz 0.039214759666040128
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1301 d_area 3.0512662820391296e-09 d_tx 0.99941027921161396 d_ty -0.017102035488539318 d_tz -0.017230594880226047
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1307 d_area 3.8617405777517475e-09 d_tx 0.9852532241686015 d_ty -0.089997293473777246 d_tz -0.080186006268997911
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1314 d_area 2.9586291292055788e-09 d_tx 0.95462021553070964 d_ty -0.15961990611280791 d_tz -0.13357374443860401
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1322 d_area 4.8553372245890342e-09 d_tx 0.81154902663405459 d_ty -0.15663888407405735 d_tz -0.35833150014952236
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1331 d_area 2.9819484042322116e-09 d_tx 0.95637156345354102 d_ty 0.057324570345146472 d_tz -0.19605838341094964
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1340 d_area 3.5598992606304772e-09 d_tx 0.84802368383241 d_ty -0.052137647517367672 d_tz 0.35519175272389625
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1349 d_area 3.3818953341693193e-09 d_tx 0.48487273945623055 d_ty 0.14359485323177615 d_tz 0.47869790485627317
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1358 d_area 4.0859388373815919e-09 d_tx 0.29194010009481952 d_ty -0.013037036375794345 d_tz 0.45446794577173699
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1367 d_area 3.6891618378127637e-09 d_tx 0.43951098800042931 d_ty -0.28262052016313782 d_tz 0.40800333455749266
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1368 d_area 1.5201403329159325e-09 d_tx 0.41081072911951222 d_ty -0.23390017685688222 d_tz 0.43282326788901515
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1376 d_area 5.9619213742033118e-09 d_tx 0.66788514966940227 d_ty -0.32339128828126201 d_tz 0.34239253961537797
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1383 d_area 4.1919001037407415e-09 d_tx 0.80945199670563561 d_ty -0.26652201194971437 d_tz 0.28845359918221092
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1389 d_area 5.0305213471648766e-09 d_tx 0.85914998117810804 d_ty -0.20153218448383683 d_tz 0.28354200682956543
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1394 d_area 2.2315719460688955e-09 d_tx 0.92154636851093419 d_ty -0.13924829251892637 d_tz 0.23001863451861276
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1398 d_area 4.2287226632229671e-09 d_tx 0.95404585336979986 d_ty -0.092143493385561548 d_tz 0.1880211149429637
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1401 d_area 2.1044514129104432e-09 d_tx 0.98227275341474041 d_ty -0.050744528177072666 d_tz 0.121811264560595
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1403 d_area 7.8666697387069779e-09 d_tx 0.99608803772574295 d_ty -0.015236976271455564 d_tz 0.060535059094090085
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1404 d_area 1.0671945447349539e-08 d_tx 0.97691206871890401 d_ty 0.041024261049524099 d_tz 0.14447106532311527
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1405 d_area 2.9187062033936377e-09 d_tx 0.97235559675752659 d_ty 0.065014664027168351 d_tz 0.15051007831130567
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1407 d_area 1.5807131089397993e-09 d_tx 0.96888819741524645 d_ty 0.084736212767844807 d_tz 0.15153756158274231
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1409 d_area 3.0525877039320827e-09 d_tx 0.97653205085812733 d_ty 0.089493729254610563 d_tz 0.12209863606547627
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1412 d_area 3.2411648158334035e-09 d_tx 0.98835122953616095 d_ty 0.072136348356770935 d_tz 0.079431881862829387
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1416 d_area 3.4009923389438069e-09 d_tx 0.99799380352422473 d_ty 0.032997756060673171 d_tz 0.030221180427577612
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1422 d_area 3.9461159234260361e-09 d_tx 0.99965499399220781 d_ty -0.014588010063110435 d_tz -0.011492473234484251
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1429 d_area 4.6507309096087203e-09 d_tx 0.9728278195500184 d_ty -0.12604048419021979 d_tz -0.10270174976440388
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1430 d_area 2.3330373344781002e-09 d_tx 0.99509685405304993 d_ty -0.057480043449360502 d_tz -0.039688155812944687
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1438 d_area 4.5292818188965631e-09 d_tx 0.91469049438662009 d_ty -0.0043105735031158908 d_tz -0.27930845461864345
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1448 d_area 3.0602692765638251e-09 d_tx 0.99722037832054811 d_ty -0.034442291395058493 d_tz 0.039819893850044953
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1457 d_area 1.3653212638270806e-09 d_tx 0.85194662098768914 d_ty -0.17373571367304771 d_tz 0.30975712706871594
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1465 d_area 3.4852086106043216e-09 d_tx 0.61719233718999722 d_ty -0.16533265307524359 d_tz 0.45708978322759214
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1473 d_area 4.5328329779603397e-09 d_tx 0.41818216459951529 d_ty -0.12192360917937932 d_tz 0.47795446993940033
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1481 d_area 3.2916486994453823e-09 d_tx 0.44939994116318405 d_ty -0.19469672916170905 d_tz 0.45774754799937806
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1488 d_area 4.473658426070791e-09 d_tx 0.57833940756968638 d_ty -0.25770780927261955 d_tz 0.4212476970400405
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1494 d_area 4.3783060090964402e-09 d_tx 0.74055623332172194 d_ty -0.23616018265588445 d_tz 0.36927099363205407
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1499 d_area 1.4416099734625036e-09 d_tx 0.82323458286682172 d_ty -0.19748640408712104 d_tz 0.32637175833648674
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1503 d_area 4.0059177311925903e-09 d_tx 0.86594298000656322 d_ty -0.14017570958053746 d_tz 0.31054227703729625
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1507 d_area 9.7621366113568264e-10 d_tx 0.91351305586151565 d_ty -0.097627705575113105 d_tz 0.26358259376561655
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1509 d_area 2.9729048044668169e-09 d_tx 0.94824518683872017 d_ty -0.073260770206933945 d_tz 0.20906724283016623
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1511 d_area 1.3343097744568603e-08 d_tx 0.96802962103034873 d_ty -0.032492482303642663 d_tz 0.17289451244020318
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1512 d_area 7.0392563028737098e-09 d_tx 0.94160089166026784 d_ty 0.081343820204946848 d_tz 0.21993598022906963
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1513 d_area 2.0852103218756505e-09 d_tx 0.94203124009653116 d_ty 0.11559324393925942 d_tz 0.20309255213897343
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1515 d_area 3.7126405026150193e-09 d_tx 0.95312555601421767 d_ty 0.12766999410779983 d_tz 0.16845653175617883
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1518 d_area 4.0508609398215257e-09 d_tx 0.96128218540011368 d_ty 0.13478412579693433 d_tz 0.13802892764073532
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1522 d_area 3.7240631327576785e-09 d_tx 0.97223220642892305 d_ty 0.12576433506622886 d_tz 0.10573587487991175
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1528 d_area 3.6802201249828256e-09 d_tx 0.9828583515001329 d_ty 0.10442019319829109 d_tz 0.077098869245960253
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1535 d_area 3.0016390042620143e-09 d_tx 0.98030123410951098 d_ty 0.11211119174186329 d_tz 0.082108496509800427
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1536 d_area 2.4744105781743884e-09 d_tx 0.98609618931256526 d_ty 0.0981394898023739 d_tz 0.063868108451186123
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1544 d_area 4.6972994723531955e-09 d_tx 0.93743655181411378 d_ty 0.033113732280537787 d_tz 0.23990152953124544
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1554 d_area 5.3049108576379218e-09 d_tx 0.93378524101174898 d_ty -0.19084198541443498 d_tz 0.15940420723260548
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1563 d_area 4.1290071099927569e-09 d_tx 0.86787596731742644 d_ty -0.23032563941776607 d_tz 0.24822846834532289
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1571 d_area 2.5569156471185868e-09 d_tx 0.72848851506800738 d_ty -0.24916978589234204 d_tz 0.3683848752057845
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1578 d_area 4.4129358750813518e-09 d_tx 0.60193593780806121 d_ty -0.2003017811863039 d_tz 0.4466410874928381
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1585 d_area 3.1539172437260329e-09 d_tx 0.57163019071152144 d_ty -0.18190315914835736 d_tz 0.46019599788620336
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1591 d_area 4.2315643529201489e-09 d_tx 0.61698675527668101 d_ty -0.18148055941009311 d_tz 0.45097550448559137
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1596 d_area 1.2769649942186941e-09 d_tx 0.72219740924251263 d_ty -0.1775017814351344 d_tz 0.41124375850980299
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1600 d_area 5.2532466515246279e-09 d_tx 0.81273545825766935 d_ty -0.16358344474970218 d_tz 0.35417084825291129
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1604 d_area 1.3700145552622241e-09 d_tx 0.85460366766617557 d_ty -0.11831851827228798 d_tz 0.33204964555250882
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1606 d_area 2.3677743245229001e-09 d_tx 0.87460401322065773 d_ty -0.10149399850869614 d_tz 0.31523134607093578
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1608 d_area 5.5710554139811028e-09 d_tx 0.91379491554298697 d_ty -0.072684971158036987 d_tz 0.27109161336811516
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1611 d_area 4.182334727113048e-09 d_tx 0.90443710803580757 d_ty 0.13286023764026561 d_tz 0.26225709313153894
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1613 d_area 4.2981656882934378e-09 d_tx 0.90309738026212305 d_ty 0.17662938456076144 d_tz 0.23730689525485771
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1616 d_area 1.5316092944369838e-09 d_tx 0.89451431293394523 d_ty 0.20672758315284509 d_tz 0.2272051127374573
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1619 d_area 3.8756702606649441e-09 d_tx 0.89603084292385526 d_ty 0.23546457996606962 d_tz 0.19420608392741728
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1620 d_area 2.1301651593150633e-09 d_tx 0.90736421010559298 d_ty 0.20978987641879898 d_tz 0.20010649184179741
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1625 d_area 4.0247110153964122e-09 d_tx 0.88989788083290577 d_ty 0.2532895273081946 d_tz 0.18391318027265086
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1632 d_area 4.0489356655084418e-09 d_tx 0.84132943403364435 d_ty 0.29459399855424628 d_tz 0.21612170987222162
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1640 d_area 6.5066736496433521e-09 d_tx 0.53463026068013608 d_ty 0.062971619481724139 d_tz 0.49480836713325166
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1649 d_area 4.5822300148666936e-09 d_tx 0.74710642833832475 d_ty -0.33235814840460415 d_tz 0.2801365278983437
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1657 d_area 4.908608771805479e-09 d_tx 0.75307168920439238 d_ty -0.30133191644030144 d_tz 0.30847008972937817
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1664 d_area 2.653037310082462e-09 d_tx 0.7114758138222822 d_ty -0.25899679138202392 d_tz 0.37175077971945092
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1670 d_area 3.8737748620268039e-09 d_tx 0.66267068172492227 d_ty -0.21116835344056178 d_tz 0.42302030189147077
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1676 d_area 3.8698936558158813e-09 d_tx 0.67129319602241766 d_ty -0.16459598931211816 d_tz 0.43996227258571907
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1681 d_area 3.9661665772703001e-09 d_tx 0.66990980358475616 d_ty -0.12800782701095531 d_tz 0.45248718751995931
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1685 d_area 3.4544612065779868e-09 d_tx 0.72982174071243144 d_ty -0.1381604826063946 d_tz 0.42201143176681372
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1689 d_area 1.9965385464548757e-09 d_tx 0.79655459593390054 d_ty -0.13186782404024769 d_tz 0.38035016578591269
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1692 d_area 3.7123747331558556e-09 d_tx 0.8398989062263067 d_ty -0.12133989320472209 d_tz 0.34604243072667695
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1694 d_area 4.4396155757499789e-09 d_tx 0.85399933246695059 d_ty -0.087510997980035296 d_tz 0.34209106659702709
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1696 d_area 4.80442828273789e-09 d_tx 0.9092456188567154 d_ty -0.047142027059892552 d_tz 0.28336487561317192
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1697 d_area 9.9020804322057816e-09 d_tx 0.90574405189830887 d_ty 0.075733057205263604 d_tz 0.28219898723327608
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1698 d_area 1.3317240925798502e-09 d_tx 0.87097709900615694 d_ty 0.15479918748330984 d_tz 0.29734357831889213
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1699 d_area 3.2668597176244262e-09 d_tx 0.85320831490299698 d_ty 0.19137040854056411 d_tz 0.29769321963794021
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1701 d_area 4.0785271314061307e-09 d_tx 0.81440525912955164 d_ty 0.25047984410566027 d_tz 0.29733681361123721
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1704 d_area 4.9596890694492665e-09 d_tx 0.77461478394322092 d_ty 0.29986768907287498 d_tz 0.29097437943900079
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1709 d_area 5.059378572737132e-09 d_tx 0.71908757068831453 d_ty 0.34308880509252399 d_tz 0.29032862103154211
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1715 d_area 5.092716409231096e-09 d_tx 0.59155740673469159 d_ty 0.36049081600560601 d_tz 0.33416105824531755
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1722 d_area 6.2189136672543654e-09 d_tx 0.33217773936529782 d_ty 0.00037441526027155237 d_tz 0.47099421296728383
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1723 d_area 1.2648777186353162e-09 d_tx 0.27812918931289254 d_ty 0.030756763943321077 d_tz 0.44702054185102114
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1730 d_area 4.4163862859840213e-09 d_tx 0.53054714299773176 d_ty -0.33041926951231831 d_tz 0.37401868721979925
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1737 d_area 4.3029469439173846e-09 d_tx 0.64626101516626766 d_ty -0.30942538693487059 d_tz 0.36450465753229883
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1743 d_area 1.3556722060107375e-09 d_tx 0.66822532685729863 d_ty -0.24858084471666214 d_tz 0.39988473719774026
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1748 d_area 4.648193811127635e-09 d_tx 0.68240901588458636 d_ty -0.18900802982681544 d_tz 0.42544437425473419
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1753 d_area 1.0052904544168685e-09 d_tx 0.71387305249168098 d_ty -0.12784741133997263 d_tz 0.43348974247559591
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1757 d_area 2.0488510600701389e-09 d_tx 0.72707680187187784 d_ty -0.12085414406965331 d_tz 0.42875447742598727
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1760 d_area 3.5625915487949797e-09 d_tx 0.72059461961732352 d_ty -0.099988792547074115 d_tz 0.43742457082434971
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1763 d_area 4.4873776404846928e-09 d_tx 0.7664788740554398 d_ty -0.11264374929263123 d_tz 0.40779945491312752
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1766 d_area 1.1707051682197259e-09 d_tx 0.80021750035785155 d_ty -0.11181050134824687 d_tz 0.38388522277776865
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1767 d_area 1.7461862109115394e-09 d_tx 0.83678650105452512 d_ty -0.085622433150157676 d_tz 0.35950473105217562
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1768 d_area 1.2439184201530824e-08 d_tx 0.85708433566600872 d_ty -0.038725905202648431 d_tz 0.34783772292291804
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1769 d_area 8.9241043814786531e-09 d_tx 0.86122547020086604 d_ty 0.071394707693901632 d_tz 0.33825871073996838
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1770 d_area 3.9780993923886938e-09 d_tx 0.8249519391745801 d_ty 0.15420522228433073 d_tz 0.34731395976395785
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1771 d_area 4.2591470319330073e-09 d_tx 0.78473239061993116 d_ty 0.21191040730584554 d_tz 0.35216678578101257
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1773 d_area 2.1135238038827382e-09 d_tx 0.72409833415469427 d_ty 0.25044757349570373 d_tz 0.3702106826648916
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1775 d_area 4.5151616085001763e-09 d_tx 0.67246833559529862 d_ty 0.29453003498530783 d_tz 0.36538573002861069
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1779 d_area 3.2202808666751578e-09 d_tx 0.5770037943216787 d_ty 0.33702825383146817 d_tz 0.36122343747239888
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1784 d_area 5.2933339133877821e-09 d_tx 0.42064323007657056 d_ty 0.29553808104726309 d_tz 0.39542350172722568
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1785 d_area 1.4334450789482877e-09 d_tx 0.42104311510310088 d_ty 0.27596796225048065 d_tz 0.40939894252268805
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1790 d_area 3.557724836955922e-09 d_tx 0.26466123495754978 d_ty -0.023209140473760308 d_tz 0.44054171365123168
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1796 d_area 4.5713381566363115e-09 d_tx 0.40078775820105317 d_ty -0.23992193652222302 d_tz 0.42731065450401956
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1802 d_area 3.1925479646080678e-09 d_tx 0.54124287594457465 d_ty -0.27374102837415426 d_tz 0.41637107796829614
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1807 d_area 4.6183337801510858e-09 d_tx 0.62223331151889627 d_ty -0.23400556241576609 d_tz 0.42461796277784269
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1812 d_area 2.3227317250913328e-09 d_tx 0.65981683788467038 d_ty -0.14992030157117811 d_tz 0.44942461159281433
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1816 d_area 4.0261988232134264e-09 d_tx 0.70500424240379367 d_ty -0.11323405147201446 d_tz 0.44175933514039045
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1820 d_area 4.1229347305396461e-09 d_tx 0.73569600492700937 d_ty -0.11001562427680321 d_tz 0.42701751214257294
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1823 d_area 1.4364712470778737e-09 d_tx 0.72974101169848682 d_ty -0.093779032295552289 d_tz 0.43407897973233578
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1825 d_area 2.9951347774398392e-09 d_tx 0.73683963149882903 d_ty -0.093630571273568497 d_tz 0.43027933377572769
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1827 d_area 5.2854438235795674e-09 d_tx 0.77689622932670355 d_ty -0.087438159766225793 d_tz 0.40704182389694255
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1829 d_area 1.2343303881517656e-08 d_tx 0.8090413964757196 d_ty -0.062062596645620964 d_tz 0.38812581640743771
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1830 d_area 9.5899101889960243e-09 d_tx 0.78604407628777095 d_ty 0.13793739896026624 d_tz 0.3862020978564879
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1831 d_area 1.5193030408791751e-09 d_tx 0.69454631499098551 d_ty 0.21109124563344522 d_tz 0.40938028450372244
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1832 d_area 4.3060547872959516e-09 d_tx 0.59795705272509547 d_ty 0.24860838207349958 d_tz 0.42260890689171438
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1835 d_area 5.4228739199826457e-09 d_tx 0.51810716908644094 d_ty 0.28764490942979648 d_tz 0.40857378343060552
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1839 d_area 2.2874898455082363e-09 d_tx 0.37776432635616286 d_ty 0.1963232391406089 d_tz 0.44330082998137593
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1843 d_area 5.3413485210642733e-09 d_tx 0.29310674564722394 d_ty 0.044851225499958403 d_tz 0.45297190737888948
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1844 d_area 2.1146262069404004e-09 d_tx 0.33889119043097582 d_ty 0.029510931167968154 d_tz 0.47241195626365268
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1848 d_area 4.4036819046077778e-09 d_tx 0.37013015040039576 d_ty -0.13846784210458388 d_tz 0.46255862208792115
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1849 d_area 1.7726213721466713e-09 d_tx 0.37367874613546825 d_ty -0.064780793766785291 d_tz 0.47942297564993452
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1853 d_area 3.195237582306662e-09 d_tx 0.4803937219355483 d_ty -0.17816604361357669 d_tz 0.46676809527167179
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1857 d_area 4.3278332783169034e-09 d_tx 0.59090588082135431 d_ty -0.17908639765400239 d_tz 0.45789101651747471
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1861 d_area 1.7449234421339453e-09 d_tx 0.64268210063017506 d_ty -0.094884713847545599 d_tz 0.46972194885679974
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1864 d_area 2.4520937352763794e-09 d_tx 0.67969977113195978 d_ty -0.088347602144195805 d_tz 0.45815138704416486
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1867 d_area 3.9228422751034666e-09 d_tx 0.70988080280382548 d_ty -0.096221466262954233 d_tz 0.44349912969996785
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1869 d_area 4.3932321184447434e-09 d_tx 0.73073631622240787 d_ty -0.099406350709462951 d_tz 0.43229518828543562
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1871 d_area 1.6932457981239623e-09 d_tx 0.7507888914104166 d_ty -0.068498957447251235 d_tz 0.42709814419378356
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1872 d_area 9.218750810523762e-09 d_tx 0.73198132178737874 d_ty 0.13147490318203284 d_tz 0.42296455664163601
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1873 d_area 3.3617413534690433e-09 d_tx 0.60714699124995086 d_ty 0.18396537779830291 d_tz 0.45241160687764248
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1875 d_area 3.9593879209857736e-09 d_tx 0.51102788273023791 d_ty 0.22537205640110375 d_tz 0.44619034278660241
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1878 d_area 3.76639255094622e-09 d_tx 0.43104062646457708 d_ty 0.14112397635007234 d_tz 0.47468792706445184
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1881 d_area 3.5602360764082193e-09 d_tx 0.41523320353603854 d_ty 0.040067634150624462 d_tz 0.49113050700481747
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1884 d_area 3.835457077071916e-09 d_tx 0.43060859518873751 d_ty -0.019424332607809926 d_tz 0.49478028279334302
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1887 d_area 3.9006962920586943e-09 d_tx 0.49812338721381066 d_ty -0.08247206701843772 d_tz 0.49314788500626966
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1890 d_area 3.7695679651929516e-09 d_tx 0.58313707909340784 d_ty -0.10586428573063564 d_tz 0.48154021544057846
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1893 d_area 4.5100984478373358e-09 d_tx 0.64053505159819335 d_ty -0.082868172160303455 d_tz 0.47263385967903687
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1896 d_area 1.8454915783853048e-09 d_tx 0.65917427936971262 d_ty -0.069479055774643625 d_tz 0.46886694231497761
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1898 d_area 1.510241738885946e-09 d_tx 0.68181983538077029 d_ty -0.086134281334793672 d_tz 0.45773620464307624
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1899 d_area 4.3174980081035491e-09 d_tx 0.71031677090803913 d_ty -0.088610666978637606 d_tz 0.44487639358861958
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1900 d_area 1.6226652480684139e-08 d_tx 0.74931575013262708 d_ty -0.050372850015716647 d_tz 0.43046978142152981
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1901 d_area 3.5010753314621407e-09 d_tx 0.67421011572042255 d_ty 0.12086772513386033 d_tz 0.45281544651396627
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1902 d_area 4.3599924037457136e-09 d_tx 0.59550773881538499 d_ty 0.1694822032425313 d_tz 0.46060183956474765
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1904 d_area 3.8014656277868347e-09 d_tx 0.54211973011065662 d_ty 0.11612658900279811 d_tz 0.48450030305664477
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1906 d_area 3.655216242433002e-09 d_tx 0.52817426241996923 d_ty 0.039068274976625635 d_tz 0.49767447275045307
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1908 d_area 3.059433853271525e-09 d_tx 0.53805786266012445 d_ty -0.0033752762146189671 d_tz 0.49853806935901912
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1910 d_area 3.2211715841058813e-09 d_tx 0.55930701921319081 d_ty -0.023907266673839092 d_tz 0.49589426299588518
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1912 d_area 3.900868840391212e-09 d_tx 0.6251956587506724 d_ty -0.035900752399042772 d_tz 0.48273924949932107
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1914 d_area 3.8982928434149271e-09 d_tx 0.66415739864656209 d_ty -0.068463758503453098 d_tz 0.46729547637568092
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1916 d_area 3.0169201394985844e-09 d_tx 0.65483219600860432 d_ty -0.055399100839543906 d_tz 0.47218421268115596
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1918 d_area 1.0008044938272701e-08 d_tx 0.69813994220116049 d_ty -0.061753185076081449 d_tz 0.4548924130357419
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1919 d_area 8.383313134283045e-09 d_tx 0.75990371493488573 d_ty 0.070230806464195508 d_tz 0.42132848561002184
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1920 d_area 6.9476086789976085e-09 d_tx 0.70112232167886412 d_ty 0.10268832894027922 d_tz 0.4460996736402712
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1921 d_area 6.3914265107607349e-09 d_tx 0.67980574898031532 d_ty 0.071206911055842273 d_tz 0.46108509892590677
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1922 d_area 7.6560636896082984e-09 d_tx 0.67500058238126504 d_ty 0.033968674737329459 d_tz 0.46714122629329941
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1923 d_area 8.0333304666939756e-09 d_tx 0.6807220085371074 d_ty 0.0057420494789868015 d_tz 0.46616154334961446
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1924 d_area 8.1357759452279683e-09 d_tx 0.67508985658813936 d_ty 0.021372956532438717 d_tz 0.46785333048831373
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1925 d_area 7.2109867800446176e-09 d_tx 0.68715911538544749 d_ty -0.0028185431134774442 d_tz 0.4636415871585014
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1926 d_area 7.6732850389140586e-09 d_tx 0.6989560123100178 d_ty -0.037067989046540441 d_tz 0.45721162425483186
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+set atom 1927 d_area 1.1053007644846443e-08 d_tx 0.7242834400514544 d_ty -0.047117112760384841 d_tz 0.444383748807054
+Setting atom values ...
+  1 settings made for d_area
+  1 settings made for d_tx
+  1 settings made for d_ty
+  1 settings made for d_tz
+variable env0 atom exp(-((x-(-0.0061489101499319077))^2+(y-(1.9718387291674855e-05))^2+(z-(0.0007817580071923136))^2)/1.5679999999999997e-07)
+variable spatial atom v_env0
+variable amp equal ternary(time<0.00029012500000000002,0.5*(1-cos(4*PI*time/0.0011605000000000001)),ternary(time<0.00087037500000000005,1.0,ternary(time<0.0011605000000000001,0.5*(1+cos(4*PI*(time/0.0011605000000000001-0.75))),0.0)))
+variable load_fx atom d_area*780.23222477803051*v_amp*v_spatial*d_tx
+variable load_fy atom d_area*780.23222477803051*v_amp*v_spatial*d_ty
+variable load_fz atom d_area*780.23222477803051*v_amp*v_spatial*d_tz
+fix stream surface addforce v_load_fx v_load_fy v_load_fz
+fix wallprops all property/atom d_wclear d_wpen d_wtri
+fix nativewall clot external pf/callback 1 1
+fix flowprops all property/atom d_dragx d_dragy d_dragz d_numx d_numy d_numz
+fix earlyflow clot external pf/callback 1 1
+fix fixed anchors setforce 0 0 0
+fix integrate clot nve
+timestep 4.9999999999999998e-07
+variable force_mag atom sqrt(v_load_fx^2+v_load_fy^2+v_load_fz^2)
+variable local_tau atom v_force_mag/(d_area+1e-100)
+compute force_budget surface reduce sum v_force_mag v_load_fx v_load_fy v_load_fz
+compute peak_tau surface reduce max v_local_tau
+variable actual_budget equal c_force_budget[1]/1.8223166726848543e-06
+fix force_history all ave/time 1 1 1 v_actual_budget c_peak_tau c_force_budget[1] c_force_budget[2] c_force_budget[3] c_force_budget[4] file force_history.dat
+thermo 100
+thermo_style custom step time atoms bonds v_amp v_actual_budget ke
+thermo_modify lost error lost/bond error flush yes format float %.17g
+timer full
+New timer settings: style=full  mode=nosync  timeout=off
+dump trajectory all custom 20 trajectory.lammpstrj id type x y z vx vy vz fx fy fz d_damage v_load_fx v_load_fy v_load_fz d_wclear d_wpen d_wtri f_nativewall[1] f_nativewall[2] f_nativewall[3] d_dragx d_dragy d_dragz d_numx d_numy d_numz
+dump_modify trajectory sort id format float %.17g
+dump broken all local 20 broken_bonds.local index f_breaks[1] f_breaks[2] f_breaks[3] f_breaks[4] f_breaks[5] f_breaks[6] f_breaks[7] f_breaks[8] f_breaks[9]
+dump_modify broken format float %.17g
+compute topology all property/local batom1 batom2 btype
+dump topology all local 4660 surviving_bonds.local index c_topology[1] c_topology[2] c_topology[3]
+fix audit_readonly all audit/readonly/finalv3
+run 4660
+
+CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE
+
+Your simulation uses code contributions which should be cited:
+
+- BPM bond style: https://doi.org/10.1039/D3SM01373A
+
+@Article{Clemmer2024,
+ author =  {Clemmer, Joel T. and Monti, Joseph M. and Lechman, Jeremy B.},
+ title =   {A soft departure from jamming: the compaction of deformable
+            granular matter under high pressures},
+ journal = {Soft Matter},
+ year =    2024,
+ volume =  20,
+ number =  8,
+ pages =   {1702--1718}
+}
+
+- BPM peridynamics (bond_style bpm/peri), derived from the PERI package: https://doi.org/10.1016/j.cpc.2008.06.011
+
+@Article{Parks08,
+ author = {M. L. Parks and R. B. Lehoucq and S. J. Plimpton and S. A. Silling},
+ title = {Implementing peridynamics within a molecular dynamics code},
+ journal = {Comput.\ Phys.\ Commun.},
+ year =    2008,
+ volume =  179,
+ number =  11,
+ pages =   {777--783}
+}
+
+CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE
+
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+Neighbor list info ...
+  update: every = 1 steps, delay = 0 steps, check = yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 0.0002505
+  ghost atom cutoff = 0.0004515
+  binsize = 0.00012525, bins = 20 20 16
+  1 neighbor lists, perpetual/occasional/extra = 1 0 0
+  (1) pair bpm/peri, perpetual
+      attributes: half, newton on
+      pair build: half/bin/newton
+      stencil: half/bin/3d
+      bin: standard
+Per MPI rank memory allocation (min/avg/max) = 104.2 | 104.7 | 105.2 Mbytes
+   Step          Time         Atoms       Bonds        v_amp      v_actual_budget     KinEng    
+         0  0       3488      157637  0 0 0
+       100  4.9999999999999996e-05       3488      157637  0.071511265944255498 14.30109803209419 2.9381654273586861e-12
+       200  9.9999999999999991e-05       3488      157637  0.26558961914922186 53.055767037203907 1.3069995058049727e-10
+       300  0.00014999999999999999       3488      157626  0.52671990469464491 104.80539374482071 9.1375435828329992e-10
+       400  0.00019999999999999998       3488      157159  0.78020709339757255 153.63148512163363 3.3478758911040788e-09
+       500  0.00025000000000000001       3488      155322  0.95354242619881746 181.67743758022843 1.019206270667339e-08
+       600  0.00029999999999999997       3488      152967  1 175.45366754386609 2.2315404074819024e-08
+       700  0.00035       3488      151021  1 150.97422920082519 3.4665729607233225e-08
+       800  0.00039999999999999996       3488      149743  1 123.89290713159691 4.1390244212733166e-08
+       900  0.00044999999999999999       3488      148877  1 100.78446962773828 4.3650045661287094e-08
+      1000  0.00050000000000000001       3488      148331  1 83.951222299584131 3.6215913239795392e-08
+      1100  0.00054999999999999992       3488      147953  1 73.24332511112982 2.6633011080920291e-08
+      1200  0.00059999999999999995       3488      147647  1 65.993642989537989 1.9655713124568244e-08
+      1300  0.00064999999999999997       3488      147229  1 61.092228588623257 1.2918660530885964e-08
+      1400  0.00069999999999999999       3488      146898  1 58.039383841855098 8.3980887892882993e-09
+      1500  0.00075000000000000002       3488      146755  1 56.020199488101902 5.9926648970470423e-09
+      1600  0.00079999999999999993       3488      146682  1 54.46996076766834 4.8517263526210217e-09
+      1700  0.00084999999999999995       3488      146623  1 53.145041215451748 4.2524080247153353e-09
+      1800  0.00089999999999999998       3488      146577  0.97449304435541717 50.720058377062642 3.8067423408401356e-09
+      1900  0.00095       3488      146539  0.82537968620128432 42.318740717043504 3.520606688375705e-09
+      2000  0.001       3488      146504  0.58319307495595785 29.639555520173293 3.1069316347732016e-09
+      2100  0.0010499999999999999       3488      146481  0.31720949527904774 16.059498022042572 2.6846428380998733e-09
+      2200  0.0010999999999999998       3488      146467  0.10351223718287694 5.238877146768659 2.2534716128292241e-09
+      2300  0.00115       3488      146443  0.0032283464885380919 0.16338255199072224 1.8004682094914181e-09
+      2400  0.0011999999999999999       3488      146423  0 0 1.3742528888599546e-09
+      2500  0.00125       3488      146409  0 0 1.0070536394309405e-09
+      2600  0.0012999999999999999       3488      146396  0 0 8.0941062211779616e-10
+      2700  0.0013499999999999999       3488      146389  0 0 8.0633564012724152e-10
+      2800  0.0014       3488      146385  0 0 9.4310797441715018e-10
+      2900  0.0014499999999999999       3488      146383  0 0 1.1205169504393959e-09
+      3000  0.0015       3488      146382  0 0 1.3120066256688192e-09
+      3100  0.0015499999999999999       3488      146376  0 0 1.4665790454506479e-09
+      3200  0.0015999999999999999       3488      146373  0 0 1.5902407081052067e-09
+      3300  0.00165       3488      146367  0 0 1.6972285835328611e-09
+      3400  0.0016999999999999999       3488      146366  0 0 1.6691582390017374e-09
+      3500  0.0017499999999999998       3488      146364  0 0 1.5147773060140038e-09
+      3600  0.0018       3488      146361  0 0 1.2519927464242061e-09
+      3700  0.0018499999999999999       3488      146357  0 0 1.0020784802487224e-09
+      3800  0.0019       3488      146350  0 0 8.4475714215967114e-10
+      3900  0.0019499999999999999       3488      146343  0 0 7.1679791810438047e-10
+      4000  0.002       3488      146337  0 0 6.4089078571818202e-10
+      4100  0.0020499999999999997       3488      146328  0 0 6.1373607624591452e-10
+      4200  0.0020999999999999999       3488      146303  0 0 6.5137399318988109e-10
+      4300  0.00215       3488      146269  0 0 7.8398667285743892e-10
+      4400  0.0021999999999999997       3488      146225  0 0 9.8667118983135151e-10
+      4500  0.0022499999999999998       3488      146202  0 0 1.1818842323233577e-09
+      4600  0.0023       3488      146193  0 0 1.2462843860219698e-09
+      4660  0.00233       3488      146186  0 0 1.205085563717684e-09
+Loop time of 187.013 on 2 procs for 4660 steps with 3488 atoms
+
+99.7% CPU use with 2 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg|  %CPU | %total
+-----------------------------------------------------------------------
+Pair    | 2.3763     | 2.904      | 3.4317     |  31.0 |  98.9 |  1.55
+Bond    | 11.442     | 12.017     | 12.592     |  16.6 |  99.7 |  6.43
+Neigh   | 0.60663    | 0.60698    | 0.60733    |   0.0 |  99.8 |  0.32
+Comm    | 0.14592    | 0.15036    | 0.1548     |   1.1 | 100.0 |  0.08
+Output  | 1.8666     | 1.8668     | 1.867      |   0.0 |  99.1 |  1.00
+Modify  | 169.36     | 169.42     | 169.49     |   0.5 |  99.7 | 90.60
+Other   |            | 0.04303    |            |       |       |  0.02
+
+Nlocal:           1744 ave        1926 max        1562 min
+Histogram: 1 0 0 0 0 0 0 0 0 1
+Nghost:         1580.5 ave        1722 max        1439 min
+Histogram: 1 0 0 0 0 0 0 0 0 1
+Neighs:         258052 ave      305545 max      210560 min
+Histogram: 1 0 0 0 0 0 0 0 0 1
+
+Total # of neighbors = 516105
+Ave neighs/atom = 147.96588
+Ave special neighs/atom = 83.822248
+Neighbor list builds = 51
+Dangerous builds = 0
+write_restart final.restart
+System init for write_restart ...
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+
+Total wall time: 0:03:07

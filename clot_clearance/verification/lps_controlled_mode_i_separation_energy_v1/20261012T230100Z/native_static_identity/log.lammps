@@ -1,0 +1,150 @@
+LAMMPS (30 Sep 2026)
+  using 1 OpenMP thread(s) per MPI task
+units si
+ dimension 3
+ boundary m p m
+ atom_style bond
+ atom_modify map array sort 0 0
+ newton on off
+ special_bonds lj 0 1 1 coul 1 1 1
+ lattice sc 5.0000000000000002e-05
+Lattice spacing in x,y,z = 5e-05 5e-05 5e-05
+ read_data /workspace/y_clot/project/verification/lps_controlled_mode_i_separation_energy_v1/20261012T230100Z/native_static_identity/body.data extra/bond/per/atom 320 extra/special/per/atom 360
+Reading data file ...
+  orthogonal box = (-0.003077 -0.0002 -0.001077) to (0.003077 0.0002 0.001077)
+  1 by 1 by 1 MPI processor grid
+  reading atoms ...
+  16000 atoms
+  scanning bonds ...
+  442 = max bonds/atom
+  orthogonal box = (-0.003077 -0.0002 -0.001077) to (0.003077 0.0002 0.001077)
+  1 by 1 by 1 MPI processor grid
+  reading bonds ...
+  909392 bonds
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    0        1        1       
+  special bond factors coul:  1        1        1       
+   122 = max # of 1-2 neighbors
+   482 = max # of special neighbors
+  special bonds CPU = 0.030 seconds
+  read_data CPU = 1.034 seconds
+ neighbor 0.0001 bin
+ neigh_modify every 1 delay 0 check no
+ comm_modify cutoff 0.00045149999999999997
+ fix props all property/atom d_vfrac d_theta d_damage ghost yes
+ set group all d_vfrac 1.2500000000000002e-13
+Setting atom values ...
+  16000 settings made for d_vfrac
+ pair_style bpm/peri contact_distance_factor 1.0
+ pair_coeff * * 3.7226771877469815e+20 0.0001505
+ bond_style bpm/peri break no
+ bond_coeff 1 lps 33333.333333333336 940.0 0.0001505 .15 0
+ bond_coeff 2 lps 33333.333333333336 940.0 0.0001505 .140624859375 0
+ bond_coeff 3 lps 33333.333333333336 940.0 0.0001505 1 0
+ velocity all set 0 0 0 units box
+ # Official BPM peri accumulates N/m^3: convert to nodal N BEFORE external forces.
+variable si_fx atom fx*d_vfrac
+variable si_fy atom fy*d_vfrac
+variable si_fz atom fz*d_vfrac
+fix si_force all setforce v_si_fx v_si_fy v_si_fz
+
+ timestep 5e-7
+ compute contactPE all pe pair
+ compute bondPE all pe bond
+ thermo 1
+ thermo_style custom step atoms bonds ke c_contactPE c_bondPE
+ thermo_modify lost error lost/bond error
+ run 0
+
+CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE
+
+Your simulation uses code contributions which should be cited:
+
+- BPM bond style: https://doi.org/10.1039/D3SM01373A
+
+@Article{Clemmer2024,
+ author =  {Clemmer, Joel T. and Monti, Joseph M. and Lechman, Jeremy B.},
+ title =   {A soft departure from jamming: the compaction of deformable
+            granular matter under high pressures},
+ journal = {Soft Matter},
+ year =    2024,
+ volume =  20,
+ number =  8,
+ pages =   {1702--1718}
+}
+
+- BPM peridynamics (bond_style bpm/peri), derived from the PERI package: https://doi.org/10.1016/j.cpc.2008.06.011
+
+@Article{Parks08,
+ author = {M. L. Parks and R. B. Lehoucq and S. J. Plimpton and S. A. Silling},
+ title = {Implementing peridynamics within a molecular dynamics code},
+ journal = {Comput.\ Phys.\ Commun.},
+ year =    2008,
+ volume =  179,
+ number =  11,
+ pages =   {777--783}
+}
+
+CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE
+
+WARNING: No fixes with time integration, atoms won't move
+For more information see https://docs.lammps.org/err0028 (src/verlet.cpp:60)
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+Neighbor list info ...
+  update: every = 1 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 0.0002505
+  ghost atom cutoff = 0.0004515
+  binsize = 0.00012525, bins = 50 4 18
+  1 neighbor lists, perpetual/occasional/extra = 1 0 0
+  (1) pair bpm/peri, perpetual
+      attributes: half, newton on
+      pair build: half/bin/newton
+      stencil: half/bin/3d
+      bin: standard
+WARNING: Inconsistent image flags
+For more information see https://docs.lammps.org/err0027 (src/domain.cpp:1045)
+Per MPI rank memory allocation (min/avg/max) = 619.4 | 619.4 | 619.4 Mbytes
+   Step        Atoms       Bonds        KinEng      c_contactPE      c_bondPE   
+         0       16000      909392   0              0              0            
+Loop time of 1.15e-06 on 1 procs for 0 steps with 16000 atoms
+
+173.9% CPU use with 1 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0          | 0          | 0          |   0.0 |  0.00
+Bond    | 0          | 0          | 0          |   0.0 |  0.00
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0          | 0          | 0          |   0.0 |  0.00
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 1.15e-06   |            |       |100.00
+
+Nlocal:          16000 ave       16000 max       16000 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:          36000 ave       36000 max       36000 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:    3.66234e+06 ave 3.66234e+06 max 3.66234e+06 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 3662336
+Ave neighs/atom = 228.896
+Ave special neighs/atom = 113.674
+Neighbor list builds = 0
+Dangerous builds not checked
+ 
+run 1 pre no post no
+   Step        Atoms       Bonds        KinEng      c_contactPE      c_bondPE   
+         0       16000      909392   0              0              0            
+         1       16000      909392   0              0              0            
+Loop time of 0.262355 on 1 procs for 1 steps with 16000 atoms
+
+run 1 pre no post no
+   Step        Atoms       Bonds        KinEng      c_contactPE      c_bondPE   
+         1       16000      909392   0              0              0            
+         2       16000      909392   0              0              11175.414    
+Loop time of 0.269377 on 1 procs for 1 steps with 16000 atoms
+
+Total wall time: 0:00:04

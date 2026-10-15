@@ -1,0 +1,20 @@
+--- parent/journal.py
++++ resume/journal.py
+@@ -1,12 +1,12 @@
+ from common import *
+ import gzip,csv,time,resource
+ class Journal:
+- def __init__(self,columns,ref):
++ def __init__(self,columns,ref,resume=False):
+   self.folder=O/'full';self.folder.mkdir(exist_ok=True);(self.folder/'checkpoints').mkdir(exist_ok=True);(self.folder/'keyframes').mkdir(exist_ok=True);(self.folder/'rejected').mkdir(exist_ok=True)
+-  self.n=len(ref['X']);self.ref=ref;self.columns=columns;self.last=None;self.last_row=None;self.latest=None;self.attempt=None;self.records=0;self.checkpoints=0;self.checkpoint_wall_s=0.;self.keys=[];self.start=time.perf_counter()
+-  self.events=(self.folder/'events.jsonl').open('w');self.trials=(self.folder/'trials.jsonl').open('w');self.table=(O/'NATIVE_DYNAMIC_HISTORY.csv').open('w',newline='');self.writer=csv.DictWriter(self.table,fieldnames=columns);self.writer.writeheader()
+-  self.nodes=(self.folder/'native_frames.bin').open('wb');self.frame_index=(self.folder/'native_frames.csv').open('w',newline='');self.fw=csv.writer(self.frame_index);self.fw.writerow(['record','step','time_s']);self.frames=0
+-  self.damage=gzip.open(self.folder/'damage_updates.bin.gz','wb',compresslevel=1);self.contacts=gzip.open(self.folder/'contact_pairs.bin.gz','wb',compresslevel=1)
++  self.n=len(ref['X']);self.ref=ref;self.columns=columns;self.last=None;self.last_row=None;self.latest=None;self.attempt=None;self.records=0;self.checkpoints=0;self.checkpoint_wall_s=0.;self.keys=json.loads((self.folder/'KEYFRAME_INDEX.json').read_text()) if resume else [];self.start=time.perf_counter()
++  self.events=(self.folder/'events.jsonl').open('a' if resume else 'w');self.trials=(self.folder/'trials.jsonl').open('a' if resume else 'w');self.table=(O/'NATIVE_DYNAMIC_HISTORY.csv').open('a' if resume else 'w',newline='');self.writer=csv.DictWriter(self.table,fieldnames=columns);self.writer.writeheader() if not resume else None
++  self.nodes=(self.folder/'native_frames.bin').open('ab' if resume else 'wb');self.frames=sum(1 for _ in (self.folder/'native_frames.csv').open())-1 if resume else 0;self.frame_index=(self.folder/'native_frames.csv').open('a' if resume else 'w',newline='');self.fw=csv.writer(self.frame_index);self.fw.writerow(['record','step','time_s']) if not resume else None
++  self.damage=gzip.open(self.folder/'damage_updates.bin.gz','ab' if resume else 'wb',compresslevel=1);self.contacts=gzip.open(self.folder/'contact_pairs.bin.gz','ab' if resume else 'wb',compresslevel=1)
+   self.damage_dtype=np.dtype([('step','<i4'),('bond_id','<i4'),('kappa','<f8'),('d','<f8')]);self.contact_dtype=np.dtype([('step','<i4'),('i','<i4'),('j','<i4'),('distance_m','<f8')])
+   dump(self.folder/'STREAM_LAYOUT.json',dict(nodes_dtype='<f8',nodes_per_record_shape=[4,self.n,3],node_fields=['x','velocity','force','material_force'],record_index='native_frames.csv',sampling='Every 20 accepted steps plus final; NOT every-step nodal trajectory. Every accepted scalar/event is saved; full native kappa/d at selected keys and rolling checkpoints.',damage_dtype=self.damage_dtype.descr,damage_scope='Every accepted change in d with actual kappa; gzip binary; initial precut excluded. Subthreshold kappa only at full saved states.',contact_dtype=self.contact_dtype.descr))
+  def line(self,f,z):f.write(json.dumps(z,default=cv,allow_nan=False,separators=(',',':'))+'\n');f.flush()

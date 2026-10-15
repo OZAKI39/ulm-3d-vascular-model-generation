@@ -1,0 +1,47 @@
+--- before/bond_bpm_peri_variational.cpp
++++ after/bond_bpm_peri_variational.cpp
+@@ -122,7 +122,6 @@
+  default:return -1;}
+  std::copy(p->begin(),p->end(),out);return p->size();
+ }
+-int BondBPMPeriVariational::native_sort(){if(update->whichflag)return -1;atom->sort();return 0;}
+ double BondBPMPeriVariational::equilibrium_distance(int){return delta;}
+ double BondBPMPeriVariational::single(int,double,int,int,double &ff){ff=0;error->all(FLERR,"variational is state-coupled; single-bond energy query unsupported");return 0;}
+ std::string BondBPMPeriVariational::serialize()const{
+@@ -144,5 +143,4 @@
+ extern "C" {
+ __attribute__((visibility("default"))) int lpsvar_action(void *p,int op,long long tok,const double *k,const double *d){auto *b=dynamic_cast<BondBPMPeriVariational*>(static_cast<LAMMPS*>(p)->force->bond);return b?b->action(op,tok,k,d):-99;}
+ __attribute__((visibility("default"))) int lpsvar_output(void *p,int field,double *out){auto *b=dynamic_cast<BondBPMPeriVariational*>(static_cast<LAMMPS*>(p)->force->bond);return b?b->output(field,out):-99;}
+-__attribute__((visibility("default"))) int lpsvar_sort(void *p){auto *b=dynamic_cast<BondBPMPeriVariational*>(static_cast<LAMMPS*>(p)->force->bond);return b?b->native_sort():-99;}
+ }
+--- before/bond_bpm_peri_variational.h
++++ after/bond_bpm_peri_variational.h
+@@ -23,7 +23,6 @@
+   void read_restart(FILE *) override;
+   int action(int,long long,const double *,const double *);
+   int output(int,double *);
+-  int native_sort();
+  private:
+   int n=0,nb=0;
+   bool ready=false,imported=false;
+--- before/native.py
++++ after/native.py
+@@ -8,7 +8,6 @@
+   self.legacy=legacy;self.l=lammps(cmdargs=['-log',str(O/(name+'.log')),'-screen','none'],comm=COMM);self.V=DX**3
+   self.lib=ctypes.CDLL(str(LIB));self.lib.lpsvar_action.argtypes=[ctypes.c_void_p,ctypes.c_int,ctypes.c_longlong,ctypes.POINTER(ctypes.c_double),ctypes.POINTER(ctypes.c_double)];self.lib.lpsvar_action.restype=ctypes.c_int
+   self.lib.lpsvar_output.argtypes=[ctypes.c_void_p,ctypes.c_int,ctypes.POINTER(ctypes.c_double)];self.lib.lpsvar_output.restype=ctypes.c_int
+-  self.lib.lpsvar_sort.argtypes=[ctypes.c_void_p];self.lib.lpsvar_sort.restype=ctypes.c_int
+   if restart:
+    self.l.commands_string(f'atom_modify map array sort 0 0\nread_restart {restart}')
+   else:
+--- before/identity.py
++++ after/identity.py
+@@ -8,7 +8,7 @@
+  ns.l.command(f'atom_modify sort 1 {DX*.65:.17g}');after=ns.eval();owners_after=COMM.allgather(ns.owned());changed=int(np.sum(owners_before[0]!=owners_after[0]));triggered=changed>0
+ else:
+  assert COMM.size==2
+- ns.l.command('balance 1.0 x 0.58');after=ns.eval();owners_after=COMM.allgather(ns.owned());ob=np.zeros(341,int);oa=ob.copy()
++ ns.l.command('balance 1.0 x 0.42');after=ns.eval();owners_after=COMM.allgather(ns.owned());ob=np.zeros(341,int);oa=ob.copy()
+  for rankid,ids in enumerate(owners_before):ob[ids-1]=rankid
+  for rankid,ids in enumerate(owners_after):oa[ids-1]=rankid
+  changed=int(np.sum(ob!=oa));triggered=changed>0

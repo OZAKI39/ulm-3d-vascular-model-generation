@@ -1,0 +1,5 @@
+from dynamic_run import *
+a=json.loads((O/'dynamic341_continuation_AUDIT.json').read_text());risk=a['sensitivity_risk'];assert risk and a['stop_reasons']==['TIMESTEP_SAFETY'];cp=risk['checkpoint'];n=2*(risk['step']-cp['step']);assert n<=160
+assert not (O/'DT_HALF_WINDOW_DESIGN_FREEZE.json').exists()
+dump(O/'DT_HALF_WINDOW_DESIGN_FREEZE.json',dict(status='FROZEN_BEFORE_RUN',reason='Actual max damage increment 0.10255424832112471 exceeded registered 0.10 gate at step244.',main_dt_s=.5e-6,window_dt_s=.25e-6,start_restart=cp,restart_sha256=sha(cp['path']),start_time_s=cp['time_s'],end_time_s=risk['time_s'],physical_steps=n,max_windows=1,new_load_family=False,material_loading_unchanged=True,interpretation='Same saved accepted state, not a full dt/2 trajectory or global convergence proof. P3 stopped; no P4 admission from a short diagnostic alone.'))
+ids=np.load(O/'provenance/341_boundary_ids.npz');q=run_case('dt_half_window',O/'provenance',ids['left_ids'],ids['right_ids'],ids['free_ids'],n,dt=.25e-6,restart=cp['path'],diagnostic=True)

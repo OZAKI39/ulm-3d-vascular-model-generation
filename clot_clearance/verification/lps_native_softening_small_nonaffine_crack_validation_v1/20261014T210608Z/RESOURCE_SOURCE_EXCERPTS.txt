@@ -1,0 +1,68 @@
+115:     fix_alteration();
+116:     memory->destroy(procowner);
+117:     memory->destroy(atomIDs);
+118:     timer_output(time1);
+119:     return;
+120:   }
+121: 
+122:   // tally nspecial[i][1] = # of 1-3 neighbors of atom i
+123:   // create onethree[i] = list of 1-3 neighbors for atom i
+124: 
+125:   onethree_build();
+126: 
+127:   // print max # of 1-3 neighbors
+128: 
+129:   if (me == 0)
+130:     utils::logmesg(lmp,"{:>6} = max # of 1-3 neighbors\n",maxall);
+131: 
+132:   // done if special_bond weights for 1-4 are set to 1.0
+133:   // onefive_flag must also be off, else 1-4 is needed to create 1-5
+134: 
+135:   if (!onefive_flag &&
+136:       force->special_lj[3] == 1.0 && force->special_coul[3] == 1.0) {
+137:     dedup();
+138:     if (force->special_angle) angle_trim();
+139:     combine();
+140:     fix_alteration();
+
+505:       m = atom->map(onethree[i][j]);
+506:       if (m >= 0 && m < nlocal) nspecial[m][2] += nspecial[i][0];
+507:     }
+508:   }
+509: 
+510:   for (m = 0; m < nreturn; m++) {
+511:     i = atom->map(outbuf[m].atomID);
+512:     nspecial[i][2]++;
+513:   }
+514: 
+515:   int max = 0;
+516:   for (i = 0; i < nlocal; i++)
+517:     max = MAX(max,nspecial[i][2]);
+518: 
+519:   MPI_Allreduce(&max,&maxall,1,MPI_INT,MPI_MAX,world);
+520:   memory->create(onefour,nlocal,maxall,"special:onefour");
+521: 
+522:   for (i = 0; i < nlocal; i++) nspecial[i][2] = 0;
+523: 
+524:   for (i = 0; i < nlocal; i++) {
+525:     for (j = 0; j < nspecial[i][1]; j++) {
+526:       m = atom->map(onethree[i][j]);
+527:       if (m < 0 || m >= nlocal) continue;
+528:       for (k = 0; k < nspecial[i][0]; k++) {
+529:         onefour[m][nspecial[m][2]++] = onetwo[i][k];
+530:       }
+531:     }
+532:   }
+533: 
+534:   for (m = 0; m < nreturn; m++) {
+535:     i = atom->map(outbuf[m].atomID);
+536:     onefour[i][nspecial[i][2]++] = outbuf[m].partnerID;
+537:   }
+538: 
+539:   memory->sfree(outbuf);
+540: }
+541: 
+542: /* ----------------------------------------------------------------------
+543:    optional onefive build
+544:    uses rendezvous comm
+545: ------------------------------------------------------------------------- */

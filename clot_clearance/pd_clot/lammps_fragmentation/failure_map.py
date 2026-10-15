@@ -12,6 +12,7 @@ from .current_position_provider import prepare_provider,lammps_provider,spatial_
 from .calibrate_failure import prelude,dumps
 from .runner import run_lammps
 from .fragment_analysis import read_dump,_events
+from .fragment_semantics import component_metrics, classify_detached_v2
 from .failure_classifier import classify,clot_components
 from .bond_utilization import utilization
 
@@ -75,6 +76,8 @@ def analyze_case(case,*,shape_function=spatial_shape):
             metrics=dict(step=step,time_s=step*r['dt_s'],bulk_broken_fraction=float((~alive[typ==1]).mean()),interface_broken_fraction=float((~alive[typ==2]).mean()),interface_survival=float(alive[typ==2].mean()),
                 largest_free_fraction=float(counts.max()/n),FI_free=float(1-counts.max()/n),resolved_fragment_count=int((counts>=3).sum()),debris_fraction=float(counts[counts<=2].sum()/n),median_fragment_nodes=float(np.median(counts)),raw_fragment_count=nc,
                 attached_clot_volume_fraction=float(counts[attached].sum()/n),max_fragment_speed_m_s=float(np.linalg.norm(vc,axis=1).max()))
+            metrics.update(component_metrics(counts,attached,r['dx_m'],r['rho_kg_m3']))
+            metrics['failure_mode_detached_v2']=classify_detached_v2(metrics)
             uu=utilization(X,b,typ,alive,L0,r['s00_bulk'],r['s00_interface']);metrics.update(uu);metrics['failure_mode']=classify(metrics)
             for k,value in uu.items():
                 if not k.startswith('surviving_') and value is not None:peaks[k]=max(peaks.get(k,0.),value)

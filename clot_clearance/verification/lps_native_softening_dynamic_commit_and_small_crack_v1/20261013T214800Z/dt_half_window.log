@@ -1,0 +1,714 @@
+LAMMPS (30 Sep 2026)
+  using 1 OpenMP thread(s) per MPI task
+atom_modify map array sort 0 0
+read_restart /workspace/y_clot/project/verification/lps_native_softening_dynamic_commit_and_small_crack_v1/20261013T214800Z/dynamic341_continuation_checkpoint_40.restart
+Reading restart file ...
+  restart file = 30 Sep 2026, LAMMPS = 30 Sep 2026
+  restoring atom style bond from restart
+  orthogonal box = (-0.00025 -0.00025 -0.00025) to (0.00025 0.00025 0.00025)
+  1 by 1 by 1 MPI processor grid
+  restoring pair style bpm/peri from restart
+  restoring bond style bpm/peri/variational from restart
+  341 atoms
+  11921 bonds
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    0        1        1       
+  special bond factors coul:  1        1        1       
+   122 = max # of 1-2 neighbors
+   540 = max # of special neighbors
+  special bonds CPU = 0.000 seconds
+  read_restart CPU = 0.009 seconds
+lattice sc 5.0000000000000002e-05
+Lattice spacing in x,y,z = 5e-05 5e-05 5e-05
+neighbor 5.0000000000000002e-05 bin
+neigh_modify every 1 delay 0 check no
+comm_modify cutoff 0.00045149999999999997
+fix props all property/atom d_vfrac d_theta ghost yes
+Resetting peratom fix info from restart file:
+  fix style: property/atom, fix ID: props
+set group all d_vfrac 1.2500000000000002e-13
+Setting atom values ...
+  341 settings made for d_vfrac
+
+special_bonds lj 0 1 1 coul 1 1 1
+timestep 2.4999999999999999e-07
+thermo 100000
+thermo_style custom step time atoms bonds pe ebond epair ke
+thermo_modify lost error norm no
+
+group left id 3 11 19 25 27 35 37 42 52 69 70 93 106 114 117 127 140 141 145 147 149 154 165 166 173 179 186 190 192 195 199 200 201 214 215 222 227 230 249 263 266 267 289 299 311 318 323 328 338
+49 atoms in group left
+group right id 10 50 53 57 61 62 66 74 81 85 90 92 94 101 107 108 123 126 139 151 158 161 162 167 191 196 198 203 210 226 228 242 250 252 265 268 269 270 282 284 293 307 312 316 320 321 337
+47 atoms in group right
+group free id 1 2 4 5 6 7 8 9 12 13 14 15 16 17 18 20 21 22 23 24 26 28 29 30 31 32 33 34 36 38 39 40 41 43 44 45 46 47 48 49 51 54 55 56 58 59 60 63 64 65 67 68 71 72 73 75 76 77 78 79 80 82 83 84 86 87 88 89 91 95 96 97 98 99 100 102 103 104 105 109 110 111 112 113 115 116 118 119 120 121 122 124 125 128 129 130 131 132 133 134 135 136 137 138 142 143 144 146 148 150 152 153 155 156 157 159 160 163 164 168 169 170 171 172 174 175 176 177 178 180 181 182 183 184 185 187 188 189 193 194 197 202 204 205 206 207 208 209 211 212 213 216 217 218 219 220 221 223 224 225 229 231 232 233 234 235 236 237 238 239 240 241 243 244 245 246 247 248 251 253 254 255 256 257 258 259 260 261 262 264 271 272 273 274 275 276 277 278 279 280 281 283 285 286 287 288 290 291 292 294 295 296 297 298 300 301 302 303 304 305 306 308 309 310 313 314 315 317 319 322 324 325 326 327 329 330 331 332 333 334 335 336 339 340 341
+245 atoms in group free
+variable ql equal ternary(time<0.00029999999999999997,time/0.00029999999999999997,1)
+variable qu equal ternary(time<0.00035,0,ternary(time<0.00064999999999999997,(time-0.00035)/0.00029999999999999997,1))
+variable disp equal 3.0000000000000001e-05*(cos(PI*v_qu)-cos(PI*v_ql))
+variable speed equal 0.31415926535897937*(sin(PI*v_ql)-sin(PI*v_qu))
+variable negdisp equal -v_disp
+variable negspeed equal -v_speed
+variable zero equal 0
+fix integrate free nve
+
+fix motion_left left move variable v_negdisp v_zero v_zero v_negspeed v_zero v_zero
+Resetting global fix info from restart file:
+  fix style: move, fix ID: motion_left
+Resetting peratom fix info from restart file:
+  fix style: move, fix ID: motion_left
+fix motion_right right move variable v_disp v_zero v_zero v_speed v_zero v_zero
+Resetting global fix info from restart file:
+  fix style: move, fix ID: motion_right
+Resetting peratom fix info from restart file:
+  fix style: move, fix ID: motion_right
+fix coordinator all LPS/VARIATIONAL/DYNAMIC 1000
+run 0
+Generated 0 of 0 mixed pair_coeff terms from geometric mixing rule
+All restart file global fix info was re-assigned
+All restart file peratom fix info was re-assigned
+Neighbor list info ...
+  update: every = 1 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 0.0002005
+  ghost atom cutoff = 0.0004515
+  binsize = 0.00010025, bins = 5 5 5
+  1 neighbor lists, perpetual/occasional/extra = 1 0 0
+  (1) pair bpm/peri, perpetual
+      attributes: half, newton on
+      pair build: half/bin/newton
+      stencil: half/bin/3d
+      bin: standard
+Per MPI rank memory allocation (min/avg/max) = 72.13 | 72.13 | 72.13 Mbytes
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       210   0.000105             341       11921   12481.172      12481.172      0              2.1204467e-09
+Loop time of 6.8e-07 on 1 procs for 0 steps with 341 atoms
+
+147.1% CPU use with 1 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0          | 0          | 0          |   0.0 |  0.00
+Bond    | 0          | 0          | 0          |   0.0 |  0.00
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0          | 0          | 0          |   0.0 |  0.00
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 6.8e-07    |            |       |100.00
+
+Nlocal:            341 ave         341 max         341 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:              0 ave           0 max           0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:          21755 ave       21755 max       21755 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 21755
+Ave neighs/atom = 63.797654
+Ave special neighs/atom = 69.917889
+Neighbor list builds = 0
+Dangerous builds not checked
+run 0
+Generated 0 of 0 mixed pair_coeff terms from geometric mixing rule
+Per MPI rank memory allocation (min/avg/max) = 72.13 | 72.13 | 72.13 Mbytes
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       210   0.000105             341       11921   12481.172      12481.172      0              2.1204467e-09
+Loop time of 5.8e-07 on 1 procs for 0 steps with 341 atoms
+
+0.0% CPU use with 1 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0          | 0          | 0          |   0.0 |  0.00
+Bond    | 0          | 0          | 0          |   0.0 |  0.00
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0          | 0          | 0          |   0.0 |  0.00
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 5.8e-07    |            |       |100.00
+
+Nlocal:            341 ave         341 max         341 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:              0 ave           0 max           0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:          21755 ave       21755 max       21755 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 21755
+Ave neighs/atom = 63.797654
+Ave special neighs/atom = 69.917889
+Neighbor list builds = 0
+Dangerous builds not checked
+run 0
+Generated 0 of 0 mixed pair_coeff terms from geometric mixing rule
+Per MPI rank memory allocation (min/avg/max) = 72.13 | 72.13 | 72.13 Mbytes
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       210   0.000105             341       11921   12584.265      12584.265      0              2.1204467e-09
+Loop time of 5.5e-07 on 1 procs for 0 steps with 341 atoms
+
+0.0% CPU use with 1 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0          | 0          | 0          |   0.0 |  0.00
+Bond    | 0          | 0          | 0          |   0.0 |  0.00
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0          | 0          | 0          |   0.0 |  0.00
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 5.5e-07    |            |       |100.00
+
+Nlocal:            341 ave         341 max         341 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:              0 ave           0 max           0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:          21746 ave       21746 max       21746 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 21746
+Ave neighs/atom = 63.771261
+Ave special neighs/atom = 69.917889
+Neighbor list builds = 0
+Dangerous builds not checked
+run 0
+Generated 0 of 0 mixed pair_coeff terms from geometric mixing rule
+Per MPI rank memory allocation (min/avg/max) = 72.13 | 72.13 | 72.13 Mbytes
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       210   0.000105             341       11921   12481.172      12481.172      0              2.1204467e-09
+Loop time of 5.6e-07 on 1 procs for 0 steps with 341 atoms
+
+0.0% CPU use with 1 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0          | 0          | 0          |   0.0 |  0.00
+Bond    | 0          | 0          | 0          |   0.0 |  0.00
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0          | 0          | 0          |   0.0 |  0.00
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 5.6e-07    |            |       |100.00
+
+Nlocal:            341 ave         341 max         341 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:              0 ave           0 max           0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:          21755 ave       21755 max       21755 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 21755
+Ave neighs/atom = 63.797654
+Ave special neighs/atom = 69.917889
+Neighbor list builds = 0
+Dangerous builds not checked
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       210   0.000105             341       11921   12481.172      12481.172      0              2.1204467e-09
+       211   0.00010525           341       11920   12567.684      12567.684      0              2.1274459e-09
+Loop time of 0.00382802 on 1 procs for 1 steps with 341 atoms
+
+run 0
+Generated 0 of 0 mixed pair_coeff terms from geometric mixing rule
+Per MPI rank memory allocation (min/avg/max) = 72.13 | 72.13 | 72.13 Mbytes
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       211   0.00010525           341       11920   12567.684      12567.684      0              2.1274459e-09
+Loop time of 5.4e-07 on 1 procs for 0 steps with 341 atoms
+
+185.2% CPU use with 1 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0          | 0          | 0          |   0.0 |  0.00
+Bond    | 0          | 0          | 0          |   0.0 |  0.00
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0          | 0          | 0          |   0.0 |  0.00
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 5.4e-07    |            |       |100.00
+
+Nlocal:            341 ave         341 max         341 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:              0 ave           0 max           0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:          21762 ave       21762 max       21762 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 21762
+Ave neighs/atom = 63.818182
+Ave special neighs/atom = 69.912023
+Neighbor list builds = 0
+Dangerous builds not checked
+run 0
+Generated 0 of 0 mixed pair_coeff terms from geometric mixing rule
+Per MPI rank memory allocation (min/avg/max) = 72.13 | 72.13 | 72.13 Mbytes
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       211   0.00010525           341       11920   12671.216      12671.216      0              2.1274459e-09
+Loop time of 5.4e-07 on 1 procs for 0 steps with 341 atoms
+
+185.2% CPU use with 1 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0          | 0          | 0          |   0.0 |  0.00
+Bond    | 0          | 0          | 0          |   0.0 |  0.00
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0          | 0          | 0          |   0.0 |  0.00
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 5.4e-07    |            |       |100.00
+
+Nlocal:            341 ave         341 max         341 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:              0 ave           0 max           0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:          21753 ave       21753 max       21753 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 21753
+Ave neighs/atom = 63.791789
+Ave special neighs/atom = 69.912023
+Neighbor list builds = 0
+Dangerous builds not checked
+run 0
+Generated 0 of 0 mixed pair_coeff terms from geometric mixing rule
+Per MPI rank memory allocation (min/avg/max) = 72.13 | 72.13 | 72.13 Mbytes
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       211   0.00010525           341       11920   12567.684      12567.684      0              2.1274459e-09
+Loop time of 5.7e-07 on 1 procs for 0 steps with 341 atoms
+
+175.4% CPU use with 1 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0          | 0          | 0          |   0.0 |  0.00
+Bond    | 0          | 0          | 0          |   0.0 |  0.00
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0          | 0          | 0          |   0.0 |  0.00
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 5.7e-07    |            |       |100.00
+
+Nlocal:            341 ave         341 max         341 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:              0 ave           0 max           0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:          21762 ave       21762 max       21762 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 21762
+Ave neighs/atom = 63.818182
+Ave special neighs/atom = 69.912023
+Neighbor list builds = 0
+Dangerous builds not checked
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       211   0.00010525           341       11920   12567.684      12567.684      0              2.1274459e-09
+       212   0.0001055            341       11920   12653.348      12653.348      0              2.1343927e-09
+Loop time of 0.00176989 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       212   0.0001055            341       11920   12653.348      12653.348      0              2.1343927e-09
+       213   0.00010575           341       11920   12736.476      12736.476      0              2.1412865e-09
+Loop time of 0.00178722 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       213   0.00010575           341       11920   12736.476      12736.476      0              2.1412865e-09
+       214   0.000106             341       11919   12815.604      12815.604      0              2.1481277e-09
+Loop time of 0.00369424 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       214   0.000106             341       11919   12815.604      12815.604      0              2.1481277e-09
+       215   0.00010625           341       11919   12891.51       12891.51       0              2.154917e-09 
+Loop time of 0.00175879 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       215   0.00010625           341       11919   12891.51       12891.51       0              2.154917e-09 
+       216   0.0001065            341       11919   12957.87       12957.87       0              2.161657e-09 
+Loop time of 0.00176711 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       216   0.0001065            341       11919   12957.87       12957.87       0              2.161657e-09 
+       217   0.00010675           341       11914   13020.674      13020.674      0              2.1683507e-09
+Loop time of 0.00374033 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       217   0.00010675           341       11914   13020.674      13020.674      0              2.1683507e-09
+       218   0.000107             341       11913   13083.053      13083.053      0              2.1750003e-09
+Loop time of 0.00370442 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       218   0.000107             341       11913   13083.053      13083.053      0              2.1750003e-09
+       219   0.00010725           341       11907   13137.57       13137.57       0              2.181609e-09 
+Loop time of 0.00371746 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       219   0.00010725           341       11907   13137.57       13137.57       0              2.181609e-09 
+       220   0.0001075            341       11900   13195.158      13195.158      0              2.1881746e-09
+Loop time of 0.00373559 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       220   0.0001075            341       11900   13195.158      13195.158      0              2.1881746e-09
+       221   0.00010775           341       11896   13255.046      13255.046      0              2.1946893e-09
+Loop time of 0.00372327 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       221   0.00010775           341       11896   13255.046      13255.046      0              2.1946893e-09
+       222   0.000108             341       11894   13301.138      13301.138      0              2.2011508e-09
+Loop time of 0.00372283 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       222   0.000108             341       11894   13301.138      13301.138      0              2.2011508e-09
+       223   0.00010825           341       11881   13333.852      13333.852      0              2.2075621e-09
+Loop time of 0.00376915 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       223   0.00010825           341       11881   13333.852      13333.852      0              2.2075621e-09
+       224   0.0001085            341       11865   13385.067      13385.067      0              2.2139261e-09
+Loop time of 0.00373663 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       224   0.0001085            341       11865   13385.067      13385.067      0              2.2139261e-09
+       225   0.00010875           341       11860   13445.786      13445.786      0              2.2202431e-09
+Loop time of 0.00376407 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       225   0.00010875           341       11860   13445.786      13445.786      0              2.2202431e-09
+       226   0.000109             341       11851   13506.1        13506.1        0              2.2265145e-09
+Loop time of 0.00375065 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       226   0.000109             341       11851   13506.1        13506.1        0              2.2265145e-09
+       227   0.00010925           341       11848   13561.651      13561.651      0              2.2327464e-09
+Loop time of 0.00373323 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       227   0.00010925           341       11848   13561.651      13561.651      0              2.2327464e-09
+       228   0.0001095            341       11834   13605.714      13605.714      0              2.2389455e-09
+Loop time of 0.00375146 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       228   0.0001095            341       11834   13605.714      13605.714      0              2.2389455e-09
+       229   0.00010975           341       11819   13660.955      13660.955      0              2.24511e-09  
+Loop time of 0.00378405 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       229   0.00010975           341       11819   13660.955      13660.955      0              2.24511e-09  
+       230   0.00011              341       11814   13736.821      13736.821      0              2.2512318e-09
+Loop time of 0.00375324 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       230   0.00011              341       11814   13736.821      13736.821      0              2.2512318e-09
+       231   0.00011025           341       11810   13814.529      13814.529      0              2.2573067e-09
+Loop time of 0.00375668 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       231   0.00011025           341       11810   13814.529      13814.529      0              2.2573067e-09
+       232   0.0001105            341       11807   13888.56       13888.56       0              2.2633356e-09
+Loop time of 0.00374341 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       232   0.0001105            341       11807   13888.56       13888.56       0              2.2633356e-09
+       233   0.00011075           341       11799   13960.383      13960.383      0              2.2693209e-09
+Loop time of 0.00373457 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       233   0.00011075           341       11799   13960.383      13960.383      0              2.2693209e-09
+       234   0.000111             341       11790   14036.636      14036.636      0              2.2752629e-09
+Loop time of 0.00374148 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       234   0.000111             341       11790   14036.636      14036.636      0              2.2752629e-09
+       235   0.00011125           341       11786   14115.575      14115.575      0              2.281158e-09 
+Loop time of 0.00371377 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       235   0.00011125           341       11786   14115.575      14115.575      0              2.281158e-09 
+       236   0.0001115            341       11785   14192.947      14192.947      0              2.2870025e-09
+Loop time of 0.00373901 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       236   0.0001115            341       11785   14192.947      14192.947      0              2.2870025e-09
+       237   0.00011175           341       11783   14268.127      14268.127      0              2.292797e-09 
+Loop time of 0.0037316 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       237   0.00011175           341       11783   14268.127      14268.127      0              2.292797e-09 
+       238   0.000112             341       11779   14339.275      14339.275      0              2.2985442e-09
+Loop time of 0.0037211 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       238   0.000112             341       11779   14339.275      14339.275      0              2.2985442e-09
+       239   0.00011225           341       11776   14412.53       14412.53       0              2.3042446e-09
+Loop time of 0.00369981 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       239   0.00011225           341       11776   14412.53       14412.53       0              2.3042446e-09
+       240   0.0001125            341       11772   14480.431      14480.431      0              2.3098993e-09
+Loop time of 0.00371411 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       240   0.0001125            341       11772   14480.431      14480.431      0              2.3098993e-09
+       241   0.00011275           341       11768   14550.919      14550.919      0              2.3155127e-09
+Loop time of 0.00369294 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       241   0.00011275           341       11768   14550.919      14550.919      0              2.3155127e-09
+       242   0.000113             341       11767   14612.941      14612.941      0              2.3210924e-09
+Loop time of 0.00370708 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       242   0.000113             341       11767   14612.941      14612.941      0              2.3210924e-09
+       243   0.00011325           341       11757   14666.25       14666.25       0              2.3266483e-09
+Loop time of 0.0036933 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       243   0.00011325           341       11757   14666.25       14666.25       0              2.3266483e-09
+       244   0.0001135            341       11743   14721.792      14721.792      0              2.3321827e-09
+Loop time of 0.00370749 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       244   0.0001135            341       11743   14721.792      14721.792      0              2.3321827e-09
+       245   0.00011375           341       11740   14780.766      14780.766      0              2.3376905e-09
+Loop time of 0.00369904 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       245   0.00011375           341       11740   14780.766      14780.766      0              2.3376905e-09
+       246   0.000114             341       11738   14825.86       14825.86       0              2.343176e-09 
+Loop time of 0.00368046 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       246   0.000114             341       11738   14825.86       14825.86       0              2.343176e-09 
+       247   0.00011425           341       11726   14863.238      14863.238      0              2.3486514e-09
+Loop time of 0.00370053 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       247   0.00011425           341       11726   14863.238      14863.238      0              2.3486514e-09
+       248   0.0001145            341       11717   14891.368      14891.368      0              2.3541317e-09
+Loop time of 0.00372099 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       248   0.0001145            341       11717   14891.368      14891.368      0              2.3541317e-09
+       249   0.00011475           341       11704   14913.088      14913.088      0              2.359636e-09 
+Loop time of 0.00369925 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       249   0.00011475           341       11704   14913.088      14913.088      0              2.359636e-09 
+       250   0.000115             341       11691   14956.613      14956.613      0              2.3651593e-09
+Loop time of 0.00369309 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       250   0.000115             341       11691   14956.613      14956.613      0              2.3651593e-09
+       251   0.00011525           341       11685   15006.921      15006.921      0              2.370683e-09 
+Loop time of 0.00370736 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       251   0.00011525           341       11685   15006.921      15006.921      0              2.370683e-09 
+       252   0.0001155            341       11675   15049.079      15049.079      0              2.376207e-09 
+Loop time of 0.00368619 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       252   0.0001155            341       11675   15049.079      15049.079      0              2.376207e-09 
+       253   0.00011575           341       11667   15107.839      15107.839      0              2.3817269e-09
+Loop time of 0.00368944 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       253   0.00011575           341       11667   15107.839      15107.839      0              2.3817269e-09
+       254   0.000116             341       11662   15162.244      15162.244      0              2.3872386e-09
+Loop time of 0.00368726 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       254   0.000116             341       11662   15162.244      15162.244      0              2.3872386e-09
+       255   0.00011625           341       11658   15208.981      15208.981      0              2.3927564e-09
+Loop time of 0.00370645 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       255   0.00011625           341       11658   15208.981      15208.981      0              2.3927564e-09
+       256   0.0001165            341       11653   15261.374      15261.374      0              2.3982846e-09
+Loop time of 0.00370692 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       256   0.0001165            341       11653   15261.374      15261.374      0              2.3982846e-09
+       257   0.00011675           341       11647   15324.634      15324.634      0              2.4038089e-09
+Loop time of 0.00370746 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       257   0.00011675           341       11647   15324.634      15324.634      0              2.4038089e-09
+       258   0.000117             341       11643   15394.071      15394.071      0              2.4093155e-09
+Loop time of 0.00366801 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       258   0.000117             341       11643   15394.071      15394.071      0              2.4093155e-09
+       259   0.00011725           341       11643   15464.883      15464.883      0              2.414798e-09 
+Loop time of 0.00176765 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       259   0.00011725           341       11643   15464.883      15464.883      0              2.414798e-09 
+       260   0.0001175            341       11641   15525.732      15525.732      0              2.4202634e-09
+Loop time of 0.00371129 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       260   0.0001175            341       11641   15525.732      15525.732      0              2.4202634e-09
+       261   0.00011775           341       11630   15584.637      15584.637      0              2.4257214e-09
+Loop time of 0.00370066 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       261   0.00011775           341       11630   15584.637      15584.637      0              2.4257214e-09
+       262   0.000118             341       11629   15644.656      15644.656      0              2.4311725e-09
+Loop time of 0.00368746 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       262   0.000118             341       11629   15644.656      15644.656      0              2.4311725e-09
+       263   0.00011825           341       11625   15694.532      15694.532      0              2.436624e-09 
+Loop time of 0.00369771 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       263   0.00011825           341       11625   15694.532      15694.532      0              2.436624e-09 
+       264   0.0001185            341       11613   15748.122      15748.122      0              2.442082e-09 
+Loop time of 0.0036809 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       264   0.0001185            341       11613   15748.122      15748.122      0              2.442082e-09 
+       265   0.00011875           341       11611   15806.697      15806.697      0              2.4475403e-09
+Loop time of 0.00368989 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       265   0.00011875           341       11611   15806.697      15806.697      0              2.4475403e-09
+       266   0.000119             341       11605   15853.329      15853.329      0              2.4530063e-09
+Loop time of 0.00369599 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       266   0.000119             341       11605   15853.329      15853.329      0              2.4530063e-09
+       267   0.00011925           341       11603   15906.634      15906.634      0              2.4584793e-09
+Loop time of 0.00368687 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       267   0.00011925           341       11603   15906.634      15906.634      0              2.4584793e-09
+       268   0.0001195            341       11595   15954.42       15954.42       0              2.4639505e-09
+Loop time of 0.00370192 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       268   0.0001195            341       11595   15954.42       15954.42       0              2.4639505e-09
+       269   0.00011975           341       11590   16001.555      16001.555      0              2.4694222e-09
+Loop time of 0.00370896 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       269   0.00011975           341       11590   16001.555      16001.555      0              2.4694222e-09
+       270   0.00012              341       11581   16049.158      16049.158      0              2.4748921e-09
+Loop time of 0.00367417 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       270   0.00012              341       11581   16049.158      16049.158      0              2.4748921e-09
+       271   0.00012025           341       11573   16095.727      16095.727      0              2.4803609e-09
+Loop time of 0.00367239 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       271   0.00012025           341       11573   16095.727      16095.727      0              2.4803609e-09
+       272   0.0001205            341       11568   16137.635      16137.635      0              2.4858317e-09
+Loop time of 0.00367368 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       272   0.0001205            341       11568   16137.635      16137.635      0              2.4858317e-09
+       273   0.00012075           341       11560   16179.634      16179.634      0              2.4913049e-09
+Loop time of 0.00370771 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       273   0.00012075           341       11560   16179.634      16179.634      0              2.4913049e-09
+       274   0.000121             341       11554   16213.792      16213.792      0              2.4967863e-09
+Loop time of 0.00368762 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       274   0.000121             341       11554   16213.792      16213.792      0              2.4967863e-09
+       275   0.00012125           341       11548   16247.014      16247.014      0              2.5022824e-09
+Loop time of 0.00369584 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       275   0.00012125           341       11548   16247.014      16247.014      0              2.5022824e-09
+       276   0.0001215            341       11543   16273.078      16273.078      0              2.5077952e-09
+Loop time of 0.00365124 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       276   0.0001215            341       11543   16273.078      16273.078      0              2.5077952e-09
+       277   0.00012175           341       11531   16298.032      16298.032      0              2.5133287e-09
+Loop time of 0.00365212 on 1 procs for 1 steps with 341 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+       277   0.00012175           341       11531   16298.032      16298.032      0              2.5133287e-09
+       278   0.000122             341       11527   16319.207      16319.207      0              2.518886e-09 
+Loop time of 0.00366078 on 1 procs for 1 steps with 341 atoms
+
+write_restart /workspace/y_clot/project/verification/lps_native_softening_dynamic_commit_and_small_crack_v1/20261013T214800Z/dt_half_window_final.restart
+System init for write_restart ...
+Generated 0 of 0 mixed pair_coeff terms from geometric mixing rule
+Total wall time: 0:00:00

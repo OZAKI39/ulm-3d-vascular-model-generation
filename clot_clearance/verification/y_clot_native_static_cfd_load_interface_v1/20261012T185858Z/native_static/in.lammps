@@ -1,0 +1,43 @@
+# Static evaluator; original V3 geometry and elastic/contact/critical parameters.
+units si
+dimension 3
+boundary m m m
+atom_style bond
+processors 1 1 1
+atom_modify map array sort 1 5.0000000000000002e-05
+newton on off
+special_bonds lj 0 1 1 coul 1 1 1
+lattice sc 5.0000000000000002e-05
+read_data /workspace/y_clot/project/verification/y_clot_native_static_cfd_load_interface_v1/20261012T185858Z/source_inputs/body.data extra/bond/per/atom 160 extra/special/per/atom 180
+neighbor 0.0001 bin
+neigh_modify every 1 delay 0 check no
+comm_modify cutoff 0.00045149999999999997
+fix props all property/atom d_vfrac d_theta d_damage ghost yes
+set group all d_vfrac 1.2500000000000002e-13
+group clot type 1
+group anchors type 2
+bond_style bpm/peri
+pair_style bpm/peri contact_distance_factor 1.0
+pair_coeff * * 3.7226771877469815e+20 0.0001505
+bond_coeff 1 lps 33333.333333333336 940 0.0001505 0.14999999999999999 0
+bond_coeff 2 lps 33333.333333333336 940 0.0001505 0.14062485937499999 0
+bond_coeff 3 lps 33333.333333333336 940 0.0001505 1.0 0
+velocity all set 0 0 0 units box
+# Official BPM peri accumulates N/m^3: convert to nodal N BEFORE external forces.
+variable si_fx atom fx*d_vfrac
+variable si_fy atom fy*d_vfrac
+variable si_fz atom fz*d_vfrac
+fix si_force all setforce v_si_fx v_si_fy v_si_fz
+
+fix wallprops all property/atom d_wclear d_wpen d_wtri ghost yes
+fix nativewall clot external pf/callback 1 1
+fix cfdload all external pf/callback 1 1
+timestep 5e-7
+compute contactPE all pe pair
+compute bondPE all pe bond
+thermo 1
+thermo_style custom step atoms bonds ke c_contactPE c_bondPE
+thermo_modify lost error lost/bond error
+# No nve, no damping, no streaming or drag; anchor coordinates constrained by static optimizer.
+# No anchor setforce: physical internal force is retained for reaction recovery.
+# Python callbacks are registered before run 0. Subsequent run 1 pre no post no are force evaluations, not dynamic steps.

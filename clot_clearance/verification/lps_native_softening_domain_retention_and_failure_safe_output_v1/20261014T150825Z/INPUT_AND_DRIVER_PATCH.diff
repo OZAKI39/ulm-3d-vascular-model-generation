@@ -1,0 +1,269 @@
+--- previous/common.py
++++ domain_retention/common.py
+@@ -1,11 +1,10 @@
+ from pathlib import Path
+ import hashlib,json,numpy as np,os
+-R=Path('/workspace/y_clot/project');TASK='lps_native_softening_event_resolved_integration_v1';RUN='20261013T235945Z'
+-A=R/'analysis/event_resolved_v1';O=R/'verification'/TASK/RUN;F=R/'results'/TASK/RUN
+-OLD=R/'verification/lps_native_softening_dynamic_commit_and_small_crack_v1/20261013T214800Z'
+-PREV=R/'verification/lps_native_softening_full_protocol_timestep_admission_v1/20261013T224838Z'
+-LIB=O/'build/liblammps.so';DX=50e-6;V=DX**3;RHO=1000.;G=940.;K=1e5/3;HORIZON=150.5e-6;S0=.15;SC=.18
+-BASE=0.25e-6;MIN_H=BASE/8;CHECKPOINT_TRIGGER=.075
++R=Path('/workspace/y_clot/project');TASK='lps_native_softening_domain_retention_and_failure_safe_output_v1';RUN='20261014T150825Z'
++A=R/'analysis/domain_retention_v1';O=R/'verification'/TASK/RUN;F=R/'results'/TASK/RUN
++PREV=R/'verification/lps_native_softening_event_resolved_integration_v1/20261013T235945Z'
++LIB=PREV/'build/liblammps.so';DX=50e-6;V=DX**3;RHO=1000.;G=940.;K=1e5/3;HORIZON=150.5e-6;S0=.15;SC=.18
++BASE=.25e-6;MIN_H=BASE/8;CHECKPOINT_TRIGGER=.075;BOX=400e-6
+ def sha(p):
+  h=hashlib.sha256()
+  with Path(p).open('rb') as f:
+@@ -17,4 +16,10 @@
+   if isinstance(x,np.generic):return x.item()
+   if isinstance(x,Path):return str(x)
+   raise TypeError(type(x).__name__)
+- Path(p).write_text(json.dumps(z,indent=2,ensure_ascii=False,default=cv,allow_nan=False))
++ target=Path(p);temp=target.with_name(target.name+'.tmp')
++ with temp.open('w') as f:json.dump(z,f,indent=2,ensure_ascii=False,default=cv,allow_nan=False);f.flush();os.fsync(f.fileno())
++ os.replace(temp,target)
++def save_state(path,state,**extra):
++ path=Path(path);temp=path.with_name(path.name+'.tmp')
++ with temp.open('wb') as f:np.savez_compressed(f,**state,**extra);f.flush();os.fsync(f.fileno())
++ os.replace(temp,path)
+--- previous/native.py
++++ domain_retention/native.py
+@@ -6,8 +6,8 @@
+ from model import SofteningLPS
+ COMM=MPI.COMM_WORLD
+ class Native:
+- def __init__(self,name,root=None,sc=SC,restart=None,dt=.5e-6):
+-  self.root=Path(root) if root else O/'provenance';self.ref=np.load(self.root/'reference.npz');self.N=len(self.ref['X']);self.NB=len(self.ref['bonds']);self.dt=dt
++ def __init__(self,name,root=None,sc=SC,restart=None,dt=.5e-6,box=BOX):
++  self.root=Path(root) if root else O/'provenance';self.ref=np.load(self.root/'reference.npz');self.N=len(self.ref['X']);self.NB=len(self.ref['bonds']);self.dt=dt;self.box=box;self.deferred_box=bool(restart)
+   self.l=lammps(cmdargs=['-log',str(O/(name+'.log')),'-screen','none'],comm=COMM)
+   self.lib=ctypes.CDLL(str(LIB));self.lib.lpsvar_action.argtypes=[ctypes.c_void_p,ctypes.c_int,ctypes.c_longlong,ctypes.POINTER(ctypes.c_double),ctypes.POINTER(ctypes.c_double)];self.lib.lpsvar_action.restype=ctypes.c_int
+   self.lib.lpsvar_output.argtypes=[ctypes.c_void_p,ctypes.c_int,ctypes.POINTER(ctypes.c_double)];self.lib.lpsvar_output.restype=ctypes.c_int
+@@ -20,6 +20,7 @@
+ processors {COMM.size} 1 1
+ read_data {self.root/'body.data'} extra/bond/per/atom 150 extra/special/per/atom 200
+ ''')
++  if not restart:self.set_box()
+   self.l.commands_string(f'''lattice sc {DX:.17g}
+ neighbor {DX:.17g} bin
+ neigh_modify every 1 delay 0 check no
+@@ -46,7 +47,7 @@
+   n=self.l.extract_global('nlocal');ids=self.l.numpy.extract_atom('id')[:n].copy();vals=self.l.numpy.extract_atom(key)[:n].copy();chunks=COMM.allgather((ids,vals));ii=np.concatenate([a[0] for a in chunks]);vv=np.concatenate([a[1] for a in chunks]);assert len(np.unique(ii))==self.N;return vv[np.argsort(ii)]
+  def state(self):
+   td=self.field(6)
+-  return dict(step=int(self.l.get_thermo('step')),time=float(self.l.get_thermo('time')),x=self.gather('x'),velocity=self.gather('v'),force=self.gather('f'),material_force=self.field(0).reshape(-1,3),kappa=self.field(2),d=self.field(3),scalars=self.field(8),counters=self.field(11),native_bonds=int(self.l.get_thermo('bonds')),Uc=float(self.l.get_thermo('epair'))*V,K=float(self.l.get_thermo('ke')),native_U=float(self.l.get_thermo('ebond'))*V,bond1813_tension_N=float(td[1812]+td[1812+self.NB]))
++  return dict(step=int(self.l.get_thermo('step')),time=float(self.l.get_thermo('time')),x=self.gather('x'),velocity=self.gather('v'),force=self.gather('f'),material_force=self.field(0).reshape(-1,3),kappa=self.field(2),d=self.field(3),scalars=self.field(8),counters=self.field(11),native_bonds=int(self.l.get_thermo('bonds')),Uc=float(self.l.get_thermo('epair'))*V,K=float(self.l.get_thermo('ke')),native_U=float(self.l.get_thermo('ebond'))*V,bond1813_tension_N=float(td[1812]+td[1812+self.NB]),atom_ids=self.gather('id').astype(np.int64),box_lo=np.asarray(self.l.extract_box()[0]),box_hi=np.asarray(self.l.extract_box()[1]))
+  def static(self,x=None,kappa=None,d=None):
+   if x is not None:self.l.numpy.extract_atom('x')[:self.N]=x
+   if d is not None:
+@@ -67,6 +68,17 @@
+    positions=['v_zero']*3;velocities=['v_zero']*3;positions[axis]='v_'+p;velocities[axis]='v_'+v
+    self.l.command(f'fix motion_{group} {group} move variable '+' '.join(positions+velocities))
+   self.l.commands_string(f'fix coordinator all LPS/VARIATIONAL/DYNAMIC {RHO:.17g}\nrun 0')
++  if self.deferred_box:
++   changed=self.set_box();self.deferred_box=False
++   if changed:self.l.command('run 0')
++ def set_box(self):
++  lo,hi,*_=self.l.extract_box()
++  if self.box is None or (np.array_equal(lo,[-self.box]*3) and np.array_equal(hi,[self.box]*3)):return False
++  before=self.gather('x');n=self.l.extract_global('nlocal');tags=self.l.numpy.extract_atom('id')[:n].copy()
++  self.l.command(f'change_box all x final {-self.box:.17g} {self.box:.17g} y final {-self.box:.17g} {self.box:.17g} z final {-self.box:.17g} {self.box:.17g} units box')
++  assert np.array_equal(before,self.gather('x')), 'Box change altered physical positions'
++  assert np.array_equal(np.sort(tags),np.sort(self.l.numpy.extract_atom('id')[:n]))
++  return True
+  def close(self):self.l.close()
+ 
+ class Contact:
+--- previous/event_integrator.py
++++ domain_retention/event_integrator.py
+@@ -32,7 +32,8 @@
+  return dict(pass_=bool(passed),absolute_errors=err,diagnostic_evaluation_counters='Reinitialized by restart, not physical history; global attempts recorded separately')
+ 
+ class EventIntegrator:
+- def __init__(self,ns,case,ids):
++ def __init__(self,ns,case,ids,journal=None):
++  self.journal=journal
+   self.ns=ns;self.case=case;self.folder=O/case;self.ids=ids;self.ref=ns.ref;self.model=SofteningLPS(self.ref)
+   self.fi=ids['free_ids']-1;self.queue=[];self.trials=[];self.rollbacks=[];self.checkpoints=0;self.rejects=0;self.accepts=0;self.checkpoint_s=0.;self.restore_s=0.;self.predict_s=0.;self.native_s=0.;self.intervals=[];self.trial_serial=0
+   (self.folder/'transactions').mkdir(exist_ok=True)
+@@ -53,18 +54,26 @@
+   while True:
+    self.trial_serial+=1;serial=self.trial_serial
+    xp,forecast=self.predict(p,h)
++   clearance=float(np.min(np.minimum(xp+BOX,BOX-xp)))
++   if self.journal:self.journal.trial_start(serial,p,h,depth,clearance)
++   if clearance<=0:
++    if self.journal:self.journal.checkpoint(self.ns,p,'predicted_domain_exit')
++    raise RuntimeError('FROZEN_DOMAIN_WOULD_LOSE_ATOM: predicted candidate outside box')
++   if clearance<DX and self.journal:self.journal.checkpoint(self.ns,p,'domain_proximity')
+    checkpoint=forecast>=CHECKPOINT_TRIGGER or depth>0
+    path=self.folder/'transactions'/f'accepted_before_trial_{serial:05d}.restart'
+    if checkpoint:
+     start=time.perf_counter();self.ns.l.command(f'write_restart {path}');self.checkpoint_s+=time.perf_counter()-start;self.checkpoints+=1
+     check=restore_comparison(p,self.ns.state());assert check['pass_'],('checkpoint mutated state',check)
+     tc,ec=topology(self.ns)
++    if self.journal:self.journal.register_checkpoint(path,p,'damage_trial',self.ns)
+    if self.ns.dt!=h:self.ns.l.command(f'timestep {h:.17g}');self.ns.dt=h
+    start=time.perf_counter();self.ns.l.command('run 1 pre no post no');s=self.ns.state();self.native_s+=time.perf_counter()-start
+    delta=s['d']-p['d'];maxdd=float(delta.max());bad=np.flatnonzero(delta>.10)
+    pred_error=float(abs(s['x']-xp).max())
+    record=dict(trial=serial,from_step=p['step'],candidate_step=s['step'],start_s=p['time'],end_s=s['time'],h_s=h,depth=depth,base_interval_start_s=interval_start,base_interval_end_s=interval_end,forecast_max_dd=forecast,max_dd=maxdd,max_bond_id=int(np.argmax(delta)+1),bond1813_kappa_before=p['kappa'][1812],bond1813_kappa_after=s['kappa'][1812],bond1813_d_before=p['d'][1812],bond1813_d_after=s['d'][1812],checkpoint=checkpoint,predictor_x_error_m=pred_error,decision='REJECT' if len(bad) else 'ACCEPT',violating_ids=bad+1)
+    self.trials.append(record)
++   if self.journal:self.journal.trial_result(record)
+    assert pred_error<2e-18,('predictor coordinate mismatch',record)
+    assert abs(s['time']-p['time']-h)<1e-15,('cumulative time mismatch',record)
+    # Native virgin history has token=-1, commits=0. First physical token is
+@@ -82,7 +91,9 @@
+     restored=self.ns.state();check=restore_comparison(p,restored);tc2,ec2=topology(self.ns)
+     check.update(trial=serial,topology_exact=np.array_equal(tc,tc2),contact_exclusions_exact=ec==ec2,checkpoint=str(path.relative_to(O)),checkpoint_sha256=sha(path),driver_ledger_untouched=True)
+     check['pass_'] &= check['topology_exact'] and check['contact_exclusions_exact']
+-    self.rollbacks.append(check);self.restore_s+=time.perf_counter()-start
++    self.rollbacks.append(check);
++    if self.journal:self.journal.event('rollback',check)
++    self.restore_s+=time.perf_counter()-start
+     np.savez_compressed(self.folder/'transactions'/f'restored_trial_{serial:05d}.npz',**restored)
+     assert check['pass_'],('Incomplete native rollback',check)
+     assert h>MIN_H*(1+1e-12),'MINIMUM_SUBSTEP_EXHAUSTED'
+--- previous/run_protocol.py
++++ domain_retention/run_protocol.py
+@@ -1,33 +1,29 @@
+ """Exactly one native physical path; independent audits never advance positions."""
+ from event_integrator import *
++from journal import Journal
+ import resource,csv,traceback
+ 
+ def main():
+  global O
+- root=O;case=sys.argv[1];assert case in ['local','full'];O=root/case
+- if case=='full':assert json.loads((root/'LOCAL_BOND1813_EVENT_AUDIT.json').read_text())['status']=='PASS'
+- freeze=json.loads((root/'EVENT_INTEGRATOR_FREEZE.json').read_text());g=freeze['gates'];budget=freeze['budget'];dt=BASE
++ root=O;case='full';O=root/case
++ assert json.loads((root/'INITIAL_STATE_PARITY.json').read_text())['status']=='PASS'
++ assert json.loads((root/'FAILURE_SAFE_OUTPUT_AUDIT.json').read_text())['status']=='PASS'
++ freeze=json.loads((root/'DOMAIN_PROTOCOL_FREEZE.json').read_text());g=freeze['gates'];budget=freeze['budget'];dt=BASE
+  for n,h in freeze['driver_sha256'].items():assert sha(A/n)==h,(n,'modified after freeze')
+  assert sha(LIB)==freeze['library_sha256']
+- with (O/'FORMAL_CASE_STARTED.json').open('x') as f:json.dump(dict(pid=os.getpid(),case=case,from_t0=case=='full'),f)
+- start=time.perf_counter();cpu0=time.process_time()
+- ns=Native(case+'/native',dt=dt,restart=(root/'replay/accepted_640p25.restart') if case=='local' else None)
++ with (O/'FORMAL_CASE_STARTED.json').open('x') as f:json.dump(dict(pid=os.getpid(),case=case,from_t0=True),f)
++ start=time.perf_counter();cpu0=time.process_time();ns=Native(case+'/native',dt=dt)
+  ref=ns.ref;b=ref['bonds'];N=ns.N;NB=ns.NB;model=SofteningLPS(ref);contact=Contact(ref)
+  ids=np.load(root/'provenance/341_boundary_ids.npz');left=ids['left_ids'];right=ids['right_ids'];free=ids['free_ids'];fi=free-1;bc=np.r_[left,right]-1
+  ns.dynamics(left,right,free);s=ns.state();initial=s
+- if case=='full':
+-  assert s['step']==0 and s['time']==0 and np.array_equal(s['x'],ref['X'])
+-  assert not np.any(s['d']) and not np.any(s['kappa']) and not np.any(s['velocity']) and s['scalars'][1]==0
+- else:
+-  comparison=restore_comparison(np.load(root/'replay/accepted_640p25.npz'),s);assert comparison['pass_'],comparison
+-  initial=dict(np.load(PREV/'keyframes/step_000000.npz'))
++ assert s['step']==0 and s['time']==0 and np.array_equal(s['x'],ref['X'])
++ assert not np.any(s['d']) and not np.any(s['kappa']) and not np.any(s['velocity']) and s['scalars'][1]==0
+  assert ns.l.extract_atom('mass')[1]==RHO*V
+  assert np.array_equal(ns.field(4),ref['m']) and np.array_equal(ns.field(9),np.arange(1,NB+1))
+- dump(O/'INITIAL_STATE_AND_LOADING_IDENTITY.json',dict(status='PASS',step=s['step'],time_s=s['time'],from_original_t0=case=='full',mass_kg=RHO*V,left_count=len(left),right_count=len(right),free_count=len(free),boundary=freeze['boundary'],ledger_anchor='Original t0; local window inherits immutable old prefix ledger ONLY for local comparison' if case=='local' else 'Original t0, all new integration'))
+- engine=EventIntegrator(ns,case,ids);endtime=.000643 if case=='local' else .0007
+- (O/'keyframes').mkdir(exist_ok=True);bond1813=[]
++ endtime=.0007;(O/'keyframes').mkdir(exist_ok=True);bond1813=[];journal=None;engine=None;topology_match=None;native_healthy=True
++ dump(O/'INITIAL_STATE_AND_LOADING_IDENTITY.json',dict(status='PASS',from_original_t0=True,original_X_exact=True,atom_ids=s['atom_ids'],new_box=[s['box_lo'],s['box_hi']],initial_U_J=s['scalars'][0],initial_D_J=s['scalars'][1],initial_K_J=s['K']))
+  rows=[];states={};hist_steps=[];hist_ids=[];hist_k=[];hist_d=[];events=[];keys=[];stop=[];contact_events=[];seen_failed=set((np.flatnonzero(s['d']==1)+1).tolist());firstsoft=None;firstfail=None;sumdef=np.zeros(4);W=Jc=cwork=0.;scale=1e-15;max_dd_record=0.;maxerr={k:0. for k in ['force_N','U_J','D_increment_J','kappa','d','native_KE_J','contact_force_N','contact_U_J','force_sum_N','torque_Nm','fixed_m','loading_x_m','loading_v_m_s','decomposition_J','failed_tension_N','d_rollback','kappa_rollback']};minD=0.;maxpenetration=0.;peakrss=0;next_contact_first=True
+- cols=['step','time_s','dt_s','W_J','U_J','K_J','D_J','Uc_J','Jc_J','R_J','relative_R','energy_scale_J','max_speed_m_s','max_free_speed_m_s','max_free_disp_m','step_disp_dx','relative_endpoint_step_dx','max_dd','max_kappa','max_d','new_soft','new_fail','total_failed','live_bonds','contact_pairs','Px_Ns','Py_Ns','Pz_Ns','momentum_residual_Ns','x_equation_m','v_equation_m_s','Kfree_J','contact_work_J','signed_topology_J','commits','token','force_evaluations','VV_defect_J','spatial_defect_J','switch_work_J','contact_defect_J','remainder_J','max_contact_penetration_dx','relative_contact_step_dx']
++ cols=['step','time_s','dt_s','W_J','U_J','K_J','D_J','Uc_J','Jc_J','R_J','relative_R','energy_scale_J','max_speed_m_s','max_free_speed_m_s','max_free_disp_m','step_disp_dx','relative_endpoint_step_dx','max_dd','max_kappa','max_d','new_soft','new_fail','total_failed','live_bonds','contact_pairs','Px_Ns','Py_Ns','Pz_Ns','momentum_residual_Ns','x_equation_m','v_equation_m_s','Kfree_J','contact_work_J','signed_topology_J','commits','token','force_evaluations','VV_defect_J','spatial_defect_J','switch_work_J','contact_defect_J','remainder_J','max_contact_penetration_dx','relative_contact_step_dx','atom_count','xmin_m','ymin_m','zmin_m','xmax_m','ymax_m','zmax_m','min_box_clearance_m']
+  def keep(state,reason):
+   step=state['step'];path=O/'keyframes'/f'step_{step:06d}.npz'
+   if not path.exists():np.savez_compressed(path,**state,bond_ids=np.arange(1,NB+1),bonds=b,reference_X=ref['X'])
+@@ -44,15 +40,12 @@
+   return nb==len(expected) and np.array_equal(np.sort(bb[:,0]*N+bb[:,1]),np.sort(expected[:,0]*N+expected[:,1]))
+  keep(s,'initial');stream=(O/'step_scalars.csv').open('w');writer=csv.writer(stream);writer.writerow(cols)
+  initialrow=[0,0,dt,0,s['scalars'][0],s['K'],0,s['Uc'],0,0,0,scale,0,0,0,0,0,0,0,0,0,0,0,NB,0,0,0,0,0,0,0,0,0,0,s['scalars'][4],s['scalars'][5],s['scalars'][6],0,0,0,0,0,0,0]
+- if case=='local':
+-  old=np.load(PREV/'trajectory.npz');assert list(old['columns'])==cols
+-  initialrow=old['series'][2561].tolist();W=initialrow[3];Jc=initialrow[8];scale=initialrow[11];cwork=initialrow[32];sumdef=np.array(initialrow[37:41])
++ initialrow += [N,*s['x'].min(0),*s['x'].max(0),float(np.min(BOX-abs(s['x'])))]
++ journal=Journal(O,cols);engine=EventIntegrator(ns,case,ids,journal=journal);journal.accept(s,initialrow);journal.checkpoint(ns,s,'original_t0')
+  assert len(initialrow)==len(cols);record(s,initialrow,writer,stream);prev=s;last_independent=model.evaluate(s['x'],s['d']);prevfc=contact.evaluate(s['x'],s['d'])[1];last_newfail=[]
+  try:
+   while prev['time']<endtime-1e-15:
+    s,dt=engine.next(prev);ns=engine.ns;step=s['step'];dx=s['x']-prev['x'];dv=s['velocity']-prev['velocity'];sc=s['scalars'];dd=s['d']-prev['d'];newfail=np.flatnonzero((s['d']==1)&(prev['d']<1));newsoft=np.flatnonzero((s['d']>0)&(prev['d']==0));changed=np.flatnonzero(dd!=0)
+-   if len(changed):
+-    hist_steps.append(np.full(len(changed),step,np.int32));hist_ids.append((changed+1).astype(np.int32));hist_k.append(s['kappa'][changed]);hist_d.append(s['d'][changed])
+    if firstsoft is None and len(newsoft):firstsoft=dict(step=step,time_s=s['time'],bond_ids=newsoft+1);keep(s,'first_softening')
+    if firstfail is None and len(newfail):firstfail=dict(step=step,time_s=s['time'],bond_ids=newfail+1);keep(s,'first_complete_failure')
+    stretch=np.linalg.norm(s['x'][b[:,1]]-s['x'][b[:,0]],axis=1)/ref['r0']-1
+@@ -87,7 +80,9 @@
+    t=s['time'];ql=min(t/.0003,1.);qu=0. if t<.00035 else min((t-.00035)/.0003,1.);u=30e-6*(np.cos(np.pi*qu)-np.cos(np.pi*ql));v=60e-6*np.pi/(2*.0003)*(np.sin(np.pi*ql)-np.sin(np.pi*qu));xb=ref['X'][bc].copy();vb=np.zeros_like(xb);xb[:len(left),0]-=u;xb[len(left):,0]+=u;vb[:len(left),0]=-v;vb[len(left):,0]=v
+    update_err('loading_x_m',abs(s['x'][bc]-xb).max());update_err('loading_v_m_s',abs(s['velocity'][bc]-vb).max())
+    row=[step,t,dt,W,U,Know,D,s['Uc'],Jc,Rnow,relR,scale,speed,freespeed,freedisp,disp,rdisp,maxdd,float(s['kappa'].max()),float(s['d'].max()),len(newsoft),len(newfail),int(failed.sum()),s['native_bonds'],nc,*P,mom,xeq,veq,Kfree,cwork,-D,sc[4],sc[5],sc[6],*sumdef,remainder,penetration,rel_contact]
+-   record(s,row,writer,stream)
++   row += [len(s['atom_ids']),*s['x'].min(0),*s['x'].max(0),float(np.min(BOX-abs(s['x'])))]
++   if not np.array_equal(s['atom_ids'],np.arange(1,N+1)):stop.append('ORIGINAL_ATOM_IDENTITY')
++   if np.any(abs(s['x'])>=BOX):stop.append('FROZEN_DOMAIN_EXIT')
+    if not np.all(np.isfinite(np.r_[row,s['x'].ravel(),s['velocity'].ravel(),s['force'].ravel(),s['kappa'],s['d']])):stop.append('NONFINITE')
+    if sc[4]!=step or sc[5]!=step or s['step']!=step or abs(t-prev['time']-dt)>1e-15:stop.append('STEP_COMMIT_IDENTITY')
+    if s['native_bonds']!=NB-failed.sum() or not np.array_equal(ns.field(9),np.arange(1,NB+1)):stop.append('ORIGINAL_TOPOLOGY_IDENTITY')
+@@ -110,28 +105,55 @@
+    max_dd_record=max(max_dd_record,maxdd)
+    if any(abs(t-phase)<1e-15 for phase in [.0003,.00035,.00065,.0007]):keep(s,'physical_phase_transition')
+    if dt<BASE:keep(s,'accepted_event_substep')
++   if abs(t-.00068775)<1e-15:keep(s,'previous_last_accepted_time')
+    if stop:
+     keep(prev,'immediately_before_safety_stop');keep(s,'FIRST_SAFETY_STOP_NOT_ADMITTED');break
++   record(s,row,writer,stream);journal.accept(s,row,previous=prev,new_soft=newsoft,new_fail=newfail,pairs=pairs,errors=maxerr)
++   if step%40==0:journal.checkpoint(ns,s,'periodic_40_accepted_steps')
+    prev=s;prevfc=fc;last_independent=new
+    if step%200==0:print('STEP',step,'time_us',t*1e6,'failed',int(failed.sum()),'max_dd',maxdd,'energy_rel',relR,'wall_s',time.perf_counter()-start,flush=True)
+  except Exception as exc:
+-  stop.append('EXCEPTION: '+repr(exc));(O/'EXCEPTION.txt').write_text(traceback.format_exc());keep(prev,'before_exception');ns=engine.ns;keep(ns.state(),'exception_state')
++  stop.append('EXCEPTION: '+repr(exc));native_healthy=False
++  if journal:journal.failure(exc,traceback.format_exc())
+  finally:
+-  ns=engine.ns;engine.save();elapsed=time.perf_counter()-start;cpu=time.process_time()-cpu0;stream.close();keep(s,'final_executed_state');ns.l.command(f'write_restart {O/"final_executed.restart"}')
+-  topology_match=endpoint_ids_ok();update_err('fixed_m',abs(ns.field(4)-ref['m']).max());maps=sorted(set(z.split()[-1] for z in Path('/proc/self/maps').read_text().splitlines() if 'liblammps' in z));ns.close()
++  # Never query native arrays or force a restart after an unsafe candidate.
++  ns=engine.ns if engine else ns
++  if engine:engine.save()
++  if stop:
++   s=journal.last if journal and journal.last is not None else prev
++   keep(s,'last_accepted_after_failure')
++   if journal and not (O/'FAILURE_RECORD.json').exists():journal.failure(RuntimeError('; '.join(stop)))
++  else:
++   try:
++    s=prev;topology_match=endpoint_ids_ok();assert topology_match,'FINAL_NATIVE_TOPOLOGY_MISMATCH'
++    update_err('fixed_m',abs(ns.field(4)-ref['m']).max());assert maxerr['fixed_m']==0
++    codes,exclusions=topology(ns)
++    np.savez_compressed(O/'final_native_topology.npz',atom_ids=ns.gather('id'),bond_endpoint_codes=codes,original_bond_ids=ns.field(9),failed=ns.field(10),reference_m=ns.field(4))
++    dump(O/'FINAL_NATIVE_SPECIAL_EXCLUSIONS.json',exclusions)
++    journal.checkpoint(ns,s,'final_accepted_700us');keep(s,'final_accepted_state')
++   except Exception as exc:
++    stop.append('FINALIZATION: '+repr(exc));native_healthy=False;journal.failure(exc,traceback.format_exc())
++  stream.close()
++  if journal:journal.finish()
++  elapsed=time.perf_counter()-start;cpu=time.process_time()-cpu0;peakrss=max(peakrss,resource.getrusage(resource.RUSAGE_SELF).ru_maxrss*1024)
++  maps=sorted(set(z.split()[-1] for z in Path('/proc/self/maps').read_text().splitlines() if 'liblammps' in z))
++  # Resource summary is written before optional postprocessing, even on failure.
++  dump(O/'RUN_RESOURCES.json',dict(main_wall_s=elapsed,main_CPU_s=cpu,peak_RSS_bytes=peakrss,MPI_ranks=1,threads=1,actual_dynamic_cases=1,actual_physical_steps=len(rows)-1,damage_rejected_trials=engine.rejects if engine else 0,recompile_count=0,GPU_used=False,rolling_checkpoint_writes=journal.checkpoints if journal else 0,checkpoint_wall_s=journal.checkpoint_wall_s if journal else 0,nearest_checkpoint=journal.latest if journal else None,output_bytes_now=sum(p.stat().st_size for p in O.rglob('*') if p.is_file()),budget=budget))
++  try:ns.close()
++  except Exception as exc:dump(O/'CLOSE_WARNING.json',dict(exception=str(exc),accepted_outputs_already_saved=True))
+  arr=np.array(rows);np.savez_compressed(O/'bond1813_evolution.npz',values=np.array(bond1813),columns=['time_s','stretch','kappa','d']+[a+str(n)+c for a in ['x','v','Fmaterial','Ftotal'] for n in [24,245] for c in ['x','y','z']]+['bond1813_tension_N']);np.savez_compressed(O/'trajectory.npz',series=arr,columns=cols,**{k:np.asarray(z) for k,z in states.items()},reference_X=ref['X'],bonds=b,bond_ids=np.arange(1,NB+1),left_ids=left,right_ids=right,free_ids=free)
+- np.savez_compressed(O/'damage_history_sparse.npz',step=np.concatenate(hist_steps) if hist_steps else np.array([],np.int32),bond_id=np.concatenate(hist_ids) if hist_ids else np.array([],np.int32),kappa=np.concatenate(hist_k) if hist_k else np.array([],np.float64),d=np.concatenate(hist_d) if hist_d else np.array([],np.float64))
++ hist=np.fromfile(O/'damage_updates.bin',dtype=journal.damage_dtype)
++ np.savez_compressed(O/'damage_history_sparse.npz',**{k:hist[k] for k in hist.dtype.names})
+  violations=np.flatnonzero(s['d']-prev['d']>.1) if stop else np.array([],int)
+  detailed=[]
+  for k in violations:
+   nodes=b[k];detailed.append(dict(bond_id=int(k+1),node_ids=nodes+1,kappa_before=prev['kappa'][k],kappa_after=s['kappa'][k],d_before=prev['d'][k],d_after=s['d'][k],delta_d=s['d'][k]-prev['d'][k],stretch_before=np.linalg.norm(prev['x'][nodes[1]]-prev['x'][nodes[0]])/ref['r0'][k]-1,stretch_after=np.linalg.norm(s['x'][nodes[1]]-s['x'][nodes[0]])/ref['r0'][k]-1,velocity_before_m_s=prev['velocity'][nodes],velocity_after_m_s=s['velocity'][nodes],force_before_N=prev['force'][nodes],force_after_N=s['force'][nodes],material_force_before_N=prev['material_force'][nodes],material_force_after_N=s['material_force'][nodes]))
+- dump(O/'NUMERICAL_SAFETY_STOP_RECORD.json',dict(status='FAILED_ADMISSION' if stop else 'NO_SAFETY_STOP',reasons=stop,first_stop_step=s['step'] if stop else None,first_stop_time_s=s['time'] if stop else None,last_admitted_step=prev['step'] if stop else s['step'],violating_state_committed_but_not_admitted=bool(stop),no_step_after_stop=True,violating_bonds=detailed,ledger=dict(zip(cols,arr[-1])),restart='final_executed.restart',freeze_sha256=sha(root/'EVENT_INTEGRATOR_FREEZE.json')))
++ dump(O/'NUMERICAL_SAFETY_STOP_RECORD.json',dict(status='FAILED_ADMISSION' if stop else 'NO_SAFETY_STOP',reasons=stop,first_stop_step=s['step'] if stop else None,first_stop_time_s=s['time'] if stop else None,last_admitted_step=prev['step'] if stop else s['step'],violating_state_committed_but_not_admitted=bool(stop),no_step_after_stop=True,violating_bonds=detailed,ledger=dict(zip(cols,arr[-1])),restart=journal.latest['restart'] if journal.latest else None,freeze_sha256=sha(root/'DOMAIN_PROTOCOL_FREEZE.json')))
+  dump(O/'FIRST_SOFTENING_AND_FAILURE_EVENTS.json',dict(first_softening=firstsoft,first_complete_failure=firstfail,events=events,unique_failed_ids=sorted(seen_failed)))
+  dump(O/'KEYFRAME_INDEX.json',keys)
+  if contact_events:dump(O/'DYNAMIC_CONTACT_CLOSURE_AUDIT.json',dict(status='OBSERVED_CHECK_AUDITS',events=contact_events,max_penetration_dx=maxpenetration,max_force_error_N=maxerr['contact_force_N'],max_U_error_J=maxerr['contact_U_J'],history='All dynamic contact pair counts and penetration recorded per actual step. Active pairs exclude every alive original bond.',near_coincidence_guard_dx=.1))
+- audit=dict(status='FAILED_ADMISSION' if stop else 'COMPLETED',accepted_substeps=engine.accepts,rejected_trials=engine.rejects,minimum_accepted_h_s=float(arr[1:,2].min()) if len(arr)>1 else None,executed_steps=s['step'],last_admitted_step=prev['step'] if stop else s['step'],final_time_s=s['time'],planned_end_time_s=endtime,dt_base_s=BASE,stop_reasons=stop,max_errors=maxerr,min_D_increment_J=minD,final_ledger=dict(zip(cols,arr[-1])),maxima={c:float(arr[:,i].max()) for i,c in enumerate(cols)},native_endpoint_topology_matches=topology_match,actual_loaded_libraries={p:sha(p) for p in maps},independent_model_checked_every_step=True,full_states_saved=len(keys),actual_dynamic_cases=1,restart_continuations=0,contact_status='OBSERVED' if contact_events else 'UNOBSERVED')
++ audit=dict(status='FAILED_ADMISSION' if stop else 'COMPLETED',accepted_substeps=len(rows)-1,rejected_trials=engine.rejects,minimum_accepted_h_s=float(arr[1:,2].min()) if len(arr)>1 else None,executed_steps=s['step'],last_admitted_step=prev['step'] if stop else s['step'],final_time_s=s['time'],planned_end_time_s=endtime,dt_base_s=BASE,stop_reasons=stop,max_errors=maxerr,min_D_increment_J=minD,final_ledger=dict(zip(cols,arr[-1])),maxima={c:float(arr[:,i].max()) for i,c in enumerate(cols)},native_endpoint_topology_matches=topology_match,actual_loaded_libraries={p:sha(p) for p in maps},independent_model_checked_every_step=True,full_states_saved=len(keys),actual_dynamic_cases=1,restart_continuations=0,contact_status='OBSERVED' if contact_events else 'UNOBSERVED')
+  dump(O/'DYNAMIC_AUDIT.json',audit)
+- dump(O/'RUN_RESOURCES.json',dict(main_wall_s=elapsed,main_CPU_s=cpu,peak_RSS_bytes=peakrss,wall_with_final_compression_s=time.perf_counter()-start,MPI_ranks=1,threads=1,actual_dynamic_cases=1,actual_physical_steps=engine.accepts,extra_rejected_trials=engine.rejects,recompile_count=1,GPU_used=False,output_bytes_now=sum(p.stat().st_size for p in O.rglob('*') if p.is_file()),budget=budget))
+  print(case.upper()+'_DONE',json.dumps({k:audit[k] for k in ['status','executed_steps','final_time_s','stop_reasons','contact_status']}),flush=True);print('MAX_ERRORS',json.dumps(maxerr),flush=True)
+ 
+ if __name__=='__main__':main()

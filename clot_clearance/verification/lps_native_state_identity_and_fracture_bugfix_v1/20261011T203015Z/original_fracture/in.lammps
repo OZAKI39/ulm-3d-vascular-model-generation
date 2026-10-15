@@ -1,0 +1,24 @@
+units si
+dimension 3
+boundary f f f
+atom_style bond
+atom_modify map array sort 0 0
+newton on off
+processors 1 1 1
+read_data /workspace/y_clot/project/verification/lps_native_state_identity_and_fracture_bugfix_v1/20261011T203015Z/original_fracture/body.data extra/bond/per/atom 150 extra/special/per/atom 200
+lattice sc 5.0000000000000002e-05
+neighbor 5.0000000000000002e-05 bin
+neigh_modify every 1 delay 0 check no
+comm_modify cutoff 0.00045149999999999997
+fix props all property/atom d_vfrac d_theta ghost yes
+set group all d_vfrac 1.2500000000000002e-13
+pair_style zero 0.0001505
+pair_coeff * *
+bond_style bpm/peri
+bond_coeff 1 lps 33333.333333333336 940.0 0.0001505 .15 0
+special_bonds lj 0 1 1 coul 1 1 1
+timestep 5e-7
+thermo 1
+thermo_style custom step atoms bonds pe
+thermo_modify lost error lost/bond error
+run 0

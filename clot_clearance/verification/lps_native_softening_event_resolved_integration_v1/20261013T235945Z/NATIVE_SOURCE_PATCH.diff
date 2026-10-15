@@ -1,0 +1,45 @@
+--- certified/src/fix_move.cpp
++++ isolated/src/fix_move.cpp
+@@ -1682,5 +1682,15 @@
+ 
+ void FixMove::reset_dt()
+ {
+-  error->all(FLERR, Error::NOLASTLINE, "Resetting timestep size is not allowed with fix move");
+-}
++  // Isolated event integrator: only fully prescribed equal-variable motion.
++  // These six expressions use native cumulative `time`; no elapsed-step*dt
++  // displacement or partially integrated component is admitted here.
++  if (mstyle != VARIABLE || !xvarstr || !yvarstr || !zvarstr ||
++      !vxvarstr || !vyvarstr || !vzvarstr ||
++      xvarstyle != EQUAL || yvarstyle != EQUAL || zvarstyle != EQUAL ||
++      vxvarstyle != EQUAL || vyvarstyle != EQUAL || vzvarstyle != EQUAL)
++    error->all(FLERR, Error::NOLASTLINE,
++               "Variable dt requires six prescribed equal variables in isolated fix move");
++  dt = dtv = update->dt;
++  dtf = 0.5 * update->dt * force->ftm2v;
++}
+
+--- /dev/null
++++ isolated/src/event_state_audit.cpp
+@@ -0,0 +1,21 @@
++// Isolated read-only rollback audit. No model, integration or topology mutation.
++#include "lammps.h"
++#include "atom.h"
++extern "C" int lps_event_special(void *ptr, double *out)
++{
++  auto *lmp = static_cast<LAMMPS_NS::LAMMPS *>(ptr);
++  auto *a = lmp->atom;
++  int count = 0;
++  for (int i = 0; i < a->nlocal; ++i) {
++    if (out) {
++      out[count] = static_cast<double>(a->tag[i]);
++      for (int j = 0; j < 3; ++j) out[count+1+j] = a->nspecial[i][j];
++    }
++    count += 4;
++    for (int j = 0; j < a->nspecial[i][2]; ++j) {
++      if (out) out[count] = static_cast<double>(a->special[i][j]);
++      ++count;
++    }
++  }
++  return count;
++}

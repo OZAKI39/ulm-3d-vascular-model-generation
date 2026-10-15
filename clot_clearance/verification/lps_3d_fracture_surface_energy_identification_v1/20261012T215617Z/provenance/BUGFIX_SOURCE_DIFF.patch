@@ -1,0 +1,141 @@
+--- a/src/BPM/bond_bpm_peri.cpp
++++ b/src/BPM/bond_bpm_peri.cpp
+@@ -94,6 +94,7 @@
+     tau(nullptr), yieldstress(nullptr), cut(nullptr), s00(nullptr), alpha(nullptr),
+     id_fix_property_peri(nullptr), index_vfrac(-1), index_s0(-1), index_smin(-1), index_lambda(-1),
+     index_vinter(-1), index_dtheta(-1), index_ddamage(-1),
++    id_fix_reference_m(nullptr), index_reference_m(-1), index_reference_ready(-1),
+     smin_new(nullptr), s0_new(nullptr), nmax(0), state_based(0), wvolume_setup(0), kbulk_rep(0.0),
+     wvolume(nullptr), theta(nullptr), winv(nullptr), commflag(COMM_SMIN), plastic(0), tdnorm(nullptr),
+     pointwise_yield(0.0), gshear_rep(0.0)
+@@ -124,10 +125,14 @@
+ 
+   memory->destroy(smin_new);
+   memory->destroy(s0_new);
+-  memory->destroy(wvolume);
+   memory->destroy(theta);
+   memory->destroy(winv);
+   memory->destroy(tdnorm);
++
++  if (id_fix_reference_m) {
++    modify->delete_fix(id_fix_reference_m);
++    delete[] id_fix_reference_m;
++  }
+ 
+   if (id_fix_property_peri) {
+     modify->delete_fix(id_fix_property_peri);
+@@ -208,6 +213,10 @@
+   // rearrange stored bond values for hybrid bond styles, handled by parent
+   pre_compute();
+ 
++  // Reference m belongs to atom identity, not a local-index scratch slot.
++  // Refresh this alias after sorting/exchange/grow; property/atom owns storage.
++  if (state_based) wvolume = atom->dvector[index_reference_m];
++
+   // grow the per-step break scratch (and the state-based per-atom arrays) if needed
+   if (atom->nmax > nmax) {
+     memory->destroy(smin_new);
+@@ -216,13 +225,11 @@
+     memory->create(smin_new, nmax, "bond:smin_new");
+     memory->create(s0_new, nmax, "bond:s0_new");
+     if (state_based) {
+-      memory->destroy(wvolume);
+-      memory->destroy(theta);
++          memory->destroy(theta);
+       memory->destroy(winv);
+-      memory->create(wvolume, nmax, "bond:wvolume");
+       memory->create(theta, nmax, "bond:theta");
+       memory->create(winv, nmax, "bond:winv");
+-      wvolume_setup = 0;    // arrays reallocated -> rebuild the weighted volume
++      wvolume_setup = 0;    // refresh ghosts; initialized reference m is retained
+     }
+     if (plastic) {
+       memory->destroy(tdnorm);
+@@ -513,7 +520,12 @@
+   double *vfrac = atom->dvector[index_vfrac];
+   const double half_lc = 0.5 * domain->lattice->xlattice;
+ 
+-  for (int i = 0; i < ntotal; i++) wvolume[i] = 0.0;
++  double *ready = atom->dvector[index_reference_ready];
++  // Only virgin atoms receive a reference sum. A zero-neighbor atom legitimately
++  // has m=0, hence a separate restart-persistent initialized flag is necessary.
++  // Never reconstruct initialized m from the surviving post-fracture topology.
++  for (int i = 0; i < nlocal; i++)
++    if (ready[i] == 0.0) wvolume[i] = 0.0;
+ 
+   for (int n = 0; n < nbondlist; n++) {
+     if (bondlist[n][2] <= 0) continue;
+@@ -524,10 +536,11 @@
+     double r0 = bondstore[n][0];
+     double scale = vfrac_taper(r0, cut[type], half_lc);
+ 
+-    if (i1 < nlocal) wvolume[i1] += r0 * vfrac[i2] * scale;
+-    if (i2 < nlocal) wvolume[i2] += r0 * vfrac[i1] * scale;
+-  }
+-
++    if (i1 < nlocal && ready[i1] == 0.0) wvolume[i1] += r0 * vfrac[i2] * scale;
++    if (i2 < nlocal && ready[i2] == 0.0) wvolume[i2] += r0 * vfrac[i1] * scale;
++  }
++
++  for (int i = 0; i < nlocal; i++) ready[i] = 1.0;
+   wvolume_setup = 1;
+   commflag = COMM_WVOLUME;
+   comm->forward_comm(this);
+@@ -921,6 +934,22 @@
+       error->all(FLERR, Error::NOLASTLINE,
+                  "Bond style bpm/peri internal error: missing d_lambda storage");
+   }
++  // A dedicated fix gives reference m formal copy/grow/exchange/border/restart
++  // callbacks. Do not piggyback on s0/smin/vfrac or reset restored values here.
++  // On add_fix(), Modify restores matching per-atom restart data by fix ID.
++  if (state_based && !id_fix_reference_m) {
++    if (atom->find_custom("bpm_peri_reference_m", flag, cols) >= 0 ||
++        atom->find_custom("bpm_peri_reference_ready", flag, cols) >= 0 ||
++        modify->get_fix_by_id("BPM_PERI_REFERENCE_M"))
++      error->all(FLERR, "Reserved BPM_PERI_REFERENCE_M storage already exists");
++    id_fix_reference_m = utils::strdup("BPM_PERI_REFERENCE_M");
++    modify->add_fix(fmt::format("{} all property/atom d_bpm_peri_reference_m "
++                                "d_bpm_peri_reference_ready ghost yes writedata no",
++                                id_fix_reference_m));
++    index_reference_m = atom->find_custom("bpm_peri_reference_m", flag, cols);
++    index_reference_ready = atom->find_custom("bpm_peri_reference_ready", flag, cols);
++  }
++
+   // optional dilatation diagnostic: if the user pre-declares a per-atom theta
+   // property ('fix <ID> all property/atom d_theta ghost yes' before bond_style),
+   // the state-based models publish the per-step dilatation into it (only then,
+--- a/src/BPM/bond_bpm_peri.h
++++ b/src/BPM/bond_bpm_peri.h
+@@ -61,6 +61,10 @@
+   int index_dtheta;       // per-step dilatation theta exposed for visualization
+   int index_ddamage;      // per-step damage calculated for visualization
+ 
++  // Owned by a dedicated property/atom fix, including initialized-state marker.
++  char *id_fix_reference_m;
++  int index_reference_m, index_reference_ready;
++
+   // per-step scratch for the break bookkeeping (committed to smin/s0 each step)
+   double *smin_new, *s0_new;
+   int nmax;
+--- a/src/BPM/bond_bpm.cpp
++++ b/src/BPM/bond_bpm.cpp
+@@ -469,7 +469,9 @@
+   if (j >= nlocal)
+     jd = atom->map(tag[j]);
+ 
+-  if (id != -1) {
++  // Ghosts have no valid owned bond/history arrays. With newton bond off,
++  // the remote owner removes its endpoint; a periodic mapped LOCAL copy is OK.
++  if (id >= 0 && id < nlocal) {
+     for (m = 0; m < num_bond[id]; m++) {
+       if (bond_atom[id][m] == tag[j] && setflag[bond_type[id][m]]) {
+         n = num_bond[id];
+@@ -486,7 +488,7 @@
+     }
+   }
+ 
+-  if (jd != -1) {
++  if (jd >= 0 && jd < nlocal) {
+     for (m = 0; m < num_bond[jd]; m++) {
+       if (bond_atom[jd][m] == tag[i] && setflag[bond_type[jd][m]]) {
+         n = num_bond[jd];

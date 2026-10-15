@@ -10,7 +10,10 @@ def clot_components(n,bonds,types,alive):
     attached=np.zeros(nc,bool);attached[lab[bonds[alive&(types==2),0]]]=True
     return lab,counts,attached
 
+LEGACY_CLASSIFICATION_VERSION = 'ALL_COMPONENTS_V1'
+
 def classify(m):
+    # Historical ALL-component classifier retained verbatim for old reports/AI labels.
     if m['debris_fraction']>=.5 or (m['median_fragment_nodes']<=2 and m['bulk_broken_fraction']>=.5):return 'PULVERIZATION'
     if m['interface_broken_fraction']>=.9 and m['largest_free_fraction']>=.8 and (m['resolved_fragment_count']==1 or m['bulk_broken_fraction']<.01):return 'WHOLE_CLOT_DETACHMENT'
     if m['resolved_fragment_count']<=1 and m['interface_broken_fraction']<.1 and m['bulk_broken_fraction']<.01:return 'NO_FAILURE'

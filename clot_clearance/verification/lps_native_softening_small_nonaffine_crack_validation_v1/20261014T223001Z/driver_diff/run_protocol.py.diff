@@ -1,0 +1,71 @@
+--- parent/run_protocol.py
++++ resume/run_protocol.py
+@@ -15,17 +15,32 @@
+  return None
+ 
+ def main():
+- freeze=json.loads((O/'SMALL_CRACK_DESIGN_FREEZE.json').read_text());assert json.loads((O/'MINIMAL_IMPLEMENTATION_CHECK.json').read_text())['status']=='PASS'
++ freeze=json.loads((O/'SMALL_CRACK_DESIGN_FREEZE.json').read_text());assert freeze['budget']['main_wall_s'] is None and freeze['budget']['RSS_stop_GiB'] is None
+  for n,h in freeze['driver_sha256'].items():assert sha(A/n)==h,n
+  assert sha(LIB)==freeze['library_sha256']
+- with (O/'full/FORMAL_CASE_STARTED.json').open('x') as f:json.dump(dict(pid=os.getpid(),fresh_t0=True,formal_case=1),f)
+- start=time.perf_counter();cpu0=time.process_time();ns=Native('full/native',dt=BASE);ref=ns.ref;ids=np.load(O/'provenance/boundary_ids.npz');ns.dynamics(ids['bottom_ids'],ids['top_ids'],ids['free_ids']);s=ns.state();assert s['step']==0 and s['time']==0 and s['scalars'][1]==s['scalars'][3]==0 and np.array_equal(s['d'],ref['initial_cut'].astype(float))
+- mech=Mechanics(ns,ids,s,freeze['gates']);columns=['step','time_s','dt_s','opening_m','reaction_top_N','reaction_bottom_N','generalized_material_reaction_N','actuator_top_N','W_J','U_J','K_J','Kfree_J','D_J','Uc_J','Jc_J','R_J','relative_R','energy_scale_J','max_speed_m_s','max_displacement_m','nonaffine_RMS_m','step_disp_dx','relative_endpoint_step_dx','max_dd','max_kappa','new_soft','new_fail','total_natural_failed','initial_cut_count','live_bonds','components','contact_pairs','max_contact_penetration_dx','relative_contact_step_dx','atom_count','Px_Ns','Py_Ns','Pz_Ns','momentum_residual_Ns','x_equation_m','v_equation_m_s','contact_work_J','VV_defect_J','spatial_defect_J','switch_work_J','contact_defect_J','remainder_J','min_box_clearance_m','commits','token']
+- for name in REGIONS:columns+=['D_'+name+'_J','failed_'+name]
+- for axis in 'xyz':columns+=[axis+'min_m',axis+'max_m']
+- row={k:0. for k in columns};row.update(step=0,time_s=0,dt_s=BASE,U_J=float(s['scalars'][0]),K_J=s['K'],Uc_J=s['Uc'],energy_scale_J=1e-15,initial_cut_count=int(ref['initial_cut'].sum()),live_bonds=s['native_bonds'],components=mech.components,atom_count=ns.N,max_kappa=SC,min_box_clearance_m=float(np.min(BOX-abs(s['x']))),commits=0,token=-1)
+- for j,axis in enumerate('xyz'):row[axis+'min_m']=float(s['x'][:,j].min());row[axis+'max_m']=float(s['x'][:,j].max())
+- journal=Journal(columns,ref);journal.accept(s,row);journal.key(s,'initial');journal.checkpoint(ns,s,'initial_reference_with_precut');engine=Integrator(ns,ids,journal);prev=s;rows=[row];events={};first_region_soft={};first_region_fail={};last_Dnode=mech.Dnode.copy();accepted_maxerr={};stop=[];native_topology=False;first_concentration=None;first_open=None;first_contact=None
++ with (O/'full/FORMAL_CASE_STARTED.json').open('x') as f:json.dump(dict(pid=os.getpid(),fresh_t0=False,continuation_of=str(PARENT),start_step=9600),f)
++ start=time.perf_counter();cpu0=time.process_time();cp=freeze['continuation']['checkpoint']
++ for key in ['restart','state']:assert sha(cp[key])==cp[key+'_sha256']
++ original=dict(np.load(PARENT/'full/keyframes/step_000000.npz'));saved=dict(np.load(cp['state']));ref=np.load(O/'provenance/reference.npz');ids=np.load(O/'provenance/boundary_ids.npz')
++ import csv
++ with (PARENT/'NATIVE_DYNAMIC_HISTORY.csv').open() as f:
++  reader=csv.DictReader(f);columns=reader.fieldnames;rows=[{k:float(v) for k,v in row.items()} for row in reader]
++ lastrow=rows[-1];assert len(rows)==9601 and int(lastrow['step'])==9600
++ ns=Native('full/native_resume',restart=cp['restart'],dt=lastrow['dt_s']);ns.dynamics(ids['bottom_ids'],ids['top_ids'],ids['free_ids']);s=ns.state()
++ restored=compare(saved,s);codes,special=topology(ns);expected=ref['bonds'][s['d']<1]+1
++ restored.update(original_bond_ids_exact=bool(np.array_equal(ns.field(9),ref['bond_ids'])),reference_m_exact=bool(np.array_equal(ns.field(4),ref['m'])),native_endpoint_graph_exact=bool(np.array_equal(codes,np.sort(expected[:,0]*len(ref['X'])+expected[:,1]))),special_exclusions_sha256=special,physical_steps_advanced=0,source_checkpoint=cp)
++ dump(O/'NATIVE_RESTART_RESTORE_AUDIT.json',restored)
++ assert restored['status']=='PASS' and restored['original_bond_ids_exact'] and restored['reference_m_exact'] and restored['native_endpoint_graph_exact'],restored
++ np.savez_compressed(O/'RESTORED_NATIVE_STATE.npz',**s)
++ mech=Mechanics(ns,ids,original,freeze['gates']);mech.W=lastrow['W_J'];mech.Jc=lastrow['Jc_J'];mech.cwork=lastrow['contact_work_J'];mech.scale=lastrow['energy_scale_J'];mech.defects=np.array([lastrow[k] for k in ['VV_defect_J','spatial_defect_J','switch_work_J','contact_defect_J']]);mech.Dnode=np.load(PARENT/'full/accepted_node_D.npz')['node_D_J'].copy();mech.maxerr=json.loads((PARENT/'full/DYNAMIC_AUDIT.json').read_text())['max_accepted_errors'];mech.last=mech.model.evaluate(s['x'],s['d']);mech.prevfc=mech.contact.evaluate(s['x'],s['d'])[1];mech.update_components(s)
++ restored_R=mech.W-(s['scalars'][0]-original['scalars'][0]+s['K']-original['K']+s['scalars'][1]+s['Uc']-original['Uc']-mech.Jc)
++ assert abs(restored_R-lastrow['R_J'])<=freeze['gates']['energy_abs_J'] and abs(mech.Dnode.sum()-s['scalars'][1])<=freeze['gates']['energy_abs_J']
++ dump(O/'LEDGER_RESTORE_AUDIT.json',dict(status='PASS',global_t0_energy_origin=True,cumulative_W_J=mech.W,cumulative_D_J=float(s['scalars'][1]),cumulative_Jc_J=mech.Jc,cumulative_contact_work_J=mech.cwork,energy_scale_J=mech.scale,defects_J=mech.defects,restored_R_J=float(restored_R),source_R_J=lastrow['R_J'],R_jump_J=float(restored_R-lastrow['R_J']),node_D_sum_error_J=float(mech.Dnode.sum()-s['scalars'][1]),previous_max_errors_retained=True))
++ journal=Journal(columns,ref,resume=True);journal.last=s;journal.last_row=lastrow;journal.records=len(rows);journal.checkpoint(ns,s,'verified_resume_2p4ms');journal.event('NATIVE_RESTART_RESUMED',source_run=str(PARENT),step=s['step'],time_s=s['time'],physical_steps_advanced=0)
++ engine=Integrator(ns,ids,journal);oldtrial=json.loads((PARENT/'full/TRIAL_ACCEPT_REJECT_AUDIT.json').read_text());engine.trials=oldtrial['trials'];engine.rollbacks=oldtrial['rollbacks'];engine.serial=max(z['trial'] for z in engine.trials);engine.accepts=oldtrial['accepted_damage_gate'];engine.rejects=oldtrial['rejected'];engine.base_intervals=oldtrial['base_intervals']
++ prior_events=json.loads((PARENT/'full/FIRST_EVENTS.json').read_text());events=prior_events['global_events'];first_region_soft=prior_events['first_region_softening'];first_region_fail=prior_events['first_region_failure'];first_concentration=prior_events['first_observed_concentration'];first_open=prior_events['first_open_no_bridge_cell'];first_contact=prior_events['first_contact']
++ prev=s;last_Dnode=mech.Dnode.copy();accepted_maxerr=dict(mech.maxerr);stop=[];native_topology=False
++ print('RESUME_VERIFIED',s['step'],s['time'],'ledger_R_jump',restored_R-lastrow['R_J'],flush=True)
+  try:
+   while prev['time']<END-1e-15:
+    s,h=engine.next(prev);ns=engine.ns;mech.ns=ns;row,pairs,newsoft,newfail=mech.check(prev,s,h)
+@@ -49,8 +64,8 @@
+    if s['step']%400==0:journal.checkpoint(ns,s,'periodic_400_accepted_steps')
+    if s['step']%200==0:
+     elapsed=time.perf_counter()-start;rss=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss*1024;bytes_now=sum(p.stat().st_size for p in (O/'full').rglob('*') if p.is_file());print('STEP',s['step'],'t_ms',s['time']*1e3,'new_failed_total',row['total_natural_failed'],'components',row['components'],'max_dd',row['max_dd'],'relR',row['relative_R'],'wall_s',elapsed,flush=True)
+-    assert freeze['budget']['RSS_stop_GiB'] is None,'USER_AUTHORIZED_NO_RSS_LIMIT'
+-    assert elapsed<=freeze['budget']['main_wall_s'] and bytes_now<=freeze['budget']['output_limit_GiB']*1024**3,'WALL_OR_OUTPUT_BUDGET'
++    assert freeze['budget']['RSS_stop_GiB'] is None and freeze['budget']['main_wall_s'] is None,'USER_AUTHORIZED_NO_MEMORY_OR_WALL_CAP'
++    assert bytes_now<=freeze['budget']['output_limit_GiB']*1024**3,'OUTPUT_BUDGET'
+  except Exception as exc:stop.append(repr(exc));journal.failure(exc,traceback.format_exc())
+  finally:
+   engine.save();ns=engine.ns;s=journal.last
+@@ -62,9 +77,12 @@
+   else:journal.key(s,'last_accepted_after_stop')
+   journal.finish();dump(O/'full/FIRST_EVENTS.json',dict(global_events=events,first_region_softening=first_region_soft,first_region_failure=first_region_fail,first_observed_concentration=first_concentration,first_open_no_bridge_cell=first_open,first_contact=first_contact))
+   np.savez_compressed(O/'full/accepted_node_D.npz',node_D_J=last_Dnode,node_regions=ref['node_regions'])
+-  dump(O/'RUN_RESOURCES.json',dict(main_wall_s=time.perf_counter()-start,main_CPU_s=time.process_time()-cpu0,peak_RSS_bytes=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss*1024,formal_dynamic_cases=1,accepted_steps=len(rows)-1,damage_rejections=engine.rejects,checkpoints_written=journal.checkpoints,checkpoint_wall_s=journal.checkpoint_wall_s,native_candidate_wall_s=engine.native_wall,rollback_wall_s=engine.restore_wall,MPI_ranks=1,threads=1,GPU_used=False,output_bytes_at_main_end=sum(p.stat().st_size for p in O.rglob('*') if p.is_file()),budget=freeze['budget']))
+-  maps=sorted(set(q.split()[-1] for q in Path('/proc/self/maps').read_text().splitlines() if 'liblammps' in q));dump(O/'full/DYNAMIC_AUDIT.json',dict(status='COMPLETED' if not stop else 'FAILED_ADMISSION',stop_reasons=stop,from_original_precut_t0=True,last_accepted_step=s['step'],last_accepted_time_s=s['time'],planned_end_time_s=END,accepted_steps=len(rows)-1,damage_rejections=engine.rejects,last_accepted_ledger=journal.last_row,max_accepted_errors=accepted_maxerr,native_final_topology_matches=bool(native_topology),original_atom_ids_checked_every_step=True,independent_mechanics_every_step=True,actual_loaded_libraries={p:sha(p) for p in maps},next_case_executed=False))
++  dump(O/'RUN_RESOURCES.json',dict(main_wall_s=time.perf_counter()-start,main_CPU_s=time.process_time()-cpu0,peak_RSS_bytes=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss*1024,formal_dynamic_cases=0,continuation_segments=1,new_steps=len(rows)-1-9600,accepted_steps=len(rows)-1,damage_rejections=engine.rejects,checkpoints_written=journal.checkpoints,checkpoint_wall_s=journal.checkpoint_wall_s,native_candidate_wall_s=engine.native_wall,rollback_wall_s=engine.restore_wall,MPI_ranks=1,threads=1,GPU_used=False,output_bytes_at_main_end=sum(p.stat().st_size for p in O.rglob('*') if p.is_file()),budget=freeze['budget']))
++  maps=sorted(set(q.split()[-1] for q in Path('/proc/self/maps').read_text().splitlines() if 'liblammps' in q));dump(O/'full/DYNAMIC_AUDIT.json',dict(status='COMPLETED' if not stop else 'FAILED_ADMISSION',stop_reasons=stop,from_original_precut_t0=False,continuous_original_protocol=True,source_run=str(PARENT),resume_step=9600,last_accepted_step=s['step'],last_accepted_time_s=s['time'],planned_end_time_s=END,accepted_steps=len(rows)-1,damage_rejections=engine.rejects,last_accepted_ledger=journal.last_row,max_accepted_errors=accepted_maxerr,native_final_topology_matches=bool(native_topology),original_atom_ids_checked_every_step=True,independent_mechanics_every_step=True,actual_loaded_libraries={p:sha(p) for p in maps},next_case_executed=False))
+   try:ns.close()
+   except Exception as exc:dump(O/'full/CLOSE_WARNING.json',dict(exception=repr(exc)))
+  print('FORMAL_DONE',json.dumps(dict(status='COMPLETED' if not stop else 'FAILED_ADMISSION',time_s=float(s['time']),accepted=len(rows)-1,rejected=engine.rejects,stop_reasons=stop)),flush=True)
+-if __name__=='__main__':main()
++if __name__=='__main__':
++ try:main()
++ except Exception as exc:
++  dump(O/'SETUP_OR_FINALIZATION_FAILURE.json',dict(exception=repr(exc),traceback=traceback.format_exc()));raise

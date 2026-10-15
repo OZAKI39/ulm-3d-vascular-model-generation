@@ -1,0 +1,15 @@
+只读复现（不启动新的LAMMPS运行）：
+source /workspace/y_clot/env.sh
+cd /workspace/y_clot/project
+python analysis/final_v3_v1/analyze.py
+python analysis/final_v3_v1/figures.py
+
+以上只重建本轮派生审计/图片；不得将O/P指向历史接受输出目录。
+原始依据：C1_final/in.lammps,body.data,request.json,LOAD_PROVIDER.json；输入SHA见V3_INPUT_IDENTITY_AUDIT.json。
+WSL紧凑包使用inputs/body.data.gz，解压后核对原SHA；原生文本全轨迹和final.restart保留服务器。
+已执行的精确MPI argv、cwd和环境见RUN_COMMAND.json；两个实际进程映射见C1_final/LOADED_LIBRARY_rank*.json。
+最终库复用上轮build_owner_fix，禁止用中间build或生产库冒充。source env.sh之后，只有当前子进程LD_LIBRARY_PATH以最终build目录优先；不永久修改env.sh。
+源码桥observer.cpp仅增加END_OF_STEP只读回调、状态读取和contact_readout（原Pair::single只读计算）；不改力或拓扑。编译命令见OBSERVER_BUILD.json。
+未来如获授权进行新的原生复验，必须换新run_id、新输出目录、重新核对所有冻结SHA和资源；不要删除FORMAL_V3_LAUNCHED.json来重复当前运行。start_managed.py只管理专用Supervisor任务，autorestart=false。
+原静态报告脚本的float索引错误和离线JSON整数序列化问题均在科学报告中计数；没有隐藏失败或第二次正式V3。
+本轮真实WSL文档更新由任务工作目录update_document.py执行，备份及SHA在document_provenance和DOCUMENT_UPDATE_AUDIT.json。

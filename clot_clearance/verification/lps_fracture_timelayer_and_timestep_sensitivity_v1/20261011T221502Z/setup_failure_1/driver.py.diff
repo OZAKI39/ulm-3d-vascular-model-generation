@@ -1,0 +1,13 @@
+--- failed/driver.py
++++ corrected/driver.py
+@@ -71,8 +71,8 @@
+ group driven id 90
+ group free subtract all driven
+ variable zero equal 0
+-variable disp equal {amp:.17g}*0.5*(1-cos(PI*min(time/{tr:.17g},1)))
+-variable speed equal (time<{tr:.17g})*{amp:.17g}*PI/(2*{tr:.17g})*sin(PI*min(time/{tr:.17g},1))
++variable disp equal (time<{tr:.17g})*{amp:.17g}*0.5*(1-cos(PI*time/{tr:.17g}))+(time>={tr:.17g})*{amp:.17g}
++variable speed equal (time<{tr:.17g})*{amp:.17g}*PI/(2*{tr:.17g})*sin(PI*time/{tr:.17g})
+ fix drive driven move variable v_disp v_zero v_zero v_speed v_zero v_zero units box
+ fix integrate free nve
+ fix half_read all external pf/callback 1 1

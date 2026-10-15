@@ -1,0 +1,103 @@
+--- upstream/src/BPM/pair_bpm_peri.cpp
++++ actual/src/BPM/pair_bpm_peri.cpp
+@@ -41,7 +41,8 @@
+ 
+ /* ---------------------------------------------------------------------- */
+ 
+-PairBPMPeri::PairBPMPeri(LAMMPS *_lmp) : Pair(_lmp), kspring(nullptr), cut(nullptr), index_vfrac(-1)
++PairBPMPeri::PairBPMPeri(LAMMPS *_lmp) :
++    Pair(_lmp), kspring(nullptr), cut(nullptr), index_vfrac(-1), contact_distance_factor(1.35)
+ {
+   writedata = 1;
+   single_enable = 1;
+@@ -84,10 +85,8 @@
+   double *vfrac = atom->dvector[index_vfrac];
+ 
+   const double lc = domain->lattice->xlattice;
+-  // contact onset distance. Legacy uses min(0.9*r0_ref, 1.35*lc).
+-  // For non-bonded atoms (reference separation exceeds the horizon) this is always 1.35*lc,
+-  // => the dropped reference positions (x0) are not needed here
+-  const double d_ij = 1.35 * lc;
++  // The default retains the native onset; only an explicit option changes it.
++  const double d_ij = contact_distance_factor * lc;
+ 
+   inum = list->inum;
+   ilist = list->ilist;
+@@ -178,9 +177,18 @@
+    global settings
+ ------------------------------------------------------------------------- */
+ 
+-void PairBPMPeri::settings(int narg, char ** /*arg*/)
+-{
+-  if (narg != 0) error->all(FLERR, "Illegal pair_style bpm/peri command");
++void PairBPMPeri::settings(int narg, char **arg)
++{
++  contact_distance_factor = 1.35;
++  if (narg == 0) return;
++  if (narg != 2)
++    error->all(FLERR, Error::NOLASTLINE,
++               "Pair style bpm/peri expects contact_distance_factor followed by a number");
++  if (strcmp(arg[0], "contact_distance_factor") != 0)
++    error->all(FLERR, Error::ARGZERO, "Unknown pair style bpm/peri option {}", arg[0]);
++  contact_distance_factor = utils::numeric(FLERR, arg[1], false, lmp);
++  if ((!std::isfinite(contact_distance_factor)) || (contact_distance_factor <= 0.0))
++    error->all(FLERR, 1, "Pair style bpm/peri contact distance factor must be finite and positive");
+ }
+ 
+ /* ----------------------------------------------------------------------
+@@ -268,6 +276,13 @@
+ 
+ void PairBPMPeri::write_restart(FILE *fp)
+ {
++  // Preserve the original restart layout for the original default.
++  // Nondefault restarts carry a marker and require this implementation to read.
++  if (contact_distance_factor != 1.35) {
++    const int marker = -1350100;
++    fwrite(&marker, sizeof(int), 1, fp);
++    fwrite(&contact_distance_factor, sizeof(double), 1, fp);
++  }
+   for (int i = 1; i <= atom->ntypes; i++)
+     for (int j = i; j <= atom->ntypes; j++) {
+       fwrite(&setflag[i][j], sizeof(int), 1, fp);
+@@ -287,10 +302,30 @@
+   allocate();
+ 
+   int me = comm->me;
++  int first_flag;
++  if (me == 0) utils::sfread(FLERR, &first_flag, sizeof(int), 1, fp, nullptr, error);
++  MPI_Bcast(&first_flag, 1, MPI_INT, 0, world);
++  contact_distance_factor = 1.35;
++  if (first_flag == -1350100) {
++    if (me == 0) {
++      utils::sfread(FLERR, &contact_distance_factor, sizeof(double), 1, fp, nullptr, error);
++      utils::sfread(FLERR, &first_flag, sizeof(int), 1, fp, nullptr, error);
++    }
++    MPI_Bcast(&contact_distance_factor, 1, MPI_DOUBLE, 0, world);
++    MPI_Bcast(&first_flag, 1, MPI_INT, 0, world);
++    if ((!std::isfinite(contact_distance_factor)) || (contact_distance_factor <= 0.0))
++      error->all(FLERR, Error::NOLASTLINE, "Invalid bpm/peri contact distance factor in restart");
++  }
++  if ((first_flag != 0) && (first_flag != 1))
++    error->all(FLERR, Error::NOLASTLINE, "Invalid bpm/peri pair coefficients in restart");
+   for (int i = 1; i <= atom->ntypes; i++)
+     for (int j = i; j <= atom->ntypes; j++) {
+-      if (me == 0) utils::sfread(FLERR, &setflag[i][j], sizeof(int), 1, fp, nullptr, error);
+-      MPI_Bcast(&setflag[i][j], 1, MPI_INT, 0, world);
++      if ((i == 1) && (j == 1)) {
++        setflag[i][j] = first_flag;
++      } else {
++        if (me == 0) utils::sfread(FLERR, &setflag[i][j], sizeof(int), 1, fp, nullptr, error);
++        MPI_Bcast(&setflag[i][j], 1, MPI_INT, 0, world);
++      }
+       if (setflag[i][j]) {
+         if (me == 0) {
+           utils::sfread(FLERR, &kspring[i][j], sizeof(double), 1, fp, nullptr, error);
+@@ -308,7 +343,7 @@
+                            double /*factor_coul*/, double /*factor_lj*/, double &fforce)
+ {
+   double *vfrac = atom->dvector[index_vfrac];
+-  const double d_ij = 1.35 * domain->lattice->xlattice;
++  const double d_ij = contact_distance_factor * domain->lattice->xlattice;
+ 
+   double r = sqrt(rsq);
+   if (r >= d_ij) {
