@@ -1,4 +1,15 @@
-# Current MEVO acoustic–microbubble project · 2026-10-14
+# Current MEVO acoustic–microbubble project · 2026-10-15
+
+Latest completed scientific delivery: **F10S**, from source `31a44d3f342e5d0bca55f7f9b83f4d32b8189696`.
+Start with the [current handoff](computation_examples/mevo_acoustic_microbubbles/docs/CURRENT_PROJECT_STATE_20261015.md), [Chinese development report](computation_examples/mevo_acoustic_microbubbles/docs/FAST_PZT_F10S_DEVELOPMENT.md) and [synchronization scope/hashes](computation_examples/mevo_acoustic_microbubbles/sync/20261015/README.md).
+
+This branch adds F10R–F10S code, configuration, original scientific trajectories, logs, success/failure evidence, final PNG/PDF figures, source archives and the current Chinese progress document. It inherits the published F10Q sync; uncurated development history is not pushed. Eight rebuildable preview images are omitted; no new movies, environments or compiled caches are added.
+
+Fresh X-pair navigation reaches the 0.2 µm target in 3 ms with 0.002000553 µm error, passing dt/cache checks and both registered tolerances. Independent X−/X+ sources move the same initial group in opposite directions. Shape change is tiny; arbitrary shape control remains unproven. Local force-restoring points do not imply rapid whole-group trap following. PDMS field computation was not admitted or run; all Y conclusions remain homogeneous-water-proxy-specific.
+
+**EXPLORATORY / HOMOGENEOUS_WATER_CONTROL_PROXY / PHYSICS_UNCALIBRATED / ELECTRICAL_TO_ACOUSTIC_UNCALIBRATED / training_ready=false.** No new scientific computation or hardware work is performed by this synchronization. Other repository projects remain unchanged.
+
+## Historical synchronization context — 2026-10-14
 
 Latest completed delivery: **F10Q**, including the subsequent four-PZT/per-bubble
 force summary, from source `41ae8ed2b88f2cbbed834fffccaa0b5de6e91589`.
