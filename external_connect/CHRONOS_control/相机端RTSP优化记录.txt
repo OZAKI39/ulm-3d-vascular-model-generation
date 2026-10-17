@@ -1,0 +1,92 @@
+﻿Chronos 1.4：约 60 fps 低延迟实时预览优化结果
+完成日期：2026-10-15（电脑本地时间，Europe/Zurich）
+
+结果
+已将默认预览恢复为“低延迟视频（约 60 fps）”。相机端优化已按授权持久保存，并重启视频服务验证生效。
+你与 HDMI 对照后的反馈为“明显缩短，接近 HDMI”；最终版本再次确认“是，仍接近 HDMI，画面正常”。
+最后一次完整 5 分钟实机测试无接收失败、无重连，已超过此前约 3 分钟的固定断流点。
+
+现在怎么用
+关闭旧预览及旧操作面板，双击 F:\CHRONOS_control\start_chronos.cmd。
+保留默认“低延迟视频（约 60 fps）”，点击“打开实时画面”。
+S 保存 PNG；R 重新连接；Q/Esc 退出。一次只运行一个视频接收程序。
+相机 IP 192.168.0.10；电脑有线网口 IP 192.168.0.101；UDP 端口 5000–5001。
+
+修改及证据
+1. 相机网络发送器取消时钟等待。
+   相机现有 H.264 分支创建 multiudpsink/net-sink 时保留了默认时钟同步。
+   实机对照测试表明，将此实例设为 sync=false 后，原先约 2 秒的内容滞后明显缩短。
+   使用一个小型 GStreamer 模块，在创建该实例时设置属性；未更换原始 /usr/bin/cam-pipeline。
+   模块只匹配该网络发送器，原生作用范围测试确认其他发送器的同步属性保持原值。
+   模块目录：/opt/chronos-rtsp-lowlatency/
+   持久配置：/etc/systemd/system/chronos-video.service.d/60-chronos-lowlatency.conf
+   读取配置和服务日志已确认加载，视频、触屏界面和网页服务均正常运行。
+   已验证视频服务重启后生效；本轮未进行整机断电重启测试。
+
+2. 电脑端兼容旧相机 RTSP 控制缓冲区缺陷。
+   旧链路抓取记录显示：前 5 次 GET_PARAMETER 保活请求正常，到约 179.26 秒返回 413 Request Entity Too Large。
+   厂商开源代码的请求缓冲区清理没有同步缩减已用长度，与实机记录一致。
+   新增 chronos_rtsp_control.py，让每个控制请求使用新的 TCP 连接，同时保留相同的 RTSP 会话。
+   兼容层仅监听 127.0.0.1 临时端口；RTP 视频仍由相机直接通过 UDP 发给电脑，不经此层缓存或转发。
+   已设 rtsp_control_relay=true。没有为此新增防火墙权限。
+   VLC 入口未经过本机控制兼容层，推荐使用工具内置预览进行持续监看。
+
+3. 保留电脑端的低延迟接收措施。
+   单线程解码、较小的重排序缓冲、仅显示最新帧、后台保存截图；界面刷新上限约 60 fps。
+   “及时取图”保留为备用，其网页截图接口速率约 2–3 fps，不再作为默认预览。
+
+最后一轮实机验证
+时间：2026-10-15 17:44:20 至 17:49:20（电脑本地时间）
+时长：300.000 秒
+解码原图尺寸：1280 × 1024
+实际接收帧数：17949
+从首帧到末帧平均接收速率：60.15 fps（排除首次连接等待）
+最后 5 秒接收速率：60.26 fps
+接收失败：0；连接次数：1；重连次数：0
+RTSP 控制请求：13；控制层错误：0
+保存图片：5 张；写入错误：0；全部重新解码核对为 1280 × 1024
+首次出图等待：约 1.57 秒（启动耗时，不是持续画面延迟）
+测试数据：F:\CHRONOS_control\data\capture_20261015_174420_468262
+运行日志：F:\CHRONOS_control\rtsp_optimized_5min.log
+程序及协议测试：18 项通过；相机原生模块作用范围测试通过；中文面板启动检查通过。
+
+测量范围
+“接近 HDMI”为你的现场对照反馈，尚未测得光学端到端延迟的毫秒数。
+summary.json 的 end_to_end_latency_ms 保持 null；decode_to_display_ms 只计电脑解码后到提交显示的一段时间。
+接收失败为 0 不等同于已测得网络丢包率为 0，也不能由此保证任意长时间运行均无中断。
+日志中打开/退出流时出现的 H.264 参数集提示没有计为持续测试中的接收失败；以原始日志和统计共同核对。
+相机时钟与电脑时钟存在偏差，未使用两台设备的绝对时间戳相减来声称端到端延迟。
+本次验证针对上述 300 秒、当前固件与网络环境；未更改高速录制参数或进行固件升级。
+
+应用与恢复
+在 F:\CHRONOS_control 打开 PowerShell：
+查看当前状态：
+  .\.venv\Scripts\python.exe camera_rtsp_tune.py inspect --factory-password
+恢复相机原发送策略：
+  .\.venv\Scripts\python.exe camera_rtsp_tune.py restore --factory-password
+重新应用此优化：
+  .\.venv\Scripts\python.exe camera_rtsp_tune.py apply --factory-password
+应用和恢复会短暂中断视频；工具会先检查空闲状态和待保存帧。
+--factory-password 使用厂商手册公开的出厂密码；若已修改密码，省略参数并在本地输入。
+已锁定经验证的设备及程序版本；不要绕过检查直接套用到其他相机或升级后的固件。
+恢复操作移除本工具的启动配置，并重启服务；保留源码和审计备份。
+
+交付位置
+全部程序和使用说明：F:\CHRONOS_control
+新增 Python：chronos_rtsp_control.py、camera_rtsp_tune.py、test_rtsp_control.py
+相机模块源码、编译产物及维护脚本：camera_rtsp\
+相机端应用/检查记录：data\camera_maintenance\
+旧链路 RTSP 413 抓取及版本信息：camera_rtsp\evidence\
+修改前电脑端备份：backups\before_rtsp_sender_fix_20261015_174416\
+相机原程序备份：camera_rtsp\cam-pipeline.original
+原程序 SHA256：b04f19cd1c49dc2bb730bd2cbb5becae3c94c4cf7bc70108968ad4e0099b3d44
+优化模块 SHA256：f8a96f8985082f2e2b2588c3f5c0e34083eb858f09046aabf91a70d0fdbe4239
+相机版本：chronos-video 0.4.0~beta54、chronos-control 0.5.02、chronos-gui 0.5.01。
+
+参考的厂商原始资料
+网络编码与发送分支：https://github.com/krontech/chronos-cli/blob/master/src/pipeline/h264.c
+RTSP 请求解析与连接处理：https://github.com/krontech/chronos-cli/blob/master/src/pipeline/rtsp-server.c
+RTSP 缓冲区定义：https://github.com/krontech/chronos-cli/blob/master/src/pipeline/rtsp-private.h
+视频流水线说明：https://github.com/krontech/chronos-cli/blob/master/src/pipeline/README.md
+官方手册（含出厂 SSH 登录说明）：https://www.krontech.ca/wp-content/uploads/2021/09/RE-PDEV-10009-Chronos-User-Manual-Full-Software-Version-0.7.0.pdf
+以上源码用于辅助定位；修复效果以本机实测、服务读取结果和你的 HDMI 对照反馈为依据。

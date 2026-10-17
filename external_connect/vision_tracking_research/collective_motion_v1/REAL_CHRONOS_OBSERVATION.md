@@ -1,0 +1,9 @@
+# Actual Chronos recording and live availability
+
+Saved video SHA-256 `3fc13aaa611a4eeb94b27804524318b3a8411cc38967804c6620913cfb9c484c`. Frame IDs 360–479, original PTS 11.9880–15.9507 s. ROI [650,300,256,384]. 120 frames decoded and analyzed causally with the original detector; no persistent bubble IDs. The mask/shape/ID accuracy limitations of F10T still apply. Visible density and covariance do not measure 3D concentration or a fused physical cluster.
+
+Real absolute six-parameter ground truth is **NOT_AVAILABLE**. The displayed original images and arrows are qualitatively consistent with a dominant image-downward motion; this visual check does not certify local divergence, rotation or strain. All 3/5/10-window numerical fits on this selected ROI pass their support criteria, which does not validate their absolute accuracy. Changes of the visible mean are irregular due to changing count, edge visibility and detection. CPD and AI comparisons are recorded, not treated as independent truth. Real out-of-focus ground truth is not annotated; focus score is diagnostic.
+
+The existing Windows receiver was invoked once for a finite ~8 s read-only check. It made 3 internal attempts, received 0 frames, and reported `Cannot open preview; check IP, Web Control and transport`. Network configuration and original receiver source unchanged. `LIVE_CAMERA_PASS=false`. All subsequent runtime claims are `CAUSAL_REPLAY_TEST`, not live-camera performance.
+
+The MP4 preserves original frame PTS relative to the first displayed frame, including all 120 original frames. It shows causal endpoint estimates computed offline and explicitly says offline rendering. It is not a recording of the slower wall-clock receiver pipeline, and does not hide that runtime skipped frames. Runtime rows separately record overwritten/skipped input, stale/null observations and software latency.

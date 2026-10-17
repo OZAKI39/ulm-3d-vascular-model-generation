@@ -1,0 +1,74 @@
+﻿Chronos 1.4 安装与验证记录
+验证日期：2026-10-15（Europe/Zurich）
+
+已安装位置：F:\CHRONOS_control
+启动：双击 F:\CHRONOS_control\start_chronos.cmd，点击“打开实时画面”。
+预览快捷键：S 保存原图；Q/Esc 退出。
+Python、OpenCV、NumPy 已安装到本目录的 .venv，不修改系统 Python 包。
+VLC 3.0.24 便携版位于 tools\vlc-3.0.24，已核对官方 SHA256。
+
+实测连接
+相机：Chronos 1.4，API 返回型号 CR14-1.0，序列号 01909。
+API 版本字符串：0.4.0-beta（这是 API 返回值，不能直接当作完整固件版本）。
+相机 IPv4：192.168.0.10；电脑网口 IPv4：192.168.0.101；掩码 255.255.255.0。
+网页：http://192.168.0.10
+API 文档：http://192.168.0.10/apidoc/
+诊断时相机 videoState 为 live，state 为 idle。
+相机返回 UDP 视频传输；Python 和 VLC 均设置接收端口 5000。
+截图中的 SMB 10.4.96.185 是文件服务器地址，不是本相机 IPv4。
+
+Python 连续接收验证
+会话：capture_20261015_153912_204527
+时长：300.001 秒。
+分辨率：1280 × 1024。
+成功解码：17,797 帧。
+从首帧到末帧平均接收速率：59.620 fps。
+最后 5 秒接收速率：59.927 fps。
+自动保存：5 张 PNG 原图及对应时间记录。
+接收失败：1 次；共建立连接 2 次，已自动恢复。
+结论：真实视频接收、保存和自动恢复已验证；本次不满足“完全无中断”的稳定性条件。
+该次失败约发生在 180 秒后；现有证据不足以断定是网络、编码或相机软件导致。
+后续版本已补充明确的接收错误事件记录，便于继续观察。
+最新帧消费策略跳过 72 帧；这不是实测网络丢包数量。
+CSV 与汇总：F:\CHRONOS_control\data\capture_20261015_153912_204527
+
+其他验证
+Python 预览窗口已实际运行并自动截图。
+10 项离线测试通过：标定几何、参数检查、深色/浅色目标、边界排除、中文路径图像、延迟差值、UDP 参数、断线清除旧帧与资源释放。
+VLC 内核进行了 30 秒真实流解码测试，并成功保存快照；末次累计显示 1683 帧。
+VLC 测试日志记录 lost_pictures=0、corrupted=0；这些播放器计数不代表已测得全部网络丢包。
+另行尝试了 VLC 300 秒长时验证，但未通过：约 61 秒后显示帧数停止增长，84.5 秒时记录为 Ended，测试进程随后异常结束。
+长时测试没有产出完整 300 秒记录；原始日志与整理后的报告保存在 vlc_stability_console.log 和 data\vlc_validation_300s。
+建议优先使用带自动恢复的 Python 预览，进一步核对相机 About 页的完整软件版本。
+厂商 v0.7.2 发行说明记录过 VLC RTSP 超时修复；与实测现象相似，但没有足够证据确定本次根因。
+本次未更改相机固件。
+
+已生成的 Python 文件
+chronos_launcher.py：中文面板。
+test_chronos.py：实时画面、截图、接收速率与断线恢复。
+check_connection.py：只读网络和相机状态诊断。
+chronos_common.py：配置与最新帧接收。
+calibrate_scale.py：测微尺两点标定。
+analyze_stability.py：轮廓、质心、面积、长宽比及波动分析。
+measure_latency.py：光学计时时钟及成对时间差统计。
+open_vlc.py：使用兼容参数打开便携 VLC。
+test_tools.py：离线验证测试。
+
+需要真实实验条件才能完成的项目
+1. µm/pixel：需要同一光路下的真实测微尺图像与刻度间距。
+2. 场景到画面的延迟：需要同步可见的光学参考；不能用解码耗时、帧间隔或网络 ping 代替。
+3. 静止微泡团的质心和形状波动：需要确认静止目标，选择区域，并人工核对轮廓。
+没有为以上项目填入假定数值；工具和操作说明均已准备。
+没有开发或连接 AFG1062、功放、PZT 或 AI 训练控制。
+
+用户已授权的防火墙规则
+名称：Chronos14-192.168.0.10-UDP5000。
+范围：Public 网络配置；以太网 2；本机 192.168.0.101；来源 192.168.0.10；UDP 5000–5001；仅入站。
+原先自动审批要求明确授权，已在用户回复“允许添加这条限定规则”后安装并核查范围。
+删除方式（管理员 PowerShell）：Remove-NetFirewallRule -Name 'Chronos14-192.168.0.10-UDP5000'
+
+参考
+官方网络教程：https://assets.krontech.ca/2024/04/Network-Control-Tutorial.pdf
+VLC 官方下载及校验：https://download.videolan.org/pub/videolan/vlc/3.0.24/win64/
+厂商软件发行说明：https://www.krontech.ca/software-resources/
+详细操作见同目录“使用说明.txt”。

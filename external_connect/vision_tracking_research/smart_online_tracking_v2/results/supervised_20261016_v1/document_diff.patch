@@ -1,0 +1,443 @@
+--- before/SMART_TRACKING_V2_DEVELOPMENT.md
++++ SMART_TRACKING_V2_DEVELOPMENT.md
+@@ -1,4 +1,6 @@
+ # F10T-Vision-2 开发与修复记录
++
++> **最新续研：2026-10-16，已完成离线人工ROI评价。** 以下较早记录按历史保留；当前状态以文末续研和[完整报告](results/supervised_20261016_v1/REPORT.md)为准。
+ 
+ 本轮基于上一轮视觉调查继续开发，Git 基线 `9c22d207be5318f9d45b014caaf52bd04d345328`，分支 `dev/f10t-vision2-20261016`。原 Windows Chronos、WSL Chronos、Tektronix 和历史研究保留；无明确安全清理对象，未删除历史。65 个原设备核心文件 before/after SHA 检查见 evidence。两个环境均通过 pip check。
+ 
+@@ -101,3 +103,10 @@
+ 当前有效训练范围为第 6–7 张的 5 个已确认 ROI、210 个单泡。修复冻结后又读活跃标签的导出问题：快照包括图像和固定标签修订，导出只读取经过 SHA 校验的快照。实际导出五个图块及 210 个实例，14 项像素/身份核查通过；验证集仍为空。快照位于 results/expert_freezes/partial_review_corrected_20261016_v1/。
+ 
+ 41 项标注单元测试通过。原自动训练机制已仅使用修正后的两个帧完成 64 个泡 / 80 步辅助 SAM 微调，worker 26.94 s、进程 34.05 s，仍因缺少独立验证不启用候选。未开展 Cellpose 微调或声称检测提升。工作台打开到第 25 张，下一步优先第 25、26 张 validation，各完整核查小区域；合计至少 10 个合格单泡仅是辅助模型验证最低门槛。详见 [本轮报告](evidence/review_scope_correction_20261016/REPORT.md)。
++
++
++## 2026-10-16 已有标注的离线续研（supervised_20261016_v1）
++
++已基于第25、26张的人工审核区域完成冻结评价、一次有限微调、两类因果回放及新图表/视频。相机未连接，按用户要求完成离线部分。新增评价模块与测试；原相机控制、标注原数据和历史结果保留。
++
++完整参数、失败证据、28项回答和输出路径见[本轮报告](results/supervised_20261016_v1/REPORT.md)。
+--- before/ANNOTATION_READY.md
++++ ANNOTATION_READY.md
+@@ -1,4 +1,6 @@
+ # 微泡标注工作台：操作说明（2026-10-16 局部批量标注版）
++
++> **最新续研：2026-10-16，已完成离线人工ROI评价。** 以下较早记录按历史保留；当前状态以文末续研和[完整报告](results/supervised_20261016_v1/REPORT.md)为准。
+ 
+ **现在推荐：框选一小块 → 一次生成多泡候选 → 删错、补漏 → 只确认这一小块。** 不必为了完成一张密集图而把整幅图全部标完。默认仍是画笔；`N` 新增单泡，`P` 画笔，`E` 橡皮擦。已保存的旧标签和历史修订保留。
+ 
+@@ -326,3 +328,14 @@
+ ## 12. 直径范围更新（2026-10-16）
+ 
+ “典型单泡直径”已替换成对齐的最小/最大直径输入框；范围用于默认 cyto3 的三尺度推理、等效直径筛选和整体掩码去重。原有单值请求仍可重放，三个旧请求的候选掩码与原保存结果逐像素一致。范围结果记录全部尺度原始掩码、保留来源与排除原因，便于复核。开发与实际 GPU / Qt 检查记录见 [范围功能报告](evidence/annotation_diameter_range_20261016/REPORT.md)。
++
++
++## 2026-10-16 已有标注的离线续研（supervised_20261016_v1）
++
++第25、26张已用于本次冻结评价，无需为了继续开发而重新标注。当前训练为第6、7张，验证为第25、26张，各5个完整审核的小区域；没有把整张图当背景。
++
++下一步最省工作：在“更多 / 训练”跳到**第49张、第50张**，各框1–2个小区域，删错、补漏后点“确认当前区域”；框外不必标。它们是test，不会用于后台训练。若要验证轨迹，再审核第56–63张同一小区域的8帧短ID。没有可靠团掩码前，团形态仍不准入。
++
++本轮独立试跑的Cellpose微调效果变差，没有替换批量标注模型；后台SAM提示分割的微调状态是另一回事。
++
++完整参数、失败证据、28项回答和输出路径见[本轮报告](results/supervised_20261016_v1/REPORT.md)。
+--- before/MICROBUBBLE_ANNOTATION_PROTOCOL.md
++++ MICROBUBBLE_ANNOTATION_PROTOCOL.md
+@@ -1,4 +1,6 @@
+ # 微泡人工标注规范
++
++> **最新续研：2026-10-16，已完成离线人工ROI评价。** 以下较早记录按历史保留；当前状态以文末续研和[完整报告](results/supervised_20261016_v1/REPORT.md)为准。
+ 
+ 标注依据是实验人员对当前显微图像及相邻短片的判断，不是模型预测、固定流向或 F10S 模拟规律。图像单位为 px；物镜、适配器、焦平面或 µm/px 未确认时保持未知。
+ 
+@@ -31,3 +33,10 @@
+ - 多个审核区域重叠时 SAM 同帧同 ID 样本去重。通用 Cellpose ROI 导出保留各个裁剪和来源 ID；评估方须按来源帧分组，不能把重叠 ROI 当作独立样本。
+ - 已有人工整帧确认不会被软件擅自篡改。若审核人发现旧帧漏标，可在界面撤回审核、保留草稿，再分区域完成。
+ - 两点 watershed 拆分是人工指定的编辑建议，保留原像素并集，必须检查分界；不能因此推断真实三维接触或融合。
++
++
++## 2026-10-16 已有标注的离线续研（supervised_20261016_v1）
++
++本轮只评价冻结的10个已审核ROI。验证133个单泡中4个边界/裁断排除，129个计分；中心6 px匹配与mask IoU≥0.5分开。一对一先最大化有效匹配数；排除项逐ROI保存。不确定类样本不足，不报拒判准确率。未经审核的外部区域不作为背景。
++
++完整参数、失败证据、28项回答和输出路径见[本轮报告](results/supervised_20261016_v1/REPORT.md)。
+--- before/DATASET_SPLIT_AND_PROVENANCE.md
++++ DATASET_SPLIT_AND_PROVENANCE.md
+@@ -1,4 +1,6 @@
+ # 数据划分与来源
++
++> **最新续研：2026-10-16，已完成离线人工ROI评价。** 以下较早记录按历史保留；当前状态以文末续研和[完整报告](results/supervised_20261016_v1/REPORT.md)为准。
+ 
+ 原始录像：`/home/lzy/projects/external_connect/sample_videos/Recording 2026-10-15 185901 截取视频.mp4`。SHA-256：`3fc13aaa611a4eeb94b27804524318b3a8411cc38967804c6620913cfb9c484c`。原始图像 1476×1120，录像实际 PTS 约 30.03 fps；不是 60 fps 实时流，更不代表传感器采集帧率。没有物镜倍率、适配器、焦平面、像素到 µm 标定，保持 null。
+ 
+@@ -15,3 +17,10 @@
+ 先运行 `.venv/bin/python -B scripts/review_labels.py` 核查实际文件、SHA、完整审核和类别冲突。用户完成后可用 `--freeze-name <唯一名字> --export-train` 固定所确认修订并导出 train / validation 的标准 Cellpose PNG + masks TIFF。测试集不会导出到训练目录；含 UNCERTAIN / OUT_OF_FOCUS 的帧默认排除训练，防止标准 Cellpose loss 把未知区域误当背景。未确认帧一律不导出。
+ 
+ 评估规则已在 protocol.json 预登记：单泡 6 px 中心匹配、团实例 IoU 0.5，Hungarian 一对一；不确定 / 失焦区域显式忽略，预测与忽略区重叠超过 0.5 时拒判。阈值仅可在训练 / 验证组选择。当前只有部分训练帧确认，验证/测试真值仍不足，尚未运行检测或短轨迹准确率评价，也未据测试结果调参。
++
++
++## 2026-10-16 已有标注的离线续研（supervised_20261016_v1）
++
++新冻结集vision2_supervised_20261016_v1含4张源图：train90/108（210泡）、validation360/374（133泡），均为区域审核。test未使用。5个验证ROI只算2张源图；模型辅助后人工审核，非盲法双人真值。原第1–5张仅部分标签，不作为全图真值。
++
++完整参数、失败证据、28项回答和输出路径见[本轮报告](results/supervised_20261016_v1/REPORT.md)。
+--- before/OPENCV_VS_CELLPOSE.md
++++ OPENCV_VS_CELLPOSE.md
+@@ -1,4 +1,6 @@
+ # 两条识别路线的实际结果
++
++> **最新续研：2026-10-16，已完成离线人工ROI评价。** 以下较早记录按历史保留；当前状态以文末续研和[完整报告](results/supervised_20261016_v1/REPORT.md)为准。
+ 
+ OpenCV 复用原局部背景 / 对比度及连通域实现，Norfair 负责关联。额外保留较大连通域作为未审核区域；面积分成“小 / 大”只是候选分组，不是学到的单泡 / 团语义。原阈值保留，本轮没有在无真值测试集上调参。
+ 
+@@ -20,3 +22,16 @@
+ 当前工程选择：保留 OpenCV + Norfair 作为实时候选管线；Cellpose 暂不承担 60 fps 每帧输出。待人工标签确定实际漏检和误检后，才判断是否进行一次有限微调，不能仅凭“新模型”或候选数量宣布优胜。
+ 
+ 许可证及权重身份见 [MODEL_AND_ENVIRONMENT.md](MODEL_AND_ENVIRONMENT.md)。
++
++
++## 2026-10-16 已有标注的离线续研（supervised_20261016_v1）
++
++| 方法 | TP / FP / FN | Precision | Recall | 中心 F1 | 掩码 F1 (IoU≥0.5) | 中心误差均值 / p95 (px) |
++|---|---:|---:|---:|---:|---:|---:|
++| OpenCV | 119 / 35 / 10 | 0.7727 | 0.9225 | 0.8410 | 0.2544 | 1.146 / 2.798 |
++| cyto3 预训练 | 77 / 33 / 52 | 0.7000 | 0.5969 | 0.6444 | 0.4686 | 1.117 / 3.226 |
++| cyto3 微调（拒绝采用） | 15 / 0 / 114 | 1.0000 | 0.1163 | 0.2083 | 0.1806 | 0.959 / 1.929 |
++
++只在5个已审核验证ROI计分，129个有效真值。一次cyto3微调被拒绝采用；全图推理时cyto3在这些ROI仅检出1/129，失败保留。没有整帧准确率或独立测试通过。
++
++完整参数、失败证据、28项回答和输出路径见[本轮报告](results/supervised_20261016_v1/REPORT.md)。
+--- before/LIVE_INFERENCE_BENCHMARK.md
++++ LIVE_INFERENCE_BENCHMARK.md
+@@ -1,4 +1,6 @@
+ # 真实相机在线性能
++
++> **最新续研：2026-10-16，已完成离线人工ROI评价。** 以下较早记录按历史保留；当前状态以文末续研和[完整报告](results/supervised_20261016_v1/REPORT.md)为准。
+ 
+ 两次 LIVE_CAMERA 试验各约 20 s，真实 Windows 原接收器、原始 256×384 ROI，未缩放。两次是先后运行，场景及后台负载可能不同；不作为公平准确率对比。成对录像基准另列。OpenCV 试验时人工标注 GUI 仍在运行，Cellpose 恢复试验在 WSL 重启后运行；GPU 指标为整卡共享负载。
+ 
+@@ -68,3 +70,17 @@
+ decoder 只暴露完成解码的时间戳，单独每帧解码耗时 NOT_INSTRUMENTED；没有伪造曝光到解码延迟。软件新鲜度使用 sender_age + WSL GET 往返 + WSL 后续耗时的保守上界，不直接相减异机单调时钟。GET 包含等待下一帧，不是纯复制开销。
+ 
+ EXPOSURE_TIMESTAMP_UNKNOWN；CAMERA_TO_CONTROLLER_END_TO_END_LATENCY=NOT_MEASURED。没有 LED 测试，也没有实际 PZT / AFG 控制。
++
++
++## 2026-10-16 已有标注的离线续研（supervised_20261016_v1）
++
++本次相机未连接，两个接流尝试0帧，LIVE_CAMERA_PASS=false。以下均为约30.030 fps录像因果回放，不是历史60 fps实时流。
++
++| 因果回放方法 | 处理帧 / 输入帧 | 处理 Hz | 新鲜候选 Hz | 软件 p50 / p95 / 最大 (ms) | 最新帧覆盖 | 结果过期 |
++|---|---:|---:|---:|---:|---:|---:|
++| OpenCV | 300 / 300 | 30.079 | 30.079 | 6.677 / 9.958 / 28.028 | 0 | 0 |
++| cyto3 预训练 | 54 / 300 | 5.249 | 0.000 | 187.714 / 206.005 / 286.029 | 246 | 54 |
++
++小ROI为180×350；软件含发送但不把独立mock传输p95相加。大ROI550×560的engine p95为46.736/1058.136 ms。无曝光时间戳，无LED，本次端到端延迟NOT_MEASURED。
++
++完整参数、失败证据、28项回答和输出路径见[本轮报告](results/supervised_20261016_v1/REPORT.md)。
+--- before/GROUP_AND_BUBBLE_ADMISSION.md
++++ GROUP_AND_BUBBLE_ADMISSION.md
+@@ -1,4 +1,6 @@
+ # 单泡与团级准入
++
++> **最新续研：2026-10-16，已完成离线人工ROI评价。** 以下较早记录按历史保留；当前状态以文末续研和[完整报告](results/supervised_20261016_v1/REPORT.md)为准。
+ 
+ | 层次 | 当前状态 | 依据与限制 |
+ |---|---|---|
+@@ -17,3 +19,10 @@
+ 单泡位置采用当前观测；丢失不输出预测旧坐标。速度为最近观测的像素/源时间秒，直播源时间为host decode时间，不能解释为标定物理速度。LK为局部图像运动而非液体流速。跨session、逆向时间、过大帧间隔重置轨迹。原始mask的质心、面积、Rg、Q和长短比通过独立矩形软件检查，但形状公式正确不证明其输入是真实泡团。
+ 
+ 当前训练和科学控制状态：training_ready=false。后续需冻结完整人工标签、用未调参测试组验证单泡和团分割、用短序列检查真实关联，才考虑解除相应语义门控。本轮不会自动将模型预测转成专家标签。
++
++
++## 2026-10-16 已有标注的离线续研（supervised_20261016_v1）
++
++EXPERT_LABELS_READY仅适用于2 train+2 validation源图的局部单泡掩码。BUBBLE_DETECTION_VALIDATED、SHORT_TRACKING_VALIDATED、GROUP_SEGMENTATION_VALIDATED仍false；没有test、团或短ID真值。group_shape=null，control_permission=false，training_ready=false。
++
++完整参数、失败证据、28项回答和输出路径见[本轮报告](results/supervised_20261016_v1/REPORT.md)。
+--- before/MODEL_AND_ENVIRONMENT.md
++++ MODEL_AND_ENVIRONMENT.md
+@@ -1,4 +1,6 @@
+ # 模型、来源与环境
++
++> **最新续研：2026-10-16，已完成离线人工ROI评价。** 以下较早记录按历史保留；当前状态以文末续研和[完整报告](results/supervised_20261016_v1/REPORT.md)为准。
+ 
+ - Vision：Python3.12独立venv安装层，只读引用上级研究venv；OpenCV-headless4.10.0.84、Norfair2.3.0、Cellpose3.1.1.3、Torch2.11.0+cu128。有效锁定见evidence/requirements-vision-effective.lock。不修改Windows Python3.14环境。
+ - Annotation：独立Python3.12 venv，micro-sam1.8.14、napari0.9.2、PyQt6，NumPy2.2.6。独立锁定见requirements-annotation.lock，避免与Norfair的NumPy1.x要求冲突。两环境pip check通过。
+@@ -8,3 +10,10 @@
+ - cyto3选择依据：[Cellpose3官方模型文档](https://cellpose.readthedocs.io/en/v3.1.1.1/models.html)。仅运行一个轻量替代模型，没有竞赛式扫描。
+ 
+ 权重、环境和外部仓库未加入Git。中文界面使用用户Windows系统已有微软雅黑字体，通过用户字体目录符号链接供WSLg显示，没有改动设备工程。
++
++
++## 2026-10-16 已有标注的离线续研（supervised_20261016_v1）
++
++本轮复用既有cyto3 3.1.1.3及环境，未安装新模型家族。一次100 epoch SGD微调耗时15.613 s，验证失败，仍选预训练。拒绝检查点SHA `b1f80ccb122778b131ce0c99ed50fb77757d0fc0a08afc190402743c469a3c3c`；权重只在本地results内，未入Git。后台原SAM提示掩码与自动检测分开评价。
++
++完整参数、失败证据、28项回答和输出路径见[本轮报告](results/supervised_20261016_v1/REPORT.md)。
+--- before/FINAL_RECOMMENDATION.md
++++ FINAL_RECOMMENDATION.md
+@@ -1,4 +1,6 @@
+ # F10T-Vision-2 中文交付报告
++
++> **最新续研：2026-10-16，已完成离线人工ROI评价。** 以下较早记录按历史保留；当前状态以文末续研和[完整报告](results/supervised_20261016_v1/REPORT.md)为准。
+ 
+ 标注工作台已修复，后续工程验证已继续完成。正式科学识别评价等待人工标签；没有宣称闭环控制完成。
+ 
+@@ -61,3 +63,10 @@
+ 两条完成的实时测量窗口合计约 40.04 s；成对录像计算 30.08 s。候选采集、冷启动、GUI检查、安装下载、开发绘图另计；未保存的中断进程耗时未知，不虚构“全部研发耗时”。
+ 
+ 分层机器记录：[FINAL_GATE.json](FINAL_GATE.json)。详细操作：[ANNOTATION_READY.md](ANNOTATION_READY.md)。性能：[LIVE_INFERENCE_BENCHMARK.md](LIVE_INFERENCE_BENCHMARK.md)。结果和脚本 SHA见 evidence/delivery_manifest.json。
++
++
++## 2026-10-16 已有标注的离线续研（supervised_20261016_v1）
++
++优先推进OpenCV＋Norfair的小ROI候选路线：本次验证漏检10/129，小ROI软件p95约9.96 ms；但有35个FP、轮廓F1仅0.254，尚不科学准入。预训练cyto3轮廓较好、漏检较多且太慢；微调候选拒绝。下一步补两张test的小区域，检查归一化/裁剪一致性，再复测真实相机；不进行更多盲目训练或硬件控制。
++
++完整参数、失败证据、28项回答和输出路径见[本轮报告](results/supervised_20261016_v1/REPORT.md)。
+--- before/FINAL_GATE.json
++++ FINAL_GATE.json
+@@ -1,20 +1,30 @@
+ {
+-  "utc": "2026-10-16T13:25:35.495088+00:00",
+-  "LIVE_CAMERA_PASS": true,
++  "utc": "2026-10-16T20:42:52.378992+00:00",
++  "status": "OFFLINE_STUDY_COMPLETE; LIVE_CAMERA_AND_SCIENTIFIC_ADMISSION_PENDING",
++  "result_directory": "/home/lzy/projects/external_connect/vision_tracking_research/smart_online_tracking_v2/results/supervised_20261016_v1",
++  "LIVE_CAMERA_PASS": false,
++  "live_reason": "USER_CONFIRMED_CAMERA_DISCONNECTED; 0 frames in both attempted runs",
++  "historical_live_pass_preserved": true,
+   "ANNOTATION_TOOL_PASS": true,
+-  "EXPERT_LABELS_READY": false,
++  "EXPERT_LABELS_READY": true,
++  "expert_labels_scope": "REVIEWED_ROIS_ONLY: 2 train frames / 2 validation frames; no test or track/group truth",
++  "expert_reviewed_source_frames": 4,
++  "expert_confirmed_full_frames": 0,
++  "candidate_frames": 84,
++  "train_reviewed_rois": 5,
++  "train_single_masks": 210,
++  "validation_reviewed_rois": 5,
++  "validation_single_masks": 133,
++  "validation_eligible_single_masks": 129,
+   "EXPERT_GROUND_TRUTH_PENDING": true,
+-  "annotation_snapshot_utc": "2026-10-16T13:18:06.765286+00:00",
+-  "expert_confirmed_frames": 1,
+-  "draft_frames": 1,
+-  "candidate_frames": 84,
+   "BUBBLE_DETECTION_VALIDATED": false,
+   "SHORT_TRACKING_VALIDATED": false,
+   "GROUP_SEGMENTATION_VALIDATED": false,
+   "GROUP_SHAPE_NOT_ADMITTED": true,
++  "group_shape": null,
+   "REALTIME_PROCESSING_PASS": {
+-    "opencv": "ROI_SOFTWARE_THROUGHPUT_PASS_ONLY",
+-    "cellpose": "FAIL_60FPS_REFERENCE"
++    "opencv": "PILOT_NATIVE_30FPS_CAUSAL_REPLAY_SMALL_ROI_ONLY; LIVE_60FPS_NOT_RETESTED",
++    "cellpose": "FAIL_100MS_FRESHNESS_IN_PACED_REPLAY"
+   },
+   "strict_every_frame_16_7ms_pass": false,
+   "validated_bubble_update_hz": 0,
+@@ -27,18 +37,190 @@
+   "CLOSED_LOOP_CONTROL_NOT_RUN": true,
+   "LED_TEST_NOT_RUN": true,
+   "SAM2_NOT_RUN": true,
+-  "finetuning": "NOT_RUN_EXPERT_LABELS_PENDING",
++  "finetuning": "ONE_CYTO3_100_EPOCH_RUN_COMPLETED; REJECTED_BY_PREREGISTERED_VALIDATION_RULE",
++  "selected_cellpose": "PRETRAINED_CYTO3",
+   "training_ready": false,
+-  "accuracy_metrics": null,
+-  "status": "ENGINEERING_DELIVERY_COMPLETE; EXPERT_EVALUATION_PENDING",
+-  "executions": [
+-    "results/live_opencv_20s",
+-    "results/live_cellpose_20s_resumed",
+-    "results/paired_comparison"
+-  ],
+-  "failed_or_interrupted": [
+-    "logs/install_plan.log",
+-    "logs/annotation_gui_smoke.log",
+-    "results/live_cellpose_20s/INTERRUPTED.json"
++  "accuracy_metrics": {
++    "opencv/validation/ROI": {
++      "roi_count": 5,
++      "source_frame_count": 2,
++      "center": {
++        "tp": 119,
++        "fp": 35,
++        "fn": 10,
++        "precision": 0.7727272727272727,
++        "recall": 0.9224806201550387,
++        "f1": 0.8409893992932862
++      },
++      "mask": {
++        "tp": 36,
++        "fp": 118,
++        "fn": 93,
++        "precision": 0.23376623376623376,
++        "recall": 0.27906976744186046,
++        "f1": 0.254416961130742
++      },
++      "center_error_px_mean": 1.1463022459200027,
++      "center_error_px_p95": 2.7978922033615605,
++      "fp_per_reviewed_roi": 7.0,
++      "fn_per_reviewed_roi": 2.0,
++      "excluded_gt": 4,
++      "ignored_predictions": 2,
++      "large_unverified_regions": 0,
++      "ignore_pixels": 0,
++      "uncertain_rejection_rate": null
++    },
++    "opencv/validation/FULL_FRAME": {
++      "roi_count": 5,
++      "source_frame_count": 2,
++      "center": {
++        "tp": 119,
++        "fp": 35,
++        "fn": 10,
++        "precision": 0.7727272727272727,
++        "recall": 0.9224806201550387,
++        "f1": 0.8409893992932862
++      },
++      "mask": {
++        "tp": 36,
++        "fp": 118,
++        "fn": 93,
++        "precision": 0.23376623376623376,
++        "recall": 0.27906976744186046,
++        "f1": 0.254416961130742
++      },
++      "center_error_px_mean": 1.145937512806461,
++      "center_error_px_p95": 2.7978922033615343,
++      "fp_per_reviewed_roi": 7.0,
++      "fn_per_reviewed_roi": 2.0,
++      "excluded_gt": 4,
++      "ignored_predictions": 7,
++      "large_unverified_regions": 0,
++      "ignore_pixels": 0,
++      "uncertain_rejection_rate": null
++    },
++    "cellpose_pretrained/validation/ROI": {
++      "roi_count": 5,
++      "source_frame_count": 2,
++      "center": {
++        "tp": 77,
++        "fp": 33,
++        "fn": 52,
++        "precision": 0.7,
++        "recall": 0.5968992248062015,
++        "f1": 0.6443514644351465
++      },
++      "mask": {
++        "tp": 56,
++        "fp": 54,
++        "fn": 73,
++        "precision": 0.509090909090909,
++        "recall": 0.43410852713178294,
++        "f1": 0.4686192468619247
++      },
++      "center_error_px_mean": 1.1171913162280118,
++      "center_error_px_p95": 3.226014919572908,
++      "fp_per_reviewed_roi": 6.6,
++      "fn_per_reviewed_roi": 10.4,
++      "excluded_gt": 4,
++      "ignored_predictions": 7,
++      "large_unverified_regions": 0,
++      "ignore_pixels": 0,
++      "uncertain_rejection_rate": null
++    },
++    "cellpose_pretrained/validation/FULL_FRAME": {
++      "roi_count": 5,
++      "source_frame_count": 2,
++      "center": {
++        "tp": 1,
++        "fp": 0,
++        "fn": 128,
++        "precision": 1.0,
++        "recall": 0.007751937984496124,
++        "f1": 0.015384615384615385
++      },
++      "mask": {
++        "tp": 0,
++        "fp": 1,
++        "fn": 129,
++        "precision": 0.0,
++        "recall": 0.0,
++        "f1": 0.0
++      },
++      "center_error_px_mean": 0.5538311161479968,
++      "center_error_px_p95": 0.5538311161479968,
++      "fp_per_reviewed_roi": 0.0,
++      "fn_per_reviewed_roi": 25.6,
++      "excluded_gt": 4,
++      "ignored_predictions": 0,
++      "large_unverified_regions": 0,
++      "ignore_pixels": 0,
++      "uncertain_rejection_rate": null
++    },
++    "cellpose_tuned/validation/ROI": {
++      "roi_count": 5,
++      "source_frame_count": 2,
++      "center": {
++        "tp": 15,
++        "fp": 0,
++        "fn": 114,
++        "precision": 1.0,
++        "recall": 0.11627906976744186,
++        "f1": 0.20833333333333334
++      },
++      "mask": {
++        "tp": 13,
++        "fp": 2,
++        "fn": 116,
++        "precision": 0.8666666666666667,
++        "recall": 0.10077519379844961,
++        "f1": 0.18055555555555555
++      },
++      "center_error_px_mean": 0.9590761827357471,
++      "center_error_px_p95": 1.9289061594370236,
++      "fp_per_reviewed_roi": 0.0,
++      "fn_per_reviewed_roi": 22.8,
++      "excluded_gt": 4,
++      "ignored_predictions": 1,
++      "large_unverified_regions": 0,
++      "ignore_pixels": 0,
++      "uncertain_rejection_rate": null
++    },
++    "cellpose_tuned/validation/FULL_FRAME": {
++      "roi_count": 5,
++      "source_frame_count": 2,
++      "center": {
++        "tp": 0,
++        "fp": 0,
++        "fn": 129,
++        "precision": null,
++        "recall": 0.0,
++        "f1": 0.0
++      },
++      "mask": {
++        "tp": 0,
++        "fp": 0,
++        "fn": 129,
++        "precision": null,
++        "recall": 0.0,
++        "f1": 0.0
++      },
++      "center_error_px_mean": null,
++      "center_error_px_p95": null,
++      "fp_per_reviewed_roi": 0.0,
++      "fn_per_reviewed_roi": 25.8,
++      "excluded_gt": 4,
++      "ignored_predictions": 0,
++      "large_unverified_regions": 0,
++      "ignore_pixels": 0,
++      "uncertain_rejection_rate": null
++    }
++  },
++  "failed_or_limited": [
++    "Fine-tuned model loses recall",
++    "Full-frame Cellpose inference loses recall",
++    "No camera connected",
++    "Cellpose results stale in paced replay",
++    "No human group/track/test labels"
+   ]
+-}
++}

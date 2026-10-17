@@ -1,4 +1,16 @@
-# Current MEVO acoustic–microbubble project · 2026-10-15
+# Current MEVO acoustic–microbubble and vision project · 2026-10-17
+
+Latest deliveries: **F10S simulation** and **F10U-Vision collective perception**, including the F10T annotation workbench and held-out human-label evaluation.
+
+Start with the [current handoff](computation_examples/mevo_acoustic_microbubbles/docs/CURRENT_PROJECT_STATE_20261017.md), [F10U Chinese report](external_connect/vision_tracking_research/collective_motion_v1/FINAL_RECOMMENDATION.md), [annotation guide](external_connect/vision_tracking_research/smart_online_tracking_v2/ANNOTATION_READY.md), and [sync scope, hashes and restoration instructions](computation_examples/mevo_acoustic_microbubbles/sync/20261017/README.md).
+
+This new branch preserves the published F10S scientific tree and adds current visual perception code, saved annotations, frozen benchmark images/masks, actual results, failure evidence, figures, compact videos and original Chronos/AFG interface sources. Environments, model weights, raw movies and repeated bulk frames are excluded. This synchronization starts no scientific computation or hardware task.
+
+**EXPLORATORY / PHYSICS_UNCALIBRATED / training_ready=false.** F10U real six-parameter accuracy is **NOT_VERIFIED**, difficult-case generalization and confidence-interval calibration have documented failures, and `LIVE_CAMERA_PASS=false`. See the module's actual gates before use.
+
+---
+
+# Historical synchronization context — 2026-10-15
 
 Latest completed scientific delivery: **F10S**, from source `31a44d3f342e5d0bca55f7f9b83f4d32b8189696`.
 Start with the [current handoff](computation_examples/mevo_acoustic_microbubbles/docs/CURRENT_PROJECT_STATE_20261015.md), [Chinese development report](computation_examples/mevo_acoustic_microbubbles/docs/FAST_PZT_F10S_DEVELOPMENT.md) and [synchronization scope/hashes](computation_examples/mevo_acoustic_microbubbles/sync/20261015/README.md).

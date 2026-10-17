@@ -1,0 +1,11 @@
+--- before.md
++++ after.md
+@@ -457,6 +457,8 @@
+ 
+ **真实微泡与团形状仍未准入。**Norfair仅用短时观测关联，丢失不发送旧坐标，跨session和时间间隙重置；原始图像区域的面积、Rg和形状张量可以计算，但正式group_shape仍为null，单泡识别、短轨迹精度、团分割和团附近单泡分布尚待人工确认。已验证微泡／团更新率均为0，不能把60 Hz候选称为闭环视觉。四组英文PNG/PDF及两段实际H264视频已保存，视频保留真实源时间顺序，不插帧；标注说明、失败、中断、源码身份、哈希与性能日志位于external_connect/vision_tracking_research/smart_online_tracking_v2。未进行LED延迟测量，CAMERA_TO_CONTROLLER_END_TO_END_LATENCY=NOT_MEASURED；仅mock，没有PZT/AFG自动控制。下一步先完成少量完整人工帧和8帧短轨迹的确认，再冻结评价和决定是否有必要开展一次有限微调，training_ready=false。
+ 
++随后在人工使用中发现的图层删除、SAM 接受不可撤销与错误实例删除问题也已完成第三轮修复。必需图层自动恢复同一对象，SAM 接受与删除进入原生撤销历史，并支持点选已有标签删除；原版 SAM 改为局部目标框、可选正负点及多候选，模型和局部特征复用。真实界面 29 项检查与 5 项坐标/范围检查通过，正式标签原有 15 个文件 SHA 不变；最终实测首次请求 5.73 s、同框重复 0.13 s、新目标 0.40 s。8 个训练对象的提示回放发现 32 px 自动框效果不佳，失败证据保留；紧框及 16 px 点模式在此训练样本上改善，但没有建立独立识别准确率，仍须人工检查。具体操作和证据见 smart_online_tracking_v2/ANNOTATION_READY.md 与 evidence/annotation_repair_v3_20261016/REPAIR_REPORT.md。
++
+ ---
+ 
+ ### 尾声：故事里还没讲完的部分
