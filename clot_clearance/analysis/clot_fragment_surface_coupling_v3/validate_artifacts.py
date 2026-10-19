@@ -29,7 +29,9 @@ def main():
         figures.append(dict(png=p.name,png_sha256=sha(p),pdf_sha256=sha(pdf),pixels=[width,height]))
     generation=json.loads((O/'VIDEO_GENERATION.json').read_text());assert generation['status']=='PASS'
     names=['VIDEO_01_SURFACE_COUPLING_BEFORE_AFTER','VIDEO_02_FRAGMENT_FLUID_TRACTION_AND_SURVIVAL']
-    videos=[];source_cache={}
+    videos=[];source_cache={};topology_cache={}
+    graph=module('artifact_membership_graph',R/'analysis/v3_chunk_fragmentation_mechanism_v1/graph_ops.py')
+    ref=load_npz(O/'provenance/reference.npz')
     for name in names:
         p=F/'videos'/(name+'.mp4');metadata=next(v for v in generation['videos'] if v['file']==p.name)
         assert sha(p)==metadata['sha256']
@@ -51,6 +53,15 @@ def main():
                         source_cache[source]=dict(path=str(source.relative_to(R)),time_s=float(s['time']),step=int(s['step']),sha256=sha(source))
                 assert actual==source_cache[source]['time_s'];previous[j]=actual;seen.add(source)
             if name==names[1]:assert row['left_source']==row['right_source']
+            ids=np.asarray(json.loads(row['focus_original_atom_ids']),np.int64)
+            assert len(ids)==int(row['focus_nodes']) and np.array_equal(ids,np.unique(ids))
+            assert hashlib.sha256(ids.tobytes()).hexdigest()==row['focus_member_ID_sha256']
+            source=R/row['right_source']
+            if source not in topology_cache:
+                with np.load(source) as s:topology_cache[source]=graph.topology(ref,s['d'])[:2]
+            labels,sizes=topology_cache[source]
+            assert ids.min()>=1 and ids.max()<=int(ref['clot_count'])
+            assert len(np.unique(labels[ids-1]))==1 and int(sizes[labels[ids[0]-1]])==len(ids)
             if row['hold']=='True':
                 assert i>0 and row['left_source']==rows[i-1]['left_source'] and row['right_source']==rows[i-1]['right_source']
         log=O/(name+'_DECODE.log')

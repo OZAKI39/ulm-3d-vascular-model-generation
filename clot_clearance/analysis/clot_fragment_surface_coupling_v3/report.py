@@ -7,10 +7,31 @@ def main():
     result=json.loads((O/'NATIVE_V3_RESULT.json').read_text());q=result['objective'];status=json.loads((O/'FINAL_STATUS.json').read_text());lineage=json.loads((O/'FRAGMENT_LINEAGE.json').read_text())
     old=json.loads((V2_O/'NATIVE_BIPHASIC_RESULT.json').read_text());u=json.loads((V2_O/'NATIVE_UNIFORM_RESULT.json').read_text());native=result['native'];last=result['last_row'];cost=json.loads((O/'COMPUTE_COST.json').read_text())
     audit=json.loads((O/'SURFACE_GEOMETRY_AND_MAPPING_AUDIT.json').read_text());cover=json.loads((O/'SURFACE_COVERAGE_DEFINITIONS.json').read_text())['targets'];p0=json.loads((O/'P0_TARGET_SURFACE_DIAGNOSIS.json').read_text())['targets']
+    validation=json.loads((O/'DELIVERY_VALIDATION.json').read_text())
+    resolution=json.loads((O/'FINAL_SURFACE_RESOLUTION_DIAGNOSIS.json').read_text())
+    resolved_components=resolution['components'];limits=resolution['mapping_limits']
+    resolution_counts={name:sum(c['L2_first_condition_counts'][name] for c in resolved_components) for name in resolution['reason_order']}
+    unresolved_targets=[c for c in resolved_components if c['target_20_200'] and c['effective_loaded_area_m2']==0]
     def pc(x):return '未定义' if x is None else f'{100*x:.3f}%'
     targetcount=int(q['n_fragments_20_200']);outcome='末态达到了至少 5 个目标块的节点数条件' if targetcount>=5 else '末态没有达到至少 5 个目标块的节点数条件'
+    final_target_text=''
+    for c in result['final_target_components']:
+        final_target_text+=f"末态分量 {c['component_id']} 有 {c['nodes']} 个原始节点、{c['internal_live_bulk_bonds']} 条内部存活 bulk 键；强相节点 {c['strong_nodes']} 个。实际跨度为 " + ' × '.join(f'{x*1e6:.1f}' for x in c['actual_span_m']) + f" µm，点云秩为 {c['point_cloud_rank']}，形态与节点数分开报告。它有 {c['fluid_L1_facets']} 个 L1 面、{c['fluid_L2_patches']} 个 L2 面，有效面积 {c['fluid_effective_area_m2']*1e6:.6g} mm²，实际合力 {np.linalg.norm(c['fluid_force_N'])*1e6:.6g} µN、功率 {c['fluid_power_W']*1e6:.6g} µW。求积所有者／顶点覆盖率 {pc(c['quadrature_owner_or_vertex_fraction'])}，受力权重支撑覆盖率 {pc(c['fluid_loaded_node_fraction'])}；候选中未解析比例 {pc(c['fluid_unresolved_candidate_fraction'])}，并非已解析完整流体外表面。\n\n"
     motion=json.loads((O/'SURFACE_MOTION_COMPARISON.json').read_text());same_time=motion['stages'][-1]
-    motiontext=f"相同物理时刻 {same_time['time_s']*1e3:.6f} ms，新旧 H 的全部 8125 个原始材料节点位置 RMS 差为 {same_time['all_material_RMS_position_difference_m']*1e6:.6g} µm，速度 RMS 差为 {same_time['all_material_RMS_velocity_difference_m_s']:.6g} m/s。另按旧末态三个目标块及新末态目标块的原始成员集合，分别保存新旧轨迹中的质心、速度、动能、内部相对动能、实际节点载荷和真实分量归属。这些固定成员组在另一个版本或另一个时刻可能已分裂，不能当作同一个完整碎块。详见 SURFACE_MOTION_COMPARISON.json。"
+    motiontext=f"相同物理时刻 {same_time['time_s']*1e3:.6f} ms，新旧 H 的全部 8125 个原始材料节点位置 RMS 差为 {same_time['all_material_RMS_position_difference_m']*1e6:.6g} µm，速度 RMS 差为 {same_time['all_material_RMS_velocity_difference_m_s']:.6g} m/s。另按旧末态三个目标块、新末态目标块，以及 2.650125 ms 实际观察到的 46／23 节点目标块的原始成员集合，分别保存新旧轨迹中的质心、速度、动能、内部相对动能、实际节点载荷和真实分量归属。这些固定成员组在另一个版本或另一个时刻可能已分裂，不能当作同一个完整碎块。详见 SURFACE_MOTION_COMPARISON.json。"
+    observed_motion=[c for c in motion['passive_window_fixed_cohorts'] if c['definition'].startswith('V3 observed ')]
+    if observed_motion:
+        motiontext+='\n\n以下固定成员组的质心速度与总动能变化均来自 2.8–3.6 ms 的真实状态；这不假设其全部成员始终属于一个分量。速度列为撤载时 → 末态，单位 m/s。\n\n|原始成员组|旧 H 质心速度|新 H 质心速度|旧 H ΔK (nJ)|新 H ΔK (nJ)|\n|---|---:|---:|---:|---:|\n'
+        for c in observed_motion:
+            a,b=c['old_H'],c['new_H']
+            motiontext+=f'|2.650125 ms 的 {c["nodes"]} 节点组|{a["drive_off_speed_m_s"]:.6g} → {a["final_speed_m_s"]:.6g}|{b["drive_off_speed_m_s"]:.6g} → {b["final_speed_m_s"]:.6g}|{a["kinetic_change_J"]*1e9:.6g}|{b["kinetic_change_J"]*1e9:.6g}|\n'
+    unload_table=''
+    if lineage['unload_targets']:
+        unload_table='撤载时各目标块的实际载荷与末态后代：\n\n|2.8 ms 分量 ID／节点|L1／L2 面|有效面积 mm²|流体功率 µW|最大后代节点／原成员保留|末态目标区间后代数|\n|---|---:|---:|---:|---:|---:|\n'
+        for c in lineage['unload_targets']:
+            a=c['drive_off_state'];largest=max(c['descendants'],key=lambda v:v['nodes'])
+            unload_table+=f'|{c["component_id_at_drive_off"]}／{c["nodes_at_drive_off"]}|{a["fluid_L1_facets"]}／{a["fluid_L2_patches"]}|{a["fluid_effective_area_m2"]*1e6:.6g}|{a["fluid_power_W"]*1e6:.6g}|{largest["nodes"]}／{pc(c["max_member_retention"])}|{c["target_descendants"]}|\n'
+        unload_table+='\n面积为零的行表示流体载荷未解析；记录功率为零不等于零物理阻力。后代数量和成员保留由真实存活材料图确定。\n'
     text=f'''# CLOT_FRAGMENT_SURFACE_COUPLING_AND_PHYSICAL_HETEROGENEITY_V3
 
 唯一正式 H 算例状态：**{native['status']}**，最后接受时间 **{native['time_s']*1e3:.6f} ms**，目标区间 20–200 节点的末态游离块数 **{targetcount}**，时程最大数 **{q['max_target_count']}**。{outcome}。细屑、形貌、撤载后存活和表面完整性继续分别报告。
@@ -25,9 +46,15 @@ def main():
 
 ## 2. 新表面求积有哪些物理与离散支持
 
-保留旧 L1 受支持三角面路径。L2 使用原始 dx³ 对偶控制体积以及存活原始非局部邻域的仿射几何，补充真正游离分量的参考边界面。近邻键失效不等于裂面开放：所有原始键穿过对偶面的参考交叉表、当前分量身份、开口、当前单元障碍与真实 L1 四面体遮挡都参与筛选。旧 L1 面附近的补充单元保守排除，以减少重复面积。没有凸包外壳、人工连边、键恢复或按目标尺寸切分材料。
+保留旧 L1 受支持三角面路径。L2 使用原始 dx³ 对偶控制体积以及存活原始非局部邻域的仿射几何，补充真正游离分量的参考边界面。近邻键失效不等于裂面开放：所有原始键穿过对偶面的参考交叉表、当前分量身份、开口、当前单元障碍与真实 L1 四面体遮挡都参与筛选。重复面积防护以**参考位置的覆盖范围**为依据：若原始对偶单元与当前活跃 L1 面的参考包围球可能相交，则保守排除该单元的补充面。这可能遗漏有效面积，不能据此证明当前变形几何的连续表面已经完整或无重叠。没有凸包外壳、人工连边、键恢复或按目标尺寸切分材料。
 
 这是局部控制体积的**部分近似表面求积**，不是经过验证的连续流体包络。每片采用中心一点求积；可达性是外向直线与局部探针的代理，不等同于真实曲折流路，亦未逐点认证整个面片的连续润湿。秩亏／低维碎屑、桥接、几何反转、外推过大、遮挡和重叠歧义保留为未解析。真实遗漏的连续表面积仍未知。
+
+正式动力学中，L2 在 1.6598125 ms 首次非零激活。随后 1.675 ms 的真实 FP64 保存态确认：一个19节点、与锚层断开的原始材料分量有0个L1加载面、1个L2加载面，节点合力约1.86µN，节点功率约1.785µW。它低于20节点目标下限，不计作目标块。原始19个成员ID、保存态哈希、实际力矩及面／节点配对误差见 INTERMEDIATE_L2_ACCEPTED_STATE_OBSERVATION.json。这证明补充载荷已进入本轮真实接受态，不只是对旧末态增加了显示面。
+
+该面在 1.7000625 ms 仍加载，至 1.7250625 ms 被标记为 UNRESOLVED。保存态回放显示：局部参考拟合和当前变形仍有效、没有存活跨面键，也没有 L1 重叠排除，但支撑邻域变化使最低候选权重从约 −0.2204 降至 −0.5，超过冻结的 −0.25 下限，故未加载。这是明确的离散表示限制，不是零物理阻力或流体不可达的证据。原始支撑节点、权重、分量及逐项筛选见 L2_TRANSIENT_LOAD_DIAGNOSIS.json；未为保留加载而放宽准入条件。
+
+2.650125 ms 的真实保存态进一步确认两个目标块：46 节点块有 101 条内部存活键，0 个 L1 面、4 个 L2 面，有效面积约 0.01610 mm²，实际节点合力约 3.58 µN、功率约 6.069 µW；23 节点块有 28 条内部存活键，但 L1/L2 均未激活。后者 84 个 L2 候选的首个阻断条件分别为存活原始桥接 37、参考拟合不足 41、外推权重超限 6。它仍是实际连通的游离块，其零数值流体载荷不代表零物理阻力。原始成员与力矩等记录见 `intermediate_target_observations/frame_014415.json`，源状态 SHA256 为 `a8ed7650deef89be9e4bfdbf78067daab5f16716b83fb8abeba0410989521cfa`。这是中间时刻的载荷证据，不是末态数量或卸载存活结论。
 
 同一 V2 七块的离线回放如下。有效面积包含开口权重；两种覆盖率的分母均为该碎块节点数，均不是连续表面积覆盖率。
 
@@ -41,7 +68,15 @@ def main():
 
 对同一面使用同一组仿射权重插值中心与速度，并伴随分配节点力。七块所在真实状态上的最大合力误差 {maxforce:.6g} N、力矩误差 {maxmoment:.6g} N·m、功率配对误差 {maxpower:.6g} W。恒定 1000 Pa 剪切、刚体平移阻力及随动旋转检查通过。
 
+正式计算全部 {validation['all_saved_FP64_states']} 个已保存 FP64 接受态的对应最大误差为 {validation['max_resultant_force_error_N']:.6g} N、{validation['max_moment_error_Nm']:.6g} N·m、{validation['max_power_pair_error_W']:.6g} W；逐态来源与哈希见 DATA_INVENTORY.json。这些检查验证保存的求积载荷与节点载荷之间的离散配对，不替代连续流体边界或局部牵引精度验证。
+
+末态还分别核对全部 {validation['final_free_components_checked']} 个游离分量的面力与本分量节点力：最大合力误差 {validation['max_final_component_force_error_N']:.6g} N、关于该分量质心的力矩误差 {validation['max_final_component_moment_COM_error_Nm']:.6g} N·m、功率配对误差 {validation['max_final_component_power_pair_error_W']:.6g} W。逐块数值与加载状态一并保存于 `FINAL_SURFACE_RESOLUTION_DIAGNOSIS.json`；未解析分量的零／零配对不构成其物理流体阻力已验证的证据。
+
 L1 权重非负。L2 外侧面中心常在节点支撑凸包之外，强制非负标量权重会破坏该中心的力矩／虚功配对，故采用有仿射意义的受限带符号权重：最低 −0.25、绝对权重和不超过 2；超过限制不激活。这控制了外推，**没有认证局部牵引分布精度或网格收敛**。
+
+末态游离分量的 L2 候选按“首个未满足条件”作互斥诊断：{json.dumps(resolution_counts,ensure_ascii=False)}。这些是离散候选数量，不是遗漏的真实表面积；后续筛选条件也可能同时不满足。末态目标块中有 {len(unresolved_targets)} 个有效求积面积为零，仍标记为流体加载未解析。逐块原始分量身份和原因见 `FINAL_SURFACE_RESOLUTION_DIAGNOSIS.json`。
+
+映射外推条件拒绝的 {limits['rejected_candidates']} 个末态候选中，有 {limits['rejected_but_within_1e_12_of_limits']} 个落在严格边界向外扩展 1×10⁻¹² 的诊断邻域内。`MAPPING_ADMISSIBILITY_MARGINS.csv` 保存每个候选的实际最低权重与绝对权重和。该统计仅用于定位严格浮点边界附近的敏感性，没有改变冻结门限、启用被拒绝面或证明这些面具有完整物理支持。
 
 从真实 V2 末态进行最小原生微步验证，含新 L2 非零阻力、只接受态提交、非提交试态和一段重启续步。最后版本的 2 个连续微步与 1 个重启续步通过；重启后的坐标、速度、力、κ/d 和物理能量标量与连续路径相同。开发时因增加真实 L1 障碍校核和记录字段，对这组微验证进行了必要复核，没有扩大物理试验矩阵。正式运行的每步门限仍为 Δd≤0.1、相对能量余额≤1%，dt 基准 0.25 µs、最小 0.03125 µs。
 
@@ -58,6 +93,10 @@ L1 权重非负。L2 外侧面中心常在节点支撑凸包之外，强制非�
 新 H 保存 {len(native['secondary_events'])} 次原始成员分裂事件。其中至少两个子分量均有 ≥20 节点的描述性子集有 {len(lineage['cohesive_secondary_splits'])} 次；这包含 >200 节点子块，不改变 20–200 的目标定义。事件前后内存活键、实际表面力／功率和成员闭合记录保存在 `FRAGMENT_LINEAGE.json`。
 
 2.8 ms 撤去外部驱动，仍按真实运动保留被动阻力。撤载时的目标块中，末态原成员集合完整不变者为 {q['exact_target_sets_surviving_drive_off']} 个；这些目标块的末态目标区间后代共 {q['target_descendants_of_drive_off_targets']} 个。掉点会改变精确成员 ID，不能据此把仍连通的较小后代判为完全消失。逐块最大后代保留率、内存活键、运动、剪切和功率均列入谱系文件。
+
+{unload_table}
+
+{final_target_text}
 
 同一 H 的新旧差异与表面／流体载荷表示变化一致，但单次实现不足以证明特定二次断裂由阻力单独造成。对比旧 Uniform 时，材料和表面版本均不同，不是双相材料的独立因果对照。低维碎屑和部分凝聚体的流体表面仍未解析，不能把零数值载荷写成零物理阻力，也不能仅凭撤载后图连通宣称真实水动力稳定。
 
@@ -79,11 +118,17 @@ L1 权重非负。L2 外侧面中心常在节点支撑凸包之外，强制非�
 
 新增参数化生成器以米制相关长度／各向异性、强相概率和固定 seed 为输入，没有目标块数或目标节点数参数。ell=100/200/400 µm 是明确未标定的离线假设，分别检查相同连续随机场在 dx=25/50/100 µm 的取样差异；不把 ell 当成团直径，没有按碎裂结果选择 seed，也未运行任何新材料尺度动力学。
 
+当前强弱相改变的是软化起点和终点，G、K、质量及初始缺口保持一致。因此在同一几何和初始损伤图上，相标签不会改变未损伤阶段的材料力与储能公式；相区布局仍可能改变损伤起始和后续破坏。离线结构分析没有识别候选结构的宏观强度、韧性或损伤响应，不能据此声称它们优于冻结基线。
+
 资料与测量对象详见 `PHYSICAL_DOMAIN_SCALE_ASSESSMENT.md` 和 `DOMAIN_SCALE_PROVENANCE.json`。外部原始来源：[2022 microCT/SEM](https://www.nature.com/articles/s41598-022-06623-8)；表面牵引离散的一致性背景：[Yu–You–Trask 2021](https://arxiv.org/abs/2101.01434)、[Yu–Huang–Zhou 2023](https://doi.org/10.3390/ma16062252)。本实现没有声称继承这些论文的全部模型或收敛证明。
 
 ## 7. 下一步优先事项
 
-先依据本轮真实后代谱系与未解析面清单，改善仍被桥接／几何不确定性挡住的表面表示，并验证局部载荷分配、分辨率与遮挡的敏感性；不能把受力权重扩散到更多节点等同于表面已完整。再获取与试样对应的三维组织分区及相关尺度，独立校准强弱相损伤／断裂响应。当前数据不足以直接指定“缩小强区到某个目标节点数”。
+第一优先是**流体载荷的局部表示与传递**。本轮已经观察到同一时刻的46节点块受到真实L2载荷，而23节点块仍无有效求积；另一个19节点块在保持游离时，因存活支撑变化和外推权重超限而失去L2加载。末态 {targetcount} 个目标块中，有 {len(unresolved_targets)} 个有效求积面积为零；有加载面的目标块也仍是部分解析，其实际面积和未解析比例见上文。这些新证据说明“材料图已经分离”和“流体作用已充分表示”仍是两件事。应针对已保存的具体原始成员、首个阻断条件和实际局部载荷定位问题，核验低维支撑、局部牵引分配、遮挡及离散分辨率。存活桥接和秩亏可能是合理的未解析判定，不能全部视为程序漏载，更不能仅放宽权重门限以增加面积。受力支撑节点增多也不等于连续湿润表面已经完整。
+
+第二优先是**材料内部损伤与凝聚性断裂机制**。新H末态1–2节点细屑占游离质量 {pc(q['fine_debris_mass_fraction_detached'])}，目标区间质量占初始质量 {pc(q['mass_fraction_target_initial'])}，撤载时目标块的末态目标区间后代为 {q['target_descendants_of_drive_off_targets']} 个；至少两个子块均≥20节点的二次分裂有 {len(lineage['cohesive_secondary_splits'])} 次。应沿这些实际成员谱系区分掉点、细丝／薄片解体和多块分裂，并检查损伤位置及其与相区、界面和实际表面功的关系。它们支持继续研究凝聚性保持，尚不足以把某次断裂归因于阻力单独作用，或直接指定更高强度／韧性。
+
+第三优先是**独立获取和标定物理微结构**。当前正式比较隔离了表面表示的变化，仍没有强相相关长度的试样实测值；10强区之间还存在3004条初始存活的直接非局部连接。需要与试样对应的三维组织分区、相关尺度及强弱相断裂响应，才能判断哪些区域结构值得作为新的物理候选。现有证据不支持根据20–200节点目标反推团尺寸，也不能由本轮碎块数选择新随机种子。这个排序针对当前解释瓶颈，并不表示材料微结构已经得到验证。
 
 声流对接仍需要可信流体速度／牵引来源及真实近壁几何，而非把名义 1000 Pa 直接解释为微泡能力。本轮没有新增材料／幅值／随机种子扫描，没有新 Uniform 全时程，没有完整 Navier–Stokes 双向 FSI。
 
@@ -95,13 +140,16 @@ Wdrive + Wdrag = ΔU + ΔK + D + ΔUc − Jc + R。末态驱动功 {last['W_driv
 
 `FRAGMENT_FORCE_AND_POWER.csv` 是每接受态的 **20–200 节点目标块**明细；所有尺寸分量的完整逐态受力、功率、面积、累计功、未解析标记仍保存在 `cases/biphasic/CONNECTED_COMPONENT_HISTORY.jsonl.gz`，原始成员集合在 `COMPONENT_REGISTRY.json`。累计成员功从 t=0 沿原始节点继承，精确成员集合出生后的增量另列，避免分裂时重置／重复分配历史功。
 
+`SURFACE_QUADRATURE_INDEX.npz` 区分 L1 的真实三角顶点与 L2 的原始控制体积所有者、轴向、正负面和参考偏移。历史兼容字段 `tri_atom_ids` 对 L2 重复记录所有者三次，仅用于索引，**不是一个三角面，也不是新增材料连接**。L2 可视化使用真实接受态局部仿射映射的对偶面角点；受力使用记录的面中心、法向、面积和权重。
+
 源码／输入冻结：`SOURCE_FREEZE.json`。原生库继续使用 V2，SHA256 `{sha(LIB)}`。没有修改历史 V2 文件。没有删除用途不明的历史材料或代码。原生状态、日志、重启、全部诊断与图／视频都保留；本轮 Git 提交只选取代码、必要依赖、紧凑证据和可复现记录，不打包无关大文件。
 '''
     report=O/'REVIEW_CLOT_FRAGMENT_SURFACE_COUPLING_V3.md';report.write_text(text)
-    reproduction=f'''# Reproduce / replay\n\nTask {TASK}, run {RUN}. One formal H attempt only.\n\nActivate `/workspace/y_clot/env.sh`; set OMP_NUM_THREADS=1, OPENBLAS_NUM_THREADS=1, MKL_NUM_THREADS=1. Runtime root defaults to `/workspace/y_clot/project`; `Y_CLOT_PROJECT_ROOT` overrides it.\n\nRead-only replay, with full archived data present:\n\n```bash\npython analysis/{TASK}/analyze.py\npython analysis/{TASK}/coverage_audit.py\npython analysis/{TASK}/figures.py\npython analysis/{TASK}/render_videos.py --smoke\n# Review the five actual-frame smoke previews before final video rendering.\npython analysis/{TASK}/render_videos.py\npython analysis/{TASK}/report.py\n```\n\nThese commands read accepted dynamics and do not restart the physical experiment. The launch script deliberately refuses a second formal attempt in the frozen directory. A justified new experiment requires a new independent RUN and a new frozen request.\n\nV2 dependency root: `{V2_O.relative_to(R)}`. Required original geometry / material / restart / states and native library hashes are in SOURCE_FREEZE.json and V2_DEPENDENCY_FREEZE.json. The raw library, dense trajectories, large native restart/data and paper PDFs are archival dependencies, not incidental Git payload. The native library SHA is `{sha(LIB)}`. V2 BUILD_AUDIT.json records compiler/object provenance; upstream LAMMPS commit is `8de817dd79bfe4525d5d39246a212d833e6dee07`. This round changes no LAMMPS material/force kernel. The small ray helper is compiled from ray_cells.cpp with g++ -O3 -std=c++17 -fPIC -shared and its source SHA is recorded.\n\nThe binary restart is accompanied by surface_restart.npz and fluid_work_restart.npz; reference ID/time/step checks are mandatory. A failed-unaccepted native restart, if present, is explicitly not a checkpoint of last_accepted.npz. Continuation equivalence of the new surface sidecar is tested in NATIVE_SURFACE_HISTORY_RESTART_AUDIT.json.\n\nCoordinates are metres in FP64 archives; figures/videos display micrometres without displacement magnification. Frame-time CSV files point to actual accepted native keys. No synthetic trajectory interpolation.\n\nThe physical-scale candidates are offline random fields with fixed physical Fourier coefficients, never formal dynamics. The active material remains the frozen V2 BIPHASIC_FIELD.npz.\n'''
+    reproduction=f'''# Reproduce / replay\n\nTask {TASK}, run {RUN}. One formal H attempt only.\n\nActivate `/workspace/y_clot/env.sh`; set OMP_NUM_THREADS=1, OPENBLAS_NUM_THREADS=1, MKL_NUM_THREADS=1. Runtime root defaults to `/workspace/y_clot/project`; `Y_CLOT_PROJECT_ROOT` overrides it.\n\nRead-only replay, with full archived data present:\n\n```bash\npython analysis/{TASK}/analyze.py\npython analysis/{TASK}/compare_motion.py\npython analysis/{TASK}/coverage_audit.py\npython analysis/{TASK}/figures.py\npython analysis/{TASK}/render_videos.py --smoke\n# Review the five actual-frame smoke previews before final video rendering.\npython analysis/{TASK}/render_videos.py\npython analysis/{TASK}/report.py\n```\n\nThese commands read accepted dynamics and do not restart the physical experiment. The launch script deliberately refuses a second formal attempt in the frozen directory. A justified new experiment requires a new independent RUN and a new frozen request.\n\nV2 dependency root: `{V2_O.relative_to(R)}`. Required original geometry / material / restart / states and native library hashes are in SOURCE_FREEZE.json and V2_DEPENDENCY_FREEZE.json. The raw library, dense trajectories, large native restart/data and paper PDFs are archival dependencies, not incidental Git payload. The native library SHA is `{sha(LIB)}`. V2 BUILD_AUDIT.json records compiler/object provenance; upstream LAMMPS commit is `8de817dd79bfe4525d5d39246a212d833e6dee07`. This round changes no LAMMPS material/force kernel. The small ray helper is compiled from ray_cells.cpp with g++ -O3 -std=c++17 -fPIC -shared and its source SHA is recorded.\n\nThe binary restart is accompanied by surface_restart.npz and fluid_work_restart.npz; reference ID/time/step checks are mandatory. A failed-unaccepted native restart, if present, is explicitly not a checkpoint of last_accepted.npz. Continuation equivalence of the new surface sidecar is tested in NATIVE_SURFACE_HISTORY_RESTART_AUDIT.json.\n\nCoordinates are metres in FP64 archives; figures/videos display micrometres without displacement magnification. Frame-time CSV files point to actual accepted native keys. No synthetic trajectory interpolation.\n\nThe physical-scale candidates are offline random fields with fixed physical Fourier coefficients, never formal dynamics. The active material remains the frozen V2 BIPHASIC_FIELD.npz.\n'''
+    reproduction+=f'\nAfter the full sealed archive has been synchronized locally, verify every archived file and relative link with the standard library only:\n\n```bash\npython3 analysis/{TASK}/verify_local_delivery.py --root /path/to/clot_clearance\n```\n\nThis checks DELIVERY_MANIFEST.json and writes LOCAL_DELIVERY_READBACK.json. It requires the full archive; a compact Git source export intentionally lacks large native states and is not a substitute for that archive.\n'
     (O/'REPRODUCE.md').write_text(reproduction)
     rel=lambda p:os.path.relpath(p,F)
-    links=[('中文科研审查',report),('复现说明',O/'REPRODUCE.md'),('最终状态',O/'FINAL_STATUS.json'),('表面方法',O/'SURFACE_METHOD_SPEC.md'),('物理尺度证据',O/'PHYSICAL_DOMAIN_SCALE_ASSESSMENT.md'),('原生验证',O/'DELIVERY_VALIDATION.json'),('逐态尺寸统计',O/'FRAGMENT_SIZE_HISTORY.csv'),('目标块受力／功率',O/'FRAGMENT_FORCE_AND_POWER.csv'),('完整能量账本',O/'ENERGY_LEDGER.csv'),('碎块谱系',O/'FRAGMENT_LINEAGE.json'),('同成员运动比较',O/'SURFACE_MOTION_COMPARISON.json'),('原始数据范围',O/'DATA_INVENTORY.json')]
+    links=[('中文科研审查',report),('复现说明',O/'REPRODUCE.md'),('最终状态',O/'FINAL_STATUS.json'),('表面方法',O/'SURFACE_METHOD_SPEC.md'),('物理尺度证据',O/'PHYSICAL_DOMAIN_SCALE_ASSESSMENT.md'),('原生验证',O/'DELIVERY_VALIDATION.json'),('逐态尺寸统计',O/'FRAGMENT_SIZE_HISTORY.csv'),('目标块受力／功率',O/'FRAGMENT_FORCE_AND_POWER.csv'),('末态未解析原因',O/'FINAL_SURFACE_RESOLUTION_DIAGNOSIS.json'),('映射门限余量',O/'MAPPING_ADMISSIBILITY_MARGINS.csv'),('完整能量账本',O/'ENERGY_LEDGER.csv'),('碎块谱系',O/'FRAGMENT_LINEAGE.json'),('同成员运动比较',O/'SURFACE_MOTION_COMPARISON.json'),('原始数据范围',O/'DATA_INVENTORY.json')]
     pieces=['<!doctype html><html lang="zh"><meta charset="utf-8"><title>Clot surface coupling V3</title><style>body{max-width:1360px;margin:32px auto;padding:0 24px;font:18px/1.65 system-ui;color:#243d4c;background:#f8fafb}img,video{width:100%;height:auto;background:white}section{background:white;margin:28px 0;padding:20px;border:1px solid #dce5e9}a{color:#126b89}table{border-collapse:collapse}td,th{padding:8px 18px;border:1px solid #cdd9df}.tag{color:#9b4b52}</style>',f'<h1>碎块表面耦合 V3</h1><p>{html.escape(outcome)}；末态 {targetcount} 块，时程最大 {q["max_target_count"]} 块。原生状态：{native["status"]}。</p><p class="tag">探索性未标定材料 · 规定剪切机械代理 · 部分近似表面耦合</p>','<p>'+'　'.join(f'<a href="{html.escape(rel(p))}">{label}</a>' for label,p in links)+'</p>']
     for p in sorted((F/'figures').glob('FIG_*.png')):pieces.append(f'<section><h2>{html.escape(p.stem)}</h2><a href="figures/{p.with_suffix(".pdf").name}">矢量 PDF</a><img loading="lazy" src="figures/{p.name}" alt="{p.stem}"></section>')
     for p in sorted((F/'videos').glob('VIDEO_*.mp4')):pieces.append(f'<section><h2>{html.escape(p.stem)}</h2><video controls preload="metadata" src="videos/{p.name}"></video><p>1920×1080 · 24 fps · 原生接受态真实坐标；具体时间见 <a href="videos/{p.stem}_FRAME_TIMES.csv">帧来源表</a>。</p></section>')

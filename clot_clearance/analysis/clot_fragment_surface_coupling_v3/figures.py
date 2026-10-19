@@ -1,11 +1,13 @@
 """Eight figure groups from actual coordinates and accepted scalar histories."""
 from common import *
 from analyze import read_history
+from multifragment_shear_objective import BINS
 from current_surface import CurrentSurface
 import csv,argparse
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 from mpl_toolkits.mplot3d.art3d import Line3DCollection,Poly3DCollection
 
 plt.rcParams.update({'font.size':12,'axes.titlesize':14,'axes.labelsize':12,'legend.fontsize':11,'pdf.fonttype':42,'axes.grid':True,'grid.color':'#9ca6ad','grid.alpha':.5})
@@ -26,15 +28,15 @@ def p0_redraw():
     fig=plt.figure(figsize=(22,12),layout='constrained')
     for j,row in enumerate(diagnosis['targets']):
         q=load_npz(O/'p0_targets'/f'{row["case"]}_{row["component_id"]}.npz');x=q['x']*1e6;lookup={int(a):k for k,a in enumerate(q['original_atom_ids'])}
-        edges=np.array([[lookup[int(a)] for a in e] for e in q['live_bond_atom_ids']]);ax=fig.add_subplot(2,4,j+1,projection='3d')
-        ax.add_collection3d(Line3DCollection(x[edges],colors='#6d8797',linewidths=.45,alpha=.45));ax.scatter(*x.T,s=10,c='#215570',depthshade=False)
-        for mask,color,marker in [(q['active'],GREEN,'^'),(~q['active']&~q['new_open'], '#de9d28','x'),(~q['active']&q['new_open'],'#9863b3','D')]:
+        edges=np.array([[lookup[int(a)] for a in e] for e in q['live_bond_atom_ids']]);ax=fig.add_subplot(2,4,j+1,projection='3d',computed_zorder=False)
+        ax.add_collection3d(Line3DCollection(x[edges],colors='#6d8797',linewidths=.45,alpha=.45,zorder=1));ax.scatter(*x.T,s=10,c='#215570',depthshade=False,zorder=2)
+        for mask,color,marker in [(~q['active']&~q['new_open'], '#de9d28','x'),(~q['active']&q['new_open'],'#9863b3','D'),(q['active'],GREEN,'^')]:
             if mask.any():
                 faces=np.array([[lookup[int(a)] for a in face] for face in q['face_atom_ids'][mask]])
-                ax.add_collection3d(Poly3DCollection(x[faces],facecolors=color,edgecolors=color,alpha=.45,linewidths=.7))
-                points=q['centroid'][mask]*1e6;ax.scatter(*points.T,c=color,s=42,marker=marker,depthshade=False)
+                ax.add_collection3d(Poly3DCollection(x[faces],facecolors=color,edgecolors=color,alpha=.45,linewidths=.7,zorder=3))
+                points=q['centroid'][mask]*1e6;ax.scatter(*points.T,c=color,s=80 if marker=='^' else 42,marker=marker,depthshade=False,zorder=5 if marker=='^' else 4)
         equal_world(ax,x);c=row['counts'];ax.set_title(f'{row["case"].title()} ID {row["component_id"]}: {row["nodes"]} nodes\n{c["supported_tetra"]} supported tets; {c["active"]} loaded facets',pad=4)
-    ax=fig.add_subplot(248);ax.axis('off');ax.text(.02,.98,'Actual V2 end states\n\nBlue: real material points\nand surviving original bonds\n\nOrange crosses: unopened candidates\nPurple diamonds: open, inaccessible\nGreen triangles: loaded face centroids\n(markers are identification symbols)\n\n4 fragments: no supported tetra\n1 zero-load fragment: opening test fails\n2 others: opening/accessibility limits\n\nNo geometric shell was invented.\nNo loaded facet ≠ no physical drag.\nOriginal world coordinates throughout.',va='top',fontsize=12,linespacing=1.4)
+    ax=fig.add_subplot(248);ax.axis('off');ax.text(.02,.98,'Actual V2 end states\n\nBlue: real material points\nand surviving original bonds\n\nOrange crosses: unopened candidates\nPurple diamonds: open, inaccessible\nGreen triangles: loaded face centroids\n(markers are identification symbols;\noverlaid for visibility, no position shift)\n\n4 fragments: no supported tetra\n1 zero-load fragment: opening test fails\n2 others: opening/accessibility limits\n\nNo geometric shell was invented.\nNo loaded facet ≠ no physical drag.\nOriginal world coordinates throughout.',va='top',fontsize=12,linespacing=1.4)
     fig.suptitle('FIG 01 | Why connected fragments lost the old surface-load representation',fontsize=21)
     save(fig,'FIG_01_SURFACE_REPRESENTATION_FAILURE')
 
@@ -51,17 +53,19 @@ def quadrature_figure():
     ref=load_npz(V2_O/'provenance/reference.npz');s=load_npz(V2_O/'cases/biphasic/keys/final.npz');reg=json.loads((V2_O/'cases/biphasic/COMPONENT_REGISTRY.json').read_text());ids=np.array(reg['3769']['atom_ids'])-1
     surf=CurrentSurface(ref,'uniform');z=surf.geometry(s['x'],s['d']);member=np.zeros(surf.N,bool);member[ids]=True;internal=member[ref['bonds']].all(1)&(s['d']<1)
     for col,new in enumerate([False,True]):
-        ax=fig.add_subplot(223+col,projection='3d');x=s['x']*1e6
-        ax.add_collection3d(Line3DCollection(x[ref['bonds'][internal]],colors='#8a9da7',linewidths=.4,alpha=.4));ax.scatter(*x[ids].T,s=9,c='#28536a',depthshade=False)
+        ax=fig.add_subplot(223+col,projection='3d',computed_zorder=False);x=s['x']*1e6
+        ax.add_collection3d(Line3DCollection(x[ref['bonds'][internal]],colors='#8a9da7',linewidths=.4,alpha=.4,zorder=1));ax.scatter(*x[ids].T,s=9,c='#28536a',depthshade=False,zorder=2)
         mask=z['active'][:surf.L]&member[surf.base.tri].all(1)
-        if mask.any():ax.add_collection3d(Poly3DCollection(x[surf.base.tri[mask]],facecolors=GREEN,edgecolors=GREEN,alpha=.9))
+        if mask.any():
+            ax.add_collection3d(Poly3DCollection(x[surf.base.tri[mask]],facecolors=GREEN,edgecolors=GREEN,alpha=.9,zorder=3))
+            ax.scatter(*(z['centroid'][:surf.L][mask]*1e6).T,c=GREEN,s=65,marker='^',depthshade=False,zorder=5)
         if new:
             patch=np.flatnonzero(z['active'][surf.L:]&member[surf.owner]);quads=[]
             for p in patch:
                 i=surf.owner[p];axis=surf.axis[p];j,k=(axis+1)%3,(axis+2)%3;F0=z['l2_deformation'][i]
                 corners=np.array([surf.offset[p]+DX*(a*np.eye(3)[j]+b*np.eye(3)[k]) for a,b in [(-.5,-.5),(.5,-.5),(.5,.5),(-.5,.5)]])
                 quads.append((s['x'][i]+corners@F0.T)*1e6)
-            ax.add_collection3d(Poly3DCollection(quads,facecolors='#4ba9bf',edgecolors='#14566a',linewidths=.5,alpha=.7))
+            ax.add_collection3d(Poly3DCollection(quads,facecolors='#4ba9bf',edgecolors='#14566a',linewidths=.5,alpha=.7,zorder=3))
         equal_world(ax,x[ids],620);ax.set_title('H ID 3769, 148 actual nodes\n'+('V3: retained L1 + partial dual-face patches' if new else 'V2: one active supported triangle'))
     fig.suptitle('FIG 03 | Surface quadrature replay — approximate, conservative, and still incomplete',fontsize=20)
     audit=json.loads((O/'SURFACE_GEOMETRY_AND_MAPPING_AUDIT.json').read_text())
@@ -70,7 +74,7 @@ def quadrature_figure():
     fig.get_layout_engine().set(rect=(0,.075,1,.925))
     fig.text(.5,.048,'Unresolved / candidate patches — '+unresolved,ha='center',fontsize=10)
     fig.text(.5,.028,f'Max mapping errors: force {errors["force_N"]:.2e} N; moment {errors["moment_Nm"]:.2e} N m; power {errors["power_W"]:.2e} W.',ha='center',fontsize=11)
-    fig.text(.5,.008,'Bounded affine weights preserve resultant, moment, and power; neither coverage metric is a continuum wetted-area fraction.',ha='center',fontsize=11)
+    fig.text(.5,.008,'Green triangles mark L1 centroids (visibility overlay). Both coverage metrics are node fractions, not wetted-area fractions.',ha='center',fontsize=11)
     save(fig,'FIG_03_SURFACE_QUADRATURE_BEFORE_AFTER')
 
 def native_figures():
@@ -81,18 +85,31 @@ def native_figures():
     plot(axs[0],old,'effective_loaded_area_m2',OLD,'V2 total',1e6);plot(axs[0],new,'effective_loaded_area_m2',NEW,'V3 total',1e6);plot(axs[0],new,'L2_effective_area_m2',GREEN,'V3 supplement',1e6);axs[0].set(ylabel='Effective area (mm²)',title='Evolving load representation');axs[0].legend()
     plot(axs[1],new,'L2_active_patches',NEW,'active dual patches');plot(axs[1],new,'L2_unresolved_patches',GRAY,'unresolved dual candidates');plot(axs[1],new,'fluid_accessible_new_faces',GREEN,'accessible new faces, both methods');axs[1].set(ylabel='Patch count',title='Active and unresolved surface candidates');axs[1].legend()
     plot(axs[2],new,'shear_peak_Pa',NEW,'actual peak slip shear');plot(axs[2],new,'nominal_shear_Pa',GRAY,'prescribed nominal drive');axs[2].set(ylabel='Shear (Pa)',title='Relative velocity changes actual traction');axs[2].legend()
-    plot(axs[3],new,'net_force_x_N',NEW,'total applied Fx',1e6);axs[3].set(ylabel='Resultant force (µN)',title='Whole-material surface resultant')
+    plot(axs[3],new,'net_force_x_N',NEW,'total applied Fx',1e6);axs[3].set(ylabel='Signed resultant Fx (µN)',title='Whole-material surface resultant')
     target=result['final_target_components'];chosen=max(target,key=lambda q:q['nodes'])['component_id'] if target else None
-    fluid=read_history(O/'FRAGMENT_FORCE_AND_POWER.csv') if target else []
+    track_label='Final target'
+    if chosen is None and lineage['target_tracks']:
+        chosen=max(lineage['target_tracks'],key=lambda q:(q['lifetime_s'],q['nodes']))['component_id']
+        track_label='Longest-lived transient target'
+    fluid=read_history(O/'FRAGMENT_FORCE_AND_POWER.csv') if chosen is not None else []
     track=[r for r in fluid if r.get('component_id')==chosen]
     if track:
         t=[r['time_s']*1e3 for r in track];force=[np.linalg.norm(json.loads(r['fluid_force_N']))*1e6 for r in track];moment=[np.linalg.norm(json.loads(r['fluid_moment_COM_Nm']))*1e9 for r in track]
-        axs[4].plot(t,force,color=NEW);axs[5].plot(t,moment,color=GREEN);axs[4].set(ylabel='Force magnitude (µN)',title=f'Final target ID {chosen}: exact-set lifetime');axs[5].set(ylabel='COM torque magnitude (nN m)',title='Torque uses the current mass center')
-        slip=axs[4].twinx();slip.plot(t,[r['fluid_area_mean_tangential_slip_m_s'] for r in track],color=OLD,ls='--',lw=1.2);slip.set_ylabel('Area-mean relative slip (m/s)',color=OLD);slip.grid(False)
+        axs[4].plot(t,force,color=NEW);axs[5].plot(t,moment,color=GREEN);axs[4].set(ylabel='Recorded force magnitude (µN)',title=f'{track_label} ID {chosen}: exact-set lifetime');axs[5].set(ylabel='COM torque magnitude (nN m)',title='Torque uses the current mass center')
+        missing=np.array([r['fluid_effective_area_m2']<=0 for r in track])
+        if missing.any():
+            axs[4].scatter(np.asarray(t)[missing],np.asarray(force)[missing],marker='x',s=12,c=GRAY,label='surface unresolved');axs[4].legend()
+        slip=axs[4].twinx();slip.plot(t,[r['fluid_area_mean_tangential_slip_m_s'] if not missing[i] else np.nan for i,r in enumerate(track)],color=OLD,ls='--',lw=1.2);slip.set_ylabel('Area-mean relative slip (m/s)',color=OLD);slip.grid(False)
     else:
-        for ax in axs[4:]:ax.text(.5,.5,'No final 20–200-node target observed',transform=ax.transAxes,ha='center')
-    for ax in axs:timeaxis(ax)
-    fig.suptitle('FIG 04 | V3 native dynamics and relative fluid loading',fontsize=21);save(fig,'FIG_04_NATIVE_SURFACE_LOADING')
+        for ax in axs[4:]:ax.text(.5,.5,'No 20–200-node target observed',transform=ax.transAxes,ha='center')
+    for ax in axs[:4]:timeaxis(ax)
+    for ax in axs[4:]:
+        ax.set_xlabel('Physical time (ms)')
+        if track and min(t)<=2.8<=max(t):ax.axvline(2.8,color='#777',ls='--',lw=.8)
+    fig.suptitle('FIG 04 | V3 native dynamics and relative fluid loading',fontsize=21)
+    fig.get_layout_engine().set(rect=(0,.045,1,.955))
+    fig.text(.5,.012,'Unresolved surface: zero recorded load does not imply zero physical drag; undefined area-mean slip is omitted.',ha='center',fontsize=11)
+    save(fig,'FIG_04_NATIVE_SURFACE_LOADING')
 
     hist=json.loads((V2_O/'NATIVE_BIPHASIC_RESULT.json').read_text());old_sizes=np.array(hist['final_free_sizes']);new_sizes=np.array(result['final_free_sizes'])
     fig,axs=plt.subplots(2,2,figsize=(16,10),layout='constrained');names=['1–2','3–13','14–19','20–33','34–113','114–200','>200'];idx=np.arange(7)
@@ -110,9 +127,20 @@ def native_figures():
     fig.suptitle('FIG 05 | Historical H versus new H: surface algorithms differ',fontsize=21);save(fig,'FIG_05_FRAGMENT_SIZE_DISTRIBUTION')
 
     fig,axs=plt.subplots(1,2,figsize=(17,9),layout='constrained');tracks=sorted(lineage['target_tracks'],key=lambda q:(q['birth_s'],q['component_id']))
+    track_index={q['component_id']:j for j,q in enumerate(tracks)}
     for j,q in enumerate(tracks):
         axs[0].plot([q['birth_s']*1e3,q['end_s']*1e3],[j,j],color=NEW if q['survives_exact_set_to_end'] else GRAY,lw=2)
+        axs[0].plot(q['birth_s']*1e3,j,'>',color=NEW,ms=3)
         if q['survives_exact_set_to_end']:axs[0].plot(q['end_s']*1e3,j,'o',color=NEW,ms=4)
+        else:axs[0].plot(q['end_s']*1e3,j,'x',color=GRAY,ms=3)
+        parent=q['birth_parent_component_id']
+        if parent in track_index:
+            pj=track_index[parent]
+            axs[0].plot([tracks[pj]['end_s']*1e3,q['birth_s']*1e3],[pj,j],ls='--',color=OLD,lw=.6,alpha=.5)
+    axs[0].legend(handles=[Line2D([],[],marker='>',ls='',color=NEW,label='member-set birth'),
+        Line2D([],[],marker='x',ls='',color=GRAY,label='exact set ends; descendants may persist'),
+        Line2D([],[],marker='o',ls='',color=NEW,label='same set at final'),
+        Line2D([],[],ls='--',color=OLD,label='parent–child link within 20–200 band')],fontsize=9,loc='upper left')
     axs[0].axvline(2.8,color='#555',ls='--');axs[0].set(xlabel='Physical time (ms)',ylabel='20–200-node exact member-set index',title=f'All {len(tracks)} target member-set lifetimes')
     unload=lineage['unload_targets']
     if unload:

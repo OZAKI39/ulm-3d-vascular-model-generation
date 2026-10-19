@@ -1,0 +1,31 @@
+--- /home/lzy/projects/clot_rupture.md.before
++++ /home/lzy/projects/clot_rupture.md
+@@ -709,6 +709,28 @@
+ 
+ 详见[科研报告](temp_storage/clot_github_sync_20261015/clot_clearance/verification/clot_biphasic_heterogeneous_shear_fragmentation_v2/20261017T231900Z/REVIEW_CLOT_BIPHASIC_HETEROGENEOUS_SHEAR_FRAGMENTATION_V2.md)、[科研图和两个1080p真实视频](temp_storage/clot_github_sync_20261015/clot_clearance/results/clot_biphasic_heterogeneous_shear_fragmentation_v2/20261017T231900Z/OPEN_RESULTS.html)。视频固定全景、实际坐标位移×1，每面板标真实接受态时间；未观测目标块时显示TARGET_FRAGMENT_NOT_OBSERVED。
+ 
++## Fragment Surface Coupling and Physical Heterogeneity V3
++
++**真实碎块表面求积与相对流体作用（20261018T170400Z）**
++
++先回放 V2 的七个末态目标块，没有重跑旧动力学。五个零加载块中，U1164、U1804、H3809、H3846 没有完整存活、正体积的辅助四面体；U1848 有5个四面体，但16个候选面未通过开放判定。U1884 仅2个加载面，H3769 仅1个，后者另有1个开放但不可达面。没有发现这七块的零加载来自原始ID所有权或旧公式节点映射错误。
++
++保留原有受支持三角面 L1；新增仅用于真正游离分量的 L2 原始控制体积暴露面，检查完整存活非局部键的跨面桥接、当前开口、局部仿射变形、L1 重叠、对偶单元和真实四面体障碍。不能只由近邻断键认定裂面；无法确认的面保留 UNRESOLVED。七块均得到非零的部分有效求积，但不代表完整物理湿润面积。没有凸包外壳、恢复断键或按预期尺寸切分材料。
++
++同一组局部仿射权重配对面位置、面速度和节点力。L1权重非负；L2外侧面采用受限带符号权重（最小−0.25、绝对和≤2），以保持真实面中心的力矩和虚功关系。离线最大合力/力矩/功率误差约5.42×10⁻²⁰N、5.82×10⁻²²N·m、2.71×10⁻²⁰W；这些是离散恒等式检查，不能认证局部牵引分布精度。原生少量微步及重启续步通过，κ/d和接受态提交语义保留。
++
++正式仅一个 H：COMPLETED，接受到3.6000000ms；同一8125材料点、1875锚点、原始图、缺口、10强区和材料卡，同一1000Pa均匀+X驱动。β=40Pa·s/m，使用当前切面相对滑移；2.8ms后外部驱动为零但被动阻力保留。唯一主要模型变化为表面表示及随之产生的流体作用。原生库未改，无新Uniform、幅值或随机种子扫描。
++
++末态20–200节点游离块1个，时程最多4个；未达到至少5个的目标，不改变成功定义。最大游离块900点，目标质量/初始质量0.713846%，细屑1–2点/游离质量41.1381%，总游离质量/初始质量90.6215%。撤载时目标块的原成员集合完整存活0个，末态目标区间后代1个。计数、形貌、掉点及二次分裂由存活原始图与原始成员ID分别判断。
++
++Wdrive/Wdrag=1160.449/-138.1618nJ；最大相对数值余额0.24836%，R不并入D。新裂面与L2外功是可能重叠的诊断子集，不重复加账。所有功均沿实际节点位移积分。正式接受18316步、预测拒绝7833次，CPU11.663h、wall11.666h、峰值RSS1.2691GiB。
++
++物理尺度仍 MICROSTRUCTURE_SCALE_UNCALIBRATED：Liu的0.1–1mm为断裂过程区；microCT研究中的数百微米RBC聚集与数十微米边界不等于当前强纤维蛋白相的实测相关长度。正式保留冻结10强区；米制相关长度生成器仅离线检查100/200/400µm假设及dx=25/50/100µm取样，没有用20–200目标反推强区大小。原始跨不同强区直接存活连接3004条，强区不等于预设碎块。
++
++科学标签 EXPLORATORY_UNCALIBRATED、PRESCRIBED_SHEAR_MECHANICAL_SURROGATE、CURRENT_SURFACE_APPROXIMATE_COUPLING。小尺度碎屑和部分凝聚体的表面仍未解析；零数值载荷不是零物理阻力。单次新旧轨迹对比不支持把某次二次裂解归因于阻力单独作用，也不构成已验证声流双向FSI。
++
++详见[七问报告](temp_storage/clot_github_sync_20261015/clot_clearance/verification/clot_fragment_surface_coupling_v3/20261018T170400Z/REVIEW_CLOT_FRAGMENT_SURFACE_COUPLING_V3.md)、[八组科研图与两个1080p真实视频](temp_storage/clot_github_sync_20261015/clot_clearance/results/clot_fragment_surface_coupling_v3/20261018T170400Z/OPEN_RESULTS.html)。实际接受态坐标位移×1，固定全景范围，原始ID载荷与帧来源可追踪；详细后续研究排序以本轮报告中的实际证据为准。
++
+ # ⑥ 外加剪切：模拟微泡对血块表面的“刮”
+ 
+ **完整公式**（作用在表面点 $i$上）：$\mathbf F_i^{\text{load}}(t)=A_i\;\tau_0\;g(t)\;\exp\!\Big(-\frac{\|\mathbf x_i(t)-\mathbf c\|^2}{2\sigma^2}\Big)\;(\mathbf I-\mathbf n_i\mathbf n_i^{\top})\,\mathbf e_x$

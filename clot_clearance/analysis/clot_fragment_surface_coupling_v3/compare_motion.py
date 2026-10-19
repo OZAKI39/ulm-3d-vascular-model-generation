@@ -16,6 +16,13 @@ def main():
     oldreg=json.loads((V2_O/'cases/biphasic/COMPONENT_REGISTRY.json').read_text())
     cohorts=[dict(definition=f'V2 final target {cid}',atom_ids=oldreg[str(cid)]['atom_ids']) for cid in [3769,3809,3846]]
     cohorts += [dict(definition=f'V3 final target {c["component_id"]}',atom_ids=c['original_atom_ids']) for c in result['final_target_components']]
+    observed_path=O/'intermediate_target_observations/frame_014415.json'
+    if observed_path.exists():
+        observed=json.loads(observed_path.read_text())
+        assert sha(R/observed['source'])==observed['source_sha256']
+        cohorts += [dict(definition=f'V3 observed {c["nodes"]}-node target at {observed["time_s"]*1e3:.6f} ms',
+            atom_ids=c['original_atom_ids'],observed_loading_status=c['loading_status'],
+            cohort_selection_source=str(observed_path.relative_to(R)),observed_state_sha256=observed['source_sha256']) for c in observed['targets']]
     stages=[]
     for key in ['initial','rise_end','peak_load','upper_drive_off','final']:
         paths=[base/'cases/biphasic/keys'/(key+'.npz') for base in [V2_O,O]]

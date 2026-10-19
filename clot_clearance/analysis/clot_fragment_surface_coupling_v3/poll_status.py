@@ -21,7 +21,11 @@ if p.exists():
             result.update(accepted_step=int(row['step']),physical_time_ms=float(row['time_s'])*1000,completion_fraction=float(row['time_s'])/.0036,
                 target_20_200=int(row['N20_200']),largest_free_nodes=int(row['largest_nodes']),detached_nodes=int(row['detached_nodes']),
                 softened_bonds=int(row['softened']),relative_energy_residual=float(row['relative_R']),
-                L2_active_patches=int(row['L2_active_patches']),L2_effective_area_m2=float(row['L2_effective_area_m2']))
+                L2_active_patches=int(row['L2_active_patches']),L2_effective_area_m2=float(row['L2_effective_area_m2']),
+                L2_work_J=float(row['W_L2_surface_J']),nominal_shear_Pa=float(row['nominal_shear_Pa']),actual_peak_shear_Pa=float(row['shear_peak_Pa']))
+            result.update(accepted_dt_us=float(row['dt_s'])*1e6,max_damage_increment=float(row['max_dd']),
+                phase=row['phase'],drive_power_W=float(row['drive_power_W']),drag_power_W=float(row['drag_power_W']),
+                kinetic_energy_J=float(row['K_J']))
         except (ValueError,KeyError):continue
         break
 pid=subprocess.run(['supervisorctl','pid',request['name']],capture_output=True,text=True).stdout.strip()

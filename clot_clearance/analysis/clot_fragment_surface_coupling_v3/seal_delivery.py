@@ -21,7 +21,7 @@ def main():
     core=['SOURCE_FREEZE.json','TARGET_COMPONENT_SURFACE_DIAGNOSIS.json','P0_TARGET_SURFACE_DIAGNOSIS.json','SURFACE_QUADRATURE_AUDIT.csv',
           'FRAGMENT_EXPOSURE_HISTORY.csv','FRAGMENT_FORCE_AND_POWER.csv','PHYSICAL_DOMAIN_SCALE_ASSESSMENT.md','DOMAIN_SCALE_PROVENANCE.json',
           'NATIVE_V3_RESULT.json','FRAGMENT_SIZE_HISTORY.csv','FRAGMENT_LINEAGE.json','FRAGMENT_MORPHOLOGY.csv','ENERGY_LEDGER.csv',
-          'COMPUTE_COST.json','FINAL_STATUS.json','REVIEW_CLOT_FRAGMENT_SURFACE_COUPLING_V3.md','REPRODUCE.md','COMMIT_RECORD.json','ARTIFACT_VALIDATION.json']
+          'COMPUTE_COST.json','SURFACE_MOTION_COMPARISON.json','DATA_INVENTORY.json','FINAL_STATUS.json','REVIEW_CLOT_FRAGMENT_SURFACE_COUPLING_V3.md','REPRODUCE.md','COMMIT_RECORD.json','ARTIFACT_VALIDATION.json']
     for name in core:link(A/name,O/name)
     for name,target in [('OPEN_RESULTS.html',F/'OPEN_RESULTS.html'),('figures',F/'figures'),('videos',F/'videos'),('states',O/'cases/biphasic/keys')]:link(A/name,target)
     for p in sorted(A.iterdir()):
