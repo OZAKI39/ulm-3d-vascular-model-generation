@@ -24,7 +24,7 @@ def grid_points(bounds):
 def setup(bounds,panels):
  pl=pv.Plotter(off_screen=True,window_size=(WIDTH,HEIGHT),shape=(1,panels));lo=np.array(bounds)[::2];hi=np.array(bounds)[1::2];center=(lo+hi)/2;span=max(hi-lo);direction=np.array([1.2,-3.,.7]);corners=np.array([(x,y,z) for x in bounds[:2] for y in bounds[2:4] for z in bounds[4:]])
  for j in range(panels):
-  pl.subplot(0,j);pl.set_background('white');pl.renderer.SetViewport(j/panels+.02,.14,(j+1)/panels-.02,.9);pl.camera_position=[center+span*direction,center,(0,0,1)];pl.enable_parallel_projection();forward=-direction/np.linalg.norm(direction);right=np.cross(forward,[0,0,1]);right/=np.linalg.norm(right);up=np.cross(right,forward);aspect=(WIDTH*(1/panels-.04))/(HEIGHT*.76);pl.camera.parallel_scale=float(1.16*max(np.ptp(corners@up)/2,np.ptp(corners@right)/(2*aspect)));pl.camera.clipping_range=(span*.01,span*20)
+  pl.subplot(0,j);pl.set_background('white');pl.renderer.SetViewport(j/panels+.02,.14,(j+1)/panels-.02,.9);pl.camera_position=[center+span*direction,center,(0,0,1)];pl.enable_parallel_projection();forward=-direction/np.linalg.norm(direction);right=np.cross(forward,[0,0,1]);right/=np.linalg.norm(right);up=np.cross(right,forward);aspect=(WIDTH*(1/panels-.04))/(HEIGHT*.76);pl.camera.parallel_scale=float(1.32*max(np.ptp(corners@up)/2,np.ptp(corners@right)/(2*aspect)));pl.camera.clipping_range=(span*.01,span*20)
   g=grid_points(bounds);pl.add_mesh(line_mesh(g,np.arange(len(g)).reshape(-1,2)),color='#76848f',opacity=.5,line_width=.8,lighting=False,name=f'grid{j}')
  return pl
 def scene(pl,j,ref,s,draw_edges):
@@ -47,9 +47,13 @@ def annotate(pl,raw,bounds,stats,names,panels):
    pl.renderer.SetWorldPoint(*p,1);pl.renderer.WorldToDisplay();x,y,_=pl.renderer.GetDisplayPoint();return np.array([x,HEIGHT-y])
   lo=np.array(bounds)[::2];hi=np.array(bounds)[1::2]
   for axis in range(3):
+   anchor=lo.copy()
+   if axis==1:anchor[0]=hi[0]
+   if axis==2:anchor[:2]=hi[:2]
    for value in np.linspace(lo[axis],hi[axis],4):
-    p=lo.copy();p[axis]=value;xy=project(p)+np.array([0,14] if axis<2 else [-18,0]);draw.text(tuple(xy),f'{value:.2f}',font=font(20),fill='#384651',anchor='mt' if axis<2 else 'rm')
-   p=lo.copy();p[axis]=(lo[axis]+hi[axis])/2;xy=project(p)+np.array([0,47] if axis<2 else [-68,0]);draw.text(tuple(xy),'XYZ'[axis]+' (mm)',font=font(24),fill='#263540',anchor='mt' if axis<2 else 'rm')
+    if axis==1 and value==lo[axis]:continue # shared front corner already has the X tick
+    p=anchor.copy();p[axis]=value;xy=project(p)+np.array([0,14] if axis==0 else [18,14] if axis==1 else [18,0]);draw.text(tuple(xy),f'{value:.2f}',font=font(20),fill='#384651',anchor='mt' if axis==0 else 'lt' if axis==1 else 'lm')
+   p=anchor.copy();p[axis]=(lo[axis]+hi[axis])/2;xy=project(p)+np.array([0,47] if axis==0 else [47,45] if axis==1 else [57,0]);draw.text(tuple(xy),'XYZ'[axis]+' (mm)',font=font(22),fill='#263540',anchor='mt' if axis==0 else 'lt' if axis==1 else 'lm')
   draw.text((WIDTH*(j+.5)/panels,940),f'20–200 nodes: {stats[j]["N20_200"]} free components',font=font(25),fill='#642136',anchor='mt')
  draw.text((WIDTH/2,1000),'Red: original clot nodes / surviving components    Blue-grey: fixed anchors',font=font(24),fill='#303b44',anchor='mt')
  draw.text((WIDTH/2,1040),'Volume-equivalent nodal markers; not a continuous surface. Displacement ×1.',font=font(20),fill='#59636c',anchor='mt')
