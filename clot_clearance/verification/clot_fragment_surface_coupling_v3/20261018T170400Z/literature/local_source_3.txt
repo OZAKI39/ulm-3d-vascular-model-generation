@@ -1,0 +1,1482 @@
+
+--- PAGE 1 ---
+1 of 18International Journal for Numerical Methods in Biomedical Engineering, 2025; 41:e70118
+https://doi.org/10.1002/cnm.70118
+International Journal for Numerical Methods in Biomedical 
+Engineering
+BASIC RESEARCH
+Towards a Model of Thrombus Embolization: Structural 
+Response and Failure of Blood Clots Through Peridynamics
+Abhishek Karmakar1  |  Greg W. Burgreen2  |  Olivier Desjardins 3  |  James F. Antaki1
+1Meining School of Biomedical Engineering, Cornell University, Ithaca, New York, USA | 2Center for Advanced Vehicular Systems, Mississippi State 
+University, Starkville, Mississippi, USA | 3Sibley School of Mechanical and Aerospace Engineering, Cornell University, Ithaca, New York, USA
+Correspondence:  James F. Antaki (antaki@cornell.edu )
+Received:  28 May 2025 | Revised:  19 September 2025 | Accepted:  27 October 2025
+Funding:  This work was supported by the National Institute of Health (grant number R01 HL089456).
+Keywords: blood clots | fracture mechanics | meshless | Ogden model | peridynamics | thromboembolism
+ABSTRACT
+Despite the high mortality rates associated with thromboembolic diseases, computational modeling of the physics of thrombo -
+embolism remains underdeveloped in the literature due to the inadequacy of classical finite element methods to accommodate 
+the growth, large deformation, and fracture of blood clots, especially under the influence of fluid dynamic forces. Accordingly, 
+we present a meshless numerical framework, employing peridynamics (PD) that readily captures the constitutive response, 
+damage progression, and eventual failure of a blood clot. The PD framework was validated against three benchmark test cases: 
+tensile loading of a plate with a hole, torsional loading of a column, and tensile loading of thin structural plates both with and 
+without notches. Comparative quantitative and qualitative analysis demonstrated excellent agreement with finite element solu -
+tions generated using the commercial software ANSYS. The validated framework was then used to calibrate the peridynamic 
+parameters to accurately reproduce the mechanical response, the cohesive bulk fracture of blood clots under tensile loading, and 
+the debonding of blood clots from artificial surfaces, including titanium (Ti), polyurethane (PU), and polytetrafluoroethylene 
+(PTFE). Force–displacement curves obtained using these calibrated parameters demonstrated a strong correlation with experi -
+mental data.
+1   |   Introduction
+Thromboembolic diseases, characterized by the formation and 
+fragmentation of blood clots under hemodynamic forces, are es -
+timated to contribute to one in four deaths globally [ 1]. These 
+conditions are lethal due to the potential of clot fragments to 
+obstruct blood flow to vital organs, leading to life-  threatening 
+complications, including ischemic stroke and pulmonary embo -
+lism [2]. A mechanistic understanding of thromboembolism is 
+crucial for gaining insights into its underlying physics, which 
+remains largely unexplored and poorly understood [ 3]. The 
+aforementioned research gap stems from the computational 
+complexity inherent to thromboembolism modeling, which ne -
+cessitates an accurate representation of fracture processes in 
+highly deformable, dynamically growing blood clots subjected 
+to fluid shear. The present work provides a critical foundation 
+for a comprehensive numerical framework for thromboembo -
+lism by addressing the soft material fracture mechanics aspect 
+of this coupled phenomenon.
+The most prevalent numerical framework used to simulate soft 
+material fracture is the cohesive zone model (CZM), typically 
+implemented using the finite element (FE) method [ 4, 5]. CZM 
+has been very successful in capturing complex crack patterns 
+in soft materials such as elastomers [ 6]. However, explicit track-
+ing of stresses around the crack tip is required for crack branch 
+determination, which can incur significant computational costs 
+when applied to the modeling of complex failure mechanisms 
+© 2025 John Wiley & Sons Ltd.
+
+
+--- PAGE 2 ---
+2 of 18 International Journal for Numerical Methods in Biomedical Engineering, 2025
+of growing blood clots. In recent years, phase field methods 
+(PFMs) have gained popularity for simulating fracture in diverse 
+materials [7], including biological materials such as arteries [ 8] 
+and blood clots [ 9]. This approach models fracture through the 
+minimization of an energy functional that combines elastic and 
+fracture energy contributions [ 10]. In essence, it conceptualizes 
+failure as a damage accumulation process and, when damage 
+exceeds a certain threshold, a crack surface is formed. Although 
+this circumvents the drawback of traditional FE methods by 
+removing the need to track cracked surfaces, it requires highly 
+refined meshes in regions near a crack. Given the inherent het -
+erogeneity of blood clots and the uncertain fluid loading patterns 
+encountered in vivo, a priori determination of crack propagation 
+paths is difficult, thereby requiring extremely fine mesh discret -
+izations when using phase-  field models for thromboembolism 
+simulation. Comparative analysis by Song et  al. demonstrated 
+that traditional FE methods exhibit mesh dependence arising 
+from local fracture criterion implementation [ 11]. This limita -
+tion has been successfully addressed through non-  local fracture 
+criteria employing regularization length scales to prevent dam -
+age localization within thin element bands, as demonstrated 
+in both FE analysis [ 12] and phase-  field modeling [ 8]. Given 
+these advances, one might reasonably expect that state-  of- the- 
+art mesh- based fracture models incorporating non-  local criteria 
+would be sufficient for thromboembolism modeling. However, 
+a more fundamental computational challenge arises for throm -
+boembolism, as all these methods require a mesh. Mesh-  based 
+discretization becomes computationally intractable when mod -
+eling dynamically evolving blood clots due to the dual require -
+ments of real-  time element connectivity generation and highly 
+refined mesh resolution for accurate crack propagation. This 
+computational burden renders mesh-  based approaches imprac -
+tical for simulating thromboembolism. Therefore, meshless 
+methodologies are necessary to effectively model the deforma -
+tion and fracture processes of clots.
+In recent years, peridynamics (PD), a non-  local formulation of 
+classical continuum mechanics (CCM) introduced by Silling, 
+has gained significant traction in the field of computational frac-
+ture mechanics [13]. This innovative approach models material 
+behavior by considering interactions between material points 
+through a finite set of bonds in an interaction domain. Damage 
+in PD is modeled through breaking bonds between material 
+points based on kinetic or kinematic criteria, allowing fracture 
+to emerge as a natural consequence of the dynamics of the sys -
+tem. Furthermore, the governing equation of PD is formulated 
+as an integral equation, which confers a significant advantage 
+for handling material discontinuities. This mathematical struc -
+ture inherently avoids the singularities that arise in CCM when 
+dealing with discontinuities such as near cracks or interfaces. 
+Given these significant advantages, this study adopts PD as the 
+preferred numerical framework for simulating blood clot frac -
+ture. In particular, the Non-  ordinary State-  based formulation of 
+PD is adopted. The justification of this choice is provided below.
+According to the original formulation of PD [ 13], which is now 
+referred to as “Bond- based PD” (BPD), material points interact by 
+exerting forces exclusively along  bond directions. This assump -
+tion limited the theory's applicability to materials with Poisson's 
+ratio of 0.33 for 2D problems and 0.25 for 3D problems. To over -
+come these limitations, Silling et  al. introduced a significant 
+generalization of the theory, known as state-  based PD [14] that 
+relaxed the latter constraint on interaction force directions be -
+tween material points, allowing for a more versatile modeling 
+framework, thereby enabling the representation of a wider range 
+of material behaviors, including hyperelastic constitutive laws. 
+State- based PD is further classified into two groups based on 
+the direction of interaction forces between material point pairs: 
+Ordinary State-  based PD (OSB- PD) and Non-  ordinary State- 
+based PD  (NOSB- PD). According to OSB- PD, material points 
+exert forces in anti-  parallel directions, though not necessarily 
+along their connecting bond [15]. NOSB- PD further relaxes this 
+anti- parallel interaction constraint, offering greater flexibility 
+in force representations. A particularly compelling feature of 
+NOSB- PD is its ability to incorporate CCM constitutive laws 
+into the PD framework through a process known as PD-  CCM 
+correspondence [16].
+This study employs NOSB- PD theory to characterize the struc -
+tural mechanics underlying thromboembolism. We develop 
+numerical models to capture the two predominant and compet -
+ing failure mechanisms that govern thromboembolic events: (i) 
+cohesive bulk fracture within the blood clot itself, and (ii) in -
+terfacial debonding between the blood clot and its anchoring 
+surface. Accordingly, the novel contributions of the paper are 
+listed below:
+1. First NOSB-  PD model for blood clots : We introduce an 
+application- specific NOSB- PD model for blood clots by 
+reproducing experimental force–displacement curves re -
+ported by Gultekin et  al. [ 9]. We implement Ogden-  type 
+strain energy functions for hyperelastic materials in three- 
+dimensional geometries, extending existing PD literature 
+beyond the simple material models (such as Neo-  Hookean 
+formulations) and two-  dimensional geometries that have 
+dominated previous studies [17, 18].
+2. First clot- artificial surface interface model : We propose 
+and calibrate a simple interface debonding model within 
+the PD framework by reproducing experimentally obtained 
+maximum detachment forces of blood clots from medically 
+relevant surfaces reported by Kannojiya et al. [ 19]. To the 
+best of the authors' knowledge, this is the first numerical 
+model of its kind to simulate the debonding physics of a 
+biological material (blood clot) from an artificial surface.
+3. Computational efficiency enhancement in problems 
+with symmetry : We propose generalized symmetry 
+boundary conditions that accommodate multiple, non-  
+axis- aligned symmetry planes in geometrically symmetric 
+problems. For example, this boundary condition achieves 
+a 2n- fold reduction in computational time for problems 
+containing n symmetry planes. Moreover, the suggested 
+boundary conditions enable the implementation of wedge-  
+type boundaries comparable to those in CFD applications, 
+by reformulating pointwise rotational transformations as 
+planar operations.
+The calibrated models will serve as input parameters for our 
+future full-  scale thromboembolism simulations, enabling com -
+prehensive modeling of both cohesive fracture and debond -
+ing physics when investigating thromboembolism in  vivo 
+and in medical devices, such as ventricular assist devices and 
+ 20407947, 2025, 11, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/cnm.70118 by Universitat Bern, Wiley Online Library on [15/10/2026]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+
+--- PAGE 3 ---
+3 of 18International Journal for Numerical Methods in Biomedical Engineering, 2025
+oxygenators. Before numerical calibration of the failure models 
+associated with blood clots, we rigorously validate the NOSB- PD 
+numerical framework by conducting three numerical tests on 
+purely elastic problems, comparing various quantities of interest 
+generated by our PD model with those produced by the estab -
+lished FE solver of ANSYS.
+2   |   Material and Methods
+2.1   |   NOSB- PD
+In this section, we present PD through the lens of NOSB- PD as 
+it provides consistent mathematical machinery for converting 
+constitutive laws from CCM into the PD framework. PD is a non- 
+local extension of CCM where material points in a PD body ℬ0 
+have a finite range of interaction. The set of points with which a 
+given point xP (in the reference configuration) interacts with is 
+referred to as the particle's family ℋP (see Figure 1a):
+where /u1D6FF is a scalar quantity called the horizon, which establishes 
+the range of interaction of a given point. The set ℋP can be in -
+terpreted as a collection of all bonds  to which the material point 
+xP is connected. In this work, the bond between the point pair xP 
+and xN is denoted as /u1D743PN where:
+In CCM, quantities are defined at every point. Consequently, the 
+motion of a material body is described through partial differen -
+tial equations. Due to the non-  local nature of PD, mathematical 
+quantities associated with a material point are deduced from the 
+collective state  of the entire particle family, resulting in an inte -
+gral formulation. As such, special mathematical objects called 
+“states” are introduced to capture a family's collective response. 
+These objects are mappings from the set ℋP to either a scalar, 
+vector, or tensor value. The most common type of state is the 
+vector state. For example, the reference state X contains infor -
+mation on all reference bond vectors associated with all material 
+points in the PD body. For more details on the formalism of PD 
+states, the reader is referred to [14].
+The central kinematic quantity which is manipulated in CCM is 
+the deformation gradient /u1D53D CCM defined as follows:
+where y(x, t) is a vector-  valued function that maps material 
+points in a body from a given reference configuration (position 
+vectors denoted by x) to a current configuration. To convert 
+constitutive laws in CCM to the PD framework, a first-  order 
+accurate approximation of /u1D53D CCM is used in NOSB- PD [ 20], as 
+shown below:
+where Y�xP �⟨/u1D743PN⟩ is the deformation of the bond /u1D743PN (see 
+Figure  1b), /u1D714PN = /u1D714/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1/u1D743PN/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 is an influence function that weights 
+each bond by its length and /u1D542P is the shape tensor associated 
+with the point xP and is defined as follows:
+The PD equation of motion reads as follows [14]:
+(1)ℋP = /⎡⎜⎞⎤⎦⎨⎦⎢t.⎟1xN ∈ ℬ0: /u⎪⎫007C.x/u⎪⎫007C.xxN − xP /u⎪⎫007C.x/u⎪⎫007C.x <𝛿 and xN ≠ xP /⎡⎜⎞⎤⎦⎜⎫⎥⎧t.⎟1
+(2)/u1D743PN = /⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1xN − xP /⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1
+(3)/u1D53D CCMP = /u1D715y/u1D715x /u⎪⎫007C.x/u⎪⎫007C.x/u⎪⎫007C.x/u⎪⎫007C.xxP
+(4)/u1D53D PDP =
+⎛
+⎜
+⎜⎝/uni222B.dspℋP
+𝜔PN Y
+�
+xP
+�
+⟨/u1D743PN⟩ ⊗ /u1D743PNdV𝜉
+⎞
+⎟
+⎟⎠/u1D542P −1
+(5)Y�xP �⟨/u1D743PN⟩ = yPN = y�xP � − y�xN �
+(6)/u1D542P =
+⎛
+⎜
+⎜⎝/uni222B.dspℋP
+𝜔PN/u1D743PN ⊗ /u1D743PNdV𝜉
+⎞
+⎟
+⎟⎠
+(7)
+⎛
+⎜
+⎜⎝/uni222B.dspℋP
+�
+Tc
+�
+xP
+�
+⟨/u1D743PN⟩ − Tc
+�
+xN
+�
+⟨/u1D743NP⟩
+�
+dV/u1D709
+⎞
+⎟
+⎟⎠ + bP = /u1D70C ̈yP
+FIGURE 1     |    Kinematics for peridynamics (a) Peridynamic discretization of a material body ℬ into a finite number of points with volume. The 
+range of interaction of a material point is specified through the scalar parameter called the horizon ( /u1D6FF). (b) The shape of a particle family in the ref -
+erence (green dashed lines) and current configuration (red dashed lines) where the reference and current bond length are denoted as X�xP �⟨/u1D743PN⟩ and 
+Y�xP �⟨/u1D743PN⟩, respectively.
+ 20407947, 2025, 11, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/cnm.70118 by Universitat Bern, Wiley Online Library on [15/10/2026]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+
+--- PAGE 4 ---
+4 of 18
+ International Journal for Numerical Methods in Biomedical Engineering, 2025
+where /u1D713 = /u1D713/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1 Y/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 is the strain-  energy function (SEF) and Tc/⎡⎜⎞⎤⎭⎦t⎨⎦⎢t.⎟1xP /⎡⎜⎞⎤⎭⎦t⎜⎫⎥⎧t.⎟1 
+is called the force vector state and is defined as follows:
+Equation (8) essentially states that the work conjugate of the de-
+formation state Y is the force vector state T. Mathematical ex -
+pressions for the force vector corresponding to different CCM 
+constitutive laws can be obtained by matching the body's inter -
+nal virtual energy expressed in the CCM ( 10) and PD (9) frame-
+works, respectively, as shown below:
+where ℙ is the first Piola Kirchhoff tensor. Equating (10) with (9) 
+after substituting (4) leads to an explicit expression for Tc:
+2.1.1   |   Stabilized PD
+It is well known that PD suffers from zero energy deformation 
+modes due to the weak definition of the deformation gradient 
+shown in (4). As a result, different fixes have been proposed in 
+the literature. They typically involve the addition of a correction 
+term to ( 11) as shown in ( 12). The form of Ts
+�xP �⟨/u1D743PN⟩ used in 
+this paper is the one proposed in [21].
+where /u1D705 is the bulk modulus of the material and zPN is defined as 
+in (14). We use the stabilized version of the PD governing equa -
+tion for all the simulations presented in this paper.
+2.1.2   |   Damage Modeling in PD
+A key advantage of PD is its inherent ability to incorporate 
+the initiation and evolution of damage within its numerical 
+framework. This feature enables seamless modeling of ma -
+terial failure processes without additional complex formula -
+tions typically required in traditional continuum mechanics 
+approaches. The existence of an interaction between two par -
+ticles is modeled through an indicator function /u1D707/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1/u1D743PN/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 defined 
+as follows:
+where s is the ratio of the current bond length to the reference 
+bond length, s1 and s2 are the first and second critical stretches 
+of a bond. The critical stretch parameters are material-  specific 
+constants. These parameters are calibrated for each material 
+model, which typically involves correlating peridynamic simu -
+lation results with experimental data. Damage at a point is com -
+puted according to (16).
+The damage evolution law previously described, while effective 
+for modeling rubber- like materials [22], is very simple and proves 
+inadequate for capturing the progressive damage mechanisms in-
+herent in the materials under investigation—a blood clot. So, to 
+accommodate the gradual degradation of a given material while 
+still using the simplified damage evolution law above, we scale the 
+first Piola- stress tensor with a scalar damage function as shown 
+below (17). This approach is conceptually aligned with methodolo-
+gies employed in prior studies [23].
+2.1.3   |   Thermodynamic Consistency of the PD Model
+When a material fractures, the underlying physics must comply 
+with the second law of thermodynamics. Formulated within the 
+framework of PD, this law can be expressed as follows [24]:
+where /u1D703/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1xP /⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 is the absolute temperature and /u1D702/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1xP /⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 is the entropy 
+density field (per unit volume). If it is assumed that /u1D713 is depen-
+dent on both Tc and d (damage state of a particle family), then 
+using ( 18) and following the Coleman–Noll procedure, we ob -
+tain the following constaints:
+This damage constraint parallels the CCM framework, where the 
+damage function must be increasing. This requires Equation (15) 
+to be a decreasing function, and is evolved temporally according 
+to (20). The evolution equation essentially dictates the following 
+procedure: calculate /u1D707/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1/u1D743PN/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 at the current time- step (n) using (15), 
+compare it with the previous time- step (n − 1) value, and select the 
+lesser of the two. Such a procedure helps enforce strict adherence 
+to the second law of thermodynamics, ensuring that peridynamic 
+bonds are broken irreversibly.
+(8)Tc
+/⎡⎜⎞⎤⎭⎦t⎨⎦⎢t.⎟1xP /⎡⎜⎞⎤⎭⎦t⎜⎫⎥⎧t.⎟1 = /u1D715/u1D713/u1D715Y /u⎪⎫007C.x/u⎪⎫007C.x/u⎪⎫007C.x/u⎪⎫007C.x/u⎪⎫007C.xY[xP ]
+(9)ΔPDin = �
+ℬ0
+⎛
+⎜
+⎜⎝�ℋP
+�
+Tc ⋅ Δ Y
+�
+dV/u1D709
+⎞
+⎟
+⎟⎠dV
+(10)ΔCCMin = �
+ℬ0
+ℙ: Δ𝔽 CCMdV ≈ �
+ℬ0
+ℙ: Δ𝔽 PDdV
+(11)Tc
+�xP �⟨/u1D743PN⟩ = /u1D714PNℙP 𝕂−1P /u1D743PN
+(12)T�xP �⟨/u1D743PN⟩ = Tc�xP �⟨/u1D743PN⟩ + Ts�xP �⟨/u1D743PN⟩
+(13)Ts
+�xP �⟨/u1D743PN⟩ = /u1D714PN
+�
+9/u1D705
+/u1D70B/u1D6FF4
+�� /u1D743PN ⋅ zPN
+��/u1D743PN��3
+�
+/u1D743PN
+(14)zPN = yPN − FPDP /u1D743PN
+(15)𝜇�/u1D743PN� =
+⎧
+⎪
+⎪
+⎨
+⎪
+⎪⎩
+1 if 0 ≤ s < s1� s2 − s
+s2 − s1
+�
+if s1 ≤ s < s2
+0 if s ≥ s2
+(16)d/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1xP /⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 = 1 −
+/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟4 ∫ℋP /u1D707/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1/u1D743PN/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1dV
+∫ℋP dV
+/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟4
+(17)ℙ/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1xP , d/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1xP /⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 = /⎝⎞⎜⎦⎪⎨⎦⎢t.⎟11 − /u1D6FC/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1d/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1xP /⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1ℙ/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1xP /⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1
+(18)Tc
+/⎡⎜⎞⎤⎭⎦t⎨⎦⎢t.⎟1xP /⎡⎜⎞⎤⎭⎦t⎜⎫⎥⎧t.⎟1 ⋅ Y/⎡⎜⎞⎤⎭⎦t⎨⎦⎢t.⎟1xP /⎡⎜⎞⎤⎭⎦t⎜⎫⎥⎧t.⎟1 − ̇/u1D703/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1xP /⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1/u1D702/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1xP /⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 −̇ /u1D713/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1xP /⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 ≥ 0
+(19)Tc = /u1D715/u1D713/u1D715 Y and ̇d ≥ 0
+(20)/u1D707n/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1/u1D743PN/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 = min /⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1/u1D707n−1/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1/u1D743PN/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1, /u1D707/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1/u1D743PN/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 with /u1D7070/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1/u1D743PN/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 = 1
+ 20407947, 2025, 11, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/cnm.70118 by Universitat Bern, Wiley Online Library on [15/10/2026]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+
+--- PAGE 5 ---
+5 of 18
+International Journal for Numerical Methods in Biomedical Engineering, 2025
+2.2   |   Hyperelasticity in Principle Stretches
+In CCM, hyperelastic materials are used to represent large non- 
+linear finite deformations. A brief review of these materials is 
+provided below. The hallmark of these models lies in their con -
+stitutive law, which is uniquely derived from a given strain en -
+ergy function ( /u1D713). Typically, hyperelastic SEFs are expressed as 
+functions of the left and right Cauchy-  Green deformation ten -
+sors (21), denoted as /u1D539 and ℂ, respectively.
+An additive decomposition of SEFs for hyperelastic material 
+models is frequently employed as shown below:
+where J is the determinant of /u1D53D, Ii are the invariants of ℂ = J−2∕3ℂ 
+and /u1D706i are the square root of the eigenvalues of ℂ. The connec -
+tion between the eigenvalues /u1D706i and ℂ becomes evident upon 
+examining the polar decomposition of /u1D53D and the spectral decom-
+position of the resultant stretch tensors. A brief review of this is 
+provided below.
+By the well-  known polar decomposition theorem, /u1D53D can be de -
+composed into a product of a symmetric positive definite and an 
+orthogonal rotation tensor (ℝ) as follows:
+where /u1D54ℂ, /u1D54D are the right and left stretch tensors respectively. As 
+both the stretch tensors are positive definite, their spectral de -
+composition exists. Defining Ni and ni as the set of mutually or -
+thogonal set of eigenvectors of /u1D54ℂ and /u1D54D respectively, the spectral 
+decomposition of /u1D53D reads as follows:
+Using (21) and (25), the spectral decomposition of /u1D539, ℂ, /u1D539, and ℂ 
+can be calculated ( /u1D706i = J−1∕3/u1D706i):
+The Cauchy stress tensor ( /u1D748) can be computed directly from 
+Equations (22) and (23) as:
+This paper is concerned with SEFs expressed in terms of princi -
+pal stretches like in (23), so an explicit form of the Cauchy stress 
+in terms of the isochoric principal stretches is shown below in 
+Equation (29). For detailed derivations, the reader is referred to 
+the excellent articles [25, 26].
+As motivated in the introduction, this paper focuses specifically 
+on the Ogden type of SEFs, which have the form as shown in 
+Equation (30).
+For the volumetric strain energy function U (J), the formulation 
+introduced by Simo and Hughes [27] is employed.
+2.3   |   Modeling Adhesive Contacts
+Many computational problems involve simulating physical 
+interactions between multiple objects, including both adhe -
+sive contacts and collisions. This paper focuses on adhesive 
+contact modeling due to its critical importance in phenomena 
+such as blood clot stability on vascular or artificial surfaces 
+under fluid flow. Understanding wall-  clot adhesive interac -
+tions is crucial for predicting whether a clot will fragment 
+into smaller debris or dislodge as a whole intact body. In our 
+framework, external interactive bodies (including thin walls) 
+are represented as collections of finite-  volume material points 
+that exert adhesive or repulsive forces on material points 
+within their interaction horizon (see Figure  2). Adhesive 
+forces exerted on material point xP ∈ ℬ0 by material points 
+xeN ∈ ℬe are formulated as external forces beP according to ( 32). 
+Inter- point bond forces between xP and xeN are modeled using 
+spring force formulations as detailed in ( 34).
+Equation  (33) essentially states that ℋeP is a subset of the hori -
+zon set ℋP which contains only material points belonging to 
+the body ℬe (light orange particles in Figure  2). /u1D705e is a constant 
+that is unique to the interface of ℬ0 and ℬe, and /u1D707e is an in -
+dicator function defined as ( 35). Equation  ( 34) is formulated 
+under the assumption that body ℬe behaves as a rigid body. 
+(21)ℂ = 𝔽 T 𝔽 and 𝔹 = 𝔽𝔽 T
+(22)/u1D713 = /u1D713/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1I1, I2/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 + U (J)
+(23)/u1D713 = /u1D713/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1/u1D7061, /u1D7062, /u1D7063/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 + U (J)
+(24)𝔽 = ℝ𝕌 = 𝕍ℝ
+(25)𝔽 =
+3/u⎪⎫2211.⎟1
+i = 1
+𝜆i
+/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1ni ⊗ Ni/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1where ni = ℝNi
+(26)ℂ =
+3/u⎪⎫2211.⎟1
+i = 1
+𝜆2i /⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1Ni ⊗ Ni/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 ⇒ ℂ = 3/u⎪⎫2211.⎟1
+i = 1
+𝜆
+2
+i
+/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1Ni ⊗ Ni/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1
+(27)/u1D539 =
+3/u⎪⎫2211.⎟1
+i = 1
+𝜆2i /⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1ni ⊗ ni/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 ⇒ /u1D539 = 3/u⎪⎫2211.⎟1
+i = 1
+𝜆
+2
+i
+/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1ni ⊗ ni/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1
+(28)/u1D748 = 𝔽
+/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟3
+1
+J
+/u1D715/u1D713
+/u1D715ℂ
+/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟3
+𝔽 T + /u1D715U/u1D715J 𝕀
+(29)
+/u1D748 =
+3/u⎪⎫2211.⎟1
+i = 1
+𝛾i
+J
+/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1ni ⊗ ni/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 + 𝜕U𝜕J /u1D540 where 𝛾i = 𝜆i 𝜕𝜓𝜕𝜆i − 13 3/u⎪⎫2211.⎟1j = 1 𝜆j 𝜕𝜓𝜕𝜆j
+(30)W =
+N/u⎪⎫2211.⎟1
+i
+/u1D707i
+/u1D6FCi
+/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1/u1D706/u1D6FCi1 + /u1D706/u1D6FCi2 + /u1D706/u1D6FCi3 − 3/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 + U (J)
+(31)U (J) = /u1D7052
+/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟3
+J2 − 1
+2 − ln J
+/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟3
+(32)beP = /uni222B.dsp
+ℋeP
+/u1D714/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1xP , xeN /⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1/u1D707e/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1xP , xeN /⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1fe/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1xP , xeN /⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1dV/u1D709
+(33)ℋeP = /⎡⎜⎞⎤⎦⎨⎦⎢t.⎟1xP ∈ ℬ0 and xeN ∈ ℬe: /u⎪⎫007C.x/u⎪⎫007C.xxeN − xP /u⎪⎫007C.x/u⎪⎫007C.x <𝛿 /⎡⎜⎞⎤⎦⎜⎫⎥⎧t.⎟1
+(34)
+fe/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1xP , xeN /⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 = /⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1se/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1xP , xeN /⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 − 1/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟3 18/u1D705e/u1D70B/u1D6FF4 /⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟3 /⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1yP − xeN /⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1/u⎪⎫007C.x/u⎪⎫007C.x/u⎪⎫007C.xyP − xeN /u⎪⎫007C.x/u⎪⎫007C.x/u⎪⎫007C.x
+where se/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1xP , xeN /⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 = /u⎪⎫007C.x/u⎪⎫007C.x/u⎪⎫007C.xyP − xeN /u⎪⎫007C.x/u⎪⎫007C.x/u⎪⎫007C.x/u⎪⎫007C.x/u⎪⎫007C.x/u⎪⎫007C.xxP − xeN /u⎪⎫007C.x/u⎪⎫007C.x/u⎪⎫007C.x
+ 20407947, 2025, 11, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/cnm.70118 by Universitat Bern, Wiley Online Library on [15/10/2026]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+
+--- PAGE 6 ---
+6 of 18
+ International Journal for Numerical Methods in Biomedical Engineering, 2025
+This assumption is justified for the cases examined in this work, 
+given that the material stiffness of ℬe significantly exceeds that 
+of ℬ0.
+Equation  (35) exhibits a mathematical form analogous to ( 15); 
+however, distinct notation is employed to reflect the different 
+critical bond stretch values characterizing intra-  domain inter -
+actions within ℬ0 versus inter- domain interactions between ℬ0 
+and ℬe. Using the proposed adhesive force model, the debonding 
+physics between bodies can be captured through calibration of 
+the parameters /u1D705e, se1, and se2.
+2.4   |   Numerical Modeling
+The inherent mathematical structure of PD naturally lends it -
+self to mesh- free numerical modeling techniques. A PD material 
+point, denoted as xP, is conceptualized as a ‘particle’ occupying 
+a finite volume VP in space. Particle clouds against complex ge -
+ometries are created by first converting an arbitrary unstruc -
+tured polyhedral mesh into a voxel representation, as shown in 
+Figure 3b, followed by placing particles at the cell centers of the 
+voxelized mesh (Figure  3c). The discrete form of the stabilized 
+PD equation of motion is presented in (36).
+(35)𝜇e�xP , xeN � =
+⎧
+⎪
+⎪
+⎨
+⎪
+⎪⎩
+1 if 0 ≤ se < se1� se2 − se
+se2 − se1
+�
+if se1 ≤ se < se2
+0 if se ≥ se2
+FIGURE 2    |    (a) Depicts two bodies ℬ0 and ℬe bonded at their interface (shown by the dark black line). The region ℐ represents a pill- box of half- 
+horizon width at the interface containing interconnected material points from both bodies. (b) Presents an enlarged view of pill-  box ℐ, illustrating 
+all material points lying within the horizon of material point xP. The family of material point xP includes external material points xeN ∈ ℬe, which 
+exert external forces according to Equation ( 32).
+FIGURE 3     |    Steps for converting an unstructured polyhedral mesh to a peridynamic particle cloud: (a) Supplied unstructured polyhedral mesh, 
+(b) Voxelization of the polyhedral mesh. (c) Particle cloud generated from cell centers of the voxelized mesh. Piecewise boundaries supplied through 
+the polyhedral mesh are mapped onto the particle cloud through a proximity search. For example, particles mapped onto the flat walls are colored 
+light blue, curved walls as orange, and particles mapped at the intersection of two boundaries are colored red.
+ 20407947, 2025, 11, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/cnm.70118 by Universitat Bern, Wiley Online Library on [15/10/2026]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+
+--- PAGE 7 ---
+7 of 18
+International Journal for Numerical Methods in Biomedical Engineering, 2025
+where xNi and VNi are the reference position vectors and volumes 
+of particles that fall within the horizon of the particle located at 
+xP. The third RHS term is non-  zero when anchoring bodies are 
+adjacent to ℬ. Here, Nei is the discrete set of particles ∈ ℬe within 
+the neighborhood of xP, the reference bond /u1D743PNei = xeN − xP, and 
+other terms are as per equation (34). Expressions for the discrete 
+forms of /u1D53D PDP  and /u1D542P can be written:
+Eigenvalues and eigenvectors of ℂ were calculated 
+through an iterative approach. First, the matrix was trans -
+formed into its tridiagonal form using Householder trans -
+formations, which significantly reduced computational 
+complexity while preserving the original eigenvalues. 
+Subsequently, the implicit QL algorithm was applied to the 
+tridiagonal matrix to efficiently extract the complete set of ei -
+genvalues and eigenvectors [ 28].
+2.4.1   |   Choice of Influence Function /u1D74E
+Multiple influence functions have been proposed in the liter -
+ature, ranging from constant, Gaussian, and conical. In this 
+paper, the conical influence has been used for all simulations 
+because it is known to decrease the skin effect [ 29].
+2.4.2   |   Computation of Particle Partial Volume
+Owing to the spherical shape of the horizon, it is inevitable that 
+there will be partial overlap between some members of a par -
+ticle family and the spherical horizon. In such scenarios, it is 
+necessary to compute this volume overlap. While sophisticated 
+methods exist [30], in this paper, the overlap volume is computed 
+simply as shown in (40).
+where V0 is the total volume of a particle and rp is the equivalent 
+spherical radius corresponding to the volume V0.
+2.4.3   |   Boundary Constraints
+The integral nature of the PD equation of motion makes the 
+application of boundary constraints inherently challenging. 
+However, boundary constraints are essential for solving phys -
+ical problems. Piecewise boundary constraint assignment is 
+achieved by performing a particle proximity search from the 
+boundaries of the original unstructured polyhedral mesh. 
+Common boundary conditions such as zero traction, fixed ve -
+locity, and symmetry plane are implemented.
+Symmetry plane boundary conditions, while standard in FEM 
+and CFD simulations, have not received much attention in the 
+PD numerical modeling literature. To the authors' knowledge, 
+the only work that addresses symmetry BCs in PD simulations 
+is the work by Yaghoobi and Chorzepa [ 31], which is limited to 
+axis- aligned symmetry BCs. This work introduces a boundary 
+condition that applies to generic planar surfaces and provides 
+ways to handle particles at the intersection of multiple sym -
+metry planes. A brief description of our generalized symmetry 
+plane boundary condition is provided below.
+To enforce symmetry constraints on generic plane surfaces, 
+ghost particles  are created by hierarchically visiting particles 
+mapped onto one, two, and three symmetry planes. The posi -
+tions of these ghost particles are obtained by applying a geomet -
+ric transformation /u1D53E/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1yb, yi/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 to the position vectors of all family 
+members of a boundary particle mapped to a symmetry plane. 
+The definition of /u1D53E/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1yb, yi/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 is given in (41).
+where the position vectors yb, yi, and yg represent particles on 
+a symmetry boundary, particles which are part of the family of 
+the boundary particles, and newly generated ghost particles, re -
+spectively. nb is the plane normal associated with the boundary 
+particle yb pointing out of the domain, and tb is the cross product 
+of the two symmetry planes to which the boundary particle yb is 
+mapped to. The tensor /u1D53E is used to generate the position for the 
+ghost particles as shown in (42).
+(36)
+/u1D70C ̈yP =
+�
+Ni
+�
+/u1D714
+����/u1D743PNi ����/u1D707�/u1D743PNi ��ℙP 𝕂−1P + ℙNi 𝕂−1Ni � ⋅ /u1D743PNi VNi �
++
+�
+Ni
+⎧
+⎪
+⎨
+⎪⎩
+/u1D714
+����/u1D743PNi ����/u1D707�/u1D743PNi �� 9/u1D705/u1D70B/u1D6FF4 �⎛⎜⎜⎜⎝ /u1D743PNi ⋅ zPNi���/u1D743PNi ���3 ⎞⎟⎟⎟⎠/u1D743PNi VNi ⎫⎪⎬⎪⎭
++
+�
+Nei
+⎧
+⎪
+⎨
+⎪⎩
+/u1D714
+����/u1D743PNei ����/u1D707e�/u1D743PNei ��se�xP , xeN � − 1�� 18/u1D705e/u1D70B/u1D6FF4 � �yP − xeN ����yP − xeN ��� VNei ⎫⎪⎬⎪⎭
+(37)/u1D542P =
+/u⎪⎫2211.⎟1
+Ni
+/⎡⎜⎞⎤⎦⎨⎦⎢t.⎟2
+𝜔
+/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟2/u⎪⎫007C.x/u⎪⎫007C.x/u⎪⎫007C.x/u1D743PNi /u⎪⎫007C.x/u⎪⎫007C.x/u⎪⎫007C.x/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟2𝜇/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1/u1D743PNi /⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1/u1D743PNi ⊗ /u1D743PNi VNi /⎡⎜⎞⎤⎦⎜⎫⎥⎧t.⎟2
+(38)/u1D53D PDP =
+/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟4
+/u⎪⎫2211.⎟1
+Ni
+/⎡⎜⎞⎤⎦⎨⎦⎢t.⎟2
+𝜔
+/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟2/u⎪⎫007C.x/u⎪⎫007C.x/u⎪⎫007C.x/u1D743PNi /u⎪⎫007C.x/u⎪⎫007C.x/u⎪⎫007C.x/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟2𝜇/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1/u1D743PNi /⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1yNi − yP /⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 ⊗ /u1D743PNi /⎡⎜⎞⎤⎦⎜⎫⎥⎧t.⎟2/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟4/u1D542−1P
+(39)/u1D714�/u1D743PN� =
+⎧
+⎪
+⎨
+⎪⎩
+�
+1 −
+��/u1D743PN��
+/u1D6FF
+�
+if��/u1D743PN�� ≤ /u1D6FF
+0 otherwise
+(40)
+VNi = cV0 where c =
+⎧
+⎪
+⎪
+⎨
+⎪
+⎪⎩
+1 if ���/u1D743PNi ��� ≤
+�
+𝛿 −
+rp
+2
+�
+max
+⎡
+⎢
+⎢⎣
+⎛
+⎜
+⎜⎝
+1
+2 + 𝛿rp −
+���/u1D743PNi ���
+rp
+⎞
+⎟
+⎟⎠,0
+⎤
+⎥
+⎥⎦ if ���/u1D743PNi ��� >
+�
+𝛿 −
+rp
+2
+�
+(41)
+/u1D53E�yb, yi� =
+⎧
+⎪
+⎨
+⎪⎩
+/u1D540 − 2nb ⊗ nb if particle yb has planar symmetry
+− �/u1D540 − 2tb ⊗ tb� if particle yb has line symmetry
+− /u1D540 if particle yb has point symmetry
+(42)yg
+/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1yb, yi/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 = yb + /u1D53E/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1yb, yi/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 ⋅ /⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1yi − yb/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1
+ 20407947, 2025, 11, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/cnm.70118 by Universitat Bern, Wiley Online Library on [15/10/2026]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+
+--- PAGE 8 ---
+8 of 18
+ International Journal for Numerical Methods in Biomedical Engineering, 2025
+An example illustration for generating ghost particles for a 
+simulation containing two intersecting symmetry planes is 
+shown in Figure  4. The kinematic and kinetic properties of 
+the newly introduced particles, denoted as yg, are not com -
+puted in the usual way. Each ghost particle is characterized 
+by the tensor /u1D53E and maintains a reference to its originating 
+particle yi. All physical quantities associated with ghost par -
+ticles are derived from the corresponding quantities of their 
+internal reference particles yi through a well-  defined transfor -
+mation process. This transformation is mediated by the tensor 
+/u1D53E, which operates according to the established principles of 
+vector and tensor transformations.
+2.4.4   |   Time Integration
+In the PD framework, the positions of material points are ob -
+tained by solving the following second-  order ordinary differen -
+tial equation:
+where
+Given our focus on dynamic crack propagation and fracture phe-
+nomena, we employ the explicit Verlet time integration method 
+to solve Equation  ( 44). While explicit schemes are simple to 
+implement, they often require extremely small time steps. This 
+necessity for fine temporal resolution can result in significant 
+computational overhead when simulating large time- scale prob-
+lems. Therefore, we introduce an artificial damping parameter 
+to allow us to take larger time steps and dampen initial tran -
+sients. The modified ODE with an artificial damping parameter 
+/u1D6FD reads as follows:
+The position and velocities of a material point P at a time-  step 
+(n + 1) are updated from the previous time-  step (n) according to 
+the following set of equations:
+3   |   Results
+An in- house parallel C++ code was developed to simulate PD prob-
+lems, specifically designed to be later integrated with OpenFoam, 
+an open source C++ library for coupling with computational fluid 
+dynamics. Various quantities of interest like displacement, Von- 
+Mises stress, reaction forces are reported and compared against re-
+sults generated from the FE solver of ANSYS. For all simulations, 
+the ratio of the horizon to the particle radius was set to 3. Unless 
+otherwise stated, all geometric directions are non- dimensionalized 
+for reporting line plots of different quantities.
+3.1   |   Plate With a Hole
+Figure  5a illustrates the dimensions and boundary conditions 
+for the first validation case. The geometric dimensions are 
+80 mm along the x - axis, 100 mm along the y - axis, and 30 mm 
+along the z - axis. Displacements were applied continuously at 
+a rate of (0,10,0) cm/s over a 0.1 s duration. The plate material 
+was modeled as a first-  order Ogden material with parameters 
+set to /u1D6FC1 = 2, /u1D7071 = 0.25 MPa, and /u1D705 = 2.5 MPa. Particle diame -
+ter was set to 1 mm, resulting in a total of 31,344 particles. 
+Simulation was run with a time step size ( Δt) of 10−5 s and 
+/u1D6FE = 0.01. Figure  5b,c demonstrate the exceptional qualitative 
+agreement between the spatial distribution of nodal and parti -
+cle displacement at the mid-  plane, as generated by ANSYS and 
+our PD solver, respectively. To further validate the excellent 
+(43)/u1D70C ̈yP = fP ⇒ ̈yP = aP
+fP =
+⎛
+⎜
+⎜⎝/uni222B.dspℋP
+�
+T
+�
+xP
+�⟨/u1D743PN⟩ − T�xN �⟨/u1D743NP⟩�dV/u1D709 ⎞⎟⎟⎠ + bP
+(44)̈yP + /u1D6FD ̇yP = aP
+(45)yn+1P = ynP + ̇ynP (1 − /u1D6FE)Δt + anP (Δt)22
+(46)vn+1P = (1 − /u1D6FE)2vnP + Δt2 /⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1(1 − /u1D6FE)anP + an+1P /⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1
+(47)/u1D6FE = /u1D6FDΔt2
+FIGURE 4     |    Shows the steps for generating ghost particles for enforcing symmetry boundary conditions against particle yb mapped at the inter -
+section of two symmetry planes (dotted lines). (a) The geometric arrangement of particle yb and its neighbors yi (b, c) Ghost particles yg (colored in 
+turquoise) obtained by reflecting yi (colored in dark blue) about the vertical and horizontal plane respectively using a planar transform. (d) Ghost 
+particles yg obtained by reflecting yi using a line transform.
+ 20407947, 2025, 11, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/cnm.70118 by Universitat Bern, Wiley Online Library on [15/10/2026]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+
+--- PAGE 9 ---
+9 of 18
+International Journal for Numerical Methods in Biomedical Engineering, 2025
+FIGURE 5     |    (a) Geometry and boundary conditions for the peridynamic simulation of a plate with a hole, utilizing symmetry boundary condi -
+tions. The cross-  section displayed is at z = 0, with dimensions L = 80 mm, W = 100 mm, R = 10 mm, and a depth of 30 mm along the z - direction. A 
+Dirichlet displacement boundary condition of u = 10 mm was applied to the bottom face (shown in red). (b, c) Comparison of deformation fields at 
+the mid- plane (along z- direction) predicted by ANSYS and our peridynamic (PD) simulations, respectively.
+FIGURE 6    |    Line plot comparison of different quantities extracted from ANSYS and peridynamic simulations. (a, b) Displacement along the line 
+(x, y, z) = (0.5, y,0.5). (c, d) Von- Mises stress along the line (x, y, z) = (0.5, y,0.5).
+ 20407947, 2025, 11, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/cnm.70118 by Universitat Bern, Wiley Online Library on [15/10/2026]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+
+--- PAGE 10 ---
+10 of 18
+ International Journal for Numerical Methods in Biomedical Engineering, 2025
+correlation between ANSYS and our results, displacement 
+and Von- Mises stress line plots are presented in Figure  6a–d . 
+The plots in Figure  6a,c display quantities along the line 
+(0.5, y, 0.5), while those in Figure  6b,d show quantities along 
+the line (x, 0.5, 0.5).
+3.2   |   Twisting Column
+The second validation study compared the results from ANSYS 
+with our predicted deformations of a column subjected to twisting 
+displacements. Figure 7a shows the geometry and boundary condi-
+tions used for the PD simulation. The column had a cross- sectional 
+area of 5 × 5 mm 2 and a height of 20 mm. Rotational displace-
+ment was applied continuously to the top surface at 1 rad/s for 3.14 
+seconds while the bottom surface was fixed. The constitutive re -
+sponse of the column was modeled as a first- order Ogden material 
+with parameters set to /u1D6FC1 = 2, /u1D7071 = 0.18 MPa, and /u1D705 = 0.5 MPa. 
+Particle diameter was set to 0.375 mm, resulting in a total of 10,584 
+particles. Time step size ( Δt) was set to 10−5 s, and the damping 
+parameter was set such that /u1D6FE = 0.02. Figure 7b,c demonstrate the 
+exceptional qualitative agreement between the spatial distribution 
+of nodal and particle displacements, generated by mechanical 
+ANSYS and our PD solver, respectively. Since the spatial variance 
+of stresses within the column is minimal, only radial displacement 
+line plots along lines (0.75, y, 0.5) and (1.0, y, 0.5) are reported for 
+both ANSYS and PD. The correlation of both line plots is good, with 
+a maximum relative error of less than 2% (Figure 8).
+3.3   |   Thin Plate With and Without a Notch
+The third validation study compared the FEM results from 
+ANSYS with those from PD for a thin plate, both with and 
+FIGURE 7     |    (a) Geometry and boundary conditions used for the peridynamic simulation of a column under twist. The figure shows the cross- 
+section at z = 0 where L = 20 mm, W = 5 mm, and depth along the z - direction is 5 mm. A net rotational displacement of /u1D70B rad is applied on the top 
+surface while the bottom surface is fixed. (b, c) Deformation field as predicted by using FEM (ANSYS) and our PD simulations, respectively.
+FIGURE 8     |    (a, b) Comparison of displacements extracted from an ANSYS and peridynamic simulation along lines (x, y, z) = (1.0, y,0.5), and 
+(x, y, z) = (0.75, y,0.5), respectively.
+ 20407947, 2025, 11, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/cnm.70118 by Universitat Bern, Wiley Online Library on [15/10/2026]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+
+--- PAGE 11 ---
+11 of 18
+International Journal for Numerical Methods in Biomedical Engineering, 2025
+without a notch. This case was selected to establish a rule 
+of thumb for determining the minimum number of particles 
+required across a thin body to generate quality results, that 
+is, relative error in predicted displacements less than 2%. The 
+cross-  sectional area of the thin plate (at z = 0) without a notch 
+is 40 × 10 mm 2 as shown in Figure  9a, and plate thick -
+ness is equal to 3 mm. The plate with the notch maintained 
+the same geometric dimensions as the un-  notched plate, with 
+the notch measuring 13 mm in length (N) and 1 mm in width 
+(T) (Figure  9b). For both cases, a Dirichlet displacement 
+boundary condition was applied at the top surface ( 2 mm). 
+Material properties were kept the same for both plates where 
+/u1D6FC1 = 7.21, /u1D7071 = 288.5 Pa, and /u1D705 = 20 kPa (first-  order ogden 
+model). The choice of these numbers were inspired from the 
+constitutive property calibration of a blood clot reported in [ 9]. 
+The Poisson's ratio of the material evaluates to 0.48. Particle 
+diameter was set to 0.3 mm, resulting in a total of 13,696 par -
+ticles. Time step size ( Δt) was set to 5 × 10−6 s, and the damp -
+ing parameter was set such that /u1D6FE = 5 × 10−4. Figure  9c–f show 
+the excellent qualitative agreement of the mid-  plane (along 
+z- direction) displacement fields for both cases. Figure  10 
+shows the excellent correlation between the reaction forces 
+on the top surface for both cases (with and without a notch) 
+when compared to the FEM results from ANSYS. In addition, 
+through our numerical tests, it was found that at least one 
+particle family must reside across a thin section to properly 
+resolve quantities of interest.
+3.4   |   Calibration of the Constitutive Law of a 
+Blood Clot
+The fourth study constitutes the calibration of the constitutive 
+law and equivalent PD fracture parameters for a clot material by 
+reproducing the experimental results of a tensile test of a thin 
+plate with a notch [ 9]. Geometric dimensions and boundary 
+conditions for the PD simulation are shown in Figure  11a. The 
+calibration results of the first- order Ogden model for a blood clot 
+are /u1D6FC1 = 7.21, /u1D7071 = 310 Pa, and /u1D705 = 20 kPa, which is very close to 
+the values reported in [ 9]. The critical stretches were calibrated 
+FIGURE 9     |    (a, b) Cross-  sectional geometry and boundary conditions used for the peridynamic simulation of a thin plate with and without a 
+notch, respectively. L = 40 mm, W = 10 mm, N = 13 mm, T = 1 mm, and thickness of the plate is 3 mm. A Dirichlet displacement boundary condition 
+of u = 2 mm was applied to the top face (shown in red). (c, e) Deformation field for the thin plate without a notch as predicted by ANSYS and our PD 
+simulations, respectively. (d, f) Deformation field for the thin plate with a notch as predicted by ANSYS and our PD simulations, respectively.
+ 20407947, 2025, 11, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/cnm.70118 by Universitat Bern, Wiley Online Library on [15/10/2026]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+
+--- PAGE 12 ---
+12 of 18
+ International Journal for Numerical Methods in Biomedical Engineering, 2025
+to be s1 = 1.38 and s2 = 2.27. The scalar function used for scaling 
+stresses at damaged points was as follows:
+where a and n were set to 1.7 and 0.5, respectively. The particle 
+cloud used in the simulation of reaction forces for the case of 
+the plate with a notch was used for this calibration study. The 
+simulated reaction force corresponded well with published ex -
+perimental measurements. (see Figure  11b) For all calibration 
+simulations, the time step size was set to 10−5 s, and damping 
+was set to /u1D6FE = 5 × 10−3.
+3.5   |   Calibration of Adhesive Force Between Blood 
+Clots and Common Artificial Surfaces
+The fifth study calibrates blood clot adhesive strength param -
+eters for common materials used in medical devices, using 
+experimental data reported by Kannojia et al. [ 19]. The geo -
+metric dimensions and boundary conditions for the PD sim -
+ulation are illustrated in Figure  12a. A uniform velocity of 
+1 mm/s was applied at the top surface. Particle diameter was 
+set to 0.4 mm and Δt was set to 5 × 10−5 s, and the damping 
+parameter was set such that /u1D6FE = 10−2. We implemented our 
+proposed adhesive contact model (described in Section  2.3) 
+for three artificial surfaces: titanium (Ti), polytetrafluoro -
+ethylene (PTFE), and polyurethane (PU). The constitutive re -
+sponse of the blood clot was modeled using a first-  order Ogden 
+hyperelastic model with the following parameters: /u1D6FC1 = 7.21, 
+/u1D7071 = 723.63 Pa, and /u1D705 = 20 kPa. These values were set accord -
+ing to the Young's modulus reported for a clot incubated for 3 h 
+in the reference paper. The critical stretches for the interface 
+particles were set to se1 = 1.03 and se2 = 1.05. Figure 12b presents 
+the simulated adhesive force evolution over time for all three 
+surfaces. The calibrated adhesive stiffness values ke is 200, 
+146, and 122.6 kPa for Ti, PTFE, and PU, respectively, achiev -
+ing excellent agreement with experimental maximum adhe -
+sion forces of 0.160 ± 0.03 N, 0.120 ± 0.03 N, and 0.105 ± 0.04 N, 
+respectively.
+4   |   Discussion
+This study is a stepping stone towards realizing a computa -
+tional framework that will help model the physics involved in 
+the fragmentation of blood clots under fluid dynamic forces. 
+Specifically, this paper demonstrates the application of PD to 
+compute mechanical quantities characteristic of blood clots sub-
+jected to different types of physiological forces. The accuracy of 
+this PD framework was demonstrated through three test cases 
+in which displacements, Von Mises stresses, and reaction forces 
+were compared against FEM results computed from the solid 
+mechanics solver of ANSYS.
+4.1   |   Fidelity of Results
+The first case—tensile loading of a plate with a hole—demon -
+strated that the PD solver can accurately predict deformation val-
+ues and stress concentration values in regions where expected. 
+The PD-  computed Von Mises stresses and displacements were 
+found to be in nearly exact agreement with FEM results, with 
+the exception of slight underestimations of Von Mises stresses 
+near boundaries (see Figure  6c,d). This discrepancy is probably 
+due to the well-  known skin effect in PD [ 32]. Although various 
+techniques proposed in the literature could be adapted to this 
+model to improve accuracy, the current negligible relative error 
+(less than 3%) is deemed acceptable for the intended application 
+to thromboembolism which manifests a large number of greater 
+uncertainties.
+Flow- induced blood clots are characterized by diverse morphol -
+ogies, intricate loading patterns, and complex geometrical fea -
+tures including thin structural regions. To test the capability of 
+our PD solver to predict the deformation field in these scenarios, 
+two benchmark simulations were conducted: a thin column sub-
+jected to testing loads and the tensile load of a plate with and 
+without a notch. The simulation of the twisting column demon -
+strated exceptional agreement between the predicted FEM and 
+PD displacement fields (see Figures  7b,c and 8 ). The latter test 
+case verified the ability of the numerical framework to accu -
+rately compute reaction forces in slender structures subjected 
+(48)/u1D6FC(d) =
+/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟3
+1 − e−adn
+1 − e−a
+/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟3
+FIGURE 10    |    FEM results versus our peridynamic result comparison of force reaction with respect to the net extension of a plate without (a) and 
+with a notch (b).
+ 20407947, 2025, 11, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/cnm.70118 by Universitat Bern, Wiley Online Library on [15/10/2026]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+
+--- PAGE 13 ---
+13 of 18
+International Journal for Numerical Methods in Biomedical Engineering, 2025
+to tensile loading. It should be noted that minor discrepancies 
+in the qualitative displacement field distributions across all ge -
+ometries can be attributed to differences in visualization color 
+mapping between ANSYS and Paraview post-  processing envi -
+ronments, rather than representing computational divergence 
+between methods.
+Calibration of PD properties for blood clot material was 
+performed through an iterative manual process. Initially, 
+material constants of the first order Ogden model were cali -
+brated in the undamaged state to reproduce the experimen -
+tal force–displacement curve [ 9] in the regime below 2.5 mm. 
+Subsequently, critical stretch parameters and the damage 
+evolution coefficient a in Equation  ( 48) were systematically 
+adjusted to capture material softening and ultimately failure. 
+PD results agreed well with experimental data, successfully 
+predicting the experimentally observed peak reaction force 
+of 0.15 N. While some deviations were noted in the post-  peak 
+FIGURE 11     |    (a) Geometry of the cross-  section where L = 40 mm, W = 10 mm, N = 13 mm, and T = 1 mm. Time- varying Dirichlet displacement 
+boundary conditions were applied at the top and bottom surfaces. (b) Comparison of reaction forces experimentally reported versus those predicted 
+by PD using calibrated material parameters of a blood clot. (c–f) Shows the evolution of damage and Von-  Mises stress, and (g–j) corresponding max -
+imum principal stress distribution as the crack propagates.
+ 20407947, 2025, 11, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/cnm.70118 by Universitat Bern, Wiley Online Library on [15/10/2026]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+
+--- PAGE 14 ---
+14 of 18
+ International Journal for Numerical Methods in Biomedical Engineering, 2025
+region, these discrepancies are within the reported experi -
+mental uncertainty and have minimal consequences for the 
+intended application. The primary focus of this calibration ef -
+fort was to inform blood clot embolization simulation models, 
+where accurate prediction of fracture initiation is the govern -
+ing requirement, rather than capturing post-  failure behavior 
+that is principally defined by crack propagation speeds.
+To calibrate the adhesive strength of blood clots anchored on 
+different artificial surfaces, the critical stretches of interface 
+particles between the blood clot and substrate were fixed to 
+se1 = 1.03 and se2 = 1.05. Subsequently, the adhesive stiffness pa -
+rameter /u1D705e (defined in Equation ( 34)) was calibrated to match 
+the maximum adhesive forces reported by Kannojia et al. [ 19]. 
+In our calibration effort, we assumed that the adhesive stiff -
+ness parameter /u1D705e was uniform across the interface. However, 
+the reference study found clot remnants remained on the sur -
+face after complete debonding. Histological analysis revealed 
+non- uniform interface composition, with fibrin-  rich areas 
+exhibiting significantly stronger adhesion. Such non-  uniform 
+adhesion strength can easily be captured by simply making 
+/u1D705e vary across the interface—use higher values where there 
+is more fibrin and lower values elsewhere. Nevertheless, for 
+most practical simulations, using a uniform /u1D705e distribution 
+would suffice.
+4.2   |   Remarks on the Non- Local Length Scale: The 
+Horizon
+The original paper by Silling introduces the parameter horizon 
+as a length scale that helps replace the spatial derivative in CCM 
+with integral equations, where the domain of integration is ℋP 
+[13]. Further studies revealed that using /u1D6FFP ≈ 3dP provides max-
+imum accuracy in computing spatial derivatives—such as de -
+formation gradient approximations [ 33, 34 ]. Hence, our choice 
+of setting /u1D6FFP ≈ 3dP for all our numerical simulations. There are 
+two schools of thought regarding the physical interpretation 
+of the horizon: (i) it is a purely numerical parameter used for 
+computational convenience, and (ii) it represents a fundamental 
+material property intrinsic to the material being modeled [ 35]. 
+We examine both interpretations within the context of different 
+problem classes.
+For purely elastic problems, the horizon is a numerical param -
+eter. This is supported by our numerical tests for cases 1–3 
+in which the horizon size was inconsequential. Once a suffi -
+ciently small horizon size is chosen, subsequent refinement 
+does not alter physical quantities of interest. This observation 
+aligns with the theoretical result that as /u1D6FF → 0, the PD equa -
+tion of motion converges to the CCM governing equations [ 36]. 
+Figure  13a is an example of one of our numerical tests that 
+FIGURE 12     |    (a) Geometry of the simulation setup where D = 14 mm, and H = 10 mm. Time- varying Dirichlet displacement boundary conditions 
+were applied at the top surface at the rate of 1 mm/s. (b) Adhesive force evolution over time for three artificial surfaces (Ti, PTFE, PU) until complete 
+debonding. Dashed lines indicate experimentally recorded maximum adhesive forces reported by Kannojia et al. [ 19]. (c–e) Mid- plane cross- sections 
+of the blood clot showing spatial distribution of damage and von Mises stress during debonding from the titanium (Ti) surface: (c) configuration be -
+fore debonding initiation, (d) during active debonding, and (e) after complete debonding.
+ 20407947, 2025, 11, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/cnm.70118 by Universitat Bern, Wiley Online Library on [15/10/2026]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+
+--- PAGE 15 ---
+15 of 18
+International Journal for Numerical Methods in Biomedical Engineering, 2025
+demonstrates the invariance of the reaction force with respect 
+to mesh refinement.
+However, when fracture physics is introduced into PD, the phys-
+ics of the fracturing process may depend on the chosen mesh 
+[37]. One remedy is to treat the horizon as a material property, 
+following the approach of Thamburaja et al. [ 12] who introduce 
+a characteristic polymer length to define their non- local fracture 
+criterion. Nevertheless, there are significant challenges in de -
+fining a characteristic  length scale in modeling blood clot frac -
+ture, as both constitutive and fracture properties are strongly 
+influenced by microstructural heterogeneity and compositional 
+variability. This difficulty is further compounded by the limited 
+availability of systematic experimental data. To the best of the 
+authors' knowledge, the only study that quantifies the process 
+zone size of blood clots is by Liu et al., who report values in the 
+range of 0.1–1 mm [38]. This range is comparable to our simu -
+lation horizon size of 0.9 mm. In PD formulations employing 
+a critical stretch criterion for bond failure between particles, 
+the horizon retains its interpretation as a numerical parameter 
+when appropriate scaling relationships are incorporated, as ex -
+plained below.
+The mesh dependence problem in PD problems with fracture, 
+particularly when using critical stretch-  based criteria to break 
+bonds, stems from the dependency of the critical bond stretch 
+criterion on /u1D6FF [33]. For brittle materials, it has been shown that 
+critical bond extension  [e = (s − 1)] scales as /u1D6FF−1∕2, wherein the 
+fracture results are almost mesh independent [ 29, 39, 40 ]. We 
+found that scaling the critical bond extension as /u1D6FF−1∕n with 
+n = 7.21 and n = 2 for cases 4 and 5 rendered the reaction forces 
+nearly mesh independent (see Figure  13b,c) This approach is 
+equivalent to the critical bond energy criterion proposed by 
+Foster et al. [ 41]. Implementation of this criterion in PD simu -
+lations yielded practically horizon-  independent results [ 42]. A 
+derivation of the critical extension scaling law using an order of 
+magnitude analysis is presented below.
+Silling et al. [33] define the energy density stored in a bond as w 
+(units J ∕ m6) related to SEF (/u1D713) as follows:
+which implies (material constants are removed from the depen -
+dence of ):
+The second equality in Equation  ( 50) is obtained by assuming 
+that SEF depends non-  linearly on the extension of each bond 
+e according to some exponent n. For a first-  order Ogden-  type 
+model, the value of n is /u1D6FC1. Following the approach of Foster 
+et al. [41], if each bond breaks when the energy density per unit 
+volume reaches a critical threshold wc. Foster et al. derive an ex-
+plicit relationship between this critical energy density wc and the 
+critical energy release rate G:
+At the point of fracture, the bond energy density w must be 
+equal to wc, and using Equations  ( 50) and ( 51) allows us to 
+obtain a scaling of critical bond extension ec in terms of the 
+horizon as:
+The analysis demonstrates that when critical bond extension 
+is appropriately scaled with horizon size, the resulting energy 
+release rates remain consistent across different horizon sizes, 
+preserving this fundamental material property. Note for brit -
+tle fracture, we recover the scaling reported in Silling et  al. 
+[33] when n = 2.
+4.3   |   Limitations
+Despite strong agreements between our calibrated PD model and 
+experimental data, some limitations warrant consideration. The 
+primary shortcoming relates to the simplified constitutive model 
+of a blood clot employed here, which currently incorporates only 
+basic elastic- damage mechanics. In reality, blood clots demonstrate 
+considerably more complex mechanical responses, including vis-
+coelasticity [43] and negative Poynting effects [44]. The influence 
+of these advanced mechanical properties on thromboembolism 
+dynamics remains inadequately understood. Consequently, future 
+(49)/u1D713P = /uni222B.dsp
+HP
+w(e)dV/u1D709
+(50)(w(e)) ≈ /⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1/u1D713P /u1D6FF−3/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 ≈ /⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1en/u1D6FF−3/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1
+(51)wc = 2G/u1D70B/u1D6FF4 ⇒ /⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1wc /⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 ≈ /⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1/u1D6FF−4/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1
+(52)/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1w/⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1ec /⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 ∕ wc /⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 ≈ (1) ⇒ /⎝⎞⎜⎦⎪⎨⎦⎢t.⎟1enc /u1D6FF/⎝⎞⎜⎦⎪⎜⎫⎥⎧t.⎟1 ≈ (1)
+FIGURE 13     |    Mesh independence results for different cases are shown at two refinement levels ( Np and 2Np): (a) reaction force versus displace -
+ment for a plate with a hole ( Np = 31,344), (b) reaction force versus net extension for blood clot tensile loading ( Np = 13,696), and (c) adhesive force 
+versus nominal strain for blood clot debonding from the titanium surface ( Np = 24,325).
+ 20407947, 2025, 11, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/cnm.70118 by Universitat Bern, Wiley Online Library on [15/10/2026]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+
+--- PAGE 16 ---
+16 of 18
+ International Journal for Numerical Methods in Biomedical Engineering, 2025
+investigations should integrate these mechanical behavioral en -
+hancements and conduct systematic analyses to quantify their rel-
+ative significance in embolization processes.
+A second limitation is our treatment of blood clots as homo -
+geneous materials, whereas their actual microstructural com -
+position exhibits significant heterogeneity. Specifically, the 
+proportion of red blood cells (RBCs) and fibrin is known to 
+substantially influence local mechanical properties  [ 45, 46 ] 
+with increased RBC volumetric content reducing the critical 
+Griffith's energy required for fracture. Implementing this het -
+erogeneity within the current PD framework would be rela -
+tively straightforward, requiring only the inclusion of spatial 
+variations of critical stretch parameters corresponding to the 
+compositional data of a specific clot. The spatial distribution 
+of RBC and fibrin concentrations in dynamically forming clots 
+under fluid flow conditions could be determined by coupling 
+an efficient two-  phase blood flow model [ 47] with established 
+thrombosis frameworks, such as [ 48, 49 ]. This is planned as 
+future work.
+4.4   |   Benefits of Using the PD Framework 
+for Thromboembolism
+Thromboembolism is a coupled phenomenon involving the 
+breakup of blood clots under fluid flow. This paper presents a 
+strategy for addressing the structural aspects of thromboembo -
+lism using the PD framework. PD offers two main advantages 
+over traditional mesh- based methods for modeling thromboem -
+bolism: (i) its integral formulation naturally handles fracture 
+and discontinuities without additional computational complex -
+ity, and (ii) it is a meshless method and does not face the problem 
+of element distortion, and so forth. The first advantage is well es-
+tablished in the fracture mechanics literature [ 29, 33]. However, 
+the second advantage is particularly important for thromboem -
+bolism modeling, as discussed below.
+Blood clots are dynamically evolving structures that grow and 
+change shape over time, both in vivo and within medical devices. 
+Numerical models of thrombus growth output a time-  varying 
+volume fraction field defined over an unstructured polyhedral 
+mesh [48, 49]. So, if a traditional mesh-  based structural method 
+is used, it would require adding new elements onto the existing 
+mesh at each time step to represent the growing clot geometry, 
+followed by remeshing around developing cracks and the fluid- 
+clot interface. Additionally, new interpolation weights must be 
+calculated between fluid and solid meshes at every time step. 
+All of which would result in humongous computational costs 
+when dealing with macro-  scale problems. It is exactly in these 
+aspects that PD has an edge over mesh-  based methods because: 
+(i) connectivity can be pre-  computed; (ii) simplified fluid force 
+interpolation. We explain briefly how this can be achieved.
+According to our numerical framework, a voxelized mesh must 
+be generated to create the particle cloud for PD simulation (see 
+Section 2.4). For the full-  scale thromboembolism problem, this 
+voxelized mesh is generated based on the fluid mesh. Both the 
+voxel cell-  to- cell connectivity and interpolation weights be -
+tween voxel cells and the fluid mesh can be pre-  computed at 
+initialization. The “new” particle generation strategy to accom -
+modate growing clots involves two steps: (i) interpolate the vol -
+ume fraction field difference between current and previous time 
+steps from the fluid mesh onto the voxelized mesh, and (ii) gen -
+erate particles in voxel cells where the volume fraction exceeds a 
+specified threshold. The connectivity for each new particle can 
+be grabbed from the voxel cell where it was born, avoiding the 
+need for costly connectivity calculations and remeshing at each 
+time step. A detailed description of this strategy will be provided 
+in future work addressing the full-  scale thromboembolism 
+problem with fluid flow.
+5   |   Conclusion
+This paper presents a critical step toward creating the first com -
+prehensive numerical model of thromboembolism. This study 
+successfully employed NOSB- PD theory to characterize the co -
+hesive bulk fracture and debonding mechanisms of blood clots 
+from artificial surfaces, including Ti, PU, and PTFE, where the 
+calibrated PD parameters exhibited excellent correlation with 
+published experimental data. Prior to calibrating clot-  specific 
+material properties within the NOSB- PD framework, the nu -
+merical methodology underwent systematic validation through 
+a series of benchmark problems: (i) tensile loading of a plate 
+with a hole, (ii) torsional loading of cylindrical specimens, 
+and (iii) thin plate reaction analyses. The validations achieved 
+exceptional quantitative agreement with ANSYS FE solu -
+tions across all critical mechanical parameters, including dis -
+placement fields, von-  Mises stress distributions, and reaction 
+forces. The calibrated NOSB- PD parameters presented in this 
+paper will serve as inputs for coupled fluid-  thrombus interac -
+tion simulations to investigate complex phenomena, including 
+thromboembolism and thrombolytic therapy for deep venous 
+thrombosis, allowing for the development of embolic stroke 
+prevention strategies in patients with prosthetic heart valves, 
+ventricular assist devices, and other blood-  contacting medical 
+implants.
+Author Contributions
+All authors contributed to the conception and design of the study. A.K. 
+developed the numerical model, designed the computer code, performed 
+the simulations, gathered and analyzed the results, and prepared the 
+original draft of the manuscript. G.W.B. and O.D. were involved in re -
+viewing the manuscript and discussing the results. J.F.A. reviewed and 
+edited the manuscript, acquired funding for the research, and super -
+vised the project. All co-  authors read and approved the final version of 
+the manuscript.
+Acknowledgments
+This work was supported by the National Institute of Health (grant 
+number R01 HL089456).
+Ethics Statement
+The authors have nothing to report.
+Consent
+The authors have nothing to report.
+ 20407947, 2025, 11, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/cnm.70118 by Universitat Bern, Wiley Online Library on [15/10/2026]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+
+--- PAGE 17 ---
+17 of 18
+International Journal for Numerical Methods in Biomedical Engineering, 2025
+Conflicts of Interest
+The authors declare no conflicts of interest.
+Data Availability Statement
+The data that support the findings of this study are available from the 
+corresponding author upon reasonable request.
+References
+1. A. M. Wendelboe and G. E. Raskob, “Global Burden of Thrombosis: 
+Epidemiologic Aspects,” Circulation Research  118, no. 9 (2016): 1340–
+1347, https:// doi. org/ 10. 1161/ CIRCR ESAHA. 115. 306841.
+2. F. G. Saleh Velez and J. G. Ortiz Garcia, “Management Dilemmas in 
+Acute Ischemic Stroke and Concomitant Acute Pulmonary Embolism: 
+Case Series and Literature Review,” eNeurologicalSci  23 (2021): 100341, 
+https:// doi. org/ 10. 1016/j. ensci. 2021. 100341.
+3. C. Jerjes-  Sanchez, “Venous and Arterial Thrombosis: A Continu -
+ous Spectrum of the Same Disease?,” European Heart Journal  26, no. 1 
+(2004): 3–4, https:// doi. org/ 10. 1093/ eurhe artj/ ehi041.
+4. M. Ramulu and A. S. Kobayashi, “Mechanics of Crack Curving and 
+Branching -  a Dynamic Fracture Analysis,” International Journal of 
+Fracture 27, no. 3–4 (1985): 187–201, https://  doi. org/ 10. 1007/ BF000 
+17967 .
+5. W. Wciślik and T. Pała, “Selected Aspects of Cohesive Zone Modeling 
+in Fracture Mechanics,” Metals  11, no. 2 (2021): 1–15, https:// doi. org/ 10. 
+3390/ met11 020302.
+6. Z. Yang, Y. Xia, Z. Zhu, C. Yao, and H. Jiang, “Cohesive Zone Model 
+to Investigate Complex Soft Adhesive Failure: State-  of- the- Art Review,” 
+International Journal of Applied Mechanics 15, no. 8 (2023): 2350054, 
+https:// doi. org/ 10. 1142/ S1758 82512 3500540.
+7. X. Zhuang, S. Zhou, G. D. Huynh, P. Areias, and T. Rabczuk, “Phase 
+Field Modeling and Computer Implementation: A Review,” Engineering 
+Fracture Mechanics  262, no. May 2020 (2022): 108234, https://  doi. org/ 
+10. 1016/j. engfr acmech. 2022. 108234.
+8. O. Gültekin, H. Dal, and G. A. Holzapfel, “A Phase-  Field Approach to 
+Model Fracture of Arterial Walls: Theory and Finite Element Analysis,” 
+Computer Methods in Applied Mechanics and Engineering 312 (2016): 
+542–566, https:// doi. org/ 10. 1016/j. cma. 2016. 04. 007.
+9. O. Gültekin, M. J. Lohr, G. N. Bechtel, and M. K. Rausch, “‘What 
+Makes Blood Clots Break Off?’ A Back-  of- the- Envelope Computation 
+Toward Explaining Clot Embolization,” Cardiovascular Engineering 
+and Technology 15 (2024): 584–593, https:// doi. org/ 10. 1007/ s1323 9-  024-  
+00733 -  2.
+10. A. Raina and C. Miehe, “A Phase- Field Model for Fracture in Biolog-
+ical Tissues,” Biomechanics and Modeling in Mechanobiology  15, no. 3 
+(2016): 479–496, https:// doi. org/ 10. 1007/ s1023 7-  015-  0702-  0.
+11. J. H. Song, H. Wang, and T. Belytschko, “A Comparative Study on Fi-
+nite Element Methods for Dynamic Fracture,” Computational Mechan -
+ics 42, no. 2 (2008): 239–250, https:// doi. org/ 10. 1007/ s0046 6-  007-  0210-  x.
+12. P. Thamburaja, K. Sarah, A. Srinivasa, and J. N. Reddy, “Fracture 
+of Viscoelastic Materials: FEM Implementation of a Non-  Local & Rate 
+Form- Based Finite-  Deformation Constitutive Theory,” Computer Meth -
+ods in Applied Mechanics and Engineering 354 (2019): 871–903, https://  
+doi. org/ 10. 1016/j. cma. 2019. 05. 032.
+13. S. A. Silling, “Reformulation of Elasticity Theory for Discontinu -
+ities and Long-  Range Forces,” Journal of the Mechanics and Physics of 
+Solids 48, no. 1 (2000): 175–209, https:// doi. org/ 10. 1016/ S0022 -  5096(99) 
+00029  -  0.
+14. S. A. Silling, M. Epton, O. Weckner, J. Xu, and E. Askari, Peridy -
+namic States and Constitutive Modeling , vol. 88 (US Department of En -
+ergy Publications, 2007).
+15. F. Scabbia, M. Zaccariotto, and U. Galvanetto, “A General Ordinary 
+State- Based Peridynamic Formulation for Anisotropic Materials,” Com-
+puter Methods in Applied Mechanics and Engineering 427 (2024): 117059, 
+https:// doi. org/ 10. 1016/j. cma. 2024. 117059.
+16. T. L. Warren, S. A. Silling, A. Askari, O. Weckner, M. A. Epton, and 
+J. Xu, “A Non-  Ordinary State-  Based Peridynamic Method to Model 
+Solid Material Deformation and Fracture,” International Journal of Sol-
+ids and Structures 46, no. 5 (2009): 1186–1195, https://  doi. org/ 10. 1016/j. 
+ijsol str. 2008. 10. 029.
+17. D. Behera, P. Roy, and E. Madenci, “Peridynamic Correspondence 
+Model for Finite Elastic Deformation and Rupture in Neo-  Hookean 
+Materials,” International Journal of Non-  Linear Mechanics 126 (2020): 
+103564, https:// doi. org/ 10. 1016/j. ijnon linmec. 2020. 103564.
+18. Y. K. Galadima, S. Oterkus, E. Oterkus, I. Amin, A. H. El-  Aassar, 
+and H. Shawky, “Modelling of Viscoelastic Materials Using Non- 
+Ordinary State-  Based Peridynamics,” Engineering With Computers  40, 
+no. 1 (2024): 527–540, https:// doi. org/ 10. 1007/ s0036 6-  023-  01808 -  9.
+19. V. Kannojiya, S. E. Almasy, J. L. Monclova, J. Contreras, F. Costanzo, 
+and K. B. Manning, “Characterizing Thrombus Adhesion Strength on 
+Common Cardiovascular Device Materials,” Frontiers in Bioengineering 
+and Biotechnology  12 (2024): 1–17, https:// doi. org/ 10. 3389/ fbioe. 2024. 
+1438359.
+20. A. Yaghoobi and M. G. Chorzepa, “Higher-  Order Approximation to 
+Suppress the Zero-  Energy Mode in Non-  Ordinary State-  Based Peridy -
+namics,” Computers and Structures  188 (2017): 63–79, https:// doi. org/ 10. 
+1016/j. comps truc. 2017. 03. 019.
+21. P. Li, Z. M. Hao, and W. Q. Zhen, “A Stabilized Non-  Ordinary State- 
+Based Peridynamic Model,” Computer Methods in Applied Mechanics 
+and Engineering  339 (2018): 262–280, https://  doi. org/ 10. 1016/j. cma. 
+2018. 05. 002.
+22. M. Zhang, E. Yang, C. Nie, J. Zeng, F. Tian, and L. Li, “An Ex -
+tended Ordinary State-  Based Peridynamic Model for Nonlinear De -
+formation and Fracture,” Computer Methods in Applied Mechanics 
+and Engineering  412 (2023): 116100, https://  doi. org/ 10. 1016/j. cma. 
+2023.  116100.
+23. M. R. Tupek, J. J. Rimoli, and R. Radovitzky, “An Approach for In -
+corporating Classical Continuum Damage Models in State-  Based Per -
+idynamics,” Computer Methods in Applied Mechanics and Engineering 
+263 (2013): 20–26, https:// doi. org/ 10. 1016/j. cma. 2013. 04. 012.
+24. S. A. Silling and R. B. Lehoucq, “Peridynamic Theory of Solid Me -
+chanics,” Advances in Applied Mechanics 44 (2010): 73–168.
+25. J. C. Simo and R. L. Taylor, “Quasi-  Incompressible Finite Elasticity 
+in Principal Stretches. Continuum Basis and Numerical Algorithms,” 
+Computer Methods in Applied Mechanics and Engineering 85, no. 3 
+(1991): 273–310, https:// doi. org/ 10. 1016/ 0045-  7825(91) 90100 -  K.
+26. S. J. Connolly, D. Mackenzie, and Y. Gorash, “Isotropic Hyperelas -
+ticity in Principal Stretches: Explicit Elasticity Tensors and Numerical 
+Implementation,” Computational Mechanics  64, no. 5 (2019): 1273–
+1288, https:// doi. org/ 10. 1007/ s0046 6-  019-  01707 -  1.
+27. J. C. Simo and T. J. R. Hughes, Computational Inelasticity. 7 of Inter -
+disciplinary Applied Mathematics (Springer, 1998).
+28. J. H. Wilkinson and C. Reinsch, Handbook for Automatic Computa -
+tion (Springer, 1971).
+29. F. Bobaru and Y. D. Ha, “Adaptive Refinement and Multiscale Mod -
+eling in 2D Peridynamics,” International Journal for Multiscale Com -
+putational Engineering  9, no. 6 (2011): 635–659, https:// doi. org/ 10. 1615/ 
+IntJM ultCo mpEng. 20110 02793 .
+30. F. Scabbia, M. Zaccariotto, and U. Galvanetto, “Accurate Computa -
+tion of Partial Volumes in 3D Peridynamics,” Engineering With Comput -
+ers 39 (2023): 959–991.
+31. A. Yaghoobi and M. G. Chorzepa, “Formulation of Symmetry 
+Boundary Modeling in Non-  Ordinary State-  Based Peridynamics and 
+ 20407947, 2025, 11, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/cnm.70118 by Universitat Bern, Wiley Online Library on [15/10/2026]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+
+--- PAGE 18 ---
+18 of 18
+ International Journal for Numerical Methods in Biomedical Engineering, 2025
+Coupling With Finite Element Analysis,” Mathematics and Mechan -
+ics of Solids 23, no. 8 (2018): 1156–1176, https://  doi. org/ 10. 1177/ 10812 
+86517 711495.
+32. Q. V. Le and F. Bobaru, “Surface Corrections for Peridynamic Mod -
+els in Elasticity and Fracture,” Computational Mechanics  61, no. 4 
+(2018): 499–518, https:// doi. org/ 10. 1007/ s0046 6-  017-  1469-  1.
+33. S. A. Silling and E. Askari, “A Meshfree Method Based on the Per -
+idynamic Model of Solid Mechanics,” Computers and Structures  83, 
+no. 17–18 (2005): 1526–1535, https://  doi. org/ 10. 1016/j. comps truc. 2004. 
+11. 026.
+34. B. Wang, S. Oterkus, and E. Oterkus, “Determination of Horizon 
+Size in State-  Based Peridynamics,” Continuum Mechanics and Thermo -
+dynamics 35, no. 3 (2023): 705–728, https:// doi. org/ 10. 1007/ s0016 1-  020-  
+00896  -  y.
+35. F. Bobaru and W. Hu, “The Meaning, Selection, and Use of the Peri -
+dynamic Horizon and Its Relation to Crack Branching in Brittle Materi -
+als,” International Journal of Fracture 176, no. 2 (2012): 215–222, https:// 
+doi. org/ 10. 1007/ s1070 4-  012-  9725-  z.
+36. S. A. Silling and R. B. Lehoucq, “Convergence of Peridynamics to 
+Classical Elasticity Theory,” Journal of Elasticity 93, no. 1 (2008): 13–37, 
+https:// doi. org/ 10. 1007/ s1065 9-  008-  9163-  3.
+37. S. F. Henke and S. Shanbhag, “Mesh Sensitivity in Peridynamic Sim -
+ulations,” Computer Physics Communications  185, no. 1 (2014): 181–193, 
+https:// doi. org/ 10. 1016/j. cpc. 2013. 09. 010.
+38. S. Liu, G. Bao, Z. Ma, C. J. Kastrup, and J. Li, “Fracture Mechanics of 
+Blood Clots: Measurements of Toughness and Critical Length Scales,” 
+Extreme Mechanics Letters 48 (2021): 101444, https://  doi. org/ 10. 1016/j. 
+eml. 2021. 101444.
+39. Y. D. Ha and F. Bobaru, “Studies of Dynamic Crack Propagation 
+and Crack Branching With Peridynamics,” International Journal of 
+Fracture 162, no. 1–2 (2010): 229–244, https://  doi. org/ 10. 1007/ s1070 
+4-  010-  9442-  4.
+40. O. Karpenko, S. Oterkus, and E. Oterkus, “An In-  Depth Investiga -
+tion of Critical Stretch Based Failure Criterion in Ordinary State-  Based 
+Peridynamics,” International Journal of Fracture 226, no. 1 (2020): 97–
+119, https:// doi. org/ 10. 1007/ s1070 4-  020-  00481 -  z.
+41. J. T. Foster, S. A. Silling, and W. Chen, “An Energy Based Failure 
+Criterion for Use With Peridynamic States,” International Journal for 
+Multiscale Computational Engineering  9, no. 6 (2011): 675–687, https://  
+doi. org/ 10. 1615/ IntJM ultCo mpEng. 20110 02407 .
+42. S. N. Butt and G. Meschke, “Peridynamic Analysis of Dynamic Frac -
+ture: Influence of Peridynamic Horizon, Dimensionality and Specimen 
+Size,” Computational Mechanics  67, no. 6 (2021): 1719–1745, https:// doi. 
+org/ 10. 1007/ s0046 6-  021-  02017 -  1.
+43. M. K. Rausch, G. P. Sugerman, S. Kakaletsis, and B. Dortdivan -
+lioglu, “Hyper-  Viscoelastic Damage Modeling of Whole Blood Clot 
+Under Large Deformation,” Biomechanics and Modeling in Mecha -
+nobiology  20, no. 5 (2021): 1645–1657, https://  doi. org/ 10. 1007/ s1023 
+7-  021-  01467 -  z.
+44. G. P. Sugerman, S. Kakaletsis, P. Thakkar, A. Chokshi, S. H. Parekh, 
+and M. K. Rausch, “A Whole Blood Thrombus Mimic: Constitutive Be -
+havior Under Simple Shear,” Journal of the Mechanical Behavior of Bio -
+medical Materials 115, no. September 2020 (2021): 104216, https://  doi. 
+org/ 10. 1016/j. jmbbm. 2020. 104216.
+45. G. Alkarithi, C. Duval, Y. Shi, F. L. Macrae, and R. A. Ariëns, 
+“Thrombus Structural Composition in Cardiovascular Disease,” Arte-
+riosclerosis, Thrombosis, and Vascular Biology  41, no. 9 (2021): 2370–
+2383, https:// doi. org/ 10. 1161/ ATVBA HA. 120. 315754.
+46. B. Fereidoonnezhad, A. Dwivedi, S. Johnson, R. McCarthy, and P. 
+McGarry, “Blood Clot Fracture Properties Are Dependent on Red Blood 
+Cell and Fibrin Content,” Acta Biomaterialia  127 (2021): 213–228, 
+https:// doi. org/ 10. 1016/j. actbio. 2021. 03. 052.
+47. A. Karmakar, G. W. Burgreen, G. Rydquist, and J. F. Antaki, “A 
+Homogenized Two-  Phase Computational Framework for Meso-  and 
+Macroscale Blood Flow Simulations,” Computer Methods and Programs 
+in Biomedicine  247 November 2023 (2024): 108090, https://  doi. org/ 10. 
+1016/j. cmpb. 2024. 108090.
+48. W. T. Wu, M. A. Jamiolkowski, W. R. Wagner, N. Aubry, M. Mas -
+soudi, and J. F. Antaki, “Multi-  Constituent Simulation of Thrombus 
+Deposition,” Scientific Reports  7 (2017): 1–16, https://  doi. org/ 10. 1038/ 
+srep4 2720.
+49. R. M. Rojano, A. Lai, M. Zhussupbekov, G. W. Burgreen, K. Cook, 
+and J. F. Antaki, “A Fibrin Enhanced Thrombosis Model for Medical 
+Devices Operating at Low Shear Regimes or Large Surface Areas,” PLoS 
+Computational Biology  18, no. 10 (2022): e1010277, https://  doi. org/ 10. 
+1371/ journ al. pcbi. 1010277.
+ 20407947, 2025, 11, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/cnm.70118 by Universitat Bern, Wiley Online Library on [15/10/2026]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License

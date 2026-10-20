@@ -1,0 +1,1329 @@
+--- /dev/null
++++ b/clot_clearance/analysis/clot_multifragment_breakup_v1/REPRODUCE.md
+@@ -0,0 +1,58 @@
++# CLOT_MULTIFRAGMENT_BREAKUP_V1
++
++This is an isolated extension of the latest accepted single-contact crushing implementation. It is not a new material calibration or validated bubble model. Do not rerun into an existing evidence directory.
++
++## Environment and immutable inputs
++
++Project root `/workspace/y_clot/project`; `source /workspace/y_clot/env.sh`. Use one rank and one thread (`OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1`). The task is `clot_multifragment_breakup_v1`, run `20261017T110849Z`.
++
++The baseline manifest checks all consumed historical states against the prior sealed delivery. The specimen is byte-copied from `verification/clot_multifragment_crushing_mechanism_v1/20261016T222934Z/provenance`. Its material, 1792 particles, 336 anchors, 95666 original bonds and 2736 original cuts remain unchanged. Historical `analysis/clot_multifragment_crushing_mechanism_v1/indenter.py`, `analysis/v3_softening_pilot_v1/native.py`, `analysis/softening_feasibility_v1/model.py` and `analysis/v3_chunk_fragmentation_mechanism_v1/graph_ops.py` are required, with exact hashes in the manifests.
++
++The isolated library is `verification/clot_multifragment_breakup_v1/20261017T110849Z/build/liblammps.so`. `build.py` compiles only the changed native force coordinator and reuses hash-verified previous objects. `BUILD_AUDIT.json` records compiler commands, object hashes and the new library hash. Prior libraries are untouched. To build on another machine, restore the recorded previous source/build dependency chain first; the small delivered source directory alone is not a standalone LAMMPS distribution.
++
++## Original execution order
++
++1. `prepare_baseline.py`: verify/read old evidence and freeze baseline. Refuses to overwrite.
++2. `offline_crack_bridge_audit.py`: bounded historical diagnostics only. The corrected heterogeneous onset field is required; the initial erroneous threshold comparison is retained as a bookkeeping correction.
++3. `multifragment_objective.py`, then `distributed_multisite_loading.py`: freeze independent objectives, external sites and both schedules before either trajectory. Refuse to overwrite.
++4. `build.py`, `check_multisite.py`: isolated coordinator and direct interface checks. The documented failed stationary-center-crossing fixture is retained; successful checks use a short, smooth contact-entry interval and do not alter formal kinematics.
++5. `manage.py simultaneous`, then after completion `manage.py staggered`: isolated foreground Supervisor jobs. Existing case histories/configurations are protected; do not invoke these against a completed run.
++
++For an explicitly requested reproduction, create a new run identifier and output directory, preserve the same frozen specimen, objective, sites and schedule, and point the isolated library path there. Do not overwrite this run or silently retune parameters. The published two formal cases are the entire authorized computation for this task.
++
++For direct invocation in the correctly isolated environment:
++
++```bash
++source /workspace/y_clot/env.sh
++export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
++export LD_LIBRARY_PATH=/workspace/y_clot/project/verification/clot_multifragment_breakup_v1/20261017T110849Z/build:${LD_LIBRARY_PATH:-}
++cd /workspace/y_clot/project
++python analysis/clot_multifragment_breakup_v1/run_multifragment_cases.py --name simultaneous
++```
++
++This command intentionally refuses to overwrite the already completed simultaneous history.
++
++## Read-only reduction and validation
++
++After both cases complete, these commands reconstruct analysis from actual saved states; they do not perform a new dynamics run:
++
++```bash
++python analysis/clot_multifragment_breakup_v1/fragment_topology_analysis.py
++python analysis/clot_multifragment_breakup_v1/validate_outputs.py
++python analysis/clot_multifragment_breakup_v1/figures.py
++python analysis/clot_multifragment_breakup_v1/report.py
++```
++
++Re-running these writes derived artifacts and invalidates an existing delivery manifest; use a copied output directory if preserving the sealed delivery. Analysis reuses the prior reviewed failed-edge lineage/local-affine functions by AST extraction, without importing old run constants. Pinned cuts are diagnostics only and never fed back into dynamics. `validate_outputs.py` replays original-ID irreversible damage, recomputes topology whenever a full failure occurs, compares every accepted component membership, and checks source immutability, actual contact, key-state shape and energy bookkeeping. It does not repeat unrelated material/MPI/restart suites.
++
++In this execution, the first completed trajectory was validated while the second frozen case ran: `validate_outputs.py --case simultaneous`, then `--case staggered`. Each proof records the validator hash and every consumed raw-evidence hash. The second invocation combines the two unchanged proofs; the combined status is PASS only when both cases are validated. A PARTIAL_ONE_CASE receipt is not a complete delivery. Postprocessing scripts can be finished after a trajectory starts; the formal runtime sources and frozen input protocols remain byte-identical, and any changed nonruntime files are disclosed in the proof.
++
++The driver uses 0.25 µs base dt, a 0.03125 µs predictive damage subdivision floor, Δd≤0.1 and 1% normalized energy residual admission. A 1e−14 s end-time roundoff guard avoids a physically negligible extra terminal step; actual times are retained. Work uses accepted piecewise-linear particle/actuator paths and contact-entry/exit quadrature. Recorded 4-vs-8 point errors and ledger residuals bound the observed numerical error, not arbitrary long sphere-center-crossing paths.
++
++## Delivery
++
++The WSL-only `update_wsl_document.py` requires validated results, preserves all prior `clot_rupture.md` bytes, and writes before/after hashes plus a unified diff. Run it once after syncing the derived results, then sync its receipt and document backups to the isolated server evidence directory.
++
++`seal.py` requires validation, a successful WSL update and both named Supervisor jobs EXITED. It records dependencies, environment, source diff and hashes. `local_readback.py` uses only the Python standard library to validate the selectively synchronized local delivery, HTML links, figures, 18 answers, 12 final status fields and the live WSL document hash.
++
++Sync source, necessary FP64 states, compressed damage/component histories, scalar CSV, logs, figures and manifests. Exclude reproducible build `.o` and `liblammps.so*`; retain their hashes and exact build audit on both machines. No GitHub push or unrelated large dataset transfer is part of this task.
+--- /dev/null
++++ b/clot_clearance/analysis/clot_multifragment_breakup_v1/build.py
+@@ -0,0 +1,21 @@
++from common import *
++import subprocess,time,difflib
++
++assert not LIB.exists()
++old=json.loads((B/'BUILD_AUDIT.json').read_text());objects=list(old['object_sha256'])
++assert sha(OLDLIB)==old['library_sha256']
++for p in objects:assert sha(p)==old['object_sha256'][p],p
++flags=old['commands'][0][:old['commands'][0].index('-c')];flags[1:1]=['-I'+str(A)]
++start=time.perf_counter();commands=[];source=A/'fix_lps_variational_dynamic.cpp';obj=O/'build/fix_lps_variational_dynamic.cpp.o'
++with (O/'build/build.log').open('w') as log:
++    cmd=flags+['-c',str(source),'-o',str(obj)];commands.append(cmd);subprocess.run(cmd,stdout=log,stderr=subprocess.STDOUT,check=True)
++    matches=[i for i,p in enumerate(objects) if Path(p).name==obj.name];assert len(matches)==1;objects[matches[0]]=str(obj)
++    response=O/'build/objects.rsp';response.write_text('\n'.join(objects)+'\n')
++    link=old['commands'][-1].copy();link[link.index('-o')+1]=str(O/'build/liblammps.so.0');link=[('@'+str(response)) if p.startswith('@') else p for p in link];commands.append(link)
++    subprocess.run(link,cwd=old['link_cwd'],stdout=log,stderr=subprocess.STDOUT,check=True)
++LIB.symlink_to('liblammps.so.0')
++assert sha(OLDLIB)==old['library_sha256']
++patch=''.join(difflib.unified_diff((HA/source.name).read_text().splitlines(True),source.read_text().splitlines(True),fromfile='accepted_single_indenter/'+source.name,tofile='multisite/'+source.name))
++(O/'NATIVE_SOURCE.diff').write_text(patch)
++dump(O/'BUILD_AUDIT.json',dict(status='PASS',library_sha256=sha(LIB),baseline_library_sha256=sha(OLDLIB),baseline_unchanged=True,compiled=[source.name],commands=commands,link_cwd=old['link_cwd'],object_sha256={p:sha(p) for p in objects},wall_s=time.perf_counter()-start,upstream_commit=old['upstream_commit'],source_sha256={p.name:sha(p) for p in [source,A/'fix_lps_variational_dynamic.h']},material_object_reused_unchanged=True,change_scope='Only admit two named fix-indent sources after physical force conversion. Coordinator layout, damage kernel, original-ID history and restart unchanged.'))
++print('ISOLATED_MULTISITE_BUILD_PASS',sha(LIB))
+--- /dev/null
++++ b/clot_clearance/analysis/clot_multifragment_breakup_v1/check_multisite.py
+@@ -0,0 +1,50 @@
++"""Only new multi-source force/work accounting and real-topology objective checks."""
++from common import *
++from native import native
++from distributed_multisite_loading import *
++from multifragment_objective import metrics,shape
++import time
++
++start=time.perf_counter();ref=load_npz(O/'provenance/reference.npz');n=int(ref['clot_count']);results={}
++for protocol in ['simultaneous','staggered']:
++    ns,C=native(O/'checks'/protocol,protocol);initial=ns.dynamics();contact=C(ref)
++    assert not initial['indenter_force'].any() and not initial['site_energies'].any() and not initial['site_reactions'].any()
++    x=ref['X'].copy();ids=[]
++    for site in ns.tool.sites:
++        idx=int(np.argmin(np.linalg.norm(x[:n]-site.config['surface_point_m'],axis=1)));ids.append(idx)
++        x[idx]=site.c0+site.direction*(site.radius-.1*DX)
++    both=ns.static(x);uc,fc,_=contact.evaluate(x,both['d']);actual=both['force']-both['material_force']-fc
++    force_error=float(np.max(abs(actual-both['site_forces'].sum(0))))
++    reaction_error=float(np.max(abs(both['site_reactions']+both['site_forces'].sum(1))))
++    energy_error=float(np.max(abs(both['site_energies']-both['site_energy_oracle'])))
++    assert force_error<1e-12 and reaction_error<1e-15 and energy_error<1e-20
++    assert np.all(np.sum(both['site_forces'][:,ids,:].sum(1)*np.array([q.direction for q in ns.tool.sites]),axis=1)>0)
++    independent=[];gradient_errors=[]
++    for j,site in enumerate(ns.tool.sites):
++        isolated=ref['X'].copy();isolated[ids[j]]=x[ids[j]];state=ns.static(isolated)
++        assert state['site_energies'][1-j]==0 and not state['site_reactions'][1-j].any()
++        independent.append(float(state['site_energies'][j]));epsilon=1e-9;energies=[]
++        for sign in [-1,1]:
++            shifted=x.copy();shifted[ids[j]]+=sign*epsilon*site.direction;energies.append(float(ns.static(shifted)['indenter_U']))
++        finite_difference=-(energies[1]-energies[0])/(2*epsilon);analytic=float(both['site_forces'][j,ids[j]]@site.direction);gradient_errors.append(abs(finite_difference-analytic))
++    assert abs(sum(independent)-both['indenter_U'])<1e-20 and max(gradient_errors)<1e-12
++    released=ns.static(ref['X']);assert not released['indenter_force'].any() and not released['site_energies'].any()
++    work=[];du=[]
++    for site in ns.tool.sites:
++        t0=site.delay+APPROACH;t1=t0+.0001
++        work.append(site.work(ref['X'],ref['X'],t0,t1,32));du.append(site.evaluate(ref['X'],t1)['U']-site.evaluate(ref['X'],t0)['U'])
++    work=np.array(work);du=np.array(du)
++    assert np.max(abs(work-du))<max(1e-18,float(abs(du).max())*1e-8)
++    assert np.array_equal(ns.field(13),S0[ref['bond_types']]) and np.array_equal(ns.field(3),ref['initial_cut'].astype(float))
++    assert ns.state()['native_bonds']==int(np.sum(~ref['initial_cut']))
++    results[protocol]=dict(status='PASS',native_contact_force_error_N=force_error,per_site_reaction_error_N=reaction_error,per_site_energy_error_J=energy_error,contact_gradient_errors_N=gradient_errors,stationary_material_per_site_work_error_J=abs(work-du),independent_site_additivity=True,unloaded_and_release_zero=True,uniform_onsets_and_original_precuts_unchanged=True)
++    ns.close()
++graph=module('objective_graph',R/'analysis/v3_chunk_fragmentation_mechanism_v1/graph_ops.py');actual={}
++for name in ['uniform','heterogeneous']:
++    state=load_npz(HISTORY/'cases'/name/'keys/final.npz');labels,sizes,attached=graph.topology(ref,state['d']);free=sizes[~attached];q=metrics(free,n)
++    assert free.sum()==(18 if name=='uniform' else 14) and q['fragment_count_target_band']==0 and q['fine_debris_mass_fraction_detached']==1
++    for label in np.flatnonzero(~attached):
++        ids=np.flatnonzero(labels==label);boundary,_=graph.boundary(ref,ids);assert not np.any(state['d'][boundary]<1);m=shape(state['x'][ids]);assert m['shape_class']=='UNRESOLVED_FINE_DEBRIS'
++    actual[name]=q
++dump(O/'KEY_CHECKS.json',dict(status='PASS',multisite=results,historical_real_topology_objective=actual,wall_s=time.perf_counter()-start,library_sha256=sha(LIB),scope='No constitutive/MPI/restart change or repeat matrix; new contact composition and actual-component metrics only'))
++print('KEY_MULTISITE_CHECKS_PASS',results)
+--- /dev/null
++++ b/clot_clearance/analysis/clot_multifragment_breakup_v1/common.py
+@@ -0,0 +1,34 @@
++"""Isolated multifragment breakup; accepted historical evidence is read-only."""
++from pathlib import Path
++import os,json,hashlib,importlib.util
++import numpy as np
++R=Path(os.environ.get('Y_CLOT_PROJECT_ROOT','/workspace/y_clot/project'))
++TASK='clot_multifragment_breakup_v1';RUN='20261017T110849Z'
++A=R/'analysis'/TASK;O=R/'verification'/TASK/RUN;F=R/'results'/TASK/RUN
++HISTORY=R/'verification/clot_multifragment_crushing_mechanism_v1/20261016T222934Z'
++HA=R/'analysis/clot_multifragment_crushing_mechanism_v1'
++BRACKETING=R/'verification/clot_mechanical_load_requirement_bracketing_v1/20261016T202533Z'
++B=HISTORY;OLDLIB=B/'build/liblammps.so';LIB=O/'build/liblammps.so'
++DX=50e-6; V=DX**3; RHO=1000.; G=940.; K=1e5/3; HORIZON=150.5e-6
++S0=np.array([0,.15,.140625,1.]); SC=np.array([0,.18,.16875,1.2]); BASE=.25e-6
++def sha(p):
++ h=hashlib.sha256()
++ with Path(p).open('rb') as f:
++  for b in iter(lambda:f.read(4*1024**2),b''):h.update(b)
++ return h.hexdigest()
++def cv(x):
++ if isinstance(x,np.ndarray):return x.tolist()
++ if isinstance(x,np.generic):return x.item()
++ if isinstance(x,Path):return str(x)
++ raise TypeError(type(x).__name__)
++def dump(p,z):
++ p=Path(p);p.parent.mkdir(parents=True,exist_ok=True);tmp=p.with_suffix(p.suffix+'.tmp')
++ tmp.write_text(json.dumps(z,ensure_ascii=False,indent=2,default=cv,allow_nan=False)+'\n');os.replace(tmp,p)
++def load_npz(p):
++ with np.load(p,allow_pickle=False) as z:return dict(z)
++def module(name,p):
++ spec=importlib.util.spec_from_file_location(name,p);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);return m
++def energy_model(ref):return module('frozen_energy',R/'analysis/softening_feasibility_v1/model.py').SofteningLPS(ref,K=K,G=G)
++
++MIN_H=BASE/8
++END=.0036
+--- /dev/null
++++ b/clot_clearance/analysis/clot_multifragment_breakup_v1/distributed_multisite_loading.py
+@@ -0,0 +1,62 @@
++"""Two native frictionless spherical contacts; independent work and reaction."""
++from common import *
++single=module('accepted_single_indenter',HA/'indenter.py')
++APPROACH=single.APPROACH;PEAK=single.PEAK;RETRACT=single.RETRACT;CLEAR=single.CLEAR
++GAP=single.GAP;DEPTH=single.DEPTH
++
++class Actuator(single.Indenter):
++    def __init__(self,ref,config,delay):
++        self.n=int(ref['clot_count']);self.N=len(ref['X']);self.config=config
++        self.c0=np.asarray(config['initial_center_m']);self.radius=config['radius_m'];self.k=config['penalty_K_N_m2'];self.direction=np.array(config['inward_normal']);self.delay=delay;self.id=config['fix_id']
++    def center(self,t):return self.c0+self.direction*single.displacement(t-self.delay)
++    def velocity(self,t):return self.direction*single.speed(t-self.delay)
++    def command(self):
++        def expr(a,b):
++            a+=self.delay;b+=self.delay
++            return f'((time>={b:.17g})+(time>{a:.17g})*(time<{b:.17g})*0.5*(1-cos(PI*(time-{a:.17g})/{b-a:.17g})))'
++        displacement=f'({GAP:.17g}*{expr(0,APPROACH)}+{DEPTH:.17g}*{expr(APPROACH,PEAK)}-{GAP+DEPTH:.17g}*{expr(RETRACT,CLEAR)})'
++        commands=[];position=[]
++        for axis,c,direction in zip('xyz',self.c0,self.direction):
++            if direction:
++                name=self.id+'_'+axis;commands.append(f'variable {name} equal "{c:.17g}+{direction:.17g}*{displacement}"');position.append('v_'+name)
++            else:position.append(f'{c:.17g}')
++        commands.append(f'fix {self.id} clot indent {self.k:.17g} sphere '+ ' '.join(position)+f' {self.radius:.17g} units box')
++        commands.append(f'fix_modify {self.id} energy no')
++        return '\n'.join(commands)
++
++class DistributedLoading:
++    def __init__(self,ref,case):
++        self.spec=json.loads((O/'LOAD_SITE_SELECTION.json').read_text());self.protocol=json.loads((O/'MULTISITE_LOADING_PROTOCOL.json').read_text())['cases'][case]
++        self.sites=[Actuator(ref,config,delay) for config,delay in zip(self.spec['sites'],self.protocol['delays_s'])]
++        self.clear_time=max(q.delay+CLEAR for q in self.sites)
++        self.boundaries=sorted(set([0.,END,.0028]+[delay+t for delay in self.protocol['delays_s'] for t in [0,APPROACH,PEAK,RETRACT,CLEAR]]))
++    def command(self):return '\n'.join(q.command() for q in self.sites)
++    def evaluate(self,x,t):
++        sites=[q.evaluate(x,t) for q in self.sites];forces=np.array([q['force'] for q in sites]);overlaps=np.array([q['overlap'] for q in sites]);energies=np.array([q['U'] for q in sites]);reactions=np.array([q['reaction'] for q in sites]);centers=np.array([q['center'] for q in sites]);velocities=np.array([q.velocity(t) for q in self.sites])
++        return dict(force=forces.sum(0),U=float(energies.sum()),reaction=reactions.sum(0),overlap=overlaps.max(0),contact_atom_ids=np.flatnonzero(overlaps.max(0)>0)+1,site_forces=forces,site_overlaps=overlaps,site_energies=energies,site_reactions=reactions,site_centers=centers,site_velocities=velocities,site_contact_counts=np.sum(overlaps>0,axis=1))
++    def works(self,x0,x1,t0,t1,order=4):return np.array([q.work(x0,x1,t0,t1,order) for q in self.sites])
++    def work(self,x0,x1,t0,t1,order=4):return float(self.works(x0,x1,t0,t1,order).sum())
++    def phase(self,t):return 'POST_WITHDRAWAL' if t>=self.clear_time else 'MULTISITE_ACTIVE_PROTOCOL'
++
++def freeze():
++    import datetime
++    assert not (O/'LOAD_SITE_SELECTION.json').exists() and not (O/'MULTISITE_LOADING_PROTOCOL.json').exists()
++    audit=json.loads((O/'CRACK_BRIDGE_AUDIT.json').read_text());ref=load_npz(O/'provenance/reference.npz');n=int(ref['clot_count']);X=ref['X'][:n]
++    old=json.loads((HISTORY/'INDENTER_GEOMETRY.json').read_text());radius=old['radius_m'];penalty=old['penalty_K_N_m2']
++    # One horizon plus half a node spacing above/below the original notch.
++    zvalues=np.unique(X[:,2]);z=float(zvalues[np.argmin(abs(zvalues-(HORIZON+DX/2)))])
++    points=[np.array([X[:,0].min(),-1.5*DX,z]),np.array([X[:,0].max(),1.5*DX,-z])];normals=[np.array([1.,0.,0.]),np.array([-1.,0.,0.])]
++    sites=[]
++    for i,(point,direction) in enumerate(zip(points,normals)):
++        assert np.linalg.norm(X-point,axis=1).min()<1e-14
++        center=point-direction*(radius+GAP);initial_gap=np.linalg.norm(X-center,axis=1).min()-radius;assert initial_gap>=GAP-1e-14
++        sites.append(dict(fix_id='indenter'+str(i),surface_point_m=point,initial_center_m=center,inward_normal=direction,radius_m=radius,penalty_K_N_m2=penalty,initial_gap_m=initial_gap,mechanism='Offset radial normal contact, frictionless; not prescribed shear traction',rationale='Upper left notch lip and lower right surviving ligament form an opening/bending couple across the original notch; Y offsets break exact mirror symmetry without a friction law'))
++    separation=float(np.linalg.norm(points[1]-points[0]));cs=np.sqrt(G/RHO);wave_time=separation/cs;delay=round(.5*wave_time/(50e-6))*50e-6;assert abs(delay-.0004)<1e-14
++    min_x_distance=points[1][0]-points[0][0]+2*radius-2*DEPTH;min_distance=float(np.sqrt(min_x_distance**2+(points[1][1]-points[0][1])**2+(points[1][2]-points[0][2])**2));assert min_distance>2*radius
++    final=audit['cases']['uniform']['final']['regions'][0]
++    dump(O/'LOAD_SITE_SELECTION.json',dict(status='FROZEN',utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),sites=sites,surface_site_separation_m=separation,separation_over_horizon=separation/HORIZON,minimum_sphere_center_separation_bound_m=min_distance,actor_overlap_impossible_for_frozen_paths=True,selection_evidence=dict(audit_sha256=sha(O/'CRACK_BRIDGE_AUDIT.json'),upper_flap_surviving_bridges=final['surviving_crossing_bonds'],long_bridges=final['long_bonds_ge_2dx'],right_of_notch_tip=final['right_of_notch_tip'],selection='External side faces bracketing the residual notch ligament; centers offset by one horizon plus half spacing in Z, 1.5 spacing in Y. No interior load source, no chosen bond failures.'),historical_radius_and_penalty_source=str(HISTORY/'INDENTER_GEOMETRY.json'),historical_geometry_sha256=sha(HISTORY/'INDENTER_GEOMETRY.json')))
++    cases={name:dict(delays_s=offsets,clear_time_s=CLEAR+max(offsets)) for name,offsets in [('simultaneous',[0.,0.]),('staggered',[0.,delay])]}
++    dump(O/'MULTISITE_LOADING_PROTOCOL.json',dict(status='FROZEN',label='MULTISITE_MECHANICAL_SURROGATE',cases=cases,approach_s=APPROACH,peak_s=PEAK,retract_start_s=RETRACT,return_s=CLEAR,initial_gap_m=GAP,normal_depth_m=DEPTH,delay_rationale=dict(shear_speed_m_s=cs,site_separation_shear_travel_s=wave_time,chosen_delay_s=delay,rule='Half estimated site-to-site shear travel time rounded to 50 us; frozen before any formal trajectory'),end_s=END,common_cohort_time_s=.0028,numerics=dict(base_dt_s=BASE,predictive_subdivision_floor_s=MIN_H,max_damage_increment=.1,relative_energy_gate=.01,numerical_damping=0),comparison='Same sites, material, trajectories and end time; only onset timing differs. Not equal work. Post-return observation and actual no-contact windows reported separately.'))
++    print('LOAD_SITES_FROZEN',[(q['surface_point_m']*1e6).tolist() for q in sites],'delay_ms',delay*1e3)
++
++if __name__=='__main__':freeze()
+--- /dev/null
++++ b/clot_clearance/analysis/clot_multifragment_breakup_v1/figures.py
+@@ -0,0 +1,177 @@
++"""Scientific figures from actual accepted coordinates and original topology."""
++from fragment_topology_analysis import *
++import matplotlib
++matplotlib.use('Agg')
++import matplotlib.pyplot as plt
++from matplotlib.lines import Line2D
++from mpl_toolkits.mplot3d.art3d import Line3DCollection
++plt.rcParams.update({'font.size':15,'axes.titlesize':17,'axes.labelsize':16,'legend.fontsize':12,'figure.facecolor':'white','savefig.facecolor':'white','svg.fonttype':'none','axes.grid':True,'grid.color':'#65717f','grid.alpha':.6})
++ref=load_npz(O/'provenance/reference.npz');X=ref['X'];b=ref['bonds'];n=int(ref['clot_count']);names=['simultaneous','staggered'];titles=['SIMULTANEOUS','STAGGERED'];colors=['#2a679b','#bc5738'];results=read(O/'ANALYSIS.json');summaries={k:read(O/'cases'/k/'SUMMARY.json') for k in names};rows={k:histories(O/'cases'/k) for k in names};tools={k:DistributedLoading(ref,k) for k in names};figures=[]
++ROI=np.array([[-800,-450,-650],[800,450,650]])*1e-6
++registry={k:{int(cid):v for cid,v in read(O/'cases'/k/'COMPONENT_REGISTRY.json').items()} for k in names}
++member_ids={k:{tuple(v['atom_ids']):cid for cid,v in registry[k].items()} for k in names}
++def save(fig,name,caption):
++    fig.text(.99,.004,'MULTISITE_MECHANICAL_SURROGATE · exploratory discrete specimen',ha='right',fontsize=10,color='#53606c')
++    fig.savefig(F/(name+'.png'),dpi=230,bbox_inches='tight');fig.savefig(F/(name+'.svg'),bbox_inches='tight');plt.close(fig);figures.append(dict(name=name,caption=caption))
++def axis3(ax,roi=ROI):
++    ax.view_init(elev=16,azim=-63);ax.set(xlabel='X (µm)',ylabel='Y (µm)',zlabel='Z (µm)',xlim=roi[:,0]*1e6,ylim=roi[:,1]*1e6,zlim=roi[:,2]*1e6);ax.set_box_aspect(np.ptp(roi,axis=0));ax.tick_params(labelsize=11,pad=1)
++    for index,axis in enumerate([ax.xaxis,ax.yaxis,ax.zaxis]):
++        ticks=matplotlib.ticker.MaxNLocator(nbins=3 if index==1 else 4).tick_values(*(roi[:,index]*1e6))
++        axis.set_ticks(ticks[(ticks>=roi[0,index]*1e6)&(ticks<=roi[1,index]*1e6)])
++    for axis in [ax.xaxis,ax.yaxis,ax.zaxis]:axis.pane.set_facecolor((.95,.96,.98,.35));axis._axinfo['grid']['color']=(.3,.36,.43,.55)
++def sphere(ax,site,t,color):
++    c=site.center(t);u=np.linspace(0,2*np.pi,17);v=np.linspace(0,np.pi,11)
++    xx=c[0]+site.radius*np.outer(np.cos(u),np.sin(v));yy=c[1]+site.radius*np.outer(np.sin(u),np.sin(v));zz=c[2]+site.radius*np.outer(np.ones_like(u),np.cos(v))
++    ax.plot_wireframe(xx*1e6,yy*1e6,zz*1e6,color=color,linewidth=.55,alpha=.45)
++def point_colors(name,s):
++    lab,sizes,att=graph.topology(ref,s['d']);c=np.tile(matplotlib.colors.to_rgba('#adb3ba'),(n,1));ids=np.zeros(n,int)
++    for label in np.flatnonzero(~att):
++        nodes=np.flatnonzero(lab==label);cid=member_ids[name][tuple((nodes+1).tolist())];c[nodes]=plt.cm.turbo(cid/max(len(registry[name]),1));ids[nodes]=cid
++    return c,ids,lab,sizes,att
++def state3(ax,name,s,title,show_tools=True):
++    x=s['x'];c,ids,lab,sizes,att=point_colors(name,s);inside=np.all((x[:n]>=ROI[0])&(x[:n]<=ROI[1]),axis=1)
++    ax.scatter(*(x[:n][inside]*1e6).T,s=8,c=c[inside],depthshade=False);ax.scatter(*(x[n:]*1e6).T,s=5,c='#5e6670',depthshade=False)
++    live=np.flatnonzero((s['d']<1)&(ref['bond_types']==1));sample=live[::max(1,int(np.ceil(len(live)/500)))];edges=x[b[sample]];visible=np.all((edges>=ROI[0])&(edges<=ROI[1]),axis=(1,2));ax.add_collection3d(Line3DCollection(edges[visible]*1e6,colors='#606b77',linewidths=.3,alpha=.3))
++    # All surviving internal bonds of >=14-node free components, no shell.
++    for label in np.flatnonzero(~att & (sizes>=14)):
++        nodes=np.flatnonzero(lab==label);_,internal=graph.boundary(ref,nodes);internal=internal[s['d'][internal]<1]
++        ax.add_collection3d(Line3DCollection(x[b[internal]]*1e6,colors=[c[nodes[0]]],linewidths=.7,alpha=.65))
++        center=x[nodes].mean(0)
++        if np.all(center>=ROI[0]) and np.all(center<=ROI[1]):ax.text(*(center*1e6),f'ID {ids[nodes[0]]}',fontsize=11)
++    if show_tools:
++        for site,color in zip(tools[name].sites,colors):sphere(ax,site,float(s['time']),color)
++    axis3(ax);ax.set_title(f'{title}\n{float(s["time"])*1e3:.4f} ms',pad=5)
++    ax.text2D(.01,.92,f'Free {int(sizes[~att].sum())} nodes / {sum(~att)} components\nOutside ROI: {sum(~inside)}',transform=ax.transAxes,fontsize=11,bbox=dict(facecolor='white',edgecolor='none',alpha=.85))
++def series(ax,key,scale=1,ylabel=None):
++    for name,color,title in zip(names,colors,titles):ax.plot([q['time_s']*1e3 for q in rows[name]],[q[key]*scale if q[key] is not None else np.nan for q in rows[name]],color=color,label=title,lw=1.6)
++    ax.axvline(2.8,color='#606060',ls='--',lw=1);ax.set(xlabel='Time (ms)',ylabel=ylabel or key)
++    if key.startswith('N'):
++        ymax=max(q[key]*scale for name in names for q in rows[name]);ax.set_ylim(0,max(1,ymax*1.15));ax.yaxis.set_major_locator(matplotlib.ticker.MaxNLocator(integer=True,nbins=4))
++    elif 'fraction' in key:
++        values=[q[key]*scale for name in names for q in rows[name] if q[key] is not None];ax.set_ylim(0,max(1,max(values,default=0)*1.08))
++def main():
++    F.mkdir(parents=True,exist_ok=True)
++    fig=plt.figure(figsize=(18,9))
++    for j,(key,title) in enumerate([('initial','External sites and paths'),('site0_peak','Actual contact at maximum indentation')]):
++        ax=fig.add_subplot(1,2,j+1,projection='3d');s=load_npz(O/'cases/simultaneous/keys'/(key+'.npz'));state3(ax,'simultaneous',s,title)
++        if j==0:
++            cut=np.flatnonzero(ref['initial_cut'])[::18];ax.add_collection3d(Line3DCollection(X[b[cut]]*1e6,colors='#24262b',linewidths=.6,linestyles='--'))
++            for site,color in zip(tools['simultaneous'].sites,colors):
++                c=site.c0*1e6;v=site.direction*200;ax.quiver(*c,*v,color=color,arrow_length_ratio=.15,linewidth=2)
++        else:
++            for source,color in enumerate(colors):
++                forces=s['site_forces'][source];sel=np.flatnonzero(np.linalg.norm(forces,axis=1)>0);sel=sel[::max(1,int(np.ceil(len(sel)/18)))];vec=forces[sel]/2e-6*100
++                ax.quiver(*(s['x'][sel]*1e6).T,*vec.T,color=color,arrow_length_ratio=.22,linewidth=1.1)
++            ax.text2D(.02,.03,'Force scale: 2 µN = 100 µm arrow',transform=ax.transAxes,fontsize=11)
++    fig.suptitle('Two externally accessible, offset, frictionless normal contacts',y=.99);fig.subplots_adjust(wspace=.03)
++    save(fig,'Fig01_sites_and_actual_contact','Left: original specimen, anchors, sampled original precuts and imposed path arrows. Right: actual accepted state and per-node contact forces (at most 18 arrows per source, physical scale shown). No tangential friction law; offset normal loading may produce mixed deformation. Attached points gray; free points colored by exact component ID.')
++    oldrows=histories(HISTORY/'cases/uniform');fig,axs=plt.subplots(2,2,figsize=(16,10))
++    axs[0,0].plot([q['time_s']*1e3 for q in oldrows],[q['indent_displacement_m']*1e6 for q in oldrows],color='#555555',ls=':',lw=2,label='Historical single: inward Z')
++    for name,color in zip(names,colors):
++        for j,ls in enumerate(['-','--']):axs[0,0].plot([q['time_s']*1e3 for q in rows[name]],[q[f'site{j}_displacement_m']*1e6 for q in rows[name]],color=color,ls=ls,label=f'{name}, source {j}')
++    axs[0,0].set(xlabel='Time (ms)',ylabel='Inward travel incl. gap (µm)',title='Prescribed timing; different historical geometry');axs[0,0].legend(fontsize=11)
++    for j,name in enumerate(names):
++        for source,color in enumerate(colors):axs[0,1].plot([q['time_s']*1e3 for q in rows[name]],[q[f'site{source}_contact_nodes'] for q in rows[name]],color=color,ls=['-','--'][j],label=f'{name}, source {source}')
++    axs[0,1].set(xlabel='Time (ms)',ylabel='Actual contact nodes');axs[0,1].legend(fontsize=11)
++    series(axs[1,0],'N20_200',ylabel='True 20–200-node components');series(axs[1,1],'W_J',1e9,'Actual total external work (nJ)');axs[1,0].legend();fig.tight_layout()
++    save(fig,'Fig02_historical_and_multisite_timing','A/B share sites and trajectories; B source 1 starts 0.4 ms later. The dotted historical single-source path is context, with a different contact position/direction. Equal travel does not imply equal force or work. Dashed vertical line marks the common 2.8 ms cohort, not guaranteed last contact.')
++    historical=module('historical_geometry',HA/'indenter.py');historical.O=HISTORY;oldtool=historical.Indenter(ref);fig=plt.figure(figsize=(21,8));geometry_roi=ROI.copy();geometry_roi[1,2]=850e-6
++    for j,label in enumerate(['Historical single','Simultaneous sites','Staggered sites']):
++        ax=fig.add_subplot(1,3,j+1,projection='3d');ax.scatter(*(X[:n]*1e6).T,s=6,c='#adb3ba');ax.scatter(*(X[n:]*1e6).T,s=5,c='#5e6670')
++        actors=[oldtool] if j==0 else tools[names[j-1]].sites
++        for k,site in enumerate(actors):
++            sphere(ax,site,0,colors[k]);start=site.center(0)*1e6;end=site.center(.0012 if j<2 or k==0 else .0016)*1e6;ax.quiver(*start,*(end-start),color=colors[k],arrow_length_ratio=.15,linewidth=2)
++        axis3(ax,geometry_roi);ax.set_title(label+'\n'+(['Single inward Z','Both start at 0 ms','Source 1 delayed 0.4 ms'][j]))
++    save(fig,'Fig02b_actual_loading_locations','Actual historical and frozen new external sphere centers and complete inward travel arrows on the same original geometry, physical ROI and camera. A/B sites are identical. Historical geometry is read from its accepted indenter implementation; it is not a same-geometry source-number control.')
++    after=read(O/'CRACK_BRIDGE_AFTER_LOADING.json')['cases'];before=read(O/'CRACK_BRIDGE_AUDIT.json')['cases'];fig=plt.figure(figsize=(21,9));bond_samples={}
++    for j,name in enumerate(['historical_single_uniform']+names):
++        path=HISTORY/'cases/uniform/keys/final.npz' if j==0 else O/'cases'/name/'keys/final.npz';s=load_npz(path);q=(before['uniform'] if j==0 else after[name])['final']['regions'][0]
++        ax=fig.add_subplot(1,3,j+1,projection='3d');ax.scatter(*(X[:n]*1e6).T,s=3,c='#c8cbd0',alpha=.22);ax.scatter(*(X[n:]*1e6).T,s=3,c='#66717d',alpha=.35)
++        failed=np.flatnonzero((s['d']==1)&~ref['initial_cut']&(ref['bond_types']==1));failed=failed[::max(1,int(np.ceil(len(failed)/1800)))];live=np.asarray(q['original_surviving_bond_ids'])-1;live=live[::max(1,int(np.ceil(len(live)/350)))];bond_samples[name]=dict(failed_original_bond_ids=failed+1,bridge_original_bond_ids=live+1)
++        ax.add_collection3d(Line3DCollection(X[b[failed]]*1e6,colors='#c44938',linewidths=.5,alpha=.5));ax.add_collection3d(Line3DCollection(X[b[live]]*1e6,colors='#2d719d',linewidths=.7,alpha=.7))
++        interface=np.flatnonzero((s['d']==1)&~ref['initial_cut']&(ref['bond_types']==2));bond_samples[name]['failed_interface_original_bond_ids']=interface+1
++        if len(interface):ax.add_collection3d(Line3DCollection(X[b[interface]]*1e6,colors='#9c3977',linewidths=1.2,alpha=.9))
++        path=q['off_midplane_anchor_path']
++        if path['found']:ax.plot(*(np.asarray(path['reference_coordinates_m'])*1e6).T,color='#16242c',linewidth=3,label='Live path to anchor')
++        axis3(ax,np.array([X.min(0)-DX,X.max(0)+DX]));ax.set_title(name.replace('_',' ')+'\n'+f"Upper-plane bridges: {q['surviving_crossing_bonds']}")
++    fig.legend(handles=[Line2D([0],[0],color='#c44938',label='Naturally failed bulk bonds (sample)'),Line2D([0],[0],color='#9c3977',label='Naturally failed interface bonds (all)'),Line2D([0],[0],color='#2d719d',label='Surviving cross-region bonds (sample)'),Line2D([0],[0],color='#16242c',lw=3,label='Full off-midplane live anchor path')],loc='lower center',bbox_to_anchor=(.5,.035),ncol=2);fig.suptitle('Final graph drawn at REFERENCE coordinates · no physical bond deletion');fig.subplots_adjust(wspace=.07,bottom=.16)
++    save(fig,'Fig03_failed_network_and_surviving_bridges','Final actual damage/topology on reference geometry for comparable bridge locations. Original bulk/interface identity is retained; all interface failures are displayed separately. The original notch is not counted as naturally failed. Displayed bulk/bridge samples only reduce clutter; all original IDs and full counts remain in the evidence. Black path stays outside |Y| ≤ 50 µm and proves surviving three-dimensional connectivity to anchors. Pinned graph cuts are diagnostics, not fracture energy.')
++    dump(F/'PLOTTED_BOND_SAMPLES.json',bond_samples)
++    fig=plt.figure(figsize=(16,8))
++    for j,name in enumerate(names):
++        ax=fig.add_subplot(1,2,j+1,projection='3d');ax.scatter(*(X[:n]*1e6).T,s=3,c='#c8cbd0',alpha=.25);births=read(O/'cases'/name/'CRACK_NETWORK_AUDIT.json')['births']
++        if births:
++            p=np.array([q['reference_centroid_m'] for q in births])*1e6;sc=ax.scatter(*p.T,c=[q['time_s']*1e3 for q in births],cmap='viridis',s=35,vmin=0,vmax=3.6,depthshade=False)
++        axis3(ax,np.array([X.min(0)-DX,X.max(0)+DX]));ax.set_title(f'{titles[j]}: {len(births)} failed-network births')
++    if births:fig.colorbar(sc,ax=fig.axes,shrink=.55,pad=.03,label='Birth time (ms)')
++    save(fig,'Fig03b_damage_nucleation_locations','Birth centroids use actual original bonds of new fully failed bulk networks, excluding precuts. A birth is a discrete failed-edge component event, not a resolved crack surface or a free fragment. Reference geometry is explicitly used.')
++    keys=[('initial','Initial'),('first_softening','First softening'),('first_failure','First full failure'),('first_multinode','First ≥2-node free component'),('max_multifragment','Highest frozen objective tuple'),('final','Final accepted state')]
++    for name,title in zip(names,titles):
++        fig=plt.figure(figsize=(21,15))
++        for j,(key,label) in enumerate(keys):
++            ax=fig.add_subplot(2,3,j+1,projection='3d');p=O/'cases'/name/'keys'/(key+'.npz')
++            if p.exists():
++                s=load_npz(p);state3(ax,name,s,label)
++                if key in ['first_softening','first_failure']:
++                    ids=np.asarray(summaries[name]['events'][key]['original_bond_ids'])-1;points=s['x'][b[ids]].mean(1)*1e6;ax.scatter(*points.T,marker='*',s=100,c='black',depthshade=False)
++            else:ax.set_axis_off();ax.text2D(.1,.5,label+'\nNOT OBSERVED',transform=ax.transAxes,fontsize=18)
++        fig.suptitle(title+' · actual accepted displacement ×1 · common ROI and camera');fig.subplots_adjust(hspace=.28,wspace=.06)
++        save(fig,'Fig04_'+name+'_evolution','Actual accepted FP64 states, displacement ×1, gray attached body and component-ID colors for detached points. Missing events are explicitly absent. All particles inside the fixed ROI are plotted; out-of-ROI counts are shown. A ≥2-node event can be unresolved debris. All internal live bonds are shown for ≥14-node free components, with no invented shell.')
++    fig,axs=plt.subplots(2,2,figsize=(17,11));labels=['1–2','3–13','14–33','34–113','114–200','≥201']
++    for j,(name,color) in enumerate(zip(names,colors)):
++        sizes=np.array([q['nodes'] for q in results[name]['final_components']]);count=[];mass=[]
++        for lo,hi in BINS:
++            v=sizes[(sizes>=lo)&((sizes<=hi) if hi else True)];count.append(len(v));mass.append(v.sum()*RHO*V*1e9)
++        axs[0,0].bar(np.arange(6)+(j-.5)*.36,count,width=.36,color=color,label=titles[j]);axs[0,1].bar(np.arange(6)+(j-.5)*.36,mass,width=.36,color=color)
++    for ax in axs[0]:ax.set_xticks(range(6),labels);ax.set_xlabel('Nodes per actual free component')
++    axs[0,0].set_ylabel('Final component count');axs[0,0].legend();axs[0,1].set_ylabel('Final detached mass (µg)');series(axs[1,0],'N20_200',ylabel='20–200-node component count');axs[1,0].axhline(5,c='black',ls=':',label='Exploratory target ≥5');axs[1,0].set_ylim(0,max(5.5,axs[1,0].get_ylim()[1]));axs[1,0].legend();series(axs[1,1],'mass_fraction_in_target_band',100,'Initial mass in target band (%)');fig.tight_layout()
++    save(fig,'Fig05_size_distributions','Six frozen size bins from actual free connected components. Volumes use node count × reference node volume, and equivalent diameters are in CSV/JSON. Bins are exploratory discretization categories, not medical particle classes. Zero bars are retained.')
++    fig,axs=plt.subplots(2,3,figsize=(20,10))
++    for ax,(key,scale,label,gate) in zip(axs.flat,[('N_ge20',1,'Free components ≥20 nodes',None),('N_ge34',1,'Free components ≥34 nodes',None),('N_ge114',1,'Free components ≥114 nodes',None),('total_detached_mass_fraction',100,'Detached / initial mass (%)',10),('largest_free_fragment_fraction_detached',100,'Largest / detached mass (%)',50),('fine_debris_mass_fraction_detached',100,'1–2-node / detached mass (%)',20)]):
++        series(ax,key,scale,label)
++        if gate is not None:ax.axhline(gate,c='black',ls=':',lw=1);ax.set_ylim(0,max(ax.get_ylim()[1],gate*1.1))
++    axs[0,0].legend();fig.tight_layout();save(fig,'Fig05b_independent_objective_constraints','Independent size, mass, dominance and fine-debris metrics; no weighted total masks failure. Undefined fractions before detachment are gaps. Dotted thresholds are frozen exploratory constraints; common cohort time 2.8 ms is dashed.')
++    fig=plt.figure(figsize=(18,8))
++    for j,name in enumerate(names):
++        ax=fig.add_subplot(1,2,j+1,projection='3d');s=load_npz(O/'cases'/name/'keys/final.npz');state3(ax,name,s,titles[j]+' · final component identities',False)
++    save(fig,'Fig06_fragment_ID_spatial_view','Exact member IDs define free components, colored consistently within each case across the evolution panels. Attached material remains neutral gray. Component IDs are labeled for ≥14-node groups; all component memberships are available in registry and history. Camera clipping is counted, not hidden.')
++    fig,axs=plt.subplots(1,2,figsize=(17,8))
++    for ax,name,title in zip(axs,names,titles):
++        s=load_npz(O/'cases'/name/'keys/final.npz');c,_,_,_,_=point_colors(name,s);ax.scatter(s['x'][:n,0]*1e3,s['x'][:n,2]*1e3,s=8,c=c);ax.scatter(s['x'][n:,0]*1e3,s['x'][n:,2]*1e3,s=5,c='#5e6670');ax.set(xlabel='X (mm)',ylabel='Z (mm)',title=title+' · all final points');ax.set_aspect('equal',adjustable='box')
++    fig.tight_layout();save(fig,'Fig06b_full_extent','All final points, without the 3D ROI clipping, in X–Z projection. Colors use exact surviving-component identity; overlap in projection does not merge fragments.')
++    fig,axs=plt.subplots(2,2,figsize=(18,11))
++    for j,name in enumerate(names):
++        fragments=read(O/'cases'/name/'FRAGMENT_HISTORY.json')['fragments'];trace=read(O/'cases'/name/'FRAGMENT_TRACE.json');reg=registry[name];selected=[q for q in fragments if q['nodes']>=2];lifetimes={q['fragment_id']:q for q in fragments}
++        for q in selected:
++            axs[0,j].plot([q['birth_time_s']*1e3,q['last_observed_s']*1e3],[q['nodes']]*2,c=colors[j],lw=1.2);axs[0,j].scatter(q['birth_time_s']*1e3,q['nodes'],s=22,c=colors[j])
++        for e in summaries[name]['secondary_events']:
++            parent=reg[e['parent_component_id']]
++            for child in e['children_component_ids']:axs[0,j].plot([lifetimes[e['parent_component_id']]['last_observed_s']*1e3,e['time_s']*1e3],[parent['nodes'],reg[child]['nodes']],c='#555555',lw=.8)
++        axs[0,j].set(title=titles[j],xlabel='Birth / observation time (ms)',ylabel='Nodes per component',xlim=(0,3.6))
++        axs[0,j].yaxis.set_major_locator(matplotlib.ticker.MaxNLocator(integer=True,nbins=5))
++        if not selected:axs[0,j].text(.1,.5,'No ≥2-node free component observed',transform=axs[0,j].transAxes)
++        for cid in sorted(trace,key=lambda v:reg[int(v)]['nodes'],reverse=True)[:5]:
++            ts=trace[cid];axs[1,j].plot([q['time_s']*1e3 for q in ts],[q['internal_survival'] for q in ts],label=f'ID {cid}, n={reg[int(cid)]["nodes"]}')
++        if trace:axs[1,j].legend()
++        else:axs[1,j].text(.1,.5,'No multinode cohesion trace',transform=axs[1,j].transAxes)
++        axs[1,j].set(xlabel='Time (ms)',ylabel='Internal original bond survival',ylim=(-.04,1.04),xlim=(0,3.6))
++        for ax in axs[:,j]:ax.axvline(2.8,c='#666666',ls='--')
++    fig.tight_layout();save(fig,'Fig07_fragment_birth_split_and_cohesion','Exact original memberships define births and split ancestry. Lifelines are shown for all ≥2-node components; up to five largest have internal-cohesion traces. A two-node pair remains unresolved debris, even with 100% survival. Lifetimes are right-censored by the actual final time; the common 2.8 ms cohort is dashed.')
++    fig,axs=plt.subplots(4,2,figsize=(18,19))
++    for j,name in enumerate(names):
++        t=[q['time_s']*1e3 for q in rows[name]]
++        for source,color in enumerate(colors):
++            axs[0,j].plot(t,[q[f'site{source}_reaction_norm_N']*1e6 for q in rows[name]],c=color,label=f'Source {source}');axs[1,j].plot(t,[q[f'site{source}_W_J']*1e9 for q in rows[name]],c=color,label=f'Source {source}')
++        for key,label in [('W_J','W0+W1'),('U_J','Stored U'),('K_J','Kinetic K'),('D_J','Damage D'),('Uc_J','Particle contact'),('U_indenter_J','Tool contact')]:axs[2,j].plot(t,[q[key]*1e9 for q in rows[name]],label=label)
++        for key,label in [('R_J','Signed residual R'),('Jc_J','Contact activation Jc')]:axs[3,j].plot(t,[q[key]*1e9 for q in rows[name]],label=label)
++        for ax,ylabel in zip(axs[:,j],['Tool reaction norm (µN)','Per-source work (nJ)','Energy (nJ)','Ledger terms (nJ)']):ax.set(xlabel='Time (ms)',ylabel=ylabel);ax.legend(ncol=2);ax.axvline(tools[name].clear_time*1e3,c='#666666',ls='--')
++        axs[0,j].set_title(titles[j])
++    fig.tight_layout();save(fig,'Fig08_per_source_force_work_energy','Actual independent native source reactions and independently integrated work. W0+W1 = ΔU + ΔK + D + ΔUc − Jc + ΔUi + R; no damping. R is numerical accounting error, not dissipation. Dashed lines mark each protocol’s scheduled return; recontact remains possible.')
++    base='../../../verification/'+TASK+'/'+RUN+'/'
++    html='<!doctype html><meta charset="utf-8"><title>Clot multifragment breakup</title><style>body{font:18px sans-serif;max-width:1700px;margin:30px auto;background:#f3f5f7;color:#263445}section{background:white;padding:24px;margin:24px 0}img{width:100%}p{line-height:1.6}</style><h1>多区域加载与真实多块碎裂检验</h1><p>MULTISITE_MECHANICAL_SURROGATE · actual native accepted states · displacement ×1</p>'
++    html+='<p>'+' · '.join(f'<a href="{base+file}">{label}</a>' for file,label in [('REVIEW_CLOT_MULTIFRAGMENT_BREAKUP_V1.md','中文科研报告'),('FINAL_STATUS.json','最终状态'),('MULTIFRAGMENT_RESULTS.csv','多块指标'),('FRAGMENT_SIZE_DISTRIBUTIONS.csv','尺寸分布'),('SURVIVING_BRIDGE_BONDS_AFTER_LOADING.csv','实际残余桥接键')])+'</p>'
++    for q in figures:html+=f'<section><h2>{q["name"]}</h2><a href="{q["name"]}.svg"><img src="{q["name"]}.png"></a><p>{q["caption"]}</p></section>'
++    (F/'OPEN_RESULTS.html').write_text(html);(O/'OPEN_RESULTS.html').write_text(f'<!doctype html><meta http-equiv="refresh" content="0;url=../../../results/{TASK}/{RUN}/OPEN_RESULTS.html">')
++    dump(F/'FIGURE_MANIFEST.json',dict(figures=figures,actual_coordinate_scale=1,camera=dict(elev=16,azim=-63,ROI_m=ROI),reference_coordinate_exceptions=['Fig03_failed_network_and_surviving_bridges','Fig03b_damage_nucleation_locations']))
++    print('FIGURES_DONE',len(figures))
++if __name__=='__main__':main()
+--- baseline/fix_lps_variational_dynamic.cpp
++++ b/clot_clearance/analysis/clot_multifragment_breakup_v1/fix_lps_variational_dynamic.cpp
+@@ -39,16 +39,19 @@
+   if(material && material!=bond)
+     error->all(FLERR,"Cannot replace variational material during dynamic history");
+   if(!material){material=bond;material->attach_dynamic(true);}
+-  int nve_count=0,external_count=0,indent_count=0;bool converted=false;
++  int nve_count=0,external_count=0,indent_count=0,legacy_indent_count=0;bool converted=false;
+   for(auto *fix : modify->get_fix_list()) {
+     if(fix==this){converted=true;continue;}
+     if(std::strcmp(fix->style,"nve")==0){nve_count++;continue;}
+     if(std::strcmp(fix->style,"move")==0 || std::strcmp(fix->style,"property/atom")==0)continue;
+     if(std::strcmp(fix->style,"external")==0 && std::strcmp(fix->id,"v3forces")==0 && converted){external_count++;continue;}
+-    if(std::strcmp(fix->style,"indent")==0 && std::strcmp(fix->id,"indenter")==0 && converted){indent_count++;continue;}
++    if(std::strcmp(fix->style,"indent")==0 && converted) {
++      if(std::strcmp(fix->id,"indenter")==0){indent_count++;legacy_indent_count++;continue;}
++      if(std::strcmp(fix->id,"indenter0")==0 || std::strcmp(fix->id,"indenter1")==0){indent_count++;continue;}
++    }
+     error->all(FLERR,"Unadmitted fix or external force before physical SI conversion");
+   }
+-  if(indent_count>1 || (indent_count && external_count))error->all(FLERR,"One audited indenter, without external traction, is required");
++  if(indent_count>2 || (legacy_indent_count && indent_count>1) || (indent_count && external_count))error->all(FLERR,"At most two audited current-contact indenters, without external traction, are required");
+   if(external_count>1)error->all(FLERR,"V3 permits one audited external callback");
+   if(nve_count!=1)error->all(FLERR,"Variational dynamics requires one free-node fix nve");
+   const double mass=rho*material->physical_volume();
+--- /dev/null
++++ b/clot_clearance/analysis/clot_multifragment_breakup_v1/fragment_topology_analysis.py
+@@ -0,0 +1,190 @@
++"""Read-only reductions of accepted states; no topology or loading mutations."""
++from common import *
++from multifragment_objective import metrics,BINS,SPEC,shape
++from distributed_multisite_loading import DistributedLoading
++from offline_crack_bridge_audit import inspect,candidate_regions
++import ast,csv,gzip,time
++
++graph=module('result_graph',R/'analysis/v3_chunk_fragmentation_mechanism_v1/graph_ops.py')
++# Reuse the already reviewed failed-edge lineage and local deformation algorithms.
++_tree=ast.parse((HA/'analyze.py').read_text())
++_names={'histories','crack_audit','deformation'}
++exec(compile(ast.Module(body=[q for q in _tree.body if isinstance(q,ast.FunctionDef) and q.name in _names],type_ignores=[]),str(HA/'analyze.py'),'exec'))
++def read(p):return json.loads(Path(p).read_text())
++def csvout(path,rows,columns=None):
++    with Path(path).open('w') as f:
++        w=csv.DictWriter(f,fieldnames=columns or list(rows[0]));w.writeheader();w.writerows(rows)
++
++def all_material_failed_networks(case,ref):
++    """Inclusive failed-edge graph, with original bulk/interface types intact.
++
++    Fixed-anchor endpoints remain vertices, never remapped to material nodes.
++    This separate view complements the historical bulk-only lineage definition.
++    """
++    b=ref['bonds'];bt=ref['bond_types'];parent=np.arange(len(ref['X']));clusters={};births=[];merges=[];history=[];failed=set();peak=0
++    def root(i):
++        while parent[i]!=i:parent[i]=parent[parent[i]];i=parent[i]
++        return int(i)
++    def join(i,j):
++        a,c=root(i),root(j)
++        if a!=c:parent[max(a,c)]=min(a,c)
++    with gzip.open(case/'damage_events.jsonl.gz','rt') as f:
++        for line in f:
++            e=json.loads(line);ids=np.asarray(e['original_bond_ids'])-1;dam=np.asarray(e['d']);new=ids[(dam==1)&np.isin(bt[ids],[1,2])&~ref['initial_cut'][ids]]
++            if not len(new):continue
++            old={root(key):set(value) for key,value in clusters.items()}
++            for a,c in b[new]:join(int(a),int(c))
++            merged={}
++            for key,value in old.items():merged.setdefault(root(key),set()).update(value)
++            born={root(int(i)) for i in b[new].ravel()}-set(merged)
++            for key in sorted(born):
++                cid=len(births)+1;merged[key]={cid};group=np.asarray([i for i in new if root(int(b[i,0]))==key],int)
++                births.append(dict(cluster_id=cid,time_s=e['time_s'],step=e['step'],first_original_bond_ids=group+1,original_bond_types=bt[group],reference_centroid_m=ref['X'][b[group]].mean((0,1))))
++            for key,value in merged.items():
++                ancestors=[p for p in old if root(p)==key]
++                if len(ancestors)>1:merges.append(dict(time_s=e['time_s'],step=e['step'],n_merged_components=len(ancestors),original_nucleation_ids=sorted(value),new_bridge_original_bond_ids=[int(i+1) for i in new if root(int(b[i,0]))==key]))
++            clusters=merged;failed.update(new.tolist());peak=max(peak,len(clusters))
++            history.append(dict(time_s=e['time_s'],step=e['step'],separate_failed_material_networks=len(clusters),new_bulk_failures=int(np.sum(bt[new]==1)),new_interface_failures=int(np.sum(bt[new]==2)),new_original_bond_ids=new+1,original_bond_types=bt[new]))
++    ids=np.array(sorted(failed),int);edge=b[ids]
++    matrix=graph.coo_matrix((np.ones(2*len(edge)),(np.r_[edge[:,0],edge[:,1]],np.r_[edge[:,1],edge[:,0]])),shape=(len(ref['X']),len(ref['X']))).tocsr()
++    _,labels=graph.csgraph.connected_components(matrix,directed=False)
++    assert len(set(labels[np.unique(edge)].tolist()))==len(clusters)
++    return dict(definition='All naturally failed original bulk and interface bonds, shared original endpoints; fixed-anchor endpoints retained and labelled, initial precuts excluded. Contact never enters either graph. This inclusive graph supplements, not replaces, historical bulk-only birth counts.',n_births=len(births),n_merge_events=len(merges),max_simultaneous_networks=peak,final_networks=len(clusters),independent_final_graph_check='PASS',new_failed_bulk_bonds=int(np.sum(bt[ids]==1)),new_failed_interface_bonds=int(np.sum(bt[ids]==2)),births=births,merges=merges,history=history,original_failed_bond_ids=ids+1,original_failed_bond_types=bt[ids])
++
++def analyze_case(name,ref):
++    case=O/'cases'/name;summary=read(case/'SUMMARY.json');rows=histories(case)
++    registry={int(k):v for k,v in read(case/'COMPONENT_REGISTRY.json').items()}
++    final=load_npz(case/'keys'/('final.npz' if summary['status']=='COMPLETED' else 'last_accepted.npz'))
++    n=int(ref['clot_count']);lab,sizes,att=graph.topology(ref,final['d']);free=sizes[~att]
++    first={};last={};trace={};cohort=None;endhistory=None;max_counts={key:0 for key in ['N_ge2','N_ge14','N_ge20','N_ge34','N_ge114','N_ge200um','N_ge300um']}
++    with gzip.open(case/'CONNECTED_COMPONENT_HISTORY.jsonl.gz','rt') as stream:
++        for line in stream:
++            z=json.loads(line);t=z['time_s'];endhistory=z
++            if abs(t-SPEC['common_cohort_time_s'])<1e-13:cohort=z
++            for q in z['components']:
++                cid=q['component_id'];first.setdefault(cid,dict(time_s=t,**q));last[cid]=dict(time_s=t,**q)
++                if registry[cid]['nodes']>=2:
++                    # Full shape/coordinates remain in the compressed accepted
++                    # history. Avoid a second uncompressed copy for plotting.
++                    trace.setdefault(cid,[]).append(dict(time_s=t,**{key:q[key] for key in ['internal_survival','mean_internal_damage','internal_alive_bonds','internal_initial_bonds','internal_relative_kinetic_J','centroid_velocity_m_s','remaining_live_external_connections']}))
++    for key in max_counts:max_counts[key]=int(max(q[key] for q in rows))
++    stable=[];splits=summary['secondary_events'];split_by_parent={q['parent_component_id']:q for q in splits}
++    for cid,c in registry.items():
++        ids=np.asarray(c['atom_ids'])-1
++        same=bool(np.all(lab[ids]==lab[ids[0]]) and not att[lab[ids[0]]] and sizes[lab[ids[0]]]==len(ids))
++        lasttime=last[cid]['time_s'];split=split_by_parent.get(cid)
++        stable.append(dict(fragment_id=cid,**c,mass_kg=c['nodes']*RHO*V,
++            first_state=first[cid],last_state=last[cid],last_observed_s=lasttime,
++            observed_lifetime_s=lasttime-c['birth_time_s'],same_original_members_connected_at_final=same,
++            status='CONNECTED_THROUGH_OBSERVED_WINDOW' if same else 'SPLIT_WITHIN_OBSERVED_WINDOW',
++            secondary_split_history=split,split_time_bracket_s=[lasttime,split['time_s']] if split else None,
++            common_post_unload_observed_s=max(0,lasttime-max(c['birth_time_s'],SPEC['common_cohort_time_s'])),
++            lifetime_scope='Accepted-state observation, right-censored at final time; not permanent stability'))
++    stableids={q['fragment_id'] for q in stable if q['same_original_members_connected_at_final']}
++    cohort_ids=[q['component_id'] for q in cohort['components'] if 20<=registry[q['component_id']]['nodes']<=200] if cohort else []
++    cohort_metrics=metrics([registry[q['component_id']]['nodes'] for q in cohort['components']],n) if cohort else None
++    final_metrics=metrics(free,n)
++    criteria=dict(common_cohort=cohort_metrics['independent_criteria'] if cohort_metrics else None,
++        final=final_metrics['independent_criteria'],five_cohort_memberships_survive=sum(cid in stableids for cid in cohort_ids)>=5,
++        numerical_completion=summary['status']=='COMPLETED')
++    target=bool(cohort_metrics and cohort_metrics['instant_target'] and final_metrics['instant_target'] and criteria['five_cohort_memberships_survive'] and criteria['numerical_completion'])
++    finalcs=[dict(**registry[q['component_id']],**q,mass_kg=registry[q['component_id']]['nodes']*RHO*V) for q in endhistory['components']]
++    clear=DistributedLoading(ref,name).clear_time
++    contacts=[q for q in rows if q['contact_nodes']>0];lastcontact=contacts[-1]['time_s'] if contacts else None
++    contact_after=any(q['time_s']>=clear-1e-14 for q in contacts)
++    networks=crack_audit(case,ref);networks['all_material_including_interface']=all_material_failed_networks(case,ref);diagnostics={}
++    inclusive=networks['all_material_including_interface'];wanted=np.flatnonzero((final['d']==1)&~ref['initial_cut']&np.isin(ref['bond_types'],[1,2]))+1
++    assert np.array_equal(inclusive['original_failed_bond_ids'],wanted)
++    assert inclusive['new_failed_bulk_bonds']==rows[-1]['bulk_failed'] and inclusive['new_failed_interface_bonds']==rows[-1]['interface_failed']
++    centers=np.asarray([q['reference_centroid_m'] for q in networks['births']])
++    separation=float(np.linalg.norm(centers[:,None]-centers[None,:],axis=2).max()) if len(centers)>1 else 0.
++    for ev in ['first_softening','first_failure']:
++        if ev in summary['events']:
++            e=summary['events'][ev];state=load_npz(case/e['evidence']);diagnostics[ev]=dict(event=e,local_affine=deformation(ref,state,np.asarray(e['atom_ids']).ravel()-1))
++    # These labels describe the data, never replace the independent frozen gates.
++    classification=[]
++    if not rows[-1]['softened']:classification.append('NO_DAMAGE')
++    elif not free.sum():classification.append('DAMAGE_WITHOUT_DETACHMENT')
++    if free.sum() and final_metrics['fine_debris_mass_fraction_detached']>.2:
++        classification.append('SURFACE_EROSION' if free.sum()/n<.1 else 'DEBRIS_DOMINATED_DETACHMENT')
++    if final_metrics['fragment_count_target_band']>=2:classification.append('MULTIPLE_TARGET_BAND_COMPONENTS')
++    if free.sum() and final_metrics['largest_free_fragment_fraction_detached']>.5:classification.append('DOMINANT_FREE_COMPONENT')
++    if splits:classification.append('SECONDARY_FRAGMENTATION')
++    if summary['status']!='COMPLETED':classification.append('NUMERICALLY_UNRESOLVED')
++    if not classification:classification.append('DETACHMENT_WITHOUT_EXPLORATORY_TARGET')
++    result=dict(name=name,status=summary['status'],classification=classification,exploratory_target_met=target,
++        target_criteria=criteria,final=rows[-1],final_metrics=final_metrics,final_components=finalcs,
++        first_softening_s=summary['events'].get('first_softening',{}).get('time_s'),
++        first_failure_s=summary['events'].get('first_failure',{}).get('time_s'),
++        first_multinode_s=summary['events'].get('first_multinode',{}).get('time_s'),
++        history_max_N20_200=summary['max_medium_components'],history_max_free_nodes=summary['history_max_free_nodes'],
++        history_max_size_threshold_counts=max_counts,common_cohort_medium_ids=cohort_ids,
++        common_cohort_medium_surviving=sum(cid in stableids for cid in cohort_ids),common_cohort_metrics=cohort_metrics,
++        cohort_time_s=SPEC['common_cohort_time_s'],scheduled_return_s=clear,
++        contact_after_scheduled_return=contact_after,last_actual_contact_s=lastcontact,
++        actual_contact_free_tail_s=max(0,float(final['time'])-max(clear,lastcontact or 0)),
++        secondary_events=splits,secondary_after_common_cohort=sum(q['time_s']>=SPEC['common_cohort_time_s'] for q in splits),
++        crack_networks=dict(n_births=networks['n_births'],n_merges=networks['n_merge_events'],max_simultaneous=networks['max_simultaneous_networks'],max_birth_centroid_separation_m=separation,separated_birth_centroids_ge_horizon=separation>=HORIZON),
++        inclusive_failed_material_networks={key:networks['all_material_including_interface'][key] for key in ['n_births','n_merge_events','max_simultaneous_networks','new_failed_bulk_bonds','new_failed_interface_bonds']},
++        max_relative_energy_residual=summary['max_relative_energy_residual'],
++        peak_site_reactions_N=[max(q[f'site{j}_reaction_norm_N'] for q in rows) for j in range(2)],
++        max_site_overlap_dx=[max(q[f'site{j}_max_overlap_m'] for q in rows)/DX for j in range(2)],
++        source_sha256={p.name:sha(p) for p in [case/'SUMMARY.json',case/'history.csv',case/'CONNECTED_COMPONENT_HISTORY.jsonl.gz',case/'COMPONENT_REGISTRY.json']},
++        scope='Original surviving bulk/interface bonds and anchor reachability; contact excluded. Same prescribed kinematics, not equal work. Post-return does not imply contact-free until actual last contact.')
++    dump(case/'ANALYSIS.json',result);dump(case/'CRACK_NETWORK_AUDIT.json',networks)
++    dump(case/'LOCAL_DEFORMATION_AUDIT.json',diagnostics)
++    dump(case/'FRAGMENT_HISTORY.json',dict(fragments=stable,candidates_ge14=[q for q in stable if q['nodes']>=14],secondary_events=splits,common_cohort_ids=cohort_ids))
++    dump(case/'FRAGMENT_TRACE.json',trace)
++    return result,summary,rows,networks
++
++def main():
++    start=time.perf_counter();ref=load_npz(O/'provenance/reference.npz');results={};summaries={};hist={};networks={}
++    for name in ['simultaneous','staggered']:results[name],summaries[name],hist[name],networks[name]=analyze_case(name,ref)
++    records=[];distribution=[]
++    for name,result in results.items():
++        fm=result['final_metrics'];end=result['final']
++        records.append(dict(case=name,source='new_uniform_two_site',status=result['status'],final_time_s=end['time_s'],detached_nodes=int(end['detached_nodes']),largest_nodes=int(end['largest_nodes']),**{k:v for k,v in fm.items() if k!='independent_criteria'},history_max_N20_200=result['history_max_N20_200'],history_max_free_nodes=result['history_max_free_nodes'],target_met=result['exploratory_target_met'],W_J=end['W_J'],D_J=end['D_J'],K_J=end['K_J'],max_relative_R=result['max_relative_energy_residual']))
++        for phase,key in [('common_cohort','common_cohort'),('final','final')]:
++            state=load_npz(O/'cases'/name/'keys'/(key+'.npz'));_,sizes,att=graph.topology(ref,state['d']);free=sizes[~att]
++            for lo,hi in BINS:
++                values=free[(free>=lo)&((free<=hi) if hi else True)];count=int(values.sum())
++                distribution.append(dict(case=name,state=phase,time_s=float(state['time']),size_bin=f'{lo}-{hi}' if hi else f'{lo}+',component_count=len(values),material_nodes=count,mass_kg=count*RHO*V,mass_fraction_initial=count/int(ref['clot_count']),mass_fraction_detached=count/int(free.sum()) if free.sum() else None))
++    old=read(HISTORY/'cases/uniform/ANALYSIS.json');oldsum=read(HISTORY/'cases/uniform/SUMMARY.json');oldfinal=old['final'];oldstate=load_npz(HISTORY/'cases/uniform/keys/final.npz');_,ss,aa=graph.topology(ref,oldstate['d']);om=metrics(ss[~aa],int(ref['clot_count']))
++    records.append(dict(case='historical_single_uniform',source='read_only_historical_different_contact_geometry',status=old['status'],final_time_s=oldfinal['time_s'],detached_nodes=int(oldfinal['detached_nodes']),largest_nodes=int(oldfinal['largest_nodes']),**{k:v for k,v in om.items() if k!='independent_criteria'},history_max_N20_200=old['history_max_N20_200'],history_max_free_nodes=old['history_max_free_nodes'],target_met=False,W_J=oldfinal['W_J'],D_J=oldfinal['D_J'],K_J=oldfinal['K_J'],max_relative_R=old['max_relative_energy_residual']))
++    csvout(O/'MULTIFRAGMENT_RESULTS.csv',records);csvout(O/'FRAGMENT_SIZE_DISTRIBUTIONS.csv',distribution)
++    fragment_history={k:read(O/'cases'/k/'FRAGMENT_HISTORY.json') for k in results}
++    dump(O/'ANALYSIS.json',results);dump(O/'FRAGMENT_HISTORY.json',fragment_history)
++    measurements=[]
++    for name,history in fragment_history.items():
++        for q in history['fragments']:
++            last=q['last_state']
++            measurements.append(dict(case=name,fragment_id=q['fragment_id'],nodes=q['nodes'],birth_time_s=q['birth_time_s'],last_observed_s=q['last_observed_s'],observed_lifetime_s=q['observed_lifetime_s'],mass_kg=q['mass_kg'],reference_volume_m3=q['reference_volume_m3'],equivalent_diameter_m=q['equivalent_diameter_m'],internal_alive_bonds=last['internal_alive_bonds'],internal_bond_survival=last['internal_survival'],external_surviving_bonds=last['remaining_live_external_connections'],anchor_reachable=last['anchor_reachable'],shape_class=last['shape_class'],radius_gyration_m=last['radius_gyration_m'],span_x_m=last['actual_span_m'][0],span_y_m=last['actual_span_m'][1],span_z_m=last['actual_span_m'][2],principal_axes_json=json.dumps(last['principal_axes_columns']),principal_rms_lengths_json=json.dumps(last['principal_rms_lengths_m']),internal_edge_density_m3=last['internal_alive_edge_density_m3'],original_atom_ids=';'.join(map(str,q['atom_ids'])),connected_at_final=q['same_original_members_connected_at_final']))
++    if measurements:csvout(O/'FRAGMENT_MEASUREMENTS.csv',measurements)
++    dump(O/'DAMAGE_NETWORK_HISTORY.json',networks)
++    csvout(O/'NEW_DAMAGE_NETWORK_HISTORY.csv',[dict(case=k,**q) for k,v in networks.items() for q in v['history']])
++    csvout(O/'ALL_MATERIAL_DAMAGE_NETWORK_HISTORY.csv',[dict(case=k,**{field:q[field] for field in ['time_s','step','separate_failed_material_networks','new_bulk_failures','new_interface_failures']}) for k,v in networks.items() for q in v['all_material_including_interface']['history']])
++    historical_identity={}
++    for name in ['uniform','heterogeneous']:
++        p=HISTORY/'cases'/name/'keys/final.npz';state=load_npz(p);ids=np.flatnonzero((state['d']==1)&~ref['initial_cut']&np.isin(ref['bond_types'],[1,2]));interface=int(np.sum(ref['bond_types'][ids]==2));oldsummary=read(HISTORY/'cases'/name/'SUMMARY.json')
++        assert interface==oldsummary['last_row']['interface_failed']==0
++        historical_identity[name]=dict(source=str(p),source_sha256=sha(p),original_failed_bond_ids=ids+1,original_bond_types=ref['bond_types'][ids],interface_failed=interface,bulk_only_equals_all_naturally_failed_material_edges=True)
++    dump(O/'FAILURE_GRAPH_IDENTITY_AUDIT.json',dict(historical=historical_identity,new_cases={k:v['inclusive_failed_material_networks'] for k,v in results.items()},scope='Both historical cases have zero natural interface failures, so their bulk failed-edge graphs are already complete. New interface failures retain original identity in the inclusive graphs.'))
++    dump(O/'ENERGY_LEDGER.json',dict(identity='W0+W1 = Delta U_LPS + Delta K + D + Delta U_pair - J_pair_activation + Delta U_tools + R',no_damping=True,history_includes_independent_per_source_forces_and_work=True,normalization='abs(R)/running_max(abs(W),abs(Delta U_LPS)+K+D+U_pair+U_tools), gate 0.01; not normalized by final work',cases={k:dict(final=v['final'],peak_site_reactions_N=v['peak_site_reactions_N'],max_relative_R=v['max_relative_energy_residual']) for k,v in results.items()}))
++    after={};bridge_rows=[]
++    for name in results:
++        after[name]={}
++        for key in ['max_multifragment','final']:
++            p=O/'cases'/name/'keys'/(key+'.npz');s=load_npz(p);items=[]
++            for region in candidate_regions(ref):
++                info,rr=inspect(ref,s,region)
++                ids=np.asarray(region['original_atom_ids'])-1;_,inside=graph.boundary(ref,ids);inside=inside[(ref['bond_types'][inside]==1)&~ref['initial_cut'][inside]]
++                info.update(candidate_label='TETHERED_DIAGNOSTIC_REGION' if info['anchor_reachable_nodes'] else 'UNANCHORED_REGION_NOT_NECESSARILY_ONE_COMPONENT',internal_initial_bonds=len(inside),internal_alive_bonds=int(np.sum(s['d'][inside]<1)),mean_internal_damage=float(s['d'][inside].mean()) if len(inside) else None)
++                items.append(info);bridge_rows.extend(dict(case=name,state=key,time_s=float(s['time']),**q) for q in rr)
++            after[name][key]=dict(time_s=float(s['time']),source_sha256=sha(p),regions=items)
++    dump(O/'CRACK_BRIDGE_AFTER_LOADING.json',dict(cases=after,pinned_min_cut_calls=12,diagnostic_only=True));csvout(O/'SURVIVING_BRIDGE_BONDS_AFTER_LOADING.csv',bridge_rows)
++    resources=dict(cases={k:{q:v[q] for q in ['wall_s','cpu_s','peak_RSS_bytes','accepted_steps','predictive_substeps','predictive_rejections']} for k,v in summaries.items()},native_wall_s=sum(v['wall_s'] for v in summaries.values()),native_cpu_s=sum(v['cpu_s'] for v in summaries.values()),peak_RSS_bytes=max(v['peak_RSS_bytes'] for v in summaries.values()),rank_per_case=1,threads_per_case=1,new_formal_cases=2,additional_formal_cases=0,full_V3_runs=0,CFD_runs=0,offline_initial_wall_s=read(O/'CRACK_BRIDGE_AUDIT.json')['wall_s'],build_wall_s=read(O/'BUILD_AUDIT.json')['wall_s'],analysis_wall_s=time.perf_counter()-start,scope='Formal driver wall/CPU includes native stepping, per-step validation and output. Compilation/offline reduction separate; no imposed wall/RSS budget.')
++    resources['key_interface_check_wall_s']=read(O/'KEY_CHECKS.json')['wall_s']
++    resources['historical_physics_reruns']=0
++    dump(O/'RUN_RESOURCES.json',resources)
++    print('ANALYZED',[(k,v['final']['detached_nodes'],v['final_metrics']['fragment_count_target_band'],v['exploratory_target_met']) for k,v in results.items()])
++if __name__=='__main__':main()
+--- /dev/null
++++ b/clot_clearance/analysis/clot_multifragment_breakup_v1/local_readback.py
+@@ -0,0 +1,76 @@
++"""WSL standard-library readback of the sealed, selectively synchronized delivery."""
++from pathlib import Path
++import hashlib
++import json
++import os
++import re
++
++root = Path(__file__).resolve().parents[2]
++task = 'clot_multifragment_breakup_v1'
++run = '20261017T110849Z'
++out = root / 'verification' / task / run
++fig = root / 'results' / task / run
++
++
++def sha(path):
++    digest = hashlib.sha256()
++    with path.open('rb') as stream:
++        for data in iter(lambda: stream.read(4 * 1024**2), b''):
++            digest.update(data)
++    return digest.hexdigest()
++
++
++def read(path):
++    return json.loads(path.read_text())
++
++
++manifest = read(out / 'DELIVERY_MANIFEST.json')
++assert manifest['status'] == 'SEALED'
++for item in manifest['files']:
++    path = root / item['path']
++    assert path.is_file(), path
++    if item['kind'] == 'symlink':
++        assert path.is_symlink() and os.readlink(path) == item['target'], path
++        assert sha(path) == item['target_sha256'], path
++    else:
++        assert path.stat().st_size == item['bytes'], path
++        assert sha(path) == item['sha256'], path
++
++required = [
++    'BASELINE_MANIFEST.json', 'CRACK_BRIDGE_AUDIT.json', 'SURVIVING_BRIDGE_BONDS.csv',
++    'LOAD_SITE_SELECTION.json', 'MULTISITE_LOADING_PROTOCOL.json',
++    'MULTIFRAGMENT_OBJECTIVE_SPEC.json', 'MULTIFRAGMENT_RESULTS.csv',
++    'FRAGMENT_SIZE_DISTRIBUTIONS.csv', 'FRAGMENT_HISTORY.json', 'DAMAGE_NETWORK_HISTORY.json',
++    'ENERGY_LEDGER.json', 'RUN_RESOURCES.json', 'FINAL_STATUS.json',
++    'REVIEW_CLOT_MULTIFRAGMENT_BREAKUP_V1.md', 'REPRODUCE.md', 'OPEN_RESULTS.html',
++    'SOURCE_SHA256.json', 'SOURCE_DIFF.patch', 'ENVIRONMENT.json', 'DELIVERY_VALIDATION.json',
++    'WSL_DOCUMENT_UPDATE.json', 'CRACK_BRIDGE_AFTER_LOADING.json',
++]
++assert all((out / name).is_file() for name in required)
++assert read(out / 'DELIVERY_VALIDATION.json')['status'] == 'PASS'
++assert len(read(out / 'FINAL_STATUS.json')) == 12
++report = (out / 'REVIEW_CLOT_MULTIFRAGMENT_BREAKUP_V1.md').read_text()
++assert len(re.findall(r'^\d+\. \*\*', report, re.M)) == 18
++figures = read(fig / 'FIGURE_MANIFEST.json')['figures']
++assert len(figures) == 13
++for item in figures:
++    for extension in ['.png', '.svg']:
++        assert (fig / (item['name'] + extension)).is_file()
++links = re.findall(r'(?:href|src)="([^"]+)"', (fig / 'OPEN_RESULTS.html').read_text())
++for link in links:
++    assert not link.startswith(('http:', 'https:')), link
++    assert (fig / link).resolve().is_file(), link
++document = read(out / 'WSL_DOCUMENT_UPDATE.json')
++assert document['history_preserved_exactly'] and document['readback_equal']
++assert sha(Path(document['path'])) == document['after_sha256']
++receipt = dict(
++    status='PASS', root=str(root), checked_manifest_files=len(manifest['files']),
++    manifest_sha256=sha(out / 'DELIVERY_MANIFEST.json'),
++    checked_html_links=len(links), figure_pairs=len(figures), scientific_answers=18,
++    formal_cases=2, final_status_keys=12,
++    wsl_document_sha256=document['after_sha256'],
++    server_only_builds=manifest['server_only_builds'],
++    scope='Original trajectories and evidence synchronized; reproducible build binaries excluded.',
++)
++(out / 'LOCAL_READBACK.json').write_text(json.dumps(receipt, ensure_ascii=False, indent=2) + '\n')
++print('LOCAL_READBACK_PASS', len(manifest['files']), 'files;', len(figures), 'figure pairs')
+--- /dev/null
++++ b/clot_clearance/analysis/clot_multifragment_breakup_v1/manage.py
+@@ -0,0 +1,11 @@
++"""Launch only this round's named, foreground supervisor jobs."""
++from common import *
++import sys,subprocess,shlex
++mode=sys.argv[1];assert mode in ['simultaneous','staggered']
++if mode=='staggered':assert json.loads((O/'cases/simultaneous/SUMMARY.json').read_text())['status']=='COMPLETED'
++name='clot_breakup_'+mode+'_20261017';wrapper=A/('run_'+mode+'.sh')
++args=['python','-u',str(A/'run_multifragment_cases.py'),'--name',mode]
++wrapper.write_text('#!/bin/bash\nset -euo pipefail\nsource /workspace/y_clot/env.sh\nexport OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1\nexport LD_LIBRARY_PATH='+str(O/'build')+':${LD_LIBRARY_PATH:-}\ncd '+str(R)+'\nexec '+shlex.join(args)+'\n');wrapper.chmod(0o755)
++config=f'[program:{name}]\ncommand={wrapper}\nautostart=false\nautorestart=false\nstartsecs=0\nredirect_stderr=true\nstdout_logfile={O}/{mode}.supervisor.log\nstdout_logfile_maxbytes=0\nstopasgroup=true\nkillasgroup=true\n'
++path=Path('/etc/supervisor/conf.d')/(name+'.conf');assert not path.exists();path.write_text(config);(O/(name+'.supervisor.conf')).write_text(config)
++subprocess.run(['supervisorctl','reread'],check=True);subprocess.run(['supervisorctl','update',name],check=True);subprocess.run(['supervisorctl','start',name],check=True)
+--- /dev/null
++++ b/clot_clearance/analysis/clot_multifragment_breakup_v1/multifragment_objective.py
+@@ -0,0 +1,41 @@
++"""Independent objectives and explicit constraints on actual material components."""
++from common import *
++
++BINS=[(1,2),(3,13),(14,33),(34,113),(114,200),(201,None)]
++SPEC=dict(
++ name='EXPLORATORY_MULTIFRAGMENT_TARGET',target_nodes=[20,200],min_target_count=5,
++ min_total_detached_fraction_initial=.10,max_largest_fraction_detached=.50,
++ max_fine_debris_fraction_detached=.20,post_unload_connectivity_required=True,
++ common_cohort_time_s=.0028,observation_end_s=END,
++ size_bins=BINS,
++ meaning='Exploratory engineering constraints at this discrete resolution, not clinical size classes or validated biological criteria. The 10% detached-mass floor and 50% dominance ceiling are declared before formal cases.',
++ optimization='Return separate objectives, constraints and per-fragment evidence; no weighted sum hides a failed constraint.',
++)
++
++def shape(x,dx=DX):
++    count=len(x);center=x.mean(0);q=x-center
++    covariance=q.T@q/count;values,axes=np.linalg.eigh(covariance);order=np.argsort(values)[::-1];values=np.maximum(values[order],0);axes=axes[:,order];rms=np.sqrt(values)
++    tol=1e-8*dx;rank=int(np.sum(rms>tol))
++    ratios=[float(rms[0]/v) if v>tol else None for v in rms]
++    label='UNRESOLVED_FINE_DEBRIS' if count<=2 else 'CHAIN_LIKE' if rank<2 else 'SHEET_LIKE' if rank<3 or rms[2]<.15*rms[0] else 'THREE_DIMENSIONAL_POINT_CLOUD'
++    return dict(actual_span_m=np.ptp(x,axis=0),radius_gyration_m=float(np.sqrt(values.sum())),principal_axes_columns=axes,principal_rms_lengths_m=rms,length_to_principal_ratios=ratios,point_cloud_rank=rank,shape_class=label,definition='Measured point coordinates, no smoothed shell, no invented thickness; degenerate ratios are undefined')
++
++def metrics(sizes,n):
++    sizes=np.asarray(sizes,int);detached=int(sizes.sum());largest=int(sizes.max(initial=0));target=(sizes>=20)&(sizes<=200);fine=int(sizes[sizes<=2].sum());fines=fine/detached if detached else None;dominance=largest/detached if detached else None
++    criteria=dict(target_count=int(target.sum())>=SPEC['min_target_count'],detached_mass=detached/n>=SPEC['min_total_detached_fraction_initial'],no_dominant_fragment=dominance is not None and dominance<=SPEC['max_largest_fraction_detached'],fine_debris=fines is not None and fines<=SPEC['max_fine_debris_fraction_detached'])
++    out=dict(fragment_count_target_band=int(target.sum()),mass_fraction_in_target_band=float(sizes[target].sum()/n),largest_free_fragment_fraction_initial=largest/n,largest_free_fragment_fraction_detached=dominance,fine_debris_mass_fraction_detached=fines,fine_debris_mass_fraction_initial=fine/n,total_detached_mass_fraction=detached/n,attached_body_fraction=1-detached/n,N_ge2=int(np.sum(sizes>=2)),N_ge14=int(np.sum(sizes>=14)),N_ge20=int(np.sum(sizes>=20)),N_ge34=int(np.sum(sizes>=34)),N_ge114=int(np.sum(sizes>=114)),N_ge200um=int(np.sum((6*sizes*V/np.pi)**(1/3)>=200e-6)),N_ge300um=int(np.sum((6*sizes*V/np.pi)**(1/3)>=300e-6)),instant_target=all(criteria.values()),independent_criteria=criteria)
++    return out
++
++def scalar_metrics(sizes,n):
++    return {key:value for key,value in metrics(sizes,n).items() if key!='independent_criteria'}
++
++def selection_key(sizes,n):
++    q=metrics(sizes,n)
++    return (q['fragment_count_target_band'],q['mass_fraction_in_target_band'],q['N_ge14'],q['total_detached_mass_fraction'])
++
++def freeze():
++    path=O/'MULTIFRAGMENT_OBJECTIVE_SPEC.json'
++    assert not path.exists(),'Do not change a frozen objective based on outcomes'
++    dump(path,SPEC)
++
++if __name__=='__main__':freeze()
+--- /dev/null
++++ b/clot_clearance/analysis/clot_multifragment_breakup_v1/native.py
+@@ -0,0 +1,36 @@
++"""Native VV and native fix indent; Python independently audits, never applies force."""
++from common import *
++from distributed_multisite_loading import DistributedLoading
++import ast,ctypes,types
++from mpi4py import MPI
++from lammps import lammps
++def make_case(case):
++ case=Path(case);(case/'provenance').mkdir(parents=True,exist_ok=True);(case/'keys').mkdir(exist_ok=True)
++ for name in ['reference.npz','reference.native','body.data']:
++  p=case/'provenance'/name
++  if not p.exists():p.symlink_to(os.path.relpath(O/'provenance'/name,p.parent))
++ return case
++def factory(case):
++ source=R/'analysis/v3_softening_pilot_v1/native.py';tree=ast.parse(source.read_text());classes=[x for x in tree.body if isinstance(x,ast.ClassDef) and x.name in ['Native','Contact']];ns=dict(globals(),O=Path(case));exec(compile(ast.Module(body=classes,type_ignores=[]),str(source),'exec'),ns);return ns['Native'],ns['Contact']
++def native(case,protocol="simultaneous",restart=None):
++ case=make_case(case);Base,Contact=factory(case)
++ class Native(Base):
++  def __init__(self):
++   super().__init__('native',restart=restart,dt=BASE)
++   self.lib.lpsvar_set_onset.argtypes=[ctypes.c_void_p,ctypes.c_int,ctypes.POINTER(ctypes.c_longlong),ctypes.POINTER(ctypes.c_double)];self.lib.lpsvar_set_onset.restype=ctypes.c_int
++   if not restart:
++    d=self.ref['initial_cut'].astype(float);k=SC[self.ref['bond_types']]*d;assert self.lib.lpsvar_action(self.l.lmp,1,0,self.ptr(k),self.ptr(d))==0
++   self.tool=DistributedLoading(self.ref,protocol);self.ext=types.SimpleNamespace(error=None,last={})
++  def dynamics(self):
++   self.l.commands_string(f'group clot type 1\nfix integrate clot nve\nfix coordinator all LPS/VARIATIONAL/DYNAMIC {RHO:.17g}\n'+self.tool.command());self.dynamic=True;self.l.command('run 0');return self.state()
++  def state(self):
++   s=super().state()
++   if self.dynamic:
++    contact=self.tool.evaluate(s['x'],s['time'])
++    site_reactions=np.array([[self.l.extract_fix(site.id,0,1,nrow=i) for i in range(3)] for site in self.tool.sites])
++    site_U=np.array([self.l.extract_fix(site.id,0,0) for site in self.tool.sites])
++    s.update(indenter_force=contact['force'],indenter_U=np.array(site_U.sum()),indenter_U_oracle=np.array(contact['U']),indenter_reaction=site_reactions.sum(0),contact_atom_ids=contact['contact_atom_ids'],indenter_overlap=contact['overlap'],site_forces=contact['site_forces'],site_overlaps=contact['site_overlaps'],site_energies=site_U,site_energy_oracle=contact['site_energies'],site_reactions=site_reactions,site_centers=contact['site_centers'],site_velocities=contact['site_velocities'],site_contact_counts=contact['site_contact_counts'])
++   return s
++ return Native(),Contact
++def predict(model,ref,x,k,onset):
++ e,_=model.geometry(x);kk=np.maximum(k,np.maximum(e/ref['r0'],0));off=SC[ref['bond_types']];d=np.zeros(len(kk));d[kk>=off]=1;part=(kk>onset)&(kk<off);d[part]=off[part]*(kk[part]-onset[part])/(kk[part]*(off[part]-onset[part]));return kk,d
+--- /dev/null
++++ b/clot_clearance/analysis/clot_multifragment_breakup_v1/offline_crack_bridge_audit.py
+@@ -0,0 +1,92 @@
++"""Bounded geometric-band and pinned graph-cut diagnostics; never mutate bonds."""
++from common import *
++import csv,time
++from scipy.sparse import coo_matrix,csgraph
++
++graph=module('bridge_graph',R/'analysis/v3_chunk_fragmentation_mechanism_v1/graph_ops.py')
++
++def candidate_regions(ref):
++    x=ref['X'][:int(ref['clot_count'])];u=x*1e6
++    # The original notch is z=0, tip x=-50 um. The second level is midway
++    # from that observed damage band to the historically loaded top surface.
++    specs=[
++      ('upper_notch_flap',(u[:,2]>0),(u[:,2]>=175-1e-8),np.zeros(len(x),bool)),
++      ('loaded_surface_cap',(u[:,0]<-50)&(u[:,2]>200),(u[:,0]<=-125+1e-8)&(u[:,2]>=275-1e-8),(u[:,0]>=125-1e-8)|(u[:,2]<0)),
++      ('left_notch_lip',(u[:,0]<-50)&(u[:,2]>0)&(u[:,2]<200),(u[:,0]<=-175+1e-8)&(u[:,2]>0)&(u[:,2]<=125+1e-8),(u[:,0]>=125-1e-8)|(u[:,2]>=275-1e-8)),
++    ]
++    return [dict(region=name,original_atom_ids=np.flatnonzero(region)+1,source_core_ids=np.flatnonzero(core)+1,sink_material_ids=np.flatnonzero(sink)+1,origin='Diagnostic volumes from original notch plane/tip, actual single-tool footprint and upper-surface damage; not future fragment boundaries') for name,region,core,sink in specs]
++
++def pinned_cut(ref,state,region):
++    n=int(ref['clot_count']);N=len(ref['X']);b=ref['bonds'];live=(state['d']<1);ids=np.flatnonzero(live);edge=b[ids]
++    capacity=np.maximum(1,np.rint(1024*(1-state['d'][ids]))).astype(np.int64)
++    pin=int(capacity.sum()+1);assert pin<2**31
++    core=np.asarray(region['source_core_ids'])-1;sink=np.r_[np.asarray(region['sink_material_ids'],int)-1,np.arange(n,N)]
++    assert len(core)>=34 and not np.intersect1d(core,sink).size
++    rr=np.r_[edge[:,0],edge[:,1],np.full(len(core),N),sink]
++    cc=np.r_[edge[:,1],edge[:,0],core,np.full(len(sink),N+1)]
++    weights=np.r_[capacity,capacity,np.full(len(core)+len(sink),pin)].astype(np.int64)
++    matrix=coo_matrix((weights,(rr,cc)),shape=(N+2,N+2)).tocsr()
++    flow=csgraph.maximum_flow(matrix,N,N+1,method='dinic')
++    residual=(matrix-flow.flow).tocsr();residual.data=(residual.data>0).astype(np.int64);residual.eliminate_zeros()
++    reach=csgraph.breadth_first_order(residual,N,directed=True,return_predecessors=False)
++    mask=np.zeros(N+2,bool);mask[reach]=True
++    assert mask[core].all() and not mask[sink].any()
++    crossing=mask[edge[:,0]]^mask[edge[:,1]];cut_ids=ids[crossing]
++    assert int(capacity[crossing].sum())==flow.flow_value
++    return dict(source_partition_atom_ids=np.flatnonzero(mask[:N])+1,original_cut_bond_ids=cut_ids+1,cut_bond_count=len(cut_ids),integer_capacity=int(flow.flow_value),integrity_capacity_proxy=float(flow.flow_value/1024),capacity_definition='max(1,round(1024*(1-d))) on live original bonds; pinned source core >=34 nodes and fixed anchors/specified far body as sink. Diagnostic proxy, not fracture energy or authorized deletions')
++
++def live_anchor_path(ref,state,region):
++    n=int(ref['clot_count']);N=len(ref['X']);b=ref['bonds'];live=state['d']<1
++    # Exhibit a path entirely outside a central two-node-thick Y viewing slab.
++    outside=np.abs(ref['X'][:,1])>50e-6
++    keep=live&outside[b[:,0]]&outside[b[:,1]];ids=np.flatnonzero(keep);edge=b[ids]
++    matrix=coo_matrix((np.ones(2*len(ids)),(np.r_[edge[:,0],edge[:,1]],np.r_[edge[:,1],edge[:,0]])),shape=(N,N)).tocsr()
++    starts=np.asarray(region['source_core_ids'])-1;starts=starts[outside[starts]]
++    if not len(starts):return dict(found=False)
++    start=int(starts[np.argmax(ref['X'][starts,1])]);order,pred=csgraph.breadth_first_order(matrix,start,directed=False)
++    anchors=order[order>=n]
++    if not len(anchors):return dict(found=False,start_atom_id=start+1)
++    path=[int(anchors[0])]
++    while path[-1]!=start:path.append(int(pred[path[-1]]));assert len(path)<=N
++    path=path[::-1];lookup={tuple(sorted(p)):int(q+1) for p,q in zip(edge,ids)};bids=[lookup[tuple(sorted(pair))] for pair in zip(path[:-1],path[1:])]
++    return dict(found=True,original_atom_ids=np.array(path)+1,original_bond_ids=bids,reference_coordinates_m=ref['X'][path],actual_coordinates_m=state['x'][path],definition='An actually surviving 3D material path to a fixed anchor outside |Y|<=50 um; diagnostic restriction only, no physical deletion')
++
++def inspect(ref,state,region,onset_by_bond=None):
++    nodes=np.asarray(region['original_atom_ids'])-1;b=ref['bonds'];bt=ref['bond_types'];cut=ref['initial_cut'];boundary,_=graph.boundary(ref,nodes);boundary=boundary[~cut[boundary]];alive=boundary[state['d'][boundary]<1]
++    dy=state['x'][b[alive,1]]-state['x'][b[alive,0]];stretch=np.linalg.norm(dy,axis=1)/ref['r0'][alive]-1
++    mid=ref['X'][b[alive]].mean(1);onset=(S0[bt] if onset_by_bond is None else onset_by_bond)[alive];labels,_,attached=graph.topology(ref,state['d'])
++    info=dict(region=region['region'],candidate_nodes=len(nodes),candidate_is_free=bool(not attached[labels[nodes]].any()),anchor_reachable_nodes=int(np.sum(attached[labels[nodes]])),original_crossing_bonds=len(boundary),surviving_crossing_bonds=len(alive),new_failed_crossing_bonds=int(np.sum(state['d'][boundary]==1)),surviving_bulk=int(np.sum(bt[alive]==1)),surviving_interface=int(np.sum(bt[alive]==2)),long_bonds_ge_2dx=int(np.sum(ref['r0'][alive]>=2*DX-1e-15)),currently_compressive=int(np.sum(stretch<0)),historically_below_onset=int(np.sum(state['kappa'][alive]<=onset)),partially_softened=int(np.sum(state['d'][alive]>0)),surviving_midpoint_mean_m=mid.mean(0),surviving_midpoint_min_m=mid.min(0),surviving_midpoint_max_m=mid.max(0),right_of_notch_tip=int(np.sum(mid[:,0]>-50e-6)),original_surviving_bond_ids=alive+1,cut_proxy=pinned_cut(ref,state,region),off_midplane_anchor_path=live_anchor_path(ref,state,region))
++    records=[]
++    for j,bid in enumerate(alive):
++        direction=(ref['X'][b[bid,1]]-ref['X'][b[bid,0]])/ref['r0'][bid]
++        records.append(dict(region=region['region'],original_bond_id=int(bid+1),bond_type=int(bt[bid]),atom_i=int(b[bid,0]+1),atom_j=int(b[bid,1]+1),r0_m=ref['r0'][bid],direction_x=direction[0],direction_y=direction[1],direction_z=direction[2],midpoint_x_m=mid[j,0],midpoint_y_m=mid[j,1],midpoint_z_m=mid[j,2],current_stretch=stretch[j],kappa=state['kappa'][bid],damage=state['d'][bid],historically_below_onset=bool(state['kappa'][bid]<=onset[j]),candidate_anchor_reachable=bool(info['anchor_reachable_nodes'])))
++    return info,records
++
++def main():
++    start=time.perf_counter();ref=load_npz(O/'provenance/reference.npz');regions=candidate_regions(ref)
++    dump(O/'CANDIDATE_SEPARATION_REGIONS.json',dict(regions=regions,scope='Only diagnostic masks, never physical material groups or new pre-cuts'))
++    field_path=HISTORY/'HETEROGENEITY_FIELD.npz';field=load_npz(field_path)['s0_by_original_bond_id'];assert sha(field_path)==json.loads((HISTORY/'HETEROGENEITY_FREEZE.json').read_text())['field_sha256']
++    dump(O/'OFFLINE_DEPENDENCY_MANIFEST.json',dict(field_path=str(field_path),field_sha256=sha(field_path),note='Historical heterogeneous onset comparisons use the frozen original-ID field, not uniform s0'))
++    allrows=[];cases={};network_rows=[]
++    for name in ['uniform','heterogeneous']:
++        cases[name]={}
++        for key in ['peak_indent','withdrawal_end','final']:
++            path=HISTORY/'cases'/name/'keys'/(key+'.npz');state=load_npz(path);items=[]
++            for region in regions:
++                info,records=inspect(ref,state,region,field if name=='heterogeneous' else None);items.append(info)
++                allrows.extend(dict(case=name,key=key,time_s=float(state['time']),**row) for row in records)
++            cases[name][key]=dict(time_s=float(state['time']),source=str(path),source_sha256=sha(path),regions=items)
++        network=json.loads((HISTORY/'cases'/name/'CRACK_NETWORK_AUDIT.json').read_text())
++        network_rows.extend(dict(case=name,**q) for q in network['history'])
++    with (O/'SURVIVING_BRIDGE_BONDS.csv').open('w') as f:
++        writer=csv.DictWriter(f,fieldnames=list(allrows[0]));writer.writeheader();writer.writerows(allrows)
++    with (O/'DAMAGE_NETWORK_HISTORY.csv').open('w') as f:
++        writer=csv.DictWriter(f,fieldnames=list(network_rows[0]));writer.writeheader();writer.writerows(network_rows)
++    result=dict(status='PASS_READ_ONLY_DIAGNOSTIC',cases=cases,representative_states=6,pinned_min_cut_calls=18,wall_s=time.perf_counter()-start,scope='Original live bulk/interface/anchor graph; no contact edges; precuts excluded from natural failure. Current compression and insufficient positive stretch history are overlapping diagnostics, not unique causal attributions.',graph_reference='https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.csgraph.maximum_flow.html')
++    dump(O/'CRACK_BRIDGE_AUDIT.json',result)
++    print('BRIDGE_AUDIT_COMPLETE',result['wall_s'])
++    for name in cases:
++        for q in cases[name]['final']['regions']:
++            print(name,q['region'],'nodes',q['candidate_nodes'],'bridges',q['surviving_crossing_bonds'],'long',q['long_bonds_ge_2dx'],'compressed',q['currently_compressive'],'below_s0',q['historically_below_onset'],'cut',q['cut_proxy']['cut_bond_count'],'bypass',q['off_midplane_anchor_path']['found'])
++
++if __name__=='__main__':main()
+--- /dev/null
++++ b/clot_clearance/analysis/clot_multifragment_breakup_v1/prepare_baseline.py
+@@ -0,0 +1,30 @@
++from common import *
++import shutil,datetime
++
++assert not (O/'BASELINE_MANIFEST.json').exists(), 'Preserve existing freeze'
++for folder in ['provenance','build','checks','cases','offline']:
++    (O/folder).mkdir(parents=True,exist_ok=True)
++prior=json.loads((HISTORY/'DELIVERY_MANIFEST.json').read_text())
++index={q['path']:q for q in prior['files']}
++used=[]
++for filename in ['reference.npz','reference.native','body.data']:
++    source=HISTORY/'provenance'/filename
++    expected=index[str(source.relative_to(R))]['sha256']
++    assert sha(source)==expected
++    shutil.copy2(source,O/'provenance'/filename)
++    used.append(dict(path=str(source),sha256=expected))
++for name in ['uniform','heterogeneous']:
++    for filename in ['SUMMARY.json','ANALYSIS.json','CRACK_NETWORK_AUDIT.json','history.csv','damage_events.jsonl.gz','keys/initial.npz','keys/peak_indent.npz','keys/withdrawal_end.npz','keys/final.npz']:
++        p=HISTORY/'cases'/name/filename;digest=sha(p)
++        assert digest==index[str(p.relative_to(R))]['sha256']
++        used.append(dict(path=str(p),sha256=digest))
++    summary=json.loads((HISTORY/'cases'/name/'SUMMARY.json').read_text())
++    assert summary['status']=='COMPLETED'
++    assert summary['last_row']['detached_nodes']==(18 if name=='uniform' else 14)
++ref=load_npz(O/'provenance/reference.npz')
++assert int(ref['clot_count'])==1792 and len(ref['X'])==2128 and len(ref['bonds'])==95666 and ref['initial_cut'].sum()==2736
++build=json.loads((HISTORY/'BUILD_AUDIT.json').read_text());assert sha(OLDLIB)==build['library_sha256']
++for p in [HA/'bond_bpm_peri_variational.cpp',HA/'bond_bpm_peri_variational.h',HA/'fix_lps_variational_dynamic.cpp',HA/'fix_lps_variational_dynamic.h',HA/'indenter.py',HA/'native.py',R/'analysis/v3_softening_pilot_v1/native.py',R/'analysis/softening_feasibility_v1/model.py',R/'analysis/v3_chunk_fragmentation_mechanism_v1/graph_ops.py',BRACKETING/'FINAL_STATUS.json']:
++    used.append(dict(path=str(p),sha256=sha(p)))
++dump(O/'BASELINE_MANIFEST.json',dict(status='FROZEN',utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),previous_delivery_manifest_sha256=sha(HISTORY/'DELIVERY_MANIFEST.json'),baseline_library_sha256=sha(OLDLIB),used_files=used,material_nodes=1792,fixed_anchors=336,original_bonds=95666,original_precuts=2736,uniform_material=True,material=dict(G_Pa=G,K_Pa=K,rho_kg_m3=RHO,dx_m=DX,horizon_m=HORIZON,s0_by_type=S0,sc_by_type=SC),scope='Read-only baseline verification; no historical rerun, no new pre-cuts or material changes'))
++print('BASELINE_FROZEN',sha(O/'BASELINE_MANIFEST.json'))
+--- /dev/null
++++ b/clot_clearance/analysis/clot_multifragment_breakup_v1/report.py
+@@ -0,0 +1,89 @@
++"""Generate the Chinese review from sealed protocols and computed evidence."""
++from fragment_topology_analysis import *
++def pct(value):return '未定义（无脱离质量）' if value is None else f'{100*value:.6g}%'
++def main():
++    cases=read(O/'ANALYSIS.json');resources=read(O/'RUN_RESOURCES.json');validation=read(O/'DELIVERY_VALIDATION.json');assert validation['status']=='PASS'
++    resources['validation_wall_s']=sum(q['validation_wall_s'] for q in validation['cases'].values())
++    early=O/'SIMULTANEOUS_EARLY_REDUCTION.json'
++    if early.exists():resources['early_read_only_reduction_wall_s']=read(early)['wall_s']
++    dump(O/'RUN_RESOURCES.json',resources)
++    old=read(O/'CRACK_BRIDGE_AUDIT.json')['cases'];after=read(O/'CRACK_BRIDGE_AFTER_LOADING.json')['cases'];baseline=read(O/'BASELINE_MANIFEST.json');checks=read(O/'KEY_CHECKS.json');build=read(O/'BUILD_AUDIT.json')
++    labels={'simultaneous':'同步','staggered':'错时'};summaries={k:read(O/'cases'/k/'SUMMARY.json') for k in cases};fragmenthistory=read(O/'FRAGMENT_HISTORY.json')
++    success=[labels[k] for k,v in cases.items() if v['exploratory_target_met']]
++    observed=[labels[k] for k,v in cases.items() if v['history_max_N20_200']>=2]
++    conclusion=('、'.join(success)+'满足冻结的探索目标；仍仅适用于本离散试样与机械替代加载。') if success else ('、'.join(observed)+'观察到多个目标带真实分量，但没有工况满足全部冻结约束。' if observed else '两组均未观察到两个及以上20–200节点真实独立块体；多块碎裂科学目标未达到。')
++    status=dict(
++        CRACK_BRIDGE_AUDIT_STATUS='PASS_ORIGINAL_ID_READ_ONLY_DIAGNOSTIC',
++        MULTISITE_LOADING_STATUS='PASS_NATIVE_TWO_SOURCE_MULTISITE_MECHANICAL_SURROGATE',
++        MULTIPLE_CRACK_NUCLEATION_STATUS={k:dict(bulk_only=v['crack_networks'],bulk_plus_interface=v['inclusive_failed_material_networks']) for k,v in cases.items()},
++        CRACK_PERCOLATION_STATUS={k:dict(final_target_band_components=v['final_metrics']['fragment_count_target_band'],remaining_upper_region_bridges=after[k]['final']['regions'][0]['surviving_crossing_bonds'],scope='Free original-material graph is decisive; failed-edge mergers alone do not prove separation') for k,v in cases.items()},
++        MULTIFRAGMENT_FORMATION_STATUS={k:dict(target_met=v['exploratory_target_met'],classification=v['classification'],history_max_N20_200=v['history_max_N20_200']) for k,v in cases.items()},
++        TARGET_SIZE_DISTRIBUTION_STATUS={k:v['target_criteria'] for k,v in cases.items()},
++        FINE_DEBRIS_FRACTION={k:dict(of_detached=v['final_metrics']['fine_debris_mass_fraction_detached'],of_initial=v['final_metrics']['fine_debris_mass_fraction_initial']) for k,v in cases.items()},
++        FRAGMENT_COHESION_STATUS={k:dict(final_ge14=v['final_metrics']['N_ge14'],all_observed_ge14=len(fragmenthistory[k]['candidates_ge14']),evidence=f'cases/{k}/FRAGMENT_HISTORY.json',unresolved_two_node_pairs_are_not_continuum_blocks=True) for k,v in cases.items()},
++        POST_UNLOAD_STABILITY_STATUS={k:dict(status='NOT_APPLICABLE_NO_TARGET_BAND_COHORT' if not v['common_cohort_medium_ids'] else 'FINITE_CONNECTIVITY_OBSERVATION_ONLY',common_cohort_surviving=v['common_cohort_medium_surviving'],actual_contact_free_tail_s=v['actual_contact_free_tail_s'],secondary_after_common_cohort=v['secondary_after_common_cohort'],scope='Scheduled return and connectivity observation are not a guaranteed force-free window; stationary actuators can be recontacted') for k,v in cases.items()},
++        NUMERICAL_ADMISSION_STATUS=dict(status='PASS_TWO_COMPLETED_ACCEPTED_TRAJECTORIES',validation='DELIVERY_VALIDATION.json',relative_energy_gate=.01,maxima={k:v['max_relative_energy_residual'] for k,v in cases.items()}),
++        PHYSICAL_FEASIBILITY_STATUS='UNVALIDATED_BUBBLE_STREAMING_OR_MICROJET; frictionless kinematic mechanical surrogate only',
++        SCIENTIFIC_CONCLUSION=conclusion)
++    dump(O/'FINAL_STATUS.json',status)
++    lines=['# CLOT_MULTIFRAGMENT_BREAKUP_V1 中文科研审查',f'正式运行 `{RUN}`；全部科学判断基于实际原生接受态。{conclusion}',
++        '本轮完成软件与数值交付，不以多断键、单一大块或失效簇数量代替多块碎裂。只运行冻结的两组均匀材料小试样；未追加第三工况、完整V3、CFD或参数扫描。',
++        '## 基线与冻结协议',
++        f"沿用1792材料点、336固定锚点、95666原始键、2736原预切。dx=50 µm，horizon=150.5 µm，G=940 Pa，K=33333.333 Pa，ρ=1000 kg/m³；bulk s0/sc=0.15/0.18，interface=0.140625/0.16875。无新增缺口或随机缺陷，无人为删除桥接键。旧库SHA `{baseline['baseline_library_sha256']}`；新隔离库SHA `{build['library_sha256']}`。旧库未替换。",
++        '两个外部表面作用点为(−325,−75,175) µm、(325,75,−175) µm，分别朝+X、−X运动；Y偏置和跨切口上下错位产生不同方向的法向接触响应。半径182.8183198 µm，罚系数57973.58577 N/m²；初始间隙25 µm、压入240 µm。每源0–0.2 ms接近、0.2–1.2 ms压入、保持至1.4 ms、2.4 ms撤回。同步同时启动；错时第二源延后0.4 ms。延迟按两表面点间剪切波传播时间的一半取整，在正式计算前冻结。两组均观察至3.6 ms，采用共同2.8 ms群组追踪至末态。',
++        '接触依当前坐标决定，释放后力消失，重新接触可再受力。两个源分别保存中心、速度、接触节点、反力、势能、冲量、接触时长和外功；没有恢复原参考节点dead traction。无摩擦球体仅施加径向法向力；偏置运动不等于已验证的切向摩擦牵引。该定义与[LAMMPS fix indent](https://docs.lammps.org/fix_indent.html)的球面罚接触形式一致。',
++        'A/B唯一改变冻结的启动时间；实际反力、接触面积代理和外功可以不同。历史单压头位置与方向也不同，因此它只是历史上下文，不能作为仅改变源数量的单因素对照。',
++        '此前1000 Pa规定参考表面剪切曾产生882节点游离块、内部连接存活约96.43%，它证明单个凝聚性大块可以脱离；这不是本轮要求的多块目标。该历史参考牵引仍有大变形跟随及脱离后持续受力局限，本轮没有重跑或恢复那种dead traction。',
++        '## 固定多块目标与形态定义',
++        '真实碎块由所有存活原始bulk/interface键及锚点可达性定义；非键合接触不计材料连接。成功须共同2.8 ms状态及末态同时满足：≥5个20–200节点块、脱离质量≥初始10%、最大块≤脱离质量50%、1–2节点细屑≤脱离质量20%，且至少5个共同群组的原始成员保持连通至末态。10%与50%是事先声明的工程门槛。各项独立保存，不使用加权总分掩盖失败。',
++        '分组1–2、3–13、14–33、34–113、114–200、≥201节点仅用于当前离散分辨率。体积=N dx³，质量=ρN dx³，等效直径=(6N dx³/π)^(1/3)。每个接受态保留实际跨度、回转半径、PCA主轴/RMS长宽厚比、点云秩与内部存活键密度。退化厚度或比值记未定义；不补造平滑壳层。两个节点即使键100%存活也仍是未解析碎屑。',
++        '## 实际结果',
++        '| 工况 | 首软化/首完整失效 ms | 末态脱离点数 | 历史最大块/末态最大块 | 历史最多/末态20–200块 | ≥34/≥114块（末态） | 细屑/脱离质量 | 总外功 nJ |',
++        '|---|---:|---:|---:|---:|---:|---:|---:|']
++    for k,v in cases.items():
++        e=v['final'];m=v['final_metrics'];lines.append(f"| {labels[k]} | {v['first_softening_s']*1e3:.6g}/{v['first_failure_s']*1e3:.6g} | {int(e['detached_nodes'])} | {v['history_max_free_nodes']}/{int(e['largest_nodes'])} | {v['history_max_N20_200']}/{m['fragment_count_target_band']} | {m['N_ge34']}/{m['N_ge114']} | {pct(m['fine_debris_mass_fraction_detached'])} | {e['W_J']*1e9:.8g} |")
++    lines+=['','完整CSV、分量原始成员、逐接受态历史、损伤增量和关键FP64状态均保存。图的位移倍率为1；主相机固定、裁剪点数明示，并另给完整末态投影。桥接和起裂位置比较图明确使用参考坐标承载真实末态图信息。','## 18项科学问题直接回答']
++    def both(fn):return '；'.join(labels[k]+'：'+fn(k,v) for k,v in cases.items())+'。'
++    oldflap=old['uniform']['final']['regions'][0]
++    answers=[
++      ('之前的多处失效网络为何没有形成独立材料块？',f"历史均匀工况上半部896节点诊断区仍有{oldflap['surviving_crossing_bonds']}条真实跨区存活键，其中{oldflap['right_of_notch_tip']}条位于切口尖端右侧、{oldflap['long_bonds_ge_2dx']}条长≥2dx；存在完全避开|Y|≤50 µm中心观察层的锚点存活路径。37次失效簇出生和31次合并并没有切断材料图。"),
++      ('有多少真实存活连接阻止主要候选裂缝贯通？','历史均匀末态三个诊断区（上半部、加载表面帽、左切口唇）跨区存活键分别为3461、2961、3439；非均匀为3467、2959、3384。'+both(lambda k,v:'新末态为'+str([q['surviving_crossing_bonds'] for q in after[k]['final']['regions']]))+'这些区域不是预设碎块边界；最小割是有界诊断代理，不能解释成应删除键或实际Gc。'),
++      ('多区域加载是否改变首次起裂位置？',both(lambda k,v:'首软化原始键ID '+str(summaries[k]['events']['first_softening']['original_bond_ids'])+'，参考中点µm '+str((np.asarray(summaries[k]['events']['first_softening']['reference_midpoints_m'])*1e6).tolist()))+'历史首软化在(−175,0,375) µm；LOCAL_DEFORMATION_AUDIT保留局部应变与非仿射诊断，不能将键virial认作已标定Cauchy应力。'),
++      ('是否出现多个空间独立裂纹起始区域？',both(lambda k,v:f"离散失效网络出生{v['crack_networks']['n_births']}次，最大并存{v['crack_networks']['max_simultaneous']}个，出生质心最大间距{v['crack_networks']['max_birth_centroid_separation_m']*1e6:.6g} µm")+'这支持离散失效区的空间分散；不等价于已解析多条连续裂面。'),
++      ('多裂纹是否形成完整分离路径？',both(lambda k,v:f"失效簇合并{v['crack_networks']['n_merges']}次，末态目标带真实分量{v['final_metrics']['fragment_count_target_band']}个，上半部仍有{after[k]['final']['regions'][0]['surviving_crossing_bonds']}条桥接")+'只有零外部存活材料边界和失去锚点路径的分量才算完成分离；不能凭红色断键区相交判断。'),
++      ('是否形成两个以上真实多节点游离块？',both(lambda k,v:f"历史最大同时≥2节点分量{v['history_max_size_threshold_counts']['N_ge2']}个，≥14节点{v['history_max_size_threshold_counts']['N_ge14']}个；末态分别{v['final_metrics']['N_ge2']}和{v['final_metrics']['N_ge14']}个")+'必须将2节点对与具有厚度的中等块体分开。'),
++      ('是否形成至少5个20–200节点碎块？',both(lambda k,v:f"历史最多{v['history_max_N20_200']}个，末态{v['final_metrics']['fragment_count_target_band']}个，完整冻结目标={v['exploratory_target_met']}")),
++      ('有多少块达到≥34节点？',both(lambda k,v:f"历史同时最大{v['history_max_size_threshold_counts']['N_ge34']}，末态{v['final_metrics']['N_ge34']}")),
++      ('有多少块达到≥114节点？',both(lambda k,v:f"历史同时最大{v['history_max_size_threshold_counts']['N_ge114']}，末态{v['final_metrics']['N_ge114']}")),
++      ('最大游离块占总脱离质量多少？',both(lambda k,v:pct(v['final_metrics']['largest_free_fragment_fraction_detached'])+'；占初始材料'+pct(v['final_metrics']['largest_free_fragment_fraction_initial']))),
++      ('1–2节点碎屑占总脱离质量多少？',both(lambda k,v:pct(v['final_metrics']['fine_debris_mass_fraction_detached'])+'；占初始材料'+pct(v['final_metrics']['fine_debris_mass_fraction_initial']))),
++      ('中等块体卸载后是否保持内部连接？',both(lambda k,v:f"共同2.8 ms的20–200节点群组{len(v['common_cohort_medium_ids'])}个，原成员连通至末态{v['common_cohort_medium_surviving']}个；共同窗口后二次裂解{v['secondary_after_common_cohort']}次；最后连续无源接触窗口{v['actual_contact_free_tail_s']*1e6:.6g} µs")+'若没有中等块，稳定性应写“不适用”，不能因为没有分裂事件便称稳定。'),
++      ('同步与错时哪种更容易形成多条贯通裂纹？',both(lambda k,v:f"历史最多目标带块{v['history_max_N20_200']}，最终脱离质量{pct(v['final_metrics']['total_detached_mass_fraction'])}，实际W={v['final']['W_J']*1e9:.7g} nJ")+'仅两条冻结轨迹，不能按失效簇出生数推断普遍优劣；应按真实中等分量、桥接剩余和独立质量门槛比较。'+conclusion),
++      ('限制来自空间加载、非局部桥接还是损伤准则？',both(lambda k,v:f"上半部末态{after[k]['final']['regions'][0]['surviving_crossing_bonds']}条桥接中，当前压缩{after[k]['final']['regions'][0]['currently_compressive']}条、历史κ未越过s0为{after[k]['final']['regions'][0]['historically_below_onset']}条、长≥2dx为{after[k]['final']['regions'][0]['long_bonds_ge_2dx']}条")+'这些重叠统计直接支持残余空间覆盖和正伸长历史不足的解释，不能唯一识别本构错误。当前正键伸长损伤下，压缩连接不会仅因高接触压力自动失效；亦不能仅凭此否定整个材料模型。'),
++      ('是否值得引入文献混合模式剪切/拉伸损伤？','值得作为后续独立、可标定且受能量约束的假设比较，前提是先把尚存桥接的局部剪切/张开响应与数据对应，再验证强度、混合模式耗能及不可逆变分一致性。本轮没有实现或验证新混合模式律，不能把更易碎当作模型正确。'),
++      ('是否足以支持真实V3迁移？','不足以作为真实V3多块碎裂机制已经成立的证据。当前只有固定网格/接触罚参数的小试样、两种时间组织；仍需机制有辨识力的验证、分辨率/接触敏感性与真实几何的独立准入。没有运行完整V3。'),
++      ('距离微泡Streaming/微射流物理可实现性还缺什么？','缺少微泡或微射流到两作用点的牵引方向、面积、峰值、时间谱、持续时长和总冲量/功的独立物理映射，以及流体耦合、载荷可达性和实验标定。这里的无限惯性规定轨迹球体不是微泡；本轮没有证明流动能实现这些反力、行程和输入功。'),
++      ('实际耗时和内存？',f"两组累计墙钟{resources['native_wall_s']:.3f} s、过程CPU {resources['native_cpu_s']:.3f} s，单进程峰值RSS {resources['peak_RSS_bytes']/1024**3:.6f} GiB。"+both(lambda k,v:f"{resources['cases'][k]['accepted_steps']}接受步，wall={resources['cases'][k]['wall_s']:.3f} s，CPU={resources['cases'][k]['cpu_s']:.3f} s，RSS={resources['cases'][k]['peak_RSS_bytes']/1024**2:.3f} MiB")+'1 rank×1线程顺序运行；正式driver时间包括逐步核验和输出。离线桥接、编译与后处理单列，不重复计算历史仿真成本。')]
++    for i,(question,answer) in enumerate(answers,1):lines.append(f'{i}. **{question}**\n\n   {answer}')
++    lines+=['## 能量、接触与数值边界',
++        '账本W0+W1=ΔU_LPS+ΔK+D+ΔU_pair−J_pair_activation+ΔU_tools+R。损伤耗能按同一当前构形损伤更新前后势能差核算；无数值阻尼。R保持独立，不伪装为材料耗散。相对残差的分母是累计能量尺度的历史最大值，不是末态净外功。',
++        both(lambda k,v:f"两源末态功={[v['final'][f'site{j}_W_J']*1e9 for j in range(2)]} nJ；两源峰值反力={np.asarray(v['peak_site_reactions_N'])*1e6} µN；最大重叠/dx={v['max_site_overlap_dx']}；最大相对能量残差={v['max_relative_energy_residual']:.8g}"),
++        '罚接触允许有限重叠；实际重叠已记录，不能称完全刚性不可穿透。未进行接触刚度或网格收敛扫描，因此不能把一次离散轨迹解释为物理极限或真实血栓强度认证。',
++        '原生修改限于物理单位转换后接纳两个独立命名接触源；没有改变变分材料核、原始ID历史、MPI或restart机制，因此未重复完整旧回归矩阵。新接口检查包括无接触/释放、径向力、势能梯度、独立及叠加反力/势能/外功。两组每步检查原生VV预测、不可逆历史、损伤增量≤0.1、原始键计数、接触加和和1%能量门槛。交付时以稀疏原始ID损伤记录重放全部接受态分量成员及关键状态。',
++        '一次预检fixture曾把固定材料点留在球心穿越路径上，跨越r=0势能尖点，长区间单段功积分未通过。失败原值及日志保留在PRECHECK_FIXTURE_RECOVERY和checks_attempt01目录；在正式运行前改为接触进入附近的短路径梯度/功检查，未修改物理协议或放松容差。正式积分使用≤0.25 µs的接受步和接触进入/退出分段，同时监测4/8点积分差和能量残差；不据此声称跨球心长步积分已验证。',
++        '本轮仅把终点循环浮点余量停止门槛从1e−15 s改为1e−14 s，避免上一轮末尾约1e−15 s的多余接受步。记录实际原生时钟，不将其重写为理论时刻；不改变VV或损伤事件规则。预测损伤子步下限0.03125 µs，非结果驱动调整。',
++        '历史非均匀残余桥接统计首次离线版本误用了均匀s0比较κ阈值，已在加载冻结前改用原始ID冻结场并保留初版及修正记录。存活图、桥接键数和均匀基线不受影响。',
++        '## 图论代理与真正材料分离',
++        '失效网络主对照沿用历史纯bulk网络定义，以便37/31等计数可直接对照；历史两组自然interface失效均为0，因此P0的bulk图已包含所有自然失效材料边。新工况另保存完整bulk+interface失效图，保留固定锚端点与每条原始键的类型、出生/合并和全部失效ID。两种视图不混用计数。完整图末态与独立稀疏连通计算、原始接受态失效ID逐项核对。'+both(lambda k,v:f"完整图新增bulk/interface失效键{v['inclusive_failed_material_networks']['new_failed_bulk_bonds']}/{v['inclusive_failed_material_networks']['new_failed_interface_bonds']}，出生/合并{v['inclusive_failed_material_networks']['n_births']}/{v['inclusive_failed_material_networks']['n_merge_events']}"),
++        '初始历史6个状态×3个诊断区域，另对两组新工况各取最高冻结目标状态及末态×3区域；共30次有界最小割。源核≥34节点，固定锚点/指定远端材料为sink，容量max(1,round(1024(1−d)))仅作用于存活原始键。残余可达性与割容量独立核对；从不向物理模型写回删键。整数容量计算采用[SciPy maximum_flow](https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.csgraph.maximum_flow.html)。三个几何诊断区不是已形成块体。',
++        '要从连接主体形成多个中等块，必须在多个有实际体积的区域周围形成闭合的材料分离边界，消除所有bulk/interface跨界路径（包括非局部长键和三维绕行），同时保留区域内部连通。仅增加表面断键、失效网络出生或接触压力不满足这一图条件。本轮加载是对此条件的一次有界检验，不预设分割面，也不保证目标形态。',
++        '## 交付与复现',
++        '源码：analysis/clot_multifragment_breakup_v1；证据：本目录；图像：results/clot_multifragment_breakup_v1/'+RUN+'。打开OPEN_RESULTS.html查看八组主题的13幅PNG/SVG。REPRODUCE.md列出冻结步骤、隔离库、正式运行与只读后处理。SOURCE_DIFF、SHA清单、逐步日志、实际关键状态和WSL文档前后diff随交付保存；可重建编译对象与动态库留服务器，仅同步其SHA及构建命令。',
++        '本轮结束后停止；不自动继续V3、混合损伤开发或微泡验证。']
++    blocks=[]
++    for line in lines:
++        if line.startswith('|') and blocks and blocks[-1].startswith('|'):blocks[-1]+='\n'+line
++        else:blocks.append(line)
++    (O/'REVIEW_CLOT_MULTIFRAGMENT_BREAKUP_V1.md').write_text('\n\n'.join(blocks)+'\n')
++    print('REPORT_DONE',conclusion)
++if __name__=='__main__':main()
+--- /dev/null
++++ b/clot_clearance/analysis/clot_multifragment_breakup_v1/run_multifragment_cases.py
+@@ -0,0 +1,108 @@
++from common import *
++from native import native,predict
++from distributed_multisite_loading import *
++from multifragment_objective import scalar_metrics,shape,selection_key,SPEC
++import time,resource,traceback,csv,gzip,argparse,ctypes
++graph=module('crushing_graph',R/'analysis/v3_chunk_fragmentation_mechanism_v1/graph_ops.py')
++def save(case,name,s):
++ p=case/'keys'/name;tmp=p.with_suffix('.tmp.npz');np.savez_compressed(tmp,**s);os.replace(tmp,p)
++def run(name):
++ start=time.perf_counter();cpu=time.process_time();case=O/'cases'/name
++ assert not (case/'history.csv').exists(),'Preserve interrupted attempts; use a new output name for a justified recovery'
++ ns,C=native(case,name);ref=ns.ref;n=ns.n;N=ns.N;b=ref['bonds'];bt=ref['bond_types'];cut=ref['initial_cut'];model=energy_model(ref);contact=C(ref);on=ns.field(13)
++ assert json.loads((O/'KEY_CHECKS.json').read_text())['status']=='PASS'
++ dump(case/'REQUEST.json',dict(name=name,uniform_material=True,label='MULTISITE_MECHANICAL_SURROGATE',library_sha256=sha(LIB),source_sha256={p.name:sha(p) for p in A.glob('*.py')},input_sha256={name:sha(O/name) for name in ['BASELINE_MANIFEST.json','LOAD_SITE_SELECTION.json','MULTISITE_LOADING_PROTOCOL.json','MULTIFRAGMENT_OBJECTIVE_SPEC.json']}))
++ s=ns.dynamics();initial=s;prev=s;save(case,'initial.npz',s);W=0.;Jc=0.;impulse=np.zeros(3);rows=[];events={};err={};stop=[];substeps=0;rejects=0;scale=1e-24;secondary=[];maxscore=(-1,);contact_duration=0.;snap_next=50e-6;site_work=np.zeros(2);site_impulse=np.zeros((2,3));site_duration=np.zeros(2)
++ cached=graph.topology(ref,s['d']);registry={};lookup={};current=[];previous_free={}
++ history=gzip.open(case/'CONNECTED_COMPONENT_HISTORY.jsonl.gz','wt');changes=gzip.open(case/'damage_events.jsonl.gz','wt');stream=(case/'history.csv').open('w');writer=None
++ def error(key,value):err[key]=max(err.get(key,0.),float(value))
++ def event(name,ids,state):
++  if name in events or not len(ids):return
++  ends=b[ids];mid=ref['X'][ends].mean(1)
++  events[name]=dict(time_s=state['time'],step=state['step'],original_bond_ids=ids+1,atom_ids=ends+1,bond_types=bt[ids],reference_midpoints_m=mid,actual_midpoints_m=state['x'][ends].mean(1),stretch=np.linalg.norm(state['x'][ends[:,1]]-state['x'][ends[:,0]],axis=1)/ref['r0'][ids]-1,kappa=state['kappa'][ids],damage=state['d'][ids],s0=on[ids],near_anchor=(mid[:,2]-ref['X'][:n,2].min())<=HORIZON,evidence='keys/'+name+'.npz');save(case,name+'.npz',state)
++ def component_row(state,topology_changed):
++  nonlocal current,previous_free
++  lab,sizes,attached=cached;cs=[]
++  if topology_changed:
++   current=[]
++   for label in np.flatnonzero(~attached):
++    ids=np.flatnonzero(lab==label);key=tuple((ids+1).tolist())
++    if key not in lookup:
++     cid=len(registry)+1;lookup[key]=cid;registry[cid]=dict(atom_ids=ids+1,nodes=len(ids),reference_volume_m3=len(ids)*V,equivalent_diameter_m=(6*len(ids)*V/np.pi)**(1/3),birth_time_s=state['time'],birth_step=state['step'])
++    cid=lookup[key];current.append((label,cid,ids))
++   for old,oldset in previous_free.items():
++    children=[cid for _,cid,ids in current if oldset.intersection((ids+1).tolist())]
++    if len(children)>1:
++     secondary.append(dict(time_s=state['time'],step=state['step'],parent_component_id=old,children_component_ids=children))
++     if len(secondary)==1:save(case,'first_secondary.npz',state)
++   previous_free={cid:set((ids+1).tolist()) for _,cid,ids in current}
++  bulk=(bt==1)&~cut;bb=b[bulk];same=lab[bb[:,0]]==lab[bb[:,1]];ilab=lab[bb[same,0]];dam=state['d'][bulk][same];counts=np.bincount(ilab,minlength=len(sizes));alive=np.bincount(ilab,weights=dam<1,minlength=len(sizes));dsum=np.bincount(ilab,weights=dam,minlength=len(sizes))
++  for label,cid,ids in current:
++   v=state['velocity'][ids];vc=v.mean(0);relativeKE=.5*RHO*V*np.sum((v-vc)**2)
++   cs.append(dict(component_id=cid,internal_initial_bonds=int(counts[label]),internal_alive_bonds=int(alive[label]),internal_survival=float(alive[label]/counts[label]) if counts[label] else None,mean_internal_damage=float(dsum[label]/counts[label]) if counts[label] else None,centroid_m=state['x'][ids].mean(0),centroid_velocity_m_s=vc,internal_relative_kinetic_J=float(relativeKE),remaining_live_external_connections=0,anchor_reachable=False,**shape(state['x'][ids]),internal_alive_edge_density_m3=float(alive[label]/(len(ids)*V)),internal_graph_density=float(2*alive[label]/(len(ids)*(len(ids)-1))) if len(ids)>1 else None))
++  history.write(json.dumps(dict(time_s=state['time'],step=state['step'],attached_nodes=int(sizes[attached].sum()),detached_nodes=int(sizes[~attached].sum()),components=cs),default=cv)+'\n')
++  return cs
++ component_row(s,True)
++ try:
++  while prev['time']<END-1e-14:
++   boundary=min([t for t in ns.tool.boundaries if t>prev['time']+1e-14]);h=min(BASE,boundary-prev['time']);depth=0
++   while True:
++    xp=prev['x'].copy();xp[:n]+=h*(prev['velocity'][:n]+(.5*h/(RHO*V))*prev['force'][:n]);kk,dp=predict(model,ref,xp,prev['kappa'],on)
++    if np.max(dp-prev['d'])<=.1:break
++    assert h>MIN_H*(1+1e-12),'MINIMUM_EVENT_SUBSTEP_EXHAUSTED'
++    h/=2;depth+=1;rejects+=1
++   substeps+=bool(depth)
++   if h!=ns.dt:ns.l.command(f'timestep {h:.17g}');ns.dt=h
++   ns.l.command('run 1 pre no post no');s=ns.state();p=prev;dd=s['d']-p['d'];sc=s['scalars'];nf=np.flatnonzero((s['d']==1)&(p['d']<1)&~cut)
++   error('predicted_x_m',np.max(abs(xp-s['x'])));error('predicted_damage',np.max(abs(dp-s['d'])));error('predicted_kappa',np.max(abs(kk-s['kappa'])));error('irreversibility',max(np.max(-dd),np.max(p['kappa']-s['kappa'])));error('velocity_VV_m_s',np.max(abs(s['velocity'][:n]-p['velocity'][:n]-h/(2*RHO*V)*(p['force'][:n]+s['force'][:n]))))
++   assert err['predicted_x_m']<2e-18 and err['velocity_VV_m_s']<1e-10 and max(err['predicted_damage'],err['predicted_kappa'],err['irreversibility'])<1e-10
++   assert np.max(dd)<=.1+1e-10 and np.array_equal(s['x'][n:],ref['X'][n:]) and not s['velocity'][n:].any()
++   assert s['native_bonds']==int(np.sum(s['d']<1)) and not s['d'][bt==3].any() and np.isfinite(s['force']).all()
++   error('indenter_energy_J',abs(float(s['indenter_U']-s['indenter_U_oracle'])));error('action_reaction_N',np.max(abs(s['indenter_reaction']+s['indenter_force'].sum(0))))
++   assert err['indenter_energy_J']<1e-17 and err['action_reaction_N']<1e-12
++   wsite=ns.tool.works(p['x'],s['x'],p['time'],s['time']);winc=float(wsite.sum());wnew=W+winc;jnew=Jc
++   if len(nf):
++    rr=np.linalg.norm(s['x'][b[nf,1]]-s['x'][b[nf,0]],axis=1);jnew+=float(.5*contact.c*np.sum(np.minimum(rr-DX,0)**2))
++   res=wnew-(sc[0]-initial['scalars'][0]+s['K']-initial['K']+sc[1]+s['Uc']-initial['Uc']-jnew+float(s['indenter_U']-initial['indenter_U']));newscale=max(scale,abs(wnew),abs(sc[0]-initial['scalars'][0])+s['K']+sc[1]+s['Uc']+float(s['indenter_U']));rel=abs(res)/newscale
++   assert rel<=.01,('ENERGY_RESIDUAL',rel,res,newscale)
++   if s['step']%100==0 or np.any(dd):
++    new=model.evaluate(s['x'],s['d']);old=model.evaluate(s['x'],p['d']) if np.any(dd) else new;uc,fc,pairs=contact.evaluate(s['x'],s['d']);error('native_force_N',np.max(abs(new['force']-s['material_force'])));error('force_port_N',np.max(abs(s['force']-s['material_force']-fc-s['indenter_force'])));error('native_U_J',abs(new['U']-sc[0]));error('dissipation_increment_J',abs(old['U']-new['U']-(sc[1]-p['scalars'][1])));error('pair_contact_U_J',abs(uc-s['Uc']));error('work_quadrature_4_vs_8_J',abs(winc-ns.tool.work(p['x'],s['x'],p['time'],s['time'],8)))
++    assert max(err['native_force_N'],err['force_port_N'])<1e-12 and max(err['native_U_J'],err['dissipation_increment_J'],err['pair_contact_U_J'])<1e-17
++   site_work+=wsite;site_impulse+=.5*h*(p['site_reactions']+s['site_reactions']);site_duration+=h*((p['site_contact_counts']>0)|(s['site_contact_counts']>0));error('per_site_U_J',np.max(abs(s['site_energies']-s['site_energy_oracle'])));error('per_site_action_reaction_N',np.max(abs(s['site_reactions']+s['site_forces'].sum(1))));assert err['per_site_U_J']<1e-17 and err['per_site_action_reaction_N']<1e-12;assert abs(wnew-site_work.sum())<1e-18
++   W=wnew;Jc=jnew;scale=newscale;impulse+=.5*h*(p['indenter_reaction']+s['indenter_reaction']);contact_duration+=h*bool(len(p['contact_atom_ids']) or len(s['contact_atom_ids']))
++   event('first_kappa_exceeds_s0',np.flatnonzero((s['kappa']>on)&~cut),s);event('first_softening',np.flatnonzero((s['d']>0)&~cut),s);event('first_failure',nf,s)
++   if len(nf):cached=graph.topology(ref,s['d'])
++   lab,sizes,attached=cached;free=sizes[~attached];large=int(free.max(initial=0));medium=(free>=20)&(free<=200);debris=free[free<=2].sum();cs=component_row(s,bool(len(nf)))
++   if large>=2 and 'first_multinode' not in events:
++    events['first_multinode']=dict(time_s=s['time'],step=s['step'],component_ids=[q['component_id'] for q in cs],evidence='keys/first_multinode.npz');save(case,'first_multinode.npz',s)
++   score=selection_key(free,n)
++   if score>maxscore:maxscore=score;save(case,'max_multifragment.npz',s)
++   if len(s['contact_atom_ids']) and 'first_contact' not in events:
++    events['first_contact']=dict(time_s=s['time'],step=s['step'],atom_ids=s['contact_atom_ids'],evidence='keys/first_contact.npz');save(case,'first_contact.npz',s)
++   for t,key in [(PEAK,'site0_peak'),(PEAK+ns.tool.sites[1].delay,'site1_peak'),(ns.tool.clear_time,'withdrawal_end'),(SPEC['common_cohort_time_s'],'common_cohort')]:
++    if abs(s['time']-t)<1e-14:save(case,key+'.npz',s)
++   if s['time']>=snap_next-1e-14:save(case,f'frame_{s["step"]:06d}.npz',s);snap_next+=50e-6
++   diameter=(6*free*V/np.pi)**(1/3);dfrac=float(debris/free.sum()) if free.sum() else None;instant=scalar_metrics(free,n)['instant_target']
++   if instant and 'first_instant_target' not in events:
++    events['first_instant_target']=dict(time_s=s['time'],step=s['step'],evidence='keys/first_instant_target.npz');save(case,'first_instant_target.npz',s)
++   row=dict(step=s['step'],time_s=s['time'],dt_s=h,phase=ns.tool.phase(s['time']),reaction_x_N=float(s['indenter_reaction'][0]),reaction_y_N=float(s['indenter_reaction'][1]),reaction_z_N=float(s['indenter_reaction'][2]),reaction_norm_N=float(np.linalg.norm(s['indenter_reaction'])),contact_nodes=len(s['contact_atom_ids']),contact_duration_s=contact_duration,max_overlap_m=float(s['indenter_overlap'].max(initial=0)),impulse_x_Ns=impulse[0],impulse_y_Ns=impulse[1],impulse_z_Ns=impulse[2],bulk_failed=int(np.sum((s['d']==1)&~cut&(bt==1))),interface_failed=int(np.sum((s['d']==1)&~cut&(bt==2))),softened=int(np.sum((s['d']>0)&~cut)),attached_nodes=int(sizes[attached].sum()),detached_nodes=int(free.sum()),components=len(free),largest_nodes=large,largest_fraction=large/n,N20_200=int(medium.sum()),mass_fraction20_200=float(free[medium].sum()/n),N_ge34=int(np.sum(free>=34)),N_ge114=int(np.sum(free>=114)),N_ge200um=int(np.sum(diameter>=200e-6)),N_ge300um=int(np.sum(diameter>=300e-6)),debris12_nodes=int(debris),debris12_detached_fraction=dfrac,instant_target=instant,W_J=W,U_J=float(sc[0]),K_J=s['K'],D_J=float(sc[1]),Uc_J=s['Uc'],U_indenter_J=float(s['indenter_U']),Jc_J=Jc,numerical_damping_work_J=0.,R_J=res,relative_R=rel,max_dd=float(dd.max()),max_speed_m_s=float(np.linalg.norm(s['velocity'],axis=1).max()),max_kappa=float(s['kappa'][~cut].max()))
++   row.update(scalar_metrics(free,n))
++   for j,site in enumerate(ns.tool.sites):
++    row.update({f'site{j}_W_J':float(site_work[j]),f'site{j}_U_J':float(s['site_energies'][j]),f'site{j}_contact_nodes':int(s['site_contact_counts'][j]),f'site{j}_contact_duration_s':float(site_duration[j]),f'site{j}_max_overlap_m':float(s['site_overlaps'][j].max(initial=0)),f'site{j}_reaction_norm_N':float(np.linalg.norm(s['site_reactions'][j])),f'site{j}_displacement_m':single.displacement(s['time']-site.delay)})
++    for axis,letter in enumerate('xyz'):
++     row.update({f'site{j}_center_{letter}_m':float(s['site_centers'][j,axis]),f'site{j}_velocity_{letter}_m_s':float(s['site_velocities'][j,axis]),f'site{j}_reaction_{letter}_N':float(s['site_reactions'][j,axis]),f'site{j}_impulse_{letter}_Ns':float(site_impulse[j,axis])})
++   if writer is None:writer=csv.DictWriter(stream,fieldnames=list(row));writer.writeheader()
++   writer.writerow(row);rows.append(row);changed=np.flatnonzero(dd>0)
++   if len(changed):changes.write(json.dumps(dict(step=s['step'],time_s=s['time'],original_bond_ids=changed+1,d=s['d'][changed]),default=cv)+'\n')
++   if s['step']%1000==0:stream.flush();history.flush();changes.flush();print('STEP',name,s['step'],s['time'],'contact',len(s['contact_atom_ids']),'soft',row['softened'],'N20',row['N20_200'],'largest',large,'R',rel,'wall',time.perf_counter()-start,flush=True)
++   prev=s
++  save(case,'final.npz',s)
++ except BaseException as exc:
++  stop.append(repr(exc));(case/'FAILURE_TRACEBACK.txt').write_text(traceback.format_exc());save(case,'failed_unaccepted.npz',s);s=prev;save(case,'last_accepted.npz',s)
++ finally:stream.close();history.close();changes.close()
++ count,raw=ns.l.gather_bonds();actual=np.ctypeslib.as_array(raw,shape=(3*count,)).reshape(-1,3)[:,1:].copy();actual.sort(1);wanted=b[ns.field(3)<1]+1;native_topology=bool(np.array_equal(np.sort(actual[:,0]*N+actual[:,1]),np.sort(wanted[:,0]*N+wanted[:,1])));assert native_topology
++ assert np.array_equal(ns.field(13),on);ns.close()
++ summary=dict(status='COMPLETED' if not stop else 'NUMERICALLY_UNRESOLVED',name=name,uniform_material=True,accepted_steps=len(rows),time_s=float(s['time']),stop_reasons=stop,events=events,last_row=rows[-1] if rows else None,max_independent_errors=err,max_relative_energy_residual=max((q['relative_R'] for q in rows),default=0),max_medium_components=max((q['N20_200'] for q in rows),default=0),history_max_free_nodes=max((q['largest_nodes'] for q in rows),default=0),secondary_events=secondary,predictive_substeps=substeps,predictive_rejections=rejects,wall_s=time.perf_counter()-start,cpu_s=time.process_time()-cpu,peak_RSS_bytes=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss*1024,library_sha256=sha(LIB),native_topology_matches_current_native=True,original_onsets_unchanged=True)
++ dump(case/'COMPONENT_REGISTRY.json',registry);dump(case/'FRACTURE_EVENTS.json',events);dump(case/'SUMMARY.json',summary);print('DONE',name,summary['status'],summary['wall_s'],flush=True);return summary
++if __name__=='__main__':
++ p=argparse.ArgumentParser();p.add_argument('--name',required=True,choices=['simultaneous','staggered']);args=p.parse_args();result=run(args.name);raise SystemExit(0 if result['status']=='COMPLETED' else 2)
+--- /dev/null
++++ b/clot_clearance/analysis/clot_multifragment_breakup_v1/run_simultaneous.sh
+@@ -0,0 +1,7 @@
++#!/bin/bash
++set -euo pipefail
++source /workspace/y_clot/env.sh
++export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
++export LD_LIBRARY_PATH=/workspace/y_clot/project/verification/clot_multifragment_breakup_v1/20261017T110849Z/build:${LD_LIBRARY_PATH:-}
++cd /workspace/y_clot/project
++exec python -u /workspace/y_clot/project/analysis/clot_multifragment_breakup_v1/run_multifragment_cases.py --name simultaneous
+--- /dev/null
++++ b/clot_clearance/analysis/clot_multifragment_breakup_v1/run_staggered.sh
+@@ -0,0 +1,7 @@
++#!/bin/bash
++set -euo pipefail
++source /workspace/y_clot/env.sh
++export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
++export LD_LIBRARY_PATH=/workspace/y_clot/project/verification/clot_multifragment_breakup_v1/20261017T110849Z/build:${LD_LIBRARY_PATH:-}
++cd /workspace/y_clot/project
++exec python -u /workspace/y_clot/project/analysis/clot_multifragment_breakup_v1/run_multifragment_cases.py --name staggered
+--- /dev/null
++++ b/clot_clearance/analysis/clot_multifragment_breakup_v1/seal.py
+@@ -0,0 +1,25 @@
++from common import *
++import subprocess,difflib,shutil,datetime,platform,scipy
++assert json.loads((O/'DELIVERY_VALIDATION.json').read_text())['status']=='PASS'
++assert json.loads((O/'WSL_DOCUMENT_UPDATE.json').read_text())['status']=='PASS'
++for name in ['clot_breakup_simultaneous_20261017','clot_breakup_staggered_20261017']:
++ result=subprocess.run(['supervisorctl','status',name],capture_output=True,text=True).stdout;assert 'EXITED' in result,result
++src=R/'verification/lps_native_softening_event_resolved_integration_v1/20261013T235945Z/source/src'
++deps=[LIB,OLDLIB,HA/'indenter.py',HA/'analyze.py',R/'analysis/v3_softening_pilot_v1/native.py',R/'analysis/softening_feasibility_v1/model.py',R/'analysis/v3_chunk_fragmentation_mechanism_v1/graph_ops.py',src/'fix_indent.cpp',src/'version.h']
++dump(O/'DEPENDENCY_SHA256.json',{str(p):sha(p) for p in deps});dump(O/'ENVIRONMENT.json',dict(python=platform.python_version(),numpy=np.__version__,scipy=scipy.__version__,lammps_version_header=(src/'version.h').read_text(),new_dependencies=[],native_build_audit='BUILD_AUDIT.json'))
++sources=[p for p in A.iterdir() if p.is_file() and p.suffix in ['.py','.sh','.md','.cpp','.h']];dump(O/'SOURCE_SHA256.json',{str(p.relative_to(R)):sha(p) for p in sources});patch=''
++for p in sorted(sources):
++ previous=HA/p.name;old=previous.read_text().splitlines(True) if p.suffix in ['.cpp','.h'] else [];patch+=''.join(difflib.unified_diff(old,p.read_text().splitlines(True),fromfile='baseline/'+p.name if old else '/dev/null',tofile='b/clot_clearance/'+str(p.relative_to(R))))
++(O/'SOURCE_DIFF.patch').write_text(patch);shutil.copy2(A/'REPRODUCE.md',O/'REPRODUCE.md')
++excluded=[];files=[];cache={}
++for root in [A,O,F]:
++ for p in sorted(root.rglob('*')):
++  if '__pycache__' in p.parts or p.name in ['DELIVERY_MANIFEST.json','LOCAL_READBACK.json']:continue
++  if not p.is_file():continue
++  if p.parent==O/'build' and (p.name.endswith('.o') or p.name.startswith('liblammps.so')):
++   excluded.append(dict(path=str(p.relative_to(R)),bytes=p.stat().st_size,sha256=sha(p),reason='Server-only reproducible build object/library; source, command and SHA delivered'));continue
++  assert '.tmp' not in p.name,p
++  if p.is_symlink():
++   target=p.resolve();assert target.is_relative_to(R);cache.setdefault(target,sha(target));files.append(dict(path=str(p.relative_to(R)),kind='symlink',target=os.readlink(p),target_sha256=cache[target]))
++  else:files.append(dict(path=str(p.relative_to(R)),kind='file',bytes=p.stat().st_size,sha256=sha(p)))
++dump(O/'DELIVERY_MANIFEST.json',dict(status='SEALED',task=TASK,run=RUN,utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),file_count=len(files),regular_file_bytes=sum(q.get('bytes',0) for q in files),server_only_builds=excluded,files=files));print('SEALED',len(files),sum(q.get('bytes',0) for q in files),sha(O/'DELIVERY_MANIFEST.json'))
+--- /dev/null
++++ b/clot_clearance/analysis/clot_multifragment_breakup_v1/update_wsl_document.py
+@@ -0,0 +1,34 @@
++"""WSL-only, history-preserving research log update after validation."""
++from pathlib import Path
++import json,hashlib,difflib
++root=Path(__file__).resolve().parents[2];task='clot_multifragment_breakup_v1';run='20261017T110849Z';out=root/'verification'/task/run
++doc=Path('/home/lzy/projects/clot_rupture.md');folder=out/'wsl_document';folder.mkdir(exist_ok=True)
++def read(p):return json.loads(p.read_text())
++def sha(raw):return hashlib.sha256(raw).hexdigest()
++assert read(out/'DELIVERY_VALIDATION.json')['status']=='PASS'
++cases=read(out/'ANALYSIS.json');resources=read(out/'RUN_RESOURCES.json');afterbridge=read(out/'CRACK_BRIDGE_AFTER_LOADING.json')['cases'];status=read(out/'FINAL_STATUS.json')
++raw=doc.read_bytes();text=raw.decode();heading=f'**多区域时空加载与真实多块碎裂（{run}，2026-10-17）**'
++assert heading not in text
++backup=folder/'clot_rupture.before.md'
++if not backup.exists():backup.write_bytes(raw)
++if backup.read_bytes()!=raw:
++    backup=folder/'clot_rupture.immediate_before.md';assert not backup.exists();backup.write_bytes(raw)
++parts=[heading+'：本轮正式以MULTI-FRAGMENT BREAKUP为目标，区分表面侵蚀、单大块脱离和多个中等内部凝聚块体。沿用1792材料点、336固定锚点、95666原始键、2736原预切和均匀LPS变分软化，不新增缺陷、不人为删除桥接键。',
++    '探索性目标在正式仿真前冻结：共同2.8ms群组及末态≥5个20–200节点真实自由分量，脱离质量≥初始10%，最大块≤脱离质量50%，1–2节点细屑≤脱离质量20%，至少5个群组原始成员保持连通至3.6ms。独立保存各项约束，不用最大块或加权总分代替目标。六个尺寸组为1–2、3–13、14–33、34–113、114–200、≥201节点，均非医学粒径分类。',
++    '历史离线诊断：均匀末态上半部896点诊断区有3461条真实跨区存活键，3423条位于切口尖端右侧，2987条长度≥2dx，2105条当前受压，3441条历史κ未越过s0；存在避开|Y|≤50µm中心观察层的真实锚点路径。表面帽/切口唇尚有2961/3439条桥接。非均匀对应3467/2959/3384条。失效簇出生与合并不等于材料分离；有界固定源核最小割只是完整度诊断代理，未作为删键或断裂能。',
++    '新原生加载为MULTISITE_MECHANICAL_SURROGATE：两个外部作用点(−325,−75,175)µm和(325,75,−175)µm，分别沿+X/−X压入；R=182.818µm、Kind=57973.6N/m²、间隙25µm、压入240µm。每源0–0.2ms接近、1.2ms到最大、保持至1.4ms、2.4ms撤回；同步同时启动，错时第二源延后0.4ms，延迟按半个点间剪切波传播时间取整。仅改变时序，两组均至3.6ms；实际反力和外功并不相等。无摩擦径向接触不是切向摩擦牵引，也不是已验证微泡/射流。']
++for k,label in [('simultaneous','同步'),('staggered','错时')]:
++    q=cases[k];v=q['final'];m=q['final_metrics'];bridges=afterbridge[k]['final']['regions'];fine=m['fine_debris_mass_fraction_detached'];dominance=m['largest_free_fragment_fraction_detached']
++    parts.append(f"{label}：首次软化/完整失效{q['first_softening_s']*1e3:.6g}/{q['first_failure_s']*1e3:.6g}ms；末态脱离{int(v['detached_nodes'])}点，历史/末态最大块{q['history_max_free_nodes']}/{int(v['largest_nodes'])}点，历史最多/末态20–200节点块{q['history_max_N20_200']}/{m['fragment_count_target_band']}个；末态≥34/≥114点块{m['N_ge34']}/{m['N_ge114']}个。细屑/脱离质量={fine}，最大块/脱离质量={dominance}，总脱离/初始质量={m['total_detached_mass_fraction']}。实际输入功{v['W_J']*1e9:.8g}nJ，两源峰值反力{[f*1e6 for f in q['peak_site_reactions_N']]}µN，最大重叠/dx={q['max_site_overlap_dx']}；最大相对能量残差{q['max_relative_energy_residual']:.7g}。冻结目标通过={q['exploratory_target_met']}。三诊断区残余桥接={[r['surviving_crossing_bonds'] for r in bridges]}条。")
++    parts.append(f"{label}共同卸载群组：2.8ms目标带块{len(q['common_cohort_medium_ids'])}个，原成员连通至末态{q['common_cohort_medium_surviving']}个；共同窗口后二次裂解{q['secondary_after_common_cohort']}次，末尾实际连续无源接触{q['actual_contact_free_tail_s']*1e6:.6g}µs。撤回完成不等于实际不再接触；无中等块时不能声称其稳定。完整原始成员、内部存活率、体积/质量等效尺寸、三维跨度、回转半径、PCA主轴、形态秩及内部存活键密度逐接受态保存，不造平滑壳面。")
++parts += [status['SCIENTIFIC_CONCLUSION'],
++    '从连接主体形成多个中等块，需要多个有实际体积区域的完整分离边界：既切断所有跨界bulk/interface存活路径（含长horizon键和三维绕行），又保留块内连接。仍未达阈值的桥接同时受加载覆盖与正伸长损伤规则影响；本轮不能唯一归因于本构错误。后续可把有文献/标定依据的混合模式损伤作为独立假设验证，不能以更容易得到碎块作为正确性标准。',
++    '原生修改限于两个命名接触源的物理单位力累加；材料核及历史身份未改。新接口无接触/释放、方向、势能梯度、反力/外功分项及叠加检查通过，正式VV和不可逆历史逐步核验，原始ID损伤事件重放与全部接受态分量回读通过。能量W0+W1=ΔU+ΔK+D+ΔUc−Jc+ΔUi+R，无阻尼；R不当作耗散。一次固定材料球心穿越预检的长步积分失败和修正fixture完整保留；正式协议未改。接触罚刚度和离散分辨率尚未做收敛认证。',
++    f"两组累计墙钟{resources['native_wall_s']:.3f}s、CPU{resources['native_cpu_s']:.3f}s，峰值RSS{resources['peak_RSS_bytes']/1024**3:.6f}GiB；1rank×1线程顺序运行。只运行两组，无追加对照、完整V3、CFD、材料扫描。微泡Streaming/微射流到实际接触面积、方向、时间谱、冲量和外功的物理映射仍缺失，结果不足以直接认证真实V3多块机制。",
++    f"见[可视化总览](temp_storage/clot_github_sync_20261015/clot_clearance/results/{task}/{run}/OPEN_RESULTS.html)、[18项科研问答](temp_storage/clot_github_sync_20261015/clot_clearance/verification/{task}/{run}/REVIEW_CLOT_MULTIFRAGMENT_BREAKUP_V1.md)、[真实多块指标](temp_storage/clot_github_sync_20261015/clot_clearance/verification/{task}/{run}/MULTIFRAGMENT_RESULTS.csv)。本轮结束后停止，等待审查。"]
++block='\n\n'.join(parts)+'\n\n';index=text.index('# ⑥ 外加剪切');new=text[:index]+block+text[index:]
++assert doc.read_bytes()==raw;doc.write_text(new);after=doc.read_bytes();assert after.decode()==new and new.replace(block,'',1)==text
++(folder/'clot_rupture.after.md').write_bytes(after)
++(folder/'clot_rupture.diff').write_text(''.join(difflib.unified_diff(text.splitlines(True),new.splitlines(True),fromfile='clot_rupture.before.md',tofile='clot_rupture.after.md')))
++(out/'WSL_DOCUMENT_UPDATE.json').write_text(json.dumps(dict(status='PASS',path=str(doc),before_backup=str(backup),before_sha256=sha(raw),after_sha256=sha(after),history_preserved_exactly=True,readback_equal=True),ensure_ascii=False,indent=2)+'\n')
++print('WSL_DOCUMENT_UPDATED',sha(after))
+--- /dev/null
++++ b/clot_clearance/analysis/clot_multifragment_breakup_v1/validate_outputs.py
+@@ -0,0 +1,96 @@
++"""Replay original-ID damage and validate delivery, without new physics runs."""
++from fragment_topology_analysis import *
++def main(case_names=('simultaneous','staggered')):
++    ref=load_npz(O/'provenance/reference.npz');assert read(O/'KEY_CHECKS.json')['status']=='PASS'
++    build=read(O/'BUILD_AUDIT.json');assert sha(LIB)==build['library_sha256']
++    baseline=read(O/'BASELINE_MANIFEST.json');assert sha(OLDLIB)==baseline['baseline_library_sha256']
++    for item in baseline['used_files']:assert sha(item['path'])==item['sha256'],item['path']
++    for filename,want in build['source_sha256'].items():assert sha(A/filename)==want,filename
++    assert sha(O/'CRACK_BRIDGE_AUDIT.json')==read(O/'LOAD_SITE_SELECTION.json')['selection_evidence']['audit_sha256']
++    n=int(ref['clot_count']);N=len(ref['X']);b=ref['bonds'];bt=ref['bond_types'];cut=ref['initial_cut'];result={}
++    for name in case_names:
++        check_start=time.perf_counter()
++        case=O/'cases'/name;summary=read(case/'SUMMARY.json');request=read(case/'REQUEST.json');rows=histories(case)
++        assert summary['status']=='COMPLETED' and len(rows)==summary['accepted_steps'] and abs(rows[-1]['time_s']-END)<1e-14
++        # Runtime inputs stay frozen. Independently developed postprocessors are
++        # not imported by the formal driver and may be completed after launch.
++        runtime={'common.py','native.py','run_multifragment_cases.py','distributed_multisite_loading.py','multifragment_objective.py'}
++        for filename in runtime:assert sha(A/filename)==request['source_sha256'][filename],filename
++        postprocessing_changes=[filename for filename,want in request['source_sha256'].items() if sha(A/filename)!=want]
++        assert not runtime.intersection(postprocessing_changes)
++        for filename,want in request['input_sha256'].items():assert sha(O/filename)==want,filename
++        assert request['library_sha256']==sha(LIB) and summary['original_onsets_unchanged'] and summary['native_topology_matches_current_native']
++        initial=load_npz(case/'keys/initial.npz');assert np.array_equal(initial['d'],cut.astype(float))
++        error=max(abs(q['W_J']-(q['U_J']-initial['scalars'][0]+q['K_J']-initial['K']+q['D_J']+q['Uc_J']-initial['Uc']-q['Jc_J']+q['U_indenter_J']-initial['indenter_U'])-q['R_J']) for q in rows)
++        work_error=max(abs(q['W_J']-q['site0_W_J']-q['site1_W_J']) for q in rows)
++        assert error<1e-20 and work_error<1e-18 and max(q['relative_R'] for q in rows)<=.01
++        assert max(q['max_dd'] for q in rows)<=.1+1e-10 and all(q['numerical_damping_work_J']==0 for q in rows)
++        keys={};tool=DistributedLoading(ref,name);force_error=0.;states=0
++        for p in (case/'keys').glob('*.npz'):
++            assert 'failed' not in p.name
++            s=load_npz(p);step=int(s['step']);keys.setdefault(step,[]).append(p)
++            assert np.array_equal(s['atom_ids'],np.arange(1,N+1)) and np.array_equal(s['x'][n:],ref['X'][n:]) and not s['velocity'][n:].any()
++            assert np.all(s['d'][cut]==1) and not s['d'][bt==3].any()
++            oracle=tool.evaluate(s['x'],float(s['time']))
++            force_error=max(force_error,float(np.max(abs(oracle['force']-s['indenter_force']))))
++            assert force_error<1e-15 and abs(oracle['U']-float(s['indenter_U']))<1e-17
++            assert np.max(abs(oracle['site_energies']-s['site_energies']))<1e-17
++            assert np.max(abs(oracle['site_reactions']-s['site_reactions']))<1e-12
++            assert not s['indenter_force'][:n][oracle['overlap'][:n]==0].any();states+=1
++        registry={int(k):v for k,v in read(case/'COMPONENT_REGISTRY.json').items()};count=0;topology_updates=0
++        events=gzip.open(case/'damage_events.jsonl.gz','rt');pending=next(events,None);damage=cut.astype(float);cached=graph.topology(ref,damage);lasttime=-1;previous_free=None
++        with gzip.open(case/'CONNECTED_COMPONENT_HISTORY.jsonl.gz','rt') as f:
++            for line in f:
++                z=json.loads(line);step=z['step'];assert z['time_s']>lasttime;lasttime=z['time_s'];changed=False
++                if pending:
++                    e=json.loads(pending)
++                    assert e['step']>=step
++                    if e['step']==step:
++                        ids=np.asarray(e['original_bond_ids'])-1;values=np.asarray(e['d']);assert len(set(ids))==len(ids) and not cut[ids].any() and np.all(values>=damage[ids]) and np.all(values<=1)
++                        changed=bool(np.any((values==1)&(damage[ids]<1)));damage[ids]=values;pending=next(events,None)
++                if changed:cached=graph.topology(ref,damage);topology_updates+=1
++                lab,sizes,att=cached;actual={tuple((np.flatnonzero(lab==i)+1).tolist()) for i in np.flatnonzero(~att)}
++                saved={tuple(registry[q['component_id']]['atom_ids']) for q in z['components']};assert actual==saved
++                assert z['attached_nodes']+z['detached_nodes']==n and sum(map(len,saved))==z['detached_nodes']
++                if step:assert rows[step-1]['detached_nodes']==z['detached_nodes'] and abs(rows[step-1]['time_s']-z['time_s'])<1e-15
++                key_state=None
++                for p in keys.get(step,[]):
++                    state=load_npz(p);assert np.array_equal(state['d'],damage),p
++                    if key_state is None:key_state=state
++                if changed or previous_free!=saved:
++                    for members in saved:
++                        boundary,inside=graph.boundary(ref,np.asarray(members)-1);assert not np.any(damage[boundary]<1)
++                for q in z['components']:
++                    assert not q['anchor_reachable'] and q['remaining_live_external_connections']==0
++                    if key_state is not None:
++                        s=key_state;ids=np.asarray(registry[q['component_id']]['atom_ids'])-1
++                        sh=shape(s['x'][ids]);assert np.allclose(sh['actual_span_m'],q['actual_span_m'],rtol=0,atol=1e-18)
++                        _,inside=graph.boundary(ref,ids);inside=inside[(bt[inside]==1)&~cut[inside]]
++                        assert q['internal_initial_bonds']==len(inside) and q['internal_alive_bonds']==int(np.sum(damage[inside]<1))
++                previous_free=saved;count+=1
++        events.close();assert pending is None and count==len(rows)+1
++        for e in summary['secondary_events']:
++            parent=set(registry[e['parent_component_id']]['atom_ids']);children=[set(registry[q]['atom_ids']) for q in e['children_component_ids']]
++            assert set.union(*children)==parent and sum(map(len,children))==len(parent)
++        for event in ['first_softening','first_failure']:
++            e=summary['events'].get(event)
++            if e:
++                s=load_npz(case/e['evidence']);ids=np.asarray(e['original_bond_ids'])-1
++                assert np.all(s['kappa'][ids]>S0[bt[ids]]) and not cut[ids].any()
++                assert np.all(s['d'][ids]==1) if event=='first_failure' else np.all(s['d'][ids]>0)
++        evidence=[case/filename for filename in ['history.csv','damage_events.jsonl.gz','CONNECTED_COMPONENT_HISTORY.jsonl.gz','COMPONENT_REGISTRY.json','REQUEST.json','SUMMARY.json']]+sorted((case/'keys').glob('*.npz'))
++        result[name]=dict(status='PASS',accepted_records=len(rows),component_records=count,topology_recomputations=topology_updates,accepted_FP64_states=states,all_accepted_memberships_match_original_graph=True,energy_reconstruction_error_J=error,per_source_work_sum_error_J=work_error,current_contact_force_error_N=force_error,runtime_source_and_protocol_frozen=True,nonruntime_postprocessing_files_completed_after_launch=postprocessing_changes,validator_sha256=sha(A/'validate_outputs.py'),raw_evidence_sha256={str(p.relative_to(case)):sha(p) for p in evidence},validation_wall_s=time.perf_counter()-check_start)
++        dump(case/'DELIVERY_VALIDATION.json',result[name])
++    combined={}
++    for name in ['simultaneous','staggered']:
++        case=O/'cases'/name;p=case/'DELIVERY_VALIDATION.json'
++        if not p.exists():continue
++        proof=read(p);assert proof['validator_sha256']==sha(A/'validate_outputs.py')
++        for filename,want in proof['raw_evidence_sha256'].items():assert sha(case/filename)==want
++        combined[name]=proof
++    status='PASS' if len(combined)==2 else 'PARTIAL_ONE_CASE'
++    dump(O/'DELIVERY_VALIDATION.json',dict(status=status,cases=combined,scope='Original-ID damage replay, full accepted component histories, shape, native current contact, accounting, frozen source/protocol. Each case validated once; unchanged proofs combined by SHA. No new physics case.'))
++    print('DELIVERY_VALIDATION',status,{k:{q:v[q] for q in ['accepted_records','component_records','accepted_FP64_states','validation_wall_s']} for k,v in combined.items()})
++if __name__=='__main__':
++    import argparse
++    p=argparse.ArgumentParser();p.add_argument('--case',choices=['simultaneous','staggered']);args=p.parse_args();main([args.case] if args.case else ['simultaneous','staggered'])
