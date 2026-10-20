@@ -33,7 +33,7 @@ for p in f.rglob('*'):
  if p.is_file():add(p,limit=False)
 for p in c.iterdir():
  if p.suffix in ['.json','.csv','.txt']:add(p)
-for name in ['initial','pilot','final','first_softening','first_failure','first_free_component','max_target_count']:
+for name in ['initial','pilot','final','first_softening','first_failure','first_free_component','first_target_observed','max_target_count']:
  add(c/'keys'/(name+'.npz'))
 for name in ['last_accepted.npz','failed_native_trial.npz']:add(c/name)
 for base in [c/'checkpoints',c/'keys',o/'build']:

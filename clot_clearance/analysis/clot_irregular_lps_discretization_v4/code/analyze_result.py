@@ -17,7 +17,8 @@ def topology(ref,d):
  return lab,attached
 def state_paths(case):
  paths=[case/'keys/initial.npz']+list((case/'keys').glob('frame_*.npz'))
- for p in [case/'keys/final.npz',case/'last_accepted.npz']:
+ events=['pilot','final','first_softening','first_failure','first_free_component','first_multinode','first_target_observed','max_target_count']
+ for p in [case/'keys'/(name+'.npz') for name in events]+[case/'last_accepted.npz']:
   if p.exists():paths.append(p)
  found={}
  for p in paths:
@@ -74,6 +75,10 @@ def main():
  morphology=[]
  for k,rows in groups.items():morphology.extend(dict(case=k,time_s=float(states[k]['time']),**row) for row in rows)
  csv_write(O/'FRAGMENT_MORPHOLOGY.csv',morphology);csv_write(O/'FRAGMENT_HISTORY.csv',history['V4']);csv_write(O/'ENERGY_LEDGER.csv',[{k:v for k,v in r.items() if k in ['step','time_s','dt_s','W_J','W_drive_J','W_drag_J','U_J','K_J','D_J','Uc_J','Jc_J','R_J','relative_R','numerical_damping_work_J']} for r in history['V4']])
+ energy_keys=['step','time_s','dt_s','W_J','U_J','K_J','D_J','Uc_J','Jc_J','R_J','relative_R']
+ energy_extrema={name:{k:float(row[k]) for k in energy_keys} for name,row in [('max_relative',max(history['V4'],key=lambda r:float(r['relative_R']))),('max_absolute',max(history['V4'],key=lambda r:abs(float(r['R_J']))))]}
+ energy_extrema['normalization']='Absolute R divided by cumulative max of 1e-24 J, abs(W), and abs(delta U)+K+D+Uc; exactly the frozen runner definition.'
+ dump(O/'ENERGY_EXTREMA.json',energy_extrema)
  plt.rcParams.update({'font.size':12,'axes.grid':True,'grid.alpha':.4,'grid.color':'#9ba5ae','savefig.facecolor':'white'})
  fig=plt.figure(figsize=(14,13),layout='constrained')
  for j,k in enumerate(['V3','V4']):
@@ -98,9 +103,10 @@ def main():
  fig,axes=plt.subplots(1,2,figsize=(14,5),layout='constrained');spectra={}
  for j,k in enumerate(['V3','V4']):
   sizes=np.array([q['nodes'] for q in groups[k]]);masses=np.array([q['mass_kg'] for q in groups[k]]);counts=[int(((sizes>=lo)&(sizes<=hi)).sum()) for lo,hi in BINS];mass=[float(masses[(sizes>=lo)&(sizes<=hi)].sum()) for lo,hi in BINS];spectra[k]=dict(node_bins=BIN_LABELS,counts=counts,mass_kg=mass)
-  axes[0].bar(np.arange(7)+(j-.5)*.36,counts,width=.36,color=['#718c9e','#a41c3b'][j],label=k);axes[1].bar(np.arange(7)+(j-.5)*.36,np.array(mass)*1e6,width=.36,color=['#718c9e','#a41c3b'][j],label=k)
+  bars0=axes[0].bar(np.arange(7)+(j-.5)*.36,counts,width=.36,color=['#718c9e','#a41c3b'][j],label=k);bars1=axes[1].bar(np.arange(7)+(j-.5)*.36,np.array(mass)*1e6,width=.36,color=['#718c9e','#a41c3b'][j],label=k)
+  axes[0].bar_label(bars0,labels=[str(n) for n in counts],padding=3,fontsize=10);axes[1].bar_label(bars1,labels=[f'{m*1e6:.3g}' for m in mass],padding=3,fontsize=10)
  for ax in axes:ax.set_xticks(np.arange(7),BIN_LABELS);ax.set_xlabel('Original material nodes / surviving component');ax.legend()
- axes[0].set_ylabel('Free component count');axes[1].set_ylabel('Reference mass (mg)');fig.suptitle(f'Surviving original material graph; matched accepted time ≈ {tf*1e3:.4f} ms');fig.savefig(out/'FIG_07_FRAGMENT_SIZE_DISTRIBUTION.png',dpi=180);plt.close(fig);dump(O/'FRAGMENT_SIZE_SPECTRA.json',spectra)
+ axes[0].set_yscale('symlog',linthresh=1);axes[0].set_ylabel('Free component count (symlog scale)');axes[1].set_ylabel('Reference mass (mg)');axes[0].margins(y=.2);axes[1].margins(y=.15);fig.suptitle(f'Surviving original material graph; matched accepted time ≈ {tf*1e3:.4f} ms');fig.savefig(out/'FIG_07_FRAGMENT_SIZE_DISTRIBUTION.png',dpi=180);plt.close(fig);dump(O/'FRAGMENT_SIZE_SPECTRA.json',spectra)
  fig,axes=plt.subplots(1,2,figsize=(14,5),layout='constrained')
  for j,k in enumerate(['V3','V4']):
   q=survival_results[k];ax=axes[j];items=q['target_member_sets']
