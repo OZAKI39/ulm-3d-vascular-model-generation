@@ -9,6 +9,10 @@ def main():
  physics_status='完整单次时程已完成。' if complete else '正式轨迹触发冻结数值门槛后停止；未追加物理算例、改阈值或把失败态标为接受态。'
  scientific='只能依据这一组参考点云，评价整个离散方案的变化；当前结果不支持统计稳健性、真实微观结构或声流机制认证。'
  failure='无。' if not result['exception'] else '```text\n'+result['exception']+'\n```'
+ pilot_path=O/'cases/H_IRREGULAR_LPS_V4/PILOT_RESULT.json'
+ if pilot_path.exists():
+  pilot=json.loads(pilot_path.read_text());pilot_note=f"2.0ms试运行状态{pilot['status']}，wall={pilot['wall_s']:.3f}s、CPU={pilot['cpu_s']:.3f}s、接受步{pilot['accepted_steps']}。它仅是数值准入窗口。按这一窗口平均成本线性外推3.6ms约{pilot['wall_s']*1.8/3600:.3f}h；这只是当时的成本尺度，后续损伤/表面复杂度不同，实际总成本以上述终态计时为准。后段读取同一pilot checkpoint延续，没有重算前2ms。"
+ else:pilot_note='未完成2.0ms数值试运行窗口，因此没有准入后段正式续算，也不从这一短时窗口推断最终碎块目标失败。'
  text=f'''# REVIEW_CLOT_IRREGULAR_LPS_V4
 
 任务：V4 不规则 LPS 点云、性能优化与碎块稳定性研究。Run `{RUN}`。
@@ -76,9 +80,11 @@ L1支撑四面体仍由原格点身份拓扑定义，但其坐标、面积、法
 
 唯一工况 `H_IRREGULAR_LPS_V4`。接受步{result['accepted_steps']}，预测拒绝{result['rejected_predictions']}，接受细分步{result['substeps']}。累计wall={result['wall_s']:.6f}s、CPU={result['cpu_s']:.6f}s、峰值RSS={result['peak_RSS_bytes']/2**30:.4f}GiB。未设置4GiB或1800s预算。
 
+{pilot_note}
+
 原协议BASE=0.25µs、最小事件步0.03125µs、单步Δd≤0.1。外功沿真实接受端点力与真实位移累计，Wdrive/Wdrag分列；完整账本`W=ΔU+ΔK+D+ΔUc−Jc+R`，没有把R加到D或隐藏成阻尼。最大已接受归一化残差 **{100*result['max_relative_R']:.7f}%**。
 
-合法checkpoint带原生restart、接受态、表面历史、节点功和谱系/总账sidecar；仅当2ms试运行通过后才从同一checkpoint继续3.6ms，实际覆盖时间以上述原生终态为准。失败原生态与最后接受态分开，`LAST_LEGAL_CHECKPOINT.json`指向最近合法可恢复磁盘状态；若它早于最后接受NPZ，两者明确区分。
+标量账本逐接受步保存；损伤变化逐事件以FP64记录；完整节点坐标、速度、力和损伤快照按约25µs、首次事件及协议端点保存，并非逐步全量坐标视频流。合法checkpoint带原生restart、接受态、表面历史、节点功和谱系/总账sidecar；仅当2ms试运行通过后才从同一checkpoint继续3.6ms，实际覆盖时间以上述原生终态为准。失败原生态与最后接受态分开，`LAST_LEGAL_CHECKPOINT.json`指向最近合法可恢复磁盘状态；若它早于最后接受NPZ，两者明确区分。
 
 异常记录：
 

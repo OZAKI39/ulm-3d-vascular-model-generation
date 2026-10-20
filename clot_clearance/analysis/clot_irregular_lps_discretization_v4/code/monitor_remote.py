@@ -33,7 +33,9 @@ def main():
  path=D/'RESUME_STATUS.json';record=json.loads(path.read_text());record['recorded_utc']=stamp
  if 'latest_accepted' in data:record['last_observed_time_s']=float(data['latest_accepted']['time_s'])
  record['latest_monitor']=data
- if 'native_result' in data:record['status']=data['native_result']['status']
+ if 'native_result' in data:
+  status=data['native_result']['status']
+  record['status']='FORMAL_CONTINUING_AFTER_PILOT_PASS' if status=='PILOT_PASS' and any('clot_v4_formal_' in line and 'RUNNING' in line for line in data['services']) else status
  tmp=path.with_suffix('.tmp');tmp.write_text(json.dumps(record,indent=2,ensure_ascii=False)+'\n');tmp.replace(path)
  print(json.dumps(data,ensure_ascii=False))
 if __name__=='__main__':main()

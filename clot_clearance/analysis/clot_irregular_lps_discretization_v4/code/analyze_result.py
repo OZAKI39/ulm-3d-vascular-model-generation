@@ -75,17 +75,25 @@ def main():
  for k,rows in groups.items():morphology.extend(dict(case=k,time_s=float(states[k]['time']),**row) for row in rows)
  csv_write(O/'FRAGMENT_MORPHOLOGY.csv',morphology);csv_write(O/'FRAGMENT_HISTORY.csv',history['V4']);csv_write(O/'ENERGY_LEDGER.csv',[{k:v for k,v in r.items() if k in ['step','time_s','dt_s','W_J','W_drive_J','W_drag_J','U_J','K_J','D_J','Uc_J','Jc_J','R_J','relative_R','numerical_damping_work_J']} for r in history['V4']])
  plt.rcParams.update({'font.size':12,'axes.grid':True,'grid.alpha':.4,'grid.color':'#9ba5ae','savefig.facecolor':'white'})
- fig=plt.figure(figsize=(14,9),layout='constrained')
+ fig=plt.figure(figsize=(14,13),layout='constrained')
  for j,k in enumerate(['V3','V4']):
-  ref=refs[k];s=states[k];b=ref['bonds'];mask=(s['d']==1)&~ref['initial_cut']&(ref['bond_types']==1);ax=fig.add_subplot(2,2,j+1,projection='3d');X=ref['X'][:int(ref['clot_count'])]*1e3;ax.scatter(*X.T,s=1,c='#b6bdc5',alpha=.12,linewidths=0)
+  ref=refs[k];s=states[k];b=ref['bonds'];mask=(s['d']==1)&~ref['initial_cut']&(ref['bond_types']==1);ax=fig.add_subplot(3,2,j+1,projection='3d');X=ref['X'][:int(ref['clot_count'])]*1e3;ax.scatter(*X.T,s=1,c='#b6bdc5',alpha=.12,linewidths=0)
   mid=ref['X'][b[mask]].mean(1)*1e3
   if len(mid):ax.scatter(*mid.T,s=1,c='#9c1536',alpha=.3,linewidths=0)
   ax.set(xlim=(-.65,.65),ylim=(-.65,.65),zlim=(-.35,.35),xlabel='X (mm)',ylabel='Y (mm)',zlabel='Z (mm)',title=f'{k}: failed bulk-bond midpoints, {float(s["time"])*1e3:.4f} ms');ax.view_init(15,-58);ax.set_box_aspect((1.2,1.2,.6))
-  ax=fig.add_subplot(2,2,j+3)
+  ax=fig.add_subplot(3,2,j+3)
   if mask.any():
    d=(ref['X'][b[mask,1]]-ref['X'][b[mask,0]])/ref['r0'][mask,None];ax.hist(abs(d).ravel(),bins=np.linspace(0,1,31),density=True,color=['#718c9e','#a41c3b'][j],alpha=.8);ax.set_title(f'Axis fourth moment = {cracks[k]["axis_alignment_fourth_moment"]:.3f}')
   else:ax.text(.5,.5,'No bulk failures in accepted window',ha='center',transform=ax.transAxes)
   ax.set(xlabel='|failed-bond direction · axis|',ylabel='Probability density')
+ evolution_axes=[fig.add_subplot(3,2,5),fig.add_subplot(3,2,6)]
+ for j,k in enumerate(['V3','V4']):
+  rows=evolutions[k];t=np.array([r['time_s'] for r in rows])*1e3;color=['#718c9e','#a41c3b'][j]
+  evolution_axes[0].plot(t,[r['bulk_failed'] for r in rows],label=k,color=color)
+  evolution_axes[1].plot(t,[r['failed_minus_reference_axis_moment'] if r['failed_minus_reference_axis_moment'] is not None else np.nan for r in rows],label=k,color=color)
+ evolution_axes[0].set(xlabel='Physical time (ms)',ylabel='New fully failed bulk bonds',title='Accepted-state damage development')
+ evolution_axes[1].set(xlabel='Physical time (ms)',ylabel='Failed A4 − original reference A4',title='Axis alignment relative to each reference graph')
+ for ax in evolution_axes:ax.legend()
  fig.savefig(out/'FIG_06_CRACK_PATH_COMPARISON.png',dpi=180);plt.close(fig)
  fig,axes=plt.subplots(1,2,figsize=(14,5),layout='constrained');spectra={}
  for j,k in enumerate(['V3','V4']):
@@ -112,7 +120,7 @@ def main():
  outcome['final_axis_alignment_excess_over_reference']={k:rows[-1]['failed_minus_reference_axis_moment'] for k,rows in evolutions.items()}
  outcome['endpoint_sample_times_s']={k:float(s['time']) for k,s in states.items()}
  dump(O/'SCIENTIFIC_OUTCOME.json',outcome);dump(O/'COMPUTE_COST.json',{k:result[k] for k in ['wall_s','cpu_s','peak_RSS_bytes','accepted_steps','rejected_predictions','substeps','accepted_time_s']})
- fig,ax=plt.subplots(figsize=(13,7));ax.axis('off');lines=[('Numerical trajectory',f'{result["status"]} — {tf*1e3:.6f} / 3.6 ms'),('Elastic discretization',f'Bulk unchanged; shear changes {100*min(elastic["relative_modulus_changes"].values()):.2f}% to {100*max(elastic["relative_modulus_changes"].values()):.2f}%'),('Reference topology',f'{geo["original_bonds"]:,} → {geo["new_reference_bonds"]:,} original bonds'),('20–200 node free blocks',f'Matched-time V3: {target_counts["V3"]}; V4: {target_counts["V4"]}'),('V4 trajectory cost',f'{result["wall_s"]/3600:.3f} wall h; {result["peak_RSS_bytes"]/2**30:.2f} GiB peak RSS'),('Exact V3 optimization',f'{performance["comparisons"]["damaged"]["speedup"]:.3f}× damaged short window; no full-run speedup claim'),('Scientific scope','One conditioned seed; exploratory, uncalibrated material'),('Load scope','Prescribed mechanical shear surrogate; no solved acoustic streaming')]
+ fig,ax=plt.subplots(figsize=(13,7));ax.axis('off');lines=[('Numerical trajectory',f'{result["status"]} — {tf*1e3:.6f} / 3.6 ms'),('Elastic discretization',f'Bulk unchanged; shear changes {100*min(elastic["relative_modulus_changes"][mode] for mode in ["xy","xz","yz"]):.2f}% to {100*max(elastic["relative_modulus_changes"][mode] for mode in ["xy","xz","yz"]):.2f}%'),('Reference topology',f'{geo["original_bonds"]:,} → {geo["new_reference_bonds"]:,} original bonds'),('20–200 node free blocks',f'Matched-time V3: {target_counts["V3"]}; V4: {target_counts["V4"]}'),('V4 trajectory cost',f'{result["wall_s"]/3600:.3f} wall h; {result["peak_RSS_bytes"]/2**30:.2f} GiB peak RSS'),('Exact V3 optimization',f'{performance["comparisons"]["damaged"]["speedup"]:.3f}× damaged short window; no full-run speedup claim'),('Scientific scope','One conditioned seed; exploratory, uncalibrated material'),('Load scope','Prescribed mechanical shear surrogate; no solved acoustic streaming')]
  ax.table(cellText=lines,colLabels=['Question / evidence','Measured result / limitation'],colWidths=[.28,.72],cellLoc='left',loc='center').auto_set_font_size(False)
  for tab in ax.tables:
   tab.set_fontsize(12);tab.scale(1,2.2)
