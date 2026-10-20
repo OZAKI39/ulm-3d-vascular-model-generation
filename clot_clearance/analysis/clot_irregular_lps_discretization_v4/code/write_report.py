@@ -123,7 +123,7 @@ V4是否到达2.8ms撤载：**{survival['V4']['drive_off_reached']}**。撤载�
 
 Use the isolated server environment `/workspace/y_clot/env.sh`, single MPI rank and one BLAS/OpenMP thread. Native library SHA: `{sha(LIB)}`. The original V3 baseline archive and V2 native build objects are required: this compact Git snapshot is not a standalone binary distribution.
 
-1. Preserve existing accepted archives. Reproduction must use a fresh project copy or a new RUN configured in `code/common.py`; output guards deliberately refuse replacing a frozen reference or trajectory.
+1. Preserve existing accepted archives. Run `python code/restore_export.py` in a compact Git checkout to restore and verify the losslessly compressed native reference, body data and correspondence tables. Reproduction must use a fresh project copy or a new RUN configured in `code/common.py`; output guards deliberately refuse replacing a frozen reference or trajectory.
 2. Verify `SOURCE_FREEZE.json`, `V4_IMPLEMENTATION_FREEZE.json`, environment package records and original V3 sources.
 3. Run `run_p0.sh`, `run_p1.sh`, then `performance_summary.py` to reproduce the paired eight-step profiling, before generating the irregular reference. Do not repeat the historical full V3 dynamics.
 4. Run `prepare_reference.py`, `build_native.py`, and `build_surface.py`. The native builder verifies and reuses the frozen V2 object hashes, recompiles changed classes/contact/dispatch, and writes isolated V4 outputs. Full commands and source/object hashes are in `BUILD_AUDIT.json`.
