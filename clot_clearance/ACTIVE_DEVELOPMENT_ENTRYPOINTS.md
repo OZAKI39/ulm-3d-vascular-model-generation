@@ -1,8 +1,32 @@
+# GitHub 同步与最新碎裂回放（2026-10-20）
+
+本分支 `clot-clearance/project-sync-20261020` 汇总完整项目代码、研究日志、必要数据及可视化；同步说明、排除记录与校验脚本见 `github_sync_20261020/README.md`。
+
+最新固定相机碎裂过程：`results/y_clot_fracture_reference_style_v2/20261020T094240Z/OPEN_RESULTS.html`。149 个真实接受态，Z 轴竖直，红色血块，局部与全景视野各有高清/PPT 视频。只对既有轨迹重新可视化，没有新增动力学。便捷入口 `github_sync_20261020/OPEN_RESULTS.html`。
+
+# 当前：原 Y 血管血块上的 V4 不规则方法应用（20261020T041100Z）
+
+任务 `y_clot_irregular_current_method_v4`；状态 **COMPLETED**，实际接受 **3.60000000 ms**。1927材料点+1561锚点，412内部点扰动、153986参考键，原外边界/附着面及材料相区保持。积分体积0.240875mm³、质量0.240875mg。
+
+先读 `analysis/y_clot_irregular_current_method_v4/FINAL_STATUS.json`、`REVIEW_Y_CLOT_IRREGULAR_CURRENT_METHOD_V4.md`、`REPRODUCE.md`。实际时程、载荷场、4K/1080p Z轴旋转视频在 `results/y_clot_irregular_current_method_v4/20261020T041100Z/OPEN_RESULTS.html`；原生证据在 `verification/y_clot_irregular_current_method_v4/20261020T041100Z`。仅1条新物理轨迹，历史Y不重跑。EXPLORATORY_UNCALIBRATED、MECHANICAL_SHEAR_SURROGATE；没有新CFD/声流/双向FSI。不得覆盖接受态或自动追加工况。
+
+## 历史入口原文（保留）
+
 # 当前：不规则变分LPS参考与单次轨迹 V4（20261019T221000Z）
 
 任务 `clot_irregular_lps_discretization_v4`；原生状态 **COMPLETED**；合法接受 **3.60000000ms / 3.6ms**。8125材料点+1875锚点，原10强区与阈值保持；非均匀体积及质量、完整变分力、参考KD-tree原始图、映射控制体L1/L2。积分体积1.015625mm³与中心包络0.864mm³分开。
 
 先读 `analysis/clot_irregular_lps_discretization_v4/FINAL_STATUS.json`、`REVIEW_CLOT_IRREGULAR_LPS_V4.md`、`REPRODUCE.md`。图与视频 `results/clot_irregular_lps_discretization_v4/20261019T221000Z/OPEN_RESULTS.html`；正式证据 `verification/clot_irregular_lps_discretization_v4/20261019T221000Z`。独立分支 `clot-clearance/irregular-lps-v4-20261020`。只有1次正式物理轨迹；禁止覆盖冻结输出、自动改阈值或追加案例。EXPLORATORY_UNCALIBRATED、MECHANICAL_SHEAR_SURROGATE。
+
+## 历史入口原文（保留）
+
+# 当前：原 Y 血管不规则血块上的 V3 方法应用（20261019T131047Z）
+
+任务 `y_clot_current_method_v2`；状态 **COMPLETED**，接受时间 3.600000ms。仅1次正式工况；原1927材料点+1561锚点、无缺口、原材料图保留。原当前强弱场物理平移裁剪，45.7706%强相；1000Pa当前表面剪切代理、L1/L2和原Y壁接触。无新CFD、微泡声流或双向FSI。
+
+末态游离1748点/947分量；最大421点；20–200点块末态/历史最多1/3。材料与完整湿润面未标定，数值验收不替代物理认证。
+
+源码 `analysis/y_clot_current_method_v2/`；先读 `verification/y_clot_current_method_v2/20261019T131047Z/FINAL_STATUS.json`、`REVIEW_Y_CLOT_CURRENT_METHOD_V2.md`、`DELIVERY_VALIDATION.json`。图与1080p红色视频：`results/y_clot_current_method_v2/20261019T131047Z/OPEN_RESULTS.html`。新实验使用新目录；保留本轮全部接受数据与冻结哈希，不自动重跑或推送GitHub。
 
 ## 历史入口原文（保留）
 

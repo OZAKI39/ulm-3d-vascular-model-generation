@@ -1,0 +1,8 @@
+"""Aggregate measured costs without presenting sums as elapsed parallel time."""
+from common import *
+native=json.loads((O/'RUN_RESOURCES.json').read_text());check=json.loads((O/'KEY_CHECKS.json').read_text())
+post={p.name:json.loads(p.read_text()) for p in sorted(O.glob('POSTPROCESS*RESOURCES*.json'))}
+assert all(stage['returncode']==0 for q in post.values() for stage in q['stages'])
+wall=sum(stage['wall_s'] for q in post.values() for stage in q['stages']);cpu=sum(q['cumulative_child_cpu_s'] for q in post.values());peak=max(q['max_child_RSS_bytes'] for q in post.values())
+dump(O/'AGGREGATE_COMPUTE_COST.json',dict(native_case_wall_sum_s=native['native_wall_s_sum'],native_cpu_s=native['native_cpu_s'],new_path_check_wall_s=check['wall_s'],postprocessing_wall_sum_s=wall,postprocessing_cpu_s=cpu,tracked_task_wall_sum_s=native['native_wall_s_sum']+check['wall_s']+wall,tracked_cpu_s_excluding_unmeasured_checks=native['native_cpu_s']+cpu,native_single_process_peak_RSS_bytes=native['max_single_case_peak_RSS_bytes'],native_simultaneous_RSS_upper_bound_bytes=native['sum_individual_peak_RSS_upper_bound_bytes'],postprocessing_max_child_RSS_bytes=peak,postprocessing_source_files={p:sha(O/p) for p in post},scope='Sums of measured tasks, not end-to-end elapsed time. Main native cases overlap. Includes scientific reductions, full accepted-state replay and all recorded rendering revisions. Environment reads, initial input preview, copying/network, document editing, sealing, and model reasoning are not timed here; check CPU/RSS were not measured. No total-system memory claim.'))
+print('MEASURED_COMPUTE_COST',native['native_wall_s_sum']+check['wall_s']+wall)

@@ -1,0 +1,1 @@
+Open fracture_step_*.vtm and one_way_transport_routes.vtm in ParaView. Coordinates are SI meters. Nodes include all anchors and clot members. Shells are separate per real component; unresolved members remain in the node block. Bond type1bulk2interface3wall. Raw loads are Newtons. Original CFD remains in the read-only source register. Full native WALL uncut.

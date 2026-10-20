@@ -1,0 +1,7 @@
+# 原生/医学同状态对照
+
+用ParaView打开raw_medical_step_0000.vtm或raw_medical_step_4660.vtm，坐标单位m。两个文件均为真实LAMMPS保存时刻，没有输运插值。
+
+raw_all_nodes包含全部3488节点的atom_id、component_id和attached；raw_surviving_typed_bonds是当时真实存活键。medical_component_*各自为一个真实连通组件；medical_unresolved_mass_markers保留每个1–2节点组件的真实节点、ID、质量及附着标记。末态220标记=219游离节点+1附着节点。
+
+在Multiblock Inspector中分别显示raw节点/键或medical壳/标记。标记选Points、Size2、Opacity0.32，不使用球体Glyph。壳按medical_rgb着色；native_WALL_uncut按需透明。显示外壳为上轮重建，当前仅法向/材质改动；不将其体积当机械体积。单独隐藏一个block只是审阅开关，正式视频始终包含全部质量表示。

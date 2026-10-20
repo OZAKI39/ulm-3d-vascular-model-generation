@@ -1,0 +1,809 @@
+--- /workspace/y_clot/project/analysis/clot_shear_load_inverse_design_v1/checks.py
++++ /workspace/y_clot/project/analysis/clot_shear_multivortex_fragmentation_v2/checks.py
+@@ -1,104 +1,47 @@
+-"""Only new field, surface, transfer, and external callback path checks."""
++"""Geometry-only fixtures and historical replay; no main dynamics calibration."""
+ from common import *
+ from current_surface import CurrentSurface
+-from shear_field_library import ShearField
+-from native import native,predict
+-import time
+-
+-def audit(tool,x,v,d,t):
+-    z=tool.evaluate(x,v,d,t);f=z['force'];ff=z['face_force'];n=z['normal'];active=z['active']
+-    force=np.linalg.norm(f.sum(0)-ff.sum(0))
+-    moment=np.linalg.norm(np.cross(x,f).sum(0)-np.cross(z['centroid'],ff).sum(0))
+-    power=abs(np.sum(f*v)-np.sum(ff*z['face_velocity']))
+-    tangent=np.max(abs(np.sum(z['traction']*n,axis=1)),initial=0)
+-    budget=np.asarray(tool.W@np.linalg.norm(ff,axis=1));ratio=np.linalg.norm(f,axis=1)/np.maximum(budget,1e-100)
+-    assert force<1e-17 and moment<1e-20 and power<1e-18 and tangent<1e-10
+-    assert ratio.max()<=1+1e-12 and z['drag_power']<=1e-20 and not f[tool.n:].any()
+-    lumped=np.asarray(tool.W@(z['area']*active));nz=lumped>0
+-    vertex=tool.field(x[tool.loaded_ids],np.tile([0.,0.,1.],(len(tool.loaded_ids),1)),t)*BETA
+-    nodal=f[tool.loaded_ids]/np.maximum(lumped[tool.loaded_ids,None],1e-100)
+-    mag=np.linalg.norm(vertex,axis=1);good=(mag>.05*tool.field.theta['nominal_shear_Pa'])&(lumped[tool.loaded_ids]>0)
+-    angles=np.degrees(np.arccos(np.clip(np.sum(vertex[good]*nodal[good],axis=1)/(mag[good]*np.maximum(np.linalg.norm(nodal[good],axis=1),1e-100)),-1,1)))
+-    return dict(force_error_N=float(force),current_moment_error_Nm=float(moment),virtual_power_error_W=float(power),
+-                tangent_error_Pa=float(tangent),max_force_over_positive_local_budget=float(ratio.max()),
+-                max_node_vs_analytic_initial_plane_direction_deg=float(angles.max(initial=0)),
+-                direction_scope='Initial flat zero-velocity states only; curvature and velocity affect the force law.',
+-                min_weight=1/3,max_weight=1/3,negative_weights=0,active_faces=int(active.sum()))
+-
+-def main():
+-    start=time.perf_counter();ref=load_npz(O/'provenance/reference.npz');X=ref['X'];d=ref['initial_cut'].astype(float)
+-    results={};rng=np.random.default_rng(20261017)
+-    for mode in CASES:
+-        tool=CurrentSurface(ref,mode);z=tool.evaluate(X,np.zeros_like(X),d,HOLD)
+-        results[mode]=dict(flat=audit(tool,X,np.zeros_like(X),d,HOLD))
+-        angle=.35;rotation=np.array([[np.cos(angle),0,np.sin(angle)],[0,1,0],[-np.sin(angle),0,np.cos(angle)]])
+-        center=X[tool.tri].mean((0,1));deformed=(X-center)@np.diag([1.1,.9,1.])@rotation.T+center
+-        v=rng.normal(size=X.shape)*.02;v[tool.n:]=0
+-        zr=tool.evaluate(deformed,v,d,HOLD)
+-        assert np.max(abs(zr['area']/tool.reference_area-.99))<1e-12
+-        assert np.max(abs(zr['normal']-np.array([0.,0.,1.])@rotation.T))<1e-12
+-        results[mode]['deformed']=audit(tool,deformed,v,d,HOLD)
+-        # Retained surfaces moving out of the drive retain passive drag.
+-        far=X+np.array([.002,0,0]);zf=tool.evaluate(far,v,d,HOLD)
+-        assert not zf['drive_force'].any() and np.linalg.norm(zf['drag_force'])>0 and zf['drag_power']<0
+-        results[mode]['outside_drive_passive_drag_W']=zf['drag_power']
+-        assert float(tool.field.envelope(0))==0 and float(tool.field.envelope(RISE))==1 and float(tool.field.envelope(OFF))==0
+-        # Original-ID array permutation, before transferring to native ordering.
+-        perm=rng.permutation(len(X));back=np.empty_like(X);back[perm]=X[perm]
+-        assert np.array_equal(tool.evaluate(back,np.zeros_like(X),d,HOLD)['force'],z['force'])
+-    uniform=CurrentSurface(ref,'uniform');v=np.tile([25.,0,0],(len(X),1));v[int(ref['clot_count']):]=0
+-    assert np.max(abs(uniform.evaluate(X,v,d,HOLD)['traction']))<1e-10
+-    assert np.max(abs(uniform.evaluate(X,np.zeros_like(X),d,HOLD)['traction']-np.array([1000.,0,0])))<1e-10
+-    # Independent finite-difference streamfunction and planar divergence.
+-    field=ShearField('counter_rotating');points=np.array([[-.2e-3,-.1e-3,375e-6],[.05e-3,.08e-3,375e-6],[.2e-3,-.05e-3,375e-6]])
+-    normals=np.tile([0.,0,1.],(3,1));eps=1e-8
+-    def psi(p):
+-        a=p[:,0];b=p[:,1];sigma=field.theta['width_m'];s=field.theta['separation_m']
+-        return sigma*np.exp(.5)/2*(np.exp(-((a+s/2)**2+b*b)/(2*sigma*sigma))-np.exp(-((a-s/2)**2+b*b)/(2*sigma*sigma)))
+-    gx=(psi(points+[eps,0,0])-psi(points-[eps,0,0]))/(2*eps)
+-    gy=(psi(points+[0,eps,0])-psi(points-[0,eps,0]))/(2*eps)
+-    expected=np.column_stack([-gy,gx,np.zeros(3)]);err=np.max(abs(expected-field.spatial(points,normals)))
+-    ux=(field(points+[eps,0,0],normals,HOLD)-field(points-[eps,0,0],normals,HOLD))/(2*eps)
+-    uy=(field(points+[0,eps,0],normals,HOLD)-field(points-[0,eps,0],normals,HOLD))/(2*eps)
+-    div=np.max(abs(ux[:,0]+uy[:,1]))/(field.U/field.theta['width_m'])
+-    assert err<1e-7 and div<1e-7
+-    # Reuse an actual prior accepted damaged state; no invented main-run cuts.
+-    old=load_npz(PREV/'cases/inverse/keys/final.npz');zo=uniform.evaluate(old['x'],old['velocity'],old['d'],HOLD)
+-    assert np.array_equal(zo['active'],(old['d'][uniform.edge_ids]<1).all(1)&zo['geometric'])
+-    assert not zo['face_force'][~zo['active']].any()
+-    ports=[];version=None
+-    for mode in CASES:
+-        ns,C=native(O/'checks'/mode,mode);s=ns.dynamics();version=ns.l.version()
+-        ns.l.command(f'reset_timestep 0 time {HOLD:.17g}')
+-        # A small material velocity makes the new slip path nontrivial.
+-        vel=np.zeros_like(X);vel[:ns.n]=[.02,.003,0]
+-        ids=ns.l.numpy.extract_atom('id')[:ns.N]-1;ns.l.numpy.extract_atom('v')[:ns.N]=vel[ids]
+-        ns.l.command('run 0');p=ns.state();oracle=ns.tool.evaluate(p['x'],p['velocity'],p['d'],p['time'])
+-        uc,fc,_=C(ref).evaluate(p['x'],p['d']);port=np.max(abs(p['force']-p['material_force']-fc-oracle['force']))
+-        assert port<1e-15
+-        h=MIN_H;state=ns.step(h)
+-        predicted=p['x'].copy();predicted[:ns.n]+=h*(p['velocity'][:ns.n]+h*p['force'][:ns.n]/(2*RHO*V))
+-        vv=p['velocity'][:ns.n]+h*(p['force'][:ns.n]+state['force'][:ns.n])/(2*RHO*V)
+-        assert np.max(abs(predicted-state['x']))<2e-18 and np.max(abs(vv-state['velocity'][:ns.n]))<1e-12
+-        ve=np.max(abs(state['force_stage_velocity']-state['velocity']));assert ve<1e-11
+-        w4=ns.tool.work(p,state);w8=ns.tool.work(p,state,8);assert np.max(abs(w4-w8))<1e-18 and w4[1]<=0
+-        assert np.array_equal(p['d'],state['d'])
+-        restart=O/'checks'/mode/'one_step.restart';ns.l.command(f'write_restart {restart}');ns.close()
+-        resumed,C=native(O/'checks'/(mode+'_restart_port'),mode,restart=restart);rs=resumed.dynamics()
+-        ro=resumed.tool.evaluate(rs['x'],rs['velocity'],rs['d'],rs['time'])
+-        re=np.max(abs(ro['force']-state['external_force']));assert re<1e-15
+-        assert np.array_equal(rs['x'],state['x']) and np.array_equal(rs['d'],state['d']) and np.array_equal(rs['kappa'],state['kappa'])
+-        resumed.close()
+-        ports.append(dict(mode=mode,force_port_error_N=float(port),end_velocity_consistency_m_s=float(ve),
+-                          restart_force_error_N=float(re),drift_work_4_vs_8_J=float(np.max(abs(w4-w8))),
+-                          native_check_steps=1,scope='One new slip callback step and same-state restart force reevaluation, not a repeated full restart matrix or main fracture case.'))
+-    dump(O/'SURFACE_TRACTION_MAPPING_AUDIT.json',dict(status='PASS',cases=results,flat_streamfunction_FD_error=float(err),flat_divergence_relative=float(div),old_damaged_state_retained_faces=int(zo['active'].sum()),
+-         V3_status='NOT_CHANGED_NOT_ADMITTED; no claim to repair its old affine interpolation',
+-         local_limit='Positive centroid weights preserve force/current moment/power but triangle quadrature and 2/3–4/3 initial nodal area variation remain. Direction differs naturally near a vortex zero; no local mesh convergence claim.'))
+-    dump(O/'KEY_CHECKS.json',dict(status='PASS',native_version=version,native_port=ports,new_native_check_steps=2,
+-         callback='Implicit linear final-half-kick slip solve, original-ID ordering, current committed edge damage',
+-         inherited_validation='Existing material identity, MPI kernel, contact and full restart tests reused; no kernel changes',
+-         library_sha256=sha(LIB),wall_s=time.perf_counter()-start))
+-    print('KEY_CHECKS_PASS',version,ports)
+-
+-if __name__=='__main__':main()
++import time,resource
++start=time.perf_counter();cpu=time.process_time()
++ref=load_npz(O/'provenance/reference.npz');X=ref['X'];n=int(ref['clot_count']);b=ref['bonds']
++surf=CurrentSurface(ref,'counter_rotating');d=ref['initial_cut'].astype(float);v=np.zeros_like(X)
++results={};z=surf.evaluate(X,v,d,.002)
++assert len(np.unique(np.sort(surf.tri,axis=1),axis=0))==len(surf.tri)
++assert not z['accessible'].any() and not z['open_gap_tetra'].any()
++assert not z['force'][n:].any()
++results['initial']=surf.metrics(z,X)
++# Known opening crack: all original crossing bonds cut in fixture only, no native call.
++upper=X[:,2]>0;cut=upper[b[:,0]]!=upper[b[:,1]];df=d.copy();df[cut]=1
++xp=X.copy();xp[upper,2]+=20e-6
++opened=surf.evaluate(xp,v,df,.002)
++assert opened['accessible'].sum()>0 and opened['fluid_tetra'].sum()>0
++assert not np.any(opened['original']&opened['accessible'])
++results['known_open_fixture']=surf.metrics(opened,xp)
++closed=surf.evaluate(X,v,df,.002)
++assert not closed['accessible'].any()
++results['closed_fixture_new_loaded']=int(closed['accessible'].sum())
++# Isolated internal pocket: no gap-cell route to the exterior => no new wet face.
++inside=(abs(X[:,0])<100e-6)&(abs(X[:,1])<80e-6)&(abs(X[:,2]-150e-6)<80e-6)
++di=d.copy();di[inside[b[:,0]]!=inside[b[:,1]]]=1
++xi=X.copy();xi[inside]*=.8
++zi=surf.geometry(xi,di)
++assert not zi['accessible'].any()
++results['sealed_pocket_new_loaded']=int(zi['accessible'].sum())
++# Exact mapping virtual-work, resultant, torque and rigid-translation covariance.
++rng=np.random.default_rng(631);vv=rng.normal(size=X.shape);zz=surf.evaluate(xp,vv,df,.002)
++ferr=np.max(abs(zz['force'].sum(0)-zz['face_force'].sum(0)))
++merr=np.max(abs(np.cross(xp,zz['force']).sum(0)-np.cross(zz['centroid'],zz['face_force']).sum(0)))
++perr=abs(float(np.sum(zz['force']*vv))-float(np.sum(zz['face_force']*zz['face_velocity'])))
++assert ferr<1e-16 and merr<1e-19 and perr<1e-16 and zz['drag_power']<=0
++results['mapping']=dict(force_error_N=ferr,moment_error_Nm=merr,virtual_power_error_W=perr,anchor_force_N=float(abs(zz['force'][n:]).max()))
++# Historical accepted states: read-only surface reconstruction, no mechanics rerun.
++replays=[]
++for mode in ['uniform','counter_rotating']:
++ for name in ['first_failure','peak_load','final']:
++  p=OLD/'cases'/mode/'keys'/f'{name}.npz';s=load_npz(p)
++  zz=surf.evaluate(s['x'],s['velocity'],s['d'],float(s['time']))
++  replays.append(dict(mode=mode,key=name,**surf.metrics(zz,s['x'])))
++results['historical_replays']=replays
++dump(O/'GEOMETRY_CHECKS.json',dict(status='PASS',checks=results,scope='Geometry fixtures and immutable old states only; zero new native dynamics.',wall_s=time.perf_counter()-start,cpu_s=time.process_time()-cpu,peak_RSS_bytes=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss*1024))
++dump(O/'SURFACE_MAPPING_AUDIT.json',results['mapping'])
++print(json.dumps(results,default=cv),flush=True)
+--- /workspace/y_clot/project/analysis/clot_shear_load_inverse_design_v1/common.py
++++ /workspace/y_clot/project/analysis/clot_shear_multivortex_fragmentation_v2/common.py
+@@ -3,7 +3,7 @@
+ import os,json,hashlib,importlib.util
+ import numpy as np
+ R=Path(os.environ.get('Y_CLOT_PROJECT_ROOT','/workspace/y_clot/project'))
+-TASK='clot_shear_load_inverse_design_v1';RUN='20261017T165129Z'
++TASK='clot_shear_multivortex_fragmentation_v2';RUN='20261017T175456Z'
+ A=R/'analysis'/TASK;O=R/'verification'/TASK/RUN;F=R/'results'/TASK/RUN
+ HISTORY=R/'verification/clot_multifragment_crushing_mechanism_v1/20261016T222934Z'
+ HA=R/'analysis/clot_multifragment_crushing_mechanism_v1'
+@@ -40,5 +40,9 @@
+ PA=R/'analysis/clot_acoustic_streaming_shear_multifragment_v1'
+ MU=0.001; H_EFF=25e-6; BETA=MU/H_EFF
+ RISE=.002; HOLD=.0024; OFF=.0028; COHORT=.0034
+-CASES=['uniform','counter_rotating']
++CASES=['counter_rotating','checkerboard']
+ LABEL='SHEAR_MECHANICAL_REQUIREMENT_ONLY'
++
++OLD=R/'verification/clot_shear_load_inverse_design_v1/20261017T165129Z'
++OLD_A=R/'analysis/clot_shear_load_inverse_design_v1'
++W_TARGET=25.698197e-9
+--- /workspace/y_clot/project/analysis/clot_shear_load_inverse_design_v1/current_surface.py
++++ /workspace/y_clot/project/analysis/clot_shear_multivortex_fragmentation_v2/current_surface.py
+@@ -1,118 +1,204 @@
+-"""Material-ID surface facets following current geometry and live edge support."""
++"""Conservative supported-simplex surface / open-gap connectivity proxy.
++
++No tetra is a material element: native mass, constitutive law and all original
++bonds remain untouched. Lost support alone never turns a tetra into fluid.
++Only locally disconnected, dilated, positive-volume cells can transmit fluid,
++through dilated, disconnected triangular portals connected to the exterior.
++New loaded triangles must bound a fully live positive-volume material tetra.
++This is a lower-resolution support-complex proxy, NOT a continuum crack mesh.
++"""
+ from common import *
+ from shear_field_library import ShearField
+ from scipy.sparse import csr_matrix
++from scipy.sparse.csgraph import connected_components
++from scipy.spatial import cKDTree
++from itertools import permutations, combinations
++
++OPEN=1e-6
++FULL_OPEN=5e-6
++PAIR=np.array(list(combinations(range(4),2)))
++
++def ramp(a):
++    q=np.clip((a-OPEN)/(FULL_OPEN-OPEN),0.,1.)
++    return q*q*(3-2*q)
+ 
+ class CurrentSurface:
+     def __init__(self,ref,mode,theta=None):
+         self.ref=ref;self.N=len(ref['X']);self.n=int(ref['clot_count']);self.name=mode
+-        data=load_npz(PREV/'SHEAR_TRACTION_FIELD.npz')
+-        self.tri=data['triangle_atom_ids'].astype(int)-1
+-        assert np.array_equal(data['reference_coordinates_m'],ref['X'])
+-        self.reference_area=data['area_m2'];self.reference_normal=data['n_clot']
++        X=ref['X']; axes=[np.unique(X[:,j]) for j in range(3)]
++        lattice=np.rint((X-X.min(0))/DX).astype(int)
++        lookup={tuple(q):i for i,q in enumerate(lattice)};tets=[]
++        for key in lookup:
++            origin=np.array(key)
++            if any(key[j]>=len(axes[j])-1 for j in range(3)):continue
++            for perm in permutations(range(3)):
++                q=origin.copy();tet=[lookup[tuple(q)]]
++                for j in perm:q=q.copy();q[j]+=1;tet.append(lookup[tuple(q)])
++                tets.append(tet)
++        self.tet=np.array(tets,int);T=self.tet
++        bonds={tuple(sorted(q)):i for i,q in enumerate(ref['bonds'])}
++        self.te=np.array([[bonds[tuple(sorted(t[p]))] for p in PAIR] for t in T])
++        faces={}
++        for ti,t in enumerate(T):
++            for opposite in range(4):
++                face=tuple(sorted(np.delete(t,opposite)))
++                faces.setdefault(face,[]).append((ti,int(t[opposite])))
++        self.tri=np.array(list(faces),int)
++        self.owners=np.array([[q[0][0],q[1][0] if len(q)>1 else -1] for q in faces.values()])
++        self.opposite=np.array([[q[0][1],q[1][1] if len(q)>1 else q[0][1]] for q in faces.values()])
++        self.original=self.owners[:,1]<0
++        self.material=np.all(self.tri<self.n,axis=1)
++        self.edge_ids=np.array([[bonds[tuple(sorted((t[i],t[j])))] for i,j in [(0,1),(1,2),(2,0)]] for t in self.tri])
++        self.surface_bonds=np.unique(np.r_[self.te.ravel(),self.edge_ids.ravel()])
++        cross=np.cross(X[self.tri[:,1]]-X[self.tri[:,0]],X[self.tri[:,2]]-X[self.tri[:,0]])
++        orient=np.sum(cross*(X[self.opposite[:,0]]-X[self.tri[:,0]]),axis=1)>0
++        self.tri[orient]=self.tri[orient][:,[0,2,1]]
++        cross=np.cross(X[self.tri[:,1]]-X[self.tri[:,0]],X[self.tri[:,2]]-X[self.tri[:,0]])
++        self.reference_area=np.linalg.norm(cross,axis=1)/2
++        self.reference_normal=cross/(2*self.reference_area[:,None])
++        self.ref_volume=self.volume(X)
++        self.ref_height=np.stack([np.abs(np.sum((X[self.opposite[:,j]]-X[self.tri[:,0]])*self.reference_normal,axis=1)) for j in range(2)],axis=1)
+         self.W=csr_matrix((np.full(self.tri.size,1/3),(self.tri.ravel(),np.repeat(np.arange(len(self.tri)),3))),shape=(self.N,len(self.tri)))
+-        edges=np.sort(np.stack([self.tri[:,[0,1]],self.tri[:,[1,2]],self.tri[:,[2,0]]],axis=1),axis=-1)
+-        lookup={tuple(sorted(pair)):i for i,pair in enumerate(ref['bonds'])}
+-        self.edge_ids=np.array([[lookup[tuple(e)] for e in face] for face in edges])
+-        self.surface_bonds=np.unique(self.edge_ids)
+-        assert not ref['initial_cut'][self.surface_bonds].any()
+-        assert (self.tri<self.n).all()
+-        self.field=ShearField(mode,theta,float(ref['X'][self.tri,2].mean()))
++        self.loaded_ids=np.arange(self.n)
++        # Lookup local graph partitions for the 64 possible six-edge states.
++        self.disconnected=np.zeros(64,bool)
++        for mask in range(64):
++            a=np.eye(4,dtype=bool)
++            for k,(i,j) in enumerate(PAIR):a[i,j]=a[j,i]=not(mask&(1<<k))
++            for k in range(4):a|=a[:,k,None]&a[None,k,:]
++            self.disconnected[mask]=not a.all()
++        self.field=ShearField(mode,theta,float(X[:self.n,2].max()))
+         self.label=LABEL;self.boundaries=[RISE,HOLD,OFF,COHORT,END]
+-        self.loaded_ids=np.unique(self.tri)
++        self._cache=None;self.ever_loaded=np.zeros(len(self.tri),bool)
++        self.initial_area=None;self.cumulative_new_area=0.
++
++    def volume(self,x):
++        p=x[self.tet];return np.einsum('ij,ij->i',np.cross(p[:,1]-p[:,0],p[:,2]-p[:,0]),p[:,3]-p[:,0])/6
++
++    def occlusion_checker(self,x,solid):
++        """Actual current solid-tetra point containment; no reference-only visibility."""
++        p=x[self.tet[solid]]
++        if not len(p):return lambda points:np.zeros(len(points),bool)
++        centers=p.mean(1);radius=np.linalg.norm(p-centers[:,None],axis=2).max()
++        tree=cKDTree(centers)
++        inverse=np.linalg.inv(np.transpose(p[:,1:]-p[:,:1],(0,2,1)))
++        def inside(points):
++            nearby=tree.query_ball_point(points,radius+1e-12)
++            counts=np.array([len(a) for a in nearby]);pi=np.repeat(np.arange(len(points)),counts)
++            if not len(pi):return np.zeros(len(points),bool)
++            ti=np.concatenate(nearby).astype(int)
++            bary=np.einsum('nij,nj->ni',inverse[ti],points[pi]-p[ti,0])
++            hit=(bary>=-1e-9).all(1)&(bary.sum(1)<=1+1e-9)
++            return np.bincount(pi,weights=hit,minlength=len(points))>0
++        return inside
+ 
+     def geometry(self,x,d):
++        failed=d>=1
++        if self._cache is not None and np.array_equal(x,self._cache[0]) and np.array_equal(failed,self._cache[1]):return self._cache[2].copy()
+         vertices=x[self.tri];cross=np.cross(vertices[:,1]-vertices[:,0],vertices[:,2]-vertices[:,0])
+-        twice=np.linalg.norm(cross,axis=1);area=twice/2
+-        normal=cross/np.maximum(twice[:,None],1e-300)
+-        lengths2=np.stack([np.sum((vertices[:,j]-vertices[:,(j+1)%3])**2,axis=1) for j in range(3)],axis=1)
+-        quality=4*np.sqrt(3)*area/np.maximum(lengths2.sum(1),1e-300)
+-        live=np.all(d[self.edge_ids]<1.,axis=1)
++        twice=np.linalg.norm(cross,axis=1);area=twice/2;n0=cross/np.maximum(twice[:,None],1e-300)
++        ratio=area/self.reference_area
++        lengths2=sum(np.sum((vertices[:,j]-vertices[:,(j+1)%3])**2,axis=1) for j in range(3))
++        quality=4*np.sqrt(3)*area/np.maximum(lengths2,1e-300)
+         geometric=(area>1e-12*DX**2)&np.isfinite(area)&(quality>1e-10)
+-        return dict(centroid=vertices.mean(1),normal=normal,area=area,active=live&geometric,
+-                    live=live,geometric=geometric,quality=quality,
+-                    area_ratio=area/self.reference_area)
++        tfail=failed[self.te];mask=np.sum(tfail*(1<<np.arange(6)),axis=1)
++        vr=self.volume(x)/self.ref_volume
++        solid=(mask==0)&(vr>1e-8)
++        gap_aperture=(vr-1)*DX
++        gap=self.disconnected[mask]&(vr>0)&(gap_aperture>OPEN)
++        inside=self.occlusion_checker(x,solid)
++        gap_occluded=np.zeros(len(self.tet),bool)
++        if gap.any():gap_occluded[gap]=inside(x[self.tet[gap]].mean(1))
++        gap&=~gap_occluded
++        ffailed=failed[self.edge_ids]
++        # A triangle is disconnected iff at least two of its three edges failed.
++        portal=(ffailed.sum(1)>=2)&geometric&((ratio-1)*DX>OPEN)
++        if portal.any():portal[portal]&=~inside(vertices[portal].mean(1))
++        a=self.owners[:,0];b=np.maximum(self.owners[:,1],0)
++        internal=~self.original
++        links=internal&portal&gap[a]&gap[b]
++        graph=csr_matrix((np.ones(2*int(links.sum())),(np.r_[a[links],b[links]],np.r_[b[links],a[links]])),shape=(len(self.tet),len(self.tet)))
++        _,regions=connected_components(graph,directed=False)
++        seeds=self.original&portal&gap[a]
++        fluid=gap&np.isin(regions,np.unique(regions[a[seeds]]))
++        side=np.where(solid[a],0,1)
++        owner=np.where(side==0,a,b);other=np.where(side==0,b,a)
++        one_solid=np.where(self.original,solid[a],solid[a]^solid[b])
++        normal=n0*np.where(side==0,1.,-1.)[:,None]
++        face_live=~ffailed.any(1)
++        normal_height=np.sum((x[self.opposite[np.arange(len(a)),1-side]]-vertices[:,0])*normal,axis=1)
++        refheight=self.ref_height[np.arange(len(a)),1-side]
++        aperture=normal_height-refheight
++        original=self.original&solid[a]&face_live&geometric&self.material
++        candidate=internal&one_solid&face_live&geometric&self.material
++        opened=candidate&gap[other]&(aperture>OPEN)
++        accessible=opened&fluid[other]
++        visible=original|accessible
++        occluded=np.zeros(len(self.tri),bool)
++        if visible.any():
++            points=vertices[visible].mean(1)
++            # Two strictly outward current-space probes; neither may lie in solid.
++            occluded[visible]=inside(points+1e-6*normal[visible])|inside(points+3e-6*normal[visible])
++        original&=~occluded;accessible&=~occluded
++        weight=np.where(original,1.,np.where(accessible,ramp(np.minimum(aperture,gap_aperture[other])),0.))
++        active=weight>0
++        unresolved=candidate&~accessible
++        z=dict(centroid=vertices.mean(1),normal=normal,area=area,active=active,weight=weight,
++            live=face_live,geometric=geometric,quality=quality,area_ratio=ratio,
++            original=original,new_open=opened,accessible=accessible,unresolved=unresolved,
++            candidate=candidate,aperture_m=aperture,fluid_region=np.where(accessible,regions[other],-1),
++            occluded=occluded,gap_occluded=gap_occluded,
++            supported_tetra=solid,open_gap_tetra=gap,fluid_tetra=fluid,
++            unresolved_tetra=(mask!=0)&~fluid,volume_ratio=vr)
++        self._cache=(x.copy(),failed.copy(),z)
++        return z.copy()
+ 
+     def evaluate(self,x,v,d,t):
+         z=self.geometry(x,d);normal=z['normal'];vf=v[self.tri].mean(1)
+         outer=self.field(z['centroid'],normal,t)
+         vt=vf-normal*np.sum(vf*normal,axis=1)[:,None]
+-        td=BETA*outer;tr=-BETA*vt
+-        area=z['area']*z['active'];fd=area[:,None]*td;fr=area[:,None]*tr
++        td=BETA*outer;tr=-BETA*vt;area=z['area']*z['weight']
++        fd=area[:,None]*td;fr=area[:,None]*tr
+         drive=np.asarray(self.W@fd);drag=np.asarray(self.W@fr);force=drive+drag
+         z.update(face_velocity=vf,outer_velocity=outer,drive_traction=td,drag_traction=tr,
+-                 traction=(td+tr)*z['active'][:,None],face_force=fd+fr,
+-                 force=force,drive_force=drive,drag_force=drag,
+-                 drive_power=float(np.sum(fd*vf)),drag_power=float(np.sum(fr*vf)),
+-                 moment=np.cross(x,force).sum(0))
++            traction=(td+tr)*z['weight'][:,None],face_force=fd+fr,
++            force=force,drive_force=drive,drag_force=drag,
++            drive_power=float(np.sum(fd*vf)),drag_power=float(np.sum(fr*vf)),moment=np.cross(x,force).sum(0))
+         return z
+ 
+-    def edge_damage_on_path(self,x,kprev):
+-        d=self.ref['initial_cut'].astype(float);ids=self.surface_bonds;b=self.ref['bonds'][ids]
+-        stretch=np.linalg.norm(x[b[:,1]]-x[b[:,0]],axis=1)/self.ref['r0'][ids]-1.
+-        k=np.maximum(kprev[ids],np.maximum(stretch,0.))
+-        d[ids]=(k>=SC[self.ref['bond_types'][ids]]).astype(float)
+-        return d
++    def commit(self,z):
++        new=z['active']&~self.ever_loaded
++        self.cumulative_new_area+=float(z['area'][new].sum())
++        self.ever_loaded|=z['active']
++        if self.initial_area is None:self.initial_area=float(z['area'][z['active']].sum())
+ 
+     def work(self,p,s,order=4):
+-        """Force dot actual native drift. Split exactly at facet-edge failure roots.
+-
+-        The prescribed continuous interpolation is x=x0+a*(x1-x0), with
+-        v=(x1-x0)/dt. Irreversible edge history comes from the accepted old kappa.
+-        Native callbacks solve the linear slip force consistently with the
+-        final half-kick velocity without replacing the native integrator; quadrature
+-        disagreement remains a measured numerical diagnostic, never hidden work.
+-        """
+-        h=s['time']-p['time'];dx=s['x']-p['x'];v=dx/h
+-        ids=self.surface_bonds;new=ids[(p['d'][ids]<1)&(s['d'][ids]==1)]
+-        breaks=[0.,1.]
+-        if len(new):
+-            b=self.ref['bonds'][new];a=p['x'][b[:,1]]-p['x'][b[:,0]];c=dx[b[:,1]]-dx[b[:,0]]
+-            A2=np.sum(c*c,axis=1);B2=2*np.sum(a*c,axis=1)
+-            C2=np.sum(a*a,axis=1)-(self.ref['r0'][new]*(1+SC[self.ref['bond_types'][new]]))**2
+-            for aa,bb,cc in zip(A2,B2,C2):
+-                if aa>1e-50:
+-                    discriminant=np.sqrt(max(0.,bb*bb-4*aa*cc))
+-                    root=-2*cc/(bb+discriminant) if bb>=0 and bb+discriminant else (-bb+discriminant)/(2*aa)
+-                else:root=-cc/bb if bb else 1.
+-                if 1e-12<root<1-1e-12:breaks.append(float(root))
+-        breaks=np.unique(breaks);q,w=np.polynomial.legendre.leggauss(order);total=np.zeros(2)
+-        for lo,hi in zip(breaks[:-1],breaks[1:]):
+-            for qq,ww in zip(q,w):
+-                a=(lo+hi)/2+(hi-lo)*qq/2;x=p['x']+a*dx;t=p['time']+a*h
+-                d=self.edge_damage_on_path(x,p['kappa']);z=self.evaluate(x,v,d,t)
+-                total+=(hi-lo)*ww/2*np.array([np.sum(z['drive_force']*dx),np.sum(z['drag_force']*dx)])
+-        return total
+-
+-    def phase(self,t):
+-        return 'RISE' if t<RISE else 'HOLD' if t<HOLD else 'DRIVE_DOWN' if t<OFF else 'PASSIVE_DRAG_OBSERVATION'
++        # Actual accepted endpoint forces dotted with actual native displacement.
++        # Each channel is measured independently; energy residual is not hidden.
++        dx=s['x']-p['x']
++        return np.array([.5*np.sum((p[key]+s[key])*dx) for key in ['external_drive_force','external_drag_force']])
++
++    def phase(self,t):return 'RISE' if t<RISE else 'HOLD' if t<HOLD else 'DRIVE_DOWN' if t<OFF else 'PASSIVE_DRAG_OBSERVATION'
+ 
+     def metrics(self,z,x):
+-        active=z['active'];ratio=z['area_ratio'][active];quality=z['quality'][active]
+-        return dict(active_surface_faces=int(active.sum()),inactive_broken_edge_faces=int((~z['live']).sum()),
+-                    degenerate_live_faces=int((z['live']&~z['geometric']).sum()),
+-                    active_reference_area_fraction=float(self.reference_area[active].sum()/self.reference_area.sum()),
+-                    active_current_area_m2=float(z['area'][active].sum()),
+-                    actual_peak_slip_shear_Pa=float(np.linalg.norm(z['traction'],axis=1).max(initial=0)),
+-                    actual_peak_drive_shear_Pa=float(np.linalg.norm(z['drive_traction'][active],axis=1).max(initial=0)),
+-                    max_active_area_ratio=float(ratio.max(initial=0)),min_active_area_ratio=float(ratio.min()) if len(ratio) else None,
+-                    min_active_triangle_quality=float(quality.min()) if len(quality) else None,
+-                    max_loaded_displacement_m=float(np.linalg.norm(x[self.loaded_ids]-self.ref['X'][self.loaded_ids],axis=1).max()),
+-                    max_normal_rotation_deg=float(np.degrees(np.arccos(np.clip(np.sum(z['normal'][active]*self.reference_normal[active],axis=1),-1,1))).max(initial=0)),
+-                    max_tangency_error_Pa=float(abs(np.sum(z['traction']*z['normal'],axis=1)).max(initial=0)))
+-
+-def freeze_surface(ref):
+-    surface=CurrentSurface(ref,'uniform')
+-    np.savez_compressed(O/'ORIGINAL_SURFACE.npz',triangle_atom_ids=surface.tri+1,edge_original_bond_ids=surface.edge_ids+1,
+-                        reference_area_m2=surface.reference_area,reference_normal=surface.reference_normal)
+-    dump(O/'CURRENT_SURFACE_SPEC.json',dict(status='CURRENT_SURFACE_SHEAR_COUPLING',label=LABEL,
+-         original_surface='182 original outer top triangles, 112 original material vertices, inherited byte-identically from the prior sealed mapping. Other original faces are outside this model.',
+-         update='Every force callback uses current physical coordinates, current facet areas/normals, current material velocities and committed original-ID edge damage.',
+-         retention='A facet is retained only if all three original edge bonds remain live and its current area/quality is nondegenerate. This is conservative geometric support, not a fluid-accessibility proof.',
+-         detached='Attachment is not an input to the force law. Intact original exterior facets on detached components retain position-dependent drive and relative-velocity drag; outside the drive region only passive drag remains. No original dead traction survives by node ID.',
+-         unresolved='NEW_CRACK_FACE_WETTING_UNRESOLVED. Broken triangles are removed from the load discretization, never from the material graph. No new crack triangles, pressure, full fragment hydrodynamics or vessel transport are fabricated.',
+-         point_fragments='Fragments without any retained original surface triangle have unresolved fluid coupling; their force is not replaced by an invented area or automatic COM drag.',
+-         quadrature='Centroid traction and vertex-mean velocity, positive 1/3 nodal weights. Exact discrete resultant, current moment, and adjoint virtual power; not spatial mesh convergence.',
+-         numerical='Current callback solves the linear slip law consistently with the final native half-kick velocity, using a converged fixed point and unchanged native NVE. Continuous drift work uses actual dx/dt and exact edge-failure root splits; force-stage/end-velocity agreement and work errors are recorded.',
+-         diagnostics='Record first surface-support loss, displacement>0.1h, rotation>15deg, area ratio outside [.5,2], degenerate live faces, local Reynolds criteria. These flag separate limits, not a calibrated universal failure cutoff.',
+-         MPI_restart='Single rank only as inherited. Original IDs reorder callback arrays explicitly. External law is memoryless beyond native kappa/d and frozen parameters; native restart history/kernel unchanged. Only this callback path is checked.'))
++        active=z['active'];ratio=z['area_ratio'][active]
++        original_den=float(self.reference_area[self.original&self.material].sum())
++        return dict(active_surface_faces=int(active.sum()),inactive_broken_edge_faces=int((self.original&self.material&~z['live']).sum()),
++            degenerate_live_faces=int((self.material&z['live']&~z['geometric']).sum()),
++            active_reference_area_fraction=float(self.reference_area[z['original']].sum()/original_den),
++            active_current_area_m2=float(z['area'][active].sum()),effective_loaded_area_m2=float(np.sum(z['area']*z['weight'])),
++            original_exposed_faces=int(z['original'].sum()),new_open_faces=int(z['new_open'].sum()),fluid_accessible_new_faces=int(z['accessible'].sum()),
++            closed_or_unresolved_faces=int(z['unresolved'].sum()),fluid_gap_cells=int(z['fluid_tetra'].sum()),
++            occluded_faces=int(z['occluded'].sum()),occluded_gap_cells=int(z['gap_occluded'].sum()),
++            unresolved_cells=int(z['unresolved_tetra'].sum()),inverted_cells=int((z['volume_ratio']<=0).sum()),
++            new_accessible_area_m2=float(z['area'][z['accessible']].sum()),
++            max_open_aperture_m=float(z['aperture_m'][z['new_open']].max(initial=0)),
++            actual_peak_slip_shear_Pa=float(np.linalg.norm(z['traction'],axis=1).max(initial=0)),
++            actual_peak_drive_shear_Pa=float(np.linalg.norm(z['drive_traction'][active],axis=1).max(initial=0)),
++            max_active_area_ratio=float(ratio.max(initial=0)),min_active_area_ratio=float(ratio.min()) if len(ratio) else None,
++            min_active_triangle_quality=float(z['quality'][active].min()) if active.any() else None,
++            max_loaded_displacement_m=float(np.linalg.norm(x[:self.n]-self.ref['X'][:self.n],axis=1).max()),
++            max_normal_rotation_deg=float(np.rad2deg(np.arccos(np.clip(np.sum(z['normal'][active]*self.reference_normal[active],axis=1),-1,1))).max(initial=0)),
++            max_surface_speed_m_s=float(np.linalg.norm(z['face_velocity'][active],axis=1).max(initial=0)),
++            max_outer_speed_m_s=float(np.linalg.norm(z['outer_velocity'][active],axis=1).max(initial=0)),
++            max_node_force_N=float(np.linalg.norm(z['force'],axis=1).max(initial=0)))
+--- /workspace/y_clot/project/analysis/clot_shear_load_inverse_design_v1/multifragment_shear_objective.py
++++ /workspace/y_clot/project/analysis/clot_shear_multivortex_fragmentation_v2/multifragment_shear_objective.py
+@@ -4,11 +4,11 @@
+ BINS=[(1,2),(3,13),(14,33),(34,113),(114,200),(201,None)]
+ SPEC=dict(
+  name='EXPLORATORY_MULTIFRAGMENT_TARGET',target_nodes=[20,200],min_target_count=5,
+- min_total_detached_fraction_initial=.10,max_largest_fraction_detached=.50,
++ min_total_detached_fraction_initial=0.,max_largest_fraction_detached=.50,
+  max_fine_debris_fraction_detached=.20,post_unload_connectivity_required=True,
+  common_cohort_time_s=.0034,observation_end_s=END,
+  size_bins=BINS,
+- meaning='Exploratory engineering constraints at this discrete resolution, not clinical size classes or validated biological criteria. The 10% detached-mass floor and 50% dominance ceiling are declared before formal cases.',
++ meaning='Exploratory engineering constraints at this discrete resolution, not clinical size classes or validated biological criteria. V2 removes the old extra 10% mass floor; its specified count, dominance and fines constraints are used.',
+  optimization='Return separate objectives, constraints and per-fragment evidence; no weighted sum hides a failed constraint.',
+ )
+ 
+--- /workspace/y_clot/project/analysis/clot_shear_load_inverse_design_v1/native.py
++++ /workspace/y_clot/project/analysis/clot_shear_multivortex_fragmentation_v2/native.py
+@@ -62,7 +62,7 @@
+                         force_stage_velocity=velocity,verlet_drift_velocity=drift,slip_iterations=np.array(iterations),surface_centroid=z['centroid'],
+                         surface_normal=z['normal'],surface_area=z['area'],surface_active=z['active'],
+                         surface_velocity=z['face_velocity'],surface_outer_velocity=z['outer_velocity'],
+-                        surface_traction=z['traction'],surface_force=z['face_force'])
++                        surface_traction=z['traction'],surface_force=z['face_force'],surface_weight=z['weight'],surface_original=z['original'],surface_new_open=z['new_open'],surface_accessible=z['accessible'],surface_unresolved=z['unresolved'],surface_aperture_m=z['aperture_m'],surface_fluid_region=z['fluid_region'],surface_occluded=z['occluded'],field_amplitude_Pa=np.array(self.tool.field.amplitude(t)))
+                 except BaseException:
+                     self.ext.error=traceback.format_exc();f[:]=np.nan
+             self.callback=callback;self.l.set_fix_external_callback('v3forces',callback)
+--- /workspace/y_clot/project/analysis/clot_shear_load_inverse_design_v1/prepare.py
++++ /workspace/y_clot/project/analysis/clot_shear_multivortex_fragmentation_v2/prepare.py
+@@ -1,23 +1,46 @@
+ from common import *
+-from shear_field_library import freeze_library
+-from current_surface import freeze_surface
++from current_surface import CurrentSurface,OPEN,FULL_OPEN
+ from multifragment_shear_objective import freeze
+-import shutil,subprocess,sys,importlib.metadata,datetime
++from work_controller import SPEC
++import shutil,subprocess,sys,datetime
+ 
+-assert not (O/'BASELINE_MANIFEST.json').exists(),'Do not overwrite a prior preparation'
+-assert sha(PREV/'DELIVERY_MANIFEST.json')=='ba855a0de4351e14d32d96d31a3674f5c8deccc85eafc1195eb751e6f2414317'
++assert not (O/'BASELINE_MANIFEST.json').exists()
+ assert sha(LIB)=='465f8144c6da5c9de3aec4137b9c325f53c26737b199c536fb4a20845511ef77'
+-(O/'provenance').mkdir(parents=True,exist_ok=True)
+-for name in ['reference.npz','reference.native','body.data']:
+-    shutil.copy2(PREV/'provenance'/name,O/'provenance'/name)
+-dependencies=[LIB,PREV/'DELIVERY_MANIFEST.json',PREV/'SHEAR_TRACTION_FIELD.npz',
+-              R/'analysis/v3_softening_pilot_v1/native.py',R/'analysis/softening_feasibility_v1/model.py',
+-              R/'analysis/v3_chunk_fragmentation_mechanism_v1/graph_ops.py',PA/'native.py',
+-              *(O/'provenance').iterdir()]
+-baseline=dict(utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),files={str(p):dict(sha256=sha(p),bytes=p.stat().st_size) for p in dependencies})
+-dump(O/'BASELINE_MANIFEST.json',baseline)
+-ref=load_npz(O/'provenance/reference.npz');freeze_library();freeze_surface(ref);freeze()
+-dump(O/'MATERIAL_AND_SPECIMEN_FREEZE.json',dict(material_nodes=int(ref['clot_count']),anchor_nodes=len(ref['X'])-int(ref['clot_count']),original_bonds=len(ref['bonds']),initial_precuts=int(ref['initial_cut'].sum()),G_Pa=G,K_Pa=K,rho_kg_m3=RHO,dx_m=DX,horizon_m=HORIZON,bulk_s0=S0[1],bulk_sc=SC[1],interface_s0=S0[2],interface_sc=SC[2],anchor_s0=S0[3],anchor_sc=SC[3],heterogeneity='NONE_ORIGINAL_UNIFORM',law='Unchanged native variational LPS, kappa/d irreversible, old precrack preserved',contact='Unchanged bpm/peri, contact_distance_factor=1.0, nonbonded contact does not define connectivity',status='EXPLORATORY_UNCALIBRATED'))
+-versions={p:importlib.metadata.version(p) for p in ['numpy','scipy','matplotlib','mpi4py','networkx']}
+-dump(O/'ENVIRONMENT.json',dict(python=sys.version,executable=sys.executable,packages=versions,rank_count=1,threads=1,new_installs=[]))
+-print('PREPARED',TASK,RUN,len(ref['X']),len(ref['bonds']))
++(O/'provenance').mkdir(parents=True,exist_ok=True);F.mkdir(parents=True,exist_ok=True)
++for name in ['reference.npz','reference.native','body.data']:shutil.copy2(OLD/'provenance'/name,O/'provenance'/name)
++ref=load_npz(O/'provenance/reference.npz');surf=CurrentSurface(ref,'counter_rotating')
++np.savez_compressed(O/'provenance/auxiliary_surface_geometry.npz',tet_atom_ids=surf.tet+1,triangle_atom_ids=surf.tri+1,
++    face_owners=surf.owners,face_opposite_atom_ids=surf.opposite+1,tetra_bond_ids=surf.te+1,
++    face_edge_bond_ids=surf.edge_ids+1,original=surf.original,material_faces=surf.material,
++    reference_area_m2=surf.reference_area,reference_normal=surf.reference_normal)
++deps=[LIB,OLD/'DELIVERY_MANIFEST.json',R/'analysis/v3_softening_pilot_v1/native.py',
++    R/'analysis/softening_feasibility_v1/model.py',R/'analysis/v3_chunk_fragmentation_mechanism_v1/graph_ops.py',PA/'native.py']
++dump(O/'BASELINE_MANIFEST.json',dict(utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),files={str(p):dict(sha256=sha(p),bytes=p.stat().st_size) for p in deps}))
++shutil.copy2(OLD/'MATERIAL_AND_SPECIMEN_FREEZE.json',O/'MATERIAL_AND_SPECIMEN_FREEZE.json')
++dump(O/'CURRENT_EXPOSED_SURFACE_SPEC.json',dict(status='IMPLEMENTED_CONSERVATIVE_GEOMETRIC_PROXY',label='QUASISTATIC_FLUID_ACCESSIBILITY_PROXY',
++    tetra_count=len(surf.tet),unique_triangle_count=len(surf.tri),method='Freudenthal six-tetra subdivision of the actual reference lattice, including fixed anchors as occlusion geometry',
++    support='All six original tetra bonds live, positive signed volume ratio; surface has three actual original material IDs and live edge bonds. Auxiliary tetrahedra carry no mass/stiffness and do not change native mechanics.',
++    gap='Six-edge local graph disconnected AND positive volume AND (Vcurrent/Vref-1)*dx > aperture_min. Failed support alone is not fluid.',
++    portal='Shared actual triangular face local graph disconnected AND area-dilation proxy (A/Aref-1)*dx > aperture_min; gap cells connect through such portals to an outer portal.',
++    new_face='Boundary of a fully supported material tetra against an exterior-connected open gap; opposing node normal-height increase > aperture_min. Each unique triangle mapped once.',
++    aperture_min_m=OPEN,traction_full_aperture_m=FULL_OPEN,regularization='C1 smooth aperture gate from 1 to 5 um, same factor on drive and drag',
++    categories=['ORIGINAL_EXPOSED_SURFACE','NEW_OPEN_CRACK_SURFACE','FLUID_ACCESSIBLE_CRACK_SURFACE','DETACHED_FRAGMENT_EXPOSED_SURFACE','CLOSED_OR_UNRESOLVED_CRACK_SURFACE'],
++    classification='original/new/open/accessibility are geometry flags; detached is orthogonal actual native component flag, not a second added force',
++    geometric_limitations=['Node-centered support-complex boundary is a resolution-dependent proxy, not unique continuum crack location.','Damaged connected cells, inverted/closed cells, sheet/chain/fine components without 3D supported tetra remain unresolved.','Local void transmission ignores nonlocal bond lines as impermeable solid tubes; long live bridges still determine material connectivity. No fiber radii or pore flow model supplied.','No guaranteed lower bound on true continuum wetted area; unresolved true area cannot be measured from point data alone. Report candidate-area and component coverage, never claim zero unknown area.','Current gap connectivity uses reference adjacency; remote self-contact can occlude it and is not resolved by this proxy. Must audit closure/overlap before admission.'],
++    mass='Native original node IDs, volumes and mass are untouched; auxiliary volume is NOT native material volume.',
++    transaction='Geometry is pure current-state recomputation; only accepted commit changes cumulative exposure. No rejected predictor changes damage/surface history.'))
++dump(O/'FRAGMENT_FLUID_TRACTION.json',dict(law='tau=(mu/h_eff)*P_t*(u_outer-v_face)',mu=MU,h_eff=H_EFF,mapping='positive 1/3 to original triangle vertices',
++    detached='same spatial and relative-velocity law on supported reachable faces; no attachment force switch',
++    fines='No artificial closed shell and no point drag added; unrepresented hydrodynamics remains unresolved',
++    scope='Hypothetical surface streamfunction field on each oriented facet. Not a single solved global 3D liquid velocity or acoustic streaming. Opposite face normals affect tangent circulation.'))
++dump(O/'WORK_MATCH_SPEC.json',SPEC);freeze()
++cells=[];lo=ref['X'][:int(ref['clot_count'])].min(0);hi=ref['X'][:int(ref['clot_count'])].max(0);scale=250e-6
++for i in range(-2,6):
++ for j in range(-2,4):
++  left=np.array([-375e-6+i*scale,-125e-6+j*scale]);right=left+scale
++  a=np.maximum(left,lo[:2]);b=np.minimum(right,hi[:2])
++  if np.all(b>a):cells.append(dict(i=i,j=j,center_m=(left+right)/2,nominal_size_m=[scale,scale],clipped_lower_m=a,clipped_upper_m=b,clipped_area_m2=float(np.prod(b-a)),rotation_sign=(-1)**(i+j),center_inside=bool(np.all((left+right)/2>=lo[:2]) and np.all((left+right)/2<=hi[:2]))))
++dump(O/'SHEAR_PARAMETERIZATION.json',dict(modes=CASES,label=LABEL,counter_rotating=dict(center_m=[0,0,375e-6],width_m=125e-6,separation_m=300e-6,angle_rad=0,spatial_formula='Exactly prior double-Gaussian n cross grad psi, same C2 lab window'),checkerboard=dict(label='CHECKERBOARD_SHEAR_MECHANICAL_PROXY',scale_m=scale,actual_top_span_m=hi[:2]-lo[:2],cells_intersecting_top=len(cells),cell_centers_inside_top=sum(c['center_inside'] for c in cells),cells=cells,streamfunction='psi=sin(pi*(a+375um)/250um)*sin(pi*(b+125um)/250um)/(pi/250um)',normalization='Analytic |gradient psi| <= 1, continuous across cell boundaries. Edge cells honestly clipped; no specimen enlargement'),time=dict(rise_s=RISE,hold_s=HOLD,off_s=OFF,end_s=END),controller=SPEC,numerical=dict(BASE=BASE,MIN_H=MIN_H,max_dd=.1,energy_gate=.01),old_A='Work budget only, not same-surface-physics control'))
++dump(O/'P0_SCOPE.json',dict(isolation=str(A),historical_evidence_read_only=True,deleted_files=[],reason='No confirmed unused disposable code identified; keep prior research intact and isolate all new paths.',git_sha=subprocess.check_output(['git','-c',f'safe.directory={R}','rev-parse','HEAD'],cwd=R,text=True).strip()))
++(O/'provenance/git_existing.diff').write_bytes(subprocess.check_output(['git','-c',f'safe.directory={R}','diff'],cwd=R))
++print('PREPARED',TASK,RUN,len(surf.tet),len(surf.tri),'checker cells',len(cells),flush=True)
+--- /workspace/y_clot/project/analysis/clot_shear_load_inverse_design_v1/run_cases.py
++++ /workspace/y_clot/project/analysis/clot_shear_multivortex_fragmentation_v2/run_cases.py
+@@ -1,6 +1,7 @@
+ from common import *
+ from native import native,predict
+ from current_surface import CurrentSurface
++from work_controller import WorkController
+ from multifragment_shear_objective import scalar_metrics,shape,selection_key,SPEC
+ import time,resource,traceback,csv,gzip,argparse,ctypes
+ graph=module('crushing_graph',R/'analysis/v3_chunk_fragmentation_mechanism_v1/graph_ops.py')
+@@ -14,8 +15,8 @@
+  freeze=json.loads((O/'SOURCE_FREEZE.json').read_text())
+  for path,want in freeze['implementation_sha256'].items():assert sha(R/path)==want,path
+  for path,want in freeze['input_sha256'].items():assert sha(O/path)==want,path
+- dump(case/'REQUEST.json',dict(name=name,uniform_material=True,label=ns.tool.label,library_sha256=sha(LIB),source_sha256={p.name:sha(p) for p in A.glob('*.py')},input_sha256={name:sha(O/name) for name in ['SOURCE_FREEZE.json','SHEAR_PARAMETERIZATION.json','CURRENT_SURFACE_SPEC.json','MULTIFRAGMENT_OBJECTIVE.json']}))
+- s=ns.dynamics();initial=s;prev=s;save(case,'initial.npz',s);W=0.;Wdrive=0.;Wdrag=0.;Jc=0.;impulse=np.zeros(3);rows=[];events={};err={};stop=[];substeps=0;rejects=0;scale=1e-24;secondary=[];maxscore=(-1,);snap_next=50e-6;absolute_impulse=0.;rotation_impulse=np.zeros(3);geometry_first=None;surface_events={};stage_work=0.
++ dump(case/'REQUEST.json',dict(name=name,uniform_material=True,label=ns.tool.label,library_sha256=sha(LIB),source_sha256={p.name:sha(p) for p in A.glob('*.py')},input_sha256={name:sha(O/name) for name in ['SOURCE_FREEZE.json','SHEAR_PARAMETERIZATION.json','CURRENT_EXPOSED_SURFACE_SPEC.json','WORK_MATCH_SPEC.json','MULTIFRAGMENT_OBJECTIVE.json']}))
++ s=ns.dynamics();controller=WorkController(ns.tool.field);ns.tool.commit(ns.tool.evaluate(s['x'],s['velocity'],s['d'],s['time']));initial=s;prev=s;save(case,'initial.npz',s);W=0.;Wdrive=0.;Wdrag=0.;Jc=0.;impulse=np.zeros(3);rows=[];events={};err={};stop=[];substeps=0;rejects=0;scale=1e-24;secondary=[];maxscore=(-1,);snap_next=50e-6;absolute_impulse=0.;rotation_impulse=np.zeros(3);geometry_first=None;surface_events={};stage_work=0.;new_surface_work=0.;facet_impulse=0.
+  cached=graph.topology(ref,s['d']);registry={};lookup={};current=[];previous_free={}
+  history=gzip.open(case/'CONNECTED_COMPONENT_HISTORY.jsonl.gz','wt');changes=gzip.open(case/'damage_events.jsonl.gz','wt');stream=(case/'history.csv').open('w');writer=None
+  def error(key,value):err[key]=max(err.get(key,0.),float(value))
+@@ -56,6 +57,7 @@
+     assert h>MIN_H*(1+1e-12),'MINIMUM_EVENT_SUBSTEP_EXHAUSTED'
+     h/=2;depth+=1;rejects+=1
+    substeps+=bool(depth)
++   ctrl=controller.prepare(prev,W,h)
+    s=ns.step(h);p=prev;dd=s['d']-p['d'];sc=s['scalars'];nf=np.flatnonzero((s['d']==1)&(p['d']<1)&~cut)
+    error('predicted_x_m',np.max(abs(xp-s['x'])));error('predicted_damage',np.max(abs(dp-s['d'])));error('predicted_kappa',np.max(abs(kk-s['kappa'])));error('irreversibility',max(np.max(-dd),np.max(p['kappa']-s['kappa'])));error('velocity_VV_m_s',np.max(abs(s['velocity'][:n]-p['velocity'][:n]-h/(2*RHO*V)*(p['force'][:n]+s['force'][:n]))))
+    assert err['predicted_x_m']<2e-18 and err['velocity_VV_m_s']<1e-10 and max(err['predicted_damage'],err['predicted_kappa'],err['irreversibility'])<1e-10
+@@ -63,18 +65,21 @@
+    assert np.max(dd)<=.1+1e-10 and np.array_equal(s['x'][n:],ref['X'][n:]) and not s['velocity'][n:].any()
+    assert s['native_bonds']==int(np.sum(s['d']<1)) and not s['d'][bt==3].any() and np.isfinite(s['force']).all()
+    work=ns.tool.work(p,s);winc=float(work.sum());wnew=W+winc;jnew=Jc
+-   assert work[1]<=1e-20
++   # Signed passive endpoint work is audited; tiny quadrature effects are retained.
++   assert work[1]<=1e-17
++   new_surface_work+=.5*float(np.sum((p['surface_force']*p['surface_accessible'][:,None]+s['surface_force']*s['surface_accessible'][:,None])*(s['surface_centroid']-p['surface_centroid'])))
++   facet_impulse+=.5*h*float(np.linalg.norm(p['surface_force'],axis=1).sum()+np.linalg.norm(s['surface_force'],axis=1).sum())
+    stage_work+=.5*h*(float(np.sum(p['external_force']*p['velocity']))+float(np.sum(s['external_force']*s['velocity'])))
+    if len(nf):
+     rr=np.linalg.norm(s['x'][b[nf,1]]-s['x'][b[nf,0]],axis=1);jnew+=float(.5*contact.c*np.sum(np.minimum(rr-DX,0)**2))
+    res=wnew-(sc[0]-initial['scalars'][0]+s['K']-initial['K']+sc[1]+s['Uc']-initial['Uc']-jnew);newscale=max(scale,abs(wnew),abs(sc[0]-initial['scalars'][0])+s['K']+sc[1]+s['Uc']);rel=abs(res)/newscale
+    assert rel<=.01,('ENERGY_RESIDUAL',rel,res,newscale)
+    if s['step']%100==0 or np.any(dd):
+-    new=model.evaluate(s['x'],s['d']);old=model.evaluate(s['x'],p['d']) if np.any(dd) else new;uc,fc,pairs=contact.evaluate(s['x'],s['d']);error('native_force_N',np.max(abs(new['force']-s['material_force'])));error('force_port_N',np.max(abs(s['force']-s['material_force']-fc-s['external_force'])));error('native_U_J',abs(new['U']-sc[0]));error('dissipation_increment_J',abs(old['U']-new['U']-(sc[1]-p['scalars'][1])));error('pair_contact_U_J',abs(uc-s['Uc']));error('work_quadrature_4_vs_8_J',np.max(abs(work-ns.tool.work(p,s,8))))
++    new=model.evaluate(s['x'],s['d']);old=model.evaluate(s['x'],p['d']) if np.any(dd) else new;uc,fc,pairs=contact.evaluate(s['x'],s['d']);error('native_force_N',np.max(abs(new['force']-s['material_force'])));error('force_port_N',np.max(abs(s['force']-s['material_force']-fc-s['external_force'])));error('native_U_J',abs(new['U']-sc[0]));error('dissipation_increment_J',abs(old['U']-new['U']-(sc[1]-p['scalars'][1])));error('pair_contact_U_J',abs(uc-s['Uc']))
+     assert max(err['native_force_N'],err['force_port_N'])<1e-12 and max(err['native_U_J'],err['dissipation_increment_J'],err['pair_contact_U_J'])<1e-17
+    W=wnew;Wdrive+=work[0];Wdrag+=work[1];Jc=jnew;scale=newscale
+    meanforce=.5*(p['external_force']+s['external_force']);impulse+=h*meanforce.sum(0);absolute_impulse+=h*.5*(np.linalg.norm(p['external_force'],axis=1).sum()+np.linalg.norm(s['external_force'],axis=1).sum());rotation_impulse+=.5*h*(np.cross(p['x'],p['external_force']).sum(0)+np.cross(s['x'],s['external_force']).sum(0))
+-   surface=ns.tool.evaluate(s['x'],s['velocity'],s['d'],s['time']);geometry=ns.tool.metrics(surface,s['x'])
++   surface=ns.tool.evaluate(s['x'],s['velocity'],s['d'],s['time']);geometry=ns.tool.metrics(surface,s['x']);ns.tool.commit(surface)
+    error('current_surface_force_replay_N',np.max(abs(surface['force']-s['external_force'])));assert err['current_surface_force_replay_N']<1e-15
+    if geometry_first is None and (geometry['max_loaded_displacement_m']>.1*H_EFF or geometry['max_normal_rotation_deg']>15):
+     geometry_first=dict(time_s=s['time'],step=s['step'],**geometry);save(case,'first_layer_geometry_diagnostic.npz',s)
+@@ -95,9 +100,10 @@
+    if instant and 'first_instant_target' not in events:
+     events['first_instant_target']=dict(time_s=s['time'],step=s['step'],evidence='keys/first_instant_target.npz');save(case,'first_instant_target.npz',s)
+    row=dict(step=s['step'],time_s=s['time'],dt_s=h,phase=ns.tool.phase(s['time']),shear_peak_Pa=geometry['actual_peak_slip_shear_Pa'],net_force_x_N=float(s['external_force'][:,0].sum()),net_force_y_N=float(s['external_force'][:,1].sum()),net_force_z_N=float(s['external_force'][:,2].sum()),sum_force_norm_N=float(np.linalg.norm(s['external_force'],axis=1).sum()),net_moment_z_Nm=float(np.cross(s['x'],s['external_force'])[:,2].sum()),absolute_impulse_Ns=absolute_impulse,impulse_x_Ns=impulse[0],impulse_y_Ns=impulse[1],impulse_z_Ns=impulse[2],moment_impulse_z_Nms=rotation_impulse[2],bulk_failed=int(np.sum((s['d']==1)&~cut&(bt==1))),interface_failed=int(np.sum((s['d']==1)&~cut&(bt==2))),softened=int(np.sum((s['d']>0)&~cut)),attached_nodes=int(sizes[attached].sum()),detached_nodes=int(free.sum()),components=len(free),largest_nodes=large,largest_fraction=large/n,N20_200=int(medium.sum()),mass_fraction20_200=float(free[medium].sum()/n),N_ge34=int(np.sum(free>=34)),N_ge114=int(np.sum(free>=114)),N_ge200um=int(np.sum(diameter>=200e-6)),N_ge300um=int(np.sum(diameter>=300e-6)),debris12_nodes=int(debris),debris12_detached_fraction=dfrac,instant_target=instant,W_J=W,U_J=float(sc[0]),K_J=s['K'],D_J=float(sc[1]),Uc_J=s['Uc'],Jc_J=Jc,numerical_damping_work_J=0.,R_J=res,relative_R=rel,max_dd=float(dd.max()),max_speed_m_s=float(np.linalg.norm(s['velocity'],axis=1).max()),max_kappa=float(s['kappa'][~cut].max()))
+-   row.update(scalar_metrics(free,n))
++   row.update(scalar_metrics(free,n));row.update(ctrl)
++   row.update(cumulative_unique_loaded_area_m2=ns.tool.cumulative_new_area,ever_loaded_face_count=int(ns.tool.ever_loaded.sum()),initial_loaded_area_m2=ns.tool.initial_area,W_accessible_new_faces_J=new_surface_work,facet_shear_impulse_Ns=facet_impulse)
+    row.update(geometry)
+-   active=surface['active'];free_faces=active&~attached[lab[ns.tool.tri[:,0]]];supported=np.unique(ns.tool.tri[active]);free_ids=np.flatnonzero(~attached[lab]);
++   active=surface['active'];free_faces=active&np.r_[~attached[lab],np.zeros(N-n,dtype=bool)][ns.tool.tri[:,0]];supported=np.unique(ns.tool.tri[active]);free_ids=np.flatnonzero(~attached[lab]);
+    row.update(W_drive_J=float(Wdrive),W_drag_J=float(Wdrag),W_endpoint_power_J=stage_work,work_path_vs_endpoint_J=W-stage_work,drive_power_W=surface['drive_power'],drag_power_W=surface['drag_power'],active_free_faces=int(free_faces.sum()),free_nodes_with_retained_surface=int(np.isin(free_ids,supported).sum()),free_nodes_without_resolved_surface=int((~np.isin(free_ids,supported)).sum()),slip_iterations=int(s['slip_iterations']),Re_h_outer_max=float(RHO*H_EFF/MU*np.linalg.norm(surface['outer_velocity'][active],axis=1).max(initial=0)),Re_h_slip_max=float(RHO*H_EFF/MU*np.linalg.norm(surface['traction'][active]/BETA,axis=1).max(initial=0)))
+    if writer is None:writer=csv.DictWriter(stream,fieldnames=list(row));writer.writeheader()
+    writer.writerow(row);rows.append(row);changed=np.flatnonzero(dd>0)
+@@ -110,7 +116,8 @@
+  finally:stream.close();history.close();changes.close()
+  count,raw=ns.l.gather_bonds();actual=np.ctypeslib.as_array(raw,shape=(3*count,)).reshape(-1,3)[:,1:].copy();actual.sort(1);wanted=b[ns.field(3)<1]+1;native_topology=bool(np.array_equal(np.sort(actual[:,0]*N+actual[:,1]),np.sort(wanted[:,0]*N+wanted[:,1])));assert native_topology
+  assert np.array_equal(ns.field(13),on);ns.close()
+- summary=dict(status='COMPLETED' if not stop else 'NUMERICALLY_UNRESOLVED',name=name,uniform_material=True,accepted_steps=len(rows),time_s=float(s['time']),stop_reasons=stop,events=events,last_row=rows[-1] if rows else None,max_independent_errors=err,max_relative_energy_residual=max((q['relative_R'] for q in rows),default=0),max_medium_components=max((q['N20_200'] for q in rows),default=0),history_max_free_nodes=max((q['largest_nodes'] for q in rows),default=0),secondary_events=secondary,predictive_substeps=substeps,predictive_rejections=rejects,wall_s=time.perf_counter()-start,cpu_s=time.process_time()-cpu,peak_RSS_bytes=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss*1024,library_sha256=sha(LIB),native_topology_matches_current_native=True,original_onsets_unchanged=True,label=ns.tool.label,mechanical_status=LABEL,layer_geometry_first_diagnostic=geometry_first,surface_events=surface_events,field_parameters=ns.tool.field.theta,field_applicability=ns.tool.field.applicability(),new_crack_wetting='NEW_CRACK_FACE_WETTING_UNRESOLVED',surface_force_scope='Retained original exterior facets only; no attachment-based force switch',work_definition='Current follower force integrated on actual native drift, with exact edge-failure interval splits; drive and passive drag separated')
++ summary=dict(status='COMPLETED' if not stop else 'NUMERICALLY_UNRESOLVED',name=name,uniform_material=True,accepted_steps=len(rows),time_s=float(s['time']),stop_reasons=stop,events=events,last_row=rows[-1] if rows else None,max_independent_errors=err,max_relative_energy_residual=max((q['relative_R'] for q in rows),default=0),max_medium_components=max((q['N20_200'] for q in rows),default=0),history_max_free_nodes=max((q['largest_nodes'] for q in rows),default=0),secondary_events=secondary,predictive_substeps=substeps,predictive_rejections=rejects,wall_s=time.perf_counter()-start,cpu_s=time.process_time()-cpu,peak_RSS_bytes=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss*1024,library_sha256=sha(LIB),native_topology_matches_current_native=True,original_onsets_unchanged=True,label=ns.tool.label,mechanical_status=LABEL,layer_geometry_first_diagnostic=geometry_first,surface_events=surface_events,field_parameters=ns.tool.field.theta,field_applicability=ns.tool.field.applicability(),new_crack_wetting='QUASISTATIC_FLUID_ACCESSIBILITY_PROXY',surface_force_scope='Supported current material tetra boundaries; exterior-connected dilated gap graph; current solid occlusion probes; no attachment-based force switch',work_definition='Actual accepted endpoint forces averaged and dotted with actual native drift; signed drive and drag retained separately; no residual added to D')
++ np.savez_compressed(case/'accepted_surface_history.npz',ever_loaded_faces=ns.tool.ever_loaded,tri_atom_ids=ns.tool.tri+1)
+  dump(case/'COMPONENT_REGISTRY.json',registry);dump(case/'FRACTURE_EVENTS.json',events);dump(case/'SUMMARY.json',summary);print('DONE',name,summary['status'],summary['wall_s'],flush=True);return summary
+ if __name__=='__main__':
+  p=argparse.ArgumentParser();p.add_argument('--name',required=True,choices=CASES);args=p.parse_args();result=run(args.name);raise SystemExit(0 if result['status']=='COMPLETED' else 2)
+--- /workspace/y_clot/project/analysis/clot_shear_load_inverse_design_v1/shear_field_library.py
++++ /workspace/y_clot/project/analysis/clot_shear_multivortex_fragmentation_v2/shear_field_library.py
+@@ -8,7 +8,7 @@
+ DEFAULT = dict(nominal_shear_Pa=1000., angle_rad=0., center_x_m=0.,
+                center_y_m=0., width_m=125e-6, separation_m=300e-6,
+                drive_duration_s=OFF)
+-BOUNDS = dict(nominal_shear_Pa=[100.,1000.], angle_rad=[-np.pi,np.pi],
++BOUNDS = dict(nominal_shear_Pa=[0.,6000.], angle_rad=[-np.pi,np.pi],
+               center_x_m=[-100e-6,100e-6], center_y_m=[-50e-6,50e-6],
+               width_m=[100e-6,200e-6], separation_m=[200e-6,400e-6],
+               drive_duration_s=[.0014,.0028])
+@@ -29,6 +29,7 @@
+             assert np.isfinite(value) and BOUNDS[key][0]<=value<=BOUNDS[key][1],(key,value)
+         self.z0=surface_z; self.beta=BETA
+         self.U=self.theta['nominal_shear_Pa']/self.beta
++        self.segment=(0.,END,3200.,3200.)
+         phi=self.theta['angle_rad']
+         self.e1=np.array([np.cos(phi),np.sin(phi),0.])
+         self.e2=np.array([-np.sin(phi),np.cos(phi),0.])
+@@ -48,7 +49,7 @@
+         if self.mode=='uniform':
+             raw=np.broadcast_to(self.e1,x.shape).copy()
+             flow=raw-n*np.sum(raw*n,axis=1)[:,None]
+-        else:
++        elif self.mode=='counter_rotating':
+             sigma=self.theta['width_m']; separation=self.theta['separation_m']
+             a1=(a+separation/2)/sigma; a2=(a-separation/2)/sigma; bb=b/sigma
+             g1=np.exp(-.5*(a1*a1+bb*bb)); g2=np.exp(-.5*(a2*a2+bb*bb))
+@@ -58,10 +59,23 @@
+             gb=np.exp(.5)/2*(-bb*g1+bb*g2)
+             gradient=ga[:,None]*self.e1+gb[:,None]*self.e2
+             flow=np.cross(n,gradient)
++        else:
++            # Actual 650 x 350 um top: nearest 250 um count is 3 x 1.
++            # Freeze a square 250 um periodic lattice, centered on the specimen.
++            # Three cell centers lie inside the actual top; nine cells intersect it, with six clipped strips and two clipped end cells.
++            scale=250e-6;k=np.pi/scale
++            ga=np.cos(k*(a+375e-6))*np.sin(k*(b+125e-6))
++            gb=np.sin(k*(a+375e-6))*np.cos(k*(b+125e-6))
++            gradient=ga[:,None]*self.e1+gb[:,None]*self.e2
++            flow=np.cross(n,gradient)
+         return flow*window[:,None]
+ 
+     def __call__(self,x,n,t):
+-        return self.U*float(self.envelope(t))*self.spatial(x,n)
++        return self.amplitude(t)/BETA*float(self.envelope(t))*self.spatial(x,n)
++
++    def amplitude(self,t):
++        a,b,u,v=self.segment
++        return u+(v-u)*np.clip((t-a)/max(b-a,1e-30),0.,1.)
+ 
+     def applicability(self):
+         return dict(label=LABEL,nominal_stationary_shear_cap_Pa=self.theta['nominal_shear_Pa'],
+@@ -70,21 +84,3 @@
+                     h_over_width=H_EFF/self.theta['width_m'],
+                     acoustic_realizability='UNESTABLISHED',
+                     meaning='Hypothetical thin-layer slip law; no first/second-order bubble flow solution. Re bounds disallow interpreting the peak as a low-Re Stokes prediction.')
+-
+-def freeze_library():
+-    dump(O/'SHEAR_PARAMETERIZATION.json',dict(parameters=DEFAULT,bounds=BOUNDS,dimensions=7,
+-         frozen_time=dict(rise_s=RISE,hold_end_s=HOLD,drive_off_s=OFF,cohort_s=COHORT,end_s=END),
+-         width_and_separation='Used only by counter_rotating; fixed finite-region support is shared by both modes.',
+-         amplitude_choice='Same 1000 Pa nominal stationary-traction bound, selected from prior 335.7 Pa softening / 399.3 Pa failure and historical uniform-shear evidence; not a known valid or successful follower threshold.',
+-         comparison='Same material, triangles, update, beta, nominal cap and envelope. Actual area, load and external work need not match.',
+-         numerical=dict(dt_s=BASE,min_dt_s=MIN_H,max_damage_increment=.1,max_relative_energy_residual=.01)))
+-    dump(O/'SHEAR_FIELD_LIBRARY.json',dict(status='IMPLEMENTED',label=LABEL,modes=CASES,
+-         velocity='uniform: U*q(t)*chi(x)*P_n*e1; counter_rotating: U*q(t)*chi(x)*n cross grad_surface(psi)',
+-         streamfunction='psi = sigma*exp(1/2)/2*(exp(-((a+s/2)^2+b^2)/(2sigma^2))-exp(-((a-s/2)^2+b^2)/(2sigma^2)))',
+-         normalization='Analytical global gradient norm bound <=1; no outcome-dependent renormalization or per-node controls.',
+-         incompressibility='On the initial flat plane inside the plateau, counter_rotating is analytically 2D divergence-free. Taper zones and deformed piecewise-flat surfaces are local kinematic approximations; no global incompressible 3D boundary-value problem is solved.',
+-         flow_domain='Laboratory-frame C2 plateau: a +/-400 to 700um, b +/-250 to 450um, z-z0 +/-100 to 300um. Driving vanishes outside; passive slip drag remains on retained facets.',
+-         surface_law='tau=mu/h_eff * P_n*(u_outer-v_centroid); pressure increment=0; drive and passive drag are separate fields and work channels.',
+-         viscosity_thickness_source='Explicit continuation of the prior independent Stokes template mu=1mPa*s and h=25um; not fitted to bubble or clot measurements, APECSS cache uses a different viscosity.',
+-         reference_scope='Mobadersany/Sarkar wall vortices and sign-changing shear, plus Doinikov interacting-bubble streaming, motivate morphology only. The planar Gaussian pair is an original mechanical template, not their toroidal/axisymmetric solution.',
+-         applicability=ShearField('counter_rotating').applicability()))
+--- /workspace/y_clot/project/analysis/clot_shear_load_inverse_design_v1/work_controller.py
++++ /workspace/y_clot/project/analysis/clot_shear_multivortex_fragmentation_v2/work_controller.py
+@@ -0,0 +1,37 @@
++"""Frozen scalar power-budget servo; no outcome-dependent spatial controls."""
++from common import *
++
++SPEC=dict(W_TARGET_J=W_TARGET,W_DRIVE_REF_J=27.443461e-9,W_DRAG_REF_J=-1.745264e-9,
++    relative_tolerance=.05,nominal_amplitude_cap_Pa=6000.,amplitude_slew_Pa_s=8e6,
++    initial_nominal_amplitude_Pa=3200.,tracking_time_s=.00015,
++    observation_drag_forecast='K*(1-exp(P_drag/K*(END-OFF))), frozen instantaneous linear-drag decay surrogate',
++    schedule='Normalized integral of the common half-cosine envelope squared',
++    controller='P_goal = budget*dS/dt + (budget*S-W_net)/tracking_time; common amplitude solves (P_goal-P_drag)/unit_drive_power, bounded/slew limited',
++    scope='Both new modes same algorithm, one formal run each. Historical A is budget only, old surface model.',
++    safeguards='No node-wise control, no field relocation or shape tuning, no posthoc work scaling; a miss is WORK_MATCH_NOT_ACHIEVED')
++
++class WorkController:
++    def __init__(self,field):
++        self.field=field
++        self.t=np.linspace(0,OFF,28001);q=field.envelope(self.t)**2
++        integ=np.r_[0,np.cumsum((q[1:]+q[:-1])*.5*np.diff(self.t))]
++        self.S=integ/integ[-1];self.dS=q/integ[-1];self.last={}
++    def prepare(self,s,W,h):
++        t=s['time'];old=float(self.field.amplitude(t))
++        pd=float(np.sum(s['external_drive_force']*s['velocity']))
++        pr=float(np.sum(s['external_drag_force']*s['velocity']))
++        K=max(float(s['K']),1e-30)
++        forecast=K*(1-np.exp(np.clip(pr/K*(END-OFF),-100,0)))
++        budget=W_TARGET+forecast
++        power=budget*float(np.interp(t,self.t,self.dS))+(budget*float(np.interp(t,self.t,self.S))-W)/SPEC['tracking_time_s']
++        coeff=pd/max(old,1e-30)
++        wanted=(power-pr)/coeff if coeff>1e-14 and t>1e-4 else 3200.
++        if t>=OFF:wanted=0.
++        bounded=float(np.clip(wanted,0,SPEC['nominal_amplitude_cap_Pa']))
++        next_amp=float(np.clip(bounded,old-SPEC['amplitude_slew_Pa_s']*h,old+SPEC['amplitude_slew_Pa_s']*h))
++        self.field.segment=(t,t+h,old,next_amp)
++        self.last=dict(nominal_amplitude_Pa=next_amp,nominal_amplitude_requested_Pa=float(wanted),
++            controller_saturated=bool(wanted>SPEC['nominal_amplitude_cap_Pa'] or wanted<0),
++            controller_slew_limited=bool(abs(next_amp-bounded)>1e-9),forecast_observation_drag_J=forecast,
++            controller_budget_J=budget,controller_goal_power_W=power)
++        return self.last
+--- /workspace/y_clot/project/analysis/clot_shear_load_inverse_design_v1/native_checks.py
++++ /workspace/y_clot/project/analysis/clot_shear_multivortex_fragmentation_v2/native_checks.py
+@@ -0,0 +1,35 @@
++from common import *
++from native import native
++from work_controller import WorkController
++from current_surface import CurrentSurface
++import time,resource
++start=time.perf_counter();cpu=time.process_time();results=[]
++assert json.loads((O/'GEOMETRY_CHECKS.json').read_text())['status']=='PASS'
++for mode in CASES:
++    ns,C=native(O/'checks'/mode,mode);s=ns.dynamics();version=ns.l.version();ref=ns.ref
++    ns.l.command(f'reset_timestep 0 time {HOLD:.17g}')
++    vel=np.zeros_like(ref['X']);vel[:ns.n]=[.02,.003,0]
++    ids=ns.l.numpy.extract_atom('id')[:ns.N]-1;ns.l.numpy.extract_atom('v')[:ns.N]=vel[ids]
++    ns.l.command('run 0');p=ns.state();h=MIN_H
++    controller=WorkController(ns.tool.field);ctrl=controller.prepare(p,0,h)
++    pred=p['x'].copy();pred[:ns.n]+=h*(p['velocity'][:ns.n]+h*p['force'][:ns.n]/(2*RHO*V))
++    before=ns.tool.ever_loaded.copy()
++    # Trial geometry must not commit cumulative history or native damage.
++    ns.tool.evaluate(pred,p['velocity'],p['d'],p['time']+h)
++    assert np.array_equal(before,ns.tool.ever_loaded)
++    s=ns.step(h);vv=p['velocity'][:ns.n]+h*(p['force'][:ns.n]+s['force'][:ns.n])/(2*RHO*V)
++    xp_error=float(abs(pred-s['x']).max());vv_error=float(abs(vv-s['velocity'][:ns.n]).max())
++    end_error=float(abs(s['force_stage_velocity']-s['velocity']).max())
++    uc,fc,_=C(ref).evaluate(s['x'],s['d']);z=ns.tool.evaluate(s['x'],s['velocity'],s['d'],s['time'])
++    port=float(abs(s['force']-s['material_force']-fc-z['force']).max())
++    work=ns.tool.work(p,s)
++    res=float(work.sum()-(s['scalars'][0]-p['scalars'][0]+s['K']-p['K']+s['scalars'][1]-p['scalars'][1]+s['Uc']-p['Uc']))
++    assert xp_error<2e-18 and vv_error<1e-12 and end_error<1e-11 and port<1e-15
++    assert np.array_equal(s['d'],p['d']) and np.array_equal(s['kappa']>=p['kappa'],np.ones(len(s['d']),bool))
++    assert work[1]<0 and abs(res)/max(abs(work.sum()),1e-30)<.01
++    assert not s['external_force'][ns.n:].any()
++    np.savez_compressed(O/'checks'/mode/'one_step.npz',**s)
++    results.append(dict(mode=mode,native_steps=1,scope='Single new callback/integrator step with nonzero velocity at HOLD; no fracture calibration or main trial',prediction_error_m=xp_error,VV_velocity_error=vv_error,implicit_velocity_error=end_error,force_port_error_N=port,actual_drive_work_J=work[0],actual_drag_work_J=work[1],energy_residual_J=res,relative_energy_error=abs(res)/abs(work.sum()),controller=ctrl))
++    ns.close()
++dump(O/'KEY_CHECKS.json',dict(status='PASS',native_version=version,cases=results,new_native_micro_steps=2,main_dynamics_runs=0,wall_s=time.perf_counter()-start,cpu_s=time.process_time()-cpu,peak_RSS_bytes=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss*1024))
++print('NATIVE_NEW_PATH_PASS',results,flush=True)
+--- /workspace/y_clot/project/analysis/clot_shear_load_inverse_design_v1/manage.py
++++ /workspace/y_clot/project/analysis/clot_shear_multivortex_fragmentation_v2/manage.py
+@@ -2,7 +2,7 @@
+ import sys,subprocess,shlex
+ mode=sys.argv[1];assert mode in CASES
+ assert (O/'SOURCE_FREEZE.json').exists()
+-name='clot_follower_'+mode+'_'+RUN;wrapper=A/('run_'+mode+'.sh')
++name='clot_multivortex_'+mode+'_'+RUN;wrapper=A/('run_'+mode+'.sh')
+ assert not (O/'cases'/mode/'history.csv').exists()
+ args=['python','-u',str(A/'run_cases.py'),'--name',mode]
+ wrapper.write_text('#!/bin/bash\nset -euo pipefail\nsource /workspace/y_clot/env.sh\nexport OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1\nexport LD_LIBRARY_PATH='+str(LIB.parent)+':${LD_LIBRARY_PATH:-}\ncd '+str(R)+'\nexec '+shlex.join(args)+'\n');wrapper.chmod(0o755)

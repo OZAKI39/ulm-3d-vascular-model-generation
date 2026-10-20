@@ -1,0 +1,52 @@
+LAMMPS (30 Sep 2026)
+  using 1 OpenMP thread(s) per MPI task
+units si
+boundary m m m
+atom_style bond
+atom_modify map array sort 0 0
+newton on off
+special_bonds lj 0 1 1 coul 1 1 1
+read_data /workspace/y_clot/project/verification/clot_shear_multivortex_fragmentation_v2/20261017T175456Z/cases/counter_rotating/provenance/body.data extra/bond/per/atom 160 extra/special/per/atom 180
+Reading data file ...
+  orthogonal box = (-0.005 -0.005 -0.005) to (0.005 0.005 0.005)
+  1 by 1 by 1 MPI processor grid
+  reading atoms ...
+  2128 atoms
+  scanning bonds ...
+  282 = max bonds/atom
+  orthogonal box = (-0.005 -0.005 -0.005) to (0.005 0.005 0.005)
+  1 by 1 by 1 MPI processor grid
+  reading bonds ...
+  95666 bonds
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    0        1        1       
+  special bond factors coul:  1        1        1       
+   122 = max # of 1-2 neighbors
+   302 = max # of special neighbors
+  special bonds CPU = 0.003 seconds
+  read_data CPU = 0.105 seconds
+
+lattice sc 5.0000000000000002e-05
+Lattice spacing in x,y,z = 5e-05 5e-05 5e-05
+neighbor 0.0001 bin
+neigh_modify every 1 delay 0 check no
+comm_modify cutoff 0.00045149999999999997
+fix props all property/atom d_vfrac d_theta ghost yes
+set group all d_vfrac 1.2500000000000002e-13
+Setting atom values ...
+  2128 settings made for d_vfrac
+
+pair_style bpm/peri contact_distance_factor 1.0
+pair_coeff * * 3.7226771877469815e+20 0.0001505
+bond_style bpm/peri/variational /workspace/y_clot/project/verification/clot_shear_multivortex_fragmentation_v2/20261017T175456Z/cases/counter_rotating/provenance/reference.native
+
+bond_coeff 1 33333.333333333336 940 0.0001505 0.14999999999999999 0.17999999999999999
+bond_coeff 2 33333.333333333336 940 0.0001505 0.140625 0.16875000000000001
+bond_coeff 3 33333.333333333336 940 0.0001505 1 1.2
+special_bonds lj 0 1 1 coul 1 1 1
+timestep 2.4999999999999999e-07
+thermo 100000
+thermo_style custom step time atoms bonds pe ebond epair ke
+thermo_modify lost error norm no
+
+Total wall time: 0:00:00

@@ -1,0 +1,12 @@
+--- native_case_v2.before
++++ native_case_v2.after
+@@ -71,7 +71,8 @@
+    h=float(row['dt_s'])
+    if h!=ns.dt:ns.l.command(f'timestep {h:.17g}');ns.dt=h
+    ns.l.command('run 1 pre no post no')
+-  restored=ns.state();stored=load_npz(src/'keys/last_accepted.npz');fields=['x','velocity','force','material_force','kappa','d','scalars','counters','time','step','native_bonds','K','Uc','external_force','external_time'];dif={key:float(np.max(np.abs(np.asarray(restored[key])-stored[key]))) for key in fields};replay_wall_s=time.perf_counter()-ts
++  restored=ns.state();stored=load_npz(src/'keys/last_accepted.npz');fields=['x','velocity','force','material_force','kappa','d','counters','time','step','native_bonds','K','Uc','external_force','external_time'];dif={key:float(np.max(np.abs(np.asarray(restored[key])-stored[key]))) for key in fields};dif['physical_scalars_excluding_profile_seconds']=float(np.max(abs(np.delete(restored['scalars']-stored['scalars'],7))));replay_wall_s=time.perf_counter()-ts
++  dump(case/'REPLAY_PREFLIGHT.json',dict(physical_differences=dif,excluded_profile_seconds_index=7,source_profile_seconds=float(stored['scalars'][7]),actual_profile_seconds=float(restored['scalars'][7]),wall_s=time.perf_counter()-start,cpu_s=time.process_time()-cpu,peak_RSS_bytes=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss*1024))
+   assert all(value==0 for value in dif.values()),('PREFIX_REPLAY_NOT_BITWISE_IDENTICAL',dif)
+   dump(case/'PREFIX_REPLAY_AUDIT.json',dict(status='PASS_BITWISE_IDENTICAL',source=src,source_state_sha256=sha(src/'keys/last_accepted.npz'),source_history_sha256=sha(src/'history.csv'),steps=prefix_steps,wall_s=replay_wall_s,max_absolute_differences=dif,method='Exact original sequence of native run 1 commands; no interpolation, reset of native history or material modification'))
+   s=prev=restored;rows=[{key:(value if key=='classification' else float(value)) for key,value in row.items()} for row in raw];W=float(raw[-1]['W_J']);Jc=float(raw[-1]['Jc_J']);impulse=np.asarray(prior['impulse_vector_ns']);scale=max(1e-24,max(max(abs(float(q['W_J'])),abs(float(q['U_J'])-initial['scalars'][0])+float(q['K_J'])+float(q['D_J'])+float(q['Uc_J'])) for q in raw))

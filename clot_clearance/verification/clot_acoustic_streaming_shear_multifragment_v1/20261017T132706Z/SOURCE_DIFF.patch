@@ -1,0 +1,1270 @@
+--- /dev/null
++++ b/clot_clearance/analysis/clot_acoustic_streaming_shear_multifragment_v1/REPRODUCE.md
+@@ -0,0 +1,23 @@
++# 声流／剪切多碎块研究复现
++
++本轮目录 `verification/clot_acoustic_streaming_shear_multifragment_v1/20261017T132706Z`。不要在已接受目录重跑或覆盖。新计算先复制本轮分析目录，在 common.py 中设置新的 RUN，并重新生成冻结文件。模型和数据的标签是科学证据的一部分。
++
++服务器激活 `/workspace/y_clot/env.sh`，`OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1`。沿用 `verification/clot_multifragment_breakup_v1/20261017T110849Z/build/liblammps.so`，SHA `465f8144c6da5c9de3aec4137b9c325f53c26737b199c536fb4a20845511ef77`。通过 LD_LIBRARY_PATH 指向该 build；该库及原始 material law 未修改，也没有安装新依赖。MPI必须1 rank。旧建库配方与上游锁定提交见该前序目录 BUILD_AUDIT.json、analysis/clot_multifragment_breakup_v1/build.py；本轮不需要再次编译。
++
++执行顺序（只在新目录）：
++
++1. `python audit_inputs.py`：读取并哈希实际 F1/F10S/APECSS 文件。优化器在独立环境 `/workspace/y_clot/envs/inverse_opt_v1`，不要求 native 环境安装。
++2. `python acoustic_streaming_shear.py`：生成解析模态 Stokes 场，独立有限差分检查。
++3. `python shear_loading.py`：原始 top_ids 生成实际节点三角形，冻结非负载荷映射及两例协议。`python v3_mapping_audit.py`：真实V3面片只读映射比较。`python audit_discretization.py`保存节点分摊面积、局部方向/幅值偏差及历史均匀剪切可比性。
++4. `python multifragment_objective.py`：冻结独立碎块约束。`python check_coupling.py`：3个非零时刻原生run 0耦合检查，不推进动力学。
++5. `python manage.py stokes`：独立Supervisor前台作业。A正式结束且没有目标碎裂后，`python manage.py inverse`，总共两组主要原生动力学。不得自动第三例或优化扫描。
++6. `python analyze.py`：原始存活连接、损伤网络、寿命/形态、三维桥接、两张独立物理与机械表和完整能量账本。`python current_moment_audit.py`另输出实际关键态力矩，区分history的名义参考坐标力矩。
++7. `python validate_outputs.py --case stokes` 与 `--case inverse`：每例一次全接受态损伤图重放、FP64关键态/加载核对，合并SHA校验。不会重新积分。
++8. `python figures.py`、`python report.py`：实际数据PNG/SVG及20问中文报告/HTML；人工查看最终图。
++9. 同步到WSL，在本地执行 `update_wsl_document.py`，备份/检查写前SHA/保存diff，回传WSL更新证据；`python update_entrypoints.py`保留旧入口并添加本轮当前入口，`python seal.py`封存，最后本地运行 `local_readback.py`。
++
++声流模型界限：u=(sin(ky)v(z,t),0,0)，周期700µm、间隙25µm、μ1mPa·s、ρ1000kg/m³，上边界4mm/s规定速度，有限边缘与流固反馈省略。声压、APECSS半径响应和质心轨迹都不自动转换为流体剪切。B的1000Pa仅是同模式的机械牵引缩放，不代表高速度Stokes流被物理验证。参考表面固定，脱离后仍加载原始节点，不能称为跟随当前边界的声流。
++
++关键输出：每接受步history.csv、原始ID不可逆damage_events.jsonl.gz、逐接受态CONNECTED_COMPONENT_HISTORY.jsonl.gz及原始成员registry；keys中真实FP64 x/v/force/material_force/κ/d/native能量。剪切方向与实际受力节点由 SHEAR_TRACTION_FIELD.npz 和冻结 ShearLoad 完整确定；history中的时刻足以重建每步力。出生/分裂/内部存活率/最终原成员保持独立保存。物理未知量使用UNAVAILABLE/null；无脱离时质量比分母为0，不填虚假0%。
++
++源代码/依赖SHA和补丁随交付保存；不下载无关项目全量HDF5、上游构建树、二进制库、论文全文或重复缓存。实际原生库留服务器，源码构建来源与哈希可追溯。本轮交付新任务文件并保留历史。
+--- /dev/null
++++ b/clot_clearance/analysis/clot_acoustic_streaming_shear_multifragment_v1/acoustic_streaming_shear.py
+@@ -0,0 +1,83 @@
++"""SI-only flow entrypoint. Never infer streaming from pressure or bubble speed.
++
++Selected fallback is an exact unidirectional periodic Stokes model:
++u=(sin(k*y)*v(z,t),0,0), v_t=nu*(v_zz-k^2*v), v(0)=0,
++v(H)=U*q(t). Divergence and nonlinear convection vanish identically.
++This prescribed upper boundary is not a solved bubble boundary.
++"""
++from common import *
++from scipy.integrate import solve_ivp
++MU=.001; FLUID_RHO=1000.; GAP=25e-6; SPEED=.004
++WAVELENGTH=700e-6; WAVENUMBER=2*np.pi/WAVELENGTH
++RISE=.002; HOLD=.0024; OFF=.0028; COHORT=.0034
++
++def envelope(t):
++ t=np.asarray(t);q=np.zeros_like(t,float);dq=q.copy()
++ a=(t>=0)&(t<RISE);q[a]=.5*(1-np.cos(np.pi*t[a]/RISE));dq[a]=.5*np.pi/RISE*np.sin(np.pi*t[a]/RISE)
++ a=(t>=RISE)&(t<HOLD);q[a]=1
++ a=(t>=HOLD)&(t<OFF);z=(t[a]-HOLD)/(OFF-HOLD);q[a]=.5*(1+np.cos(np.pi*z));dq[a]=-.5*np.pi/(OFF-HOLD)*np.sin(np.pi*z)
++ return q,dq
++
++def bubble_model_input_gate(inputs):
++ required=['frequency_Hz','pressure_field','bubble_positions_m','radius_time_series_m','radius_velocity_m_s','bubble_wall_gap_m','rho_kg_m3','mu_Pa_s','surface_geometry','time_s','first_order_velocity_field','oscillatory_boundary_conditions']
++ missing=[k for k in required if inputs.get(k) is None]
++ return dict(status='STREAMING_LOAD_NOT_YET_DETERMINED',missing=missing,reason='No boundary-consistent second-order solver is implemented; even complete input is not a solved streaming output.',flow=None)
++
++class StokesMode:
++ def __init__(self,k=WAVENUMBER,speed=SPEED,modes=64):
++  self.k=k;self.speed=speed;self.n=np.arange(1,modes+1);self.nu=MU/FLUID_RHO
++  self.lam=self.nu*((self.n*np.pi/GAP)**2+k*k)
++  c=2*(-1.)**(self.n+1)*self.n*np.pi/((self.n*np.pi)**2+(k*GAP)**2)
++  self.sol=solve_ivp(lambda t,b:-self.lam*b-c*float(envelope(t)[1]),(0,END),np.zeros(modes),method='BDF',jac=-np.diag(self.lam),rtol=2e-10,atol=1e-13,max_step=5e-6,dense_output=True)
++  assert self.sol.success
++ def g(self,z):return np.asarray(z)/GAP if self.k==0 else np.sinh(self.k*np.asarray(z))/np.sinh(self.k*GAP)
++ def gp(self,z):return np.ones_like(np.asarray(z))/GAP if self.k==0 else self.k*np.cosh(self.k*np.asarray(z))/np.sinh(self.k*GAP)
++ def modal_velocity(self,z,t):
++  z=np.atleast_1d(z);return self.speed*(self.g(z)*float(envelope(t)[0])+np.sin(np.outer(z/GAP,self.n*np.pi))@self.sol.sol(t))
++ def modal_gradient(self,z,t):
++  z=np.atleast_1d(z);return self.speed*(self.gp(z)*float(envelope(t)[0])+np.cos(np.outer(z/GAP,self.n*np.pi))@(self.sol.sol(t)*self.n*np.pi/GAP))
++ def amplitude(self,t):
++  return MU*self.speed*(float(self.gp(0))*envelope(t)[0]+np.einsum('i,i...->...',self.n*np.pi/GAP,self.sol.sol(t)))
++ def field(self,y,z,t):
++  y,z=np.broadcast_arrays(y,z);v=self.modal_velocity(z.ravel(),t).reshape(z.shape);dv=self.modal_gradient(z.ravel(),t).reshape(z.shape)
++  sine=np.sin(self.k*y) if self.k else np.ones_like(y);cosine=np.cos(self.k*y)
++  u=np.zeros(y.shape+(3,));grad=np.zeros(y.shape+(3,3));u[...,0]=sine*v
++  grad[...,0,1]=self.k*cosine*v;grad[...,0,2]=sine*dv
++  return dict(velocity_m_s=u,gradient_s_inv=grad,pressure_increment_Pa=np.zeros(y.shape))
++
++def traction(gradient,pressure,normal):
++ sigma=-np.asarray(pressure)[...,None,None]*np.eye(3)+MU*(gradient+np.swapaxes(gradient,-1,-2))
++ total=np.einsum('...ij,...j->...i',sigma,normal);normal_t=np.sum(total*normal,axis=-1)[...,None]*normal
++ return total-normal_t,normal_t
++
++def spec():
++ return dict(model_label='PRESCRIBED_STOKES_SHEAR_TEMPLATE',evidence='PHYSICS_APPROXIMATION',flow_order='PRESCRIBED_NONOSCILLATORY_VISCOUS_FLOW',not_first_order_acoustics=True,not_second_order_streaming=True,
++  equation='u_x=sin(k*y)*v(z,t); v_t=nu*(v_zz-k^2*v); p_increment=0',boundary='v(0,t)=0; v(H,t)=0.004*q(t); y-periodic 700 um, infinite x; initial rest',
++  g='sinh(k*z)/sinh(k*H)',modal_ODE='b_n_dot=-nu*((n*pi/H)^2+k^2)*b_n-c_n*q_dot; c_n=2*(-1)^(n+1)*n*pi/((n*pi)^2+(k*H)^2)',
++  reconstruction='v=U*(q*g+sum b_n*sin(n*pi*z/H))',shear='tau_xz=mu*sin(k*y)*v_z(0,t)',
++  rho_kg_m3=FLUID_RHO,mu_Pa_s=MU,gap_m=GAP,upper_speed_m_s=SPEED,wavelength_m=WAVELENGTH,rise_s=RISE,hold_until_s=HOLD,upper_drive_off_s=OFF,end_s=END,cohort_s=COHORT,
++  mode_reason='One lowest smooth counter-shear mode over actual 350 um transverse span: opposite x-directed lanes and zero centerline. Selected from specimen dimensions before damage outcomes, not prescribed crack or bond targets.',
++  nonlinear_convection='Exactly zero because u=(u_x(y,z,t),0,0), independent of x; this does not validate finite edges or curved surfaces.',
++  Re_H=FLUID_RHO*SPEED*GAP/MU,coupling='FROZEN_SURFACE_ONE_WAY',
++  limitations=['Prescribed patterned boundary, no physical bubble-to-wall realization','Finite edge effects and moving clot feedback omitted','No new crack-face fluid stress','Reference loading persists on displaced/detached original nodes; only a mechanical dead-traction surrogate once deformation is appreciable','V3 projection is independent local-patch extension, not a global V3 solution'],
++  references=[dict(url='https://joss.theoj.org/papers/10.21105/joss.05435',scope='APECSS bubble/acoustic-emission capabilities, not a streaming closure'),dict(url='https://arxiv.org/abs/1509.02554',scope='First/second-order streaming separation and temporal buildup; abstract read, not a reproduction of its full model'),dict(url='https://docs.lammps.org/fix_external.html',scope='Native callback force entrypoint')])
++
++def checks(flow):
++ from scipy.sparse import diags
++ N=100;dz=GAP/N;nu=MU/FLUID_RHO;k=flow.k;times=np.linspace(0,END,801)
++ mat=diags([np.ones(N-2),-2*np.ones(N-1),np.ones(N-2)],[-1,0,1]).tocsc()*nu/dz**2-diags([np.full(N-1,nu*k*k)],[0])
++ def rhs(t,u):
++  z=mat@u;z[-1]+=nu/dz**2*float(envelope(t)[0]);return z
++ sol=solve_ivp(rhs,(0,END),np.zeros(N-1),method='BDF',jac=mat,t_eval=times,rtol=2e-10,atol=1e-13,max_step=5e-6)
++ fd=MU*SPEED*(4*sol.y[0]-sol.y[1])/(2*dz);err=float(np.max(abs(fd-flow.amplitude(times)))/(MU*SPEED/GAP))
++ wall=max(float(np.max(abs(flow.modal_velocity([0,GAP],t)-[0,SPEED*float(envelope(t)[0])]))) for t in [0,.001,.0024,.0028,.0036])
++ steady=MU*SPEED*float(flow.gp(0));near=float(flow.amplitude(.0024));assert err<.001 and wall<1e-13 and abs(near/steady-1)<.002
++ f=flow.field(np.array([.000175,-.000175]),np.zeros(2),.0024);ts,tn=traction(f['gradient_s_inv'],f['pressure_increment_Pa'],np.tile([0,0,1.],(2,1)))
++ assert np.max(abs(ts[:,0]-np.array([near,-near])))<1e-14 and np.max(abs(tn))==0
++ return dict(status='PASS',independent_FD_max_error_over_muU_H=err,no_slip_error_m_s=wall,steady_analytic_mu_U_k_over_sinh_kH_Pa=steady,plateau_shear_Pa=near,plateau_vs_exact_relative=abs(near/steady-1),pure_pressure_shear_N=0,convective_acceleration_exact=0,units='m/s, 1/s, Pa; normals point from solid into fluid')
++
++if __name__=='__main__':
++ flow=StokesMode();dump(O/'STREAMING_MODEL_SPEC.json',spec());dump(O/'FLUID_SHEAR_CHECK.json',checks(flow))
++ t=np.linspace(0,END,145);y=np.linspace(-WAVELENGTH/2,WAVELENGTH/2,81);z=np.linspace(0,GAP,31);Y,Z=np.meshgrid(y,z,indexing='ij');fields=[flow.field(Y,Z,tt) for tt in t]
++ np.savez_compressed(O/'FLOW_FIELD_DATA.npz',time_s=t,y_m=y,z_m=z,velocity_m_s=np.array([f['velocity_m_s'] for f in fields]),velocity_gradient_s_inv=np.array([f['gradient_s_inv'] for f in fields]),pressure_increment_Pa=np.array([f['pressure_increment_Pa'] for f in fields]),wall_shear_amplitude_Pa=flow.amplitude(t))
++ print('FLOW_DONE',float(flow.amplitude(t).max()))
+--- /dev/null
++++ b/clot_clearance/analysis/clot_acoustic_streaming_shear_multifragment_v1/analyze.py
+@@ -0,0 +1,169 @@
++"""Read-only reductions of accepted states; no topology or loading mutations."""
++from common import *
++from multifragment_objective import metrics,BINS,SPEC,shape
++from shear_loading import ShearLoad,OFF,COHORT,WAVENUMBER
++from bridge_audit import inspect,candidate_regions
++import ast,csv,gzip,time
++
++graph=module('result_graph',R/'analysis/v3_chunk_fragmentation_mechanism_v1/graph_ops.py')
++# Reuse the already reviewed failed-edge lineage and local deformation algorithms.
++_tree=ast.parse((HA/'analyze.py').read_text())
++_names={'histories','crack_audit','deformation'}
++exec(compile(ast.Module(body=[q for q in _tree.body if isinstance(q,ast.FunctionDef) and q.name in _names],type_ignores=[]),str(HA/'analyze.py'),'exec'))
++def read(p):return json.loads(Path(p).read_text())
++def csvout(path,rows,columns=None):
++    with Path(path).open('w') as f:
++        w=csv.DictWriter(f,fieldnames=columns or list(rows[0]));w.writeheader();w.writerows(rows)
++
++def all_material_failed_networks(case,ref):
++    """Inclusive failed-edge graph, with original bulk/interface types intact.
++
++    Fixed-anchor endpoints remain vertices, never remapped to material nodes.
++    This separate view complements the historical bulk-only lineage definition.
++    """
++    b=ref['bonds'];bt=ref['bond_types'];parent=np.arange(len(ref['X']));clusters={};births=[];merges=[];history=[];failed=set();peak=0
++    def root(i):
++        while parent[i]!=i:parent[i]=parent[parent[i]];i=parent[i]
++        return int(i)
++    def join(i,j):
++        a,c=root(i),root(j)
++        if a!=c:parent[max(a,c)]=min(a,c)
++    with gzip.open(case/'damage_events.jsonl.gz','rt') as f:
++        for line in f:
++            e=json.loads(line);ids=np.asarray(e['original_bond_ids'])-1;dam=np.asarray(e['d']);new=ids[(dam==1)&np.isin(bt[ids],[1,2])&~ref['initial_cut'][ids]]
++            if not len(new):continue
++            old={root(key):set(value) for key,value in clusters.items()}
++            for a,c in b[new]:join(int(a),int(c))
++            merged={}
++            for key,value in old.items():merged.setdefault(root(key),set()).update(value)
++            born={root(int(i)) for i in b[new].ravel()}-set(merged)
++            for key in sorted(born):
++                cid=len(births)+1;merged[key]={cid};group=np.asarray([i for i in new if root(int(b[i,0]))==key],int)
++                births.append(dict(cluster_id=cid,time_s=e['time_s'],step=e['step'],first_original_bond_ids=group+1,original_bond_types=bt[group],reference_centroid_m=ref['X'][b[group]].mean((0,1))))
++            for key,value in merged.items():
++                ancestors=[p for p in old if root(p)==key]
++                if len(ancestors)>1:merges.append(dict(time_s=e['time_s'],step=e['step'],n_merged_components=len(ancestors),original_nucleation_ids=sorted(value),new_bridge_original_bond_ids=[int(i+1) for i in new if root(int(b[i,0]))==key]))
++            clusters=merged;failed.update(new.tolist());peak=max(peak,len(clusters))
++            history.append(dict(time_s=e['time_s'],step=e['step'],separate_failed_material_networks=len(clusters),new_bulk_failures=int(np.sum(bt[new]==1)),new_interface_failures=int(np.sum(bt[new]==2)),new_original_bond_ids=new+1,original_bond_types=bt[new]))
++    ids=np.array(sorted(failed),int);edge=b[ids]
++    matrix=graph.coo_matrix((np.ones(2*len(edge)),(np.r_[edge[:,0],edge[:,1]],np.r_[edge[:,1],edge[:,0]])),shape=(len(ref['X']),len(ref['X']))).tocsr()
++    _,labels=graph.csgraph.connected_components(matrix,directed=False)
++    assert len(set(labels[np.unique(edge)].tolist()))==len(clusters)
++    return dict(definition='All naturally failed original bulk and interface bonds, shared original endpoints; fixed-anchor endpoints retained and labelled, initial precuts excluded. Contact never enters either graph. This inclusive graph supplements, not replaces, historical bulk-only birth counts.',n_births=len(births),n_merge_events=len(merges),max_simultaneous_networks=peak,final_networks=len(clusters),independent_final_graph_check='PASS',new_failed_bulk_bonds=int(np.sum(bt[ids]==1)),new_failed_interface_bonds=int(np.sum(bt[ids]==2)),births=births,merges=merges,history=history,original_failed_bond_ids=ids+1,original_failed_bond_types=bt[ids])
++
++def analyze_case(name,ref):
++    case=O/'cases'/name;summary=read(case/'SUMMARY.json');rows=histories(case)
++    registry={int(k):v for k,v in read(case/'COMPONENT_REGISTRY.json').items()}
++    final=load_npz(case/'keys'/('final.npz' if summary['status']=='COMPLETED' else 'last_accepted.npz'))
++    n=int(ref['clot_count']);lab,sizes,att=graph.topology(ref,final['d']);free=sizes[~att]
++    first={};last={};trace={};cohort=None;endhistory=None;max_counts={key:0 for key in ['N_ge2','N_ge14','N_ge20','N_ge34','N_ge114','N_ge200um','N_ge300um']}
++    with gzip.open(case/'CONNECTED_COMPONENT_HISTORY.jsonl.gz','rt') as stream:
++        for line in stream:
++            z=json.loads(line);t=z['time_s'];endhistory=z
++            if abs(t-SPEC['common_cohort_time_s'])<1e-13:cohort=z
++            for q in z['components']:
++                cid=q['component_id'];first.setdefault(cid,dict(time_s=t,**q));last[cid]=dict(time_s=t,**q)
++                if registry[cid]['nodes']>=2:
++                    # Full shape/coordinates remain in the compressed accepted
++                    # history. Avoid a second uncompressed copy for plotting.
++                    trace.setdefault(cid,[]).append(dict(time_s=t,**{key:q[key] for key in ['internal_survival','mean_internal_damage','internal_alive_bonds','internal_initial_bonds','internal_relative_kinetic_J','centroid_velocity_m_s','remaining_live_external_connections']}))
++    for key in max_counts:max_counts[key]=int(max(q[key] for q in rows))
++    stable=[];splits=summary['secondary_events'];split_by_parent={q['parent_component_id']:q for q in splits}
++    for cid,c in registry.items():
++        ids=np.asarray(c['atom_ids'])-1
++        same=bool(np.all(lab[ids]==lab[ids[0]]) and not att[lab[ids[0]]] and sizes[lab[ids[0]]]==len(ids))
++        lasttime=last[cid]['time_s'];split=split_by_parent.get(cid)
++        stable.append(dict(fragment_id=cid,**c,mass_kg=c['nodes']*RHO*V,
++            first_state=first[cid],last_state=last[cid],last_observed_s=lasttime,
++            observed_lifetime_s=lasttime-c['birth_time_s'],same_original_members_connected_at_final=same,
++            status='CONNECTED_THROUGH_OBSERVED_WINDOW' if same else 'SPLIT_WITHIN_OBSERVED_WINDOW',
++            secondary_split_history=split,split_time_bracket_s=[lasttime,split['time_s']] if split else None,
++            common_post_unload_observed_s=max(0,lasttime-max(c['birth_time_s'],SPEC['common_cohort_time_s'])),
++            lifetime_scope='Accepted-state observation, right-censored at final time; not permanent stability'))
++    stableids={q['fragment_id'] for q in stable if q['same_original_members_connected_at_final']}
++    cohort_ids=[q['component_id'] for q in cohort['components'] if 20<=registry[q['component_id']]['nodes']<=200] if cohort else []
++    cohort_metrics=metrics([registry[q['component_id']]['nodes'] for q in cohort['components']],n) if cohort else None
++    final_metrics=metrics(free,n)
++    criteria=dict(common_cohort=cohort_metrics['independent_criteria'] if cohort_metrics else None,
++        final=final_metrics['independent_criteria'],five_cohort_memberships_survive=sum(cid in stableids for cid in cohort_ids)>=5,
++        numerical_completion=summary['status']=='COMPLETED')
++    target=bool(cohort_metrics and cohort_metrics['instant_target'] and final_metrics['instant_target'] and criteria['five_cohort_memberships_survive'] and criteria['numerical_completion'])
++    finalcs=[dict(**registry[q['component_id']],**q,mass_kg=registry[q['component_id']]['nodes']*RHO*V) for q in endhistory['components']]
++    networks=crack_audit(case,ref);networks['all_material_including_interface']=all_material_failed_networks(case,ref);diagnostics={}
++    inclusive=networks['all_material_including_interface'];wanted=np.flatnonzero((final['d']==1)&~ref['initial_cut']&np.isin(ref['bond_types'],[1,2]))+1
++    assert np.array_equal(inclusive['original_failed_bond_ids'],wanted)
++    assert inclusive['new_failed_bulk_bonds']==rows[-1]['bulk_failed'] and inclusive['new_failed_interface_bonds']==rows[-1]['interface_failed']
++    centers=np.asarray([q['reference_centroid_m'] for q in networks['births']])
++    separation=float(np.linalg.norm(centers[:,None]-centers[None,:],axis=2).max()) if len(centers)>1 else 0.
++    for ev in ['first_softening','first_failure']:
++        if ev in summary['events']:
++            e=summary['events'][ev];state=load_npz(case/e['evidence']);diagnostics[ev]=dict(event=e,local_affine=deformation(ref,state,np.asarray(e['atom_ids']).ravel()-1))
++    # These labels describe the data, never replace the independent frozen gates.
++    classification=[]
++    if not rows[-1]['softened']:classification.append('NO_DAMAGE')
++    elif not free.sum():classification.append('DAMAGE_WITHOUT_DETACHMENT')
++    if free.sum() and final_metrics['fine_debris_mass_fraction_detached']>.2:
++        classification.append('SURFACE_EROSION' if free.sum()/n<.1 else 'DEBRIS_DOMINATED_DETACHMENT')
++    if final_metrics['fragment_count_target_band']>=2:classification.append('MULTIPLE_TARGET_BAND_COMPONENTS')
++    if free.sum() and final_metrics['largest_free_fragment_fraction_detached']>.5:classification.append('DOMINANT_FREE_COMPONENT')
++    if splits:classification.append('SECONDARY_FRAGMENTATION')
++    if summary['status']!='COMPLETED':classification.append('NUMERICALLY_UNRESOLVED')
++    if not classification:classification.append('DETACHMENT_WITHOUT_EXPLORATORY_TARGET')
++    result=dict(name=name,status=summary['status'],classification=classification,exploratory_target_met=target,
++        target_criteria=criteria,final=rows[-1],final_metrics=final_metrics,final_components=finalcs,
++        first_softening_s=summary['events'].get('first_softening',{}).get('time_s'),
++        first_failure_s=summary['events'].get('first_failure',{}).get('time_s'),
++        first_multinode_s=summary['events'].get('first_multinode',{}).get('time_s'),
++        history_max_N20_200=summary['max_medium_components'],history_max_free_nodes=summary['history_max_free_nodes'],
++        history_max_size_threshold_counts=max_counts,common_cohort_medium_ids=cohort_ids,
++        common_cohort_medium_surviving=sum(cid in stableids for cid in cohort_ids),common_cohort_metrics=cohort_metrics,
++        cohort_time_s=SPEC['common_cohort_time_s'],upper_drive_stop_s=OFF,remaining_shear_fraction_at_cohort=ShearLoad(ref,name).peak(COHORT)/(summary['physical_template_peak_Pa']*summary['traction_multiplier']),
++        secondary_events=splits,secondary_after_common_cohort=sum(q['time_s']>=SPEC['common_cohort_time_s'] for q in splits),
++        crack_networks=dict(n_births=networks['n_births'],n_merges=networks['n_merge_events'],max_simultaneous=networks['max_simultaneous_networks'],max_birth_centroid_separation_m=separation,separated_birth_centroids_ge_horizon=separation>=HORIZON),
++        inclusive_failed_material_networks={key:networks['all_material_including_interface'][key] for key in ['n_births','n_merge_events','max_simultaneous_networks','new_failed_bulk_bonds','new_failed_interface_bonds']},
++        max_relative_energy_residual=summary['max_relative_energy_residual'],
++        peak_shear_Pa=max(q['shear_peak_Pa'] for q in rows),peak_sum_nodal_force_N=max(q['sum_force_norm_N'] for q in rows),geometry_first_diagnostic=summary['frozen_geometry_first_diagnostic'],
++        source_sha256={p.name:sha(p) for p in [case/'SUMMARY.json',case/'history.csv',case/'CONNECTED_COMPONENT_HISTORY.jsonl.gz',case/'COMPONENT_REGISTRY.json']},
++        scope='Original surviving bulk/interface bonds and anchor reachability; contact excluded. Same frozen shear shape and duration, scaled stress. Decaying shear is not zero immediately after upper-wall stop.')
++    dump(case/'ANALYSIS.json',result);dump(case/'CRACK_NETWORK_AUDIT.json',networks)
++    dump(case/'LOCAL_DEFORMATION_AUDIT.json',diagnostics)
++    dump(case/'FRAGMENT_HISTORY.json',dict(fragments=stable,candidates_ge14=[q for q in stable if q['nodes']>=14],secondary_events=splits,common_cohort_ids=cohort_ids))
++    dump(case/'FRAGMENT_TRACE.json',trace)
++    return result,summary,rows,networks
++
++def main():
++ start=time.perf_counter();ref=load_npz(O/'provenance/reference.npz');n=int(ref['clot_count']);results={};summaries={};hist={};networks={};requirements=[];distribution=[];after={};bridge_rows=[]
++ for name in ['stokes','inverse']:
++  results[name],summaries[name],hist[name],networks[name]=analyze_case(name,ref);q=results[name];s=summaries[name];end=q['final'];load=ShearLoad(ref,name)
++  requirements.append(dict(case=name,specimen_id='original_1792_material_336_anchor_notched_3D_dx50um',label=load.label,evidence=s['mechanical_status'],peak_shear_Pa=q['peak_shear_Pa'],spatial_mode='sin(2*pi*y/700um)*ex on top reference triangles',area_m2=float(load.area.sum()),time_s=END,upper_drive_stop_s=OFF,peak_sum_nodal_force_N=q['peak_sum_nodal_force_N'],peak_abs_net_force_N=max(abs(r['net_force_x_N']) for r in hist[name]),peak_abs_reference_torque_Nm=max(abs(r['net_moment_z_Nm']) for r in hist[name]),absolute_impulse_Ns=end['absolute_impulse_Ns'],net_impulse_x_Ns=end['impulse_x_Ns'],reference_angular_impulse_z_Nms=end['moment_impulse_z_Nms'],W_J=end['W_J'],first_softening_s=q['first_softening_s'],first_failure_s=q['first_failure_s'],first_softening_shear_Pa=next((r['shear_peak_Pa'] for r in hist[name] if r['softened']>0),None),first_failure_shear_Pa=next((r['shear_peak_Pa'] for r in hist[name] if r['bulk_failed']+r['interface_failed']>0),None),first_target_fragment_s=next((r['time_s'] for r in hist[name] if r['N20_200']>0),None),n_fragments_20_200_final=end['N20_200'],n_fragments_20_200_history_max=q['history_max_N20_200'],n_fragments_34_200=end['n_fragments_34_200'],n_fragments_ge_114=end['n_fragments_ge_114'],mass_fraction_target_initial=end['mass_fraction_target_initial'],mass_fraction_target_detached=end['mass_fraction_target_detached'],fines_fraction_detached=end['debris12_detached_fraction'],largest_fraction_detached=end['largest_free_fragment_fraction_detached'],total_detached_fraction_initial=end['total_detached_mass_fraction'],target_met=q['exploratory_target_met'],limitation='Frozen one-way reference load; no bubble realization; material uncalibrated',max_relative_R=q['max_relative_energy_residual']))
++  for stage in ['common_cohort','final']:
++   state=load_npz(O/'cases'/name/'keys'/(stage+'.npz'));_,sizes,attached=graph.topology(ref,state['d']);free=sizes[~attached]
++   for lo,hi in BINS:
++    vals=free[(free>=lo)&((free<=hi) if hi else True)];total=int(vals.sum())
++    distribution.append(dict(case=name,state=stage,time_s=float(state['time']),size_bin=f'{lo}-{hi}' if hi else '201+',component_count=len(vals),material_nodes=total,mass_kg=total*RHO*V,mass_fraction_initial=total/n,mass_fraction_detached=total/int(free.sum()) if free.sum() else None))
++  after[name]={}
++  for key in ['peak_load','final']:
++   path=O/'cases'/name/'keys'/(key+'.npz');state=load_npz(path);items=[]
++   for region in candidate_regions(ref):
++    info,rows=inspect(ref,state,region);items.append(info);bridge_rows.extend(dict(case=name,state=key,**row) for row in rows)
++   after[name][key]=dict(time_s=float(state['time']),source_sha256=sha(path),regions=items)
++ csvout(O/'MULTIFRAGMENT_SHEAR_REQUIREMENTS.csv',requirements);csvout(O/'FRAGMENT_SIZE_DISTRIBUTION.csv',distribution);csvout(O/'SURVIVING_BRIDGE_BONDS.csv',bridge_rows)
++ dump(O/'CRACK_BRIDGE_AUDIT.json',dict(cases=after,diagnostic_only=True,pinned_min_cut_calls=12))
++ dump(O/'ANALYSIS.json',results);dump(O/'NATIVE_SHEAR_CASE_RESULTS.json',summaries);dump(O/'DAMAGE_NETWORK_HISTORY.json',networks)
++ dump(O/'FRACTURE_EVENTS.json',{k:v['events'] for k,v in summaries.items()})
++ dump(O/'CONNECTED_COMPONENT_HISTORY.json',dict(cases={k:dict(history=str((O/'cases'/k/'CONNECTED_COMPONENT_HISTORY.jsonl.gz').relative_to(O)),registry=read(O/'cases'/k/'COMPONENT_REGISTRY.json'),fragment_lifetimes=read(O/'cases'/k/'FRAGMENT_HISTORY.json'),records=len(hist[k])+1) for k in results},definition='Index and exact original membership registry; full every-accepted-state histories are in lossless JSONL gzip, not contact-based clustering.'))
++ ledger={}
++ for k,q in results.items():
++  end=q['final'];ledger[k]={key:end[key] for key in ['W_J','U_J','K_J','D_J','Uc_J','Jc_J','R_J']};ledger[k]['max_relative_residual']=q['max_relative_energy_residual']
++ dump(O/'ENERGY_LEDGER.json',dict(identity='W = Delta U_LPS + Delta K + D + Delta U_pair - J_pair_activation + R',work='Gauss integration of prescribed shear over each accepted displacement; actual native material motion, no damping',numerical_residual_not_dissipation=True,cases=ledger,normalization='running max(abs(W),abs(Delta U)+K+D+Uc), tolerance 1%',no_rigid_indenter=True))
++ audit=read(O/'ACOUSTIC_AND_BUBBLE_INPUT_AUDIT.json');a=requirements[0];flow=ShearLoad(ref,'stokes');ts=np.linspace(0,END,14401);gradient=float(np.max(abs(flow.amplitude(ts)))*WAVENUMBER)
++ physical=[dict(source='MEVO_F10S_APECSS_actual_files',evidence='ACTUAL_ACOUSTIC_AND_RADIAL_DATA_ONLY',frequency_Hz=audit['current_acoustics']['frequency_Hz'],acoustic_conditions=audit['current_acoustics']['model'],bubble_positions='Own F10S coordinates, unregistered to clot',radial_response='APECSS volume harmonics in valid adaptive leaves',geometry='F10S own channel; clot gap UNAVAILABLE',mu_Pa_s='UNAVAILABLE_FOR_REGISTERED_CLOT_MODEL',local_fluid_velocity_m_s='UNAVAILABLE',peak_shear_Pa='UNAVAILABLE',max_spatial_shear_gradient_Pa_m='UNAVAILABLE',duration_s='UNAVAILABLE_FOR_STREAMING',peak_sum_force_N='UNAVAILABLE',impulse_Ns='UNAVAILABLE',scope='STREAMING_LOAD_NOT_YET_DETERMINED'),dict(source='Analytic-mode unsteady viscous diffusion',evidence='PHYSICS_APPROXIMATION / PRESCRIBED_STOKES_SHEAR_TEMPLATE',frequency_Hz='UNAVAILABLE_NOT_ACOUSTIC_DRIVE',acoustic_conditions='No acoustic input converted',bubble_positions='UNAVAILABLE',radial_response='UNAVAILABLE_NOT_USED',geometry='25um gap, 700um transverse periodic pattern, stationary bottom, prescribed upper no-slip velocity',mu_Pa_s=.001,local_fluid_velocity_m_s=.004,peak_shear_Pa=a['peak_shear_Pa'],max_spatial_shear_gradient_Pa_m=gradient,duration_s=END,peak_sum_force_N=a['peak_sum_nodal_force_N'],impulse_Ns=a['absolute_impulse_Ns'],scope='Infinite-plane fluid solution; small specimen frozen one-way traction approximation')]
++ csvout(O/'STREAMING_PHYSICAL_CAPABILITY.csv',physical)
++ target=any(q['exploratory_target_met'] for q in results.values());observed=any(q['history_max_N20_200']>=2 for q in results.values());target_band_observed=any(q['history_max_N20_200']>0 for q in results.values())
++ status=dict(software_status='COMPLETED',STREAMING_LOAD_COMPUTED=False,STREAMING_LOAD_NOT_YET_DETERMINED=True,SHEAR_REQUIREMENT_IDENTIFIED=target,MULTIFRAGMENT_NOT_OBSERVED=not observed,MULTIFRAGMENT_OBSERVED=observed,TARGET_BAND_FRAGMENT_OBSERVED=target_band_observed,five_fragment_target_met=target,ACOUSTIC_FEASIBILITY_NOT_ESTABLISHED=True,template_traction_ratio=requirements[1]['peak_shear_Pa']/requirements[0]['peak_shear_Pa'],ratio_scope='Same geometry/mode/time between prescribed templates only; not real bubble shortage nor a target-fragment threshold',cases={k:dict(status=v['status'],history_max_target_fragments=v['history_max_N20_200'],final_target_fragments=v['final']['N20_200'],detached_nodes=v['final']['detached_nodes'],history_max_free_nodes=v['history_max_free_nodes']) for k,v in results.items()},next_V3_admitted=False,new_optimizer_trials=0,native_library_unchanged=True)
++ status['SCIENTIFIC_CONCLUSION']='Shear-to-native-fracture software chain restored. One continuous counter-shear mode was measured, not optimized. Bubble streaming is undetermined; any discrete target observations remain frozen-surface mechanical evidence, not acoustic feasibility or a best-mode ranking.'
++ dump(O/'FINAL_STATUS.json',status)
++ dump(O/'RUN_RESOURCES.json',dict(cases={k:{key:v[key] for key in ['wall_s','cpu_s','peak_RSS_bytes','accepted_steps','predictive_substeps','predictive_rejections']} for k,v in summaries.items()},native_wall_s=sum(v['wall_s'] for v in summaries.values()),native_cpu_s=sum(v['cpu_s'] for v in summaries.values()),peak_RSS_bytes=max(v['peak_RSS_bytes'] for v in summaries.values()),ranks=1,threads_per_case=1,new_main_native_cases=2,new_full_V3_cases=0,optimizer_trials=0,analysis_wall_s=time.perf_counter()-start))
++ print('ANALYSIS_DONE',status)
++if __name__=='__main__':main()
++
+--- /dev/null
++++ b/clot_clearance/analysis/clot_acoustic_streaming_shear_multifragment_v1/audit_discretization.py
+@@ -0,0 +1,20 @@
++"""Local quadrature limits and traceable historical shear context; no new cases."""
++from common import *
++from shear_loading import *
++def verify_reference_seal():
++ old=json.loads((B/'DELIVERY_MANIFEST.json').read_text());index={q['path']:q for q in old['files']};checks={}
++ for name in ['reference.npz','reference.native','body.data']:
++  p=B/'provenance'/name;wanted=index[str(p.relative_to(R))]['sha256'];actual=sha(O/'provenance'/name);assert sha(p)==actual==wanted
++  checks[name]=dict(sha256=actual,prior_sealed_sha256=wanted)
++ dump(O/'REFERENCE_SEAL_MATCH.json',dict(status='PASS',prior_manifest_sha256=sha(B/'DELIVERY_MANIFEST.json'),files=checks))
++def main():
++ verify_reference_seal()
++ ref=load_npz(O/'provenance/reference.npz');load=ShearLoad(ref,'stokes');ids=load.loaded_ids;X=ref['X'];areas=load.W@load.area;dual=np.full(len(ids),DX**2)
++ for axis in [0,1]:dual[np.isclose(X[ids,axis],X[ids,axis].min(),rtol=0,atol=1e-14)|np.isclose(X[ids,axis],X[ids,axis].max(),rtol=0,atol=1e-14)]*=.5
++ force=load.force(HOLD);density=force[ids,0]/areas[ids];ideal=load.amplitude(HOLD)*np.sin(WAVENUMBER*X[ids,1])
++ record=dict(status='QUANTIFIED_DISCRETIZATION_LIMIT',area_ratio_to_structured_control_area_min=float((areas[ids]/dual).min()),area_ratio_to_structured_control_area_max=float((areas[ids]/dual).max()),max_force_per_mapped_area_error_over_peak=float(np.max(abs(density-ideal))/load.physical_peak),sign_reversed_relative_to_nodal_mode=int(np.sum(density*ideal<0)),maximum_convex_area_normalized_shear_over_face_peak=float(np.max(abs(density))/load.peak(HOLD)),interpretation='Nonnegative P1 triangle quadrature has nonuniform lumped nodal area versus the uniform particle control area (alternating diagonals). No signed extrapolation, but local force/stress resolution is not mesh-converged. Frozen protocol unchanged; do not claim pointwise continuum force accuracy.')
++ np.savez_compressed(O/'SMALL_MAPPING_LOCAL_DIAGNOSTIC.npz',atom_ids=ids+1,mapped_area_m2=areas[ids],structured_control_area_m2=dual,actual_force_per_mapped_area_Pa=density,analytic_wall_shear_at_node_Pa=ideal);dump(O/'SMALL_MAPPING_LOCAL_DIAGNOSTIC.json',record)
++ old=BRACKETING/'cases/surface_shear_1000pa_continuation_2/SUMMARY.json';q=json.loads(old.read_text());orig=load_npz(BRACKETING/'provenance/reference.npz');assert all(np.array_equal(ref[k],orig[k]) for k in ['X','bonds','bond_types','r0','initial_cut'])
++ dump(O/'HISTORICAL_SHEAR_CONTEXT.json',dict(source=str(old),source_sha256=sha(old),native_driver_sha256=sha(R/'analysis/clot_mechanical_load_requirement_bracketing_v1/native_case_v2.py'),previous_traction_code_sha256=sha(R/'analysis/clot_mechanical_load_requirement_bracketing_v1/prescribed_traction.py'),identical_reference_geometry_and_original_bonds=True,previous_area_m2=q['loaded_area_m2'],previous_protocol='Uniform +x, cosine ramp 0-2ms, hold to2.5ms, no unload',previous_peak_Pa=1000,previous_history_max_free_nodes=q['history_max_free_nodes'],previous_work_J=q['last_row']['W_J'],current_changes=['opposing transverse continuous shear','unsteady fluid-template startup lag','triangle versus quad quadrature','2.4-2.8ms drive-down and decay through3.6ms'],scope='Read-only contextual basis for 1000 Pa selection; different spatial/time/quadrature protocol, not a universal threshold or single-factor comparator.'))
++ print('LOCAL_DISCRETIZATION_AUDIT',record)
++if __name__=='__main__':main()
+--- /dev/null
++++ b/clot_clearance/analysis/clot_acoustic_streaming_shear_multifragment_v1/audit_inputs.py
+@@ -0,0 +1,55 @@
++"""Read actual upstream files; no bubble trajectory is promoted to fluid velocity."""
++from common import *
++import h5py,shutil,time,platform,importlib.metadata
++
++def environment():
++ packages={}
++ for p in ['numpy','scipy','matplotlib','h5py','mpi4py','optuna','botorch']:
++  try:packages[p]=importlib.metadata.version(p)
++  except importlib.metadata.PackageNotFoundError:packages[p]='NOT_INSTALLED_IN_NATIVE_ENV'
++ dump(O/'ENVIRONMENT.json',dict(python=platform.python_version(),packages=packages,library_sha256=sha(LIB),optimizer_note='Optional optimizer uses its previous isolated environment; no installation or trial needed this round.'))
++
++def main():
++ start=time.perf_counter();O.mkdir(parents=True,exist_ok=True);F.mkdir(parents=True,exist_ok=True)
++ assert not (O/'BASELINE_MANIFEST.json').exists()
++ old=json.loads((B/'DELIVERY_MANIFEST.json').read_text())
++ assert sha(B/'DELIVERY_MANIFEST.json')=='7471e7d5e0a9b3e8f147de9a625185a5a3f8793ffb551283c01406ef15b39ef7'
++ (O/'provenance').mkdir()
++ for name in ['reference.npz','reference.native','body.data']:shutil.copy2(B/'provenance'/name,O/'provenance'/name)
++ baseline={str(p):dict(sha256=sha(p),bytes=p.stat().st_size) for p in [LIB,B/'DELIVERY_MANIFEST.json',R/'analysis/v3_softening_pilot_v1/native.py',R/'analysis/softening_feasibility_v1/model.py',R/'analysis/v3_chunk_fragmentation_mechanism_v1/graph_ops.py',*(O/'provenance').iterdir()]}
++ assert sha(LIB)=='465f8144c6da5c9de3aec4137b9c325f53c26737b199c536fb4a20845511ef77'
++ dump(O/'BASELINE_MANIFEST.json',dict(native_unchanged=True,material_unchanged=True,files=baseline,scope='Only new fluid/loading/observer adapters; no indenters, no new precuts, no constitutive/MPI/restart changes'))
++ oldaudit=json.loads((INV/'MEVO_ASSET_AUDIT.json').read_text());assets={};schemas={}
++ for name,rec in oldaudit['assets'].items():
++  p=Path(name);assets[name]=dict(exists=p.exists())
++  if p.exists():
++   assets[name].update(sha256=sha(p),bytes=p.stat().st_size,identical_to_previous_audit=sha(p)==rec['sha256'])
++   if p.suffix=='.h5':
++    with h5py.File(p) as h:
++     ds={};h.visititems(lambda key,obj:ds.update({key:dict(shape=obj.shape,dtype=str(obj.dtype))}) if isinstance(obj,h5py.Dataset) else None)
++     schemas[name]=dict(datasets=ds,attrs={k:str(v)[:20000] for k,v in h.attrs.items()})
++ # Actual same files re-read, with current hashes, plus compact values already audited.
++ shutil.copy2(INV/'MEVO_ACTUAL_EVIDENCE.npz',O/'MEVO_ACTUAL_EVIDENCE.npz')
++ mevo=Path('/workspace/mevo_acoustic_microbubbles');exe=mevo/'f10s_control_validation/.execution/14731fd56f0477c89cbbdea5ae1f13e8e38e3f3c'
++ scope=[]
++ for root in [exe/'results/straight_tube_exp1/f10n',mevo/'references']:
++  for p in root.rglob('*'):
++   if p.is_file() and (p.suffix in ['.h5','.npz','.pdf'] or p.name.startswith('RP_')):scope.append(dict(path=str(p),bytes=p.stat().st_size))
++ # Read coupling-relevant source lines, preserving exact paths/line numbers.
++ excerpts=[]
++ for p in [exe/'src/mevo_mb/fast_sim/water_b2.py',exe/'src/mevo_mb/bubbles/apecss.py',exe/'src/mevo_mb/bubbles/adaptive_table.py']:
++  lines=p.read_text().splitlines();hits=[i for i,s in enumerate(lines) if any(w in s.lower() for w in ['strict_zero','flow_enabled','harmonic','radius','velocity','r(t)','results'])]
++  indices=sorted(set(j for i in hits for j in range(max(0,i-1),min(len(lines),i+2))))
++  excerpts.append(dict(path=str(p),sha256=sha(p),lines=[dict(line=i+1,text=lines[i]) for i in indices]))
++ audit=dict(status='ACTUAL_FILES_REOPENED',assets=assets,h5_schemas=schemas,current_acoustics=oldaudit['current_acoustics'],historical_kwave=oldaudit['historical_kwave'],apecss=oldaudit['apecss'],trajectory=oldaudit['trajectory'],searched_file_inventory=scope,source_excerpts=excerpts,
++  available=['F1 complex pressure/gradient on its own geometry','F10N/F10S pressure basis proxy and phase convention','APECSS volume-harmonic response table over valid adaptive leaves','F10S particle positions/times and sampled forces'],
++  unavailable_for_clot=['registered bubble locations in current small-specimen/V3 coordinates','measured bubble-to-clot gap','near-wall no-slip first-order oscillatory velocity/gradient','bubble surface kinematics including translation/radial phase at clot','cycle-averaged Reynolds stress with consistent boundary terms','solved second-order mean flow and pressure on clot geometry'],
++  radial_caveat='A harmonic response cache is not a time-resolved near-wall fluid field. Underlying radial solver can generate R(t), but even full R(t) would not fix unknown geometry/boundary conditions.',
++  decision='STREAMING_LOAD_NOT_YET_DETERMINED',selected_fallback='PRESCRIBED_STOKES_SHEAR_TEMPLATE',bubble_to_clot_distance_m='UNAVAILABLE',bubble_streaming_stress_Pa='UNAVAILABLE',no_other_project_modified=True)
++ dump(O/'ACOUSTIC_AND_BUBBLE_INPUT_AUDIT.json',audit)
++ pipeline=[('MEVO_acoustics','IMPLEMENTED','F1 actual acoustics and F10S geometric proxy, separate geometries'),('APECSS_radial','REUSABLE','actual response cache, not near-wall fluid'),('bubble_to_clot_registration','UNAVAILABLE','no common coordinate/boundary definition'),('first_order_near_wall_fluid','UNAVAILABLE','pressure gradients alone omit boundary layers'),('second_order_streaming','INCOMPLETE','no solved source/boundary-consistent flow'),('prescribed_Stokes','REUSABLE','upgrade to one continuous transverse counter-shear mode'),('V3_exposed_surface','REUSABLE',str(CFD/'refined/CLOT_SURFACE_TRACTIONS.npz')),('surface_node_mapping','REUSABLE','audit signed affine map and local nonnegative comparison'),('native_external_force','REUSABLE','existing fix external callback, physical N'),('native_fracture','REUSABLE',str(LIB)),('attachment_topology','REUSABLE','original live bulk/interface graph'),('Optuna_BoTorch','REUSABLE','installed interface, zero new trials'),('rigid_indenters','IMPLEMENTED','historical evidence only; excluded from current loading')]
++ dump(O/'ACTIVE_STREAMING_SHEAR_PIPELINE.json',dict(components=[dict(name=n,status=s,scope=d) for n,s,d in pipeline],deleted_files=[],reason_no_deletion='Historical/provenance modules remain referenced. New entrypoint excludes indenters without physical deletion.'))
++ dump(O/'INPUT_AUDIT_RESOURCES.json',dict(wall_s=time.perf_counter()-start))
++ environment()
++ print('INPUT_AUDIT_DONE',len(assets),len(scope))
++if __name__=='__main__':main()
+--- /dev/null
++++ b/clot_clearance/analysis/clot_acoustic_streaming_shear_multifragment_v1/bridge_audit.py
+@@ -0,0 +1,64 @@
++"""Bounded geometric-band and pinned graph-cut diagnostics; never mutate bonds."""
++from common import *
++import csv,time
++from scipy.sparse import coo_matrix,csgraph
++
++graph=module('bridge_graph',R/'analysis/v3_chunk_fragmentation_mechanism_v1/graph_ops.py')
++
++def candidate_regions(ref):
++    x=ref['X'][:int(ref['clot_count'])];u=x*1e6
++    # The original notch is z=0, tip x=-50 um. The second level is midway
++    # from that observed damage band to the historically loaded top surface.
++    specs=[
++      ('upper_notch_flap',(u[:,2]>0),(u[:,2]>=175-1e-8),np.zeros(len(x),bool)),
++      ('loaded_surface_cap',(u[:,0]<-50)&(u[:,2]>200),(u[:,0]<=-125+1e-8)&(u[:,2]>=275-1e-8),(u[:,0]>=125-1e-8)|(u[:,2]<0)),
++      ('left_notch_lip',(u[:,0]<-50)&(u[:,2]>0)&(u[:,2]<200),(u[:,0]<=-175+1e-8)&(u[:,2]>0)&(u[:,2]<=125+1e-8),(u[:,0]>=125-1e-8)|(u[:,2]>=275-1e-8)),
++    ]
++    return [dict(region=name,original_atom_ids=np.flatnonzero(region)+1,source_core_ids=np.flatnonzero(core)+1,sink_material_ids=np.flatnonzero(sink)+1,origin='Historical diagnostic volumes retained only for bridge comparisons; not loading masks or prescribed fragment boundaries') for name,region,core,sink in specs]
++
++def pinned_cut(ref,state,region):
++    n=int(ref['clot_count']);N=len(ref['X']);b=ref['bonds'];live=(state['d']<1);ids=np.flatnonzero(live);edge=b[ids]
++    capacity=np.maximum(1,np.rint(1024*(1-state['d'][ids]))).astype(np.int64)
++    pin=int(capacity.sum()+1);assert pin<2**31
++    core=np.asarray(region['source_core_ids'])-1;sink=np.r_[np.asarray(region['sink_material_ids'],int)-1,np.arange(n,N)]
++    assert len(core)>=34 and not np.intersect1d(core,sink).size
++    rr=np.r_[edge[:,0],edge[:,1],np.full(len(core),N),sink]
++    cc=np.r_[edge[:,1],edge[:,0],core,np.full(len(sink),N+1)]
++    weights=np.r_[capacity,capacity,np.full(len(core)+len(sink),pin)].astype(np.int64)
++    matrix=coo_matrix((weights,(rr,cc)),shape=(N+2,N+2)).tocsr()
++    flow=csgraph.maximum_flow(matrix,N,N+1,method='dinic')
++    residual=(matrix-flow.flow).tocsr();residual.data=(residual.data>0).astype(np.int64);residual.eliminate_zeros()
++    reach=csgraph.breadth_first_order(residual,N,directed=True,return_predecessors=False)
++    mask=np.zeros(N+2,bool);mask[reach]=True
++    assert mask[core].all() and not mask[sink].any()
++    crossing=mask[edge[:,0]]^mask[edge[:,1]];cut_ids=ids[crossing]
++    assert int(capacity[crossing].sum())==flow.flow_value
++    return dict(source_partition_atom_ids=np.flatnonzero(mask[:N])+1,original_cut_bond_ids=cut_ids+1,cut_bond_count=len(cut_ids),integer_capacity=int(flow.flow_value),integrity_capacity_proxy=float(flow.flow_value/1024),capacity_definition='max(1,round(1024*(1-d))) on live original bonds; pinned source core >=34 nodes and fixed anchors/specified far body as sink. Diagnostic proxy, not fracture energy or authorized deletions')
++
++def live_anchor_path(ref,state,region):
++    n=int(ref['clot_count']);N=len(ref['X']);b=ref['bonds'];live=state['d']<1
++    # Exhibit a path entirely outside a central two-node-thick Y viewing slab.
++    outside=np.abs(ref['X'][:,1])>50e-6
++    keep=live&outside[b[:,0]]&outside[b[:,1]];ids=np.flatnonzero(keep);edge=b[ids]
++    matrix=coo_matrix((np.ones(2*len(ids)),(np.r_[edge[:,0],edge[:,1]],np.r_[edge[:,1],edge[:,0]])),shape=(N,N)).tocsr()
++    starts=np.asarray(region['source_core_ids'])-1;starts=starts[outside[starts]]
++    if not len(starts):return dict(found=False)
++    start=int(starts[np.argmax(ref['X'][starts,1])]);order,pred=csgraph.breadth_first_order(matrix,start,directed=False)
++    anchors=order[order>=n]
++    if not len(anchors):return dict(found=False,start_atom_id=start+1)
++    path=[int(anchors[0])]
++    while path[-1]!=start:path.append(int(pred[path[-1]]));assert len(path)<=N
++    path=path[::-1];lookup={tuple(sorted(p)):int(q+1) for p,q in zip(edge,ids)};bids=[lookup[tuple(sorted(pair))] for pair in zip(path[:-1],path[1:])]
++    return dict(found=True,original_atom_ids=np.array(path)+1,original_bond_ids=bids,reference_coordinates_m=ref['X'][path],actual_coordinates_m=state['x'][path],definition='An actually surviving 3D material path to a fixed anchor outside |Y|<=50 um; diagnostic restriction only, no physical deletion')
++
++def inspect(ref,state,region,onset_by_bond=None):
++    nodes=np.asarray(region['original_atom_ids'])-1;b=ref['bonds'];bt=ref['bond_types'];cut=ref['initial_cut'];boundary,_=graph.boundary(ref,nodes);boundary=boundary[~cut[boundary]];alive=boundary[state['d'][boundary]<1]
++    dy=state['x'][b[alive,1]]-state['x'][b[alive,0]];stretch=np.linalg.norm(dy,axis=1)/ref['r0'][alive]-1
++    mid=ref['X'][b[alive]].mean(1);onset=(S0[bt] if onset_by_bond is None else onset_by_bond)[alive];labels,_,attached=graph.topology(ref,state['d'])
++    info=dict(region=region['region'],candidate_nodes=len(nodes),candidate_is_free=bool(not attached[labels[nodes]].any()),anchor_reachable_nodes=int(np.sum(attached[labels[nodes]])),original_crossing_bonds=len(boundary),surviving_crossing_bonds=len(alive),new_failed_crossing_bonds=int(np.sum(state['d'][boundary]==1)),surviving_bulk=int(np.sum(bt[alive]==1)),surviving_interface=int(np.sum(bt[alive]==2)),long_bonds_ge_2dx=int(np.sum(ref['r0'][alive]>=2*DX-1e-15)),currently_compressive=int(np.sum(stretch<0)),historically_below_onset=int(np.sum(state['kappa'][alive]<=onset)),partially_softened=int(np.sum(state['d'][alive]>0)),surviving_midpoint_mean_m=mid.mean(0) if len(mid) else None,surviving_midpoint_min_m=mid.min(0) if len(mid) else None,surviving_midpoint_max_m=mid.max(0) if len(mid) else None,right_of_notch_tip=int(np.sum(mid[:,0]>-50e-6)),original_surviving_bond_ids=alive+1,cut_proxy=pinned_cut(ref,state,region),off_midplane_anchor_path=live_anchor_path(ref,state,region))
++    records=[]
++    for j,bid in enumerate(alive):
++        direction=(ref['X'][b[bid,1]]-ref['X'][b[bid,0]])/ref['r0'][bid]
++        records.append(dict(region=region['region'],original_bond_id=int(bid+1),bond_type=int(bt[bid]),atom_i=int(b[bid,0]+1),atom_j=int(b[bid,1]+1),r0_m=ref['r0'][bid],direction_x=direction[0],direction_y=direction[1],direction_z=direction[2],midpoint_x_m=mid[j,0],midpoint_y_m=mid[j,1],midpoint_z_m=mid[j,2],current_stretch=stretch[j],kappa=state['kappa'][bid],damage=state['d'][bid],historically_below_onset=bool(state['kappa'][bid]<=onset[j]),candidate_anchor_reachable=bool(info['anchor_reachable_nodes'])))
++    return info,records
++
+--- /dev/null
++++ b/clot_clearance/analysis/clot_acoustic_streaming_shear_multifragment_v1/check_coupling.py
+@@ -0,0 +1,18 @@
++"""Only new fluid definition, load mapping and native SI port checks."""
++from common import *
++from native import native
++from acoustic_streaming_shear import traction
++import time
++def main():
++ start=time.perf_counter();ns,C=native(O/'checks/nonintegrating_port','inverse');s=ns.dynamics();results=[]
++ for t in [.001,.0024,.0034]:
++  ns.l.command(f'reset_timestep 0 time {t:.17g}');ns.l.command('run 0');s=ns.state();expected=ns.tool.force(t);uc,fc,_=C(ns.ref).evaluate(s['x'],s['d']);err=float(np.max(abs(s['force']-s['material_force']-fc-expected)))
++  assert err<1e-15 and np.array_equal(s['x'],ns.ref['X'])
++  results.append(dict(time_s=t,force_port_error_N=err,peak_shear_Pa=ns.tool.peak(t),no_integration=True))
++ ns.close()
++ rng=np.random.default_rng(1700);norm=rng.normal(size=(40,3));norm/=np.linalg.norm(norm,axis=1)[:,None];grad=rng.normal(size=(40,3,3));pressure=np.linspace(-8,8,40)
++ shear,normal=traction(grad,pressure,norm);projection=float(np.max(abs(np.sum(shear*norm,axis=1))))
++ pure,_=traction(np.zeros_like(grad),pressure,norm);assert projection<1e-14 and np.max(abs(pure))<1e-14
++ dump(O/'KEY_CHECKS.json',dict(status='PASS',native_port=results,tangent_projection_error_Pa=projection,pure_pressure_shear_max_Pa=float(np.max(abs(pure))),fluid_check=json.loads((O/'FLUID_SHEAR_CHECK.json').read_text()),mapping_check=json.loads((O/'SMALL_SURFACE_MAPPING_AUDIT.json').read_text()),library_sha256=sha(LIB),native_integration_steps=0,wall_s=time.perf_counter()-start))
++ print('KEY_CHECKS_PASS')
++if __name__=='__main__':main()
+--- /dev/null
++++ b/clot_clearance/analysis/clot_acoustic_streaming_shear_multifragment_v1/check_interface.py
+@@ -0,0 +1,9 @@
++"""One actual public-API evaluation and explicit missing-bubble-input response."""
++from common import *
++from streaming_interface import evaluate,FLOW_CLASSES
++from acoustic_streaming_shear import MU,FLUID_RHO,GAP,SPEED,WAVELENGTH
++request=dict(model_label='PRESCRIBED_STOKES_SHEAR_TEMPLATE',rho_kg_m3=FLUID_RHO,mu_Pa_s=MU,gap_m=GAP,upper_speed_m_s=SPEED,wavelength_m=WAVELENGTH,time_s=.0024,local_surface_coordinates_m=[[0,-175e-6,0],[0,0,0],[0,175e-6,0]],solid_to_fluid_normals=[[0,0,1]]*3)
++result=evaluate(request);shear=result['tangential_traction_Pa'];assert shear[0,0]<0 and shear[1,0]==0 and shear[2,0]>0 and not result['normal_traction_Pa'].any()
++missing=evaluate(dict(model_label='BUBBLE_DRIVEN_STREAMING_MODEL',frequency_Hz=2.5e6));assert missing['status']=='STREAMING_LOAD_NOT_YET_DETERMINED' and missing['flow'] is None
++dump(O/'PUBLIC_INTERFACE_CHECK.json',dict(status='PASS',request=request,computed_shear_Pa=shear,computed_velocity_m_s=result['velocity_m_s'],computed_gradient_s_inv=result['gradient_s_inv'],missing_bubble_response=missing,flow_classes=FLOW_CLASSES,native_steps=0,scope='New unified API only; no extra fracture case'))
++print('PUBLIC_INTERFACE_PASS')
+--- /dev/null
++++ b/clot_clearance/analysis/clot_acoustic_streaming_shear_multifragment_v1/common.py
+@@ -0,0 +1,37 @@
++"""Isolated multifragment breakup; accepted historical evidence is read-only."""
++from pathlib import Path
++import os,json,hashlib,importlib.util
++import numpy as np
++R=Path(os.environ.get('Y_CLOT_PROJECT_ROOT','/workspace/y_clot/project'))
++TASK='clot_acoustic_streaming_shear_multifragment_v1';RUN='20261017T132706Z'
++A=R/'analysis'/TASK;O=R/'verification'/TASK/RUN;F=R/'results'/TASK/RUN
++HISTORY=R/'verification/clot_multifragment_crushing_mechanism_v1/20261016T222934Z'
++HA=R/'analysis/clot_multifragment_crushing_mechanism_v1'
++BRACKETING=R/'verification/clot_mechanical_load_requirement_bracketing_v1/20261016T202533Z'
++B=R/'verification/clot_multifragment_breakup_v1/20261017T110849Z';LIB=B/'build/liblammps.so'
++INV=R/'verification/physics_constrained_load_inverse_design_v1/20261016T144922Z'
++CFD=R/'verification/y_clot_present_cfd_baseline_v1/20261011T154854Z'
++MAP=R/'verification/y_clot_cfd_to_lammps_conservative_traction_map_v1/20261011T184653Z'
++DX=50e-6; V=DX**3; RHO=1000.; G=940.; K=1e5/3; HORIZON=150.5e-6
++S0=np.array([0,.15,.140625,1.]); SC=np.array([0,.18,.16875,1.2]); BASE=.25e-6
++def sha(p):
++ h=hashlib.sha256()
++ with Path(p).open('rb') as f:
++  for b in iter(lambda:f.read(4*1024**2),b''):h.update(b)
++ return h.hexdigest()
++def cv(x):
++ if isinstance(x,np.ndarray):return x.tolist()
++ if isinstance(x,np.generic):return x.item()
++ if isinstance(x,Path):return str(x)
++ raise TypeError(type(x).__name__)
++def dump(p,z):
++ p=Path(p);p.parent.mkdir(parents=True,exist_ok=True);tmp=p.with_suffix(p.suffix+'.tmp')
++ tmp.write_text(json.dumps(z,ensure_ascii=False,indent=2,default=cv,allow_nan=False)+'\n');os.replace(tmp,p)
++def load_npz(p):
++ with np.load(p,allow_pickle=False) as z:return dict(z)
++def module(name,p):
++ spec=importlib.util.spec_from_file_location(name,p);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);return m
++def energy_model(ref):return module('frozen_energy',R/'analysis/softening_feasibility_v1/model.py').SofteningLPS(ref,K=K,G=G)
++
++MIN_H=BASE/8
++END=.0036
+--- /dev/null
++++ b/clot_clearance/analysis/clot_acoustic_streaming_shear_multifragment_v1/current_moment_audit.py
+@@ -0,0 +1,21 @@
++"""Actual moment at saved accepted states, distinct from nominal reference torque."""
++from common import *
++from shear_loading import ShearLoad
++import csv
++ref=load_npz(O/'provenance/reference.npz');records=[];errors=[]
++for name in ['stokes','inverse']:
++ load=ShearLoad(ref,name);seen=set()
++ for path in sorted((O/'cases'/name/'keys').glob('*.npz')):
++  if 'failed' in path.name:continue
++  s=load_npz(path);step=int(s['step'])
++  if step in seen:continue
++  seen.add(step);force=s['external_force'];actual=np.cross(s['x'],force).sum(0);reference=np.cross(ref['X'],force).sum(0)
++  virtual_face_centers=s['x'][load.tri].mean(1);virtual_face_moment=np.cross(virtual_face_centers,load.faces(float(s['time']))).sum(0)
++  error=float(np.linalg.norm(actual-virtual_face_moment));assert error<1e-20;errors.append(error)
++  row=dict(case=name,step=step,time_s=float(s['time']),adjoint_current_moment_error_Nm=error)
++  for j,axis in enumerate('xyz'):row['actual_moment_'+axis+'_Nm']=actual[j];row['reference_moment_'+axis+'_Nm']=reference[j]
++  records.append(row)
++records.sort(key=lambda r:(r['case'],r['step']))
++with (O/'CURRENT_MOMENT_KEY_STATES.csv').open('w') as f:w=csv.DictWriter(f,fieldnames=list(records[0]));w.writeheader();w.writerows(records)
++dump(O/'MOMENT_CONVENTION_AUDIT.json',dict(status='PASS',key_states=len(records),max_current_moment_adjoint_error_Nm=max(errors),history_columns={'net_moment_z_Nm':'Nominal reference-coordinate torque sum X cross F; not the current-position torque','moment_impulse_z_Nms':'Time integral of the nominal reference-coordinate torque','impulse_x_Ns':'Actual prescribed-force impulse; position independent','absolute_impulse_Ns':'Integral of sum of nodal force magnitudes; does not hide counter-shear cancellation'},current_moment='Computed directly from actual x(t) cross native external force for every unique saved accepted FP64 state.',surface_caveat='Moved original triangle barycenters establish an algebraic moment/power identity only. Disconnected/deformed original triangles are not claimed to be actual newly exposed fluid boundaries.',current_angular_impulse='UNAVAILABLE_AT_EVERY_ACCEPTED_STEP; not reconstructed from insufficient sampled positions'))
++print('CURRENT_MOMENT_AUDIT_PASS',len(records))
+--- /dev/null
++++ b/clot_clearance/analysis/clot_acoustic_streaming_shear_multifragment_v1/figures.py
+@@ -0,0 +1,125 @@
++"""Actual accepted coordinates x1; solved template fields; explicit absent events."""
++from analyze import *
++from acoustic_streaming_shear import *
++import matplotlib
++matplotlib.use('Agg')
++import matplotlib.pyplot as plt
++from matplotlib.patches import FancyBboxPatch
++from matplotlib.ticker import MaxNLocator
++import textwrap
++from matplotlib.colors import Normalize
++from matplotlib.cm import ScalarMappable
++from mpl_toolkits.mplot3d.art3d import Poly3DCollection,Line3DCollection
++plt.rcParams.update({'font.family':'DejaVu Sans','font.size':14,'axes.titlesize':16,'axes.labelsize':14,'xtick.labelsize':12,'ytick.labelsize':12,'legend.fontsize':12,'svg.fonttype':'none','savefig.facecolor':'white'})
++MANIFEST=[]
++def export(fig,name,caption):
++ F.mkdir(parents=True,exist_ok=True);fig.savefig(F/(name+'.png'),dpi=190,bbox_inches='tight');fig.savefig(F/(name+'.svg'),bbox_inches='tight');plt.close(fig);MANIFEST.append(dict(name=name,caption=caption))
++def axes3(ax,title):
++ ax.set(xlabel='X (µm)',ylabel='Y (µm)',zlabel='Z (µm)',title=title);ax.view_init(16,-63);ax.set_box_aspect([1,.65,1.2]);ax.grid(True)
++ ax.xaxis.set_major_locator(MaxNLocator(3));ax.yaxis.set_major_locator(MaxNLocator(3));ax.zaxis.set_major_locator(MaxNLocator(3));ax.set_xlabel('X (µm)',labelpad=10);ax.set_ylabel('Y (µm)',labelpad=10);ax.set_zlabel('Z (µm)',labelpad=12)
++ for axis in [ax.xaxis,ax.yaxis,ax.zaxis]:axis._axinfo['grid'].update(color='#a3a9b1',linewidth=.65)
++def cloud(ax,ref,s,title,broken=False):
++ n=int(ref['clot_count']);x=s['x']*1e6;lab,sizes,att=graph.topology(ref,s['d']);attached=att[lab]
++ ax.scatter(*x[:n][attached].T,c='#a7acb4',s=7,alpha=.5,depthshade=False,axlim_clip=True);ax.scatter(*x[n:].T,c='#3a4655',s=7,alpha=.6,depthshade=False,axlim_clip=True)
++ free=np.flatnonzero(~att)
++ for i,label in enumerate(free):
++  ids=np.flatnonzero(lab==label);ax.scatter(*x[ids].T,c=[plt.cm.tab20(i%20)],s=20 if len(ids)>2 else 12,depthshade=False,axlim_clip=True)
++ if broken:
++  ids=np.flatnonzero((s['d']==1)&~ref['initial_cut']&np.isin(ref['bond_types'],[1,2]));ends=np.unique(ref['bonds'][ids]);ends=ends[ends<n];ends=ends[attached[ends]]
++  if len(ends):ax.scatter(*x[ends].T,c='#be4b39',s=8,alpha=.75,depthshade=False,axlim_clip=True)
++ axes3(ax,title);ax.set_xlim(-600,600);ax.set_ylim(-500,500);ax.set_zlim(-650,650)
++ outside=np.any((x[:n]<[-600,-500,-650])|(x[:n]>[600,500,650]),axis=1).sum()
++ ax.text2D(.01,.92,f't={float(s["time"])*1e3:.3f} ms | free nodes={int(sizes[~att].sum())}\n20–200: {int(np.sum((sizes[~att]>=20)&(sizes[~att]<=200)))} | outside common ROI: {outside}',transform=ax.transAxes,fontsize=11)
++ return free
++def main(inputs_only=False):
++ ref=load_npz(O/'provenance/reference.npz');analysis=read(O/'ANALYSIS.json') if not inputs_only else {};cases={k:O/'cases'/k for k in ['stokes','inverse']};rows={k:histories(p) for k,p in cases.items()} if not inputs_only else {};load=ShearLoad(ref,'stokes');audit=read(O/'ACOUSTIC_AND_BUBBLE_INPUT_AUDIT.json')
++ # 1. Data status is part of the diagram, not an implied completed coupling.
++ fig,ax=plt.subplots(figsize=(20,5.5));ax.axis('off');boxes=[('Acoustics','ACTUAL_DATA','F1 wave solve / F10S proxy\n2.5 MHz; distinct geometries'),('Bubble response','ACTUAL_DATA','APECSS volume harmonics\nF10S center trajectories'),('Bubble streaming','NOT_AVAILABLE','Clot registration + near-wall\nfirst/second-order flow missing'),('Viscous shear','PHYSICS_APPROXIMATION','Prescribed Stokes counter-shear\n25 µm gap; U=4 mm/s'),('Surface → native LPS','COMPUTED','Original-node triangles → N\nIrreversible damage + live bonds')]
++ for i,(title,status,body) in enumerate(boxes):
++  x=.008+i*.2;color='#fbe9e5' if status=='NOT_AVAILABLE' else '#eaf0f5'
++  ax.add_patch(FancyBboxPatch((x,.30),.177,.61,boxstyle='round,pad=.008',transform=ax.transAxes,facecolor=color,edgecolor='#546575'))
++  ax.text(x+.007,.84,title,transform=ax.transAxes,va='top',fontsize=12)
++  ax.text(x+.007,.68,status,transform=ax.transAxes,va='top',fontsize=10.5,weight='bold')
++  body='\n'.join(textwrap.fill(line,26) for line in body.split('\n'));ax.text(x+.007,.54,body,transform=ax.transAxes,va='top',fontsize=11.5)
++  if i<4:ax.annotate('',xy=(x+.196,.62),xytext=(x+.179,.62),xycoords='axes fraction',arrowprops=dict(arrowstyle='->',color='#536878',lw=1.8,linestyle='--' if i in [1,2] else '-'))
++ ax.text(.02,.08,'Missing streaming link: no acoustic pressure → clot shear conversion has been established.\nThe high-amplitude case is INVERSE_SHEAR_REQUIREMENT / MECHANICAL_REQUIREMENT_ONLY.',transform=ax.transAxes,fontsize=14)
++ export(fig,'Fig1_pipeline_status','Actual acoustic/bubble inputs and missing streaming link are explicitly separated from the computed Stokes approximation.')
++ # 2. Actual analytic-mode fluid solution, not reconstructed bubbles.
++ fig,axs=plt.subplots(1,3,figsize=(18,5.2));y=np.linspace(-350e-6,350e-6,101);z=np.linspace(0,GAP,51);Y,Z=np.meshgrid(y,z,indexing='ij');field=load.flow.field(Y,Z,HOLD)
++ im=axs[0].pcolormesh(y*1e6,z*1e6,field['velocity_m_s'][...,0].T*1e3,cmap='coolwarm',vmin=-4,vmax=4,shading='auto');fig.colorbar(im,ax=axs[0],label='uₓ (mm/s)');axs[0].set(xlabel='Transverse y (µm)',ylabel='Gap z (µm)',title='Prescribed Stokes counter-flow')
++ for tt in [.0005,.001,.0024,.0029,.0034]:axs[1].plot(load.flow.modal_velocity(z,tt)*1e3,z*1e6,label=f'{tt*1e3:g} ms')
++ axs[1].set(xlabel='uₓ at y=175 µm (mm/s)',ylabel='Gap z (µm)',title='No-slip startup / decay');axs[1].legend()
++ evidence=load_npz(O/'MEVO_ACTUAL_EVIDENCE.npz');pos=evidence['positions_m'][0]*1e6;axs[2].scatter(pos[:,0],pos[:,1],s=12,c='#56819d');axs[2].set(xlabel='F10S x (µm)',ylabel='F10S y (µm)',title='Actual initial bubble centers');axs[2].text(.02,.02,'Own coordinate system\nClot gap/registration: UNAVAILABLE',transform=axs[2].transAxes,fontsize=12)
++ fig.tight_layout();export(fig,'Fig2_stokes_flow_and_separate_bubbles','Solved prescribed flow and actual unregistered bubble positions. Bubble center velocity is not fluid velocity.')
++ # 3. Actual CFD triangles and both mapping choices.
++ z=load_npz(O/'V3_SURFACE_MAPPING_DATA.npz');origin=z['X'].mean(0);fig=plt.figure(figsize=(19,6));ax=fig.add_subplot(131,projection='3d');mag=np.linalg.norm(z['shear_traction_Pa'],axis=1);norm=Normalize(0,max(mag));polys=Poly3DCollection((z['triangles_xyz_m']-origin)*1e6,facecolors=plt.cm.viridis(norm(mag)),linewidth=0,alpha=.9);ax.add_collection3d(polys);x=(z['X']-origin)*1e6;ax.auto_scale_xyz(x[:,0],x[:,1],x[:,2]);axes3(ax,'Actual CFD exposed triangles\nlocal-patch Stokes approximation');fig.colorbar(ScalarMappable(norm=norm,cmap='viridis'),ax=ax,shrink=.6,label='Shear (Pa)')
++ for j,(key,title) in enumerate([('signed_node_force_N','Signed affine map'),('nonnegative_node_force_N','Nonnegative local comparison')],start=2):
++  ax=fig.add_subplot(1,3,j,projection='3d');f=z[key];mag=np.linalg.norm(f,axis=1);active=mag>1e-15;sc=ax.scatter(*x.T,c=mag*1e9,s=7,cmap='viridis');stride=np.flatnonzero(active)[::8];ax.quiver(*x[stride].T,*(f[stride]*2e10).T,color='#bf472f',arrow_length_ratio=.3,linewidth=.7);axes3(ax,title);fig.colorbar(sc,ax=ax,shrink=.6,label='Node force (nN)')
++ allx=np.vstack([z['X'],z['triangles_xyz_m'].reshape(-1,3)])-origin;lo=allx.min(0)*1e6;hi=allx.max(0)*1e6
++ for panel in fig.axes:
++  if hasattr(panel,'view_init'):panel.set_xlim(lo[0]-30,hi[0]+30);panel.set_ylim(lo[1]-30,hi[1]+30);panel.set_zlim(lo[2]-30,hi[2]+30)
++ fig.text(.5,.015,'Arrows: 1 nN → 20 µm | pressure increment = 0 | all coordinates relative to material centroid',ha='center',fontsize=12)
++ fig.subplots_adjust(bottom=.23,left=.02,right=.96,wspace=.22);export(fig,'Fig3_actual_V3_surface_mapping','3611 actual CFD faces; no artificial outer shell. Existing signed and new positive maps are compared, neither is admitted as validated V3 streaming.')
++ # 4. Common mode with actual triangle force budget.
++ fig,axs=plt.subplots(1,4,figsize=(21,5.1),layout='constrained');cent=load.cent*1e6
++ for ax,tt in zip(axs[:3],[.0005,.0015,.0024]):
++  shear=load.faces(tt)[:,0]/load.area;im=ax.scatter(cent[:,0],cent[:,1],c=shear,cmap='coolwarm',vmin=-.16,vmax=.16,s=27);skip=np.arange(0,len(cent),8);ax.quiver(cent[skip,0],cent[skip,1],shear[skip],np.zeros(len(skip)),angles='xy',scale_units='xy',scale=.003,color='#323c48');ax.set(xlabel='X (µm)',ylabel='Y (µm)',title=f'{tt*1e3:g} ms, reference top');ax.set_aspect('equal')
++ fig.colorbar(im,ax=list(axs[:3]),shrink=.7,label='Signed shear τₓ (Pa)');fig.suptitle('Reference shear map | arrows: 0.1 Pa → 33.3 µm',fontsize=15)
++ for k in cases:
++  tt=np.linspace(0,END,721);axs[3].plot(tt*1e3,load.amplitude(tt)*np.max(abs(load.mode))/load.physical_peak,label=k,ls='-' if k=='stokes' else '--')
++ axs[3].set(xlabel='Time (ms)',ylabel='Peak / own maximum',title='Same frozen time protocol');axs[3].axvline(OFF*1e3,ls='--',c='.4');axs[3].legend()
++ export(fig,'Fig4_spatiotemporal_shear','Continuous transverse counter-shear on the original top triangles. B has the same shape/time and a mechanical-only 1000 Pa peak.')
++ if inputs_only:
++  dump(O/'INPUT_FIGURE_MANIFEST.json',dict(figures=MANIFEST));print('INPUT_FIGURES_DONE',len(MANIFEST));return
++ # 5. Only events that actually exist.
++ for name,case in cases.items():
++  keys=['initial','first_softening','first_failure','first_multinode','max_multifragment','final'];fig=plt.figure(figsize=(18,11))
++  for j,key in enumerate(keys,1):
++   ax=fig.add_subplot(2,3,j,projection='3d');p=case/'keys'/(key+'.npz')
++   title='best objective snapshot' if key=='max_multifragment' else key.replace('_',' ')
++   if p.exists():cloud(ax,ref,load_npz(p),title,broken=True)
++   else:
++    axes3(ax,title);ax.set_xlim(-600,600);ax.set_ylim(-500,500);ax.set_zlim(-650,650);ax.text2D(.15,.45,'NOT_OBSERVED',transform=ax.transAxes,fontsize=20)
++  fig.suptitle(f'{name.upper()} | accepted native states, displacement ×1\nRed: attached nodes incident to natural bond failures; colors: free components',fontsize=17);fig.tight_layout();export(fig,'Fig5_'+name+'_fracture','Original live material topology and actual positions. Red attached nodes are endpoints of naturally failed original bonds; no nonexistent broken connections are drawn across space. Common-ROI clipping is counted; all final nodes appear in Fig7. Missing stages remain NOT_OBSERVED.')
++ # 6. Full requested bins including zero counts.
++ fig,axs=plt.subplots(1,2,figsize=(15,5));bins=['1–2','3–13','14–33','34–113','114–200','>200'];table=list(csv.DictReader((O/'FRAGMENT_SIZE_DISTRIBUTION.csv').open()))
++ for j,name in enumerate(cases):
++  q=[r for r in table if r['case']==name and r['state']=='final'];xx=np.arange(6)+(j-.5)*.35;axs[0].bar(xx,[float(r['component_count']) for r in q],.35,label=name);axs[1].bar(xx,[float(r['mass_fraction_initial'])*100 for r in q],.35,label=name)
++ for ax in axs:ax.set_xticks(np.arange(6),bins);ax.set_xlabel('Original nodes per free component');ax.legend()
++ axs[0].set(ylabel='Component count',title='Final actual free components');axs[1].set(ylabel='Initial material mass (%)',title='Mass in each size bin');fig.tight_layout();export(fig,'Fig6_fragment_size_distribution','Empty bins are measured zeros. Mass is original material-node volume, anchors excluded.')
++ # 7. Common camera and full extent, true component IDs only.
++ fig=plt.figure(figsize=(16,7))
++ for j,(name,case) in enumerate(cases.items(),1):
++  ax=fig.add_subplot(1,2,j,projection='3d');s=load_npz(case/'keys/final.npz');cloud(ax,ref,s,name+' final');x=s['x']*1e6;ax.set_xlim(min(-600,x[:,0].min()-30),max(600,x[:,0].max()+30));ax.set_ylim(min(-500,x[:,1].min()-30),max(500,x[:,1].max()+30));ax.set_zlim(min(-650,x[:,2].min()-30),max(650,x[:,2].max()+30))
++ fig.suptitle('True material connected components | gray: attached | dark: anchors',fontsize=17);fig.tight_layout();export(fig,'Fig7_true_3D_components','Full final extents, actual coordinates ×1 with independently fitted axis ranges. Inverse-case free nodes travel tens of millimeters under dead reference traction without solved fluid drag; this is not vessel transport. Spatial neighbors/contact pairs never define fragments. Colors may cycle for numerous small components.')
++ # 8. Capability not confused with inverse demand.
++ fig,axs=plt.subplots(1,2,figsize=(16,5.5));axs[0].bar(['Stokes template','Mechanical requirement'],[load.physical_peak,1000],color=['#4b8197','#be6a40']);axs[0].set_yscale('log');axs[0].set(ylabel='Peak actual-face shear (Pa)',title='Same specimen / mode / duration');axs[0].text(.03,.88,'Bubble streaming capability: UNAVAILABLE',transform=axs[0].transAxes,fontsize=13)
++ axs[1].axis('off');text='Observed native response\n\n'
++ for name,q in analysis.items():text+=f'{name}: target 20–200 count max {q["history_max_N20_200"]}\nfinal free nodes {int(q["final"]["detached_nodes"])}, largest history {q["history_max_free_nodes"]}\n\n'
++ text+=f'{1000/load.physical_peak:.2f}× compares imposed templates only.\nNo target-success threshold or acoustic shortfall is inferred.\nAPECSS cache μ=2 mPa·s; this baseline μ=1 mPa·s.';axs[1].text(0,.97,text,va='top',fontsize=14)
++ fig.tight_layout();export(fig,'Fig8_capability_and_requirement','Physical acoustic capability remains undetermined; the large ratio is a controlled mechanical template scaling, not a validated bubble deficit.')
++ # 9. Work and shear torque without net-force cancellation hiding loading.
++ fig,axs=plt.subplots(2,3,figsize=(18,10))
++ for row,(name,rr) in enumerate(rows.items()):
++  t=np.array([q['time_s'] for q in rr])*1e3
++  for key,label in [('W_J','External work'),('U_J','Stored LPS'),('K_J','Kinetic'),('D_J','Damage dissipation'),('Uc_J','Pair contact')]:axs[row,0].plot(t,np.array([q[key] for q in rr])*1e9,label=label)
++  axs[row,0].set(title=name+' energy',xlabel='Time (ms)',ylabel='Energy (nJ)');axs[row,0].legend(fontsize=10)
++  if name=='inverse':
++   inset=axs[row,0].inset_axes([.55,.12,.42,.34])
++   for key,color in [('U_J','tab:orange'),('D_J','tab:red'),('Uc_J','tab:purple')]:inset.plot(t,np.array([q[key] for q in rr])*1e9,label=key[:2],color=color)
++   inset.set_title('Stored / damage / contact zoom',fontsize=8);inset.tick_params(labelsize=7);inset.set_ylabel('nJ',fontsize=8)
++  axs[row,1].plot(t,[q['sum_force_norm_N']*1e6 for q in rr],label='Sum |node force|');axs[row,1].plot(t,[abs(q['net_force_x_N'])*1e6 for q in rr],label='|Net force|');axs[row,1].set(title='Opposing forces and cancellation',xlabel='Time (ms)',ylabel='Force (µN)');axs[row,1].legend()
++  axs[row,2].plot(t,[q['relative_R']*100 for q in rr],label='Normalized numerical residual');axs[row,2].axhline(1,ls='--',c='#a6332a',label='1% gate');axs[row,2].set(title='Residual stays a residual',xlabel='Time (ms)',ylabel='Energy residual (%)');axs[row,2].legend(fontsize=10)
++ fig.tight_layout();export(fig,'Fig9_energy_and_force','Actual material external work, storage, kinetic/damage/contact energy and independent numerical balance; zero net force does not mean no shear work.')
++ fig=plt.figure(figsize=(18,6));bridge=read(O/'CRACK_BRIDGE_AUDIT.json');networks=read(O/'DAMAGE_NETWORK_HISTORY.json')
++ for j,(name,case) in enumerate(cases.items(),1):
++  ax=fig.add_subplot(1,3,j,projection='3d');s=load_npz(case/'keys/final.npz');region=bridge['cases'][name]['final']['regions'][0];ids=np.array(region['original_surviving_bond_ids'],int)-1;cloud(ax,ref,s,name+' surviving bridge bonds');ax.add_collection3d(Line3DCollection(s['x'][ref['bonds'][ids]]*1e6,colors='#2d858d',linewidths=.5,alpha=.23));ax.set_title(f'{name}: {len(ids)} live bridge bonds\nUpper diagnostic region: {region["candidate_nodes"]} nodes',fontsize=14)
++ ax=fig.add_subplot(133)
++ for name,q in networks.items():
++  h=q['all_material_including_interface']['history'];ax.plot([r['time_s']*1e3 for r in h],[r['separate_failed_material_networks'] for r in h],label=name)
++ ax.set(xlabel='Time (ms)',ylabel='Separate failed-edge networks',title='Natural damage-network connectivity');ax.legend();ax.text(.02,.03,'Failed-edge merging is not proof\nof a closed fracture surface.',transform=ax.transAxes,fontsize=12)
++ fig.tight_layout();export(fig,'Fig10_3D_bridges_and_damage_networks','Live original bridging bonds and failed-edge networks; diagnostic volume is not a prescribed fragment or loading mask.')
++ dump(O/'FIGURE_MANIFEST.json',dict(figures=MANIFEST,actual_positions_scale=1,implied_missing_events=False));print('FIGURES_DONE',len(MANIFEST))
++if __name__=='__main__':
++ import argparse
++ parser=argparse.ArgumentParser();parser.add_argument('--inputs-only',action='store_true');args=parser.parse_args();main(args.inputs_only)
+--- /dev/null
++++ b/clot_clearance/analysis/clot_acoustic_streaming_shear_multifragment_v1/local_readback.py
+@@ -0,0 +1,21 @@
++"""Verify every delivered byte and local HTML target using stdlib only."""
++from pathlib import Path
++import hashlib,json,re,os
++root=Path(__file__).resolve().parents[2];task='clot_acoustic_streaming_shear_multifragment_v1';run='20261017T132706Z';out=root/'verification'/task/run
++def sha(p):
++ h=hashlib.sha256()
++ with p.open('rb') as f:
++  for b in iter(lambda:f.read(4*1024**2),b''):h.update(b)
++ return h.hexdigest()
++manifest=json.loads((out/'DELIVERY_MANIFEST.json').read_text());count=0
++for entry in manifest['files']:
++ p=root/entry['path'];assert p.exists(),p
++ if entry['kind']=='symlink':assert p.is_symlink() and os.readlink(p)==entry['target'] and sha(p)==entry['target_sha256'],p
++ else:assert p.stat().st_size==entry['bytes'] and sha(p)==entry['sha256'],p
++ count+=1
++for p in [out/'OPEN_RESULTS.html',root/'results'/task/run/'OPEN_RESULTS.html']:
++ for href in re.findall(r'(?:href|src)="([^"]+)"',p.read_text()):
++  if not href.startswith(('http:','https:','#')):assert (p.parent/href).resolve().exists(),(p,href)
++doc=json.loads((out/'WSL_DOCUMENT_UPDATE.json').read_text());assert sha(Path(doc['path']))==doc['after_sha256']
++z=dict(status='PASS',files_verified=count,manifest_sha256=sha(out/'DELIVERY_MANIFEST.json'),local_document_sha256=doc['after_sha256'],html_relative_links_valid=True,scope='All delivered task files and document; server-only binary/upstream data are tracked by dependency hashes, not falsely claimed downloaded')
++(out/'LOCAL_READBACK.json').write_text(json.dumps(z,ensure_ascii=False,indent=2)+'\n');print(json.dumps(z))
+--- /dev/null
++++ b/clot_clearance/analysis/clot_acoustic_streaming_shear_multifragment_v1/manage.py
+@@ -0,0 +1,11 @@
++from common import *
++import sys,subprocess,shlex
++mode=sys.argv[1];assert mode in ['stokes','inverse']
++if mode=='inverse':
++ q=json.loads((O/'cases/stokes/SUMMARY.json').read_text());assert q['status']=='COMPLETED' and q['max_medium_components']==0
++name='clot_shear_'+mode+'_20261017';wrapper=A/('run_'+mode+'.sh')
++args=['python','-u',str(A/'run_shear_cases.py'),'--name',mode]
++wrapper.write_text('#!/bin/bash\nset -euo pipefail\nsource /workspace/y_clot/env.sh\nexport OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1\nexport LD_LIBRARY_PATH='+str(LIB.parent)+':${LD_LIBRARY_PATH:-}\ncd '+str(R)+'\nexec '+shlex.join(args)+'\n');wrapper.chmod(0o755)
++config=f'[program:{name}]\ncommand={wrapper}\nautostart=false\nautorestart=false\nstartsecs=0\nredirect_stderr=true\nstdout_logfile={O}/{mode}.supervisor.log\nstdout_logfile_maxbytes=0\nstopasgroup=true\nkillasgroup=true\n'
++path=Path('/etc/supervisor/conf.d')/(name+'.conf');assert not path.exists();path.write_text(config);(O/(name+'.supervisor.conf')).write_text(config)
++subprocess.run(['supervisorctl','reread'],check=True);subprocess.run(['supervisorctl','update',name],check=True);subprocess.run(['supervisorctl','start',name],check=True)
+--- /dev/null
++++ b/clot_clearance/analysis/clot_acoustic_streaming_shear_multifragment_v1/multifragment_objective.py
+@@ -0,0 +1,42 @@
++"""Independent objectives and explicit constraints on actual material components."""
++from common import *
++
++BINS=[(1,2),(3,13),(14,33),(34,113),(114,200),(201,None)]
++SPEC=dict(
++ name='EXPLORATORY_MULTIFRAGMENT_TARGET',target_nodes=[20,200],min_target_count=5,
++ min_total_detached_fraction_initial=.10,max_largest_fraction_detached=.50,
++ max_fine_debris_fraction_detached=.20,post_unload_connectivity_required=True,
++ common_cohort_time_s=.0034,observation_end_s=END,
++ size_bins=BINS,
++ meaning='Exploratory engineering constraints at this discrete resolution, not clinical size classes or validated biological criteria. The 10% detached-mass floor and 50% dominance ceiling are declared before formal cases.',
++ optimization='Return separate objectives, constraints and per-fragment evidence; no weighted sum hides a failed constraint.',
++)
++
++def shape(x,dx=DX):
++    count=len(x);center=x.mean(0);q=x-center
++    covariance=q.T@q/count;values,axes=np.linalg.eigh(covariance);order=np.argsort(values)[::-1];values=np.maximum(values[order],0);axes=axes[:,order];rms=np.sqrt(values)
++    tol=1e-8*dx;rank=int(np.sum(rms>tol))
++    ratios=[float(rms[0]/v) if v>tol else None for v in rms]
++    label='UNRESOLVED_FINE_DEBRIS' if count<=2 else 'CHAIN_LIKE' if rank<2 else 'SHEET_LIKE' if rank<3 or rms[2]<.15*rms[0] else 'THREE_DIMENSIONAL_POINT_CLOUD'
++    return dict(actual_span_m=np.ptp(x,axis=0),radius_gyration_m=float(np.sqrt(values.sum())),principal_axes_columns=axes,principal_rms_lengths_m=rms,length_to_principal_ratios=ratios,point_cloud_rank=rank,shape_class=label,definition='Measured point coordinates, no smoothed shell, no invented thickness; degenerate ratios are undefined')
++
++def metrics(sizes,n):
++    sizes=np.asarray(sizes,int);detached=int(sizes.sum());largest=int(sizes.max(initial=0));target=(sizes>=20)&(sizes<=200);fine=int(sizes[sizes<=2].sum());fines=fine/detached if detached else None;dominance=largest/detached if detached else None
++    criteria=dict(target_count=int(target.sum())>=SPEC['min_target_count'],detached_mass=detached/n>=SPEC['min_total_detached_fraction_initial'],no_dominant_fragment=dominance is not None and dominance<=SPEC['max_largest_fraction_detached'],fine_debris=fines is not None and fines<=SPEC['max_fine_debris_fraction_detached'])
++    out=dict(fragment_count_target_band=int(target.sum()),mass_fraction_in_target_band=float(sizes[target].sum()/n),largest_free_fragment_fraction_initial=largest/n,largest_free_fragment_fraction_detached=dominance,fine_debris_mass_fraction_detached=fines,fine_debris_mass_fraction_initial=fine/n,total_detached_mass_fraction=detached/n,attached_body_fraction=1-detached/n,N_ge2=int(np.sum(sizes>=2)),N_ge14=int(np.sum(sizes>=14)),N_ge20=int(np.sum(sizes>=20)),N_ge34=int(np.sum(sizes>=34)),N_ge114=int(np.sum(sizes>=114)),N_ge200um=int(np.sum((6*sizes*V/np.pi)**(1/3)>=200e-6)),N_ge300um=int(np.sum((6*sizes*V/np.pi)**(1/3)>=300e-6)),instant_target=all(criteria.values()),independent_criteria=criteria)
++    out.update(n_fragments_20_200=int(target.sum()),n_fragments_34_200=int(np.sum((sizes>=34)&(sizes<=200))),n_fragments_ge_114=int(np.sum(sizes>=114)),mass_fraction_target_initial=float(sizes[target].sum()/n),mass_fraction_target_detached=float(sizes[target].sum()/detached) if detached else None)
++    return out
++
++def scalar_metrics(sizes,n):
++    return {key:value for key,value in metrics(sizes,n).items() if key!='independent_criteria'}
++
++def selection_key(sizes,n):
++    q=metrics(sizes,n)
++    return (q['fragment_count_target_band'],q['mass_fraction_in_target_band'],q['N_ge14'],q['total_detached_mass_fraction'])
++
++def freeze():
++    path=O/'MULTIFRAGMENT_OBJECTIVE.json'
++    assert not path.exists(),'Do not change a frozen objective based on outcomes'
++    dump(path,SPEC)
++
++if __name__=='__main__':freeze()
+--- /dev/null
++++ b/clot_clearance/analysis/clot_acoustic_streaming_shear_multifragment_v1/native.py
+@@ -0,0 +1,36 @@
++"""Native VV with the accepted physical-N external force callback."""
++from common import *
++from shear_loading import ShearLoad
++import traceback
++import ast,ctypes,types
++from mpi4py import MPI
++from lammps import lammps
++def make_case(case):
++ case=Path(case);(case/'provenance').mkdir(parents=True,exist_ok=True);(case/'keys').mkdir(exist_ok=True)
++ for name in ['reference.npz','reference.native','body.data']:
++  p=case/'provenance'/name
++  if not p.exists():p.symlink_to(os.path.relpath(O/'provenance'/name,p.parent))
++ return case
++def factory(case):
++ source=R/'analysis/v3_softening_pilot_v1/native.py';tree=ast.parse(source.read_text());classes=[x for x in tree.body if isinstance(x,ast.ClassDef) and x.name in ['Native','Contact']];ns=dict(globals(),O=Path(case));exec(compile(ast.Module(body=classes,type_ignores=[]),str(source),'exec'),ns);return ns['Native'],ns['Contact']
++def native(case,protocol='stokes',restart=None):
++ case=make_case(case);Base,Contact=factory(case)
++ class Native(Base):
++  def __init__(self):
++   super().__init__('native',restart=restart,dt=BASE)
++   d=self.ref['initial_cut'].astype(float);k=SC[self.ref['bond_types']]*d
++   assert self.lib.lpsvar_action(self.l.lmp,1,0,self.ptr(k),self.ptr(d))==0
++   self.tool=ShearLoad(self.ref,protocol);self.ext=types.SimpleNamespace(error=None,last={})
++  def dynamics(self):
++   self.l.commands_string(f'group clot type 1\nfix integrate clot nve\nfix coordinator all LPS/VARIATIONAL/DYNAMIC {RHO:.17g}\nfix v3forces clot external pf/callback 1 1')
++   def callback(caller,step,nlocal,tags,x,f):
++    f[:]=0
++    try:
++     ids=tags.astype(int)-1;assert nlocal==self.N
++     t=float(self.l.get_thermo('time'));force=self.tool.force(t);f[:]=force[ids]
++     self.ext.last=dict(external_force=force,external_time=np.array(t))
++    except BaseException:self.ext.error=traceback.format_exc();f[:]=np.nan
++   self.callback=callback;self.l.set_fix_external_callback('v3forces',callback);self.dynamic=True;self.l.command('run 0');return self.state()
++ return Native(),Contact
++def predict(model,ref,x,k,onset):
++ e,_=model.geometry(x);kk=np.maximum(k,np.maximum(e/ref['r0'],0));off=SC[ref['bond_types']];d=np.zeros(len(kk));d[kk>=off]=1;part=(kk>onset)&(kk<off);d[part]=off[part]*(kk[part]-onset[part])/(kk[part]*(off[part]-onset[part]));return kk,d
+--- /dev/null
++++ b/clot_clearance/analysis/clot_acoustic_streaming_shear_multifragment_v1/report.py
+@@ -0,0 +1,62 @@
++"""Generate the requested Chinese research report from sealed numerical evidence."""
++from analyze import *
++import html
++def fmt(x,scale=1):return 'NOT_OBSERVED / UNAVAILABLE' if x is None else f'{x*scale:.8g}'
++def main():
++ q=read(O/'ANALYSIS.json');s=read(O/'NATIVE_SHEAR_CASE_RESULTS.json');status=read(O/'FINAL_STATUS.json');mapping=read(O/'SURFACE_MAPPING_AUDIT.json');bridge=read(O/'CRACK_BRIDGE_AUDIT.json');resources=read(O/'RUN_RESOURCES.json');protocol=read(O/'SHEAR_PROTOCOL.json');flow=read(O/'STREAMING_MODEL_SPEC.json');ref=load_npz(O/'provenance/reference.npz');load=ShearLoad(ref,'stokes');a=q['stokes'];b=q['inverse'];fluidcheck=read(O/'FLUID_SHEAR_CHECK.json')
++ answers=[]
++ def add(question,answer):answers.append(f'### {len(answers)+1}. {question}\n\n{answer}\n')
++ add('本轮是否真正恢复了流体剪切加载？','是。新增 `acoustic_streaming_shear.py`、`streaming_interface.py` 和 `shear_loading.py`，实际生成黏性剪切场，经原始节点三角形映射进入已验证 LAMMPS `fix external` 的 N 单位接口，完成两组原生不可逆动力学。没有使用或开发刚性压头，生产本构、MPI/restart 和原始预裂纹均未改变。')
++ add('当前声流模型来自哪一种物理方程？',f'本轮计算的是 **PRESCRIBED_STOKES_SHEAR_TEMPLATE / PHYSICS_APPROXIMATION**，不是一阶声学振荡或二阶平均声流。取 u=(sin(ky)v(z,t),0,0)，求解 v_t=ν(v_zz−k²v)，压力增量为零。流体从静止开始，底壁静止无滑移，25 µm 上边界速度为 4 mm/s×q(t)×sin(ky)，横向周期700 µm、沿x无限延伸。该速度严格无散且对流项为零。sinh稳态解加正弦扩散模态给出时变解；独立有限差分最大剪切差/μU/H={fluidcheck["independent_FD_max_error_over_muU_H"]:.4g}。有限血栓边缘、变形反馈不在这个流体解内。')
++ add('MEVO/APECSS能提供哪些实际输入？','重新打开并核对了10项实际源文件/数据哈希。F1提供原几何的复声压及梯度；F10N/F10S提供2.5 MHz均匀水控制代理、源幅值与相位约定；APECSS表包含8个有效自适应叶中的体积谐波，半径1.779–1.781 µm、频率2.499–2.501 MHz、声压0.1–40000 Pa的叶内插值支持；F10S提供原坐标系质心轨迹。声源Pa等效量不是PZT电压或校准面压。半径谐波/质心运动均不等于血栓附近流体速度。APECSS黏度2 mPa·s，本轮独立历史Stokes模板1 mPa·s，不能当成同一介质的完整耦合。')
++ add('是否完成微泡诱导Streaming计算？','没有。缺少微泡与当前血栓的坐标配准/真实间隙、近壁一阶速度和梯度、完整振荡边界条件及一致二阶边界驱动。没有把声压或R(t)直接换算为三维声流剪切，也没有编造泡位置。新入口遇到微泡模型请求明确返回 STREAMING_LOAD_NOT_YET_DETERMINED 和缺失字段。现有径向模型可生成R(t)，但补齐R(t)本身不足以补齐近壁流体问题。')
++ add('实际血栓表面剪切应力大小是多少？',f'在本轮实际小试样参考三角面片上，A的最大剪切为 **{a["peak_shear_Pa"]:.9g} Pa**，B为 **{b["peak_shear_Pa"]:.9g} Pa**。B只标记 INVERSE_SHEAR_REQUIREMENT / MECHANICAL_REQUIREMENT_ONLY。法向压力增量和法向牵引均为零。A不是测得或微泡求得的真实血栓表面应力。')
++ add('剪切热点在空间上如何分布？','只选择一种模式：实际顶面上 sin(2πy/700 µm)×eₓ，y两侧方向相反，中心平滑过零。横向350 µm试样跨度决定一个低阶连续模态；它产生近零净力、非零z向力矩，主要检验反向流体剪切造成的扭转，而非沿x整体推动。没有根据目标裂纹或待断键布置载荷。上壁2 ms平滑上升、2.4 ms开始下降、2.8 ms完全停驱，之后黏性流自然衰减，原生观察到3.6 ms。B沿用完全相同形状/时程，仅缩放牵引。历史1000Pa均匀+x剪切在同一参考试样、同一2.275e−7m²顶面产生过882节点块；历史为2ms上升后保持到2.5ms、四节点面片分配。本轮改变了空间方向组织、扩散建立过程、三角积分和卸载观察，不能当成仅改方向的单因素对照，详见HISTORICAL_SHEAR_CONTEXT.json。')
++ add('哪些原始材料点真正受载？',f'1792个材料点、336个底部固定锚点的既有三维试样；顶面 **{len(load.loaded_ids)}个原始材料ID** 接收非零剪切，锚点不受外加载。实际面积 **{load.area.sum():.9g} m²**，{len(load.tri)}个原始节点三角形。所有ID、参考坐标、面片、面积、法向、加载向量见 `SHEAR_TRACTION_FIELD.npz`；每个接受态的标量历史和关键FP64态保留实际力，完整力可由冻结空间模式及各接受时刻精确重建。')
++ v=mapping['v3'];c=v['local_comparison']
++ add('映射是否出现明显局部放大？',f'小试样三角形1/3形函数无外插，精确保持离散总力、力矩和伴随虚功，未引入反向力。其交替三角剖分的节点分摊面积相对规则控制面积为2/3–4/3；按映射面积归一化的节点剪切与节点位置解析值最大误差为峰值的2.8112%。因此局部权重无符号放大不等于点力或破坏结果已网格收敛。真实V3的3611个CFD三角面上，已有仿射权重范围[{v["signed_affine"]["min_weight"]:.4f},{v["signed_affine"]["max_weight"]:.4f}]，最大列绝对和{v["signed_affine"]["max_column_abs_sum"]:.4f}；本模式下节点力模长总和/面力模长总和{v["signed_affine"]["sum_node_force_norm_over_sum_face_norm"]:.4f}。与独立构建的非负局部核相比，共同活跃{c["common_active_nodes"]}点中{c["nodes_direction_difference_over_90deg"]}点合力夹角>90°，最大节点力/非负局部力预算{c["signed_force_over_positive_local_force_budget_quantiles"][-1]:.4f}。这直接来自合力，非由负权重比例推断。非负核保持总力/功率，但牺牲力矩（误差/总绝对矩={v["nonnegative_local_kernel"]["moment_error_over_total_abs_moment"]:.4g}），因此两者都不能凭全局守恒认证V3局部物理精度。没有截断旧负权重、没有运行V3。')
++ add('A是否引起真实softening？',f'A末态新软化键 {int(a["final"]["softened"])}，历史最大正伸长κ={max(r["max_kappa"] for r in histories(O/"cases/stokes")):.9g}；首次软化时间={fmt(a["first_softening_s"],1e3)} ms。B首次软化={fmt(b["first_softening_s"],1e3)} ms。这是具体试样/模式结果，不是普适材料阈值。')
++ add('是否出现完整断键？','；'.join(f'{name}: 本体{int(x["final"]["bulk_failed"])}、界面{int(x["final"]["interface_failed"])}，首次完整断裂{fmt(x["first_failure_s"],1e3)} ms' for name,x in q.items())+'。初始2736预切键不计自然断裂；每条变化由原始bond ID记录；完整失效键排除力学贡献并在原生连接表中移除。')
++ add('是否形成多个空间独立损伤区域？','；'.join(f'{name}: 自然bulk/interface失效网络诞生{x["inclusive_failed_material_networks"]["n_births"]}次，最多同时{x["inclusive_failed_material_networks"]["max_simultaneous_networks"]}个网络，bulk诞生中心最大间距{x["crack_networks"]["max_birth_centroid_separation_m"]*1e6:.6g} µm' for name,x in q.items())+'。失效边共享端点的网络分离/合并是离散诊断，不自动等于连续裂面的闭合或贯通。')
++ add('裂纹是否形成贯通分离路径？','以原始存活bulk/interface图及锚可达性判定：'+ '；'.join(f'{name}最终{int(x["final"]["detached_nodes"])}材料点真实游离、{int(x["final"]["components"])}分量' for name,x in q.items())+'。游离块必须没有存活外部材料连接；空间邻近与接触对均不计材料键。不能用完全失效键多或损伤网络合并代替这个判定。')
++ add('是否出现20–200节点游离块？','；'.join(f'{name}: 历史最大目标带数量{x["history_max_N20_200"]}，最终{int(x["final"]["N20_200"])}，历史最大游离分量{x["history_max_free_nodes"]}点' for name,x in q.items())+'。≥34且≤200、≥114及内部连接均单独记录。20节点等效参考体积直径约168.4 µm，仅约3.37dx；达到节点数本身不代表充分解析的实体或医学安全。')
++ add('是否出现至少5个并通过全部目标？',f'五碎块完整探索目标={status["five_fragment_target_met"]}。目标预先冻结，另需脱离质量≥10%、最大块≤脱离质量50%、1–2点细屑≤20%、内部存活连接及3.4→3.6 ms同一原始成员连通保持。该观察窗开始的剩余牵引为峰值的{protocol["cohort_remaining_load_fraction"]:.5g}，不是严格零流体力；寿命是有限窗右删失观察。')
++ add('是否仍以1–2节点碎屑为主？','；'.join(f'{name}: 脱离质量中的细屑比例={fmt(x["final_metrics"]["fine_debris_mass_fraction_detached"],100)}%，最大块占脱离质量={fmt(x["final_metrics"]["largest_free_fragment_fraction_detached"],100)}%' for name,x in q.items())+'。无脱离时分母为零，比例保留null，不把它伪写为0%成功。')
++ add('还有多少三维存活连接阻止候选区域脱离？','；'.join(f'{name}最终：'+', '.join(f'{r["region"]}（{r["candidate_nodes"]}节点）{r["surviving_crossing_bonds"]}条存活跨界键、锚可达{r["anchor_reachable_nodes"]}点' for r in bridge['cases'][name]['final']['regions']) for name in q)+'。这些历史诊断体积不是预设碎块或新增切割。完整原始bridge ID、长键、压缩/未达到正伸长阈值和偏离中剖面的锚路径均已保存；图最小割是可达性诊断，不是删除建议或断裂能。')
++ add('目标剪切需求与当前声流能力差多少？',f'相同几何、模式、时程下，本轮B/A峰值牵引倍数={status["template_traction_ratio"]:.9g}，相同倍数适用于线性模板的载荷冲量；**不能称为声流不足倍数**。A并非微泡预测，真实声流应力/间隙仍未确定；若B未达到目标，也不能把1000 Pa当成成功阈值。外功来自实际变形，不能按载荷倍数线性推断。机械目标需求是否识别={status["SHEAR_REQUIREMENT_IDENTIFIED"]}。')
++ add('主要限制是哪一项？','A能够对这一规定流体模板给出真实材料响应，但不足以判断所有微泡机制。B检验空间反向剪切的机械作用，仍受冻结参考面加载的限制。'+f'B首次保守几何诊断为{s["inverse"]["frozen_geometry_first_diagnostic"]}。该阈值为位移>0.1gap或法向转角>5°，仅提示模型适用性，未作为伪物理停止条件；其后仍是明确的死牵引探索。B在0.37725ms触发诊断，早于0.88925ms首次软化，其末态约99.65%外功成为动能；固定原始ID牵引继续加速已脱离表面节点，不能据此认证真实流体能量输入或裂解效率。末态部分游离点沿x移动数十毫米，仅为不含已求解流体阻力的死载机械结果，并非血管输运预测。A未触发几何阈值也不代表运动壁面反馈或流体阻尼已验证。V3映射局部误差、三维桥接和未校准材料共同限制推断，不能仅由两次计算唯一归因于本构缺少混合模态。')
++ add('是否值得重新启用BoTorch做微泡参数反向优化？','目前不宜作为物理闭环优化。旧Optuna/BoTorch软件与独立环境可复用，但缺少声学参数→近壁流体牵引的可计算可信关系，本轮0个优化trial。先完成坐标/间隙/边界输入、微泡一阶振荡与二阶平均流验证，再以真实目标带数量和质量分层约束优化；κ和软化数只作DAMAGE_PRECURSOR_DIAGNOSTIC。')
++ add('是否具备真实V3声流断裂条件？','否。虽然实际V3面片、原始ID和native接口可复用，当前尚无其几何上的可信微泡流体解，局部映射与大变形表面更新也未通过物理验证。本轮未完整运行1927点V3、未做双向FSI。下一轮应首先补齐近壁声流与表面传递条件，不能继续以压头或人工删键替代研究主线。本轮更接近目标的是可信剪切耦合链条和对一个低维模式的真实证据；仅两个幅值不能确定最优时空结构，也不能将其变化唯一归因于方向组织。')
++ intro=f'''# CLOT_ACOUSTIC_STREAMING_SHEAR_MULTIFRAGMENT_V1
++
++Run: `{RUN}`。软件开发与两组原生3.6 ms计算完成；实际微泡Streaming仍未确定。完整探索目标达成：**{status['five_fragment_target_met']}**。
++
++当前有效入口：`analysis/{TASK}/`。生产native库未改动，SHA `{sha(LIB)}`；1792材料点+336锚点，原始95666键（2736原预切），G=940 Pa、K=100000/3 Pa，本体s0=.15/sc=.18、界面.140625/.16875保持原值，均未为碎块目标调参。
++
++本轮停止迭代历史刚性压头路线：单/双压头属于规定运动的机械法向接触问题，可保留为独立证据，不能解释为声流。下面所有断裂图均来自原生接受态、位移×1。
++
++| 工况 | 面片峰值剪切(Pa) | 最终游离点 | 历史最大块 | 历史最大20–200块数 | 外功(nJ) | 最大能量残差(%) |
++|---|---:|---:|---:|---:|---:|---:|
++'''
++ for name,x in q.items():intro+=f'|{name}|{x["peak_shear_Pa"]:.8g}|{int(x["final"]["detached_nodes"])}|{x["history_max_free_nodes"]}|{x["history_max_N20_200"]}|{x["final"]["W_J"]*1e9:.8g}|{x["max_relative_energy_residual"]*100:.6g}|\n'
++ tail=f'''\n## 数值证据和资源
++
++每个接受步检查真实原始ID、κ/d不可逆、Δd≤0.1、原生失效键移除和能量余额。dt=0.25 µs，损伤事件最低0.03125 µs；平滑初始段采用此前验证过的更小步长。W=ΔU+ΔK+D+ΔU_pair−J_pair+R；无压头能、无数值阻尼；R不归入损伤耗能。外功以实际位移路径和时变剪切做Gauss积分。完整重放验证见 DELIVERY_VALIDATION.json。标量history中的net_moment_z_Nm和moment_impulse_z_Nms为参考坐标的名义力矩/积分；关键FP64接受态的实际x(t)×F(t)力矩另存CURRENT_MOMENT_KEY_STATES.csv。实际线冲量及外功均按真实外力和位移计算；没有从稀疏位置样本伪造全时程实际角冲量。
++
++两例合计墙钟{resources['native_wall_s']:.3f} s、CPU {resources['native_cpu_s']:.3f} s、峰值RSS {resources['peak_RSS_bytes']/2**20:.3f} MiB；每例1 rank×1线程，无GPU、无新增墙钟/RSS上限。小量流体解析模态计算和只读映射/拓扑分析另计。
++
++## 出处与证据边界
++
++- [APECSS作者软件说明](https://joss.theoj.org/papers/10.21105/joss.05435)：核对其气泡动力学/声辐射软件范围，没有将其当成已经实现近壁声流。
++- [Muller与Bruus时变声流研究摘要](https://arxiv.org/abs/1509.02554)：核对一阶/二阶与声流建立衰减的区分；本轮读取摘要，不声称已阅读全文或复现其边界模型。
++- [LAMMPS fix external](https://docs.lammps.org/fix_external.html)：原生外力回调接口。
++- Stokes横向模态、sinh稳态解与正弦系数由本轮给定边值问题直接推导，并经独立有限差分验证；不是从缺失论文编造的微泡应力公式。
++
++`ACOUSTIC_AND_BUBBLE_INPUT_AUDIT.json`记录实际文件、HDF5字段和代码行。启动输入审计在可选优化器版本查询时发现其不在native环境，已修正为明确记录独立环境，不重算物理工况。旧封存结果均保留。本轮不自动追加第三例、完整V3或自动优化。
++'''
++ text=intro+'\n'+'\n'.join(answers)+tail;path=O/'REVIEW_CLOT_ACOUSTIC_STREAMING_SHEAR_MULTIFRAGMENT_V1.md';path.write_text(text)
++ figures=read(O/'FIGURE_MANIFEST.json')['figures'];items=''.join(f'<section><h2>{html.escape(f["name"])}</h2><p>{html.escape(f["caption"])}</p><a href="{f["name"]}.svg"><img src="{f["name"]}.png"></a></section>' for f in figures)
++ page='<!doctype html><html><meta charset="utf-8"><title>Streaming shear research</title><style>body{font:18px system-ui;max-width:1500px;margin:30px auto;padding:20px;color:#25303c;background:#f4f6f8}section{background:white;padding:20px;margin:25px 0}img{max-width:100%}h1{font-size:30px}p{line-height:1.5}</style><h1>声流／剪切多碎块研究</h1><p>真实微泡Streaming：尚未确定。两组规定剪切原生计算完成。所有断裂图为实际接受态，位移×1。</p>'+f'<p><a href="../../../verification/{TASK}/{RUN}/{path.name}">20问中文报告</a></p>'+items+'</html>'
++ (F/'OPEN_RESULTS.html').write_text(page);(O/'OPEN_RESULTS.html').write_text(f'<!doctype html><meta charset="utf-8"><a href="../../../results/{TASK}/{RUN}/OPEN_RESULTS.html">打开本轮全部科研图表</a>')
++ print('REPORT_DONE',len(answers))
++if __name__=='__main__':main()
+--- /dev/null
++++ b/clot_clearance/analysis/clot_acoustic_streaming_shear_multifragment_v1/run_inverse.sh
+@@ -0,0 +1,7 @@
++#!/bin/bash
++set -euo pipefail
++source /workspace/y_clot/env.sh
++export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
++export LD_LIBRARY_PATH=/workspace/y_clot/project/verification/clot_multifragment_breakup_v1/20261017T110849Z/build:${LD_LIBRARY_PATH:-}
++cd /workspace/y_clot/project
++exec python -u /workspace/y_clot/project/analysis/clot_acoustic_streaming_shear_multifragment_v1/run_shear_cases.py --name inverse
+--- /dev/null
++++ b/clot_clearance/analysis/clot_acoustic_streaming_shear_multifragment_v1/run_shear_cases.py
+@@ -0,0 +1,108 @@
++from common import *
++from native import native,predict
++from shear_loading import *
++from multifragment_objective import scalar_metrics,shape,selection_key,SPEC
++import time,resource,traceback,csv,gzip,argparse,ctypes
++graph=module('crushing_graph',R/'analysis/v3_chunk_fragmentation_mechanism_v1/graph_ops.py')
++def save(case,name,s):
++ p=case/'keys'/name;tmp=p.with_suffix('.tmp.npz');np.savez_compressed(tmp,**s);os.replace(tmp,p)
++def run(name):
++ start=time.perf_counter();cpu=time.process_time();case=O/'cases'/name
++ if name=='inverse':
++  baseline=json.loads((O/'cases/stokes/SUMMARY.json').read_text());assert baseline['status']=='COMPLETED' and baseline['max_medium_components']==0
++ assert not (case/'history.csv').exists(),'Preserve interrupted attempts; use a new output name for a justified recovery'
++ ns,C=native(case,name);ref=ns.ref;n=ns.n;N=ns.N;b=ref['bonds'];bt=ref['bond_types'];cut=ref['initial_cut'];model=energy_model(ref);contact=C(ref);on=ns.field(13)
++ assert json.loads((O/'KEY_CHECKS.json').read_text())['status']=='PASS'
++ dump(case/'REQUEST.json',dict(name=name,uniform_material=True,label=ns.tool.label,library_sha256=sha(LIB),source_sha256={p.name:sha(p) for p in A.glob('*.py')},input_sha256={name:sha(O/name) for name in ['BASELINE_MANIFEST.json','SHEAR_PROTOCOL.json','STREAMING_MODEL_SPEC.json','MULTIFRAGMENT_OBJECTIVE.json']}))
++ s=ns.dynamics();initial=s;prev=s;save(case,'initial.npz',s);W=0.;Jc=0.;impulse=np.zeros(3);rows=[];events={};err={};stop=[];substeps=0;rejects=0;scale=1e-24;secondary=[];maxscore=(-1,);snap_next=50e-6;absolute_impulse=0.;rotation_impulse=np.zeros(3);geometry_first=None
++ cached=graph.topology(ref,s['d']);registry={};lookup={};current=[];previous_free={}
++ history=gzip.open(case/'CONNECTED_COMPONENT_HISTORY.jsonl.gz','wt');changes=gzip.open(case/'damage_events.jsonl.gz','wt');stream=(case/'history.csv').open('w');writer=None
++ def error(key,value):err[key]=max(err.get(key,0.),float(value))
++ def event(name,ids,state):
++  if name in events or not len(ids):return
++  ends=b[ids];mid=ref['X'][ends].mean(1)
++  events[name]=dict(time_s=state['time'],step=state['step'],original_bond_ids=ids+1,atom_ids=ends+1,bond_types=bt[ids],reference_midpoints_m=mid,actual_midpoints_m=state['x'][ends].mean(1),stretch=np.linalg.norm(state['x'][ends[:,1]]-state['x'][ends[:,0]],axis=1)/ref['r0'][ids]-1,kappa=state['kappa'][ids],damage=state['d'][ids],s0=on[ids],near_anchor=(mid[:,2]-ref['X'][:n,2].min())<=HORIZON,evidence='keys/'+name+'.npz');save(case,name+'.npz',state)
++ def component_row(state,topology_changed):
++  nonlocal current,previous_free
++  lab,sizes,attached=cached;cs=[]
++  if topology_changed:
++   current=[]
++   for label in np.flatnonzero(~attached):
++    ids=np.flatnonzero(lab==label);key=tuple((ids+1).tolist())
++    if key not in lookup:
++     cid=len(registry)+1;lookup[key]=cid;registry[cid]=dict(atom_ids=ids+1,nodes=len(ids),reference_volume_m3=len(ids)*V,equivalent_diameter_m=(6*len(ids)*V/np.pi)**(1/3),birth_time_s=state['time'],birth_step=state['step'])
++    cid=lookup[key];current.append((label,cid,ids))
++   for old,oldset in previous_free.items():
++    children=[cid for _,cid,ids in current if oldset.intersection((ids+1).tolist())]
++    if len(children)>1:
++     secondary.append(dict(time_s=state['time'],step=state['step'],parent_component_id=old,children_component_ids=children))
++     if len(secondary)==1:save(case,'first_secondary.npz',state)
++   previous_free={cid:set((ids+1).tolist()) for _,cid,ids in current}
++  bulk=(bt==1)&~cut;bb=b[bulk];same=lab[bb[:,0]]==lab[bb[:,1]];ilab=lab[bb[same,0]];dam=state['d'][bulk][same];counts=np.bincount(ilab,minlength=len(sizes));alive=np.bincount(ilab,weights=dam<1,minlength=len(sizes));dsum=np.bincount(ilab,weights=dam,minlength=len(sizes))
++  for label,cid,ids in current:
++   v=state['velocity'][ids];vc=v.mean(0);relativeKE=.5*RHO*V*np.sum((v-vc)**2)
++   cs.append(dict(component_id=cid,internal_initial_bonds=int(counts[label]),internal_alive_bonds=int(alive[label]),internal_survival=float(alive[label]/counts[label]) if counts[label] else None,mean_internal_damage=float(dsum[label]/counts[label]) if counts[label] else None,centroid_m=state['x'][ids].mean(0),centroid_velocity_m_s=vc,internal_relative_kinetic_J=float(relativeKE),remaining_live_external_connections=0,anchor_reachable=False,**shape(state['x'][ids]),internal_alive_edge_density_m3=float(alive[label]/(len(ids)*V)),internal_graph_density=float(2*alive[label]/(len(ids)*(len(ids)-1))) if len(ids)>1 else None))
++  history.write(json.dumps(dict(time_s=state['time'],step=state['step'],attached_nodes=int(sizes[attached].sum()),detached_nodes=int(sizes[~attached].sum()),components=cs),default=cv)+'\n')
++  return cs
++ component_row(s,True)
++ try:
++  while prev['time']<END-1e-14:
++   boundary=min([t for t in ns.tool.boundaries if t>prev['time']+1e-14]);startup=BASE/8 if prev['time']<2e-6-1e-15 else BASE/4 if prev['time']<4e-6-1e-15 else BASE/2 if prev['time']<8e-6-1e-15 else BASE
++   h=min(startup,boundary-prev['time']);depth=0
++   while True:
++    xp=prev['x'].copy();xp[:n]+=h*(prev['velocity'][:n]+(.5*h/(RHO*V))*prev['force'][:n]);kk,dp=predict(model,ref,xp,prev['kappa'],on)
++    if np.max(dp-prev['d'])<=.1:break
++    assert h>MIN_H*(1+1e-12),'MINIMUM_EVENT_SUBSTEP_EXHAUSTED'
++    h/=2;depth+=1;rejects+=1
++   substeps+=bool(depth)
++   if h!=ns.dt:ns.l.command(f'timestep {h:.17g}');ns.dt=h
++   ns.l.command('run 1 pre no post no');s=ns.state();p=prev;dd=s['d']-p['d'];sc=s['scalars'];nf=np.flatnonzero((s['d']==1)&(p['d']<1)&~cut)
++   error('predicted_x_m',np.max(abs(xp-s['x'])));error('predicted_damage',np.max(abs(dp-s['d'])));error('predicted_kappa',np.max(abs(kk-s['kappa'])));error('irreversibility',max(np.max(-dd),np.max(p['kappa']-s['kappa'])));error('velocity_VV_m_s',np.max(abs(s['velocity'][:n]-p['velocity'][:n]-h/(2*RHO*V)*(p['force'][:n]+s['force'][:n]))))
++   assert err['predicted_x_m']<2e-18 and err['velocity_VV_m_s']<1e-10 and max(err['predicted_damage'],err['predicted_kappa'],err['irreversibility'])<1e-10
++   assert np.max(dd)<=.1+1e-10 and np.array_equal(s['x'][n:],ref['X'][n:]) and not s['velocity'][n:].any()
++   assert s['native_bonds']==int(np.sum(s['d']<1)) and not s['d'][bt==3].any() and np.isfinite(s['force']).all()
++   winc=ns.tool.work(p['x'],s['x'],p['time'],s['time']);wnew=W+winc;jnew=Jc
++   if len(nf):
++    rr=np.linalg.norm(s['x'][b[nf,1]]-s['x'][b[nf,0]],axis=1);jnew+=float(.5*contact.c*np.sum(np.minimum(rr-DX,0)**2))
++   res=wnew-(sc[0]-initial['scalars'][0]+s['K']-initial['K']+sc[1]+s['Uc']-initial['Uc']-jnew);newscale=max(scale,abs(wnew),abs(sc[0]-initial['scalars'][0])+s['K']+sc[1]+s['Uc']);rel=abs(res)/newscale
++   assert rel<=.01,('ENERGY_RESIDUAL',rel,res,newscale)
++   if s['step']%100==0 or np.any(dd):
++    new=model.evaluate(s['x'],s['d']);old=model.evaluate(s['x'],p['d']) if np.any(dd) else new;uc,fc,pairs=contact.evaluate(s['x'],s['d']);error('native_force_N',np.max(abs(new['force']-s['material_force'])));error('force_port_N',np.max(abs(s['force']-s['material_force']-fc-s['external_force'])));error('native_U_J',abs(new['U']-sc[0]));error('dissipation_increment_J',abs(old['U']-new['U']-(sc[1]-p['scalars'][1])));error('pair_contact_U_J',abs(uc-s['Uc']));error('work_quadrature_4_vs_8_J',abs(winc-ns.tool.work(p['x'],s['x'],p['time'],s['time'],8)))
++    assert max(err['native_force_N'],err['force_port_N'])<1e-12 and max(err['native_U_J'],err['dissipation_increment_J'],err['pair_contact_U_J'])<1e-17
++   W=wnew;Jc=jnew;scale=newscale
++   meanforce=ns.tool.mean_force(p['time'],s['time']);impulse+=h*meanforce.sum(0);absolute_impulse+=h*np.linalg.norm(meanforce,axis=1).sum();rotation_impulse+=h*np.cross(ref['X'],meanforce).sum(0)
++   geometry=ns.tool.geometry_metrics(s['x'])
++   if geometry_first is None and (geometry['max_loaded_displacement_m']>.1*GAP or geometry['max_surface_normal_rotation_deg']>5):
++    geometry_first=dict(time_s=s['time'],step=s['step'],**geometry);save(case,'first_frozen_geometry_limit.npz',s)
++   event('first_kappa_exceeds_s0',np.flatnonzero((s['kappa']>on)&~cut),s);event('first_softening',np.flatnonzero((s['d']>0)&~cut),s);event('first_failure',nf,s)
++   if len(nf):cached=graph.topology(ref,s['d'])
++   lab,sizes,attached=cached;free=sizes[~attached];large=int(free.max(initial=0));medium=(free>=20)&(free<=200);debris=free[free<=2].sum();cs=component_row(s,bool(len(nf)))
++   if large>=2 and 'first_multinode' not in events:
++    events['first_multinode']=dict(time_s=s['time'],step=s['step'],component_ids=[q['component_id'] for q in cs],evidence='keys/first_multinode.npz');save(case,'first_multinode.npz',s)
++   score=selection_key(free,n)
++   if score>maxscore:maxscore=score;save(case,'max_multifragment.npz',s)
++   for t,key in [(RISE,'rise_end'),(HOLD,'peak_load'),(OFF,'upper_drive_off'),(COHORT,'common_cohort')]:
++    if abs(s['time']-t)<1e-14:save(case,key+'.npz',s)
++   if int(np.sum((s['d']==1)&~cut)) and s['failed_tension_max_N']>1e-20:raise AssertionError('FAILED_BOND_RESIDUAL_FORCE')
++   if s['time']>=snap_next-1e-14:save(case,f'frame_{s["step"]:06d}.npz',s);snap_next+=50e-6
++   diameter=(6*free*V/np.pi)**(1/3);dfrac=float(debris/free.sum()) if free.sum() else None;instant=scalar_metrics(free,n)['instant_target']
++   if instant and 'first_instant_target' not in events:
++    events['first_instant_target']=dict(time_s=s['time'],step=s['step'],evidence='keys/first_instant_target.npz');save(case,'first_instant_target.npz',s)
++   row=dict(step=s['step'],time_s=s['time'],dt_s=h,phase=ns.tool.phase(s['time']),shear_peak_Pa=ns.tool.peak(s['time']),net_force_x_N=float(s['external_force'][:,0].sum()),net_force_y_N=float(s['external_force'][:,1].sum()),net_force_z_N=float(s['external_force'][:,2].sum()),sum_force_norm_N=float(np.linalg.norm(s['external_force'],axis=1).sum()),net_moment_z_Nm=float(np.cross(ref['X'],s['external_force'])[:,2].sum()),absolute_impulse_Ns=absolute_impulse,impulse_x_Ns=impulse[0],impulse_y_Ns=impulse[1],impulse_z_Ns=impulse[2],moment_impulse_z_Nms=rotation_impulse[2],bulk_failed=int(np.sum((s['d']==1)&~cut&(bt==1))),interface_failed=int(np.sum((s['d']==1)&~cut&(bt==2))),softened=int(np.sum((s['d']>0)&~cut)),attached_nodes=int(sizes[attached].sum()),detached_nodes=int(free.sum()),components=len(free),largest_nodes=large,largest_fraction=large/n,N20_200=int(medium.sum()),mass_fraction20_200=float(free[medium].sum()/n),N_ge34=int(np.sum(free>=34)),N_ge114=int(np.sum(free>=114)),N_ge200um=int(np.sum(diameter>=200e-6)),N_ge300um=int(np.sum(diameter>=300e-6)),debris12_nodes=int(debris),debris12_detached_fraction=dfrac,instant_target=instant,W_J=W,U_J=float(sc[0]),K_J=s['K'],D_J=float(sc[1]),Uc_J=s['Uc'],Jc_J=Jc,numerical_damping_work_J=0.,R_J=res,relative_R=rel,max_dd=float(dd.max()),max_speed_m_s=float(np.linalg.norm(s['velocity'],axis=1).max()),max_kappa=float(s['kappa'][~cut].max()))
++   row.update(scalar_metrics(free,n))
++   row.update(geometry)
++   if writer is None:writer=csv.DictWriter(stream,fieldnames=list(row));writer.writeheader()
++   writer.writerow(row);rows.append(row);changed=np.flatnonzero(dd>0)
++   if len(changed):changes.write(json.dumps(dict(step=s['step'],time_s=s['time'],original_bond_ids=changed+1,d=s['d'][changed]),default=cv)+'\n')
++   if s['step']%1000==0:stream.flush();history.flush();changes.flush();print('STEP',name,s['step'],s['time'],'tau',row['shear_peak_Pa'],'soft',row['softened'],'N20',row['N20_200'],'largest',large,'R',rel,'wall',time.perf_counter()-start,flush=True)
++   prev=s
++  save(case,'final.npz',s)
++ except BaseException as exc:
++  stop.append(repr(exc));(case/'FAILURE_TRACEBACK.txt').write_text(traceback.format_exc());save(case,'failed_unaccepted.npz',s);s=prev;save(case,'last_accepted.npz',s)
++ finally:stream.close();history.close();changes.close()
++ count,raw=ns.l.gather_bonds();actual=np.ctypeslib.as_array(raw,shape=(3*count,)).reshape(-1,3)[:,1:].copy();actual.sort(1);wanted=b[ns.field(3)<1]+1;native_topology=bool(np.array_equal(np.sort(actual[:,0]*N+actual[:,1]),np.sort(wanted[:,0]*N+wanted[:,1])));assert native_topology
++ assert np.array_equal(ns.field(13),on);ns.close()
++ summary=dict(status='COMPLETED' if not stop else 'NUMERICALLY_UNRESOLVED',name=name,uniform_material=True,accepted_steps=len(rows),time_s=float(s['time']),stop_reasons=stop,events=events,last_row=rows[-1] if rows else None,max_independent_errors=err,max_relative_energy_residual=max((q['relative_R'] for q in rows),default=0),max_medium_components=max((q['N20_200'] for q in rows),default=0),history_max_free_nodes=max((q['largest_nodes'] for q in rows),default=0),secondary_events=secondary,predictive_substeps=substeps,predictive_rejections=rejects,wall_s=time.perf_counter()-start,cpu_s=time.process_time()-cpu,peak_RSS_bytes=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss*1024,library_sha256=sha(LIB),native_topology_matches_current_native=True,original_onsets_unchanged=True,label=ns.tool.label,mechanical_status='MECHANICAL_REQUIREMENT_ONLY' if name=='inverse' else 'PHYSICS_APPROXIMATION',frozen_geometry_first_diagnostic=geometry_first,traction_multiplier=ns.tool.scale,physical_template_peak_Pa=ns.tool.physical_peak)
++ dump(case/'COMPONENT_REGISTRY.json',registry);dump(case/'FRACTURE_EVENTS.json',events);dump(case/'SUMMARY.json',summary);print('DONE',name,summary['status'],summary['wall_s'],flush=True);return summary
++if __name__=='__main__':
++ p=argparse.ArgumentParser();p.add_argument('--name',required=True,choices=['stokes','inverse']);args=p.parse_args();result=run(args.name);raise SystemExit(0 if result['status']=='COMPLETED' else 2)
+--- /dev/null
++++ b/clot_clearance/analysis/clot_acoustic_streaming_shear_multifragment_v1/run_stokes.sh
+@@ -0,0 +1,7 @@
++#!/bin/bash
++set -euo pipefail
++source /workspace/y_clot/env.sh
++export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
++export LD_LIBRARY_PATH=/workspace/y_clot/project/verification/clot_multifragment_breakup_v1/20261017T110849Z/build:${LD_LIBRARY_PATH:-}
++cd /workspace/y_clot/project
++exec python -u /workspace/y_clot/project/analysis/clot_acoustic_streaming_shear_multifragment_v1/run_shear_cases.py --name stokes
+--- /dev/null
++++ b/clot_clearance/analysis/clot_acoustic_streaming_shear_multifragment_v1/seal.py
+@@ -0,0 +1,29 @@
++from common import *
++import subprocess,difflib,shutil,datetime
++assert json.loads((O/'DELIVERY_VALIDATION.json').read_text())['status']=='PASS'
++assert json.loads((O/'WSL_DOCUMENT_UPDATE.json').read_text())['status']=='PASS'
++visual=json.loads((O/'VISUAL_REVIEW.json').read_text());assert visual['status']=='PASS'
++for relative,expected in visual['figure_sha256'].items():assert sha(R/relative)==expected,relative
++baseline=json.loads((O/'BASELINE_MANIFEST.json').read_text())['files']
++for path,entry in baseline.items():assert sha(Path(path))==entry['sha256'],path
++dump(O/'BASELINE_FINAL_IDENTITY.json',dict(status='PASS',files_verified=len(baseline),scope='Reused native library, prior sealed manifest, model/graph dependencies and copied reference evidence remain byte-identical.'))
++services={}
++for name in ['clot_shear_stokes_20261017','clot_shear_inverse_20261017']:
++ result=subprocess.run(['supervisorctl','status',name],capture_output=True,text=True).stdout;assert 'EXITED' in result,result;services[name]=result.strip()
++dump(O/'SERVICE_FINAL_STATE.json',services)
++deps=[LIB,R/'analysis/v3_softening_pilot_v1/native.py',R/'analysis/softening_feasibility_v1/model.py',R/'analysis/v3_chunk_fragmentation_mechanism_v1/graph_ops.py',HA/'analyze.py']
++dump(O/'DEPENDENCY_SHA256.json',{str(p):sha(p) for p in deps})
++sources=[p for p in A.iterdir() if p.is_file() and p.suffix in ['.py','.sh','.md']];dump(O/'SOURCE_SHA256.json',{str(p.relative_to(R)):sha(p) for p in sources})
++patch=''.join(''.join(difflib.unified_diff([],p.read_text().splitlines(True),fromfile='/dev/null',tofile='b/clot_clearance/'+str(p.relative_to(R)))) for p in sorted(sources));(O/'SOURCE_DIFF.patch').write_text(patch);shutil.copy2(A/'REPRODUCE.md',O/'REPRODUCE.md')
++ep=json.loads((O/'ENTRYPOINT_UPDATE.json').read_text());assert ep['status']=='PASS' and sha(R/ep['path'])==ep['after_sha256']
++files=[dict(path=ep['path'],kind='file',bytes=(R/ep['path']).stat().st_size,sha256=ep['after_sha256'])]
++for root in [A,O,F]:
++ for p in sorted(root.rglob('*')):
++  if '__pycache__' in p.parts or p.name in ['DELIVERY_MANIFEST.json','LOCAL_READBACK.json']:continue
++  if not p.is_file():continue
++  assert '.tmp' not in p.name,p
++  if p.is_symlink():
++   target=p.resolve();assert target.is_relative_to(O);files.append(dict(path=str(p.relative_to(R)),kind='symlink',target=os.readlink(p),target_sha256=sha(target)))
++  else:files.append(dict(path=str(p.relative_to(R)),kind='file',bytes=p.stat().st_size,sha256=sha(p)))
++dump(O/'DELIVERY_MANIFEST.json',dict(status='SEALED',task=TASK,run=RUN,utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),file_count=len(files),regular_file_bytes=sum(q.get('bytes',0) for q in files),files=files,server_dependencies='Reused native binary and upstream actual HDF5 remain on server; source/hash/schema/compact values are delivered. This is not a server image.'))
++print('SEALED',len(files),sum(q.get('bytes',0) for q in files),sha(O/'DELIVERY_MANIFEST.json'))
+--- /dev/null
++++ b/clot_clearance/analysis/clot_acoustic_streaming_shear_multifragment_v1/shear_loading.py
+@@ -0,0 +1,50 @@
++"""Actual top-lattice triangles and conservative barycentric load transfer.
++
++Frozen reference surface: no unearned current-surface/FSI claim.
++The high-amplitude case scales traction only; it never rescales a claimed
++bubble field or reports an implied high-speed Stokes solution as physical.
++"""
++from common import *
++from acoustic_streaming_shear import *
++from scipy.sparse import csr_matrix,save_npz
++
++class ShearLoad:
++ def __init__(self,ref,name):
++  assert name in ['stokes','inverse'];self.name=name;self.ref=ref;self.flow=StokesMode();self.N=len(ref['X']);X=ref['X'];top=ref['top_ids']-1
++  xs=np.unique(X[top,0]);ys=np.unique(X[top,1]);lookup={(round(X[i,0]/DX,6),round(X[i,1]/DX,6)):i for i in top};tri=[]
++  for i in range(len(xs)-1):
++   for j in range(len(ys)-1):
++    q=[lookup[(round(x/DX,6),round(y/DX,6))] for x,y in [(xs[i],ys[j]),(xs[i+1],ys[j]),(xs[i+1],ys[j+1]),(xs[i],ys[j+1])]]
++    tri.extend([[q[0],q[1],q[2]],[q[0],q[2],q[3]]] if (i+j)%2==0 else [[q[0],q[1],q[3]],[q[1],q[2],q[3]]])
++  self.tri=np.asarray(tri);vertices=X[self.tri];cross=np.cross(vertices[:,1]-vertices[:,0],vertices[:,2]-vertices[:,0]);self.area=.5*np.linalg.norm(cross,axis=1);self.normal=cross/(2*self.area[:,None]);self.cent=vertices.mean(1)
++  self.W=csr_matrix((np.full(self.tri.size,1/3),(self.tri.ravel(),np.repeat(np.arange(len(tri)),3))),shape=(self.N,len(tri)))
++  self.mode=np.sin(WAVENUMBER*self.cent[:,1]);self.unit_face_force=self.area[:,None]*self.mode[:,None]*np.array([1.,0,0]);self.unit_node_force=self.W@self.unit_face_force
++  dense=np.linspace(0,END,14401);self.physical_peak=float(self.flow.amplitude(dense).max()*np.max(abs(self.mode)))
++  self.scale=1. if name=='stokes' else 1000/self.physical_peak
++  self.boundaries=[RISE,HOLD,OFF,COHORT,END];self.loaded_ids=np.flatnonzero(np.linalg.norm(self.unit_node_force,axis=1)>1e-30)
++  self.label='PRESCRIBED_STOKES_SHEAR_TEMPLATE' if name=='stokes' else 'INVERSE_SHEAR_REQUIREMENT'
++ def amplitude(self,t):return self.scale*self.flow.amplitude(t)
++ def force(self,t):return float(self.amplitude(t))*self.unit_node_force
++ def faces(self,t):return float(self.amplitude(t))*self.unit_face_force
++ def peak(self,t):return float(abs(self.amplitude(t))*np.max(abs(self.mode)))
++ def phase(self,t):return 'RISE' if t<RISE else 'HOLD' if t<HOLD else 'DRIVE_DOWN' if t<OFF else 'VISCOUS_DECAY_OBSERVATION'
++ def mean_force(self,t0,t1,order=4):
++  q,w=np.polynomial.legendre.leggauss(order);t=(t1+t0)/2+(t1-t0)*q/2
++  return .5*float(w@self.amplitude(t))*self.unit_node_force
++ def work(self,x0,x1,t0,t1,order=4):return float(np.sum(self.mean_force(t0,t1,order)*(x1-x0)))
++ def geometry_metrics(self,x):
++  moved=x[self.tri];cross=np.cross(moved[:,1]-moved[:,0],moved[:,2]-moved[:,0]);area=.5*np.linalg.norm(cross,axis=1);normal=cross/np.maximum(2*area[:,None],1e-30)
++  return dict(max_loaded_displacement_m=float(np.linalg.norm(x[self.loaded_ids]-self.ref['X'][self.loaded_ids],axis=1).max()),max_surface_normal_rotation_deg=float(np.degrees(np.arccos(np.clip(np.sum(normal*self.normal,axis=1),-1,1))).max()),max_surface_area_ratio=float((area/self.area).max()),min_surface_area_ratio=float((area/self.area).min()))
++ def audit(self):
++  X=self.ref['X'];ff=self.faces(HOLD);fn=self.force(HOLD);v=np.random.default_rng(20261017).normal(size=X.shape)*.001;vf=self.W.T@v
++  force_error=float(np.linalg.norm(fn.sum(0)-ff.sum(0)));moment_error=float(np.linalg.norm(np.cross(X,fn).sum(0)-np.cross(self.cent,ff).sum(0)));power_error=float(abs(np.sum(fn*v)-np.sum(ff*vf)))
++  assert force_error<1e-18 and moment_error<1e-21 and power_error<1e-20 and np.all(self.normal[:,2]>1-1e-14)
++  return dict(status='PASS',triangles=len(self.tri),loaded_material_nodes=len(self.loaded_ids),area_m2=float(self.area.sum()),min_weight=1/3,max_weight=1/3,negative_weights=0,force_error_N=force_error,moment_error_Nm=moment_error,virtual_power_error_W=power_error,max_node_force_N=float(np.linalg.norm(fn,axis=1).max()),sum_nodal_force_norm_N=float(np.linalg.norm(fn,axis=1).sum()),sum_face_force_norm_N=float(np.linalg.norm(ff,axis=1).sum()),net_force_N=fn.sum(0),torque_Nm=np.cross(X,fn).sum(0),local_force_amplification_bound='Convex 1/3 weights; no extrapolation or sign reversal introduced by mapping',coupling='FROZEN_SURFACE_ONE_WAY',surface_definition='Top boundary lattice squares split into actual original-node triangles, alternating diagonals; not an invented medical shell',force_quadrature='Piecewise-constant centroid stress per actual triangle; barycentric 1/3 distribution',normal_load_N=0,physical_baseline_peak_face_Pa=self.physical_peak,traction_multiplier=self.scale)
++
++def freeze():
++ ref=load_npz(O/'provenance/reference.npz');a=ShearLoad(ref,'stokes');b=ShearLoad(ref,'inverse');times=np.linspace(0,END,145)
++ save_npz(O/'SMALL_SURFACE_MAPPING.npz',a.W)
++ np.savez_compressed(O/'SHEAR_TRACTION_FIELD.npz',time_s=times,original_atom_ids=np.arange(1,len(ref['X'])+1),loaded_atom_ids=a.loaded_ids+1,reference_coordinates_m=ref['X'],triangle_atom_ids=a.tri+1,triangle_vertices_m=ref['X'][a.tri],centroid_m=a.cent,area_m2=a.area,n_clot=a.normal,stokes_shear_traction_Pa=np.array([a.faces(t)/a.area[:,None] for t in times]),normal_traction_Pa=np.zeros((len(times),len(a.tri),3)),stokes_node_force_N=np.array([a.force(t) for t in times]),inverse_traction_multiplier=np.array(b.scale))
++ dump(O/'SHEAR_PROTOCOL.json',dict(cases={'stokes':dict(label=a.label,peak_face_shear_Pa=a.physical_peak,upper_speed_m_s=SPEED),'inverse':dict(label=b.label,evidence='MECHANICAL_REQUIREMENT_ONLY',peak_face_shear_Pa=1000,traction_multiplier=b.scale,gate='Only after A completed with no meaningful fragmentation; known historical 1000 Pa uniform shear detached 882 nodes, but counter-shear and unloading differ so target threshold is unknown.')},same_geometry_and_space_time_mode=True,max_formal_cases=2,native_base_dt_s=BASE,min_dt_s=MIN_H,max_dd=.1,relative_energy_tolerance=.01,begin_s=0,end_s=END,post_upper_drive_stop_s=OFF,near_unloaded_cohort_s=COHORT,cohort_remaining_load_fraction=float(a.peak(COHORT)/a.physical_peak),comparison='B/A is a controlled multiplier between these templates, NOT a bubble capacity deficit or success threshold',surface_limitation='Frozen top nodes remain loaded after motion or detachment. No updated fluid field; flag first displacement>0.1gap or rotation>5deg as conservative diagnostic, not a validated cutoff.'))
++ dump(O/'SMALL_SURFACE_MAPPING_AUDIT.json',{'stokes':a.audit(),'inverse':b.audit()});print('SHEAR_PROTOCOL_FROZEN',a.physical_peak,b.scale)
++if __name__=='__main__':freeze()
+--- /dev/null
++++ b/clot_clearance/analysis/clot_acoustic_streaming_shear_multifragment_v1/streaming_interface.py
+@@ -0,0 +1,22 @@
++"""Unified provenance-aware SI entrypoint for future acoustic-fluid coupling."""
++from acoustic_streaming_shear import *
++FLOW_CLASSES={
++ 'FIRST_ORDER_OSCILLATORY_FLOW':'Acoustic-period velocity; pressure phasors alone do not supply the near-wall viscous solution.',
++ 'SECOND_ORDER_MEAN_STREAMING':'Cycle-averaged second-order flow with consistent oscillatory boundary conditions; not yet solved here.',
++ 'PRESCRIBED_STOKES_SHEAR_TEMPLATE':'Explicitly imposed non-acoustic viscous boundary forcing, computed in this round.',
++}
++def evaluate(request):
++ label=request['model_label']
++ if label=='BUBBLE_DRIVEN_STREAMING_MODEL':return bubble_model_input_gate(request)
++ if label!='PRESCRIBED_STOKES_SHEAR_TEMPLATE':raise ValueError('Unsupported physical model; inverse requirements belong to the mechanical load adapter')
++ # The frozen validated model has a defined parameter domain. Do not silently
++ # infer viscosity, gap, mean boundary velocity or clot registration from sound.
++ expected=dict(rho_kg_m3=FLUID_RHO,mu_Pa_s=MU,gap_m=GAP,upper_speed_m_s=SPEED,wavelength_m=WAVELENGTH)
++ for key,value in expected.items():
++  if request.get(key)!=value:raise ValueError(f'{key} must explicitly match this frozen template ({value})')
++ time=float(request['time_s']);assert 0<=time<=END
++ coordinates=np.asarray(request['local_surface_coordinates_m']);normals=np.asarray(request['solid_to_fluid_normals']);assert coordinates.shape==normals.shape and coordinates.shape[-1]==3
++ assert np.all((coordinates[:,2]>=0)&(coordinates[:,2]<=GAP)), 'Coordinates must be in the explicitly defined local fluid gap'
++ assert np.max(abs(np.linalg.norm(normals,axis=-1)-1))<1e-10
++ flow=StokesMode();fields=flow.field(coordinates[:,1],coordinates[:,2],time);shear,normal=traction(fields['gradient_s_inv'],fields['pressure_increment_Pa'],normals)
++ return dict(status='COMPUTED_TEMPLATE',model_label=label,evidence='PHYSICS_APPROXIMATION',**fields,tangential_traction_Pa=shear,normal_traction_Pa=normal,time_s=time,model_spec=spec(),acoustic_inputs_used=False,bubble_inputs_used=False,surface_scope='Stress projection in the prescribed local gap. Arbitrary normals do not create a new curved no-slip boundary solution.')
+--- /dev/null
++++ b/clot_clearance/analysis/clot_acoustic_streaming_shear_multifragment_v1/update_entrypoints.py
+@@ -0,0 +1,22 @@
++"""Prepend the current flow/shear entrypoint; preserve the previous pointer text."""
++from common import *
++import difflib
++assert json.loads((O/'DELIVERY_VALIDATION.json').read_text())['status']=='PASS'
++q=json.loads((O/'ANALYSIS.json').read_text());p=R/'ACTIVE_DEVELOPMENT_ENTRYPOINTS.md';raw=p.read_bytes();old=raw.decode();assert TASK not in old
++backup=O/'entrypoints';backup.mkdir(exist_ok=True);(backup/'ACTIVE_DEVELOPMENT_ENTRYPOINTS.before.md').write_bytes(raw)
++lines=[f'# 当前声流／剪切开发入口（{RUN}）',f'当前任务：`{TASK}`。两组3.6ms原生小试样已完成，材料与native库保持不变。',
++ '**当前主线为流体剪切，不继续压头迭代。** 真实微泡Streaming尚未确定；可计算路径为明确标注的连续反向Stokes剪切模板及独立机械需求牵引。',
++ f'- 入口：`analysis/{TASK}/acoustic_streaming_shear.py`、`streaming_interface.py`、`shear_loading.py`、`native.py`、`run_shear_cases.py`。表面牵引、N单位原始ID传递、不可逆损伤与真实存活连接均实际执行。',
++ '- 试样1792材料点+336锚点；dx50µm，原95666键/2736预切保持。实际顶面非负三角权重；不新增预切、不改G/K/s0/sc。',
++ '- 模式：sin(2πy/700µm)沿x反向剪切，25µm间隙、μ1mPa·s、4mm/s规定上边界；2ms升、2.4ms降、2.8ms停驱、3.6ms结束。B只放大牵引至1000Pa，不代表微泡流体能力。']
++for name,x in q.items():lines.append(f'- {name}：峰值{x["peak_shear_Pa"]:.9g}Pa；末态游离{int(x["final"]["detached_nodes"])}点，历史最大块{x["history_max_free_nodes"]}点，历史最多20–200节点块{x["history_max_N20_200"]}，完整目标={x["exploratory_target_met"]}。')
++lines += ['- 声学/气泡输入已核对，但缺少当前血栓配准、间隙及近壁一阶/二阶流场。APECSS缓存黏度2mPa·s，与上述独立模板不同；声压、R(t)、质心速度均不能直接当作Streaming剪切。',
++ '- V3 3611实际CFD三角面仅作映射审计。旧带符号映射存在明显局部差异；非负核牺牲力矩。不能仅凭全局守恒认证局部传递。未运行新完整V3、FSI或优化trial。',
++ '- 参考面冻结，移动/脱离后仍沿原始ID加载；大变形阶段只支持死牵引机械探索。新裂面应力和当前表面重算尚未完成。',
++ f'- 先读 `verification/{TASK}/{RUN}/FINAL_STATUS.json`、`ACTIVE_STREAMING_SHEAR_PIPELINE.json`、20问 `REVIEW_CLOT_ACOUSTIC_STREAMING_SHEAR_MULTIFRAGMENT_V1.md`、`DELIVERY_VALIDATION.json`；图表入口 `results/{TASK}/{RUN}/OPEN_RESULTS.html`。',
++ f'- 复用库 `{LIB.relative_to(R)}`，SHA `{sha(LIB)}`。本轮没有更改生产本构、MPI或restart；新实验必须新RUN，保留本轮封存输入与结果。',
++ '- 后续先补齐微泡近壁流体来源与局部表面耦合条件，再讨论微泡参数反向优化和V3。不得把损伤前兆、单大块或细粉当成多个凝聚性碎块。',
++ '## 历史入口原文（保留，不代表当前加载主线）']
++new='\n\n'.join(lines)+'\n\n'+old;assert p.read_bytes()==raw;p.write_text(new);assert p.read_text().endswith(old)
++(backup/'ACTIVE_DEVELOPMENT_ENTRYPOINTS.diff').write_text(''.join(difflib.unified_diff(old.splitlines(True),new.splitlines(True),fromfile='before',tofile='after')))
++dump(O/'ENTRYPOINT_UPDATE.json',dict(status='PASS',path=str(p.relative_to(R)),before_sha256=hashlib.sha256(raw).hexdigest(),after_sha256=sha(p),history_preserved_exactly=True));print('ENTRYPOINT_UPDATED',sha(p))
+--- /dev/null
++++ b/clot_clearance/analysis/clot_acoustic_streaming_shear_multifragment_v1/update_wsl_document.py
+@@ -0,0 +1,27 @@
++"""Local stdlib-only update; exact historical bytes preserved outside new block."""
++from pathlib import Path
++import json,hashlib,difflib
++root=Path(__file__).resolve().parents[2];task='clot_acoustic_streaming_shear_multifragment_v1';run='20261017T132706Z';out=root/'verification'/task/run
++doc=Path('/home/lzy/projects/clot_rupture.md');folder=out/'wsl_document';folder.mkdir(exist_ok=True)
++def read(p):return json.loads(p.read_text())
++def sha(raw):return hashlib.sha256(raw).hexdigest()
++assert read(out/'DELIVERY_VALIDATION.json')['status']=='PASS'
++q=read(out/'ANALYSIS.json');status=read(out/'FINAL_STATUS.json');bridge=read(out/'CRACK_BRIDGE_AUDIT.json')['cases'];mapping=read(out/'SURFACE_MAPPING_AUDIT.json')['v3'];resources=read(out/'RUN_RESOURCES.json')
++raw=doc.read_bytes();text=raw.decode();heading=f'**恢复声流／流体剪切主线（{run}，2026-10-17）**';assert heading not in text
++backup=folder/'clot_rupture.before.md';assert not backup.exists();backup.write_bytes(raw)
++parts=[heading+'：停止继续迭代刚性压头。此前单/双压头属于规定运动的机械法向接触代理，保留历史证据，但不是微泡声流或流体表面剪切。当前入口为acoustic_streaming_shear.py → 原始表面三角形 → native外力回调 → 不可逆κ/d → attachment-aware原始存活连接。',
++ '实际重新核对F1/F10S/APECSS源数据：F1是其自身几何的声学解，F10S为2.5MHz均匀水控制代理；APECSS提供有效叶内体积谐波，质心轨迹只属于原坐标。没有当前血栓配准/间隙、近壁一阶速度与振荡边界、二阶平均流体解。STREAMING_LOAD_NOT_YET_DETERMINED，不能把声压、R(t)或气泡质心速度直接当成血栓表面声流应力。缓存黏度2mPa·s，本轮历史Stokes模板1mPa·s，二者并非同一套完整介质耦合。',
++ '本轮唯一模式为PRESCRIBED_STOKES_SHEAR_TEMPLATE：u=(sin(2πy/700µm)v(z,t),0,0)，v_t=ν(v_zz−k²v)，25µm间隙、底壁静止、上边界4mm/s的连续反向剪切、初始静止、零压力增量。sinh稳态项及正弦扩散模态实际求解并以独立有限差分验证；该无限平行边界模型的无散和零对流严格成立，但没有泡驱动，也没有有限血栓边缘/变形反馈。',
++ '保持1792材料点、336锚点、95666原始键、2736原预切，以及G/K/s0/sc不变。实际顶面原节点三角形以1/3非负权重将牵引转成N，保持总力/力矩/虚功。上升2ms，2.4ms下降，2.8ms停驱，自然黏性衰减并观察至3.6ms。冻结参考面一向加载会继续作用于移动或脱离原节点；大变形后只能称机械死牵引探索，不宣称当前真实Streaming。',
++ f'真实V3面片只做映射审计：旧仿射映射权重最小/最大{mapping["signed_affine"]["min_weight"]:.6g}/{mapping["signed_affine"]["max_weight"]:.6g}，最大列绝对和{mapping["signed_affine"]["max_column_abs_sum"]:.6g}。新模式中{mapping["local_comparison"]["common_active_nodes"]}共同活跃点有{mapping["local_comparison"]["nodes_direction_difference_over_90deg"]}点与独立非负局部核合力夹角>90°，最大局部力预算比{mapping["local_comparison"]["signed_force_over_positive_local_force_budget_quantiles"][-1]:.6g}。这是实际合力比较，不能由负权重直接推断。非负替代牺牲一阶矩；没有简单裁零旧权重，没有完整运行V3。小试样P1三角积分的节点面积相对规则控制面积为2/3–4/3，按映射面积归一化剪切最大误差为峰值2.8112%，未做网格收敛认证。']
++for name,label in [('stokes','A：Stokes近似'),('inverse','B：反向剪切需求')]:
++ a=q[name];end=a['final'];m=a['final_metrics'];bridges=bridge[name]['final']['regions']
++ parts.append(f'{label}：实际面片峰值{a["peak_shear_Pa"]:.9g}Pa，末态软化{int(end["softened"])}、本体/界面完整失效{int(end["bulk_failed"])}/{int(end["interface_failed"])}，真实游离{int(end["detached_nodes"])}点/{int(end["components"])}分量。历史最大游离块{a["history_max_free_nodes"]}点，20–200块历史最大/末态{a["history_max_N20_200"]}/{int(end["N20_200"])}，细屑/脱离质量={m["fine_debris_mass_fraction_detached"]}，最大块/脱离质量={m["largest_free_fragment_fraction_detached"]}。W={end["W_J"]*1e9:.9g}nJ、D={end["D_J"]*1e9:.9g}nJ，最大相对能量残差{a["max_relative_energy_residual"]:.9g}；三历史诊断区存活跨界键{[r["surviving_crossing_bonds"] for r in bridges]}，全部按原始存活拓扑核算。')
++parts += [f'分层目标未改为最大断键或最大块：至少5个20–200节点自由分量、初始脱离质量≥10%、最大块≤脱离质量50%、细屑≤20%、内部真实存活连接和3.4→3.6ms有限近卸载观察。完整目标达成={status["five_fragment_target_met"]}；无脱离时比例保持null。B/A={status["template_traction_ratio"]:.8g}仅是同模式同几何时程的规定牵引倍数，不是声流不足倍数，更不是目标成功阈值。',
++ 'B的几何诊断在0.37725ms触发，早于0.88925ms首次软化；末态约99.65%外功转为动能，固定原始ID载荷继续加速已脱离材料，不能认证真实流体能量输入或碎裂效率。A未触发几何阈值也不代表运动壁面反馈或流体阻尼已验证。本轮建立了可复用的流体剪切到原生断裂路径，但声流源/边界、V3局部映射、大变形表面重算和材料校准仍限制物理结论。三维桥接连接能解释特定诊断区域尚未自由，不能从两工况唯一判定本构缺失混合模式。不得通过提高“预测声流”、人为删键或改材料达标。暂不启动微泡参数BoTorch闭环优化或真实V3；先补齐可信近壁流体源与耦合边界。',
++ f'两组主计算合计墙钟{resources["native_wall_s"]:.3f}s、CPU{resources["native_cpu_s"]:.3f}s，峰值RSS{resources["peak_RSS_bytes"]/2**20:.3f}MiB；每例1rank×1线程。原生库无修改，dt0.25µs/事件最小0.03125µs，Δd≤0.1和1%能量门槛保留，R不作耗散；完整ID损伤重放、所有接受态分量与关键FP64状态通过回读。',
++ f'见[本轮图表总览](temp_storage/clot_github_sync_20261015/clot_clearance/results/{task}/{run}/OPEN_RESULTS.html)、[20项科研问答](temp_storage/clot_github_sync_20261015/clot_clearance/verification/{task}/{run}/REVIEW_CLOT_ACOUSTIC_STREAMING_SHEAR_MULTIFRAGMENT_V1.md)。本轮仅两例，无新完整V3、无大规模优化。']
++block='\n\n'.join(parts)+'\n\n';i=text.index('# ⑥ 外加剪切');new=text[:i]+block+text[i:]
++assert doc.read_bytes()==raw;doc.write_text(new);after=doc.read_bytes();assert after.decode()==new and new.replace(block,'',1)==text
++(folder/'clot_rupture.after.md').write_bytes(after);(folder/'clot_rupture.diff').write_text(''.join(difflib.unified_diff(text.splitlines(True),new.splitlines(True),fromfile='clot_rupture.before.md',tofile='clot_rupture.after.md')))
++(out/'WSL_DOCUMENT_UPDATE.json').write_text(json.dumps(dict(status='PASS',path=str(doc),before_backup=str(backup),before_sha256=sha(raw),after_sha256=sha(after),history_preserved_exactly=True,readback_equal=True),ensure_ascii=False,indent=2)+'\n');print('WSL_DOCUMENT_UPDATED',sha(after))
+--- /dev/null
++++ b/clot_clearance/analysis/clot_acoustic_streaming_shear_multifragment_v1/v3_mapping_audit.py
+@@ -0,0 +1,34 @@
++"""Compare existing signed affine map with a separate nonnegative local kernel.
++Neither clipping signed weights nor claiming all force-conserving maps are local.
++No full V3 dynamics is run.
++"""
++from common import *
++from acoustic_streaming_shear import *
++from scipy.sparse import load_npz as sparse_load,csr_matrix,save_npz
++from scipy.spatial import cKDTree
++
++def main():
++ z=load_npz(CFD/'refined/CLOT_SURFACE_TRACTIONS.npz');geom=load_npz(MAP/'GEOMETRY_PREFLIGHT.npz');X=geom['X'];n=z['n_clot'];cent=z['surface_coordinates_m'];area=z['triangle_area_m2'];W=sparse_load(INV/'AFFINE_SCALAR_MAPPING.npz')
++ # Local positive alternative is independently constructed from geometry,
++ # NOT a zero-clipped signed affine map. It preserves partition of unity only.
++ dist,ids=cKDTree(X).query(cent,k=24);w=np.exp(-.5*(dist/HORIZON)**2)/(dist+DX/4)**2;w/=w.sum(1)[:,None]
++ Wp=csr_matrix((w.ravel(),(ids.ravel(),np.repeat(np.arange(len(cent)),24))),shape=W.shape)
++ flow=StokesMode();tau=float(flow.amplitude(HOLD));yc=.5*(X[:,1].min()+X[:,1].max());sine=np.sin(WAVENUMBER*(cent[:,1]-yc));direction=np.array([1.,0,0])-n*n[:,0,None]
++ ts=tau*sine[:,None]*direction;ff=area[:,None]*ts;v=np.random.default_rng(43).normal(size=X.shape)*.001;records={};forces={};moment=np.cross(cent,ff).sum(0);total=float(np.linalg.norm(ff,axis=1).sum());mscale=float(np.sum(np.linalg.norm(np.cross(cent-X.mean(0),ff),axis=1)))
++ for name,M in [('signed_affine',W),('nonnegative_local_kernel',Wp)]:
++  fn=M@ff;forces[name]=fn;vn=M.T@v;moment_node=np.cross(X,fn).sum(0);reconstructed=M.T@X
++  neighborhood=cKDTree(X).query(X,k=7)[1][:,1:];arean=M@area;density=fn/np.maximum(abs(arean[:,None]),DX**2/100);rough=float(np.mean(np.linalg.norm(density[:,None]-density[neighborhood],axis=2)))
++  record=dict(force_abs_error_N=float(np.linalg.norm(fn.sum(0)-ff.sum(0))),force_error_over_total_abs_force=float(np.linalg.norm(fn.sum(0)-ff.sum(0))/total),moment_abs_error_Nm=float(np.linalg.norm(moment_node-moment)),moment_error_over_total_abs_moment=float(np.linalg.norm(moment_node-moment)/mscale),power_abs_error_W=float(abs(np.sum(fn*v)-np.sum(ff*vn))),min_weight=float(M.data.min()),max_weight=float(M.data.max()),negative_weight_fraction=float(np.mean(M.data<0)),max_column_abs_sum=float(abs(M).sum(0).max()),max_centroid_reproduction_error_m=float(np.linalg.norm(reconstructed-cent,axis=1).max()),sum_node_force_norm_over_sum_face_norm=float(np.linalg.norm(fn,axis=1).sum()/total),max_nodal_force_N=float(np.linalg.norm(fn,axis=1).max()),nearest_neighbor_force_per_area_variation_Pa=rough)
++  assert record['force_error_over_total_abs_force']<1e-10 and record['power_abs_error_W']<1e-20
++  if name=='signed_affine':assert record['moment_error_over_total_abs_moment']<1e-10
++  records[name]=record
++ f=forces['signed_affine'];p=forces['nonnegative_local_kernel'];good=(np.linalg.norm(f,axis=1)>1e-18)&(np.linalg.norm(p,axis=1)>1e-18);dot=np.sum(f*p,axis=1);angles=np.degrees(np.arccos(np.clip(dot[good]/(np.linalg.norm(f[good],axis=1)*np.linalg.norm(p[good],axis=1)),-1,1)))
++ signed_absolute_support=abs(W)@np.linalg.norm(ff,axis=1);positive_budget=Wp@np.linalg.norm(ff,axis=1);active=positive_budget>1e-18;ratio=np.linalg.norm(f[active],axis=1)/positive_budget[active]
++ records['local_comparison']=dict(common_active_nodes=int(good.sum()),nodes_direction_difference_over_90deg=int(np.sum(angles>90)),direction_difference_deg_quantiles=np.quantile(angles,[0,.5,.95,1]),signed_force_over_positive_local_force_budget_quantiles=np.quantile(ratio,[0,.5,.95,1]),no_negative_weight_clipping=True,warning='Direction differences are aggregate actual nodal forces for this field, not inferred from weight signs. A positive map sacrifices exact reference moment; signed map may amplify local loads despite exact global balance.')
++ records['decision']=dict(status='V3_MAPPING_NOT_ADMITTED_FOR_DYNAMIC_STREAMING',selected_small_specimen='Actual-node top triangles use nonnegative barycentric weights with exact force/moment and adjoint virtual power',V3='Signed map retained for diagnostics, positive kernel is comparison only. Need boundary-conforming material/support refinement or a validated regularized traction transfer before claiming local V3 accuracy.',scope='Actual CFD exposed triangles; imposed local tangent-plane Stokes stress, not computed curved V3 streaming')
++ records['source_sha256']={str(p):sha(p) for p in [CFD/'refined/CLOT_SURFACE_TRACTIONS.npz',MAP/'GEOMETRY_PREFLIGHT.npz',INV/'AFFINE_SCALAR_MAPPING.npz']}
++ save_npz(O/'V3_NONNEGATIVE_COMPARISON_MAPPING.npz',Wp)
++ np.savez_compressed(O/'V3_SURFACE_MAPPING_DATA.npz',material_atom_id=geom['material_ids'],X=X,triangles_xyz_m=z['triangles_xyz_m'],triangle_mesh_node_ids=z['triangle_mesh_node_ids'],centroid_m=cent,area_m2=area,n_clot=n,shear_traction_Pa=ts,normal_traction_Pa=np.zeros_like(ts),face_force_N=ff,signed_node_force_N=f,nonnegative_node_force_N=p,positive_local_force_budget_N=positive_budget)
++ dump(O/'SURFACE_MAPPING_AUDIT.json',dict(v3=records,small=json.loads((O/'SMALL_SURFACE_MAPPING_AUDIT.json').read_text())))
++ print('V3_MAPPING_AUDIT_DONE',len(cent),records['local_comparison'])
++if __name__=='__main__':main()
+--- /dev/null
++++ b/clot_clearance/analysis/clot_acoustic_streaming_shear_multifragment_v1/validate_outputs.py
+@@ -0,0 +1,90 @@
++"""Replay original-ID damage and validate delivery, without new physics runs."""
++from analyze import *
++def main(case_names=('stokes','inverse')):
++    ref=load_npz(O/'provenance/reference.npz');assert read(O/'KEY_CHECKS.json')['status']=='PASS'
++    baseline=read(O/'BASELINE_MANIFEST.json')
++    for path,item in baseline['files'].items():assert sha(path)==item['sha256'],path
++    n=int(ref['clot_count']);N=len(ref['X']);b=ref['bonds'];bt=ref['bond_types'];cut=ref['initial_cut'];result={}
++    for name in case_names:
++        check_start=time.perf_counter()
++        case=O/'cases'/name;summary=read(case/'SUMMARY.json');request=read(case/'REQUEST.json');rows=histories(case)
++        assert summary['status']=='COMPLETED' and len(rows)==summary['accepted_steps'] and abs(rows[-1]['time_s']-END)<1e-14
++        # Runtime inputs stay frozen. Independently developed postprocessors are
++        # not imported by the formal driver and may be completed after launch.
++        runtime={'common.py','native.py','run_shear_cases.py','shear_loading.py','acoustic_streaming_shear.py','multifragment_objective.py'}
++        for filename in runtime:assert sha(A/filename)==request['source_sha256'][filename],filename
++        postprocessing_changes=[filename for filename,want in request['source_sha256'].items() if sha(A/filename)!=want]
++        assert not runtime.intersection(postprocessing_changes)
++        for filename,want in request['input_sha256'].items():assert sha(O/filename)==want,filename
++        assert request['library_sha256']==sha(LIB) and summary['original_onsets_unchanged'] and summary['native_topology_matches_current_native']
++        initial=load_npz(case/'keys/initial.npz');assert np.array_equal(initial['d'],cut.astype(float))
++        error=max(abs(q['W_J']-(q['U_J']-initial['scalars'][0]+q['K_J']-initial['K']+q['D_J']+q['Uc_J']-initial['Uc']-q['Jc_J'])-q['R_J']) for q in rows)
++        assert error<1e-20 and max(q['relative_R'] for q in rows)<=.01
++        assert max(q['max_dd'] for q in rows)<=.1+1e-10 and all(q['numerical_damping_work_J']==0 for q in rows)
++        keys={};tool=ShearLoad(ref,name);force_error=0.;states=0
++        for p in (case/'keys').glob('*.npz'):
++            assert 'failed' not in p.name
++            s=load_npz(p);step=int(s['step']);keys.setdefault(step,[]).append(p)
++            assert np.array_equal(s['atom_ids'],np.arange(1,N+1)) and np.array_equal(s['x'][n:],ref['X'][n:]) and not s['velocity'][n:].any()
++            assert np.all(s['d'][cut]==1) and not s['d'][bt==3].any()
++            oracle=tool.force(float(s['time']));force_error=max(force_error,float(np.max(abs(oracle-s['external_force']))))
++            assert force_error<1e-15 and not s['external_force'][n:].any() and float(s['failed_tension_max_N'])<1e-20
++            assert np.isfinite(s['x']).all() and np.isfinite(s['kappa']).all() and np.all(s['kappa']>=0)
++            states+=1
++        registry={int(k):v for k,v in read(case/'COMPONENT_REGISTRY.json').items()};count=0;topology_updates=0
++        events=gzip.open(case/'damage_events.jsonl.gz','rt');pending=next(events,None);damage=cut.astype(float);cached=graph.topology(ref,damage);lasttime=-1;previous_free=None
++        with gzip.open(case/'CONNECTED_COMPONENT_HISTORY.jsonl.gz','rt') as f:
++            for line in f:
++                z=json.loads(line);step=z['step'];assert z['time_s']>lasttime;lasttime=z['time_s'];changed=False
++                if pending:
++                    e=json.loads(pending)
++                    assert e['step']>=step
++                    if e['step']==step:
++                        ids=np.asarray(e['original_bond_ids'])-1;values=np.asarray(e['d']);assert len(set(ids))==len(ids) and not cut[ids].any() and np.all(values>=damage[ids]) and np.all(values<=1)
++                        changed=bool(np.any((values==1)&(damage[ids]<1)));damage[ids]=values;pending=next(events,None)
++                if changed:cached=graph.topology(ref,damage);topology_updates+=1
++                lab,sizes,att=cached;actual={tuple((np.flatnonzero(lab==i)+1).tolist()) for i in np.flatnonzero(~att)}
++                saved={tuple(registry[q['component_id']]['atom_ids']) for q in z['components']};assert actual==saved
++                assert z['attached_nodes']+z['detached_nodes']==n and sum(map(len,saved))==z['detached_nodes']
++                if step:assert rows[step-1]['detached_nodes']==z['detached_nodes'] and abs(rows[step-1]['time_s']-z['time_s'])<1e-15
++                key_state=None
++                for p in keys.get(step,[]):
++                    state=load_npz(p);assert np.array_equal(state['d'],damage),p
++                    if key_state is None:key_state=state
++                if changed or previous_free!=saved:
++                    for members in saved:
++                        boundary,inside=graph.boundary(ref,np.asarray(members)-1);assert not np.any(damage[boundary]<1)
++                for q in z['components']:
++                    assert not q['anchor_reachable'] and q['remaining_live_external_connections']==0
++                    if key_state is not None:
++                        s=key_state;ids=np.asarray(registry[q['component_id']]['atom_ids'])-1
++                        sh=shape(s['x'][ids]);assert np.allclose(sh['actual_span_m'],q['actual_span_m'],rtol=0,atol=1e-18)
++                        _,inside=graph.boundary(ref,ids);inside=inside[(bt[inside]==1)&~cut[inside]]
++                        assert q['internal_initial_bonds']==len(inside) and q['internal_alive_bonds']==int(np.sum(damage[inside]<1))
++                previous_free=saved;count+=1
++        events.close();assert pending is None and count==len(rows)+1
++        for e in summary['secondary_events']:
++            parent=set(registry[e['parent_component_id']]['atom_ids']);children=[set(registry[q]['atom_ids']) for q in e['children_component_ids']]
++            assert set.union(*children)==parent and sum(map(len,children))==len(parent)
++        for event in ['first_softening','first_failure']:
++            e=summary['events'].get(event)
++            if e:
++                s=load_npz(case/e['evidence']);ids=np.asarray(e['original_bond_ids'])-1
++                assert np.all(s['kappa'][ids]>S0[bt[ids]]) and not cut[ids].any()
++                assert np.all(s['d'][ids]==1) if event=='first_failure' else np.all(s['d'][ids]>0)
++        evidence=[case/filename for filename in ['history.csv','damage_events.jsonl.gz','CONNECTED_COMPONENT_HISTORY.jsonl.gz','COMPONENT_REGISTRY.json','REQUEST.json','SUMMARY.json']]+sorted((case/'keys').glob('*.npz'))
++        result[name]=dict(status='PASS',accepted_records=len(rows),component_records=count,topology_recomputations=topology_updates,accepted_FP64_states=states,all_accepted_memberships_match_original_graph=True,energy_reconstruction_error_J=error,reference_shear_force_error_N=force_error,runtime_source_and_protocol_frozen=True,nonruntime_postprocessing_files_completed_after_launch=postprocessing_changes,validator_sha256=sha(A/'validate_outputs.py'),raw_evidence_sha256={str(p.relative_to(case)):sha(p) for p in evidence},validation_wall_s=time.perf_counter()-check_start)
++        dump(case/'DELIVERY_VALIDATION.json',result[name])
++    combined={}
++    for name in ['stokes','inverse']:
++        case=O/'cases'/name;p=case/'DELIVERY_VALIDATION.json'
++        if not p.exists():continue
++        proof=read(p);assert proof['validator_sha256']==sha(A/'validate_outputs.py')
++        for filename,want in proof['raw_evidence_sha256'].items():assert sha(case/filename)==want
++        combined[name]=proof
++    status='PASS' if len(combined)==2 else 'PARTIAL_ONE_CASE'
++    dump(O/'DELIVERY_VALIDATION.json',dict(status=status,cases=combined,scope='Original-ID damage replay, full accepted component histories, shape, native shear coupling, accounting, frozen source/protocol. Each case validated once; unchanged proofs combined by SHA. No new physics case.'))
++    print('DELIVERY_VALIDATION',status,{k:{q:v[q] for q in ['accepted_records','component_records','accepted_FP64_states','validation_wall_s']} for k,v in combined.items()})
++if __name__=='__main__':
++    import argparse
++    p=argparse.ArgumentParser();p.add_argument('--case',choices=['stokes','inverse']);args=p.parse_args();main([args.case] if args.case else ['stokes','inverse'])

@@ -1,0 +1,20 @@
+--- /workspace/y_clot/project/analysis/clot_spatially_heterogeneous_variational_lps_v1/bond_bpm_peri_variational.cpp
++++ /workspace/y_clot/project/verification/clot_biphasic_heterogeneous_shear_fragmentation_v2/20261017T231900Z/baseline_capacity/bond_bpm_peri_variational.cpp
+@@ -24,7 +24,7 @@
+ void BondBPMPeriVariational::settings(int argc,char **argv){
+  if(argc!=1 || ready)error->all(FLERR,"variational requires one immutable reference file; reinitialization forbidden");
+  std::ifstream f(argv[0]);std::string magic;f>>magic>>n>>nb>>V;
+- if(magic!="LPSVAR_REFERENCE_V1" || n<1 || n>4096 || nb<1 || nb>1000000 || !(V>0))error->all(FLERR,"Invalid variational reference header");
++ if(magic!="LPSVAR_REFERENCE_V1" || n<1 || n>1000000 || nb<1 || nb>1000000 || !(V>0))error->all(FLERR,"Invalid variational reference header");
+  tags.resize(n);m.resize(n);bid.resize(nb);ei.resize(nb);ej.resize(nb);types.resize(nb);r.resize(nb);h.resize(nb);
+  for(int a=0;a<n;a++){f>>tags[a]>>m[a];if(!ordinal.emplace(tags[a],a).second)error->all(FLERR,"Duplicate reference atom ID");}
+  for(int b=0;b<nb;b++){tagint i,j;int im[3];f>>bid[b]>>i>>j>>types[b]>>r[b]>>h[b]>>im[0]>>im[1]>>im[2];
+@@ -207,7 +207,7 @@
+ }
+ void BondBPMPeriVariational::deserialize(const std::string &text){
+  std::istringstream s(text);std::string magic;s>>magic>>n>>nb>>V>>K>>G>>delta>>s0>>sc;
+- if((magic!="LPSVAR_TYPED_RESTART_V2" && magic!="LPSVAR_ID_ONSET_RESTART_V3" && magic!="LPSVAR_ID_SOFTENING_RESTART_V4")||n<1||n>4096||nb<1||nb>1000000)error->all(FLERR,"Missing or incompatible variational restart history");
++ if((magic!="LPSVAR_TYPED_RESTART_V2" && magic!="LPSVAR_ID_ONSET_RESTART_V3" && magic!="LPSVAR_ID_SOFTENING_RESTART_V4")||n<1||n>1000000||nb<1||nb>1000000)error->all(FLERR,"Missing or incompatible variational restart history");
+  s>>token>>commits>>events>>Diss>>lastdrop>>imported;tags.resize(n);m.resize(n);bid.resize(nb);ei.resize(nb);ej.resize(nb);types.resize(nb);r.resize(nb);h.resize(nb);kap.resize(nb);d.resize(nb);failed.resize(nb);
+  int nt;s>>nt;if(nt!=atom->nbondtypes)error->all(FLERR,"Restart bond type mismatch");onset_by_type.assign(nt+1,0);complete_by_type.assign(nt+1,0);for(int t=1;t<=nt;t++)s>>onset_by_type[t]>>complete_by_type[t];
+  if(magic=="LPSVAR_ID_ONSET_RESTART_V3" || magic=="LPSVAR_ID_SOFTENING_RESTART_V4"){s>>onset_field_loaded;onset_by_bond.resize(nb);for(double &value:onset_by_bond)s>>value;}

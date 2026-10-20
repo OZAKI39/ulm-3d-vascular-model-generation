@@ -1,0 +1,22 @@
+--- clot_rupture.before.md
++++ clot_rupture.md
+@@ -481,6 +481,19 @@
+ 
+ 见[载荷方向对照图表](temp_storage/clot_github_sync_20261015/clot_clearance/results/v3_chunk_fragmentation_load_direction_control_v1/20261016T105642Z/OPEN_RESULTS.html)、[28项科学审查](temp_storage/clot_github_sync_20261015/clot_clearance/verification/v3_chunk_fragmentation_load_direction_control_v1/20261016T105642Z/REVIEW_V3_CHUNK_FRAGMENTATION_LOAD_DIRECTION_CONTROL_V1.md)。
+ 
++
++**物理约束载荷反向设计原型（20261016T144922Z，2026-10-16）**：已实际完成局部非稳态Stokes牵引、真实V3表面守恒映射、Optuna/BoTorch提交与反馈、原生小试样、MEVO可实现性筛选的闭环。流体模型是H=25µm、μ=0.001Pa·s、ρ=1000kg/m³的平面Couette启动流，下壁静止、上壁速度为优化变量；并未计算微泡声流生成。驱动0.1ms平滑上升，优化0.4–0.8ms范围的关断时刻，显式计算黏性建立和尾流；压力增量0，Re_H≤0.1，未把历史Gaussian或背景CFD放大冒充Streaming。V3上的切平面投影仍属局部几何近似，不是完整曲面流场。
++
++复用真实含栓CFD的3611暴露面片及1927原始材料ID，保留原三角形网格节点ID。标量仿射权重满足参考位置重现，转置同权重插值面片速度；力、力矩、功率相对误差分别约1.21×10⁻¹⁵、2.81×10⁻¹⁵、8.94×10⁻¹⁴。约50.3%权重为负，最大列绝对和9.929，说明局部外推放大仍需评估；守恒检查不等于局部精度、变形后功率或双向FSI认证。全程标为FROZEN_SURFACE_ONE_WAY。
++
++既有1792材料点/336固定锚点的预裂小试样、endpoint-star、原生变分软化库和材料参数逐字节复用，外部载荷改为平顶面Stokes剪切，原位移夹持取消，底部锚点固定。三组随机初始样本后，BoTorch真实qLogEI候选完成第四组原生求解；SQLite和采样器状态跨进程恢复已实际完成。保留一次run 0回调名称不匹配的失败和同参数重试，未把失败当作零分。四组有效试验速度1.039–1.977mm/s、峰值剪切0.04155–0.07908Pa，累计17339接受步；均无新增软化、断键、脱离节点或≥14/34/114节点块体。最高新拉伸历史κ约9.24×10⁻⁵，仍远低于本体s0=0.15。冻结目标只有伸长前兆贡献，不是裂纹/块体证据；四条样本不能支持可靠GP或最优性结论。下一候选U=2.3839mm/s、关断0.75489ms已保存但未运行。
++
++四组实测原生墙钟合计399.111s、CPU399.002s、最大RSS约0.613GiB；最大相对能量余额约0.03419%，损伤耗能0。上一轮完整V3实测1797.796s，但任务规模/时长不同，本轮不报告加速倍数或虚构节约时间。未观察到有意义的凝聚裂纹响应，且曲面流体依据未验收，因此新增完整V3次数0。
++
++MEVO实际读取了历史F1 k-Wave复基底与当前F10S的复压力、APECSS有效叶、32粒子轨迹及Bjerknes力。F10S为均匀水声学代理、STRICT_ZERO背景流，3ms中心轨迹不能证明声流已形成；当前径向表外包范围R=1.779–1.781µm、f=2.499–2.501MHz、P=0.1–40000Pa，仍须检查有效叶。机械剪切至声压/微泡源项的转换缺失，整体MEVO_FEASIBILITY_STATUS=NOT_YET_EVALUABLE。CHUNK_FORMATION_STATUS=NOT_OBSERVED；没有识别出能产生块体的临界载荷。Gc、界面参数、宏观尺寸收敛和微泡声流均继续标记未验证。下一轮优先建立由现有径向谐波/群集状态驱动、包含真实近壁几何的局部受迫流动与表面牵引；不直接提高人工载荷或回到完整V3反复试错。本轮完成后停止。
++
++见[本轮9组PNG/SVG科研图表](temp_storage/clot_github_sync_20261015/clot_clearance/results/physics_constrained_load_inverse_design_v1/20261016T144922Z/OPEN_RESULTS.html)、[十五项科学问题与完整报告](temp_storage/clot_github_sync_20261015/clot_clearance/verification/physics_constrained_load_inverse_design_v1/20261016T144922Z/REVIEW_PHYSICS_CONSTRAINED_LOAD_INVERSE_DESIGN_V1.md)。
++
+ # ⑥ 外加剪切：模拟微泡对血块表面的“刮”
+ 
+ **完整公式**（作用在表面点 $i$上）：$\mathbf F_i^{\text{load}}(t)=A_i\;\tau_0\;g(t)\;\exp\!\Big(-\frac{\|\mathbf x_i(t)-\mathbf c\|^2}{2\sigma^2}\Big)\;(\mathbf I-\mathbf n_i\mathbf n_i^{\top})\,\mathbf e_x$

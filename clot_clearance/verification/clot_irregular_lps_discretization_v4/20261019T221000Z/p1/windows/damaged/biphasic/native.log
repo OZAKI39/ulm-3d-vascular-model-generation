@@ -1,0 +1,155 @@
+LAMMPS (30 Sep 2026)
+  using 1 OpenMP thread(s) per MPI task
+units si
+boundary m m m
+atom_style bond
+atom_modify map array sort 0 0
+newton on off
+special_bonds lj 0 1 1 coul 1 1 1
+read_data /workspace/y_clot/project/verification/clot_irregular_lps_discretization_v4/20261019T221000Z/p1/windows/damaged/biphasic/provenance/body.data extra/bond/per/atom 160 extra/special/per/atom 180
+Reading data file ...
+  orthogonal box = (-0.003 -0.003 -0.003) to (0.003 0.003 0.003)
+  1 by 1 by 1 MPI processor grid
+  reading atoms ...
+  10000 atoms
+  scanning bonds ...
+  282 = max bonds/atom
+  orthogonal box = (-0.003 -0.003 -0.003) to (0.003 0.003 0.003)
+  1 by 1 by 1 MPI processor grid
+  reading bonds ...
+  515058 bonds
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    0        1        1       
+  special bond factors coul:  1        1        1       
+   122 = max # of 1-2 neighbors
+   302 = max # of special neighbors
+  special bonds CPU = 0.017 seconds
+  read_data CPU = 0.538 seconds
+
+lattice sc 5.0000000000000002e-05
+Lattice spacing in x,y,z = 5e-05 5e-05 5e-05
+neighbor 0.0001 bin
+neigh_modify every 1 delay 0 check no
+comm_modify cutoff 0.00045149999999999997
+fix props all property/atom d_vfrac d_theta ghost yes
+set group all d_vfrac 1.2500000000000002e-13
+Setting atom values ...
+  10000 settings made for d_vfrac
+
+pair_style bpm/peri contact_distance_factor 1.0
+pair_coeff * * 3.7226771877469815e+20 0.0001505
+bond_style bpm/peri/variational /workspace/y_clot/project/verification/clot_irregular_lps_discretization_v4/20261019T221000Z/p1/windows/damaged/biphasic/provenance/reference.native
+
+bond_coeff 1 33333.333333333336 940 0.0001505 0.14999999999999999 0.17999999999999999
+bond_coeff 2 33333.333333333336 940 0.0001505 0.140625 0.16875000000000001
+bond_coeff 3 33333.333333333336 940 0.0001505 1 1.2
+special_bonds lj 0 1 1 coul 1 1 1
+timestep 2.4999999999999999e-07
+thermo 100000
+thermo_style custom step time atoms bonds pe ebond epair ke
+thermo_modify lost error norm no
+
+reset_timestep 14415 time 0.0026501250000001628
+group clot type 1
+8125 atoms in group clot
+fix integrate clot nve
+fix coordinator all LPS/VARIATIONAL/DYNAMIC 1000
+fix v3forces clot external pf/callback 1 1
+run 0
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+Neighbor list info ...
+  update: every = 1 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 0.0002505
+  ghost atom cutoff = 0.0004515
+  binsize = 0.00012525, bins = 48 48 48
+  1 neighbor lists, perpetual/occasional/extra = 1 0 0
+  (1) pair bpm/peri, perpetual
+      attributes: half, newton on
+      pair build: half/bin/newton
+      stencil: half/bin/3d
+      bin: standard
+Per MPI rank memory allocation (min/avg/max) = 64.83 | 64.83 | 64.83 Mbytes
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+     14415   0.002650125        10000      214713   119802.92      110654.24      9148.6805      9.3353596e-07
+Loop time of 1.38e-06 on 1 procs for 0 steps with 10000 atoms
+
+144.9% CPU use with 1 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0          | 0          | 0          |   0.0 |  0.00
+Bond    | 0          | 0          | 0          |   0.0 |  0.00
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0          | 0          | 0          |   0.0 |  0.00
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 1.38e-06   |            |       |100.00
+
+Nlocal:          10000 ave       10000 max       10000 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:              0 ave           0 max           0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:         910385 ave      910385 max      910385 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 910385
+Ave neighs/atom = 91.0385
+Ave special neighs/atom = 42.9426
+Neighbor list builds = 0
+Dangerous builds not checked
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+     14415   0.002650125        10000      214713   119802.92      110654.24      9148.6805      9.3353596e-07
+     14416   0.002650375        10000      214700   119731.2       110598.01      9133.1911      9.3357427e-07
+Loop time of 0.494704 on 1 procs for 1 steps with 10000 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+     14416   0.002650375        10000      214700   119731.2       110598.01      9133.1911      9.3357427e-07
+     14417   0.002650625        10000      214688   119652.12      110536.42      9115.7071      9.3361247e-07
+Loop time of 0.566075 on 1 procs for 1 steps with 10000 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+     14417   0.002650625        10000      214688   119652.12      110536.42      9115.7071      9.3361247e-07
+     14418   0.002650875        10000      214677   119575.69      110479.44      9096.2459      9.3365047e-07
+Loop time of 0.58812 on 1 procs for 1 steps with 10000 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+     14418   0.002650875        10000      214677   119575.69      110479.44      9096.2459      9.3365047e-07
+     14419   0.002651125        10000      214662   119504.06      110429.14      9074.9186      9.3368846e-07
+Loop time of 0.600943 on 1 procs for 1 steps with 10000 atoms
+
+timestep 1.2499999999999999e-07
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+     14419   0.002651125        10000      214662   119504.06      110429.14      9074.9186      9.3368846e-07
+     14420   0.00265125         10000      214654   119469.68      110406.09      9063.5889      9.3370739e-07
+Loop time of 0.610135 on 1 procs for 1 steps with 10000 atoms
+
+timestep 2.4999999999999999e-07
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+     14420   0.00265125         10000      214654   119469.68      110406.09      9063.5889      9.3370739e-07
+     14421   0.0026515          10000      214642   119399.95      110360.33      9039.6146      9.3374514e-07
+Loop time of 0.634227 on 1 procs for 1 steps with 10000 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+     14421   0.0026515          10000      214642   119399.95      110360.33      9039.6146      9.3374514e-07
+     14422   0.00265175         10000      214635   119330.85      110317.04      9013.8077      9.3378312e-07
+Loop time of 0.628915 on 1 procs for 1 steps with 10000 atoms
+
+run 1 pre no post no
+   Step          Time         Atoms       Bonds        PotEng         E_bond         E_pair         KinEng    
+     14422   0.00265175         10000      214635   119330.85      110317.04      9013.8077      9.3378312e-07
+     14423   0.002652           10000      214624   119255.43      110269.12      8986.3006      9.3382119e-07
+Loop time of 0.585655 on 1 procs for 1 steps with 10000 atoms
+
+write_restart /workspace/y_clot/project/verification/clot_irregular_lps_discretization_v4/20261019T221000Z/p1/windows/damaged/biphasic/final.restart
+System init for write_restart ...
+Generated 0 of 1 mixed pair_coeff terms from geometric mixing rule
+Total wall time: 0:00:25
