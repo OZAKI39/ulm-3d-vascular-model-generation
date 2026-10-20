@@ -85,7 +85,13 @@ new_clot_simulation/
 ├── inputs/                     # 唯一参考 NPZ、材料、边界、必要 Y 资产
 ├── tests/                      # 原版数值基线与独立回归测试
 ├── results/                    # 新运行、缓存、验证日志及可视化
-├── archive/reports/            # 来源/冻结/迁移报告；无运行时依赖
+├── archive/
+│   ├── reports/                # 来源/冻结/迁移报告；无运行时依赖
+│   └── legacy_research/        # 待批准清理的保留清单及环境元数据，无科研原件
+├── .gitattributes              # 冻结输入、原生源码及基线的字节保留规则
+├── .gitignore
+├── AGENTS.md
+├── CLEANUP.md                  # 已完成清理记录及尚未批准的第二批清单
 ├── README.md
 ├── MIGRATION.md                # 旧→新函数映射、依赖判断与待清理清单
 ├── VALIDATION.md
@@ -133,7 +139,7 @@ python -m clot_sim.visualization --states \
 
 只在本目录修改、测试和提交，不再创建同步副本。当前是独立 Git 仓库，初始提交为 `29202fe`，长期分支为 **`clot-simulation-v4`**。原 GitHub 仓库的工程布局和提交根与这里不同；本分支保留独立工程布局，不覆盖原仓库的 `main`。
 
-已按用户确认将 `origin` 配置为 `https://github.com/OZAKI39/ulm-3d-vascular-model-generation.git`，使用长期分支 `clot-simulation-v4` 保存本工程，保留现有全部历史分支。**本次没有推送；尚未设置 upstream。** 清理执行情况见 [`CLEANUP.md`](CLEANUP.md)。
+`origin` 为 `https://github.com/OZAKI39/ulm-3d-vascular-model-generation.git`，本工程固定使用长期分支 [`clot-simulation-v4`](https://github.com/OZAKI39/ulm-3d-vascular-model-generation/tree/clot-simulation-v4)，保留现有全部历史分支。首次推送用 `-u` 建立 upstream，后续使用普通 `git push`。清理执行情况见 [`CLEANUP.md`](CLEANUP.md)；第二批清理仍待单独确认，提交其清单不代表已经执行删除。
 
 平时提交：
 
@@ -147,16 +153,18 @@ git diff --cached
 git commit -m "Describe the actual change"
 ```
 
-上述 `git add` 路径只是示例，不表示需要修改加载方法。origin 和本地分支已配置，无须再次初始化或克隆。将来用户要求首次推送时执行：
+上述 `git add` 路径只是示例，不表示需要修改加载方法。origin 和本地分支已配置，无须再次初始化或克隆。推送命令如下，仍只在用户明确要求时执行：
 
 ```bash
-# 仅当用户明确要求推送时执行首次推送：
+# 首次推送，设置长期分支的 upstream：
 git push -u origin clot-simulation-v4
 # 此后日常提交仍在相同分支；要求推送时直接：
 git push
 ```
 
 首次推送前先核对 `git ls-remote --heads origin refs/heads/clot-simulation-v4`；如果远端已存在同名分支，先检查其历史，不能强制覆盖。正常推送会保存本工程的长期分支，不合并无关历史、不改写任何旧提交，也不删除旧分支。
+
+这份独立工程的源码重构保存在初始提交 `29202fe`，首次推送会同时保存此后的规则、清理和验证提交。旧布局 `clot_clearance/analysis/...` 不属于本分支源码树；不会为制造删除记录而修改其他历史分支。
 
 ## 科研数据保留与 Git 边界
 
