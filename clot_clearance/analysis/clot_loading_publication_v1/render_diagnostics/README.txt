@@ -1,0 +1,1 @@
+This exploratory benchmark is invalid: changing PyVista depth-peeling support after a live EGL context caused eglMakeCurrent warnings and ghost images. These captures are not used in the video. The production renderer initializes its transparency settings once before scene construction, in a fresh process.

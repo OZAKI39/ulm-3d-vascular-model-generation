@@ -1,0 +1,846 @@
+
+--- PAGE 1 ---
+Vol:.(1234567890)
+Cardiovascular Engineering and Technology (2024) 15:584–593
+https://doi.org/10.1007/s13239-024-00733-2
+ORIGINAL ARTICLE
+“What makes blood clots break off?” A Back‑of‑the‑Envelope 
+Computation Toward Explaining Clot Embolization
+Osman Gültekin1 · Matthew J. Lohr2 · Grace N. Bechtel2 · Manuel K. Rausch1,2,3 
+Received: 12 December 2023 / Accepted: 3 May 2024 / Published online: 21 May 2024 
+© The Author(s) under exclusive licence to Biomedical Engineering Society 2024
+Abstract
+Purpose One in four deaths worldwide is due to thromboembolic disease; that is, one in four people die from blood clots 
+first forming and then breaking off or embolizing. Once broken off, clots travel downstream, where they occlude vital blood 
+vessels such as those of the brain, heart, or lungs, leading to strokes, heart attacks, or pulmonary embolisms, respectively. 
+Despite clots’ obvious importance, much remains to be understood about clotting and clot embolization. In our work, we 
+take a first step toward untangling the mystery behind clot embolization and try to answer the simple question: “What makes 
+blood clots break off?”
+Methods To this end, we conducted experimentally-informed, back-of-the-envelope computations combining fracture 
+mechanics and phase-field modeling. We also focused on deep venous clots as our model problem.
+Results Here, we show that of the three general forces that act on venous blood clots—shear stress, blood pressure, and 
+wall stretch-induced interfacial forces—the latter may be a critical embolization force in occlusive and non-occlusive clots, 
+while blood pressure appears to play a determinant role only for occlusive clots. Contrary to intuition and prior reports, shear 
+stress, even when severely elevated, appears unlikely to cause embolization.
+Conclusion This first approach to understanding the source of blood clot bulk fracture may be a critical starting point for 
+understanding blood clot embolization. We hope to inspire future work that will build on ours and overcome the limitations 
+of these back-of-the-envelope computations.
+Keywords Thromboembolism · Pulmonary hypertension · Embolization · Fracture · Phase-field modeling
+Introduction
+Blood clots’ physiological function is to arrest bleeding 
+upon vascular injury. However, clots can also form patho -
+logically within our vessels. Once formed, clots may break 
+off—or embolize—and travel downstream, where they 
+occlude smaller vessels, such as those of our brain, heart, 
+or lungs. Thereby, clots give rise to a number of deadly dis-
+eases including strokes, heart attacks, and pulmonary embo-
+lisms [1, 2]. In fact, one in four deaths worldwide is due to 
+thromboembolic diseases, i.e., the formation and breaking 
+off of blood clots [3]. There is a significant body of research 
+on why blood clots form in the first place. In contrast, little 
+is understood about clot embolization [4 ]. That is, there is 
+no confident answer to the simple question: “What makes 
+blood clots break off?” Given the clinical significance of 
+thromboembolic diseases, finding an answer to this ques -
+tion is not only of scientific interest but also of the utmost 
+medical importance.
+During formation, activated platelets and the blood-
+borne monomer fibrinogen interact in a complex bio-
+chemical process to yield the biocomposite blood clot. The 
+fibrinogen monomers polymerize into a 3D biopolymer 
+network called fibrin that forms the structural backbone of 
+clots [ 5, 6], akin to collagen in connective tissues [ 7–9]. 
+At the same time, platelets attach to fibrin and, through 
+BIOMEDICAL
+ENGINEERING 
+SOCIETY
+Associate Editor Alison Marsden oversaw review of this article.
+ * Manuel K. Rausch 
+ manuel.rausch@utexas.edu
+1 Department of Aerospace Engineering and Engineering 
+Mechanics, The University of Texas at Austin, Austin, 
+TX 78712, USA
+2 Department of Biomedical Engineering, The University 
+of Texas at Austin, Austin, TX 78712, USA
+3 Oden Institute for Computational Engineering and Sciences, 
+The University of Texas at Austin, Austin, TX 78712, USA
+
+--- PAGE 2 ---
+585
+“What makes blood clots break off?” A Back‑of‑the‑Envelope Computation Toward Explaining…
+their active contractile apparatus, compact the clot and 
+compress entangled red blood cells and other blood com-
+ponents [10, 11].
+The exact clot composition, and therefore biophysical 
+properties, vary depending on the location and conditions 
+of clot formation [12]. For example, clots that form on the 
+arterial side do so under relatively high blood pressure  
+( ≈ 100 mmHg) and high fluid shear stress ( ≈ 240 Pa) [13, 
+14]. In contrast, clots that form on the venous side do so 
+under low blood pressure ( ≈ 20 mmHg) and low fluid shear 
+stress ( ≈ 87 Pa) [14– 16]. Arterial conditions lead to clots 
+whose structure aligns with the flow direction and are rich 
+in platelets [17]. Venous conditions lead to clots which have 
+random structure and are rich in fibrin [18]. Differing coagu-
+lation conditions and, thus, biophysical properties likely lead 
+to quantitatively different answers to our question of inter -
+est. Therefore, in our work, we focus on venous clot and its 
+associated diseases, deep vein thrombosis and pulmonary 
+embolism [19]. That is, we will focus on clot that forms in 
+the deep veins of our arms and legs and, when embolizing, 
+may travel downstream to occlude our pulmonary arteries. 
+As this condition affects 300,000–600,000 Americans every 
+year and is one of the leading causes of death during preg-
+nancy and postpartum, it is of high clinical importance in 
+its own right [20, 21].
+Given the high prevalence of thromboembolic disease in 
+general and of deep vein thrombosis and pulmonary embo-
+lism specifically, our goal is to answer the simple ques-
+tion we posed above: “What makes blood clots break off?” 
+Fundamentally, we know that blood clot breaks off for the 
+same reason that any material breaks or fractures; because 
+the strain energy due to external and internal forces locally 
+exceeds a material-specific fracture threshold called frac -
+ture toughness [22]. This fundamental fracture mechanics 
+understanding applies to traditional engineering materials 
+such as steel and aluminum and also to soft materials such 
+as hydrogels, soft tissues, and blood clots. However, exactly 
+which forces impart enough strain energy to exceed clots’ 
+fracture toughness is unclear.
+Potential candidates for such forces are blood pressure, 
+blood flow-induced shear stress, and interfacial forces 
+between the clot and vessel wall due to wall stretch. While 
+pressure and shear stress are obvious candidates, interfa-
+cial force may be a surprising candidate. To understand 
+why we included this force among our candidates, we must 
+recall that veins are 30 times more compliant than arter -
+ies [23]. That is, while arteries are primarily conduits for 
+blood flow, the function of veins is that of a blood res-
+ervoir. Therefore, veins can expand significantly in both 
+circumference and length. In fact, when removed from the 
+body, veins shrink to 60% of their initial length [24, 25], 
+giving insight into veins’ large in vivo stretch. Because 
+of the stiffness mismatch between clot and vessel wall, 
+the in vivo stretch induces large interfacial forces, which 
+to date have remained unexplored as potential drivers for 
+clot embolization.
+To give an answer to the question at hand, in vivo meth-
+ods are not suitable. First, measuring any of our candidate 
+forces is difficult in vivo. That is, fluid shear stress cannot 
+be directly measured but only indirectly inferred. Addition-
+ally, shear stress and pressure cannot be decoupled in vivo. 
+Instead, only their coupled effect can be studied. Also, 
+interfacial forces per se cannot be measured in vivo. Simi-
+larly, in vitro methods are unsuitable to answer this ques-
+tion because in vitro blood pressure and shear stress also 
+cannot be decoupled. Furthermore, recreating realistic flow 
+conditions and clot geometries is difficult in vitro. There-
+fore, we chose a computational approach [26]. Specifically, 
+we chose to build idealized 3D representations of occlusive 
+and non-occlusive venous clots and use a non-standard finite 
+element method that involves the phase-field fracture mod-
+eling approach to capture the physics of embolization. This 
+approach circumvents the numerical complications arising 
+from the inherently discontinuous (fracture) phenomenon 
+by diffusing the sharp crack surface while capturing com-
+plex crack topologies [27, 28]. Note, here we focus on bulk 
+fracture. That is, we do not specifically model the clot–wall 
+interface as a first step towards understanding blood clot 
+embolization.
+Methods
+In Vitro Blood Clot Experiments
+We generated blood clot from whole bovine blood obtained 
+from a commercial service (Lampire Biological Labo-
+ratories, PA, USA) where blood is collected directly into 
+CPDA-1 anticoagulant. We added calcium chloride ( CaCl2 ) 
+to a final concentration of 20 mM to reverse the anticoagu-
+lant and followed prior protocols to cast the sample into 
+3D-printed molds compatible with our mechanical testing 
+machine [29]. Our protocol yielded a sample with dimen-
+sions of 40 mm by 10 mm by 3 mm, with a total sample 
+volume of 1200 mm3 . We covered the molds to avoid dehy-
+dration and incubated the sample at 37◦C for 60 min. Fol -
+lowing incubation, we mounted the sample to our tensile 
+testing machine (Instron, MA, USA). In preparation for 
+mode-I fracture testing, we gave the sample a 13 mm cut on 
+its lateral side. Note, we chose this length to avoid boundary 
+effects impacting our fracture toughness measurements. We 
+then conducted an extension-to-failure experiment at a rate 
+of 0.1 mm/s, corresponding to a strain rate of 1%/s. Dur -
+ing the test, we collected force data, displacement data, and 
+images of the fracture process.
+
+--- PAGE 3 ---
+586 O. Gültekin et al.
+Phase‑Field Modeling
+We model embolization, i.e., clot fracture, within the 
+nonlinear finite element framework using the phase-field 
+approach. Therein, fracture emerges as a coupled problem 
+that we solve for the clots’ deformation field and a vari-
+able that captures the local damage in response to external 
+forces exceeding the clots’ fracture toughness. We capture 
+clots’ deformation via the deformation map /u1D74Bt and the clots’ 
+damage via the crack phase-field d . While the deformation 
+map transforms a point X ∈ B in the reference state onto 
+its spatial counterpart x ∈ S, the phase-field continuously 
+interpolates between the intact (  d = 0 ) and the fully dam -
+aged state of the solid ( d = 1 ). For details of the kinematics 
+of the problem, we refer readers to [30–32].
+The coupled problem may then be expressed as a rate-
+type potential Π based on the balance of power, viz.
+where E denotes the rate of the elastic energy storage and D 
+accounts for the rate of the energy dissipated due to fracture. 
+Here, P is the externally supplied power due to the body 
+forces and tractions. As a next step, we consider the variation 
+of the potential in Eq. 1.
+The corresponding minimization of the primary field 
+variables yields the governing equations of the mechanical 
+problem, namely the balance of the linear momentum,
+as well as the evolution equation of the fracture phase-field,
+In Eq. 2, /u1D748 and /u1D738 represent the Cauchy stress tensor and the 
+body force vector per unit volume. Equation  3 involves the 
+length-scale parameter l , the damage parameter d , and the 
+driving source term H that reads
+Importantly, Eq.  4 ensures irreversibility of fracture—it 
+stores the maximum value in the entire deformation his-
+tory [0,  t]—and forms an isotropic criterion for the onset 
+of fracture. Fracture onset only occurs when Ψ0(s) → gc . 
+Therein, gc represents the fracture toughness or the criti-
+cal energy release rate, while Ψ0 denotes the deviatoric free 
+energy function of the principal stretch ( /u1D7061 , /u1D7062 , /u1D7063 ) based on 
+a one-term Ogden model, i.e.,
+(1)Π=E + D − P,
+(2)div(/u1D748)+ /u1D738 = 0,
+(3)2l(1 − d)H =( d − l2Δd).
+(4)H = maxs∈[0,t]
+/uni27E8.s3 Ψ0(s)
+gc
+− 1
+/uni27E9.s3
+.
+(5)Ψ0 ∶= ̂Ψ0(𝜆1, 𝜆2, 𝜆3)= 2𝜇𝛼2 (𝜆𝛼1 + 𝜆𝛼2 + 𝜆𝛼3 − 3),
+where /u1D707 and /u1D6FC describe the shear modulus and the parameter 
+controlling the degree of nonlinearity, respectively, see [33, 
+34] for more details. Note that the total free energy is the 
+sum of the deviatoric portion, Ψ0 and a volumetric portion, 
+U, viz.
+The latter follows from
+with J being the Jacobian of the deformation—i.e., the ratio 
+between the volume in the deformed and the reference con-
+figuration—and /u1D705 being the bulk modulus. In other words, 
+the bulk modulus serves as a penalty parameter for volume 
+change. Because we only degrade the deviatoric portion of 
+the strain energy, the total energy of a damaged material, 
+thus, reads
+where G(d)=( 1 − d)2 . We identified both Ogden param-
+eters using an inverse finite element approach, in which we 
+matched the force–displacement data of our mode-I frac-
+ture experiments at strains well below the critical stretch at 
+which fracture occurred. Thereby, we found /u1D707 = 1.04 (kPa) 
+and /u1D6FC = 7.21 . Please note that, in the absence of volumet-
+ric experimental data, we chose a bulk modulus of /u1D705 = 100 
+(kPa) for our simulations, unless indicated otherwise.
+In view of the above-stated descriptions, Eqs.  2–3 are 
+discretized in time and space via a Galerkin-type weak for -
+mulation and solved for the respective primary field vari-
+ables, i.e., displacement and phase-field, in the finite element 
+framework. Note, to overcome ill-conditioning of the stiff-
+ness matrix in the face of large bulk moduli relative to shear 
+moduli, we implemented a mixed finite element formulation 
+(Q1P0 element). Details of the weak formulation and the 
+algorithmic treatment can be found in [35– 37]. Please note 
+that we used the open-source nonlinear finite element solver 
+FEAP to solve the above problem.
+Results
+Identification of Clot Fracture Toughness 
+from Mode‑I Fracture Experiments
+Our overall strategy was to use the finite element method 
+and phase-field modeling to compute if and where our 
+candidate external forces exceed the fracture toughness of 
+blood clots. These simulations required information about 
+wall and clot geometry, as well as wall and clot elastic and 
+fracture properties. While we borrowed geometric and wall 
+(6)W =Ψ 0 + U.
+(7)U ∶= ̂U(J)= 𝜅(J − 1)2
+2 ,
+(8)W = G(d)Ψ0 + U,
+
+--- PAGE 4 ---
+587
+“What makes blood clots break off?” A Back‑of‑the‑Envelope Computation Toward Explaining…
+properties from the literature, we set out to identify realistic 
+values for clots’ elastic and fracture properties from our own 
+experiments. To this end, we coagulated venous blood into a 
+standard pure shear specimen to determine clots’ hyperelas-
+tic Ogden material parameters as described previously [34]. 
+Additionally, we coagulated venous blood clots into mode-I 
+geometries and conducted fracture tests [38]. Information 
+on sample preparations, coagulation conditions, and other 
+experimental details can be found in the Methods section, 
+and our previous work [29]. Next, we modeled the same 
+mode-I fracture experiment using our phase-field modeling 
+approach. We captured the elastic behavior using a one-
+term Ogden model, whose elastic parameters were identi-
+fied using an inverse finite element approach. Figure  1A 
+depicts the corresponding mode-I sample geometry and the 
+finite element discretization with 11,650 elements. We then 
+manually optimized the fracture toughness of our model 
+until our numerically-predicted mode-I force–displace-
+ment curves matched the results of our experiments, thus, 
+inversely identifying the fracture toughness gc of venous 
+blood clots. Figure  1B shows the final match between our 
+experimentally- and numerically-predicted force–displace-
+ment curves, yielding a fracture toughness of gc = 0.96 N/m. 
+Furthermore, Fig.  1C shows snapshots of the mode-I frac-
+ture simulations, which reveal the evolution of the fracture 
+process: (i) the incipient crack, (ii) the crack growth at the 
+peak force, (iii) the state of crack on the unloading regime, 
+and (iv) the ultimate fracture. The color coding of this figure 
+depicts the (local) damage of the material where a value 
+of d = 1 indicates that the material has failed (fractured), 
+while d = 0 indicates that the material remains undamaged. 
+Thus, the figure reveals the high damage localization around 
+the fracture site. These images also qualitatively agree with 
+our experimental observations, see Supplementary Fig. S1. 
+Figure 1C also illustrates the corresponding evolution of the 
+Cauchy stress component /u1D70Ey at the same four time points. 
+These images highlight the high stress concentrations at the 
+crack tip that indicate the high local energy densities that 
+ultimately drove the fracture propagation.
+Fig. 1  Phase-field model of clot mode-I fracture agrees well with 
+experimental  data. A Due to symmetry with respect to the x-axis, 
+only the upper half of the entire clot domain was modeled. B Cor -
+responding force–displacement curves obtained from phase-field 
+fracture simulation (black solid line) and mode-I fracture experiments 
+(red circles). C The predicted evolution of the damage field (top half) 
+and the Cauchy stress /u1D70Ey (bottom half) during mode-I fracture. Time 
+points (i) through (iv) correspond to points along the force–displace-
+ment graph in panel B. Finite elements are blanked when d ≥ 0.9
+
+--- PAGE 5 ---
+588 O. Gültekin et al.
+Simulated Embolization of Occlusive Deep Vein 
+Clots
+In the next step, we built two representative thrombotic sce-
+narios: an occlusive venous clot and a non-occlusive venous 
+clot, see Fig.  2A, B. The figure also shows the spatial dis-
+cretizations of both geometries. The venous wall geometry 
+is that of a popliteal vein, which is one of the most fre-
+quent sites of clot formation and embolization, see Fig.  2C 
+[39, 40]. The clot itself was assigned material parameters 
+as identified above, while the venous wall was modeled as 
+isotropic as described in our prior work [41]. Focusing first 
+on the occlusive scenario, we simulated the impact of blood 
+pressures ranging from 10 to 100 mmHg [15, 16] and wall 
+stretches ranging from /u1D706 = 1.5 to 2 [24, 25]. Also, in rec-
+ognition that blood clot fracture toughness may vary based 
+on patient-specific factors, coagulation conditions, and age, 
+we repeated simulations for multiples and fractions of our 
+experimentally-determined fracture toughness, i.e., 0.1gc , 
+0.25gc , 0.5gc , gc , 10gc [42–44]. Here, and in all subsequent 
+simulations, we simulated only one loading and unloading 
+cycle after initial experiments showed little changes dur -
+ing subsequent cycles. See Supplementary Fig. S2 for an 
+exact depiction of the applied boundary conditions. We first 
+observed that wall-stretches of 1.8, 1.9 and 2 led to observ -
+able damage zones with increasing significance across our 
+chosen toughness ranges, see Fig.  3A. In fact, the visibil-
+ity and severity of the damage zone increased proportional 
+to the stretch ratio applied and culminated at /u1D706 = 2 , see 
+also Supplementary Fig. S3 for a visualization on a non-
+occlusive clot. For smaller wall stretches ( < 1.8 ) interfacial 
+forces between wall and clot did not lead to clear damage, 
+see Supplementary Fig. S4A for the results at a stretch of 
+1.5. Note that—for comparability between the stretched and 
+unstretched cases—here, and in all subsequent figures, we 
+show the results in the Lagrangian configuration, i.e., pro-
+jected onto the reference configuration. We also found that 
+pressures of 50 mmHg sufficed to lead to observable dam -
+age and indication of delamination between clot and wall 
+at fractions of fracture toughness, see Fig.  3B. At higher, 
+superphysiological pressures (i.e., 100 mmHg), pressure also 
+lead to damage and delamination sites at full fracture tough-
+ness, see Supplementary Fig. S4B. Interestingly, pressure-
+induced damage zones did not fully propagate along the 
+clot or diverge into the clot at either pressure. It may thus 
+be speculated that no parts of the clot would break off or 
+embolize under the influence of blood pressure alone. On 
+the other hand, wall stretch of 2 at 25% and 10% toughness 
+lead to damage zones that grew along the clot/wall inter -
+face before diverging into the clot, where pieces of the clot 
+could consequently embolize. Please see Supplementary 
+Movie S1 for animations of our simulation results. Also, 
+see Supplementary Fig. S5 for a sensitivity study of above 
+findings to vessel size through which we show that smaller 
+veins lead to an increased importance of wall stretch-induced 
+interfacial forces over blood pressure. That is, because the 
+force due to blood pressure scales quadratically with length, 
+its importance lessens for smaller vessels and increases for 
+larger vessels.
+Simulated Embolization of Non‑occlusive Deep Vein 
+Clots
+We repeated the same simulations for the non-occlusive 
+geometry as shown in Fig.  2B. In addition to exploring 
+the impact of pressure and wall stretch on clot emboliza-
+tion, here we also added the impact of wall shear stress. We 
+explored values ranging from 150 to 800 Pa representing 
+physiological and super-physiological values [14, 44–46]. 
+Note that these pressures were applied to the luminal surface 
+of the clot, while the wall away from the clot was exposed to 
+half the wall stress [46]. Unlike the other two forces, the fluid 
+shear stress is not symmetric with respect to the z -plane. 
+Therefore, instead of one-eight we modeled one-fourth of 
+Fig. 2  Model geometries. One-eighth of the clot  (red)/vein 
+wall  (blue) model for A,  the fully occlusive case, and B,  the non-
+occlusive case and their corresponding mixed tetrahedral finite 
+meshes generated with 60,490 and 65,486 elements, respectively. C 
+Cross-sectional view of the clot, the venous wall, and the luminal 
+opening together with their respective radii ( ri = 3 mm only for the 
+non-occlusive case). All dimensions shown are in accordance with 
+human popliteal and femoral veins [39, 40]
+
+--- PAGE 6 ---
+589
+“What makes blood clots break off?” A Back‑of‑the‑Envelope Computation Toward Explaining…
+the entire domain as depicted in the Supplementary Fig. S2. 
+Our findings for the impact of wall stretch-induced dam-
+age did not fundamentally differ from our simulation of 
+occlusive clot, see Fig. 4A and Supplementary Fig. S3. That 
+is, at a stretch of λ = 2 clear signs of damage and delamina-
+tion are visible for 50% of our originally estimated fracture 
+Fig. 3  Occlusive clot: finite element simulations showing the evolu-
+tion of the damage variable d for multiples and fractions of experi-
+mentally determined fracture toughness gc ; A axial wall stretch up 
+to /u1D706 = 2 and B hydrostatic blood pressure up to p = 50 mmHg. Note 
+that d = 1 represents the fully damaged state, whereas d = 0 indicates 
+the intact state
+Fig. 4  Non-occlusive clot: finite element simulations showing the 
+evolution of the damage variable d for multiples and fractions of 
+experimentally determined fracture toughness gc ; A axial wall stretch 
+up to /u1D706 = 2 and B hydrostatic blood pressure up to p = 100 mmHg, 
+and C wall shear stress up to /u1D70F = 800 Pa (here, only half of the com-
+putational domain is shown because of space constraints). Note that 
+d = 1 represents the fully damaged state, whereas d = 0 indicates the 
+intact state
+
+--- PAGE 7 ---
+590 O. Gültekin et al.
+toughness. Interestingly, our findings for pressure did funda-
+mentally differ from our observations in the occlusive geom-
+etry, see Fig.  4B. Specifically, for the non-occlusive case 
+blood pressure was barely sufficient to lead to significant 
+damage even at pressures as high as 100 mmHg. In addition 
+to our findings on pressure and wall stretch, we also found 
+that fluid shear stress did not impart significant deformation 
+onto the non-occlusive clot and, therefore, also lead to no 
+or little damage, see Fig. 4C. That is, a super-physiological 
+shear stress of 800 Pa was required to lead to minimal dam-
+age and only for 10% fracture toughness. See Supplementary 
+Movie S2 for animations of our simulation results.
+Discussion
+Clot formation and embolization are the sources of many 
+devastating diseases, including strokes, heart attacks, and 
+pulmonary embolisms. While more is known about why 
+clots form, little is understood about how and why clots 
+embolize. That is, we do not know which forces lead to clot 
+fracture. In our work, we tried to answer this fundamen-
+tal question using venous blood clots as our model system. 
+To this end, we used two computational models: one of an 
+occlusive blood clot and one of a non-occlusive blood clot. 
+We then combined the finite element modeling framework 
+with the phase-field fracture modeling approach to investi-
+gate whether blood pressure, wall–clot-interfacial forces, or 
+fluid shear stress may lead to clot embolization.
+Our main finding was that wall shear stress—even when 
+super-physiological—is unlikely to lead to clot fracture and 
+embolization. This came as a surprise to us as wall shear 
+stress is the obvious potential culprit. Instead, we found that 
+only interfacial forces caused by wall stretch lead to signifi-
+cant damage and embolization regardless of clot geometry 
+and vessel size. Blood pressure, on the other hand, drives 
+damage and delamination only in occlusive clots (in large 
+vessels) and, in non-occlusive clot, leads only to minor dam-
+age zones even when vastly exaggerated (i.e., as high as 100 
+mmHg). To the best of our knowledge, this is the first time 
+this observation has been made, which is of both scientific 
+and clinical significance. From a scientific perspective, our 
+findings may inform future experimental and computational 
+studies on clot embolization. Most obviously, future physi-
+cal and virtual models of clot embolization should include 
+flexible vein walls to accurately reproduce interfacial forces 
+between vein and clot, which they historically have not. 
+Also, future studies of clot embolization should target the 
+clot/wall interface and wall stretch to develop novel thera-
+peutic solutions. From a clinical perspective, our findings 
+may inform therapeutic decision making. For example, clots 
+identified in regions of high vein mobility, such as the knees, 
+may be viewed as higher risk for embolization than others. 
+Thus, more aggressive anti-thrombotic strategies may be 
+chosen. Additionally, our findings suggest that activities 
+that lead to wall stretch should be considered to potentially 
+promote embolization.
+It should be noted that damage, and thus potential emboli-
+zation, occurred in our model only at reduced fracture tough-
+ness. This finding may have three potential explanations. 
+First, it may be that our model and its inherent limitations 
+may not perfectly capture the in vivo fracture process. For 
+example, we model both clot and vein wall as perfectly elas-
+tic and do not capture potential fatigue behavior, while the 
+in vivo fracture process may occur “sub-critically” under 
+fatigue; that is, at a load that only leads to damage, frag-
+mentation, and embolization after many repetitions. Alter -
+natively, it may be that our in vitro estimate of fracture 
+toughness is an imperfect measure of clots’ in vivo fracture 
+toughness. For example, our unnatural in vitro coagulation 
+path may yield non-physiological fracture toughness. Albeit, 
+others have found similar values for fracture toughness of 
+clot from venous blood, thus instilling confidence in our 
+measure [42–44, 47]. Finally, there may be significant inter-
+subject and inter-species variability in clots’ fracture tough-
+ness which we have not accounted for due to comorbidities, 
+genetic factors, behavioral factors, and physiological state, 
+such as pregnancy. Importantly, these limitations would 
+affect our findings quantitatively, but not qualitatively. That 
+is, even if true, our key takeaway—that wall stretch-induced 
+interfacial forces and pressure outweigh wall shear stress in 
+their ability to cause embolization—would still hold.
+Interestingly, our findings disagree somewhat with the 
+limited prior work on this subject. That is, two prior stud-
+ies have reported fluid shear stress as a potential cause for 
+clot embolization. For example, Basmadjian et al. [48] esti-
+mated the critical wall shear stress leading to embolization 
+to fall between 2.5 and 50 Pa. Recall that we found shear 
+stress as high as 800 Pa to cause little damage in either of 
+our clot models. Discrepancies in our findings likely stem 
+from Basmadjian et al. basing their estimates of emboli-
+zation risk on single-cell-based measurements of attach-
+ment forces. That is, they ignore that the compositional 
+and microstructural complexity of clot likely leads to bulk 
+behavior different from single-cell behavior. Additionally, 
+their work ignores the mechanical complexity of the embo-
+lization process, i.e., they ignored clot mechanics (including 
+its fracture) altogether and base their estimation on fluid-
+mechanical quantities only. Together, these factors likely 
+explain discrepancies between their study and ours. Brass 
+and Diamond [49] also reported clot embolization due to 
+shear stress at values of 240 Pa based on [14]. Their findings 
+are based on microfluidic measurements in combination with 
+fluid simulations. The specific causes for their clots’ lower 
+resistance to shear than ours are difficult to identify. How -
+ever, we assume that different geometries, smaller scales, 
+
+--- PAGE 8 ---
+591
+“What makes blood clots break off?” A Back‑of‑the‑Envelope Computation Toward Explaining…
+and different coagulation conditions may be the sources. 
+Importantly, our work’s value lies primarily in the direct 
+comparison between three likely potential culprits and their 
+relative importance. Thus, quantitative discrepancies with 
+the above works have a limited impact on the validity and 
+importance of our work. Nonetheless, it cannot be entirely 
+denied that discrepancies may stem from some of our simpli-
+fying modeling assumptions, see more details below. Future 
+studies will hopefully shed additional light on this subject.
+Finally, it is important to recall that this is only a first 
+step towards modeling and understanding a very complex 
+phenomenon. Consequently, our work suffers from a number 
+of limitations that we hope future work will overcome. In 
+addition to the limitation mentioned above, here we have 
+not specifically modeled the clot–wall interface. Thus, we 
+implicitly assume that the interfacial toughness is the same 
+as the bulk toughness. Future iterations of this or other 
+models could specifically target and explore interfacial fail-
+ure using a cohesive element approach [50]. However, we 
+do not expect that accounting for the interfacial toughness 
+would change our qualitative findings. That is, the relative 
+importance between our fundamental failure mechanisms 
+would likely remain the same. Also, note in our current 
+model, shear stress and/or pressure-induced changes to 
+wall and clot deformation do not alter the implied fluid-
+mechanics of the problem. Namely, we do not account for 
+the impact that wall and clot deformation have on blood 
+flow, which would affect the fluid shear stress and blood 
+pressure. Accounting for these interactions would require 
+a complex fluid–structure-interaction model. We hope that 
+we or others will—in the future—combine phase-field 
+fracture models with fluid–structure-interaction models 
+to increase the accuracy and, thus, confidence in emboli-
+zation studies. Similarly, time-dependent material effects 
+could, in the future, be included to accurately account for 
+clots poroelastic and viscoelastic properties that could play 
+a critical role in embolization [51, 52]. Additional limita-
+tions of our work pertain to the mode of vein wall deforma-
+tion. We tested vein wall stretch up to 100% strain, albeit 
+rationalized by indirect observations on vein deformabil-
+ity, there is currently no clinical evidence that veins stretch 
+this much in vivo. Hopefully, future in vivo studies will fill 
+this knowledge gap. We have also not explored all possible 
+deformation modes. For example, veins could also be bent 
+and sheared, neither of which we explicitly accounted for. 
+It is also important to note that our in vitro clots were made 
+of venous blood and, thus, have the same composition as 
+fresh intra-venous clot. However, because our in vitro clots 
+were formed under stagnant conditions, rather than under 
+in vivo flow, their microstructure likely differs from “real 
+clots”. Finally, the mechanical properties of clots made from 
+cow blood and human blood differ, introducing an additional 
+limitation [53]. Thus, we caution the reader to interpret our 
+findings with these limitation in mind. We look forward to 
+our work being a first step toward future efforts that expand 
+our approach and include additional anatomical and physi-
+ological complexities of this process.
+Conclusion
+In conclusion, we have successfully provided a first answer 
+to the fundamental question: “What makes blood clots break 
+off?” Of our three potential culprits, we have identified inter-
+facial forces due to wall stretch and blood pressure to be the 
+most likely causes. It should be noted, however, that this 
+finding depends on both clot geometry and vessel geometry. 
+Our work begins to fill a gap in our fundamental understand-
+ing of the pathophysiology of thromboembolism. Thereby, 
+it—and the work that will build on this current effort—may 
+inform clinical decisions and aid clinicians in treating people 
+that suffer from thromboembolic diseases. Future work will 
+hopefully confirm our findings and expand our work to the 
+arterial side.
+Supplementary Information The online version of this article (https:// 
+doi. org/ 10. 1007/ s13239- 024- 00733-2) contains supplementary mate-
+rial, which is available to authorized users.
+Acknowledgements We acknowledge the financial support from 
+the Office of Naval Research via Grant N00014-22-1-2073 and from 
+the National Science Foundation via Grants 2046148, 2105175, and 
+2127925.
+Data Availability The mechanical test data are available in the Texas 
+Data Repository under https:// datav erse. tdl. org/ datav erse/ STBML.
+Declarations 
+Conflict of interest Manuel K. Rausch has a speaking agreement with 
+Edwards Lifesciences. No other authors have competing interests to 
+report.
+References
+ 1. Malone, F., E. McCarthy, P. Delassus, P. Fahy, J. Kennedy, A. 
+Fagan, and L. Morris. The mechanical characterisation of bovine 
+embolus analogues under various loading conditions. Cardiovasc. 
+Eng. Technol. 9:489–502, 2018.
+ 2. Fiorella, D. The evolution of stenting and stent-retrieval for the 
+treatment of acute ischemic stroke. Cardiovasc. Eng. Technol.  
+4:352–356, 2013.
+ 3. Wendelboe, A. M., and G. E. Raskob. Global burden of thrombo-
+sis: epidemiologic aspects. Circ. Res. 118(9):1340–1347, 2016. 
+https:// doi. org/ 10. 1161/ CIRCR ESAHA. 115. 306841. Accessed 13 
+Feb 2023.
+ 4. Duval, C., A. Baranauskas, T. Feller, M. Ali, L. T. Cheah, 
+N. Y. Yuldasheva, S. R. Baker, H. R. McPherson, Z. Raslan, 
+M. A. Bailey, et al. Elimination of fibrin /u1D6FE-chain cross-link -
+ing by FXIIIa increases pulmonary embolism arising from 
+
+--- PAGE 9 ---
+592 O. Gültekin et al.
+murine inferior vena cava thrombi. Proc. Natl Acad. Sci. USA. 
+118(27):2103226118, 2021.
+ 5. Collet, J.-P., H. Shuman, R. E. Ledger, S. Lee, and J. W. Weisel. 
+The elasticity of an individual fibrin fiber in a clot. Proc. Natl 
+Acad. Sci. USA. 102(26):9133–9137, 2005.
+ 6. Kumar, S., Y. Wang, M. Hedayati, F. Fleissner, M. K. Rausch, 
+and S. H. Parekh. Structural control of fibrin bioactiv -
+ity by mechanical deformation. Proc. Natl Acad. Sci. USA. 
+119(22):2117675119, 2022.
+ 7. Münster, S., L. M. Jawerth, B. A. Leslie, J. I. Weitz, B. Fabry, 
+and D. A. Weitz. Strain history dependence of the nonlinear 
+stress response of fibrin and collagen networks. Proc. Natl 
+Acad. Sci. USA. 110(30):12197–12202, 2013.
+ 8. Fleissner, F., M. Bonn, and S. H. Parekh. Microscale spatial 
+heterogeneity of protein structural transitions in fibrin matrices. 
+Sci. Adv. 2(7):1501778, 2016. https:// doi. org/ 10. 1126/ sciadv.  
+15017 78. Accessed 27 Feb 2023.
+ 9. Buehler, M. J. Nature designs tough collagen: explaining the 
+nanostructure of collagen fibrils. Proc. Natl Acad. Sci. USA  
+103(33):12285–12290, 2006. https:// doi. org/ 10. 1073/ pnas.  
+06032 16103. Accessed 13 Feb 2023.
+ 10. Kim, O. V., R. I. Litvinov, M. S. Alber, and J. W. Weisel. Quan-
+titative structural mechanobiology of platelet-driven blood clot 
+contraction. Nat. Commun. 8(1):1274, 2017.
+ 11. Tutwiler, V., A. R. Mukhitov, A. D. Peshkova, G. Le Minh, 
+R. Khismatullin, J. Vicksman, C. Nagaswami, R. I. Litvinov, 
+and J. W. Weisel. Shape changes of erythrocytes during blood 
+clot contraction and the structure of polyhedrocytes. Sci. Rep.  
+8(1):17907, 2018.
+ 12. Pivkin, I. V., P. D. Richardson, and G. Karniadakis. Blood flow 
+velocity effects and role of activation delay time on growth 
+and form of platelet thrombi. Proc. Natl Acad. Sci. USA. 
+103(46):17164–17169, 2006.
+ 13. Safar, M. E. Arterial stiffness as a risk factor for clinical hyper -
+tension. Nat. Rev. Cardiol. 15(2):97–105, 2018. https:// doi. org/ 
+10. 1038/ nrcar dio. 2017. 155. Accessed 16 May 2023.
+ 14. Colace, T. V., R. W. Muthard, and S. L. Diamond. Thrombus 
+growth and embolism on tissue factor-bearing collagen surfaces 
+under flow: role of thrombin with and without fibrin. Arterio-
+scler. Thromb. Vasc. Biol. 32(6):1466–1476, 2012. https:// doi.  
+org/ 10. 1161/ ATVBA HA. 112. 249789. Accessed 13 Feb 2023.
+ 15. Eberhardt, R. T., and J. D. Raffetto. Chronic venous insuffi -
+ciency. Circulation 130(4):333–346, 2014. https:// doi. org/ 10.  
+1161/ CIRCU LATIO NAHA. 113. 006898. Accessed 23 Feb 2023.
+ 16. Tansey, E. A., L. E. A. Montgomery, J. G. Quinn, S. M. Roe, 
+and C. D. Johnson. Understanding basic vein physiology and 
+venous blood pressure through simple physical assessments. 
+Adv. Physiol. Educ. 43(3):423–429, 2019. https:// doi. org/ 10.  
+1152/ advan. 00182. 2018. Accessed 13 Feb 2023.
+ 17. Whittaker, P., and K. Przyklenk. Fibrin architecture in clots: a 
+quantitative polarized light microscopy analysis. Blood Cells 
+Mol. Dis. 42(1):51–56, 2009.
+ 18. Tan, K. T., and G. Y. Lip. Red vs white thrombi: treating the 
+right clot is crucial. Arch. Intern. Med. 163(20):2534–2535, 
+2003.
+ 19. Mirakhorli, F., B. Vahidi, M. Pazouki, and P. T. Barmi. A fluid–
+structure interaction analysis of blood clot motion in a branch 
+of pulmonary arteries. Cardiovasc. Eng. Technol. 14(1):79–91, 
+2023.
+ 20. Beckman, M. G., W. C. Hooper, S. E. Critchley, and T. L. Ortel. 
+Venous thromboembolism: a public health concern. Am. J. Prev. 
+Med. 38(4):495–501, 2010.
+ 21. James, A. H. Venous thromboembolism in pregnancy. Arterio-
+scler. Thromb. Vasc. Biol. 29(3):326–331, 2009.
+ 22. Zhao, X. Designing toughness and strength for soft materials. 
+Proc. Natl Acad. Sci. USA. 114(31):8138–8140, 2017.
+ 23. Gelman, S., D. S. Warner, and M. A. Warner. Venous function 
+and central venous pressure: a physiologic story. J. Am. Soc. 
+Anesthesiol. 108(4):735–748, 2008.
+ 24. Martinez, R., C. A. Fierro, P. K. Shireman, and H.-C. Han. 
+Mechanical buckling of veins under internal pressure. Ann. 
+Biomed. Eng. 38(4):1345–1353, 2010. https:// doi. org/ 10. 1007/ 
+s10439- 010- 9929-1. Accessed 16 Feb 2023.
+ 25. Rezakhaniha, R., and N. Stergiopulos. A structural model of 
+the venous wall considering elastin anisotropy. J. Biomech. 
+Eng.130(3):031017, 2008. https:// doi. org/ 10. 1115/1. 29077 49. 
+Accessed 16 Feb 2023.
+ 26. Iannaccone, F., M. De Beule, B. Verhegghe, and P. Segers. 
+Computer simulations in stroke prevention: design tools and 
+virtual strategies towards procedure planning. Cardiovasc. Eng. 
+Technol. 4:291–308, 2013.
+ 27. Francfort, G. A., and J.-J. Marigo. Revisiting brittle fracture 
+as an energy minimization problem. J. Mech. Phys. Solids  
+46(8):1319–1342, 1998. https://  doi. org/ 10. 1016/ S0022-  
+5096(98) 00034-9. Accessed 6 March 2023.
+ 28. Bourdin, B., G. A. Francfort, and J.-J. Marigo. The variational 
+approach to fracture. J. Elast. 91(1–3):5–148, 2008. https:// doi.  
+org/ 10. 1007/ s10659- 007- 9107-3. Accessed 6 March 2023.
+ 29. Sugerman, G. P., A. Chokshi, and M. K. Rausch. Preparation 
+and mounting of whole blood clot samples for mechanical test-
+ing. Curr. Protoc. 1(7), 2021. https:// doi. org/ 10. 1002/ cpz1. 197. 
+Accessed 13 Feb 2023.
+ 30. Miehe, C., F. Welschinger, and M. Hofacker. Thermodynami -
+cally consistent phase-field models of fracture: variational 
+principles and multi-field FE implementations. Int. J. Numer. 
+Methods Eng. 83(10):1273–1311, 2010. https:// doi. org/ 10. 1002/ 
+nme. 2861. Accessed 6 March 2023.
+ 31. Gültekin, O., H. Dal, and G. A. Holzapfel. A phase-field 
+approach to model fracture of arterial walls: theory and finite 
+element analysis. Comput. Methods Appl. Mech. Eng. 312:542–
+566, 2016. https:// doi. org/ 10. 1016/j. cma. 2016. 04. 007. Accessed 
+6 March 2023.
+ 32. Wu, J.-Y. A unified phase-field theory for the mechanics of dam-
+age and quasi-brittle failure. J. Mech. Phys. Solids 103:72–99, 
+2017. https:// doi. org/ 10. 1016/j. jmps. 2017. 03. 015. Accessed 6 
+March 2023.
+ 33. Ogden, R. W. Large deformation isotropic elasticity—on the 
+correlation of theory and experiment for incompressible rub-
+berlike solids. Proc. R. Soc. Lond. A. 326(1567):565–584, 1972.
+ 34. Lohr, M. J., G. P. Sugerman, S. Kakaletsis, E. Lejeune, and 
+M. K. Rausch. An introduction to the Ogden model in biome-
+chanics: benefits, implementation tools and limitations. Philos. 
+Trans. R. Soc. A 380(2234):20210365, 2022. https:// doi. org/ 10. 
+1098/ rsta. 2021. 0365. Accessed 13 March 2023.
+ 35. Miehe, C., M. Hofacker, and F. Welschinger. A phase field 
+model for rate-independent crack propagation: robust algorith-
+mic implementation based on operator splits. Comput. Methods 
+Appl. Mech. Eng. 199(45–48):2765–2778, 2010. https:// doi. org/ 
+10. 1016/j. cma. 2010. 04. 011. Accessed 6 March 2023.
+ 36. Gültekin, O., H. Dal, and G. A. Holzapfel. Numerical aspects of 
+anisotropic failure in soft biological tissues favor energy-based 
+criteria: a rate-dependent anisotropic crack phase-field model. 
+Comput. Methods Appl. Mech. Eng.  331:23–52, 2018. https://  
+doi. org/ 10. 1016/j. cma. 2017. 11. 008. Accessed 6 March 2023.
+ 37. Gültekin, O., S. P. Hager, H. Dal, and G. A. Holzapfel. Compu-
+tational modeling of progressive damage and rupture in fibrous 
+biological tissues: application to aortic dissection. Biomech. 
+Model. Mechanobiol. 18(6):1607–1628, 2019. https:// doi. org/  
+10. 1007/ s10237- 019- 01164-y. Accessed 6 March 2023.
+ 38. Sugerman, G. P., J. Yang, and M. K. Rausch. A speckling tech-
+nique for DIC on ultra-soft, highly hydrated materials. Exp. 
+
+--- PAGE 10 ---
+593
+“What makes blood clots break off?” A Back‑of‑the‑Envelope Computation Toward Explaining…
+Mech. 63(3):585–590, 2023. https:// doi. org/ 10. 1007/ s11340-  
+023- 00938-x. Accessed 17 May 2023.
+ 39. Sadowska, A., J. H. Spodnik, and S. Wójcik. Variations in pop-
+liteal fossa venous anatomy: implications for diagnosis of deep-
+vein thrombosis. Folia Morphol. 72(1):51–56, 2013. https:// doi.  
+org/ 10. 5603/ FM. 2013. 0008. Accessed 22 May 2023.
+ 40. Keiler, J., R. Seidel, and A. Wree. The femoral vein diameter 
+and its correlation with sex, age and body mass index—an ana-
+tomical parameter with clinical relevance. Phlebol. J. Venous Dis. 
+34(1):58–69, 2019. https:// doi. org/ 10. 1177/ 02683 55518 772746. 
+Accessed 22 May 2023.
+ 41. Rausch, M. K., and J. D. Humphrey. A computational model of 
+the biochemomechanics of an evolving occlusive thrombus. J. 
+Elast. 129(1–2):125–144, 2017. https:// doi. org/ 10. 1007/ s10659- 
+017- 9626-5. Accessed 13 Feb 2023.
+ 42. Fereidoonnezhad, B., A. Dwivedi, S. Johnson, R. McCarthy, and 
+P. McGarry. Blood clot fracture properties are dependent on red 
+blood cell and fibrin content. Acta Biomater. 127:213–228, 2021. 
+https:// doi. org/ 10. 1016/j. actbio. 2021. 03. 052. Accessed 13 Feb 
+2023.
+ 43. Liu, S., G. Bao, Z. Ma, C. J. Kastrup, and J. Li. Fracture mechan-
+ics of blood clots: measurements of toughness and critical length 
+scales. Extreme Mech. Lett..48:101444, 2021. https:// doi. org/ 10. 
+1016/j. eml. 2021. 101444. Accessed 13 Feb 2023.
+ 44. Garyfallogiannis, K., R. K. Ramanujam, R. I. Litvinov, T. Yu, 
+C. Nagaswami, J. L. Bassani, J. W. Weisel, P. K. Purohit, and V. 
+Tutwiler. Fracture toughness of fibrin gels as a function of protein 
+volume fraction: mechanical origins. Acta Biomater. 159:49–62, 
+2023. https:// doi. org/ 10. 1016/j. actbio. 2022. 12. 028. Accessed 15 
+March 2023.
+ 45. Sakariassen, K. S., L. Orning, and V. T. Turitto. The impact of 
+blood shear rate on arterial thrombus formation. Future Sci. OA  
+1(4):15–28, 2015. https:// doi. org/ 10. 4155/ fso. 15. 28. Accessed 13 
+Feb 2023.
+ 46. Zhao, Y. C., P. Vatankhah, T. Goh, R. Michelis, K. Kyanian, Y. 
+Zhang, Z. Li, and L. A. Ju. Hemodynamic analysis for stenosis 
+microfluidic model of thrombosis with refined computational fluid 
+dynamics simulation. Sci. Rep. 11(1):6875, 2021. https:// doi. org/ 
+10. 1038/ s41598- 021- 86310-2. Accessed 13 Feb 2023.
+ 47. Tutwiler, V., J. Singh, R. I. Litvinov, J. L. Bassani, P. K. Purohit, 
+and J. W. Weisel. Rupture of blood clots: mechanics and patho-
+physiology. Sci. Adv. 6(35):0496, 2020. https:// doi. org/ 10. 1126/ 
+sciadv. abc04 96. Accessed 24 March 2023.
+ 48. Basmadjian, D. Embolization: critical thrombus height, shear 
+rates, and pulsatility. Patency of blood vessels. J. Biomed. Mater. 
+Res. 23(11), 1315–1326, 1989. https:// doi. org/ 10. 1002/ jbm. 82023 
+1108. Accessed 27 Feb 2023.
+ 49. Brass, L. F., and S. L. Diamond. Transport physics and biorhe-
+ology in the setting of hemostasis and thrombosis. J. Thromb. 
+Haemostasis 14(5):906–917, 2016. https:// doi. org/ 10. 1111/ jth. 
+13280. Accessed 13 Feb 2023.
+ 50. McKenzie, A. J., B. J. Doyle, and Z. M. Aman. Micromechanical 
+force measurement of clotted blood particle cohesion: understand-
+ing thromboembolic aggregation mechanisms. Cardiovasc. Eng. 
+Technol. 13(6):816–828, 2022.
+ 51. Sugerman, G. P., S. H. Parekh, and M. K. Rausch. Nonlinear, dis-
+sipative phenomena in whole blood clot mechanics. Soft Matter  
+16(43):9908–9916, 2020. https:// doi. org/ 10. 1039/ D0SM0 1317J. 
+Accessed 13 Feb 2023.
+ 52. Ghezelbash, F., S. Liu, A. Shirazi-Adl, and J. Li. Blood clot 
+behaves as a poro-visco-elastic material. J. Mech. Behav. Biomed. 
+Mater. 128:105101, 2022. https:// doi. org/ 10. 1016/j. jmbbm. 2022. 
+105101. Accessed 13 Feb 2023.
+ 53. Sugerman, G. P., G. N. Bechtel, Z. Malinowska, S. H. Parekh, and 
+M. K. Rausch. Mechanical properties of clot made from human 
+and bovine whole blood differ significantly. J. Mech. Behav. 
+Biomed. Mater.154:106508, 2024.
+Publisher's Note Springer Nature remains neutral with regard to 
+jurisdictional claims in published maps and institutional affiliations.
+Springer Nature or its licensor (e.g. a society or other partner) holds 
+exclusive rights to this article under a publishing agreement with the 
+author(s) or other rightsholder(s); author self-archiving of the accepted 
+manuscript version of this article is solely governed by the terms of 
+such publishing agreement and applicable law.

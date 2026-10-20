@@ -1,0 +1,5 @@
+默认视频：animations/y_clot_point_cloud_early_flow_coupling.mp4
+
+旧数据点阵预览：animations/y_clot_point_cloud_only_preview.mp4
+
+完整科学审计：../../verification/y_clot_point_cloud_and_early_flow_coupling_v1/REVIEW_Y_CLOT_POINT_CLOUD_AND_EARLY_FLOW_COUPLING_V1.md

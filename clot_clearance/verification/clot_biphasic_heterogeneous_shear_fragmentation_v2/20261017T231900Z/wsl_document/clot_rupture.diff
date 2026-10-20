@@ -1,0 +1,47 @@
+--- clot_rupture.md.before
++++ clot_rupture.md.after
+@@ -671,6 +671,44 @@
+ 
+ 详见[28项科研报告](temp_storage/clot_github_sync_20261015/clot_clearance/verification/clot_spatially_heterogeneous_variational_lps_v1/20261017T214917Z/REVIEW_CLOT_SPATIALLY_HETEROGENEOUS_VARIATIONAL_LPS_V1.md)、[完整图与三个视频](temp_storage/clot_github_sync_20261015/clot_clearance/results/clot_spatially_heterogeneous_variational_lps_v1/20261017T214917Z/OPEN_RESULTS.html)。
+ 
++## Biphasic Heterogeneous Shear Fragmentation V2
++
++**明确强弱分区、新大试样与同一均匀剪切对照（20261017T231900Z）**
++
++研究问题：在完全相同的流体剪切类机械驱动下，多个强区嵌入连通弱基质能否自然形成至少5个20–200原始材料节点、内部仍有存活材料连接的游离块。区域标签不是碎块定义。
++
++材料中心包络1.2×1.2×0.6mm，dx=50µm、horizon=150.5µm；8125材料点+1875固定锚点（3层），原始bulk/interface/scaffold键=410961/40126/63971。共同单边缺口19106键；奇数z网格把z=0点归下侧，跨z=0且交点x≤−50µm的bulk键预切，无相区相关切割。初始整体仍连通。
++
++seed=20261018；受约束面连通区域生长得到10个强区，每区270–271点，强相体积分数33.32923077%，弱基质面邻接分量1。结构中心跨度250–350µm，等体积直径约401µm；相区最小节点间距100µm<horizon，非局部连接可跨弱隔层。原始跨相键91576。P0结构图与数量先行展示，通过后冻结。
++
++WEAK s0/sc=.100/.120、STRONG=.250/.300、MIXED端点算术均值=.175/.210；起裂、完成及区间比均为2.5，无平均Gc归一化。U=.15/.18。G=940Pa、K=100000/3Pa、rho=1000kg/m³及interface=.140625/.16875均沿用。参考端节点仍为V=dx³，总节点体积1.015625mm³，与中心包络0.864mm³不同；未重标质量。
++
++完整endpoint-star变分储能与力核不改，原生新增原始ID双阈值原子写入接口，避免分别设s0/sc时无效中间卡；reference/restart读取上限由4096节点放宽。旧实现对照库仅改两处容量限制，均匀旧/新力、能量、历史逐位一致。代表态梯度、节点排序、不可逆历史和V4 restart通过。U/H预切共同κ=.30、d=1，其余κ/d=0，保证完整初态一致；预切κ是失效标记，不是物理初应变。
++
++四类完整模型规定开裂路径耗能WEAK/MIXED/STRONG/UNIFORM分别为18.400236/56.498040/116.065928/41.466560nJ，STRONG/WEAK=6.307850；路径梯形积分残差单列，非Gc标定。
++
++加载UNIFORM_SURFACE_SHEAR_X，名义1000Pa沿+X投影到当前切面，不加空间窗口、不使用等功反馈。S(u)=3u²−2u³；0–2ms升、2–2.4ms恒、2.4–2.8ms降、2.8–3.6ms保留被动拖曳。当前受支持表面、裂面可达性及接触不改。外部速度上界25m/s、Re_h=625，仅为机械剪切需求代理，未验证微泡声流功率。
++
++uniform：COMPLETED，3.6000000ms，14914接受步、834拒绝预测；目标块末态4、历史最大4，目标质量占初始5.8092308%；总游离质量占初始91.7292308%、仍附着8.2707692%；最大自由块2978点；细屑/脱落质量0.15926472561384677；驱动关闭至终时同成员目标块存活1个。
++
++uniform：驱动/拖曳/净功=786.7966678/-52.7481038/734.0485640nJ；最大相对数值余额0.2483600%，R不并入D。CPU=14288.789s、wall=14291.851s、peakRSS=1123.105MiB、FP64状态159个。
++
++biphasic：COMPLETED，3.6000000ms，17429接受步、5985拒绝预测；目标块末态3、历史最大3，目标质量占初始2.6830769%；总游离质量占初始90.6338462%、仍附着9.3661538%；最大自由块934点；细屑/脱落质量0.3575502444323737；驱动关闭至终时同成员目标块存活0个。
++
++biphasic：驱动/拖曳/净功=1018.0886454/-83.9964160/934.0922294nJ；最大相对数值余额0.2483600%，R不并入D。CPU=31332.662s、wall=35206.506s、peakRSS=1080.949MiB、FP64状态159个。
++
++H因用户临时关闭本地电脑而SIGSTOP暂停，后经明确指令恢复同一进程，未新增正式尝试。原始wall包括暂停；记录至恢复间隔3800.742s，扣除此间隔后约31405.764s。记录略晚于实际暂停，因此扣除值仅为近似，CPU不受等待时长影响。
++
++末态目标块加载表示：{"uniform": {"target_count": 4, "zero_active_facet_targets": [1848, 1804, 1164], "zero_supported_tetra_targets": [1804, 1164], "active_facet_counts": [0, 0, 2, 0], "surface_node_coverage": [0.0, 0.0, 0.03314917127071823, 0.0], "interpretation": "Connectivity remains an exact original-bond-graph result. Supported-facet coverage does not certify complete physical fluid loading or hydrodynamic survival."}, "biphasic": {"target_count": 3, "zero_active_facet_targets": [3809, 3846], "zero_supported_tetra_targets": [3809, 3846], "active_facet_counts": [0, 1, 0], "surface_node_coverage": [0.0, 0.02027027027027027, 0.0], "interpretation": "Connectivity remains an exact original-bond-graph result. Supported-facet coverage does not certify complete physical fluid loading or hydrodynamic survival."}}。存活图上的凝聚性与完整流体作用下的稳定性必须区分。
++
++科研结论：MULTIPLE_COHESIVE_BLOCKS_OUTSIDE_SPECIFIED_TARGET_BAND。原始存活材料键图与锚层可达性定义自由块，统计1–2、3–13、14–19、20–33、34–113、114–200、>200；20/200包含。通过原始成员集合追踪birth、二次分裂、寿命及卸载存活。空间多处软化和failed-bond网络不能单独认证连续三维裂面。
++
++下一项物理优先级：优先验证并修复存活非局部材料图与当前表面加载表示之间的一致性：末态存在没有激活加载面的凝聚目标块，需区分辅助四面体支持缺失、开放/可达性未满足及遮挡，并用独立的脱落凝聚块受力路径验证；当前结果不能认证完整流体阻力下的卸载稳定性。在此之后，按末态逐块组成区分单强域保留、多强域桥接及纯弱区凝聚体，再核对270–271点初始强域与20–200点目标之间的尺度差异、弱间隔相对horizon的非局部连接及dx可分辨性；不能把所有大块一概解释为完整强域脱落。当前块数本身不足以支持优先更换断裂律或扩大阈值比，候选剪切/混合模式修改应先经独立加载路径验证。。
++
++本轮只有一个冻结空间实现，没有增加种子/幅值扫描，没有内存或1800s墙钟预算。细屑和缺少3D受支持表面的分量水动力未解析；不能解释为物理零阻力。材料/界面、接触、整体强度和Gc仍未标定。
++
++详见[科研报告](temp_storage/clot_github_sync_20261015/clot_clearance/verification/clot_biphasic_heterogeneous_shear_fragmentation_v2/20261017T231900Z/REVIEW_CLOT_BIPHASIC_HETEROGENEOUS_SHEAR_FRAGMENTATION_V2.md)、[科研图和两个1080p真实视频](temp_storage/clot_github_sync_20261015/clot_clearance/results/clot_biphasic_heterogeneous_shear_fragmentation_v2/20261017T231900Z/OPEN_RESULTS.html)。视频固定全景、实际坐标位移×1，每面板标真实接受态时间；未观测目标块时显示TARGET_FRAGMENT_NOT_OBSERVED。
++
+ # ⑥ 外加剪切：模拟微泡对血块表面的“刮”
+ 
+ **完整公式**（作用在表面点 $i$上）：$\mathbf F_i^{\text{load}}(t)=A_i\;\tau_0\;g(t)\;\exp\!\Big(-\frac{\|\mathbf x_i(t)-\mathbf c\|^2}{2\sigma^2}\Big)\;(\mathbf I-\mathbf n_i\mathbf n_i^{\top})\,\mathbf e_x$

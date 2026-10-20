@@ -1,0 +1,84 @@
+{
+  "status": "FROZEN_BEFORE_NATIVE_RUN",
+  "hypothesis": "With identical native axial-history softening, the direction of applied displacement relative to a precrack changes notch localization, cohesive/adhesive competition and retained internal connectivity. This tests geometry/loading effects before introducing mixed-mode failure.",
+  "cases": [
+    "opening_z",
+    "shear_x"
+  ],
+  "only_changed_factor": "top prescribed displacement direction z versus x",
+  "material": {
+    "G_Pa": 940.0,
+    "K_Pa": 33333.333333333336,
+    "rho": 1000.0,
+    "dx_m": 5e-05,
+    "horizon_m": 0.0001505,
+    "s0": [
+      0.0,
+      0.15,
+      0.140625,
+      1.0
+    ],
+    "sc": [
+      0.0,
+      0.18,
+      0.16875,
+      1.2
+    ],
+    "interface_uncalibrated": true
+  },
+  "geometry": {
+    "material_counts": [
+      14,
+      8,
+      16
+    ],
+    "material_nodes": 1792,
+    "anchors": 336,
+    "original_bonds": 95666,
+    "typed_bonds": [
+      79568,
+      6288,
+      9810
+    ],
+    "precut_bonds": 2736,
+    "notch": "reference z=0 segment intersections with x<=-50 um; initial geometry only",
+    "m": "immutable full original star before precut",
+    "dimensions_m": [
+      0.0007,
+      0.0004,
+      0.0008
+    ]
+  },
+  "loading": {
+    "displacement_m": 0.00024,
+    "ramp_s": 0.002,
+    "end_s": 0.0025,
+    "waveform": "half cosine; same 240 um net separation used by the prior +/-120 um small specimen",
+    "release": "At 2 ms remove displacement constraint on top and integrate its existing x,v. No material bond is cut at release. Grip-connected components before release are not free fragments.",
+    "damping": "none in either case",
+    "flow": "none; synthetic isolated mechanical benchmark"
+  },
+  "integration": {
+    "base_dt_s": 2.5e-07,
+    "min_dt_s": 3.125e-08,
+    "max_dd": 0.1,
+    "method": "Exact VV coordinate forecast with typed damage; halve BEFORE native commit, verify forecast against accepted x/d. No rejected native state is reused.",
+    "energy_relative_gate": 0.01
+  },
+  "limitations": "Finite 3D specimen, thickness=2.66 delta, ligament=2.66 delta. Not continuum-converged, not calibrated Gc, not a real V3 rerun. Only two pre-frozen directions; no amplitude or parameter search.",
+  "library_sha256": "da705cdd2358eab259d9f99ab402e743f6a64c829959eb094c148f8492552ae7",
+  "frozen_native_bridge_sha256": "5fdcc3ed027e3f3870b9c13c3f7190093f30c7acea88f2ec9a9249da5924d922",
+  "driver_sha256": {
+    "common.py": "bc8d84615616678c3dfabf46e62ca195be35d27a2082f8ed7bbeb99e415c37b5",
+    "prepare.py": "4d8a5ece4cbffc0f11c59e7b14705d78a666997496f6f8b97194ac960a30de6e",
+    "graph_ops.py": "1c2a0b32824f266419bb68173a6f88d7b4ef19269f9eda02b9d11afe6e34bf6b",
+    "topology_audit.py": "137039d6682fc0bec81c974eca728e9b0517c714e3c2c460ff2a57a24da67a4b",
+    "start_managed.py": "74b9e4ea211334bac1f1f6fca8b6f81adc8c4d166db57596a3e2cfcf4cce63a5",
+    "recover_states.py": "4b1e8f6b806898d6cc228282816188599e2d2a25f9cb54535c001cde4c25b5ec",
+    "spatial_audit.py": "9448d4317f3120fd7ba47a608a5079b8396b85105bfd3485eaacb7f1b9212889",
+    "mixed_mode.py": "7f39336900094db1be5f762d43344b879097b53f3a05fb965efbc58030f1d24b",
+    "bench_native.py": "08a11882b9855323c6de8d0836f28cac6bd10e3ab0b834b02a0e9b3bbb4f64f2",
+    "benchmark.py": "0d58e6be1bf947a21208ffe07b8905a2f983dcbcb6733818d5741b570ba2310c"
+  },
+  "expected_cost": "Two ~10000-step cases, measured wall/RSS retained; no arbitrary RSS or wall-clock stop."
+}

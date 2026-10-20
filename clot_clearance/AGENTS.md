@@ -1,4 +1,14 @@
-# Current clot research snapshot (2026-10-15)
+# Current clot research snapshot (2026-10-20)
+
+Start with `github_sync_20261020/README.md` and `ACTIVE_DEVELOPMENT_ENTRYPOINTS.md`.
+The latest accepted original-Y V4 trajectory is `20261020T041100Z`, completed
+to 3.6 ms. Latest fixed-camera fracture visuals are in
+`results/y_clot_fracture_reference_style_v2/20261020T094240Z`.
+Use the new snapshot manifest to verify this export. Compact state NPZ files
+preserve selected arrays exactly but are not full native checkpoints. Do not
+overwrite frozen outputs or rerun accepted trajectories during archive review.
+
+## Historical snapshot instructions (2026-10-15)
 
 Read `github_sync_20261015/README.md` and `ACTIVE_DEVELOPMENT_ENTRYPOINTS.md` for the latest V3 variational-softening pilot and export boundaries. One historical C1 case completed 2.33 ms with numerical gates passed; contact accuracy, interface softening, macroscopic strength and Gc remain uncalibrated. This is an exploratory sample, not formal AI training data. The full-server manifests include intentionally omitted native files; use this export snapshot manifest for clone verification.
 

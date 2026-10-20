@@ -1,0 +1,48 @@
+{
+  "model_label": "PRESCRIBED_STOKES_SHEAR_TEMPLATE",
+  "evidence": "PHYSICS_APPROXIMATION",
+  "flow_order": "PRESCRIBED_NONOSCILLATORY_VISCOUS_FLOW",
+  "not_first_order_acoustics": true,
+  "not_second_order_streaming": true,
+  "equation": "u_x=sin(k*y)*v(z,t); v_t=nu*(v_zz-k^2*v); p_increment=0",
+  "boundary": "v(0,t)=0; v(H,t)=0.004*q(t); y-periodic 700 um, infinite x; initial rest",
+  "g": "sinh(k*z)/sinh(k*H)",
+  "modal_ODE": "b_n_dot=-nu*((n*pi/H)^2+k^2)*b_n-c_n*q_dot; c_n=2*(-1)^(n+1)*n*pi/((n*pi)^2+(k*H)^2)",
+  "reconstruction": "v=U*(q*g+sum b_n*sin(n*pi*z/H))",
+  "shear": "tau_xz=mu*sin(k*y)*v_z(0,t)",
+  "rho_kg_m3": 1000.0,
+  "mu_Pa_s": 0.001,
+  "gap_m": 2.5e-05,
+  "upper_speed_m_s": 0.004,
+  "wavelength_m": 0.0007,
+  "rise_s": 0.002,
+  "hold_until_s": 0.0024,
+  "upper_drive_off_s": 0.0028,
+  "end_s": 0.0036,
+  "cohort_s": 0.0034,
+  "mode_reason": "One lowest smooth counter-shear mode over actual 350 um transverse span: opposite x-directed lanes and zero centerline. Selected from specimen dimensions before damage outcomes, not prescribed crack or bond targets.",
+  "nonlinear_convection": "Exactly zero because u=(u_x(y,z,t),0,0), independent of x; this does not validate finite edges or curved surfaces.",
+  "Re_H": 0.1,
+  "coupling": "FROZEN_SURFACE_ONE_WAY",
+  "limitations": [
+    "Prescribed patterned boundary, no physical bubble-to-wall realization",
+    "Finite edge effects and moving clot feedback omitted",
+    "No new crack-face fluid stress",
+    "Reference loading persists on displaced/detached original nodes; only a mechanical dead-traction surrogate once deformation is appreciable",
+    "V3 projection is independent local-patch extension, not a global V3 solution"
+  ],
+  "references": [
+    {
+      "url": "https://joss.theoj.org/papers/10.21105/joss.05435",
+      "scope": "APECSS bubble/acoustic-emission capabilities, not a streaming closure"
+    },
+    {
+      "url": "https://arxiv.org/abs/1509.02554",
+      "scope": "First/second-order streaming separation and temporal buildup; abstract read, not a reproduction of its full model"
+    },
+    {
+      "url": "https://docs.lammps.org/fix_external.html",
+      "scope": "Native callback force entrypoint"
+    }
+  ]
+}

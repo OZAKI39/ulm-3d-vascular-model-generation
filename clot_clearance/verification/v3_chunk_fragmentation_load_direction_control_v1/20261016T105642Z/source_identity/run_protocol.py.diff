@@ -1,0 +1,61 @@
+--- historical/run_protocol.py
++++ direction_control/run_protocol.py
+@@ -4,23 +4,26 @@
+ from journal import Journal
+ from integrator import Integrator
+ from checks import topology
+-import time,resource,traceback
+-freeze=json.loads((O/'V3_PILOT_FREEZE.json').read_text());assert sha(O/'V3_PILOT_FREEZE.json')==(O/'V3_PILOT_FREEZE.sha256').read_text().split()[0]
++import time,resource,traceback,shutil
++from protocol_support import decorate,ComponentRecorder,early_checkpoint
++freeze=json.loads((O/'LOAD_DIRECTION_FREEZE.json').read_text());assert sha(O/'LOAD_DIRECTION_FREEZE.json')==(O/'LOAD_DIRECTION_FREEZE.sha256').read_text().split()[0]
+ for name,h in freeze['driver_sha256'].items():assert sha(A/name)==h,name
++for name,h in freeze['historical_driver_sha256'].items():assert sha(HIST_A/name)==h,name
++assert sha(O/'REFERENCE_NORMAL_FIELD.npz')==freeze['reference_normal_sha256']
+ for name,h in freeze['input_sha256'].items():assert sha(O/'provenance'/name)==h,name
+ assert sha(LIB)==freeze['library_sha256']
+-with (O/'FORMAL_PILOT_LAUNCHED.json').open('x') as f:json.dump(dict(task=TASK,run_id=RUN,allowed_cases=1,from_real_initial_state=True,epoch=time.time(),freeze_sha256=sha(O/'V3_PILOT_FREEZE.json')),f)
+-start=time.perf_counter();cpu=time.process_time();ns=j=integ=m=None;status='NOT_STARTED';failure=None;first={k:None for k in ['bulk_softening','bulk_failure','interface_softening','interface_failure','detachment','particle_contact','wall_contact']};detach_times=np.full(1927,np.nan);drag_times=np.full(1927,np.nan);accepted=0;maxes={};newstates=[];next_fixed=.00025;final_match=False
++with (O/'FORMAL_PILOT_LAUNCHED.json').open('x') as f:json.dump(dict(task=TASK,run_id=RUN,allowed_cases=1,from_real_initial_state=True,epoch=time.time(),freeze_sha256=sha(O/'LOAD_DIRECTION_FREEZE.json')),f)
++start=time.perf_counter();cpu=time.process_time();ns=j=integ=m=None;status='NOT_STARTED';failure=None;first={k:None for k in ['bulk_softening','bulk_failure','interface_softening','interface_failure','detachment','particle_contact','wall_contact']};detach_times=np.full(1927,np.nan);drag_times=np.full(1927,np.nan);accepted=0;maxes={};newstates=[];next_fixed=.00025;final_match=False;early_done=False;recorder=None
+ try:
+  ns=Native('full/native');s=ns.dynamics();assert np.array_equal(s['x'],ns.ref['X']) and not s['d'].any() and not s['velocity'].any()
+  dump(O/'LOADED_NATIVE_IDENTITY.json',dict(paths=ns.maps,sha256=sha(LIB),MPI_ranks=ns.comm.size,threads=1,original_atom_ids_exact=True))
+- m=Mechanics(ns,s,freeze['gates']);row,pairs,newsoft,newfail=m.check(s,s,0);j=Journal(list(row),ns.ref);j.accept(s,row,pairs=pairs);j.key(s,'initial');j.checkpoint(ns,s,'initial');integ=Integrator(ns,j);status='RUNNING'
++ m=Mechanics(ns,s,freeze['gates']);row,pairs,newsoft,newfail=m.check(s,s,0);decorate(row,s);j=Journal(list(row),ns.ref);j.accept(s,row,pairs=pairs);j.key(s,'initial');j.checkpoint(ns,s,'initial');integ=Integrator(ns,j);status='RUNNING';recorder=ComponentRecorder();recorder.accept(s,None,j)
+  while s['time']<END-1e-15:
+   prev=s;s,h=integ.next(prev);ns=integ.ns;m.ns=ns
+   try:row,pairs,newsoft,newfail=m.check(prev,s,h)
+   except BaseException:
+    save_state(O/'full/unaccepted_mechanical_candidate.npz',s);raise
+-  ns.ext.accept(s);j.accept(s,row,prev,pairs,newsoft,newfail);accepted+=1
++  decorate(row,s);ns.ext.accept(s);j.accept(s,row,prev,pairs,newsoft,newfail);recorder.accept(s,prev,j);accepted+=1
+   b=ns.ref['bonds'];bt=ns.ref['bond_types'];trigger=[]
+   for kind,ids in [('softening',newsoft),('failure',newfail)]:
+    for typ,label in [(1,'bulk'),(2,'interface')]:
+@@ -38,6 +41,8 @@
+   if trigger:dump(O/'FIRST_EVENTS.json',first)
+   for k in ['max_speed_m_s','max_dd','relative_R','max_contact_penetration_dx','max_wall_overlap_m','wall_contact_nodes','detached_nodes','detached_components','largest_detached_nodes','largest_detached_diameter_m','N_ge200','N_ge300','momentum_residual_Ns','x_equation_m','v_equation_m_s']:
+    if k not in maxes or row[k]>maxes[k]['value']:maxes[k]=dict(value=row[k],step=s['step'],time_s=s['time'])
++  if not early_done and s['time']>=EARLY-1e-15:
++   ns,s=early_checkpoint(ns,s,m,integ,j,row,first);early_done=True;print('EARLY_CHECKPOINT_RESTORED_CONTINUING',s['time'],flush=True)
+   if accepted%400==0:j.checkpoint(ns,s,'periodic_400_accepted');assert sum(p.stat().st_size for p in O.rglob('*') if p.is_file())<2*1024**3,'OUTPUT_LIMIT'
+   if accepted%200==0 or trigger:
+    dump(O/'PROGRESS.json',dict(status=status,step=s['step'],time_s=s['time'],wall_s=time.perf_counter()-start,peak_RSS_bytes=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss*1024,bulk_failed=row['bulk_failed'],interface_failed=row['interface_failed'],detached_nodes=row['detached_nodes'],detached_components=row['detached_components'],max_relative_R_percent=maxes['relative_R']['value']*100,rejects=integ.rejects))
+@@ -49,8 +54,9 @@
+  status='STOPPED_NUMERICAL_OR_IMPLEMENTATION_GATE';failure=dict(type=type(exc).__name__,message=str(exc),traceback=traceback.format_exc());print(failure['traceback'],flush=True)
+  if j:j.failure(exc,failure['traceback'])
+ finally:
++ if recorder:recorder.close()
+  if integ:integ.save()
+- if j:j.finish()
++ if j:j.finish();shutil.copy2(O/'V3_NATIVE_PILOT_HISTORY.csv',O/'V3_DIRECTION_CONTROL_DYNAMIC_HISTORY.csv')
+  final=None if j is None else j.last_row
+  dump(O/'FIRST_EVENTS.json',first)
+  np.savez_compressed(O/'DETACHMENT_DRAG_TIMES.npz',detach_time_s=detach_times,drag_time_s=drag_times)
+@@ -61,3 +67,5 @@
+   try:ns.close()
+   except BaseException:pass
+ print('FORMAL_PILOT_FINISHED',status,flush=True)
++
++raise SystemExit(0 if status=='FULL_PROTOCOL_NUMERICAL_PASS' else 1)

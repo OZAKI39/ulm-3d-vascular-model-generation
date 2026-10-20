@@ -1,0 +1,25 @@
+--- accepted_single_indenter/fix_lps_variational_dynamic.cpp
++++ multisite/fix_lps_variational_dynamic.cpp
+@@ -39,16 +39,19 @@
+   if(material && material!=bond)
+     error->all(FLERR,"Cannot replace variational material during dynamic history");
+   if(!material){material=bond;material->attach_dynamic(true);}
+-  int nve_count=0,external_count=0,indent_count=0;bool converted=false;
++  int nve_count=0,external_count=0,indent_count=0,legacy_indent_count=0;bool converted=false;
+   for(auto *fix : modify->get_fix_list()) {
+     if(fix==this){converted=true;continue;}
+     if(std::strcmp(fix->style,"nve")==0){nve_count++;continue;}
+     if(std::strcmp(fix->style,"move")==0 || std::strcmp(fix->style,"property/atom")==0)continue;
+     if(std::strcmp(fix->style,"external")==0 && std::strcmp(fix->id,"v3forces")==0 && converted){external_count++;continue;}
+-    if(std::strcmp(fix->style,"indent")==0 && std::strcmp(fix->id,"indenter")==0 && converted){indent_count++;continue;}
++    if(std::strcmp(fix->style,"indent")==0 && converted) {
++      if(std::strcmp(fix->id,"indenter")==0){indent_count++;legacy_indent_count++;continue;}
++      if(std::strcmp(fix->id,"indenter0")==0 || std::strcmp(fix->id,"indenter1")==0){indent_count++;continue;}
++    }
+     error->all(FLERR,"Unadmitted fix or external force before physical SI conversion");
+   }
+-  if(indent_count>1 || (indent_count && external_count))error->all(FLERR,"One audited indenter, without external traction, is required");
++  if(indent_count>2 || (legacy_indent_count && indent_count>1) || (indent_count && external_count))error->all(FLERR,"At most two audited current-contact indenters, without external traction, are required");
+   if(external_count>1)error->all(FLERR,"V3 permits one audited external callback");
+   if(nve_count!=1)error->all(FLERR,"Variational dynamics requires one free-node fix nve");
+   const double mass=rho*material->physical_volume();

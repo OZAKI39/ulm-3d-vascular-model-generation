@@ -1,0 +1,32 @@
+{
+  "status": "IMPLEMENTED_CONSERVATIVE_GEOMETRIC_PROXY",
+  "label": "QUASISTATIC_FLUID_ACCESSIBILITY_PROXY",
+  "tetra_count": 51840,
+  "unique_triangle_count": 106272,
+  "method": "Freudenthal six-tetra subdivision of the actual reference lattice, including fixed anchors as occlusion geometry",
+  "support": "All six original tetra bonds live, positive signed volume ratio; surface has three actual original material IDs and live edge bonds. Auxiliary tetrahedra carry no mass/stiffness and do not change native mechanics.",
+  "gap": "Six-edge local graph disconnected AND positive volume AND (Vcurrent/Vref-1)*dx > aperture_min. Failed support alone is not fluid.",
+  "portal": "Shared actual triangular face local graph disconnected AND area-dilation proxy (A/Aref-1)*dx > aperture_min; gap cells connect through such portals to an outer portal.",
+  "new_face": "Boundary of a fully supported material tetra against an exterior-connected open gap; opposing node normal-height increase > aperture_min. Each unique triangle mapped once.",
+  "aperture_min_m": 1e-06,
+  "traction_full_aperture_m": 5e-06,
+  "regularization": "C1 smooth aperture gate from 1 to 5 um, same factor on drive and drag",
+  "categories": [
+    "ORIGINAL_EXPOSED_SURFACE",
+    "NEW_OPEN_CRACK_SURFACE",
+    "FLUID_ACCESSIBLE_CRACK_SURFACE",
+    "DETACHED_FRAGMENT_EXPOSED_SURFACE",
+    "CLOSED_OR_UNRESOLVED_CRACK_SURFACE"
+  ],
+  "classification": "original/new/open/accessibility are geometry flags; detached is orthogonal actual native component flag, not a second added force",
+  "geometric_limitations": [
+    "Node-centered support-complex boundary is a resolution-dependent proxy, not unique continuum crack location.",
+    "Damaged connected cells, inverted/closed cells, sheet/chain/fine components without 3D supported tetra remain unresolved.",
+    "Local void transmission ignores nonlocal bond lines as impermeable solid tubes; long live bridges still determine material connectivity. No fiber radii or pore flow model supplied.",
+    "No guaranteed lower bound on true continuum wetted area; unresolved true area cannot be measured from point data alone. Report candidate-area and component coverage, never claim zero unknown area.",
+    "Finite point-probe visibility cannot certify a continuous liquid corridor or resolve subgrid throats/self-contact. No infiltration PDE. Report this approximation and probe rejections."
+  ],
+  "mass": "Native original node IDs, volumes and mass are untouched; auxiliary volume is NOT native material volume.",
+  "transaction": "Geometry is pure current-state recomputation; only accepted commit changes cumulative exposure. No rejected predictor changes damage/surface history.",
+  "current_occlusion": "Gap-cell centroid, portal centroid and two outward face probes at 1/3 um must lie outside every current fully supported tetra (KD-tree broad phase and exact barycentric point containment). Occluded candidates remain unresolved."
+}

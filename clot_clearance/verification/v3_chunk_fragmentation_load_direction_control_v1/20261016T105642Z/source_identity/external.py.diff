@@ -1,0 +1,72 @@
+--- historical/external.py
++++ direction_control/external.py
+@@ -1,55 +1,16 @@
+-"""Current accepted topology -> historical V3 external forces, physical SI.
+-Only accept() persists port state. Candidate evaluations are rollback-safe.
+-"""
++"""Change only the direction operand in the frozen historical load formula."""
+ from common import *
+-import time,traceback
+-from pd_clot.lammps_fragmentation.native_y_wall_query import NativeYWallQuery
+-from pd_clot.lammps_fragmentation.native_y_wall_contact import CONTACT,penalty
+-from pd_clot.lammps_fragmentation.early_flow_coupling import drag_law
+-from pd_clot.lammps_fragmentation.detached_fragment_metrics import graph_components
+-FIELDS=['load','drag','numeric','wall_elastic','wall_damping','external_force','clearance','wall_overlap','exited','detached','component_label','component_sizes','component_attached','valid_flow','fluid_velocity','drag_tau','velocity_force_half','external_time']
+-class External:
++_historical=module_from_file('direction_historical_external',HIST_A/'external.py')
++HistoricalExternal=_historical.External
++FIELDS=_historical.FIELDS
++CONTACT=_historical.CONTACT
++class External(HistoricalExternal):
+  def __init__(self,ns,restart_state=None,query=None):
+-  self.ns=ns;self.ref=ns.ref;self.n=int(self.ref['clot_count']);self.N=ns.N;self.query=query if query else NativeYWallQuery();self.req=json.loads((O/'provenance/request.json').read_text());self.load_card=json.loads((O/'provenance/LOAD_PROVIDER.json').read_text());self.last=None;self.error=None;self.calls=0;self.seconds=0.
+-  self.previous=self.ref['X'][:self.n].copy();self.exited=np.zeros(self.n,bool);self.resume=restart_state;self.cached_d=None
+-  if restart_state is not None:self.previous=restart_state['x'][:self.n].copy();self.exited=restart_state['exited'].copy()
+- def amp(self,t):
+-  T=self.req['duration_s']
+-  return .5*(1-np.cos(4*np.pi*t/T)) if t<T/4 else 1. if t<.75*T else .5*(1+np.cos(4*np.pi*(t/T-.75))) if t<T else 0.
+- def topology(self,d):
+-  alive=d<1
+-  if self.cached_d is None or not np.array_equal(alive,self.cached_d):
+-   self.labels,self.sizes,self.attached=graph_components(self.n,self.ref['bonds'],self.ref['bond_types'],alive);self.cached_d=alive.copy()
+-  return self.labels,self.sizes,self.attached
+- def compute(self,x,v,d,t):
+-  lab,sizes,att=self.topology(d);det=~att[lab];xx=x[:self.n];vv=v[:self.n];q=self.query.query(xx);exited=self.exited.copy()
+-  for i in np.flatnonzero(~q['inside_lumen']&~exited):
+-   if self.query.port_crossing(self.previous[i],xx[i]):exited[i]=True
+-  overlap=np.maximum(CONTACT['effective_radius_m']-q['clearance_m'],0);overlap[exited]=0
+-  fe=CONTACT['stiffness_N_m']*overlap[:,None]*q['inward_normal'];fw=penalty(q['clearance_m'],q['inward_normal'],vv);fw[exited]=0;fd=fw-fe
+-  load=self.ref['areas'][:self.n,None]*self.load_card['scale_Pa']*self.amp(t)*np.exp(-np.sum((xx-self.req['load_centers_m'][0])**2,axis=1)/(2*self.req['gaussian_sigma_m']**2))[:,None]*self.ref['tangent'][:self.n]
+-  numeric=-self.req['numerical_drag_rate_s_inv']*MASS*vv;numeric[det]=0;drag=np.zeros_like(vv);valid=np.zeros(self.n,bool);u=np.zeros_like(vv);tau=np.zeros(self.n)
+-  members=[np.flatnonzero(lab==j) for j in np.flatnonzero(~att)]
+-  if members:
+-   pos=np.array([xx[z].mean(0) for z in members]);vel=np.array([vv[z].mean(0) for z in members]);counts=np.array([len(z) for z in members]);sample=self.query.flow.sample(pos);ok=sample['valid'];force=np.zeros_like(pos);tt=np.zeros(len(pos))
+-   force[ok],tt[ok],_=drag_law(counts[ok],vel[ok],sample['velocity_m_s'][ok])
+-   for j,z in enumerate(members):
+-    valid[z]=ok[j];tau[z]=tt[j]
+-    if ok[j]:drag[z]=force[j]/len(z);u[z]=sample['velocity_m_s'][j]
+-  assert not np.any(drag[~det]) and not np.any(numeric[det])
+-  z=dict(load=load,drag=drag,numeric=numeric,wall_elastic=fe,wall_damping=fd,external_force=load+drag+numeric+fw,clearance=q['clearance_m'],wall_overlap=overlap,exited=exited,detached=det,component_label=lab.copy(),component_sizes=sizes.copy(),component_attached=att.copy(),valid_flow=valid,fluid_velocity=u,drag_tau=tau,velocity_force_half=vv.copy(),external_time=np.array(t))
+-  return z
+- def callback(self,caller,step,nlocal,tags,x,f):
+-  start=time.perf_counter();f[:]=0
+-  try:
+-   assert nlocal==self.N and self.ns.comm.size==1
+-   ids=tags.astype(int)-1;xx=np.empty((self.N,3));vv=xx.copy();xx[ids]=x;vv[ids]=self.ns.l.numpy.extract_atom('v')[:nlocal]
+-   t=float(self.ns.l.get_thermo('time'))
+-   if self.resume is not None and int(step)==int(self.resume['step']):
+-    assert np.array_equal(xx,self.resume['x']);z={k:self.resume[k].copy() for k in FIELDS}
+-   else:z=self.compute(xx,vv,self.ns.field(3),t)
+-   jj=np.flatnonzero(ids<self.n);f[jj]=z['external_force'][ids[jj]];self.last=z;self.calls+=1
+-  except BaseException:
+-   self.error=traceback.format_exc();f[:]=np.nan
+-  self.seconds+=time.perf_counter()-start
+- def accept(self,s):self.previous=s['x'][:self.n].copy();self.exited=s['exited'].copy();self.resume=None
++  super().__init__(ns,restart_state,query)
++  normal=load_npz(O/'REFERENCE_NORMAL_FIELD.npz');ids=normal['atom_ids']-1
++  assert np.array_equal(ids,np.flatnonzero(ns.ref['areas']>0))
++  direction=ns.ref['tangent'].copy()
++  direction[ids]=normal['normal_ref']*np.linalg.norm(ns.ref['tangent'][ids],axis=1)[:,None]
++  self.ref=dict(ns.ref,tangent=direction)
++  # amp(), compute(), callback(), accept(), drag and wall contact are inherited
++  # unchanged. ns.ref and its original tangent/areas/geometry remain immutable.
