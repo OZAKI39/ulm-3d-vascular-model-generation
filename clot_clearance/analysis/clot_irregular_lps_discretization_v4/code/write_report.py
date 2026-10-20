@@ -78,7 +78,7 @@ L1支撑四面体仍由原格点身份拓扑定义，但其坐标、面积、法
 
 原协议BASE=0.25µs、最小事件步0.03125µs、单步Δd≤0.1。外功沿真实接受端点力与真实位移累计，Wdrive/Wdrag分列；完整账本`W=ΔU+ΔK+D+ΔUc−Jc+R`，没有把R加到D或隐藏成阻尼。最大已接受归一化残差 **{100*result['max_relative_R']:.7f}%**。
 
-合法checkpoint带原生restart、接受态、表面历史、节点功和谱系/总账sidecar；2ms通过后从同一checkpoint继续3.6ms。失败原生态与最后接受态分开，`LAST_LEGAL_CHECKPOINT.json`指向最近合法可恢复磁盘状态；若它早于最后接受NPZ，两者明确区分。
+合法checkpoint带原生restart、接受态、表面历史、节点功和谱系/总账sidecar；仅当2ms试运行通过后才从同一checkpoint继续3.6ms，实际覆盖时间以上述原生终态为准。失败原生态与最后接受态分开，`LAST_LEGAL_CHECKPOINT.json`指向最近合法可恢复磁盘状态；若它早于最后接受NPZ，两者明确区分。
 
 异常记录：
 
@@ -88,15 +88,15 @@ L1支撑四面体仍由原格点身份拓扑定义，但其坐标、面积、法
 
 初始拓扑变化如第4节。实际断裂指标见 `CRACK_METRICS.json`；仅对本体新断键统计，排除原预缺口。用断键方向二阶张量、四阶坐标轴对齐量和断键中点空间分布评价，不能只看渲染是否“不方正”。
 
-匹配接受时间V3/V4={crack['times_s']['V3']*1e3:.7f}/{crack['times_s']['V4']*1e3:.7f}ms；本体新断键={crack['metrics']['V3']['bulk_failed']}/{crack['metrics']['V4']['bulk_failed']}。四阶轴对齐量V3/V4={crack['metrics']['V3']['axis_alignment_fourth_moment']}/{crack['metrics']['V4']['axis_alignment_fourth_moment']}，该量只是原始键方向代理。
+匹配接受时间V3/V4={crack['times_s']['V3']*1e3:.7f}/{crack['times_s']['V4']*1e3:.7f}ms；本体新断键={crack['metrics']['V3']['bulk_failed']}/{crack['metrics']['V4']['bulk_failed']}。四阶轴对齐量V3/V4={crack['metrics']['V3']['axis_alignment_fourth_moment']}/{crack['metrics']['V4']['axis_alignment_fourth_moment']}，该量只是原始键方向代理。相对各自初始本体键方向背景扣除后的V3/V4差值为{outcome['final_axis_alignment_excess_over_reference']['V3']}/{outcome['final_axis_alignment_excess_over_reference']['V4']}；必须同时看背景与断裂演化，不能把初始邻域方向差异直接解释为裂纹偏置改善。
 
 输出的网络路径比是最大断键网络上选定端点的最短图路径/直线距离，端点规则及坐标均保存；它不是识别出的连续裂纹曲折度。由于参考位置、邻域和积分权重共同变化，不能把差异归因于单纯的裂纹外观。
 
 ## 8. Q5：20–200节点游离块是否增加？
 
-按 **SURVIVING_ORIGINAL_MATERIAL_GRAPH** 统计；匹配接受时间的20–200节点游离分量V3/V4为 **{outcome['final_target_count']['V3']}/{outcome['final_target_count']['V4']}**；V4时程最多 **{result['max_N20_200']}** 个。对应物理质量V3/V4={outcome['target_mass_kg']['V3']*1e6:.8f}/{outcome['target_mass_kg']['V4']*1e6:.8f}mg。
+按 **SURVIVING_ORIGINAL_MATERIAL_GRAPH** 统计；匹配接受时间的20–200节点游离分量V3/V4为 **{outcome['final_target_count']['V3']}/{outcome['final_target_count']['V4']}**；V4时程最多 **{result['max_N20_200']}** 个。匹配观察窗口的历史峰值V3/V4为{outcome['matched_window_max_target_count']['V3']}/{outcome['matched_window_max_target_count']['V4']}。对应物理质量V3/V4={outcome['target_mass_kg']['V3']*1e6:.8f}/{outcome['target_mass_kg']['V4']*1e6:.8f}mg。
 
-`FRAGMENT_HISTORY.csv`、`FRAGMENT_SIZE_SPECTRA.json`与`FRAGMENT_MORPHOLOGY.csv`同时给出原始节点数、参考体积、质量和以50µm立方体体积换算的等效点数。20–200仍以原始节点数定义，并不等于固定物理体积。形貌依据质量加权协方差和主轴比例作描述性COHESIVE_BLOCK/THIN_SHEET/FILAMENT/SMALL_DEBRIS分类；不改变真实图成员，也不把空间相邻点并成块。
+`FRAGMENT_HISTORY.csv`、`FRAGMENT_SPECTRA_HISTORY.csv`、`FRAGMENT_SIZE_SPECTRA.json`与`FRAGMENT_MORPHOLOGY.csv`同时给出原始节点数、参考体积、质量和以50µm立方体体积换算的等效点数。20–200仍以原始节点数定义，并不等于固定物理体积。形貌依据质量加权协方差和主轴比例作描述性COHESIVE_BLOCK/THIN_SHEET/FILAMENT/SMALL_DEBRIS分类；不改变真实图成员，也不把空间相邻点并成块。
 
 ## 9. Q6：卸载后是否更稳定？
 
@@ -138,7 +138,7 @@ The initial generation uses exactly seed20261019, bounded isotropic ball proposa
 Full original FP64 states, native restarts, build objects and dense damage streams remain at `{O}` on the server. The Git delivery includes code, manifests, small scientific tables, plots and selected evidence; large source payloads are identified explicitly in export manifests. Videos and dense data must be copied from the result archive if excluded by the local Git size policy.
 '''
  (O/'REPRODUCE.md').write_text(reproduce)
- names=['SOURCE_FREEZE.json','PERFORMANCE_OPTIMIZATION.json','IRREGULAR_REFERENCE_GEOMETRY.json','LPS_DISCRETIZATION_CHECK.json','NATIVE_V4_RESULT.json','FRAGMENT_HISTORY.csv','FRAGMENT_MORPHOLOGY.csv','FRAGMENT_LINEAGE.json','ENERGY_LEDGER.csv','COMPUTE_COST.json','REVIEW_CLOT_IRREGULAR_LPS_V4.md','REPRODUCE.md']
+ names=['SOURCE_FREEZE.json','PERFORMANCE_BOTTLENECKS.md','PERFORMANCE_OPTIMIZATION.json','IRREGULAR_REFERENCE_GEOMETRY.json','LPS_DISCRETIZATION_CHECK.json','NATIVE_V4_RESULT.json','FRAGMENT_HISTORY.csv','FRAGMENT_SPECTRA_HISTORY.csv','FRAGMENT_MORPHOLOGY.csv','FRAGMENT_LINEAGE.json','ENERGY_LEDGER.csv','COMPUTE_COST.json','REVIEW_CLOT_IRREGULAR_LPS_V4.md','REPRODUCE.md']
  for name in names:shutil.copy2(O/name,D/name)
  shutil.copy2(O/'PERFORMANCE_BASELINE_V3_COMPACT.json',D/'PERFORMANCE_BASELINE_V3.json')
  for name in ['REFERENCE_BOND_TOPOLOGY.csv','NODAL_VOLUME_AUDIT.csv']:

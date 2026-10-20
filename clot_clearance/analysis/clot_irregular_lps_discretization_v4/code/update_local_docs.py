@@ -24,7 +24,7 @@ def main():
 
 V3真实损伤态8步计时发现主要热点为谱系与诊断20.080s、磁盘/事件输出9.079s；原生积分及材料1.150s。原成员ID直接查新标签等保持语义优化，使窗口44.787→28.829s（1.554倍）；状态、全标量CSV和父子事件一致。完整态窗口没有加速，不把短窗提升当作11.7小时全程实测提升。
 
-唯一H_IRREGULAR_LPS_V4状态 **{q['status']}**，合法接受到 **{q['accepted_time_s']*1e3:.8f}ms**，{q['accepted_steps']}接受步、{q['rejected_predictions']}预测拒绝。2ms为数值试运行门槛，后段从同一合法checkpoint续算；BASE=0.25µs、最小事件步0.03125µs，不设4GiB/1800s预算。最大已接受归一化能量残差{100*q['max_relative_R']:.7f}%，R独立、不加入D；wall {q['wall_s']/3600:.4f}h。匹配接受时间的20–200节点游离分量V3/V4={s['final_target_count']['V3']}/{s['final_target_count']['V4']}，V4时程最多{q['max_N20_200']}个。成员由存活原始材料图定义，质量、体积和等效名义点数分别计算。
+唯一H_IRREGULAR_LPS_V4状态 **{q['status']}**，合法接受到 **{q['accepted_time_s']*1e3:.8f}ms**，{q['accepted_steps']}接受步、{q['rejected_predictions']}预测拒绝。2ms为数值试运行门槛；仅通过后才从同一合法checkpoint续算，实际覆盖时段以上述终态为准。BASE=0.25µs、最小事件步0.03125µs，不设4GiB/1800s预算。最大已接受归一化能量残差{100*q['max_relative_R']:.7f}%，R独立、不加入D；wall {q['wall_s']/3600:.4f}h。匹配接受时间的20–200节点游离分量V3/V4={s['final_target_count']['V3']}/{s['final_target_count']['V4']}，V4时程最多{q['max_N20_200']}个。成员由存活原始材料图定义，质量、体积和等效名义点数分别计算。
 
 一次受约束随机点云同时改变参考坐标、连接和积分，不能据此宣称统计稳健性、真实血栓微结构或声流机制已经验证。正式标签EXPLORATORY_UNCALIBRATED、MECHANICAL_SHEAR_SURROGATE；数值停止或未观察窗口均在报告中单独标明，未自动追加物理工况。见[八问科研报告]({report})及[十图、两个真实1080p视频]({index})。视频为固定Z竖直相机、真实接受态和位移×1；球形节点仅表示积分体积，不伪造连续碎块外壳。
 
