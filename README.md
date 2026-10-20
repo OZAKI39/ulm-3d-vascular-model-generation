@@ -2,6 +2,8 @@
 
 当前不规则 Y 血栓 V4 的独立工程。先读 [`clot_sim/main.py`](clot_sim/main.py) 的 `run()`，再按它的显式 import 阅读各个物理模块。模型源码只有 `clot_sim/` 一份；自定义原生计算在 `native/src/`。运行和测试均不读取旧工程源码或数据。
 
+研究基线：**Clot Simulation V4 — Codebase Consolidation**。日常开发规则见 [`AGENTS.md`](AGENTS.md)。
+
 本次仅重构结构，没有重新运行冻结的 3.6 ms 正式轨迹。已通过的等效范围及误差见 [`VALIDATION.md`](VALIDATION.md)。原工程、正式轨迹和原始检查点仍保留。
 
 ## 快速使用
@@ -126,3 +128,43 @@ python -m clot_sim.visualization --states \
 ```
 
 也可把自己的 `results/my_case/keys` 目录交给 `--states`。输出真实坐标、当前存活键、红色强弱相、固定相机和竖直 Z 轴。每个提供的保存状态停留 1 秒；不插值、不伪造缺失帧。当前验证视频是 **3 个保存状态的稀疏回放**，不是重新计算的连续断裂轨迹。已生成的图与视频入口：[`results/validation/saved_state_replay/index.html`](results/validation/saved_state_replay/index.html)。
+
+## 日常 Git 工作流
+
+只在本目录修改、测试和提交，不再创建同步副本。当前是独立 Git 仓库，初始提交为 `29202fe`，分支 `main`。原 GitHub 仓库的工程布局和提交根与这里不同；连接远端的方案须先确认，不能直接覆盖原仓库的 `main`。
+
+建议沿用 `https://github.com/OZAKI39/ulm-3d-vascular-model-generation.git`，在该仓库只使用一个长期分支 `clot-simulation-v4` 保存本工程，保留现有全部历史分支。方案确认前不配置推送目标、不推送。
+
+平时提交：
+
+```bash
+cd /home/lzy/projects/new_clot_simulation
+git status --short
+git diff
+# 按本次实际改动显式选择路径，避免把大型输出一起加入。
+git add clot_sim/loading.py tests/test_equivalence.py
+git diff --cached
+git commit -m "Describe the actual change"
+```
+
+上述 `git add` 路径只是示例，不表示需要修改加载方法。远端方案确认后，可在本工作树一次性配置：
+
+```bash
+git remote add origin https://github.com/OZAKI39/ulm-3d-vascular-model-generation.git
+git branch -m clot-simulation-v4
+# 仅当用户明确要求推送时执行首次推送：
+git push -u origin clot-simulation-v4
+# 此后日常提交仍在相同分支；要求推送时直接：
+git push
+```
+
+这会在已有远程仓库增加一个长期分支，不合并无关历史、不改写任何旧提交，也不删除旧分支。如果该分支已存在，先检查其历史，不能强制覆盖。
+
+## 科研数据保留与 Git 边界
+
+- Git 保存 `clot_sim/`、`native/src/`、固定源码包、配置、必要输入、回归样本与研究文档。每次检查暂存差异和体积，避免笼统 `git add .`。
+- `results/` **不整体忽略**：新案例、账本、状态清单和报告会显示为未跟踪文件，须显式决定哪些纳入 Git。不要为使工作树看起来干净而删除或隐藏正式结果。
+- 正式轨迹、原生 restart、完整精度状态和唯一输入原地保留，不自动压缩、降采样或覆盖。大型数据不默认推送；若需另行归档，先由用户决定位置，再在案例的小型清单中记录路径、大小、SHA-256、代码提交、配置及原生库身份。清单不代替数据本身。
+- `.gitignore` 只忽略环境、编译目录、Python/测试缓存、可重建的 `results/cache/`，以及已注明可重放的三帧验证视频/图片。小型验证报告和索引仍可提交。不要添加全局 `*.npz`、`*.restart`、`*.log` 或 `results/` 忽略规则。
+- `native/build/` 虽不提交，但含当前已验证的本地动态库与构建记录；**被 Git 忽略不等于可删除**。任何删除仍需核查可重建性及是否唯一，并按用户批准清单执行。
+- 旧正式结果和服务器 `/workspace/y_clot/` 保持原位。历史路径仅用于出处记录，不是新工程运行依赖。
