@@ -1,32 +1,32 @@
 # Clot 历史目录与 Git 审计
 
-审计日期：2026-10-20。**等待用户集中确认，尚未永久删除任何目录；本轮实际释放空间为 0。** 没有访问或清理服务器 `/workspace/y_clot/`，没有重跑正式 3.6 ms 轨迹。唯一日常开发工程是本目录；保留的旧目录仅用于科研数据和历史证据。
+审计日期：2026-10-20；执行日期：**2026-10-21**。用户已明确批准 **A+B+C** 及固定分支方案。**A、B 已完成删除，旧项目目录清理前占用合计 8.594 GiB**；两份独有说明已保存并提交，C 也已按精确清单全部删除。 没有访问或清理服务器 `/workspace/y_clot/`，没有重跑正式 3.6 ms 轨迹。唯一日常开发工程是本目录；保留的旧目录仅用于科研数据和历史证据。
 
 ## 空间与结论
 
 按 `du -x -B1` 统计实际分配空间，不跟随符号链接。1 GiB = 2³⁰ bytes。开始审计时磁盘可用 **445.71 GiB**，`temp_storage` 占 **79.76 GiB**；生成临时只读审计索引后约 **445.56 GiB**。系统及其他项目活动可能使数字变化。
 
-- A：已确认可删除的旧 worktree **4.880 GiB**。
-- B：需确认先保留两份独有说明后才能删除的恢复快照 **3.714 GiB**。
+- A：已删除干净 worktree **4.880 GiB**，共同 Git 元数据也由 Git 正常注销。
+- B：已保留两份独有说明并删除恢复快照 **3.714 GiB**。
 - 其余需判断用途的环境、文献和审计目录 **3.979 GiB**，本轮不建议删除。
 - 必须暂时整体保留的工程/科研数据目录 **58.864 GiB**，包括新工程及下表四个旧 Git 工程和本地 `clot_clearance`；这是目录占用，不能解释为全部都是唯一数据。
-- 批准 A 后预计可用约 **450.44 GiB**；同时批准 B 后约 **454.15 GiB**。另清理本轮临时索引可恢复审计自身占用约 0.145 GiB，不计入旧项目回收成果。
+- A+B 删除前 `df` 可用 478,415,798,272 bytes，删除后立即为 487,647,141,888 bytes，增加 **9,231,343,616 bytes（8.597 GiB）**，包含额外注销的 worktree 元数据。本轮临时索引约 0.145 GiB 的回收单列，不计入旧项目成果。最终磁盘读数见本报告末尾；测试和其他进程可能同时产生文件。
 
-## 待确认的精确删除清单
+## 已批准并执行的精确删除清单
 
 | 编号 / 原始路径 | 实际占用 | 文件用途 | 判断依据 | 建议处理 |
 |---|---:|---|---|---|
-| A `/home/lzy/projects/temp_storage/clot_github_sync_20261020` | 5,239,787,520 bytes / 4.880 GiB | 已推送的精选源码、科研结果快照 worktree | `.git` 是文件；工作树干净；HEAD 与实时远端一致；未跟踪文件为零，仅两份忽略的 `.pyc`。全部其余普通文件的 Git blob 在核对的远端 Clot 分支中存在，符号链接受 Git 跟踪 | 确认后从共同主仓库执行 `git worktree remove`；保留分支及共同 `.git`，不 prune 对象 |
-| B `/home/lzy/projects/temp_storage/clot_cleanup_recovery_snapshot_20261004T203008Z` | 3,987,644,416 bytes / 3.714 GiB | 10 月 4 日只读恢复副本，含独立 `.git` 和 11 个嵌套上游仓库 | 其中 `clot_clearance/` 的 **23,171 个普通文件**与保留的 9 月 30 日工程同相对路径、同 SHA-256；符号链接文字完全相同。12 个 Git 对象库的全部对象（含未被 refs 引用的对象）及全部 refs 在对应保留仓库中存在 | **先按下面方案保留两份独有说明，验证 SHA，再删除整个 B**；README 已存在远端历史分支；不另复制工程 |
+| A `/home/lzy/projects/temp_storage/clot_github_sync_20261020` | 5,239,787,520 bytes / 4.880 GiB | 已推送的精选源码、科研结果快照 worktree | `.git` 是文件；工作树干净；HEAD 与实时远端一致；未跟踪文件为零，仅两份忽略的 `.pyc`。全部其余普通文件的 Git blob 在核对的远端 Clot 分支中存在，符号链接受 Git 跟踪 | 已从共同主仓库执行 `git worktree remove`，未使用 force；原分支和共同 `.git` 保留，未 prune 对象 |
+| B `/home/lzy/projects/temp_storage/clot_cleanup_recovery_snapshot_20261004T203008Z` | 3,987,644,416 bytes / 3.714 GiB | 10 月 4 日只读恢复副本，含独立 `.git` 和 11 个嵌套上游仓库 | 其中 `clot_clearance/` 的 **23,171 个普通文件**与保留的 9 月 30 日工程同相对路径、同 SHA-256；符号链接文字完全相同。12 个 Git 对象库的全部对象（含未被 refs 引用的对象）及全部 refs 在对应保留仓库中存在 | 已保存下列两份说明并验证 SHA、提交后删除整个 B；README 已在远端历史分支，未另复制工程 |
 
-B 的必要前置步骤也需要此次确认，尚未执行：
+B 的必要前置步骤已经完成，保留提交为 `0aea532`：
 
-| 独有文件 | 文件大小 | 拟保留位置 |
+| 独有文件 | 文件大小 | 现保留位置 |
 |---|---:|---|
 | `B/PROJECT_ACTIVE_CONTEXT.md` | 7,773 bytes | `archive/reports/cleanup_20261004_PROJECT_ACTIVE_CONTEXT.md` |
 | `B/HISTORICAL_INDEX.md` | 5,825 bytes | `archive/reports/cleanup_20261004_HISTORICAL_INDEX.md` |
 
-这两份说明记录当时清理恢复的未解决问题，不用当前说明覆盖它们。除这两份必要资料外，不把 B 再复制到 archive。B 的源文件内容指纹与 Git 对象匹配已检查，执行前仍应重新核对目标、SHA、Git 状态和进程占用。当前用户可读的 `/proc` 中未发现 A/B 的打开文件或工作目录；26 个系统进程的文件描述符不可读取，不把这一检查称为全系统排他保证。
+这两份说明记录当时清理恢复的未解决问题，不用当前说明覆盖它们。除这两份必要资料外，没有把 B 再复制到 archive。删除前重新核对了 A/B 共 44,758 个普通文件的 SHA、目录内新增文件、符号链接、实时远端 HEAD 及 B 所有嵌套仓库没有外接 worktree。当前用户可读的 `/proc` 中未发现 A/B 的打开文件或工作目录；26 个系统进程的文件描述符不可读取，不把这一检查称为全系统排他保证。
 
 两份说明的 SHA-256 分别为 `e5fe3b2ecc34d41312fd01d08338827bec879fd595ba57d8bd46889887d32b55`、`ca4568ca8b1b29b09413b749eba96af29722babdc837fa402b7191ec1bdffec3`。
 
@@ -86,13 +86,13 @@ B 的必要前置步骤也需要此次确认，尚未执行：
 
 ## Git 状态和后续方案
 
-新工程是普通独立 Git 仓库，`.git` 为目录；分支 **main**，初始重构提交 **29202fe**；本轮仅提交维护规则、数据可见性规则和审计文档。没有配置 remote，没有 push。当前源码初始提交尚未保存在 GitHub。
+新工程是普通独立 Git 仓库，`.git` 为目录；分支 **clot-simulation-v4**，origin 为原 GitHub 仓库。初始重构提交 **29202fe**，规则及审计提交 **88bf0a3**，独有历史说明保留提交 **0aea532**；本轮维护与清理结果也在本地正常提交。**没有 push、没有 upstream；新工程这些本地提交尚未保存在 GitHub。**
 
-旧 Clot 四个 worktree 均归属于 `T/clot_clearance_github_sync_20260930/.git`；相应已提交 HEAD 均被本次核对的实时远端分支历史覆盖。但这不包含各工作树的未提交内容。10 月 15 日开发 HEAD `5036268` 已被 `project-sync-20261020` 的历史覆盖，即使没有同名远端开发分支，也不应误称该提交未推送。
+删除 A 前，旧 Clot 四个外部 worktree 均归属于 `T/clot_clearance_github_sync_20260930/.git`；相应已提交 HEAD 均被本次核对的实时远端分支历史覆盖。但这不包含各工作树的未提交内容。10 月 15 日开发 HEAD `5036268` 已被 `project-sync-20261020` 的历史覆盖，即使没有同名远端开发分支，也不应误称该提交未推送。
 
 A 的已核对远端：`https://github.com/OZAKI39/ulm-3d-vascular-model-generation.git`，分支 `clot-clearance/project-sync-20261020`，提交 `032cb75ecf2b99290fceb0f4ef672f91eb3df981`。
 
-**建议待确认后**在新工程配置该同一仓库的 origin，只建立一次长期分支 `clot-simulation-v4`。本工程 root 布局与旧仓库的 `clot_clearance/` 布局不同，且是独立根提交；不合并无关历史、不覆盖旧 main、不 force push。只在用户明确要求推送时首次 `git push -u origin clot-simulation-v4`，随后一直用普通 `git push`。正常 commit/push 命令见 README。
+**已按用户确认**在新工程配置同一仓库的 origin，并将本地分支改名为 `clot-simulation-v4`；剩余三个旧外部 worktree 保持原状。本工程 root 布局与旧仓库的 `clot_clearance/` 布局不同，且是独立根提交；不合并无关历史、不覆盖旧 main、不 force push。只在用户明确要求推送时首次 `git push -u origin clot-simulation-v4`，随后一直用普通 `git push`。正常 commit/push 命令见 README。
 
 新 `.gitignore` 不再整体忽略 `results/`，正式结果、日志、检查点不会被宽泛扩展名规则隐藏。当前生成目录被忽略不代表可删除。`AGENTS.md` 已禁止自动同步副本、推送、创建普通提交专用 worktree、无授权的大型仿真和不明用途删除。
 
@@ -105,18 +105,18 @@ A 的已核对远端：`https://github.com/OZAKI39/ulm-3d-vascular-model-generat
 
 ## 验证与限制
 
-- 本轮 `source native/env.sh; .venv/bin/python -m pytest -q`：**9 passed，17.72 s**。114 条 VTK/NumPy 废弃提示，无测试失败。
+- 删除前小型回归 **9 passed，17.72 s**；删除后 `source native/env.sh; .venv/bin/python -m pytest -q --junitxml=results/validation/junit.xml` 再次 **9 passed，27.40 s**。114 条 VTK/NumPy 废弃提示，无测试失败。
 - 覆盖节点/键与原 ID、积分体积与材料身份、材料能量/力、表面与接触力、损伤/kappa、短步推进、连通性、能量账本、保存和恢复。测试中的文件审计钩子禁止读取旧 `temp_storage` 或服务器历史根目录。
 - `python -m clot_sim.main inspect` 正常：1927 材料点、1561 锚点、153986 参考键、体积 0.240875 mm³、horizon 150.5 µm。
 - `git diff -- clot_sim native configs inputs tests` 无改动；没有修改物理参数、损伤逻辑或现有测试。输入及原生库哈希核对通过。
 - `.gitignore` 的 13 项路径检查通过；关键输入、C++、科研 restart 和日志保持可见，环境和明确缓存被忽略。`ldd` 未发现当前库缺失依赖或链接到旧项目目录。
-- 对已哈希的旧文件复核大小与纳秒 mtime，变化数为 **0**；没有修改旧科研结果。测试只更新新工程的可再生回归误差报告。
+- 删除后对其余 **119,930 个保留旧文件重新计算 SHA-256，全部与清理前一致**；没有修改旧科研结果。测试只更新新工程的可再生验证报告。
 - 目前没有新工程运行所需的旧目录 Python/C++/数据依赖。外部系统库、独立虚拟环境和新工程本地原生库仍是显式依赖。
-- 尚未执行删除后的回归、全量历史模型复现、MPI 多进程或正式 3.6 ms 轨迹；不宣称这些验证已通过。用户批准删除后，将重新核对清单、执行精确清理、再次运行小型测试并更新本报告实际释放空间。
+- 删除后的回归及文档中的 inspect 工作流已经通过。未执行全量历史模型复现、MPI 多进程或正式 3.6 ms 轨迹，不宣称这些验证已通过。
 
 ## 本轮临时审计索引
 
-索引仅含路径、大小、哈希和只读 Git 状态，放在 `/tmp`，没有复制科研数组或项目源码。下面清单作为 A/B 批准执行完毕后附带清理的 **C 项**；不删除任何未列出的 `/tmp` 文件，释放量不计旧项目成果。
+索引仅含路径、大小、哈希和只读 Git 状态，放在 `/tmp`，没有复制科研数组或项目源码。下面是用户批准附带清理的 **C 项**；只删除所列精确路径，释放量不计旧项目成果。
 
 精确路径（23 个普通文件，当前分配 155521024 bytes）：
 
@@ -145,3 +145,11 @@ A 的已核对远端：`https://github.com/OZAKI39/ulm-3d-vascular-model-generat
 /tmp/clot_cleanup_staging_compare.json
 /tmp/clot_cleanup_temp_du.tsv
 ```
+
+## 最终执行记录
+
+- A/B 两个目录均不存在；旧 `project-sync-20261020` 分支与共同 Git 对象库保留。
+- C 的 23 个获批临时文件已删除，实际分配共 155,521,024 bytes（148.32 MiB）。没有删除清单之外的文件。
+- 最终磁盘可用 **487,801,950,208 bytes（454.30 GiB）**；`temp_storage` 现占 **71.16 GiB**。
+- 没有 push，没有 Git 历史重写，没有删除远端分支，没有清理其他项目或服务器。
+- 日常维护只使用 `new_clot_simulation`；保留旧目录是为保存尚不可删除的科研数据与历史证据，不能误称历史磁盘内容已经全部清空。

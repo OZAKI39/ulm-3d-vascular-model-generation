@@ -131,9 +131,9 @@ python -m clot_sim.visualization --states \
 
 ## 日常 Git 工作流
 
-只在本目录修改、测试和提交，不再创建同步副本。当前是独立 Git 仓库，初始提交为 `29202fe`，分支 `main`。原 GitHub 仓库的工程布局和提交根与这里不同；连接远端的方案须先确认，不能直接覆盖原仓库的 `main`。
+只在本目录修改、测试和提交，不再创建同步副本。当前是独立 Git 仓库，初始提交为 `29202fe`，长期分支为 **`clot-simulation-v4`**。原 GitHub 仓库的工程布局和提交根与这里不同；本分支保留独立工程布局，不覆盖原仓库的 `main`。
 
-建议沿用 `https://github.com/OZAKI39/ulm-3d-vascular-model-generation.git`，在该仓库只使用一个长期分支 `clot-simulation-v4` 保存本工程，保留现有全部历史分支。方案确认前不配置推送目标、不推送。
+已按用户确认将 `origin` 配置为 `https://github.com/OZAKI39/ulm-3d-vascular-model-generation.git`，使用长期分支 `clot-simulation-v4` 保存本工程，保留现有全部历史分支。**本次没有推送；尚未设置 upstream。** 清理执行情况见 [`CLEANUP.md`](CLEANUP.md)。
 
 平时提交：
 
@@ -147,18 +147,16 @@ git diff --cached
 git commit -m "Describe the actual change"
 ```
 
-上述 `git add` 路径只是示例，不表示需要修改加载方法。远端方案确认后，可在本工作树一次性配置：
+上述 `git add` 路径只是示例，不表示需要修改加载方法。origin 和本地分支已配置，无须再次初始化或克隆。将来用户要求首次推送时执行：
 
 ```bash
-git remote add origin https://github.com/OZAKI39/ulm-3d-vascular-model-generation.git
-git branch -m clot-simulation-v4
 # 仅当用户明确要求推送时执行首次推送：
 git push -u origin clot-simulation-v4
 # 此后日常提交仍在相同分支；要求推送时直接：
 git push
 ```
 
-这会在已有远程仓库增加一个长期分支，不合并无关历史、不改写任何旧提交，也不删除旧分支。如果该分支已存在，先检查其历史，不能强制覆盖。
+首次推送前先核对 `git ls-remote --heads origin refs/heads/clot-simulation-v4`；如果远端已存在同名分支，先检查其历史，不能强制覆盖。正常推送会保存本工程的长期分支，不合并无关历史、不改写任何旧提交，也不删除旧分支。
 
 ## 科研数据保留与 Git 边界
 
