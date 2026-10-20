@@ -1,5 +1,7 @@
 # 迁移基线、函数映射与清理清单
 
+本文件的基线和函数映射记录重构时的实际来源。后续已批准清理的目录及原件现存位置以 [`CLEANUP.md`](CLEANUP.md) 和 `archive/legacy_research/PRESERVATION_PLAN.csv` 为准；原开发基线 10 月 15 日工作树仍保留，不是日常开发根目录。
+
 ## 实际选择的基线
 
 本地原开发根目录：

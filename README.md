@@ -4,7 +4,7 @@
 
 研究基线：**Clot Simulation V4 — Codebase Consolidation**。日常开发规则见 [`AGENTS.md`](AGENTS.md)。
 
-本次仅重构结构，没有重新运行冻结的 3.6 ms 正式轨迹。已通过的等效范围及误差见 [`VALIDATION.md`](VALIDATION.md)。原工程、正式轨迹和原始检查点仍保留。
+本次仅重构结构，没有重新运行冻结的 3.6 ms 正式轨迹。已通过的等效范围及误差见 [`VALIDATION.md`](VALIDATION.md)。正式轨迹和原始检查点按 [`CLEANUP.md`](CLEANUP.md) 保留；已批准的旧副本和专用环境完成清理。
 
 ## 快速使用
 
@@ -87,11 +87,11 @@ new_clot_simulation/
 ├── results/                    # 新运行、缓存、验证日志及可视化
 ├── archive/
 │   ├── reports/                # 来源/冻结/迁移报告；无运行时依赖
-│   └── legacy_research/        # 待批准清理的保留清单及环境元数据，无科研原件
+│   └── legacy_research/        # 保留清单、环境元数据、执行记录及本地科研原件
 ├── .gitattributes              # 冻结输入、原生源码及基线的字节保留规则
 ├── .gitignore
 ├── AGENTS.md
-├── CLEANUP.md                  # 已完成清理记录及尚未批准的第二批清单
+├── CLEANUP.md                  # 两批已批准清理的执行记录与保留边界
 ├── README.md
 ├── MIGRATION.md                # 旧→新函数映射、依赖判断与待清理清单
 ├── VALIDATION.md
@@ -139,7 +139,7 @@ python -m clot_sim.visualization --states \
 
 只在本目录修改、测试和提交，不再创建同步副本。当前是独立 Git 仓库，初始提交为 `29202fe`，长期分支为 **`clot-simulation-v4`**。原 GitHub 仓库的工程布局和提交根与这里不同；本分支保留独立工程布局，不覆盖原仓库的 `main`。
 
-`origin` 为 `https://github.com/OZAKI39/ulm-3d-vascular-model-generation.git`，本工程固定使用长期分支 [`clot-simulation-v4`](https://github.com/OZAKI39/ulm-3d-vascular-model-generation/tree/clot-simulation-v4)，保留现有全部历史分支。首次推送用 `-u` 建立 upstream，后续使用普通 `git push`。清理执行情况见 [`CLEANUP.md`](CLEANUP.md)；第二批清理仍待单独确认，提交其清单不代表已经执行删除。
+`origin` 为 `https://github.com/OZAKI39/ulm-3d-vascular-model-generation.git`，本工程固定使用长期分支 [`clot-simulation-v4`](https://github.com/OZAKI39/ulm-3d-vascular-model-generation/tree/clot-simulation-v4)，保留现有全部历史分支。首次正式提交 `982a0d1` 已推送并建立 upstream，后续使用普通 `git push`。第二批清理随后获得用户明确批准并执行，保留原件和清理结果见 [`CLEANUP.md`](CLEANUP.md)。
 
 平时提交：
 
@@ -172,5 +172,6 @@ git push
 - `results/` **不整体忽略**：新案例、账本、状态清单和报告会显示为未跟踪文件，须显式决定哪些纳入 Git。不要为使工作树看起来干净而删除或隐藏正式结果。
 - 正式轨迹、原生 restart、完整精度状态和唯一输入原地保留，不自动压缩、降采样或覆盖。大型数据不默认推送；若需另行归档，先由用户决定位置，再在案例的小型清单中记录路径、大小、SHA-256、代码提交、配置及原生库身份。清单不代替数据本身。
 - `.gitignore` 只忽略环境、编译目录、Python/测试缓存、可重建的 `results/cache/`，以及已注明可重放的三帧验证视频/图片。小型验证报告和索引仍可提交。不要添加全局 `*.npz`、`*.restart`、`*.log` 或 `results/` 忽略规则。
+- `archive/legacy_research/data/` 是唯一额外的精确忽略路径：其中 2,867 份历史原件保留在本地，约 3.684 GiB，不上传 GitHub。来源、目标、原字节 SHA 和大小见 `PRESERVATION_PLAN.csv`，实际执行结果见 `RETENTION.json`。这些是正式保留数据，不是缓存；不得因被忽略而删除。当前程序不读取此归档。
 - `native/build/` 虽不提交，但含当前已验证的本地动态库与构建记录；**被 Git 忽略不等于可删除**。任何删除仍需核查可重建性及是否唯一，并按用户批准清单执行。
-- 旧正式结果和服务器 `/workspace/y_clot/` 保持原位。历史路径仅用于出处记录，不是新工程运行依赖。
+- 其余旧正式结果和服务器 `/workspace/y_clot/` 保持原位；本次获批移动的原件按保留清单定位。历史路径仅用于出处记录，不是新工程运行依赖。
