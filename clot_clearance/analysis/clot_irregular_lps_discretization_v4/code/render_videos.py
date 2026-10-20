@@ -83,6 +83,6 @@ def main(preview=False):
  logs={};logs['VIDEO_01_REGULAR_VS_IRREGULAR_FRACTURE']=movie(pl,bounds,refs,pairs,['V3 regular','V4 irregular'],F/'videos/VIDEO_01_REGULAR_VS_IRREGULAR_FRACTURE.mp4',2)
  logs['VIDEO_02_IRREGULAR_FRAGMENT_EVOLUTION']=movie(setup(bounds,1),bounds,[refs[1]],[[p[1]] for p in pairs],['V4 irregular — surviving original material graph'],F/'videos/VIDEO_02_IRREGULAR_FRAGMENT_EVOLUTION.mp4',1)
  metadata=dict(status='COMPLETE',width=WIDTH,height=HEIGHT,fps=FPS,bounds_mm=bounds,camera='Fixed orthographic, world Z vertical; same world bounds',displacement_scale=1.,time_matching='Use actual saved V4 times and latest V3 accepted state at or before each; show both actual times. Repeat frames, no interpolation.',color='Deterministic SHA256 of exact original component member IDs selects a red palette; attached nodes red, anchors blue-grey',volume_marker='Sphere volume equals Vi; visualization quadrature marker, not a true spherical fiber or continuous clot surface',shown_bonds='Video 2 shows ALL internal surviving original bonds of 20–200-node free components; no reference failed bonds',frames=logs)
- dump(O/'VIDEO_PROVENANCE.json',metadata);print('V4_VIDEOS_COMPLETE',flush=True)
+ metadata['render_source_sha256']=sha(A/'render_videos.py');metadata['analysis_source_sha256']=sha(A/'analyze_result.py');dump(O/'VIDEO_PROVENANCE.json',metadata);print('V4_VIDEOS_COMPLETE',flush=True)
 if __name__=='__main__':
  p=argparse.ArgumentParser();p.add_argument('--preview',action='store_true');main(p.parse_args().preview)
