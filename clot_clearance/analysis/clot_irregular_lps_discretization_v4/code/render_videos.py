@@ -51,8 +51,8 @@ def annotate(pl,raw,bounds,stats,names,panels):
    if axis==1:anchor[0]=hi[0]
    if axis==2:anchor[:2]=hi[:2]
    for value in np.linspace(lo[axis],hi[axis],4):
-    if axis==1 and value==lo[axis]:continue # shared front corner already has the X tick
-    p=anchor.copy();p[axis]=value;xy=project(p)+np.array([0,14] if axis==0 else [18,14] if axis==1 else [18,0]);draw.text(tuple(xy),f'{value:.2f}',font=font(20),fill='#384651',anchor='mt' if axis==0 else 'lt' if axis==1 else 'lm')
+    if axis==1 and value in (lo[axis],hi[axis]):continue # avoid shared X/Y and Y/Z corner labels
+    p=anchor.copy();p[axis]=value;xy=project(p)+np.array([0,14] if axis==0 else [30,-12] if axis==1 else [18,0]);draw.text(tuple(xy),f'{value:.2f}',font=font(20),fill='#384651',anchor='mt' if axis==0 else 'lt' if axis==1 else 'lm')
    p=anchor.copy();p[axis]=(lo[axis]+hi[axis])/2;xy=project(p)+np.array([0,47] if axis==0 else [47,45] if axis==1 else [57,0]);draw.text(tuple(xy),'XYZ'[axis]+' (mm)',font=font(22),fill='#263540',anchor='mt' if axis==0 else 'lt' if axis==1 else 'lm')
   draw.text((WIDTH*(j+.5)/panels,940),f'20–200 nodes: {stats[j]["N20_200"]} free components',font=font(25),fill='#642136',anchor='mt')
  draw.text((WIDTH/2,1000),'Red: original clot nodes / surviving components    Blue-grey: fixed anchors',font=font(24),fill='#303b44',anchor='mt')

@@ -64,6 +64,18 @@ def evolution(ref,paths,end,phase):
   rows.append(dict(time_s=t,source=str(path.relative_to(R)),bulk_failed=int(failed.sum()),bulk_softened=int(((d>0)&bulk).sum()),cross_phase_reference_bonds=int(cross.sum()),cross_phase_surviving_bonds=int((cross&(d<1)).sum()),cross_phase_surviving_fraction=float((cross&(d<1)).sum()/cross.sum()),reference_axis_fourth_moment=float(fourth[bulk].mean()),failed_axis_fourth_moment=float(fourth[failed].mean()) if failed.any() else None,failed_minus_reference_axis_moment=float(fourth[failed].mean()-fourth[bulk].mean()) if failed.any() else None,free_component_spectra=spectra))
  return rows
 
+def plot_spectra(spectra,tf):
+ fig,axes=plt.subplots(1,2,figsize=(16,6),layout='constrained')
+ for j,k in enumerate(['V3','V4']):
+  counts=spectra[k]['counts'];mass=np.array(spectra[k]['mass_kg'])*1e6
+  bars0=axes[0].bar(np.arange(7)+(j-.5)*.36,counts,width=.36,color=['#718c9e','#a41c3b'][j],label=k)
+  bars1=axes[1].bar(np.arange(7)+(j-.5)*.36,mass,width=.36,color=['#718c9e','#a41c3b'][j],label=k)
+  axes[0].bar_label(bars0,labels=[str(n) for n in counts],padding=4,fontsize=9)
+  axes[1].bar_label(bars1,labels=[f'{m:.3g}' for m in mass],padding=5,fontsize=10,rotation=90)
+ for ax in axes:ax.set_xticks(np.arange(7),BIN_LABELS);ax.set_xlabel('Original material nodes / surviving component');ax.legend()
+ axes[0].set_yscale('symlog',linthresh=1);axes[0].set_ylabel('Free component count (symlog scale)');axes[1].set_ylabel('Reference mass (mg)');axes[0].margins(y=.2);axes[1].margins(y=.2)
+ fig.suptitle(f'Surviving original material graph; matched accepted time ≈ {tf*1e3:.4f} ms');fig.savefig(F/'figures/FIG_07_FRAGMENT_SIZE_DISTRIBUTION.png',dpi=180);plt.close(fig)
+
 def main():
  result=json.loads((O/'NATIVE_V4_RESULT.json').read_text());assert result['status'] in ['COMPLETED','NUMERICAL_FAILURE'];tf=result['accepted_time_s'];complete=result['status']=='COMPLETED'
  paths={'V3':state_paths(OLD),'V4':state_paths(CASE)};refs={'V3':load_npz(V3_O/'provenance/reference.npz'),'V4':load_npz(O/'provenance/reference.npz')};states={k:load_npz(choose(p,tf)[1]) for k,p in paths.items()};groups={k:fragments(refs[k],s) for k,s in states.items()};cracks={k:crack_metrics(refs[k],s) for k,s in states.items()}
@@ -100,13 +112,10 @@ def main():
  evolution_axes[1].set(xlabel='Physical time (ms)',ylabel='Failed A4 − original reference A4',title='Axis alignment relative to each reference graph')
  for ax in evolution_axes:ax.legend()
  fig.savefig(out/'FIG_06_CRACK_PATH_COMPARISON.png',dpi=180);plt.close(fig)
- fig,axes=plt.subplots(1,2,figsize=(14,5),layout='constrained');spectra={}
+ spectra={}
  for j,k in enumerate(['V3','V4']):
   sizes=np.array([q['nodes'] for q in groups[k]]);masses=np.array([q['mass_kg'] for q in groups[k]]);counts=[int(((sizes>=lo)&(sizes<=hi)).sum()) for lo,hi in BINS];mass=[float(masses[(sizes>=lo)&(sizes<=hi)].sum()) for lo,hi in BINS];spectra[k]=dict(node_bins=BIN_LABELS,counts=counts,mass_kg=mass)
-  bars0=axes[0].bar(np.arange(7)+(j-.5)*.36,counts,width=.36,color=['#718c9e','#a41c3b'][j],label=k);bars1=axes[1].bar(np.arange(7)+(j-.5)*.36,np.array(mass)*1e6,width=.36,color=['#718c9e','#a41c3b'][j],label=k)
-  axes[0].bar_label(bars0,labels=[str(n) for n in counts],padding=3,fontsize=10);axes[1].bar_label(bars1,labels=[f'{m*1e6:.3g}' for m in mass],padding=3,fontsize=10)
- for ax in axes:ax.set_xticks(np.arange(7),BIN_LABELS);ax.set_xlabel('Original material nodes / surviving component');ax.legend()
- axes[0].set_yscale('symlog',linthresh=1);axes[0].set_ylabel('Free component count (symlog scale)');axes[1].set_ylabel('Reference mass (mg)');axes[0].margins(y=.2);axes[1].margins(y=.15);fig.suptitle(f'Surviving original material graph; matched accepted time ≈ {tf*1e3:.4f} ms');fig.savefig(out/'FIG_07_FRAGMENT_SIZE_DISTRIBUTION.png',dpi=180);plt.close(fig);dump(O/'FRAGMENT_SIZE_SPECTRA.json',spectra)
+ plot_spectra(spectra,tf);dump(O/'FRAGMENT_SIZE_SPECTRA.json',spectra)
  fig,axes=plt.subplots(1,2,figsize=(14,5),layout='constrained')
  for j,k in enumerate(['V3','V4']):
   q=survival_results[k];ax=axes[j];items=q['target_member_sets']
@@ -132,4 +141,10 @@ def main():
   tab.set_fontsize(12);tab.scale(1,2.2)
  fig.savefig(out/'FIG_10_SCIENTIFIC_OUTCOME.png',dpi=180,bbox_inches='tight');plt.close(fig)
  print('POSTPROCESS_ANALYSIS_COMPLETE',json.dumps({k:v for k,v in outcome.items() if k!='unload_survival'},default=cv),flush=True)
-if __name__=='__main__':main()
+if __name__=='__main__':
+ import argparse
+ parser=argparse.ArgumentParser();parser.add_argument('--spectrum-only',action='store_true');args=parser.parse_args()
+ if args.spectrum_only:
+  plt.rcParams.update({'font.size':12,'axes.grid':True,'grid.alpha':.4,'grid.color':'#9ba5ae','savefig.facecolor':'white'})
+  plot_spectra(json.loads((O/'FRAGMENT_SIZE_SPECTRA.json').read_text()),json.loads((O/'NATIVE_V4_RESULT.json').read_text())['accepted_time_s'])
+ else:main()

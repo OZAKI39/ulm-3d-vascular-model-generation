@@ -1,3 +1,11 @@
+# 当前：不规则变分LPS参考与单次轨迹 V4（20261019T221000Z）
+
+任务 `clot_irregular_lps_discretization_v4`；原生状态 **COMPLETED**；合法接受 **3.60000000ms / 3.6ms**。8125材料点+1875锚点，原10强区与阈值保持；非均匀体积及质量、完整变分力、参考KD-tree原始图、映射控制体L1/L2。积分体积1.015625mm³与中心包络0.864mm³分开。
+
+先读 `analysis/clot_irregular_lps_discretization_v4/FINAL_STATUS.json`、`REVIEW_CLOT_IRREGULAR_LPS_V4.md`、`REPRODUCE.md`。图与视频 `results/clot_irregular_lps_discretization_v4/20261019T221000Z/OPEN_RESULTS.html`；正式证据 `verification/clot_irregular_lps_discretization_v4/20261019T221000Z`。独立分支 `clot-clearance/irregular-lps-v4-20261020`。只有1次正式物理轨迹；禁止覆盖冻结输出、自动改阈值或追加案例。EXPLORATORY_UNCALIBRATED、MECHANICAL_SHEAR_SURROGATE。
+
+## 历史入口原文（保留）
+
 # 当前碎块表面耦合 V3（20261018T170400Z）
 
 当前任务 clot_fragment_surface_coupling_v3，analysis/clot_fragment_surface_coupling_v3/；新L2控制体积求积补充冻结V2受支持三角面，完整存活原始图定义碎块，近似相对流体作用。

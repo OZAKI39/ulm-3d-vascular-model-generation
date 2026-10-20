@@ -21,10 +21,14 @@ def main():
  elif outcome['final_target_count']['V4']<=outcome['final_target_count']['V3'] and outcome['target_mass_kg']['V4']<=outcome['target_mass_kg']['V3']:
   recommendation='本次末态目标块数量与质量均未超过V3，因此暂不建议仅为增加20–200节点块而替换V3。值得保留不规则实现作为离散敏感性对照，但本轮没有证明它改善了目标碎裂表现。'
  else:recommendation='本次V4在目标块数量或质量上有相对改善，值得保留为后续离散对照；是否替换V3还取决于所报告的卸载成员存活、细屑比例和实际成本，不能凭单次样本作物理优越性结论。'
+ fine_fraction={k:outcome['mass_statistics'][k]['debris12_mass_kg']/outcome['mass_statistics'][k]['free_mass_kg'] if outcome['mass_statistics'][k]['free_mass_kg'] else None for k in ['V3','V4']}
+ if complete and all(fine_fraction[k] is not None for k in ['V3','V4']) and fine_fraction['V4']>fine_fraction['V3'] and outcome['final_target_count']['V4']<=outcome['final_target_count']['V3'] and outcome['matched_window_max_target_count']['V4']<=outcome['matched_window_max_target_count']['V3']:
+  recommendation='建议保留V4作为离散敏感性研究分支，暂不把它作为改善目标碎裂的默认替换。目标块末态数量与时程峰值没有增加，1–2节点细屑占游离质量的比例反而上升；目标质量的变化应结合短暂成员寿命和完整碎块谱评价。单次结果也不构成对不规则离散的全面否定。'
  if not complete or not all(survival[k]['drive_off_reached'] for k in ['V3','V4']):stability_note='本次没有完整可比的卸载观察窗口，不能认定V4目标块更稳定。'
  elif not all(survival[k]['unload_cohort_count'] for k in ['V3','V4']):stability_note='至少一组在撤载时没有20–200节点目标成员集合，不能比较两组撤载群的存活比例；撤载后新出生的目标块另见完整谱系，不混入这一固定群组。'
  else:
   rates={k:survival[k]['unload_cohort_survived']/survival[k]['unload_cohort_count'] for k in ['V3','V4']};stability_note=f"本次固定撤载群的精确成员存活比例V3/V4={rates['V3']:.3f}/{rates['V4']:.3f}；V4在这一单样本指标上{'较高' if rates['V4']>rates['V3'] else '没有提高'}。这不等于统计意义上的稳定性改进。"
+ final_member_note='；'.join(k+'末态目标成员集合：'+('、'.join(f"{v['nodes']}节点，最后一次成员变化后仅观察{v['observed_duration_s']*1e6:.6f}µs" for v in survival[k]['target_member_sets'] if v['survives_to_end']) or '无') for k in ['V3','V4'])
  fragment_rows=[]
  for case in ['V3','V4']:
   m=outcome['mass_statistics'][case];fine=f"{100*m['debris12_mass_kg']/m['free_mass_kg']:.4f}%" if m['free_mass_kg'] else '不可评价'
@@ -135,6 +139,8 @@ V4是否到达2.8ms撤载：**{survival['V4']['drive_off_reached']}**。撤载�
 
 {stability_note}
 
+{final_member_note}。这些末端观察均为右删失，不能证明长期稳定。这里的寿命严格按完整原始ID成员集合定义；少量表面节点脱落也会结束父集合的寿命，不等于其全部凝聚性后代消失，后代关系另列在谱系中。
+
 ## 10. Q7与Q8：物理结论及后续价值
 
 {scientific}
@@ -147,7 +153,7 @@ V4是否到达2.8ms撤载：**{survival['V4']['drive_off_reached']}**。撤载�
 
 ## 11. 交付与复现
 
-十张主图、两个1080p MP4见 `OPEN_RESULTS.html`。源码在 `code/`；参考/阈值/原始ID、体积和旧新键映射、全部接受快照及损伤记录在本轮verification归档。源码、必要证据与轻量日志进入独立Git提交；原生大库、对象、密集状态和重复事件载荷保留服务器。`PERFORMANCE_BASELINE_V3.json`在交付目录为保留完整计时的紧凑版，记录原始完整文件SHA和服务器地址，没有删改原始档案。
+十张主图、两个1080p MP4及补充末态目标碎块特写见 `OPEN_RESULTS.html`。特写仅隐藏非目标分量，坐标与位移不变，两面板等比例放大，显示全部内部存活键；它不代表完整试样或长期存活证据。源码在 `code/`；参考/阈值/原始ID、体积和旧新键映射、全部接受快照及损伤记录在本轮verification归档。源码、必要证据与轻量日志进入独立Git提交；原生大库、对象、密集状态和重复事件载荷保留服务器。`PERFORMANCE_BASELINE_V3.json`在交付目录为保留完整计时的紧凑版，记录原始完整文件SHA和服务器地址，没有删改原始档案。
 
 详细执行顺序、环境和复制边界见 `REPRODUCE.md`。本轮没有自动推送GitHub，没有新CFD、声场、微泡动力学或AI训练。
 '''
@@ -162,7 +168,7 @@ Use the isolated server environment `/workspace/y_clot/env.sh`, single MPI rank 
 4. Run `prepare_reference.py`, `build_native.py`, and `build_surface.py`. The native builder verifies and reuses the frozen V2 object hashes, recompiles changed classes/contact/dispatch, and writes isolated V4 outputs. Full commands and source/object hashes are in `BUILD_AUDIT.json`.
 5. Prepend the new output `build` directory to `LD_LIBRARY_PATH` **before** importing LAMMPS. Run `check_elastic.py`, `check_native.py`, then `admit.py`. The tests use separate small validation coupons/fixtures; they are not additional formal cases.
 6. `run_formal.sh` runs `run_case.py pilot` to 2.0ms and `run_case.py continue` from its legal checkpoint. There is one physical case. If a numerical gate fails, stop: do not weaken gates, refit materials or add expensive cases.
-7. After terminal status, run `terminal_audit.py`, `analyze_result.py`, `render_videos.py`, `write_report.py`, `validate_delivery.py`. `reference_figures.py` and `compact_performance.py` prepare the reference-only outputs and small performance payload.
+7. After terminal status, run `terminal_audit.py`, `analyze_result.py`, `render_videos.py`, `render_target_closeup.py`, `write_report.py`, `validate_delivery.py`. `reference_figures.py` and `compact_performance.py` prepare the reference-only outputs and small performance payload. `finish_visual_review.py` repeats only the revised spectrum plot, visual rendering, report and delivery checks, without dynamics or repeated scientific analysis.
 
 Current service: `supervisorctl status clot_v4_formal_20261019T221000Z`. Log: `{O}/formal.supervisor.log`. Postprocessing is a separate managed service, never another physical trajectory.
 

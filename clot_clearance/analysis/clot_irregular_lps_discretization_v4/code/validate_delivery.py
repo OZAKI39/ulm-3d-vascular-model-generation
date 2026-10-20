@@ -3,6 +3,7 @@ from PIL import Image
 import subprocess,shutil
 def main():
  checks={};manifest={};required=['FIG_01_NATIVE_PERFORMANCE_BREAKDOWN','FIG_02_PERFORMANCE_OPTIMIZATION','FIG_03_REFERENCE_POINT_CLOUDS','FIG_04_NEIGHBORHOOD_AND_VOLUME','FIG_05_ELASTIC_RESPONSE','FIG_06_CRACK_PATH_COMPARISON','FIG_07_FRAGMENT_SIZE_DISTRIBUTION','FIG_08_FRAGMENT_SURVIVAL','FIG_09_COMPLETE_ENERGY_LEDGER','FIG_10_SCIENTIFIC_OUTCOME']
+ if (F/'figures/FIG_SUPP_FINAL_TARGET_CLOSEUP.png').exists():required.append('FIG_SUPP_FINAL_TARGET_CLOSEUP')
  for name in required:
   p=F/'figures'/(name+'.png');im=Image.open(p);im.verify();checks[name]=dict(format='PNG',width=im.size[0],height=im.size[1]);assert min(im.size)>=800;manifest[str(p.relative_to(R))]=dict(bytes=p.stat().st_size,sha256=sha(p))
  for name in ['VIDEO_01_REGULAR_VS_IRREGULAR_FRACTURE','VIDEO_02_IRREGULAR_FRAGMENT_EVOLUTION']:
@@ -19,6 +20,10 @@ def main():
       seen[path]=dict(time_s=float(z['time']),step=int(z['step']),sha256=sha(p),native_FP64=True)
     assert abs(seen[path]['time_s']-stat['time_s'])<1e-14
  dump(O/'VIDEO_STATE_SOURCE_HASHES.json',seen)
+ if (O/'TARGET_CLOSEUP_PROVENANCE.json').exists():
+  close=json.loads((O/'TARGET_CLOSEUP_PROVENANCE.json').read_text());assert close['image_sha256']==sha(F/'figures/FIG_SUPP_FINAL_TARGET_CLOSEUP.png')
+  for panel in close['panels']:assert panel['source_sha256']==sha(R/panel['source'])
+  manifest[str((O/'TARGET_CLOSEUP_PROVENANCE.json').relative_to(R))]=dict(bytes=(O/'TARGET_CLOSEUP_PROVENANCE.json').stat().st_size,sha256=sha(O/'TARGET_CLOSEUP_PROVENANCE.json'))
  for name in ['REVIEW_CLOT_IRREGULAR_LPS_V4.md','REPRODUCE.md','NATIVE_V4_RESULT.json','LPS_DISCRETIZATION_CHECK.json','TERMINAL_RESTART_AUDIT.json','IRREGULAR_REFERENCE_GEOMETRY.json','ENERGY_LEDGER.csv','FRAGMENT_MORPHOLOGY.csv','FRAGMENT_LINEAGE.json']:
   p=O/name;assert p.exists() and p.stat().st_size>0;manifest[str(p.relative_to(R))]=dict(bytes=p.stat().st_size,sha256=sha(p))
  result=dict(status='PASS',artifacts=checks,saved_states_checked=len(seen),full_video_decode_pass=True,displacement_scale=1.,fixed_world_Z_up=True,plots_from_numeric_evidence=True)
