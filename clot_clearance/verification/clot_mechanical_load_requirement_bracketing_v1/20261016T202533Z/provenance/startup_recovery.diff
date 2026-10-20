@@ -1,0 +1,22 @@
+--- native_case.py
++++ native_case_v2.py
+@@ -51,7 +51,7 @@
+   target=case/'provenance'/name
+   if not target.exists():target.symlink_to(Path('../../../provenance')/name)
+  ref=load_npz(O/'provenance/reference.npz');flow=Load(ref,params)
+- dump(case/'REQUEST.json',dict(parameters=params,load_audit=flow.audit(ref),freeze_sha256=sha(O/'BASELINE_AND_SPECIMEN_FREEZE.json'),native_sha256=sha(LIB),label='PRESCRIBED_TRACTION_MECHANICAL_REQUIREMENT',boundary='IDEAL_MECHANICAL_BOUNDARY' if params['mode']=='IDEAL_LOCAL_PULL' else 'NOMINAL_DEAD_TRACTION'))
++ dump(case/'REQUEST.json',dict(parameters=params,load_audit=flow.audit(ref),startup_recovery_sha256=sha(O/'STARTUP_RECOVERY_FREEZE.json'),executed_driver_sha256=sha(Path(__file__)),freeze_sha256=sha(O/'BASELINE_AND_SPECIMEN_FREEZE.json'),native_sha256=sha(LIB),label='PRESCRIBED_TRACTION_MECHANICAL_REQUIREMENT',boundary='IDEAL_MECHANICAL_BOUNDARY' if params['mode']=='IDEAL_LOCAL_PULL' else 'NOMINAL_DEAD_TRACTION'))
+  Native,Contact=native_factory(case,flow);ns=Native();n=ns.n;b=ref['bonds'];bt=ref['bond_types'];cut=ref['initial_cut'];model=energy_model(ref);contact=Contact(ref)
+  s=ns.dynamics();initial=s;prev=s;W=0.;Jc=0.;impulse=np.zeros(3);rows=[];err={};maxfree=0;events={};substeps=0;rejections=0;scale=1e-24;stop=[];secondary=[];regimes=['NO_DAMAGE'];hist=[]
+  def error(key,val):err[key]=max(err.get(key,0.),float(val))
+@@ -66,7 +66,9 @@
+  cached=graph.topology(ref,s['d']);oldfree=[]
+  try:
+   while prev['time']<END-1e-15:
+-   h=min(BASE,END-prev['time']);depth=0
++   # Resolve the near-zero-energy smooth startup without relaxing the 1% gate.
++   startup_limit=BASE/8 if prev['time']<2e-6-1e-15 else BASE/4 if prev['time']<4e-6-1e-15 else BASE/2 if prev['time']<8e-6-1e-15 else BASE
++   h=min(startup_limit,END-prev['time']);depth=0
+    while True:
+     xp=prev['x'].copy();xp[:n]+=h*prev['velocity'][:n]+h*h/(2*RHO*V)*prev['force'][:n]
+     kk,dp=predict(model,ref,xp,prev['kappa'])

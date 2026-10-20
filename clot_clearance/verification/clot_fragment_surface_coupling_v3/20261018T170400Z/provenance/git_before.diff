@@ -1,0 +1,77 @@
+diff --git a/pd_clot/lammps_fragmentation/detached_fragment_metrics.py b/pd_clot/lammps_fragmentation/detached_fragment_metrics.py
+index 36cf7ed..1bbd7c5 100644
+--- a/pd_clot/lammps_fragmentation/detached_fragment_metrics.py
++++ b/pd_clot/lammps_fragmentation/detached_fragment_metrics.py
+@@ -12,6 +12,7 @@ from .config import dump
+ from .fragment_analysis import read_dump,_events
+ from .failure_map import csv_out
+ from .failure_classifier import classify
++from .fragment_semantics import component_metrics, classify_detached_v2
+ 
+ def equivalent_diameter_um(nodes,dx):
+     return (6*np.asarray(nodes)*dx**3/np.pi)**(1/3)*1e6
+@@ -83,6 +84,8 @@ def analyze(path,out,name,g,factor,*,shape_min_nodes=114,classify_fn=classify):
+             previous=current;prev_tracks=track_per_node;track_frames.append(track_per_node);label_frames.append(stable[labels]);attachment_frames.append(attached[labels])
+             free=~attached;largest=int(counts[free].max()) if free.any() else 0
+             row=dict(case_id=name,step=step,time_s=t,bulk_broken_fraction=float((~alive[typ==1]).mean()),interface_broken_fraction=float((~alive[typ==2]).mean()),debris_fraction=float(counts[counts<=2].sum()/n),debris_1_2node_fraction=float(counts[counts<=2].sum()/n),median_fragment_nodes=float(np.median(counts)),largest_free_fraction=float(counts.max()/n),resolved_fragment_count=int((counts>=3).sum()),largest_attached_component_fraction=float(counts[attached].max()/n) if attached.any() else 0.,total_attached_fraction=float(counts[attached].sum()/n),largest_detached_nodes=largest,largest_detached_d_eq_um=float(equivalent_diameter_um(largest,dx)),largest_detached_mass_kg=largest*mass,clot_KE_J=float(.5*mass*np.sum(V[:n]**2)))
++            row.update(component_metrics(counts,attached,dx,r['rho_kg_m3']))
++            row['failure_mode_detached_v2']=classify_detached_v2(row)
+             row['failure_mode']=classify_fn(row)
+             for diameter,limit in thresholds.items():
+                 selected=free&(counts>=limit);row['N_detached_ge'+diameter]=int(selected.sum());row['mass_detached_ge'+diameter+'_kg']=float(counts[selected].sum()*mass);row['mass_fraction_detached_ge'+diameter]=float(counts[selected].sum()/n)
+diff --git a/pd_clot/lammps_fragmentation/failure_classifier.py b/pd_clot/lammps_fragmentation/failure_classifier.py
+index bd15fa8..61c42df 100644
+--- a/pd_clot/lammps_fragmentation/failure_classifier.py
++++ b/pd_clot/lammps_fragmentation/failure_classifier.py
+@@ -10,7 +10,10 @@ def clot_components(n,bonds,types,alive):
+     attached=np.zeros(nc,bool);attached[lab[bonds[alive&(types==2),0]]]=True
+     return lab,counts,attached
+ 
++LEGACY_CLASSIFICATION_VERSION = 'ALL_COMPONENTS_V1'
++
+ def classify(m):
++    # Historical ALL-component classifier retained verbatim for old reports/AI labels.
+     if m['debris_fraction']>=.5 or (m['median_fragment_nodes']<=2 and m['bulk_broken_fraction']>=.5):return 'PULVERIZATION'
+     if m['interface_broken_fraction']>=.9 and m['largest_free_fraction']>=.8 and (m['resolved_fragment_count']==1 or m['bulk_broken_fraction']<.01):return 'WHOLE_CLOT_DETACHMENT'
+     if m['resolved_fragment_count']<=1 and m['interface_broken_fraction']<.1 and m['bulk_broken_fraction']<.01:return 'NO_FAILURE'
+diff --git a/pd_clot/lammps_fragmentation/failure_map.py b/pd_clot/lammps_fragmentation/failure_map.py
+index b068655..1ed3e62 100644
+--- a/pd_clot/lammps_fragmentation/failure_map.py
++++ b/pd_clot/lammps_fragmentation/failure_map.py
+@@ -12,6 +12,7 @@ from .current_position_provider import prepare_provider,lammps_provider,spatial_
+ from .calibrate_failure import prelude,dumps
+ from .runner import run_lammps
+ from .fragment_analysis import read_dump,_events
++from .fragment_semantics import component_metrics, classify_detached_v2
+ from .failure_classifier import classify,clot_components
+ from .bond_utilization import utilization
+ 
+@@ -75,6 +76,8 @@ def analyze_case(case,*,shape_function=spatial_shape):
+             metrics=dict(step=step,time_s=step*r['dt_s'],bulk_broken_fraction=float((~alive[typ==1]).mean()),interface_broken_fraction=float((~alive[typ==2]).mean()),interface_survival=float(alive[typ==2].mean()),
+                 largest_free_fraction=float(counts.max()/n),FI_free=float(1-counts.max()/n),resolved_fragment_count=int((counts>=3).sum()),debris_fraction=float(counts[counts<=2].sum()/n),median_fragment_nodes=float(np.median(counts)),raw_fragment_count=nc,
+                 attached_clot_volume_fraction=float(counts[attached].sum()/n),max_fragment_speed_m_s=float(np.linalg.norm(vc,axis=1).max()))
++            metrics.update(component_metrics(counts,attached,r['dx_m'],r['rho_kg_m3']))
++            metrics['failure_mode_detached_v2']=classify_detached_v2(metrics)
+             uu=utilization(X,b,typ,alive,L0,r['s00_bulk'],r['s00_interface']);metrics.update(uu);metrics['failure_mode']=classify(metrics)
+             for k,value in uu.items():
+                 if not k.startswith('surviving_') and value is not None:peaks[k]=max(peaks.get(k,0.),value)
+diff --git a/pd_clot/lammps_fragmentation/fragment_analysis.py b/pd_clot/lammps_fragmentation/fragment_analysis.py
+index fdbce2d..9af9372 100644
+--- a/pd_clot/lammps_fragmentation/fragment_analysis.py
++++ b/pd_clot/lammps_fragmentation/fragment_analysis.py
+@@ -6,6 +6,7 @@ from scipy.sparse import coo_matrix
+ from scipy.sparse.csgraph import connected_components
+ from scipy.spatial import cKDTree
+ from .config import dump
++from .fragment_semantics import component_metrics
+ 
+ def read_dump(path):
+     with Path(path).open() as f:
+@@ -62,6 +63,7 @@ def analyze_fragments(case):
+             maximum_sampled_stretch=max(maximum_sampled_stretch,sampled)
+             amp=.5*(1-np.cos(np.pi*min(step*r['dt_s']/r['ramp_time_s'],1.)))
+             rows.append(dict(step=int(step),time_s=step*r['dt_s'],load_fraction=float(amp),broken_bond_count=int((~alive).sum()),broken_bond_fraction=float((~alive).mean()),N_fragments=int(nc),resolved_fragments=int((counts>=r['resolved_fragment_min_nodes']).sum()),largest_fragment_fraction=largest,FI=1-largest,median_fragment_volume_m3=float(np.median(volume)),sampled_max_surviving_bond_stretch=sampled,max_speed_m_s=float(np.linalg.norm(vel,axis=1).max())))
++            rows[-1].update(component_metrics(counts,anchored,r['dx_m'],component_mass=mass,component_volume=volume))
+             steps.append(step);positions.append(X);velocities.append(vel);damage.append(a[:,cols.index('d_damage')]);labels_all.append(stable);fragments=frag
+     trajectory=dict(step=np.array(steps),position_m=np.array(positions),velocity_m_s=np.array(velocities),damage=np.array(damage),component_id=np.array(labels_all),base=g['base'],surface=g['surface'],volume_m3=g['volume'],mass_kg=g['mass'])
+     np.savez_compressed(p/'accepted_trajectory.npz',**trajectory)

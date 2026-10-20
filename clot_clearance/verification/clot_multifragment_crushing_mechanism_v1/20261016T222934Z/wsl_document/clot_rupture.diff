@@ -1,0 +1,33 @@
+--- clot_rupture.before.md
++++ clot_rupture.after.md
+@@ -509,6 +509,30 @@
+ 见[六组主图及全域投影补图](temp_storage/clot_github_sync_20261015/clot_clearance/results/clot_mechanical_load_requirement_bracketing_v1/20261016T202533Z/OPEN_RESULTS.html)、[机械需求表](temp_storage/clot_github_sync_20261015/clot_clearance/verification/clot_mechanical_load_requirement_bracketing_v1/20261016T202533Z/MECHANICAL_LOAD_REQUIREMENT_TABLE.csv)、[十三项科研问题与完整报告](temp_storage/clot_github_sync_20261015/clot_clearance/verification/clot_mechanical_load_requirement_bracketing_v1/20261016T202533Z/REVIEW_CLOT_MECHANICAL_LOAD_REQUIREMENT_BRACKETING_V1.md)。全部图来自真实接受态，位移×1；主体三维图采用固定物理视窗并标明视窗外节点数，另图保留全域碎屑。完成后停止，等待下一轮审查。
+ 
+ 
++**多块动态压碎对照（20261016T222934Z，2026-10-17）**：本轮目标由最大单块转为多个20–200节点、保持内部连接的真实游离块。完成均匀材料和唯一冻结空间相关场的两组原生LAMMPS动态对照。沿用1792材料点、336固定底部锚点、95666原始键和2736原预切；没有为了得到目标碎块而增切、删键、换种子或修改行程。
++
++新增当前坐标下的球形压头接触：原生fix indent，半径182.818µm，投影面积等于上一轮局部压入42面片区域。初始间隙25µm，0–0.2ms接近，0.2–1.2ms压入240µm，保持至1.4ms，2.4ms撤回初始位置，继续观察到3.6ms。接触势能为ΣKindδc³/3，力为其空间负梯度；Kind约57973.6N/m²，使0.1dx重叠处切线刚度匹配原粒子接触。原生物理力转换后再施加压头力；未接触或释放后力为0，脱离碎片再次碰撞则可重新受力。该KINEMATIC_IMPACT_SURROGATE没有真实锤质量，也不是已验证的微泡冲击。
++
++非均匀性只作用于原始bulk键ID的s0：seed=20261017，lc=250µm，平滑随机场按bulk最大绝对值归一化，s0_e=0.15(1+0.10q_e)，范围0.135–0.1647022。sc=0.18、G/K、weighted volume、原始体积、界面和接触参数不变。lc/dx=5、lc/δ≈1.66；α是最大扰动而非标准差。这是未标定的机制假设，改变s0也可能改变耗能，不是固定Gc实验。新库按原始ID存储并保存restart；初始弹性、变分力、排序/restart、不可逆历史及移动接触功的关键检查通过，旧库未替换。
++
++均匀材料：首软化0.00037299999999999026s，首完整失效0.00037999999999998967s；历史最多20–200点自由块0个，末态0个，其占初始质量0%；历史/末态最大块2/2点；末态最大块占初始材料0.11161%；1–2点碎屑占脱离质量100%。峰值压头反力50.6955µN，最大重叠0.213448dx，实际外功6.52106nJ。结果为EXPLORATORY_MULTIFRAGMENT_TARGET_NOT_MET，分类DEBRIS_DOMINATED_DETACHMENT, SURFACE_EROSION。
++
++非均匀材料：首软化0.0003737499999999902s，首完整失效0.00037999999999998967s；历史最多20–200点自由块0个，末态0个，其占初始质量0%；历史/末态最大块1/1点；末态最大块占初始材料0.055804%；1–2点碎屑占脱离质量100%。峰值压头反力50.4062µN，最大重叠0.188295dx，实际外功6.473756nJ。结果为EXPLORATORY_MULTIFRAGMENT_TARGET_NOT_MET，分类DEBRIS_DOMINATED_DETACHMENT, SURFACE_EROSION。
++
++失效键网络按共享原始端点追踪出生与合并，排除初始预切。它与存活键定义的材料分量分离是两种诊断，不能把断键点云绘成未经证实的连续裂面。每个接受态保留分量原始ID、体积等效尺寸、内部存活率、平均损伤、质心速度和内部相对动能；接触对不作为材料连接。
++
++均匀工况：撤回结束时中等自由块0个，其中0个原成员组保持连通至末态；撤回后再接触=True，末尾连续无接触观察窗0.00021150000000098087s，撤回后原自由分量二次裂解0次。仅称CONNECTED_THROUGH_OBSERVED_WINDOW，不称永久稳定。
++
++非均匀工况：撤回结束时中等自由块0个，其中0个原成员组保持连通至末态；撤回后再接触=True，末尾连续无接触观察窗0.00018050000000100364s，撤回后原自由分量二次裂解0次。仅称CONNECTED_THROUGH_OBSERVED_WINDOW，不称永久稳定。
++
++两组是相同运动学轨迹，不是等反力或等能量对照；与旧1000Pa参考牵引也不构成单因素的等功比较。外功按接受态之间压头路径积分，账本为W=ΔU+ΔK+D+ΔUc−Jc+ΔUi+R；没有重复加入材料接触功或数值阻尼，残差仍保留为残差。压力压入通过侧向拉伸/几何剪切间接触发当前正键伸长损伤律；起裂附近保留局部Green应变、非仿射程度及材料键virial/参考体积诊断，不能据此宣称已认证多轴血栓强度。
++
++两组原生累计墙钟2161.050s，CPU2160.458s，单进程峰值RSS0.22674GiB；1rank×1线程，顺序运行。未增加依赖、完整V3、CFD、随机种子或行程扫描。保留源码diff、SHA、必要FP64接受态、逐步损伤记录与失败预检。
++
++下一轮先审查局部损伤网络、实际接触重叠及卸载后演化，再判断是否需要有标定依据的剪切/压缩混合失效机制。单一行程、单一随机场不足以区分所有失败原因，也不足以直接迁移真实1927节点V3。20点碎片不等于充分解析的200µm实体；目标数量不是医学安全标准。真实微泡、微射流或超声到此压头轨迹、反力和功的物理联系仍缺失。
++
++见[八组主图与完整末态投影](temp_storage/clot_github_sync_20261015/clot_clearance/results/clot_multifragment_crushing_mechanism_v1/20261016T222934Z/OPEN_RESULTS.html)、[完整科研报告](temp_storage/clot_github_sync_20261015/clot_clearance/verification/clot_multifragment_crushing_mechanism_v1/20261016T222934Z/REVIEW_CLOT_MULTIFRAGMENT_CRUSHING_MECHANISM_V1.md)、[真实碎块分布](temp_storage/clot_github_sync_20261015/clot_clearance/verification/clot_multifragment_crushing_mechanism_v1/20261016T222934Z/MULTIFRAGMENT_SIZE_DISTRIBUTION.csv)。本轮完成后停止，等待审查。
++
+ # ⑥ 外加剪切：模拟微泡对血块表面的“刮”
+ 
+ **完整公式**（作用在表面点 $i$上）：$\mathbf F_i^{\text{load}}(t)=A_i\;\tau_0\;g(t)\;\exp\!\Big(-\frac{\|\mathbf x_i(t)-\mathbf c\|^2}{2\sigma^2}\Big)\;(\mathbf I-\mathbf n_i\mathbf n_i^{\top})\,\mathbf e_x$

@@ -1,0 +1,24 @@
+--- clot_rupture.before.md
++++ clot_rupture.md
+@@ -494,6 +494,21 @@
+ 
+ 见[本轮9组PNG/SVG科研图表](temp_storage/clot_github_sync_20261015/clot_clearance/results/physics_constrained_load_inverse_design_v1/20261016T144922Z/OPEN_RESULTS.html)、[十五项科学问题与完整报告](temp_storage/clot_github_sync_20261015/clot_clearance/verification/physics_constrained_load_inverse_design_v1/20261016T144922Z/REVIEW_PHYSICS_CONSTRAINED_LOAD_INVERSE_DESIGN_V1.md)。
+ 
++**机械破坏载荷需求夹区（20261016T202533Z，2026-10-16）**：完成11个不同规定牵引条件的真实原生LAMMPS小试样计算，全部推进至2.5ms并通过既有数值门槛。复用1792材料点、336底部固定锚点、95666参考键和2736初始预切，G=940Pa、K=33333.333Pa、ρ=1000kg/m³、dx=50µm、δ=150.5µm，以及本体0.15/0.18、界面0.140625/0.16875软化卡均未改变。两用途均采用这一已有三维预裂替代体；3080节点双端夹持模型没有相同的锚层/界面条件，未混用所谓统一临界Pa。
++
++本轮明确采用参考面积上的规定死载：2ms半余弦上升、0.5ms保持。剪切覆盖2.275e−7m²顶面、方向+X；局部压入/拉脱覆盖同一左侧1.05e−7m²面片，方向−Z/+Z。非负四节点积分、总力、力矩及一致功率插值通过核验，无历史V3有符号外推权重。原受载材料节点脱离后仍受载，方向不随变形更新；316.23Pa末态原顶面法向已旋转约94.8°，所以这些结果不能解释为始终沿当前表面的纯剪切或流体压力。高载荷原面片破裂后的几何面积诊断也不代表连续流固界面。全部标记MECHANICAL_REQUIREMENT_ONLY，拉脱另标IDEAL_MECHANICAL_BOUNDARY。
++
++剪切1/10/31.6228Pa完整窗无损伤；56.2341Pa在2.33775ms首次软化、2.4825ms首次完整失效，共4条完整断键。因此软化及首失效的峰值夹区均为(31.6228,56.2341]Pa，但二者事件时间不同，不能视为同一精确阈值。100Pa和316.2278Pa已有断键，仍无脱离。1000Pa在0.79225/0.87425ms首次软化/失效，并于2.356125ms形成882点真实自由分量，内部初始存活键保留96.4253%；末态仍为同一882点块体、保留96.3917%，已观察保持0.143875ms。此工况较小分量出现二次裂解，最大二次裂解父分量66点；不能将它称为882点块体整体粉碎。剪切多节点脱离需求目前仅夹在(316.2278,1000]Pa，未做碎块大小的单调二分。
++
++局部压入100Pa无损伤；1000Pa历史/末态最大游离分量12/7点，历史最大块内部连接保留50%。理想拉脱100Pa只软化、未完整断键；1000Pa历史/末态最大22/12点，历史最大块内部保留36%。两个法向高载荷均有小分量二次分裂，但没有≥34点/≥200µm等效体积尺度的块体。三模式不能据相同Pa直接评优：作用面积不同，1000Pa实际外功分别为剪切3.38249µJ、压入0.592610µJ、拉脱0.879528µJ；外功、动能、变分储能、损伤耗散、接触能、接触激活修正和数值余额分开保存。
++
++数值恢复未放松本构或门槛：100Pa近零能量启动检查失败后，统一细分最初8µs，再回到0.25µs；1000Pa的独立VV展开式在大位移处产生1ULP位置差，改用同一半步速度运算顺序后核验差为0，原绝对2e−18m门槛保留。续算精确重放9802个原接受步并核对全部物理状态；原生耗时统计字段单列，不作为可重复物理状态。两次原计算检查失败及一次误比较耗时字段的重放失败均保留。原生累计墙钟约5038.1s（并行进程累计，含失败重放日志中的249s）；已测CPU合计4788.04s，失败重放CPU/RSS未捕获而明确留空；单进程峰值RSS约0.342GiB。物理条件11组、独立完成接受步112530；未重新运行完整V3、CFD、MPI或restart验证矩阵，未增加依赖或标定Gc。
++
++已有0.07908Pa仅是上一轮不同时间协议的平面Couette代理值，不是实测微泡Streaming应力。本轮的几十Pa损伤夹区与约1kPa大块工况为机械需求参照，尚不能直接转换为声压、泡群参数或临床血栓强度。下一轮优先检查变形后表面方向/面积与脱离后卸载，并在等力或等功的小试样中复核成功剪切配置，再建立真实微射流/直接泡—栓作用的力与能量预算；不继续围绕弱Couette弹性响应扩大自动优化。
++
++见[六组主图及全域投影补图](temp_storage/clot_github_sync_20261015/clot_clearance/results/clot_mechanical_load_requirement_bracketing_v1/20261016T202533Z/OPEN_RESULTS.html)、[机械需求表](temp_storage/clot_github_sync_20261015/clot_clearance/verification/clot_mechanical_load_requirement_bracketing_v1/20261016T202533Z/MECHANICAL_LOAD_REQUIREMENT_TABLE.csv)、[十三项科研问题与完整报告](temp_storage/clot_github_sync_20261015/clot_clearance/verification/clot_mechanical_load_requirement_bracketing_v1/20261016T202533Z/REVIEW_CLOT_MECHANICAL_LOAD_REQUIREMENT_BRACKETING_V1.md)。全部图来自真实接受态，位移×1；主体三维图采用固定物理视窗并标明视窗外节点数，另图保留全域碎屑。完成后停止，等待下一轮审查。
++
++
+ # ⑥ 外加剪切：模拟微泡对血块表面的“刮”
+ 
+ **完整公式**（作用在表面点 $i$上）：$\mathbf F_i^{\text{load}}(t)=A_i\;\tau_0\;g(t)\;\exp\!\Big(-\frac{\|\mathbf x_i(t)-\mathbf c\|^2}{2\sigma^2}\Big)\;(\mathbf I-\mathbf n_i\mathbf n_i^{\top})\,\mathbf e_x$

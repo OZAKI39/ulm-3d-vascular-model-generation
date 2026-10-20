@@ -1,0 +1,41 @@
+--- clot_rupture.md.before
++++ clot_rupture.md.after
+@@ -639,6 +639,38 @@
+ 
+ 详见[22问报告](temp_storage/clot_github_sync_20261015/clot_clearance/verification/clot_shear_multivortex_fragmentation_v2/20261017T175456Z/REVIEW_CLOT_SHEAR_MULTIVORTEX_FRAGMENTATION_V2.md)与[科研图表](temp_storage/clot_github_sync_20261015/clot_clearance/results/clot_shear_multivortex_fragmentation_v2/20261017T175456Z/OPEN_RESULTS.html)。
+ 
++## Spatially Heterogeneous Variational LPS under Shear
++
++**三维空间相关软化与同一开环剪切对照（20261017T214917Z）**
++
++研究假设：在不预制碎块、不删除原始非局部键的条件下，空间相关的后峰软化差异是否改变凝聚性多块碎裂。保留1792材料点+336锚点、95666原始键及2736预切；X/m/r0/taper/质量、G=940Pa、K=100000/3Pa、bulk s0=.15及interface .140625/.16875均不改。
++
++Fan 2022异质LPS提供随机场与对称两点参数方法背景；Staessens组织学和三维断层研究支持组织空间异质性，JNIS分析使用的0.2–0.6mm网格不等于材料相关长度。Eyisoylu 2026支持局部组成相关刚度，但本轮G/K不变；Liu 2024强调bulk凝聚与界面黏附区分，不能由刚度或sc直接推断Gc。
++
++GSTools 1.7.0，Gaussian C_z(r)=exp[-(r/300µm)²]、rescale=1、seed=20261017、4096模式。q=tanh(z−c)，材料体积加权均值0；q实际范围-0.954911–0.925325。qij=(qi+qj)/2，Δsij=.03exp(.30qij)/Z，scij=.15+Δsij；Z采用全部原始bulk键参考h*r0*V²*(1/mi+1/mj)权重归一化。sc范围0.172129359–0.188831494，加权均值0.180000000。
++
++lc/dx=6，lc/δ=1.993355；线性梯度R²=0.122504，正负q各1个连通域。多个颜色和边界极值不是多个统计独立组织块；300µm和alpha=.30均是未标定探索值。
++
++原生新增按原始bond ID冻结的sc字段及restart V4。完整endpoint-star储能与−∂U/∂x公式不改，sc只进入原生κ→d更新；D按固定x的完整储能下降累加，R独立。q=0与旧native逐位回退；异质有限差分、不可逆性、排序及restart通过。原始预切d=1保持，但继承初始化采用κ=sc作为预切失效标记，H预切κ数值随sc变化；不能声称完整初始κ数组逐值相同。未预切κ/d初始不变，预切材料力/储能不变。
++
++同一250µm棋盘涡旋模板、当前受支持表面与流体可达代理、被动滑移拖曳。冻结上一轮checkerboard接受幅值记录为开环函数，取消等功反馈；2ms升、2.4ms降、2.8ms停驱，继续观察到3.6ms。允许两组实际功不同。数千Pa为机械需求代理，真实微泡声流可实现性仍未知。
++
++uniform：COMPLETED，14839接受步，净功13.9406039nJ（驱动14.3686167，拖曳-0.4280129）。峰值实际剪切5901.12300Pa。20–200点块末态0、历史最多0；最大自由块2点；细屑/脱落质量1.0；自然bulk失效15010。
++
++uniform：最大能量残差0.296424%，CPU2165.470s、wall2166.185s、峰值RSS334.406MiB。末态未表示3D湿润表面的自由分量75/75；细屑流体受力未解析，不能等同物理零力。
++
++heterogeneous：COMPLETED，14809接受步，净功13.0488792nJ（驱动13.4375392，拖曳-0.3886600）。峰值实际剪切5789.71782Pa。20–200点块末态0、历史最多0；最大自由块3点；细屑/脱落质量0.9594594594594594；自然bulk失效13919。
++
++heterogeneous：最大能量残差0.286677%，CPU2138.554s、wall2139.171s、峰值RSS336.707MiB。末态未表示3D湿润表面的自由分量68/68；细屑流体受力未解析，不能等同物理零力。
++
++科研结论：TARGET_NOT_MET_SINGLE_REALIZATION。只有一个空间实现；真实图连通性、内部存活键、birth/寿命及卸载观察判定块体，不以损伤区域数或接触邻近代替。相关性不推出因果；不把离线规定路径耗能称GC_EFFECTIVE。
++
++图1–8及支持图来自冻结输入、明确标记的材料验证/离线路径和真实接受态。三个1080p H.264视频展示同驱动对照、真实失效/存活键、真实分量形成与二次分裂；位移×1，使用实际保存状态，各面板标实际时间，事件采样允许物理时间间隔不同但不插值。目标块不存在时保留TARGET_FRAGMENT_NOT_OBSERVED。
++
++本轮没有RSS/1800s预算，没有追加随机种子、材料调参、BoTorch、微泡CFD或完整V3。下一轮优先建立空间相关尺度与当前horizon/有限试样的可分辨性证据；若观察到完整目标，则先检验独立空间实现的重复性。
++
++详见[28项科研报告](temp_storage/clot_github_sync_20261015/clot_clearance/verification/clot_spatially_heterogeneous_variational_lps_v1/20261017T214917Z/REVIEW_CLOT_SPATIALLY_HETEROGENEOUS_VARIATIONAL_LPS_V1.md)、[完整图与三个视频](temp_storage/clot_github_sync_20261015/clot_clearance/results/clot_spatially_heterogeneous_variational_lps_v1/20261017T214917Z/OPEN_RESULTS.html)。
++
+ # ⑥ 外加剪切：模拟微泡对血块表面的“刮”
+ 
+ **完整公式**（作用在表面点 $i$上）：$\mathbf F_i^{\text{load}}(t)=A_i\;\tau_0\;g(t)\;\exp\!\Big(-\frac{\|\mathbf x_i(t)-\mathbf c\|^2}{2\sigma^2}\Big)\;(\mathbf I-\mathbf n_i\mathbf n_i^{\top})\,\mathbf e_x$

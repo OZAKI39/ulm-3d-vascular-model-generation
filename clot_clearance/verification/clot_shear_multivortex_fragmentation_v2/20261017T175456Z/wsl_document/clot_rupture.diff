@@ -1,0 +1,41 @@
+--- clot_rupture.md.before
++++ clot_rupture.md.after
+@@ -607,6 +607,38 @@
+ 
+ 详见[20问报告](temp_storage/clot_github_sync_20261015/clot_clearance/verification/clot_shear_load_inverse_design_v1/20261017T165129Z/REVIEW_CLOT_SHEAR_LOAD_INVERSE_DESIGN_V1.md)及[全部图表](temp_storage/clot_github_sync_20261015/clot_clearance/results/clot_shear_load_inverse_design_v1/20261017T165129Z/OPEN_RESULTS.html)。
+ 
++## Current Exposed Surface and Work-Matched Multivortex Shear
++
++**当前可达裂面与等外功多涡旋剪切（20261017T175456Z，2026-10-17）**
++
++本轮继续声流类剪切的机械需求研究，不再尝试压头：目标是让流体剪切产生多个凝聚性中等碎块，压头迭代不对应这一加载问题。科学标签 SHEAR_MECHANICAL_REQUIREMENT_ONLY，没有把声压、泡半径或质心运动替换成已求解的二阶Streaming。
++
++上一轮182个原顶面片末态只保留87个，约47.802%，未表示的新裂面与碎块表面限制了持续加载解释。本轮先加入有原始节点、存活键及实际开口依据的支撑单元边界；9828个辅助四面体仅用于几何，不承担材料刚度或质量。局部已断开且张开的间隙通过开放通道与外部连通，当前实体遮挡探针排除被覆盖表面。仅凭失效键不生成受力面。
++
++采用 QUASISTATIC_FLUID_ACCESSIBILITY_PROXY；开口1–5 µm内共同平滑门控，按实际当前位置、法向、面积与速度计算τ=(µ/h_eff)P(u_outer−v_surface)，µ=.001Pa·s、h_eff=25µm。每个唯一三角面以正1/3分配至原始ID，游离标签不另加一份力。位于驱动窗口的真实碎块继续受剪切，驱动停止后保留已表示面的拖曳。没有为1–2点细屑制造封闭表面或擅加点阻力。
++
++完整连续表面缺失比例仍不可由点数据唯一确定。闭合、倒置、未连通、缺少三维支撑的面保持未判定；只报告候选面及分量覆盖，不能声称未知水动力为真实零。面积/体积开口和有限遮挡探针不等于渗润动力学或完整流体几何认证。
++
++以历史单向的25.698197nJ实际净外功为共同预算，历史驱动27.443461nJ、拖曳−1.745264nJ。历史A采用旧表面模型，仅提供预算；新B/C才采用同一修补算法。冻结共同幅值反馈，上限6000Pa、变化率8e6Pa/s；只调全场一个幅值，不改空间中心/形状、不针对节点。驱动2.8ms关闭，观察到3.6ms，允许一次计算无法匹配并如实报告。
++
++单对沿用双Gaussian中心、125µm宽度、300µm间距。棋盘唯一新增模式尺度250µm；实际顶面650×350µm，与9个格相交，仅3个涡心在面内，中间1格完整、8格被裁切。它是 CHECKERBOARD_SHEAR_MECHANICAL_PROXY，不是已验证微泡群声流。材料、1792点+336锚点、95666原始键/2736预切均未更改。
++
++counter_rotating：原生状态COMPLETED，实际到3.6ms。净外功9.34871685nJ，驱动9.88312706nJ、拖曳-0.534410211nJ，目标误差-63.6211%，WORK_MATCH_NOT_ACHIEVED。峰值实际剪切4597.2652Pa；最大Re_h=2888.032。目标20–200块历史最多0、最终0；最大块3点，细屑/脱离质量=0.8461538461538461，目标质量/初始=0.0。真实二次分裂0次，3.4–3.6ms目标块存活0，完整目标=False。
++
++counter_rotating：累计新受载面341（自然新断裂191，预切口重新张开150）、末态新可达面143；新面净外功3.7561674nJ。末态无已表示表面的游离分量33个/39节点。正式墙钟1825.234s、CPU1824.761s、峰值RSS319.984MiB，最大相对能量余额0.229291%。
++
++checkerboard：原生状态COMPLETED，实际到3.6ms。净外功13.9406038nJ，驱动14.3686167nJ、拖曳-0.428012889nJ，目标误差-45.7526%，WORK_MATCH_NOT_ACHIEVED。峰值实际剪切5901.123Pa；最大Re_h=3694.1。目标20–200块历史最多0、最终0；最大块2点，细屑/脱离质量=1.0，目标质量/初始=0.0。真实二次分裂3次，3.4–3.6ms目标块存活0，完整目标=False。
++
++checkerboard：累计新受载面517（自然新断裂367，预切口重新张开150）、末态新可达面132；新面净外功8.0658507nJ。末态无已表示表面的游离分量75个/80节点。正式墙钟2026.470s、CPU2025.929s、峰值RSS322.621MiB，最大相对能量余额0.296425%。
++
++碎块完全按原始存活bulk/interface及锚可达性定义；contact或几何接近不并块。20–200节点是当前离散工程目标，不是医学认证尺寸。新面工作量直接证明其承担载荷，但没有新模型关闭润湿的额外对照，不能单独归因碎块变化。
++
++后续优化准入=NO_AUTOMATIC_OPTIMIZATION_ADMISSION。本轮没有自动BoTorch、第三种物理工况、完整V3或完整泡CFD。高Re薄层代理、分辨率、未表示细屑表面及材料未标定限制仍在。
++
++每接受步保存标量、损伤变化和材料分量，关键事件与约50µs间隔保存FP64状态。实际端点力点乘真实native位移形成外功，R独立于D保留。两个初始化故障已完整归档：一次统计锚点索引导致各一个未接受无损伤微步，一次生成diff哈希防护在动力学前停止；修复后恢复同两组原始协议，未调参。没有4GiB/1800s预算。
++
++详见[22问报告](temp_storage/clot_github_sync_20261015/clot_clearance/verification/clot_shear_multivortex_fragmentation_v2/20261017T175456Z/REVIEW_CLOT_SHEAR_MULTIVORTEX_FRAGMENTATION_V2.md)与[科研图表](temp_storage/clot_github_sync_20261015/clot_clearance/results/clot_shear_multivortex_fragmentation_v2/20261017T175456Z/OPEN_RESULTS.html)。
++
+ # ⑥ 外加剪切：模拟微泡对血块表面的“刮”
+ 
+ **完整公式**（作用在表面点 $i$上）：$\mathbf F_i^{\text{load}}(t)=A_i\;\tau_0\;g(t)\;\exp\!\Big(-\frac{\|\mathbf x_i(t)-\mathbf c\|^2}{2\sigma^2}\Big)\;(\mathbf I-\mathbf n_i\mathbf n_i^{\top})\,\mathbf e_x$
