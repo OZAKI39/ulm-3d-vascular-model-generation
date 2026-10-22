@@ -1,0 +1,530 @@
+--- /home/lzy/projects/github_sync_audits/flow_projects_20261022/export_flow_projects.py
++++ /home/lzy/projects/github_sync_audits/flow_projects_20261022/export_flow_projects.py
+@@ -2,157 +2,7 @@
+-"""Create reviewable project-specific Git snapshots; never edit original inputs."""
+-import argparse, collections, hashlib, json, os, re, shutil, subprocess
+-from pathlib import Path
+-
+-BASE = Path('/home/lzy/projects')
+-AUDIT = BASE / 'github_sync_audits/flow_projects_20261022'
+-CE = BASE / 'computation_examples'
+-BRAVA = CE / 'brava_flow_roi_18mlmin'
+-BACKUP = BASE / 'server_migration/brava_vast4090_20261009T094459Z/payload/workspace/brava_flow_roi_18mlmin_20260928'
+-REMOTE = json.loads((AUDIT / 'REMOTE_BRAVA_INVENTORY.json').read_text())
+-CODE = {'.py','.sh','.cpp','.c','.h','.hpp','.f','.f90','.cmake','.patch','.diff','.toml','.xml','.yaml','.yml'}
+-SMALL_EVIDENCE = {'.json','.jsonl','.csv','.tsv','.log','.txt','.md','.html','.png','.pdf','.svg','.yaml','.yml','.xml'}
+-CACHE = {'.git','.venv','__pycache__','.pytest_cache','.ruff_cache','node_modules','CMakeFiles','uv-cache','cupy-cache','.rsync-partial'}
+-
+-def sha(p):
+-    h=hashlib.sha256()
+-    with Path(p).open('rb') as f:
+-        for b in iter(lambda:f.read(8*1024*1024),b''): h.update(b)
+-    return h.hexdigest()
+-
+-def reason(rel, size, source):
+-    p=Path(rel); parts=p.parts; s='/'+rel+'/'
+-    if set(parts)&CACHE or p.name=='.git': return 'cache_or_git_metadata'
+-    if p.suffix in {'.pyc','.pyo','.o','.a','.so','.deb','.whl'} or '.so.' in p.name: return 'rebuildable_binary_or_dependency'
+-    if p.name in {'svmultiphysics','svMultiPhysics'}: return 'rebuildable_solver_binary_identity_kept'
+-    if '/external/SimVascularDistribution/' in s: return 'installed_third_party_distribution_source_recipe_kept'
+-    if p.suffix in {'.dll','.pyd','.exe'}: return 'installed_third_party_binary'
+-    if '/vessel_model/' in s and not p.name.startswith('fMOST_0_5_6_0_0_6_0001_02_01.'): return 'unrelated_geometry_library_only_actual_mouse_source_selected'
+-    if p.name.endswith(':Zone.Identifier'):return 'download_platform_metadata'
+-    if p.name=='STABILIZATION_TERMS.csv' and (source.parent/'STABILIZATION_TERMS.npz').exists(): return 'duplicate_uncompressed_table_npz_kept'
+-    if p.name.startswith('NotoSans') and p.suffix in {'.otf','.ttf'}: return 'installable_font'
+-    if any(x in parts for x in ['frames','render_frames','revisions','before_current_index_update']): return 'superseded_or_intermediate_visualization'
+-    if p.name in {'candidates.npz','gpu_mesh_input.npz','gpu_derived_field.npz'}: return 'derived_sampling_or_gpu_cache'
+-    if p.name.endswith('_REVIEW_BUNDLE.zip'): return 'duplicate_review_archive_unpacked_evidence_kept'
+-    if 'mesh_particle_validation_v2' in parts:
+-        active = any(x in s for x in ['/M0/','/M1_fixedplc_medium/','/M1_fixedplc_fine/'])
+-        if not active and p.suffix not in CODE and not (p.suffix in SMALL_EVIDENCE and size<5_000_000):
+-            return 'superseded_mesh_campaign_bulk_final_reports_kept'
+-        if p.name in {'FIELD_ARRAYS.npz','CELL_METRICS.csv','WALL_METRICS.csv'}: return 'recomputable_full_domain_diagnostic_array'
+-    if '/population_v1/runs/' in s and '/realization_0000_contactfix/' not in s and '/states/' in s:
+-        return 'superseded_population_states_final_accepted_states_kept'
+-    if '/population_v1/analysis/realization_0000_contactfix/tracks/' in s and p.suffix in {'.npz','.gz'}:
+-        return 'derived_per_track_copy_canonical_accepted_states_kept'
+-    if '/stage3/vessel_fine/' in s and p.suffix not in CODE and not (p.suffix in SMALL_EVIDENCE and size<2_000_000):
+-        return 'unrun_fine_mesh_bulk_skipped_by_user_status_kept'
+-    if '/failed_attempts/' in s and p.suffix in {'.vtu','.vtp','.npz','.bin'}:
+-        return 'failed_attempt_bulk_logs_and_identity_kept'
+-    if re.match(r'(result_\d+\.vtu|stFile_\d+\.bin)$',p.name):
+-        siblings=list(source.parent.glob('result_*.vtu' if p.suffix=='.vtu' else 'stFile_*.bin')) if source.exists() else []
+-        if siblings and p.name!=max(x.name for x in siblings) and p.name not in {'result_010.vtu','stFile_010.bin'}:
+-            return 'intermediate_solver_snapshot_final_and_restart_kept'
+-    if size>=100*1024*1024: return 'large_recomputable_audit_artifact_local_backup_sha_retained'
+-    return None
+-
+-def main():
+-    ap=argparse.ArgumentParser();ap.add_argument('project',choices=['brava','mouse']);ap.add_argument('--copy-to',type=Path);a=ap.parse_args()
+-    if a.project == 'mouse':
+-        raise SystemExit('Mouse snapshot export retired: use Git directly in /home/lzy/projects/new_mouse_vessel_flow')
+-    candidates={}; excluded=[]; links=[]; mappings=[]
+-    def add_tree(src,dst=None):
+-        src=Path(src);dst=dst or str(src.relative_to(BASE));mappings.append((src,Path(dst)))
+-        if src.is_symlink(): links.append((src,dst)); return
+-        if src.is_file(): candidates[dst]=src; return
+-        for d,ds,fs in os.walk(src,followlinks=False):
+-            for n in list(ds):
+-                p=Path(d)/n
+-                if p.is_symlink():links.append((p,str(Path(dst)/p.relative_to(src))));ds.remove(n)
+-                elif n in CACHE: excluded.append({'source':str(p),'reason':'cache_or_git_metadata','directory':True});ds.remove(n)
+-            for n in fs:
+-                p=Path(d)/n;dest=str(Path(dst)/p.relative_to(src))
+-                if p.is_symlink():links.append((p,dest))
+-                else:candidates.setdefault(dest,p)
+-    if a.project=='brava':
+-        add_tree(BRAVA);add_tree(CE/'brava_calibration_equal_split')
+-        for n in ['src','tests','contracts']:
+-            add_tree(CE/'_shared/particle_workflow/particle_3d'/n)
+-        for n in ['pyproject.toml','requirements-particle8.txt','requirements-validation-lock.txt']:
+-            add_tree(CE/'_shared/particle_workflow/particle_3d'/n)
+-        for n in ['BRAVA_CONTEXT_HANDOFF.md','brain_report.md']:add_tree(BASE/n,'context/'+n)
+-        migration=BASE/'server_migration/brava_new_server_20261009'
+-        for n in ['MIGRATION_AND_VALIDATION_ZH.md','MIGRATION_STATUS.json','DELIVERY_CHECK.json','deploy','tools','server_evidence']:
+-            add_tree(migration/n,'deployment/newserver_20261009/'+n)
+-        remote_diffs=[];need=[]
+-        for row in REMOTE['files']:
+-            if not row['path'].startswith('project/') or 'size' not in row:continue
+-            rel=row['path'][8:];dst='computation_examples/brava_flow_roi_18mlmin/'+rel;local=BRAVA/rel
+-            if local.exists():
+-                if local.is_file() and sha(local)!=row['sha256']:remote_diffs.append({'path':rel,'local_sha256':sha(local),'server_sha256':row['sha256'],'choice':'current_local_authority'})
+-                continue
+-            # Reproducibility evidence on the current server, not retired mesher trees.
+-            if not (rel.startswith(('gpu_solver_fix/source/','population_v1/analysis/','production_workflow/manufactured_pipe/'))):continue
+-            p=BACKUP/rel
+-            why=reason(dst,row['size'],p)
+-            if why:excluded.append({'source':'new_server:'+row['path'],'destination':dst,'size':row['size'],'sha256':row['sha256'],'reason':why});continue
+-            if p.is_file() and sha(p)==row['sha256']:candidates[dst]=p
+-            else:
+-                p=AUDIT/'remote_selected'/row['path']
+-                if p.is_file() and sha(p)==row['sha256']:candidates[dst]=p
+-                else:need.append(row['path'])
+-        (AUDIT/'REMOTE_LOCAL_COMPARISON.json').write_text(json.dumps(remote_diffs,indent=2))
+-        if need:
+-            (AUDIT/'remote_needed.txt').write_text('\n'.join(need)+'\n');raise SystemExit(f'Need remote files: {len(need)}')
+-    else:
+-        for p in sorted(CE.glob('mean-*')):add_tree(p)
+-        for n in ['validation_cases','fem_reference_stage_q']:add_tree(CE/n)
+-        for n in ['particle_workflow','formal_3D_flow_solver','geometry_network','legacy_flow_workflow','wss_audit','wss_validation_v2','fem_reference_contracts','templates']:
+-            add_tree(CE/'_shared'/n)
+-        add_tree(CE/'_shared/active_network_development/ulm_3D_vascular')
+-        # Shared upstream source required by mouse ROI reconstruction; no human/MeVO outputs.
+-        up=BASE/'vascular_printing'
+-        for n in ['vascular_processing','utils','main.py','s1-1_swc_roi_generate_mouse.py','s2_swc_stl_model_generate.py','requirements.txt','requirements-fixture.txt','requirements-vascularmd.txt','cfd_lumen_config.yaml','outputs/sampling/20260825_133201_radius_plus_structure_k5','outputs/model_generate/ultraliser_anchor003274_20260825_133350','outputs/rodent_vasculature/all_run_20260825_133152']:
+-            if (up/n).exists():add_tree(up/n,'geometry_inputs/'+n)
+-        raw=up/'vessel_model/T - A high-resolution dataset of mouse brain vasculature/raw_data/analysis_data/analysis_data'
+-        for sub,ext in [('swc','swc'),('images','tif'),('mask','tif')]:
+-            p=raw/sub/('fMOST_0_5_6_0_0_6_0001_02_01.'+ext)
+-            add_tree(p,'geometry_inputs/'+str(p.relative_to(up)))
+-        for p in (up/'configs').glob('*'):
+-            if p.is_file() and not any(x in p.name.lower() for x in ['human','brava','mevo','topbrain']):add_tree(p,'geometry_inputs/configs/'+p.name)
+-    for n in ['distribution_assets','sonovue_size_distribution_v0']:add_tree(CE/'_shared'/n)
+-    included=[]
+-    for dst,p in sorted(candidates.items()):
+-        if not p.is_file():continue
+-        size=p.stat().st_size;why=reason(dst,size,p)
+-        if size<1024 and p.read_bytes().startswith(b'version https://git-lfs.github.com/spec/v1\n'):
+-            why='upstream_test_resource_lfs_pointer_no_local_payload'
+-        record={'path':dst,'source':str(p),'size':size}
+-        if why:
+-            record['reason']=why
+-            if size>=1_000_000 and why not in {'rebuildable_binary_or_dependency','installed_third_party_distribution_source_recipe_kept'}:record['sha256']=sha(p)
+-            excluded.append(record);continue
+-        record['sha256']=sha(p);record['mode']='100755' if p.stat().st_mode&0o111 else '100644';included.append(record)
+-        if a.copy_to:
+-            target=a.copy_to/dst;target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(p,target)
+-    selected={x['path'] for x in included};kept_links=[]
+-    def map_target(p):
+-        for src,dst in sorted(mappings,key=lambda x:len(str(x[0])),reverse=True):
+-            try:return str(dst/p.relative_to(src))
+-            except ValueError:pass
+-        try:return str(p.relative_to(BASE))
+-        except ValueError:return None
+-    for p,dst in links:
+-        why=reason(dst,0,p)
+-        if why:excluded.append({'source':str(p),'path':dst,'reason':why});continue
+-        target=map_target(p.resolve())
+-        if target and (target in selected or any(x.startswith(target+'/') for x in selected)):
+-            link=os.path.relpath(target,Path(dst).parent);rec={'path':dst,'source':str(p),'old_target':os.readlink(p),'target':link}
+-            kept_links.append(rec)
+-            if a.copy_to:
+-                out=a.copy_to/dst;out.parent.mkdir(parents=True,exist_ok=True)
+-                if not out.exists() and not out.is_symlink():out.symlink_to(link)
+-        else:excluded.append({'path':dst,'source':str(p),'target':os.readlink(p),'reason':'external_or_excluded_compatibility_target_documented'})
+-    summary={'project':a.project,'files':len(included),'bytes':sum(x['size'] for x in included),'symlinks':len(kept_links),'excluded_files_or_directories':len(excluded),'excluded_bytes':sum(x.get('size',0) for x in excluded),'policy':'Canonical accepted states retained; no numerical recomputation; ordinary Git files <100 MiB; no LFS.'}
+-    for name,value in [('INCLUDED',included),('EXCLUDED',excluded),('LINKS',kept_links),('SUMMARY',summary)]:
+-        (AUDIT/f'{a.project.upper()}_{name}.json').write_text(json.dumps(value,indent=2,ensure_ascii=False)+'\n')
+-    print(json.dumps(summary,indent=2))
+-
+-if __name__=='__main__':main()
++"""Retired snapshot entrypoint; retained only to explain the replacement."""
++raise SystemExit(
++    "Snapshot workflow retired. Use Git directly in "
++    "/home/lzy/projects/new_human_vessel_flow (BraVa) or "
++    "/home/lzy/projects/new_mouse_vessel_flow (Mouse). "
++    "This entrypoint does not copy, connect to a server, commit, or push."
++)
+--- /home/lzy/projects/github_sync_audits/flow_projects_20261022/publish_snapshots.py
++++ /home/lzy/projects/github_sync_audits/flow_projects_20261022/publish_snapshots.py
+@@ -2,85 +2,7 @@
+-"""Publish bounded commits to explicitly named new branches; never force push."""
+-import argparse, hashlib, json, os, subprocess, time
+-from pathlib import Path
+-from export_flow_projects import BASE,AUDIT
+-
+-ap=argparse.ArgumentParser();ap.add_argument('project',choices=['brava','mouse']);ap.add_argument('--push',action='store_true');args=ap.parse_args()
+-if args.project == 'mouse':
+- raise SystemExit('Mouse snapshot publishing retired: use Git directly in /home/lzy/projects/new_mouse_vessel_flow')
+-root=BASE/'temp_storage'/f'{args.project}_flow_github_sync_20261022'
+-branch=f'sync/{"brava-flow" if args.project=="brava" else "mouse-vascular-flow"}-project-20261022'
+-def git(*cmd,input=None):
+- return subprocess.run(['git','-C',str(root),'-c','gc.auto=0','-c','diff.renames=false','-c','credential.helper=','-c','credential.helper=!gh auth git-credential',*cmd],input=input,stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=True).stdout
+-
+-assert git('branch','--show-current').decode().strip() in {branch,branch+'-publish'}
+-validation=json.loads((AUDIT/f'{args.project.upper()}_VALIDATION.json').read_text())
+-assert validation['status']=='PASS',validation
+-planfile=AUDIT/f'{args.project.upper()}_PUBLISH_PLAN.json'
+-if not planfile.exists():
+- parent=git('rev-parse','HEAD').decode().strip()
+- old={line.split()[2] for line in git('ls-tree','-r',parent).decode().splitlines()}
+- files=[];links=[]
+- for d,ds,fs in os.walk(root,followlinks=False):
+-  ds[:]=[n for n in ds if n!='.git']
+-  for n in list(ds):
+-   p=Path(d)/n
+-   if p.is_symlink():links.append(p);ds.remove(n)
+-  for n in fs:
+-   p=Path(d)/n
+-   if p.name=='.git':continue
+-   (links if p.is_symlink() else files).append(p)
+- files.sort()
+- names=[str(p.relative_to(root)) for p in files]
+- assert not any('\n' in n for n in names)
+- print('Hashing exact Git blobs',len(names),flush=True)
+- oids=git('hash-object','-w','--no-filters','--stdin-paths',input=('\n'.join(names)+'\n').encode()).decode().splitlines()
+- entries=[]
+- for p,name,oid in zip(files,names,oids,strict=True):
+-  entries.append({'path':name,'oid':oid,'mode':'100755' if p.stat().st_mode&0o111 else '100644','bytes':p.stat().st_size})
+- for p in links:
+-  data=os.readlink(p).encode();oid=git('hash-object','-w','--stdin',input=data).decode().strip()
+-  entries.append({'path':str(p.relative_to(root)),'oid':oid,'mode':'120000','bytes':len(data)})
+- known=[e for e in entries if e['oid'] in old];new=[e for e in entries if e['oid'] not in old]
+- # Existing objects are already reachable from the advertised parent branch.
+- # Cap newly introduced logical bytes well below a single GitHub receive pack.
+- new.sort(key=lambda e:(not(e['path']=='README.md' or e['path'].startswith('sync_20261022/')),e['bytes']>1_000_000,e['path']))
+- batches=[known];size=0;seen=set(old)
+- for e in new:
+-  extra=0 if e['oid'] in seen else e['bytes']
+-  if size+extra>550_000_000 and batches[-1]:batches.append([]);size=0
+-  batches[-1].append(e);size+=extra;seen.add(e['oid'])
+- plan={'project':args.project,'branch':branch,'parent':parent,'files':len(entries),'bytes':sum(e['bytes'] for e in entries),'batches':batches}
+- planfile.write_text(json.dumps(plan,indent=2)+'\n')
+- print('Plan ready',len(batches),'bounded commits',len(known),'already published blobs',flush=True)
+-else:plan=json.loads(planfile.read_text())
+-if not args.push:raise SystemExit(0)
+-
+-receiptfile=AUDIT/f'{args.project.upper()}_PUSH_RECEIPT.json'
+-receipt=json.loads(receiptfile.read_text()) if receiptfile.exists() else {'project':args.project,'branch':branch,'parent':plan['parent'],'commits':[],'status':'IN_PROGRESS'}
+-if not receipt['commits']:
+- assert git('rev-parse','HEAD').decode().strip()==plan['parent']
+- assert not git('ls-remote','origin','refs/heads/'+branch).strip(),'New remote branch unexpectedly exists'
+- git('read-tree','--empty')
+-for i,batch in enumerate(plan['batches']):
+- if i<len(receipt['commits']) and receipt['commits'][i].get('pushed'):continue
+- if i==len(receipt['commits']):
+-  payload=b''.join(f"{e['mode']} {e['oid']}\t{e['path']}\0".encode() for e in batch)
+-  git('update-index','-z','--index-info',input=payload)
+-  message=AUDIT/f'{args.project}_commit_message.txt'
+-  message.write_text(f"Sync {args.project} flow project separately ({i+1}/{len(plan['batches'])})\n\nPreserve existing scientific results and raw accepted states; exclude rebuildable environments, superseded bulk outputs and redundant intermediates. No scientific computation or numerical data changes.\n")
+-  git('commit','--quiet','-F',str(message))
+-  commit=git('rev-parse','HEAD').decode().strip()
+-  receipt['commits'].append({'batch':i+1,'sha':commit,'files_added':len(batch),'pushed':False});receiptfile.write_text(json.dumps(receipt,indent=2)+'\n')
+- log=AUDIT/f'{args.project}_push_{i+1:02d}.log'
+- print('Push',args.project,i+1,'/',len(plan['batches']),receipt['commits'][i]['sha'],flush=True)
+- with log.open('ab') as f:
+-  proc=subprocess.run(['git','-C',str(root),'-c','gc.auto=0','-c','credential.helper=','-c','credential.helper=!gh auth git-credential','-c','http.version=HTTP/1.1','-c','http.lowSpeedLimit=1024','-c','http.lowSpeedTime=60','-c','pack.threads=2','-c','pack.useSparse=false','-c','pack.window=0','-c','pack.windowMemory=64m','-c','pack.deltaCacheSize=64m','push','--progress','--porcelain','origin',f'HEAD:refs/heads/{branch}'],stdout=f,stderr=subprocess.STDOUT)
+- if proc.returncode:raise SystemExit(f'push failed; inspect {log}')
+- remote=git('ls-remote','origin','refs/heads/'+branch).decode().split()[0]
+- assert remote==receipt['commits'][i]['sha']
+- receipt['commits'][i]['pushed']=True;receiptfile.write_text(json.dumps(receipt,indent=2)+'\n')
+-receipt['status']='PUSHED_AND_REMOTE_SHA_VERIFIED';receipt['head']=git('rev-parse','HEAD').decode().strip();receipt['completed_epoch']=time.time()
+-receiptfile.write_text(json.dumps(receipt,indent=2)+'\n')
+-git('fetch','origin',f'refs/heads/{branch}:refs/remotes/origin/{branch}')
+-git('branch','--set-upstream-to=origin/'+branch)
+-print('COMPLETE',args.project,receipt['head'],flush=True)
++"""Retired snapshot entrypoint; retained only to explain the replacement."""
++raise SystemExit(
++    "Snapshot workflow retired. Use Git directly in "
++    "/home/lzy/projects/new_human_vessel_flow (BraVa) or "
++    "/home/lzy/projects/new_mouse_vessel_flow (Mouse). "
++    "This entrypoint does not copy, connect to a server, commit, or push."
++)
+--- /home/lzy/projects/github_sync_audits/flow_projects_20261022/finalize_snapshots.py
++++ /home/lzy/projects/github_sync_audits/flow_projects_20261022/finalize_snapshots.py
+@@ -2,113 +2,7 @@
+-import collections, hashlib, json, os, re, shutil, subprocess
+-from pathlib import Path
+-from export_flow_projects import AUDIT, BASE, CE, sha
+-
+-patterns={
+- 'private_key':re.compile(rb'-----BEGIN (?:OPENSSH|RSA|EC|DSA|PGP|ENCRYPTED)? ?PRIVATE KEY-----'),
+- 'github_token':re.compile(rb'\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{35,})\b'),
+- 'aws_key':re.compile(rb'\bAKIA[0-9A-Z]{16}\b'),
+- 'openai_key':re.compile(rb'\bsk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{35,}\b'),
+- 'literal_credential':re.compile(rb'(?im)["\x27]?(?:api_key|access_token|auth_token|password|client_secret)["\x27]?\s*[:=]\s*["\x27]([A-Za-z0-9_+/=-]{24,})["\x27]')
+-}
+-
+-# Mouse snapshot work is retired; its live Git root is new_mouse_vessel_flow.
+-for project in ['brava']:
+- root=BASE/'temp_storage'/f'{project}_flow_github_sync_20261022';meta=root/'sync_20261022';meta.mkdir(exist_ok=True)
+- inc=json.loads((AUDIT/f'{project.upper()}_INCLUDED.json').read_text());exc=json.loads((AUDIT/f'{project.upper()}_EXCLUDED.json').read_text());links=json.loads((AUDIT/f'{project.upper()}_LINKS.json').read_text())
+- adaptations=[]
+- if project=='brava':
+-  for source,destination in [(AUDIT/'remote_environment','deployment/current_server'),(BASE/'server_migration/brava_new_server_20261009/fixture','deployment/newserver_20261009/fixture')]:
+-   for p in source.rglob('*'):
+-    if not p.is_file() or p.is_symlink():continue
+-    dst=destination+'/'+str(p.relative_to(source));out=root/dst;out.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(p,out)
+-    inc.append({'path':dst,'source':str(p),'size':p.stat().st_size,'sha256':sha(p),'mode':'100755' if p.stat().st_mode&0o111 else '100644'})
+-  for name in ['REMOTE_BRAVA_INVENTORY.json','REMOTE_LOCAL_COMPARISON.json']:
+-   shutil.copy2(AUDIT/name,meta/name)
+- for row in inc:
+-  p=root/row['path']
+-  if p.name=='.gitattributes' and 'filter=lfs' in p.read_text():
+-   original=meta/'upstream_attributes'/row['path'];original.parent.mkdir(parents=True,exist_ok=True)
+-   shutil.copy2(p,original.with_name('gitattributes.original.txt'))
+-   p.write_text('# Snapshot packaging only; upstream rules recorded in sync_20261022/upstream_attributes.\n* -text -filter !diff !merge\n')
+-   adaptations.append({'path':row['path'],'source_sha256':row['sha256'],'published_sha256':sha(p),'reason':'disable inherited LFS for ordinary Git snapshot; scientific bytes unchanged'})
+-   row['source_sha256']=row['sha256'];row['sha256']=sha(p);row['size']=p.stat().st_size
+- (root/'.gitattributes').write_text('# Preserve exact scientific bytes; this snapshot uses ordinary Git.\n* -text -filter !diff !merge\n')
+- (root/'.gitignore').write_text('__pycache__/\n.pytest_cache/\n.venv/\n*.pyc\n')
+- statuses=[]
+- for case in json.loads((CE/'CASE_INDEX.json').read_text()):
+-  # Index structure is inspected below if it is not the expected list.
+-  if isinstance(case,dict):
+-   name=case.get('name','')
+-   if (project=='brava' and name.startswith('brava')) or (project=='mouse' and (name.startswith('mean-') or name.startswith('validation_cases/') or name=='fem_reference_stage_q')):statuses.append(case)
+- (meta/'CASE_INDEX.json').write_text(json.dumps(statuses,indent=2,ensure_ascii=False)+'\n')
+- for name,value in [('INCLUDED',inc),('EXCLUDED',exc),('LINKS',links),('PACKAGING_ADAPTATIONS',adaptations)]:
+-  (meta/f'{name}.json').write_text(json.dumps(value,indent=2,ensure_ascii=False)+'\n')
+- for name in ['export_flow_projects.py','finalize_snapshots.py']:shutil.copy2(AUDIT/name,meta/name)
+- summary={'project':project,'source_files':len(inc),'source_bytes':sum(x['size'] for x in inc),'symlinks':len(links),'excluded_entries':len(exc),'excluded_bytes':sum(x.get('size',0) for x in exc),'new_scientific_computations':0,'original_sources_modified':False,'lfs':False}
+- (meta/'SUMMARY.json').write_text(json.dumps(summary,indent=2)+'\n')
+- branch=f'sync/{"brava-flow" if project=="brava" else "mouse-vascular-flow"}-project-20261022'
+- if project=='brava':
+-  title='BraVa CFD 与微泡项目';entry='computation_examples/brava_flow_roi_18mlmin'
+-  details=f'''本分支仅保存 BraVa 项目与必要共享依赖。小鼠血管项目见 `sync/mouse-vascular-flow-project-20261022`。两个项目不合并为同一个计算模型；祖先提交仍保留原仓库历史。
+-
+-当前科学状态以 [{entry}/ACTIVE_DEVELOPMENT_SCOPE.md]({entry}/ACTIVE_DEVELOPMENT_SCOPE.md) 为准：P2/P1 路线在资源门槛处停止；Gmsh V2 场局部精度仍未通过，未运行新正式群体。
+-
+-- [正式流场身份]({entry}/reports/ACTIVE_FLOW.json)：18 mL/min 历史 balanced_pressure_final；候选 0/15 为同一解的打印姿态。
+-- [旧正式群体账本]({entry}/population_v1/runs/realization_0000_contactfix/SUMMARY.json)：1565 条接受轨迹，458/527/437 出流，141 观察截止、2 数值失败。原始 states/chunk_*.npz 全部保留。
+-- [最新四视角]({entry}/population_v1/candidate_0/OPEN_RESULTS.html)与[流场可视化]({entry}/visualization/candidate_0/OPEN_RESULTS.html)。
+-- [P2 线性代数报告]({entry}/population_v1/analysis/p2_linear_algebra_rerun_20261006/P2_LINEAR_ALGEBRA_AND_RESOURCE_REVIEW_ZH.md)。
+-- [新服务器迁移与独立环境验证](deployment/newserver_20261009/MIGRATION_AND_VALIDATION_ZH.md)；当前入口和激活脚本在 `deployment/current_server/`，环境验证不等于局部物理精度认证。
+-
+-当前固定灌注协议尚无新正式大批量结果；未来新边界按中心线阻力估算出口压力，历史校准场身份保持不变。服务器当前项目与本地已有对应文件 SHA 全部一致；服务器独有、与当前诊断相关的源码与执行证据从已核验备份补齐。
+-'''
+- else:
+-  title='小鼠血管流场与配套微泡项目'
+-  details='''本分支保存小鼠血管项目；BraVa 项目见 `sync/brava-flow-project-20261022`。共同粒子/求解器代码是共享依赖，不代表两个几何或结果相同。祖先提交仍保留原仓库历史。
+-
+-- [ROI-only 算例](computation_examples/mean-2p0-mmps-A-ROI-only-balanced-pressure-v1/CASE_README.md)：1500 条、dt 0.5 ms，1315 出流（787/61/467）、185 接触支持静止、0 执行失败。
+-- [best-feasible 算例](computation_examples/mean-2p0-mmps-A-best-feasible-balance-v1/CASE_README.md)：1500 条、dt 0.5 ms，1315 出流（0/133/1182）、185 接触支持静止、0 执行失败。
+-- [Network-H0 基线](computation_examples/mean-2p0-mmps-A-H0-pressure-v1/CASE_README.md)：500 条、dt 1 ms，430 出流（0/139/291）、70 接触支持静止。
+-- [原 2 mm/s 基线](computation_examples/mean-2p0-mmps/CASE_README.md)与[早期 FEM Stage-Q 参考](computation_examples/fem_reference_stage_q/CASE_README.md)。
+-- [WSS 验证报告](computation_examples/_shared/wss_validation_v2/WSS_VALIDATION_REPORT_V2.md)及 `validation_cases/`；细档血管和 O2 压力敏感性继续为 SKIPPED_BY_USER。
+-- [ROI-only 流场图表](computation_examples/mean-2p0-mmps-A-ROI-only-balanced-pressure-v1/visualization/OPEN_RESULTS.html)和[微泡图表](computation_examples/mean-2p0-mmps-A-ROI-only-balanced-pressure-v1/microbubble/OPEN_RESULTS.html)。
+-
+-四套冻结场、求解配置与日志、WSS 表面、原始轨迹及验收记录均保留。`geometry_inputs/` 只补入此流场来源使用的源样本、ROI/表面和共享几何代码，不复制整个上游打印模型库。小鼠项目未迁入当前 BraVa 服务器；本次同步依据本地保留的权威结果，没有声称重新核验旧服务器。
+-'''
+- text=f'''# {title}（2026-10-22 同步）
+-
+-{details}
+-本次是现有文件同步，不启动或恢复 CFD、轨迹、网格加密或敏感性计算，不修改科学数据。源目录、原有兼容链接和完整本地备份保留。
+-
+-纳入 {len(inc):,} 个源文件，约 {summary['source_bytes']/1e9:.2f} GB。保留代码、关键日志、冻结网格/流场、原始正式状态、诊断表格和成品图表；排除可安装环境/二进制、缓存、重复中间帧、废弃批次大体积状态、可由已保留输入重建的全域审计数组。排除是发布筛选，没有删除原始数据；普通 Git 不上传单文件 ≥100 MiB 的派生大文件。没有 LFS，也没有将文件切片规避限制。
+-
+-逐文件来源/大小/SHA256 见 [INCLUDED.json](sync_20261022/INCLUDED.json)；[EXCLUDED.json](sync_20261022/EXCLUDED.json) 记录排除原因、原位置及大文件哈希；[LINKS.json](sync_20261022/LINKS.json) 记录相对兼容链接。少数上游 `.gitattributes` 的 LFS 规则只在发布副本中停用，原文与前后哈希已保留。原生第三方测试库中的既有 LFS 指针仅为上游测试资源引用，不是本项目冻结 CFD 文件。
+-
+-历史配置和报告中的绝对路径保持原始字节；这不是空白机器一键运行包。HTML/视频可下载本分支后打开；GitHub 页面直接预览部分格式受限。克隆时可加 `--single-branch --depth 1` 仅获取此分支当前快照。
+-
+-同步分支：`{branch}`。最终提交和远端核验回执在本地 `github_sync_audits/flow_projects_20261022/`。
+-'''
+- (root/'README.md').write_text(text)
+- # Source identity and publication safety check. No scientific solver or integration.
+- errors=[];findings=[];lfs=[]
+- for row in inc:
+-  p=root/row['path']
+-  if sha(p)!=row['sha256']:errors.append({'path':row['path'],'error':'hash_mismatch'})
+-  if p.stat().st_size>=100*1024*1024:errors.append({'path':row['path'],'error':'large_git_blob'})
+- for p in root.rglob('*'):
+-  if not p.is_file() or p.is_symlink() or p.name=='.git':continue
+-  with p.open('rb') as f:
+-   head=f.read(8192)
+-   if head.startswith(b'version https://git-lfs.github.com/spec/v1'):lfs.append(str(p.relative_to(root)))
+-   if b'\0' in head:continue
+-   data=head+f.read()
+-  for rule,pattern in patterns.items():
+-   if pattern.search(data):findings.append({'path':str(p.relative_to(root)),'rule':rule})
+- for row in links:
+-  p=root/row['path']
+-  if not p.exists():errors.append({'path':row['path'],'error':'dangling_symlink'})
+- forbidden='computation_examples/mean-' if project=='brava' else 'computation_examples/brava'
+- if any(x['path'].startswith(forbidden) for x in inc):errors.append({'error':'project_scope_mixing'})
+- result={'project':project,'source_hashes_verified':len(inc),'errors':errors,'credential_candidates':findings,'upstream_existing_lfs_pointer_paths':lfs,'status':'PASS' if not errors and not findings else 'REVIEW_REQUIRED'}
+- (AUDIT/f'{project.upper()}_VALIDATION.json').write_text(json.dumps(result,indent=2)+'\n')
+- (meta/'VALIDATION.json').write_text(json.dumps(result,indent=2)+'\n')
+- print(project,summary,'validation',result['status'],'errors',len(errors),'secret_candidates',len(findings),'upstream_lfs_refs',len(lfs),flush=True)
++"""Retired snapshot entrypoint; retained only to explain the replacement."""
++raise SystemExit(
++    "Snapshot workflow retired. Use Git directly in "
++    "/home/lzy/projects/new_human_vessel_flow (BraVa) or "
++    "/home/lzy/projects/new_mouse_vessel_flow (Mouse). "
++    "This entrypoint does not copy, connect to a server, commit, or push."
++)
+--- /home/lzy/projects/github_sync_audits/flow_projects_20261022/seal_metadata.py
++++ /home/lzy/projects/github_sync_audits/flow_projects_20261022/seal_metadata.py
+@@ -2,33 +2,7 @@
+-"""Append small, explicit publication notes without altering scientific files."""
+-import json,shutil,subprocess
+-from pathlib import Path
+-from export_flow_projects import AUDIT,BASE
+-# Mouse snapshot work is retired; its live Git root is new_mouse_vessel_flow.
+-for project in ['brava']:
+- upper=project.upper();root=BASE/'temp_storage'/f'{project}_flow_github_sync_20261022';meta=root/'sync_20261022'
+- receipt=json.loads((AUDIT/f'{upper}_PUSH_RECEIPT.json').read_text());assert receipt['status']=='PUSHED_AND_REMOTE_SHA_VERIFIED'
+- planfile=AUDIT/f'{upper}_PUBLISH_PLAN.json';plan=json.loads(planfile.read_text());assert not plan.get('publication_metadata_appended')
+- for name in ['publish_snapshots.py','verify_delivery.py']:shutil.copy2(AUDIT/name,meta/name)
+- note='''# 发布过程说明（2026-10-22）
+-
+-本分支为独立项目快照。源文件清单、逐文件SHA、排除原因与兼容链接见本目录；科学数据没有修改，也没有运行任何新计算。
+-
+-发布时发现旧 VS Code credential helper 已失效，改为只对本次 Git 命令使用现有 gh 登录；没有更改全局认证设置或发布凭据。
+-
+-原生第三方求解器测试目录中有未取得实际数据的 LFS 指针。GitHub 拒收后，发布副本改为排除这些资源文件，并将原始指针与来源保存在 UPSTREAM_TEST_RESOURCE_REFERENCES.json。全部项目冻结场和正式原始状态使用实际文件，没有指针替代。失败且未发布的本地提交保留，没有改写既有历史。
+-
+-小鼠目录调整触发 Git sparse pack 对已存在对象的重复传输，HTTP 500 重试后改用 pack.useSparse=false。成功传输为404个对象、2.95 MiB；逻辑工作树大小仍约4.97 GB。该配置仅控制传输，不改变文件内容。BraVa 新原始状态分批提交，每个新增对象批次有界。
+-
+-最终完整 Git 树、冻结场与远端提交核验回执在本地 github_sync_audits/flow_projects_20261022/DELIVERY_VERIFIED.json，报告为同目录 SYNC_REPORT_ZH.md。此文不内嵌最终自身提交SHA，避免递归。
+-'''
+- (meta/'TRANSFER_NOTES_ZH.md').write_text(note)
+- files=[meta/'publish_snapshots.py',meta/'verify_delivery.py',meta/'TRANSFER_NOTES_ZH.md']
+- if project=='brava':
+-  shutil.copy2(AUDIT/'REMOTE_ENVIRONMENT_DIFFERENCES.json',meta/'REMOTE_ENVIRONMENT_DIFFERENCES.json');files.append(meta/'REMOTE_ENVIRONMENT_DIFFERENCES.json')
+- batch=[]
+- for p in files:
+-  oid=subprocess.check_output(['git','-C',str(root),'-c','gc.auto=0','hash-object','-w','--no-filters',str(p)]).decode().strip()
+-  batch.append({'path':str(p.relative_to(root)),'oid':oid,'mode':'100644','bytes':p.stat().st_size})
+- plan['batches'].append(batch);plan['publication_metadata_appended']=True
+- tree={r['path']:r for b in plan['batches'] for r in b};plan['files']=len(tree);plan['bytes']=sum(r['bytes'] for r in tree.values())
+- planfile.write_text(json.dumps(plan,indent=2)+'\n');print(project,'metadata queued',len(batch))
++"""Retired snapshot entrypoint; retained only to explain the replacement."""
++raise SystemExit(
++    "Snapshot workflow retired. Use Git directly in "
++    "/home/lzy/projects/new_human_vessel_flow (BraVa) or "
++    "/home/lzy/projects/new_mouse_vessel_flow (Mouse). "
++    "This entrypoint does not copy, connect to a server, commit, or push."
++)
+--- /home/lzy/projects/github_sync_audits/flow_projects_20261022/verify_delivery.py
++++ /home/lzy/projects/github_sync_audits/flow_projects_20261022/verify_delivery.py
+@@ -2,42 +2,7 @@
+-import datetime,hashlib,json,subprocess
+-from pathlib import Path
+-from export_flow_projects import AUDIT,BASE
+-
+-results=[]
+-for project in ['brava','mouse']:
+- root=BASE/'temp_storage'/f'{project}_flow_github_sync_20261022';upper=project.upper()
+- plan=json.loads((AUDIT/f'{upper}_PUBLISH_PLAN.json').read_text());receipt=json.loads((AUDIT/f'{upper}_PUSH_RECEIPT.json').read_text())
+- assert receipt['status']=='PUSHED_AND_REMOTE_SHA_VERIFIED'
+- def git(*args):return subprocess.check_output(['git','-C',str(root),'-c','diff.renames=false','-c','gc.auto=0',*args])
+- head=git('rev-parse','HEAD').decode().strip();remote=git('ls-remote','origin','refs/heads/'+receipt['branch']).decode().split()[0]
+- assert head==remote==receipt['head']
+- tree={}
+- for record in git('ls-tree','-r','-l','-z',head).split(b'\0'):
+-  if not record:continue
+-  info,path=record.split(b'\t',1);mode,kind,oid,size=info.decode().split()
+-  tree[path.decode()]={'mode':mode,'oid':oid,'size':int(size)}
+- expected={e['path']:e for batch in plan['batches'] for e in batch}
+- assert set(tree)==set(expected),(set(tree)-set(expected),set(expected)-set(tree))
+- assert all(tree[p]['oid']==e['oid'] and tree[p]['mode']==e['mode'] for p,e in expected.items())
+- assert max(x['size'] for x in tree.values())<100*1024*1024
+- assert not git('status','--porcelain','--untracked-files=all').strip()
+- fields=json.loads((root/'sync_20261022/FROZEN_FIELDS_CHECK.json').read_text())
+- for f in fields:assert f['pass']
+- nstates=sum('/population_v1/runs/realization_0000_contactfix/states/chunk_' in p for p in tree)
+- if project=='brava':assert nstates==137
+- summary=json.loads((root/'sync_20261022/SUMMARY.json').read_text())
+- results.append({'project':project,'branch':receipt['branch'],'commit':head,'url':'https://github.com/OZAKI39/ulm-3d-vascular-model-generation/tree/'+receipt['branch'],'files_and_links':len(tree),'logical_bytes':sum(x['size'] for x in tree.values()),'source_files':summary['source_files'],'source_bytes':summary['source_bytes'],'frozen_fields_verified':len(fields),'formal_accepted_state_chunks':nstates,'max_blob_bytes':max(x['size'] for x in tree.values()),'working_tree_clean':True,'remote_commit_verified':True,'all_published_tree_objects_match_plan':True,'commits':len(receipt['commits']),'local_worktree':str(root)})
+-delivery={'status':'PASS','checked_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'repository':'https://github.com/OZAKI39/ulm-3d-vascular-model-generation','projects':results,'scientific_runs_started':0,'force_push_used':False,'original_source_trees_modified':False}
+-(AUDIT/'DELIVERY_VERIFIED.json').write_text(json.dumps(delivery,indent=2,ensure_ascii=False)+'\n')
+-lines=['# 小鼠血管与 BraVa 分支同步报告','',f"核验时间：{delivery['checked_at']}。状态：**PASS**。两条独立新分支已推送，远端 commit 与本地完全一致。",'','| 项目 | 新分支 | 提交 | 文件/链接 | 发布逻辑体积 |','|---|---|---|---:|---:|']
+-for r in results:lines.append(f"| {r['project']} | [{r['branch']}]({r['url']}) | `{r['commit']}` | {r['files_and_links']:,} | {r['logical_bytes']/1e9:.3f} GB |")
+-lines += ['','本次保留各项目代码、关键日志、正式网格/冻结流场、WSS、原始正式轨迹/接受状态、诊断结果和成品图表。BraVa 137 个 contactfix 状态块全部发布；旧1565条仍为1422出流、141截止、2数值失败。小鼠ROI-only、best-feasible、H0及2mm/s基线分别保留。16个冻结场通过既有登记SHA核验。','',
+-'排除可重建环境和安装包、缓存、重复中间流场与渲染内容、被替代批次的庞大状态、可重建全域审计数组；不删除本地或服务器原始文件。详细逐文件来源、大小、SHA、排除原因和兼容链接见各分支 `sync_20261022/`。BraVa新服务器对应文件与本地一致，服务器独有执行证据从已核验备份补入；小鼠没有声称重新核验旧服务器。','',
+-'排除了未取得实际数据的上游原生求解器测试资源LFS指针，保留 `UPSTREAM_TEST_RESOURCE_REFERENCES.json` 以追溯。项目自身冻结数据和正式状态是普通Git中的实际文件，没有LFS、没有切片规避限制。少数上游.gitattributes仅在发布副本中停用LFS，原文及前后哈希保留；科学代码和数据字节不改。','',
+-'分支当前树只含各自项目与必要共享依赖；祖先历史仍保持原样。没有向main提交、没有force push、没有重写既有提交。首次未发布的失败提交保留在本地旧同步分支，成功发布工作树使用 `-publish` 本地分支，跟踪上表远端分支。','',
+-'遇到的问题已解决：旧VS Code凭据助手失效，改为仅对此次Git命令使用已有gh登录；GitHub拒收上游缺失LFS资源后，排除这些测试资源指针，从原已发布父提交建立干净发布分支。失败记录与修复前计划/提交收据保留在本目录。','',
+-'核验包括：文件SHA、敏感信息扫描、分支范围、冻结流场、README结果链接、有效兼容链接、全部最终Git树对象与发布计划一致、无≥100MiB普通Git文件、工作树clean、fetch/ls-remote最终提交一致。本轮没有启动CFD、网格或轨迹计算，没有改变已有FAIL/SKIPPED/未运行结论。','',
+-'复现限制：历史配置内绝对路径保留，环境/安装依赖需按现有说明配置；这不是空白机器一键运行包。GitHub中HTML/视频可下载后打开。','',
+-'机器核验回执：[DELIVERY_VERIFIED.json](DELIVERY_VERIFIED.json)。']
+-(AUDIT/'SYNC_REPORT_ZH.md').write_text('\n'.join(lines)+'\n')
+-print(json.dumps(delivery,indent=2,ensure_ascii=False))
++"""Retired snapshot entrypoint; retained only to explain the replacement."""
++raise SystemExit(
++    "Snapshot workflow retired. Use Git directly in "
++    "/home/lzy/projects/new_human_vessel_flow (BraVa) or "
++    "/home/lzy/projects/new_mouse_vessel_flow (Mouse). "
++    "This entrypoint does not copy, connect to a server, commit, or push."
++)
+--- /home/lzy/projects/temp_storage/github_sync_20260929_verify_publish.py
++++ /home/lzy/projects/temp_storage/github_sync_20260929_verify_publish.py
+@@ -1,39 +1,8 @@
+-"""Verify the public branch, immutable commit tree, and representative files."""
+-from pathlib import Path
+-import datetime,json,subprocess,urllib.parse
+-D=Path('/home/lzy/projects/temp_storage/github_sync_20260928_latest');P=D.parent
+-repo='OZAKI39/ulm-3d-vascular-model-generation';branch='sync/roi-flow-mb1500-wss-stop-analysis-20260928'
+-def run(args):return subprocess.check_output(args,cwd=D,text=True).strip()
+-def api(path):return json.loads(run(['gh','api','repos/'+repo+'/'+path]))
+-plan=json.loads((P/'github_sync_20260929_publish_plan.json').read_text())
+-commit=run(['git','rev-parse','HEAD'])
+-remote=run(['git','ls-remote','--heads','origin','refs/heads/'+branch]).split()[0]
+-assert remote==commit
+-remote_commit=api('git/commits/'+commit)
+-assert remote_commit['tree']['sha']==plan['tree']
+-assert remote_commit['parents'][0]['sha']==plan['parent']
+-assert not run(['git','status','--porcelain=v1'])
+-paths=['README.md','brava_flow_roi_18mlmin/CURRENT_RESULTS_ZH.md',
+-       'brava_flow_roi_18mlmin/reports/ACTIVE_FLOW.json',
+-       'brava_flow_roi_18mlmin/microbubble/data/USER_STOP.json',
+-       'brava_flow_roi_18mlmin/scripts/run_microbubble_sequence.py',
+-       'brava_flow_roi_18mlmin/gpu_solver_fix/gpu_host_sync.patch',
+-       'sync_metadata/current_20260929/SYNC_REPORT_ZH.md']
+-checked=[]
+-for path in paths:
+-    item=api('contents/'+urllib.parse.quote(path)+'?ref='+commit)
+-    blob=run(['git','rev-parse',commit+':'+path]);assert item['sha']==blob
+-    checked.append(dict(path=path,git_blob=blob,verified=True))
+-status=subprocess.run(['ssh','-q','vast4090','supervisorctl -c /workspace/brava_flow_roi_18mlmin_20260928/supervisord.conf status brava_microbubble_sequence brava_flow_render'],text=True,capture_output=True)
+-assert status.returncode in (0,3) and 'STOPPED' in status.stdout
+-result=dict(repository='https://github.com/'+repo,branch=branch,branch_url='https://github.com/'+repo+'/tree/'+branch,
+-    commit=commit,commit_url='https://github.com/'+repo+'/commit/'+commit,tree=plan['tree'],parent=plan['parent'],
+-    remote_ref_matches=True,remote_tree_matches=True,representative_remote_files=checked,
+-    working_tree_clean=True,total_indexed_files=plan['index_files'],new_object_bytes_upper_bound=plan['new_compressed_object_bytes_upper_bound'],
+-    snapshot=str(D),verified_at_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+-    validation=json.loads((D/'sync_metadata/current_20260929/validation/snapshot_validation.json').read_text()),
+-    index_validation=json.loads((D/'sync_metadata/current_20260929/validation/index_validation.json').read_text()),
+-    server_state_after_push=status.stdout,CFD_runs=0,new_trajectory_integrations=0)
+-receipt=P/'github_sync_20260929_receipt.json';receipt.write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n')
+-print(json.dumps({k:result[k] for k in ['commit','branch_url','remote_ref_matches','remote_tree_matches','working_tree_clean','total_indexed_files','server_state_after_push']},indent=2))
+-print('Receipt:',receipt)
++#!/usr/bin/env python3
++"""Retired snapshot entrypoint; retained only to explain the replacement."""
++raise SystemExit(
++    "Snapshot workflow retired. Use Git directly in "
++    "/home/lzy/projects/new_human_vessel_flow (BraVa) or "
++    "/home/lzy/projects/new_mouse_vessel_flow (Mouse). "
++    "This entrypoint does not copy, connect to a server, commit, or push."
++)

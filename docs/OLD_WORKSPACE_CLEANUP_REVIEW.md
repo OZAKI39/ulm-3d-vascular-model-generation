@@ -1,5 +1,7 @@
 # 旧目录清理审核清单
 
+后续更新：这份表是 2026-10-22 的原调查记录。两处已证实重复的同步工作区现已清除；当前实际删除与待确认范围见[2026-10-23 清理报告](CLEANUP_REPORT_ZH.md)及[最新清单](cleanup_20261023/PENDING_REVIEW.csv)。下文原数值和建议保留作历史记录。
+
 **本轮删除原工程文件数：0。** 这份清单不是删除命令。是否清理、何时清理，仍由您决定。
 
 逐文件清单：[OLD_WORKSPACE_CLEANUP_REVIEW.csv](OLD_WORKSPACE_CLEANUP_REVIEW.csv)，共 5346 条审核记录，记录之间可能重叠，不能相加作为可回收空间。来源、目标与逐文件哈希另见 [FINAL_FILE_MAPPING.json](provenance/FINAL_FILE_MAPPING.json)。

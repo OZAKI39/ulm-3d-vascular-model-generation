@@ -3,25 +3,32 @@
 Run with this project's Python -I. No source lookup path is added at runtime.
 """
 import ast
+import argparse
 import importlib
 import json
 import os
 from pathlib import Path
 import sys
 import traceback
-from human_vessel_flow.paths import ROOT, sha256, write_json
+from human_vessel_flow.paths import ROOT, sha256, write_json, fresh_directory
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('output', nargs='?', type=Path,
+                        default=ROOT/'validation/independence_check')
+    output = fresh_directory(parser.parse_args().output)
     denied_names = ('computation_examples', 'vascular_printing', 'new_mouse_vessel_flow',
                     'temp_storage', 'ulm_particle_formal_p9a5', 'brava_flow_roi_18mlmin',
-                    'brava_calibration_equal_split', 'sonovue_size_distribution_v0')
+                    'brava_calibration_equal_split', 'sonovue_size_distribution_v0',
+                    'github_sync_audits', 'new_clot_simulation', 'new_vessel_printing',
+                    'new_microbubble_experiment', 'new_microbubble_aggregation')
     denied = [(ROOT.parent/name).absolute() for name in denied_names]
     attempted = []
     opened = set()
     def audit(event, args):
-        if event != 'open' or not args or not isinstance(args[0], (str, bytes, os.PathLike)):
+        if event not in ('open', 'os.listdir', 'os.scandir') or not args or not isinstance(args[0], (str, bytes, os.PathLike)):
             return
-        p = Path(os.fsdecode(args[0])).absolute()
+        p = Path(os.path.realpath(os.fsdecode(args[0])))
         if any(p.is_relative_to(d) for d in denied):
             attempted.append(str(p))
             raise RuntimeError('Old workspace access forbidden in independence check: ' + str(p))
@@ -61,9 +68,11 @@ def main():
     except Exception:
         errors.append(dict(module='actual_data_loading',error=traceback.format_exc()));checks={}
     links=[]
-    for p in ROOT.rglob('*'):
-        if '.venv' in p.relative_to(ROOT).parts:continue
-        if p.is_symlink():links.append(dict(path=str(p.relative_to(ROOT)),target=os.readlink(p)))
+    for directory, dirs, files in os.walk(ROOT, followlinks=False):
+        dirs[:] = [d for d in dirs if d not in ('.venv', '.git', '__pycache__', '.pytest_cache')]
+        for name in dirs + files:
+            p = Path(directory)/name
+            if p.is_symlink():links.append(dict(path=str(p.relative_to(ROOT)),target=os.readlink(p)))
     info=dict(status='PASS' if not errors and not attempted and not findings and not links else 'FAIL',
               python=sys.executable,isolated_flag=sys.flags.isolated,
               modules=imported,module_count=len(imported),errors=errors,
@@ -73,8 +82,8 @@ def main():
               source_graph='SOURCE_IMPORT_GRAPH.json',
               informational_old_path_literals=['src/particle_3d/audit.py: legacy report metadata only; used=False, copied_2d_code=False'],
               native_dependencies='Explicit configs/cfd/native.json; separate unified solver installation')
-    write_json(ROOT/'validation/SOURCE_IMPORT_GRAPH.json',graph)
-    write_json(ROOT/'validation/INDEPENDENCE.json',info)
+    write_json(output/'SOURCE_IMPORT_GRAPH.json',graph)
+    write_json(output/'INDEPENDENCE.json',info)
     print(json.dumps({k:v for k,v in info.items() if k not in {'modules','opened_project_paths'}},indent=2))
     if info['status']!='PASS':raise SystemExit(1)
 
