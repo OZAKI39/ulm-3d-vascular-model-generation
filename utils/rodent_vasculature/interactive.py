@@ -204,6 +204,10 @@ class _ProjectedAxisAnnotation:
     tick_actors: tuple[Any, ...]
     title_actor: Any
     last_outward_xy: tuple[float, float] | None = None
+    tick_label_offset_px: float = COORDINATE_TICK_LABEL_OFFSET_PX
+    title_offset_px: float = COORDINATE_TITLE_OFFSET_PX
+    vertical_axis_name: str = "Z"
+    endpoint_label_inset_px: float = 0.0
 
     def _set_outside_text_alignment(
         self,
@@ -215,12 +219,12 @@ class _ProjectedAxisAnnotation:
         text_property = actor.GetTextProperty()
         # 标题和数字始终保持屏幕正向，彻底避免旋转半周后出现倒字。
         text_property.SetOrientation(0.0)
-        if self.axis_name in {"X", "Y"}:
-            # X/Y 的活动边始终位于画面底部；锚点作为文字上边缘，文字只向下展开。
+        if self.axis_name != self.vertical_axis_name:
+            # 底部活动边以锚点作为文字上边缘，文字只向下展开。
             text_property.SetJustificationToCentered()
             text_property.SetVerticalJustificationToTop()
         else:
-            # Z 轴在左右两侧同时显示。锚点作为靠轴的一侧，文字只向画框外展开。
+            # 竖直轴在左右两侧显示，以靠轴的一侧对齐，文字向画框外展开。
             if float(outward[0]) < 0.0:
                 text_property.SetJustificationToRight()
             else:
@@ -281,13 +285,17 @@ class _ProjectedAxisAnnotation:
                 float(tick_end[1]),
                 0.0,
             )
-            label_position = axis_point + outward * COORDINATE_TICK_LABEL_OFFSET_PX
+            label_position = axis_point + outward * self.tick_label_offset_px
+            if tick_index == 0:
+                label_position += axis_direction * self.endpoint_label_inset_px
+            elif tick_index == len(self.tick_actors) - 1:
+                label_position -= axis_direction * self.endpoint_label_inset_px
             actor.SetPosition(float(label_position[0]), float(label_position[1]))
             self._set_outside_text_alignment(actor, outward)
         self.tick_line_points.Modified()
 
         title_position = midpoint + outward * (
-            COORDINATE_TICK_LABEL_OFFSET_PX + COORDINATE_TITLE_OFFSET_PX
+            self.tick_label_offset_px + self.title_offset_px
         )
         self.title_actor.SetPosition(
             float(title_position[0]),
@@ -311,6 +319,7 @@ class _ScreenAnchoredCoordinateAxes:
     x_opacities: tuple[float, ...] = ()
     y_opacities: tuple[float, ...] = ()
     z_opacities: tuple[float, ...] = ()
+    single_edge_per_axis: bool = False
     _updating: bool = False
 
     def _project_to_display(self, point_xyz: tuple[float, float, float]) -> np.ndarray:
@@ -375,7 +384,7 @@ class _ScreenAnchoredCoordinateAxes:
             )
 
     def update(self, *_event_args: Any) -> None:
-        """Update positions and cross-fades after automatic or mouse rotation."""
+        """Update positions and edge visibility after automatic or mouse rotation."""
 
         if self._updating:
             return
@@ -422,6 +431,21 @@ class _ScreenAnchoredCoordinateAxes:
                     self._midpoint_scores(projected_z, coordinate=1),
                     prefer_minimum=True,
                 )
+            if self.single_edge_per_axis:
+                # Pick one bottom edge for each horizontal axis and one left
+                # edge for the vertical axis. No cross-fade: even at an edge
+                # transition, two copies of the same ticks must never coexist.
+                # Degenerate (end-on) edges cannot carry a readable scale.
+                unique_opacities = []
+                for axis_index, projected in enumerate((projected_x, projected_y, projected_z)):
+                    vertical = axis_index == (1 if self.y_vertical else 2)
+                    scores = self._midpoint_scores(projected, coordinate=0 if vertical else 1)
+                    valid = np.asarray([np.linalg.norm(p2 - p1) > 1.0e-9 for p1, p2 in projected])
+                    opacity = np.zeros(len(projected), dtype=float)
+                    if np.any(valid):
+                        opacity[int(np.argmin(np.where(valid, scores, np.inf)))] = 1.0
+                    unique_opacities.append(opacity)
+                x_opacities, y_opacities, z_opacities = unique_opacities
             self.x_opacities = tuple(float(value) for value in x_opacities)
             self.y_opacities = tuple(float(value) for value in y_opacities)
             self.z_opacities = tuple(float(value) for value in z_opacities)
@@ -468,6 +492,7 @@ def _install_synchronized_horizontal_rotation(
     cameras: tuple[Any, ...],
     *,
     left_view_up: tuple[float, float, float] | None = None,
+    right_view_up: tuple[float, float, float] | None = None,
 ) -> Any | None:
     """为所有给定视口安装同速、同方向的实时水平旋转。
 
@@ -484,11 +509,11 @@ def _install_synchronized_horizontal_rotation(
         raise ValueError("HORIZONTAL_ROTATION_DEGREES_PER_STEP must be finite")
     if HORIZONTAL_ROTATION_MAX_STEPS <= 0:
         raise ValueError("HORIZONTAL_ROTATION_MAX_STEPS must be positive")
-    view_up = np.asarray(HORIZONTAL_ROTATION_VIEW_UP, dtype=float)
+    view_up = np.asarray(HORIZONTAL_ROTATION_VIEW_UP if right_view_up is None else right_view_up, dtype=float)
     if view_up.shape != (3,) or not np.all(np.isfinite(view_up)):
-        raise ValueError("HORIZONTAL_ROTATION_VIEW_UP must contain three finite values")
+        raise ValueError("Horizontal rotation view-up must contain three finite values")
     if float(np.linalg.norm(view_up)) <= 1.0e-12:
-        raise ValueError("HORIZONTAL_ROTATION_VIEW_UP must be non-zero")
+        raise ValueError("Horizontal rotation view-up must be non-zero")
     view_up /= np.linalg.norm(view_up)
     left_up = view_up if left_view_up is None else np.asarray(left_view_up, dtype=float)
     if left_up.shape != (3,) or not np.all(np.isfinite(left_up)) or np.linalg.norm(left_up) <= 1.0e-12:
@@ -509,7 +534,7 @@ def _install_synchronized_horizontal_rotation(
 
     def rotate_viewports(_step: int) -> None:
         for index, camera in enumerate(unique_cameras):
-            # 左视窗可单独指定竖直轴；其余视窗仍采用原来的物理 Z 轴。
+            # 默认保留物理 Z 轴；调用者可分别指定左右视窗的竖直轴。
             camera.SetViewUp(*(left_up if index == 0 else view_up))
             camera.Azimuth(HORIZONTAL_ROTATION_DEGREES_PER_STEP)
 
@@ -1685,6 +1710,7 @@ def _add_sampling_roi_scene(
     *,
     add_orientation_axes: bool = True,
     diameter_clim_um: tuple[float, float] | None = None,
+    view_up: tuple[float, float, float] | None = None,
 ) -> _ScreenAnchoredCoordinateAxes:
     """Render one saved connected ROI without running sampling or clustering."""
 
@@ -1730,6 +1756,7 @@ def _add_sampling_roi_scene(
             color="#51E5FF",
             line_width=3.0,
             label="connected ROI centerline",
+            name="sampling_roi_centerline",
             pickable=False,
         )
         legend_entries.extend(
@@ -1822,6 +1849,8 @@ def _add_sampling_roi_scene(
         name_prefix="sampling_roi_legend",
     )
     plotter.view_isometric()
+    if view_up is not None:
+        plotter.camera.SetViewUp(*view_up)
     plotter.reset_camera(bounds=bounds)
     return _add_physical_coordinate_axes(
         plotter,
@@ -1831,6 +1860,7 @@ def _add_sampling_roi_scene(
         # 但保留由同一 bounds 生成的灰色辅助网格。
         show_reference_frame=False,
         show_reference_grid=True,
+        y_vertical=view_up == (0.0, 1.0, 0.0),
     )
 
 

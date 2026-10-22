@@ -10,12 +10,12 @@ BraVa 的解剖 landmark 辅助 MeVO 提取及现有 human 双视窗数据接入
 
 ## 运行
 
-从项目根目录运行；当前使用 `/home/lzy/projects/ulm_particle_3d_particle0/.venv/bin/python`。
+从项目根目录运行；当前使用 `/home/lzy/projects/temp_storage/ulm_particle_3d_particle0/.venv/bin/python`。
 
 接受原生分叉合并并重新生成完整 BraVa 样本（选择尚不存在输出文件的新目录）：
 
 ```bash
-/home/lzy/projects/ulm_particle_3d_particle0/.venv/bin/python tools/vascularmd_smooth_swc.py \
+/home/lzy/projects/temp_storage/ulm_particle_3d_particle0/.venv/bin/python tools/vascularmd_smooth_swc.py \
   "vessel_model/T - Brava/swc_files/BG001.CNG.swc" \
   --output-dir outputs/vascularmd/BG001_accepted --accept-native-merges --qc-plot
 ```
@@ -25,7 +25,7 @@ BG001 中官方算法将原始分叉 10、12 合并到 8 对应的分叉，99 �
 本次已成功验证的真实 BraVa ROI 输入示例：
 
 ```bash
-/home/lzy/projects/ulm_particle_3d_particle0/.venv/bin/python tools/vascularmd_smooth_swc.py \
+/home/lzy/projects/temp_storage/ulm_particle_3d_particle0/.venv/bin/python tools/vascularmd_smooth_swc.py \
   outputs/vascularmd_validation/brava_roi_inputs/BG001_anchor000647.swc \
   --output-dir outputs/vascularmd/roi647 --qc-plot
 ```
@@ -48,7 +48,7 @@ outputs/vascularmd/roi647/
 目录递归批处理：
 
 ```bash
-/home/lzy/projects/ulm_particle_3d_particle0/.venv/bin/python tools/vascularmd_smooth_swc.py \
+/home/lzy/projects/temp_storage/ulm_particle_3d_particle0/.venv/bin/python tools/vascularmd_smooth_swc.py \
   "vessel_model/T - Brava/swc_files" \
   --output-dir outputs/vascularmd_batch --recursive --qc-plot
 ```
@@ -87,7 +87,7 @@ outputs/vascularmd/roi647/
 小鼠原始 XYZ 为体素坐标，半径已经是微米，不能直接将原 SWC 作为等比例物理坐标交给 VascularMD。使用独立适配入口：
 
 ```bash
-/home/lzy/projects/ulm_particle_3d_particle0/.venv/bin/python tools/vascularmd_prepare_mouse.py \
+/home/lzy/projects/temp_storage/ulm_particle_3d_particle0/.venv/bin/python tools/vascularmd_prepare_mouse.py \
   --config configs/swc_roi_generate_mouse_raw.yaml \
   --output-dir "vessel_model/T - A high-resolution dataset of mouse brain vasculature_vmd_branch_aic_new" \
   --model-mode branches --no-accept-native-merges
@@ -154,8 +154,8 @@ QC 保存原始/预处理节点数、源 SHA-256、上游提交及源码摘要�
 ## 验证与依赖
 
 ```bash
-/home/lzy/projects/ulm_particle_3d_particle0/.venv/bin/python -m pip install -r requirements-vascularmd.txt
-/home/lzy/projects/ulm_particle_3d_particle0/.venv/bin/python -m pytest -q \
+/home/lzy/projects/temp_storage/ulm_particle_3d_particle0/.venv/bin/python -m pip install -r requirements-vascularmd.txt
+/home/lzy/projects/temp_storage/ulm_particle_3d_particle0/.venv/bin/python -m pytest -q \
   tests/test_vascularmd_smoothing.py tests/test_swc_export.py
 ```
 

@@ -30,10 +30,11 @@ ports:
   preferred_max_turn_angle_deg: 45.0
   minimum_bend_radius_mm: 6.0
 attachment_alignment:
-  endpoint_ids: ['O3']
+  endpoint_ids: ['I1', 'O1', 'O2', 'O3']
   cap_match_tolerance_mm: 0.0001
   straight_lead_mm: 0.25
   collar_length_mm: 0.20
+  collar_length_fallback_mm: [0.20, 0.15, 0.10]
   collar_inner_radius_fraction: 0.65
   collar_outside_volume_tolerance_mm3: 0.000001
   section_offset_mm: 0.02
@@ -90,3 +91,28 @@ visualization:
 vmtk:
   probe_python: /mnt/d/anaconda3/envs/vmtk-env/python.exe
   timeout_seconds: 30
+
+# Required limits for the O3 correction. Current preflight stops if native ramp is absent.
+o3_smoothing:
+  handoff_overlap_mm: 0.8
+  local_fix_radius_mm: 5.0
+  minimum_clearance_mm: 1.6
+  clip_diameter_factors: [0.5, 1.0, 1.5]
+  extension_ratios: [4, 6, 8]
+  transition_ratios: [0.25, 0.50, 0.75]
+  preserve_shape_modes: [false, true]
+  interpolation_mode: ramp
+  slicer_executable: /mnt/d/3D Slicer 5.10.0/Slicer.exe
+
+# Uniform all-port seam audit. A narrow seam band excludes longitudinal faceting.
+surface_continuity:
+  local_radius_mm: 4.0
+  seam_half_width_mm: 1.0
+  radial_radius_fraction: 1.7
+  circumferential_plane_half_width_mm: 0.75
+  circumferential_min_alignment: 0.7071067811865476
+  cross_section_step_mm: 0.1
+all_port_alignment:
+  enabled: true
+  baseline_directory: print_fixture_design_aligned
+  output_directory: print_fixture_design_all_ports_aligned

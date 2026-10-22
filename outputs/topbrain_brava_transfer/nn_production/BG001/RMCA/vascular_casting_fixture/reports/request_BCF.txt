@@ -1,0 +1,2621 @@
+STEER / NEW PRODUCTION ARCHITECTURE
+BOTTOMLESS PLA CASTING FIXTURE
+FOR PRE-CLEANED ABS VASCULAR CORE
+
+本轮正式结束：
+
+s1-8 support-optimization production line
+
+V1 / V2 / V3 / V3.1 / RFUS
+全部保留为：
+
+RESEARCH / BENCHMARK HISTORY
+
+新的生产制造架构为：
+
+PRE-CLEANED ABS VASCULAR CORE
++
+BOTTOMLESS PLA CASTING FIXTURE
++
+SMOOTH PETRI-DISH FLOOR
+
+==================================================
+0. 第一阶段必须先做：PROJECT CLEANUP
+==================================================
+
+在任何新开发开始前：
+
+先清理已经废弃、
+无效、
+可重新生成的支撑研发文件，
+
+降低仓库文件数量、
+磁盘占用和 Codex 检索上下文噪声。
+
+但：
+
+禁止盲目删除。
+
+==================================================
+1. Cleanup 必须先 inventory
+==================================================
+
+首先运行：
+
+git status --short
+git rev-parse HEAD
+git ls-files
+
+以及：
+
+du
+find
+rg/import reference scan
+
+建立：
+
+cleanup_inventory.json
+
+至少记录：
+
+path
+size_bytes
+tracked/untracked
+category
+referenced_by
+sha256
+proposed_action
+reason
+
+==================================================
+2. Cleanup 分类
+==================================================
+
+所有文件只能分成：
+
+KEEP_PRODUCTION
+
+KEEP_SHARED_CODE
+
+KEEP_COMPACT_HISTORY
+
+DELETE_REGENERABLE
+
+DELETE_DEAD_CODE
+
+REVIEW_REQUIRED
+
+==================================================
+3. 永久保护
+==================================================
+
+以下绝对不得删除：
+
+原始 BG001 数据
+
+当前 ~60×50 mm
+vascular production source
+
+current compensated SWC
+
+current smoothed SWC
+
+vascular core with extended ports
+
+semantic / node / branch mappings
+
+current port definitions
+
+current source hashes
+
+s1-2
+s1-3
+s1-4
+s1-5
+s1-6
+s1-7
+
+仍被 production/shared code
+实际 import 的 helper
+
+当前 printer profiles
+
+当前 60×50 ROI report/summary
+
+==================================================
+4. s1-8 支撑研发历史
+==================================================
+
+V1/V2/V3/V3.1/RFUS
+不再属于生产路径。
+
+但不要完全丢失研究证据。
+
+创建一个紧凑：
+
+research_retrospective/
+SUPPORT_RND_RETROSPECTIVE.md
+
+总结：
+
+Bambu Organic
+
+V1
+
+V2
+
+V3
+
+V3.1
+
+RFUS
+
+每阶段：
+
+方法
+主要结果
+主要失败原因
+关键数字
+最终结论
+
+==================================================
+5. 支撑历史保留最少证据
+==================================================
+
+只保留紧凑文件：
+
+各阶段最终 report.md
+
+各阶段 summary.json
+
+最终 comparison CSV
+
+source hash manifest
+
+test summary
+
+不再保留大量：
+
+candidate geometries
+
+G-code
+
+3MF
+
+PNG sequences
+
+VTP
+
+temporary STL
+
+history iterations
+
+cache
+
+debug dumps
+
+==================================================
+6. DELETE_REGENERABLE 优先目标
+==================================================
+
+重点检查并删除：
+
+vascular_support_planner/v1/candidates/
+
+v2/candidates/
+
+v3/candidates/
+
+v3_1/iteration_*/
+
+inverted_study candidate geometry
+
+robust_full_underbody candidate geometry
+
+history/
+
+cache/
+
+temporary/
+
+debug/
+
+bambu intermediate G-code
+
+old 3MF
+
+old support STL/VTP
+
+redundant QC PNG
+
+temporary boolean meshes
+
+temporary export repair files
+
+pytest caches
+
+Python caches
+
+==================================================
+7. 当前 production vascular geometry 不能误删
+==================================================
+
+删除前：
+
+通过 SHA256
+把当前生产 vascular core
+与候选 support outputs
+明确区分。
+
+==================================================
+8. DELETE_DEAD_CODE
+==================================================
+
+旧支撑算法源码只有同时满足：
+
+1.
+不被任何保留 production code import
+
+2.
+不被共享 helper 使用
+
+3.
+不被当前 tests 使用
+
+4.
+Git 历史可恢复
+
+5.
+SUPPORT_RND_RETROSPECTIVE
+已记录其作用
+
+才允许删除。
+
+==================================================
+9. 不要为了清理删除共享几何库
+==================================================
+
+例如仍被新 fixture
+需要的：
+
+trimesh/FCL helpers
+
+CadQuery helpers
+
+transform helpers
+
+hash protection
+
+Bambu adapters
+
+继续保留。
+
+==================================================
+10. s1-8 本身
+==================================================
+
+如果：
+
+s1-8 及 support_v*
+已完全无 production import，
+
+允许将其从工作树删除。
+
+但必须：
+
+在 cleanup manifest
+记录 Git commit 和路径。
+
+如果仍有 shared helper：
+
+拆出 shared helper 后
+再删除 retired code。
+
+==================================================
+11. tests 清理规则
+==================================================
+
+不得机械删除整个
+test_s1_8。
+
+先区分：
+
+shared geometry regression
+
+与：
+
+retired algorithm-only tests。
+
+共享回归：
+
+迁移到新的 shared test file。
+
+只有与删除代码一一对应、
+且无 production 价值的测试
+才允许删除。
+
+==================================================
+12. Cleanup dry-run
+==================================================
+
+先输出：
+
+cleanup_plan.md
+
+列：
+
+KEEP
+DELETE
+REVIEW
+
+以及：
+
+预计释放文件数量
+预计释放磁盘空间。
+
+==================================================
+13. 用户已经授权本轮清理
+==================================================
+
+本提示词即表示：
+
+允许执行 DELETE_REGENERABLE
+
+以及满足严格条件的
+DELETE_DEAD_CODE。
+
+不需要再次询问。
+
+==================================================
+14. Cleanup 之后验证
+==================================================
+
+必须运行：
+
+retained test suite
+
+source hash protection
+
+import smoke test。
+
+如果失败：
+
+停止新开发。
+
+==================================================
+15. Cleanup 输出
+==================================================
+
+保存：
+
+cleanup_inventory.json
+cleanup_plan.md
+cleanup_result.json
+
+包括：
+
+deleted_file_count
+deleted_bytes
+kept_file_count
+protected_hash_mismatches
+
+要求：
+
+protected_hash_mismatches = 0
+
+==================================================
+16. Cleanup 成功后才进入新开发
+==================================================
+
+新的正式阶段：
+
+s1-9_vascular_casting_fixture.py
+
+==================================================
+17. 新阶段正式名称
+==================================================
+
+PRE-CLEANED VASCULAR CORE
+BOTTOMLESS CASTING FIXTURE
+
+简称：
+
+BCF
+
+==================================================
+18. 新制造流程
+==================================================
+
+正式流程：
+
+A.
+单独打印 ABS vascular core
+
+B.
+开放环境中完全清理 support
+
+C.
+打印 bottomless PLA casting fixture
+
+D.
+把 PLA fixture
+临时固定/密封在培养皿光滑底面
+
+E.
+从顶部放入 ABS vascular core
+
+F.
+所有 inlet/outlet extensions
+进入侧壁 fixture
+
+G.
+安装 closure / anti-float retainers
+
+H.
+倒入 PDMS
+
+I.
+固化
+
+J.
+拆除 PLA fixture
+
+K.
+取出 PDMS block
+
+L.
+最后用 acetone
+去除内部 ABS vascular core
+
+==================================================
+19. 新架构最重要原则
+==================================================
+
+禁止：
+
+PLA support
+接触中央 cerebral vascular tree。
+
+==================================================
+20. Fixture contact policy
+==================================================
+
+fixture contact
+尽量只允许：
+
+inlet/outlet extended straight sections。
+
+==================================================
+21. Wall-adjacent constraint
+==================================================
+
+所有：
+
+saddle
+clip
+closure
+定位结构
+
+尽量集中在：
+
+box side wall region。
+
+==================================================
+22. PDMS cavity intrusion
+==================================================
+
+除合法：
+
+port crossing zone
+
+以外，
+
+PLA fixture
+不得进入未来 PDMS cavity。
+
+目标：
+
+fixture_internal_intrusion_volume = 0
+
+==================================================
+23. 冻结 vascular core
+==================================================
+
+自动发现最新：
+
+~60×50 mm
+vascular core with extensions
+
+作为：
+
+READ-ONLY INPUT。
+
+==================================================
+24. 不重新生成 vascular anatomy
+==================================================
+
+禁止重新运行：
+
+semantic transfer
+
+ROI selection
+
+radius compensation
+
+VascularMD
+
+port attachment smoothing。
+
+==================================================
+25. 输出 core-only 文件
+==================================================
+
+生成/复制到新阶段：
+
+vascular_core/
+BG001_RMCA_core_with_extensions.stl
+
+并记录原 hash。
+
+不得修改它。
+
+==================================================
+26. core-only QC
+==================================================
+
+确认：
+
+watertight
+manifold
+positive volume
+one connected component
+no degenerate triangles
+
+==================================================
+27. core-only Bambu slice
+==================================================
+
+允许做：
+
+实际本地 Bambu
+core-only slicing
+
+用于确认：
+
+血管本身能够进入打印流程。
+
+==================================================
+28. support 不再是本阶段研发对象
+==================================================
+
+core-only printing
+可以使用用户当前 Bambu support profile。
+
+本阶段不开发：
+
+新的 support planner。
+
+==================================================
+29. PLA fixture 没有 bottom
+==================================================
+
+这是 HARD RULE。
+
+最终 fixture：
+
+4 side walls
+
+top open
+
+bottom open
+
+==================================================
+30. 培养皿底面
+==================================================
+
+培养皿光滑底面：
+
+直接成为：
+
+PDMS casting bottom surface。
+
+==================================================
+31. PLA 不得横跨底面
+==================================================
+
+在最终 PDMS cavity 内：
+
+不得存在：
+
+PLA floor
+PLA grid
+PLA support plate
+PLA crossbar
+
+==================================================
+32. wall bottom
+==================================================
+
+PLA walls
+底边：
+
+必须共面。
+
+定义：
+
+dish_contact_plane。
+
+==================================================
+33. bonding flange
+==================================================
+
+四周 wall
+底部增加：
+
+OUTWARD BONDING FLANGE。
+
+==================================================
+34. flange 不得向 cavity 内突出
+==================================================
+
+优先：
+
+outward-only flange。
+
+保证：
+
+PDMS interior bottom
+
+连续接触培养皿。
+
+==================================================
+35. flange width
+==================================================
+
+参数化：
+
+bonding_flange_width_mm
+
+初始搜索：
+
+约 5–8 mm
+
+但最终由：
+
+fixture footprint
+dish size
+printability
+
+决定。
+
+==================================================
+36. flange bottom surface
+==================================================
+
+必须：
+
+single planar surface
+
+用于：
+
+培养皿粘接/密封。
+
+==================================================
+37. sealant channel
+==================================================
+
+允许在：
+
+wall 外侧
+flange underside
+
+设计：
+
+continuous sealant channel。
+
+==================================================
+38. sealant channel 不得进入 cavity
+==================================================
+
+hard rule。
+
+==================================================
+39. 不选择具体胶黏剂
+==================================================
+
+本阶段只设计：
+
+GEOMETRIC SEAL FEATURE。
+
+不得宣称：
+
+某种胶已经验证
+对培养皿/PLA/PDMS 兼容。
+
+==================================================
+40. physical seal 状态
+==================================================
+
+始终：
+
+PHYSICAL_SEAL_NOT_VALIDATED
+
+直到实物测试。
+
+==================================================
+41. 培养皿尺寸
+==================================================
+
+不要凭空假设：
+
+90 mm
+100 mm
+150 mm。
+
+==================================================
+42. 如果项目已有培养皿测量
+==================================================
+
+自动读取：
+
+dish_inner_flat_diameter
+dish_wall_height
+dish_floor_thickness
+或已有 CAD。
+
+==================================================
+43. 如果没有培养皿尺寸
+==================================================
+
+仍然生成 fixture。
+
+同时输出：
+
+minimum_required_flat_dish_diameter_mm
+
+定义：
+
+容纳整个 fixture flange
+所需的最小平坦圆形底面直径。
+
+==================================================
+44. dish fit 状态
+==================================================
+
+如果没有实际 dish 数据：
+
+DISH_FIT_NOT_VERIFIED
+
+不是 geometry hard fail。
+
+==================================================
+45. frame inner dimensions
+==================================================
+
+根据：
+
+frozen vascular core
+
+重新确定 fixture cavity。
+
+==================================================
+46. margin 原则
+==================================================
+
+优先沿用：
+
+side margin ~ existing design
+
+bottom vessel clearance ~ 10 mm
+
+top clearance ~ 12 mm
+
+但不得复制旧 box
+绝对尺寸。
+
+==================================================
+47. bottom clearance
+==================================================
+
+定义：
+
+dish floor
+到 vascular surface
+最小距离。
+
+目标：
+
+约旧设计的 10 mm。
+
+==================================================
+48. top clearance
+==================================================
+
+vascular top
+到 planned PDMS top
+保留安全余量。
+
+==================================================
+49. core rigid placement
+==================================================
+
+建立：
+
+casting_core_transform.json
+
+将 frozen vascular core
+
+rigidly 定位到：
+
+dish + fixture coordinate system。
+
+==================================================
+50. 不允许 scaling
+==================================================
+
+scale = 1。
+
+==================================================
+51. Ports 自动发现
+==================================================
+
+不得硬编码：
+
+I1/O1/O2/O3 数量。
+
+读取当前生产：
+
+inlet/outlet extension manifest。
+
+==================================================
+52. 每个 port extension
+==================================================
+
+识别：
+
+axis
+centerline
+diameter
+straight usable length
+wall intersection
+distance to nearest bifurcation
+
+==================================================
+53. fixture 只能抓 straight extension
+==================================================
+
+任何 saddle/clip：
+
+必须位于：
+
+straight extension region。
+
+==================================================
+54. minimum safe distance
+==================================================
+
+与：
+
+bifurcation
+vascular transition
+cap attachment
+
+保持可配置安全距离。
+
+==================================================
+55. 如果延长直段不足
+==================================================
+
+不要修改 vascular geometry。
+
+标：
+
+PORT_EXTENSION_TOO_SHORT_FOR_FIXTURE_<id>
+
+==================================================
+56. U-shaped top-loading slot
+==================================================
+
+每个 port wall：
+
+不是 closed circular hole。
+
+必须生成：
+
+TOP-OPEN U SLOT。
+
+==================================================
+57. U-slot
+==================================================
+
+从：
+
+wall top
+
+一直延伸到：
+
+port saddle position。
+
+==================================================
+58. 目的
+==================================================
+
+完整 vascular core
+可以：
+
+从上方整体放入。
+
+==================================================
+59. 不需要穿孔装配
+==================================================
+
+禁止要求：
+
+多个 ports
+同时穿过 closed holes。
+
+==================================================
+60. U-slot width
+==================================================
+
+根据：
+
+实际 extension diameter
++
+assembly clearance
+
+计算。
+
+==================================================
+61. assembly clearance
+==================================================
+
+参数化：
+
+port_radial_clearance_mm。
+
+==================================================
+62. clearance search
+==================================================
+
+建议基于：
+
+实际 fixture printer
+line width/nozzle
+
+生成：
+
+多个候选。
+
+不要把单一 0.2 mm
+当成物理真值。
+
+==================================================
+63. lower saddle
+==================================================
+
+每个 port：
+
+在 wall region
+生成：
+
+LOWER SADDLE。
+
+==================================================
+64. saddle 作用
+==================================================
+
+支撑：
+
+port extension。
+
+控制：
+
+Z height
+
+和：
+
+横向位置。
+
+==================================================
+65. saddle 形状
+==================================================
+
+可以使用：
+
+shallow semicircle
+
+或：
+
+V groove。
+
+==================================================
+66. saddle 不得深入 PDMS 内部
+==================================================
+
+应尽量位于：
+
+wall thickness
+
+或外侧区域。
+
+==================================================
+67. upper closure
+==================================================
+
+每个 U-slot：
+
+设计一个：
+
+REMOVABLE CLOSURE INSERT。
+
+==================================================
+68. closure 多功能
+==================================================
+
+closure 同时负责：
+
+1.
+关闭 U-slot
+
+2.
+形成 port 上部捕获面
+
+3.
+限制 port 向上移动
+
+4.
+形成外侧临时密封结构
+
+==================================================
+69. 不使用脆弱 snap-fit 作为唯一方式
+==================================================
+
+优先：
+
+vertical slide
+keyed wedge
+dovetail-like guide
+
+等：
+
+容易 PLA FDM 打印
+且无需大变形的机构。
+
+==================================================
+70. closure 从顶部装入
+==================================================
+
+与 vascular core
+装配顺序兼容。
+
+==================================================
+71. anti-float
+==================================================
+
+closure
+是主要：
+
+ANTI-FLOAT RETAINER。
+
+==================================================
+72. anti-float 不压中央血管
+==================================================
+
+禁止：
+
+top bar
+central clip
+central weight
+
+直接碰 cerebral tree。
+
+==================================================
+73. port capture
+==================================================
+
+saddle + closure
+
+形成：
+
+split circular / V capture
+
+围绕 extension。
+
+==================================================
+74. 不挤压 ABS port
+==================================================
+
+捕获结构：
+
+应留 assembly clearance。
+
+目标是：
+
+limit motion
+
+而不是：
+
+compress tube。
+
+==================================================
+75. Kinematic constraint
+==================================================
+
+禁止所有 ports
+全部刚性 6-DOF 锁死。
+
+==================================================
+76. master datum port
+==================================================
+
+自动选一个：
+
+MASTER DATUM PORT。
+
+优先规则：
+
+最长 straight extension
+
+较粗直径
+
+远离 bifurcation
+
+位置稳定。
+
+如果 inlet 明显合适：
+
+可以优先 inlet。
+
+==================================================
+77. master constraints
+==================================================
+
+MASTER：
+
+控制：
+
+X
+Y
+Z
+
+并提供一个：
+
+axial reference stop。
+
+==================================================
+78. secondary ports
+==================================================
+
+其它 port：
+
+允许：
+
+AXIAL FLOAT。
+
+==================================================
+79. axial float
+==================================================
+
+通过：
+
+elongated saddle/closure channel
+
+实现。
+
+==================================================
+80. float amount
+==================================================
+
+参数化：
+
+axial_float_mm。
+
+搜索：
+
+例如 ±0.5
+±1.0
+±1.5 mm
+
+根据 assembly tolerance
+选择。
+
+==================================================
+81. secondary radial constraint
+==================================================
+
+仍控制：
+
+Z
++
+主要横向方向。
+
+==================================================
+82. 目的
+==================================================
+
+吸收：
+
+ABS print shrinkage
+
+PLA print error
+
+fixture tolerance
+
+而不把误差施加到 cerebral tree。
+
+==================================================
+83. rigid-body constraint audit
+==================================================
+
+对已装 core：
+
+计算允许的小刚体扰动。
+
+测试：
+
+±X
+±Y
+±Z
+
+pitch
+roll
+yaw。
+
+==================================================
+84. anti-float gate
+==================================================
+
+必须证明：
+
++Z displacement
+
+被至少多个分散 fixture
+几何限制。
+
+==================================================
+85. rotation gate
+==================================================
+
+必须防止：
+
+明显 pitch
+roll
+
+导致 vascular core
+接触：
+
+dish floor
+wall
+
+或改变设计位置。
+
+==================================================
+86. 不声明实际夹紧力
+==================================================
+
+这是：
+
+GEOMETRIC CONSTRAINT ANALYSIS。
+
+不是：
+
+physical force validation。
+
+==================================================
+87. 浮力
+==================================================
+
+不需要本阶段
+猜 PDMS/ABS 精确密度。
+
+==================================================
+88. anti-float success 定义
+==================================================
+
+本轮只证明：
+
+即使存在向上力，
+
+core
+在 rigid-body geometry 中
+
+不能自由上移。
+
+==================================================
+89. future physical test
+==================================================
+
+状态：
+
+ANTI_FLOAT_FORCE_NOT_PHYSICALLY_VALIDATED。
+
+==================================================
+90. top insertion simulation
+==================================================
+
+非常重要。
+
+模拟：
+
+完整 vascular core
+
+从：
+
+fixture top
+
+向下进入最终位置。
+
+==================================================
+91. insertion path Level 1
+==================================================
+
+纯：
+
+-Z_fixture translation。
+
+==================================================
+92. insertion path Level 2
+==================================================
+
+如果纯垂直失败：
+
+允许：
+
+small tilt
++
+translation。
+
+==================================================
+93. 不能让 vascular core 穿墙
+==================================================
+
+使用：
+
+FCL
+continuous collision / stepped sweep
+
+检查：
+
+vascular
+ports
+fixture walls
+saddles。
+
+==================================================
+94. closure 此时不存在
+==================================================
+
+insertion simulation：
+
+只包含 frame + lower saddles。
+
+==================================================
+95. hard gate
+==================================================
+
+必须存在：
+
+COLLISION_FREE_TOP_LOADING_PATH。
+
+==================================================
+96. 然后安装 closure
+==================================================
+
+对每个 closure：
+
+模拟：
+
+top insertion。
+
+==================================================
+97. closure insertion
+==================================================
+
+不得碰：
+
+vascular tree
+
+或其它 port。
+
+==================================================
+98. closing order
+==================================================
+
+允许：
+
+port closures
+按指定顺序安装。
+
+==================================================
+99. 输出 assembly sequence
+==================================================
+
+assembly_sequence.json
+
+至少：
+
+frame → dish
+
+vascular insertion
+
+master closure
+
+secondary closures
+
+final seal check。
+
+==================================================
+100. PLA cavity intrusion audit
+==================================================
+
+建立：
+
+future PDMS cavity。
+
+计算：
+
+PLA fixture
+进入 interior cavity
+的体积。
+
+==================================================
+101. 合法区域
+==================================================
+
+仅：
+
+wall itself
+
+port wall-crossing neighborhood。
+
+==================================================
+102. 非法内部 fixture
+==================================================
+
+任何：
+
+central post
+
+internal support
+
+internal clamp
+
+inside PDMS bulk
+
+hard fail。
+
+==================================================
+103. contact map
+==================================================
+
+输出：
+
+fixture ↔ vascular
+
+所有最近接触区域。
+
+==================================================
+104. hard rule
+==================================================
+
+所有设计接触：
+
+必须属于：
+
+port extension fixture zones。
+
+==================================================
+105. central vascular clearance
+==================================================
+
+central tree
+到 PLA fixture：
+
+必须保持：
+
+positive clearance。
+
+==================================================
+106. dish floor clearance
+==================================================
+
+vascular surface
+到：
+
+dish contact plane
+
+最小距离
+必须报告。
+
+==================================================
+107. PDMS side clearance
+==================================================
+
+vascular
+到 wall inner surface
+
+最小距离
+必须报告。
+
+==================================================
+108. port slot seal design
+==================================================
+
+U-slot + closure
+装配后：
+
+形成：
+
+near-continuous wall。
+
+==================================================
+109. 不声称纯 PLA 配合能液密
+==================================================
+
+因此外侧设计：
+
+SEALANT POCKET / MOAT。
+
+==================================================
+110. sealant 位于 cavity 外
+==================================================
+
+hard rule。
+
+==================================================
+111. bottom perimeter seal
+==================================================
+
+flange underside：
+
+设计：
+
+continuous outer seal path。
+
+==================================================
+112. seal continuity
+==================================================
+
+几何检查：
+
+flange seal loop
+必须：
+
+single closed loop。
+
+==================================================
+113. wall slot seals
+==================================================
+
+每个 closure：
+
+外侧 seal region
+
+必须连接到：
+
+wall outer seal strategy。
+
+==================================================
+114. physical leak status
+==================================================
+
+PHYSICAL_LEAK_TEST_NOT_DONE
+
+必须写入报告。
+
+==================================================
+115. PLA printability
+==================================================
+
+fixture frame
+应采用：
+
+support-free FDM design。
+
+==================================================
+116. frame print orientation
+==================================================
+
+默认：
+
+flange on build plate
+
+walls upward。
+
+==================================================
+117. hard goal
+==================================================
+
+frame：
+
+Bambu Auto Support OFF
+
+可切片。
+
+==================================================
+118. U-slot
+==================================================
+
+顶部开放：
+
+天然无需 support。
+
+==================================================
+119. closure inserts
+==================================================
+
+独立摆放：
+
+flat/support-free orientation。
+
+==================================================
+120. 真正打印 profiles
+==================================================
+
+读取本机：
+
+实际 PLA profile
+
+和：
+
+实际 printer/nozzle profile。
+
+==================================================
+121. 如果 PLA profile 未找到
+==================================================
+
+仍完成 geometry。
+
+状态：
+
+PLA_SLICE_VALIDATION_PENDING。
+
+==================================================
+122. outputs
+==================================================
+
+新增：
+
+outputs/.../
+vascular_casting_fixture/
+
+==================================================
+123. directory
+==================================================
+
+建议：
+
+vascular_casting_fixture/
+
+  vascular_core/
+
+  frame/
+
+  closures/
+
+  assembly/
+
+  tables/
+
+  QC/
+
+  bambu/
+
+  config/
+
+  reports/
+
+==================================================
+124. geometry outputs
+==================================================
+
+至少：
+
+vascular_core/
+BG001_RMCA_core_with_extensions.stl
+
+frame/
+bottomless_PLA_casting_frame.stl
+
+frame/
+bottomless_PLA_casting_frame.step
+
+closures/
+port_<id>_closure.stl
+
+closures/
+port_<id>_closure.step
+
+assembly/
+full_fixture_assembled.step
+
+assembly/
+full_fixture_review.stl
+
+==================================================
+125. assembled STL 仅供审阅
+==================================================
+
+不要把：
+
+vascular core
++
+PLA frame
+
+Boolean union。
+
+它们必须保持：
+
+独立零件。
+
+==================================================
+126. CAD
+==================================================
+
+优先：
+
+CadQuery
+
+生成：
+
+parameterized STEP + STL。
+
+==================================================
+127. frame manifold QC
+==================================================
+
+每个打印件：
+
+watertight
+manifold
+positive volume
+no degenerate faces
+
+==================================================
+128. no-bottom audit
+==================================================
+
+必须有自动测试：
+
+从 cavity 内任意底部点
+
+沿 -Z
+
+直接到：
+
+dish plane
+
+不得遇到 PLA floor。
+
+==================================================
+129. dish bottom visualization
+==================================================
+
+QC 中：
+
+明确用不同颜色显示：
+
+PETRI DISH FLOOR
+
+而不是 PLA bottom。
+
+==================================================
+130. assembly visual QC
+==================================================
+
+至少生成：
+
+QC/
+
+01_frozen_vascular_core.png
+
+02_bottomless_frame.png
+
+03_frame_on_dish.png
+
+04_no_PLA_bottom_section.png
+
+05_top_loading_slots.png
+
+06_vascular_loading_path.png
+
+07_ports_in_saddles.png
+
+08_master_datum_port.png
+
+09_secondary_floating_ports.png
+
+10_closure_inserts.png
+
+11_anti_float_constraints.png
+
+12_fixture_contact_map.png
+
+13_no_central_vascular_contact.png
+
+14_bottom_clearance.png
+
+15_wall_clearance.png
+
+16_bottom_flange_and_seal.png
+
+17_port_seal_regions.png
+
+18_final_assembled_fixture.png
+
+19_PDMS_cavity_preview.png
+
+20_exploded_assembly.png
+
+==================================================
+131. 图片必须人类易读
+==================================================
+
+不要输出：
+
+大量 triangle IDs。
+
+使用：
+
+port name
+
+datum/floating
+
+clearance
+
+assembly arrows。
+
+==================================================
+132. 图 04
+==================================================
+
+必须一眼显示：
+
+PLA frame
+没有 bottom。
+
+PDMS bottom：
+
+直接是 dish surface。
+
+==================================================
+133. 图 12
+==================================================
+
+所有：
+
+fixture contact
+用醒目颜色。
+
+目标：
+
+只能在：
+
+port extensions。
+
+==================================================
+134. 图 13
+==================================================
+
+中央 vascular tree：
+
+应该全部：
+
+NO CONTACT。
+
+==================================================
+135. 图 20
+==================================================
+
+Exploded view：
+
+dish
+
+PLA frame
+
+vascular core
+
+closures
+
+分别显示。
+
+==================================================
+136. tables
+==================================================
+
+至少：
+
+port_fixture_design.csv
+
+port_constraint_scheme.csv
+
+assembly_clearances.csv
+
+fixture_contact_audit.csv
+
+core_to_dish_clearance.csv
+
+core_to_wall_clearance.csv
+
+closure_insertion.csv
+
+seal_geometry.csv
+
+==================================================
+137. machine-readable summary
+==================================================
+
+输出：
+
+vascular_casting_fixture_summary.json
+
+至少：
+
+cleanup:
+  deleted_files
+  deleted_bytes
+  protected_hash_mismatch
+
+vascular:
+  source_hash
+  port_count
+  scale_factor
+
+frame:
+  inner_dimensions
+  outer_dimensions
+  height
+  wall_thickness
+  flange_width
+  bottom_open
+  minimum_required_dish_flat_diameter
+
+ports:
+  master_port
+  secondary_ports
+  clearances
+  axial_float
+  closure_status
+
+assembly:
+  top_loading_path
+  closure_insertion_pass
+  central_vascular_contact_count
+  illegal_fixture_intrusion_volume
+
+anti_float:
+  geometric_Z_lock
+  pitch_lock
+  roll_lock
+  physical_force_validated: false
+
+dish:
+  actual_dimensions_known
+  fit_verified
+
+seal:
+  bottom_loop_continuous
+  port_seal_regions
+  physical_leak_tested: false
+
+bambu:
+  frame_slice
+  closure_slice
+  core_reference_slice
+
+status
+
+==================================================
+138. 中文报告
+==================================================
+
+输出：
+
+vascular_casting_fixture_report.md
+
+==================================================
+139. 报告第一部分
+==================================================
+
+先用简单中文回答：
+
+为什么不再把 box
+和 vascular core
+打印成一个零件？
+
+==================================================
+140. 报告第二部分
+==================================================
+
+直接回答：
+
+PLA frame 有没有底板？
+
+正常结果：
+
+NO。
+
+==================================================
+141. 报告第三部分
+==================================================
+
+PDMS 的底面是什么？
+
+答案：
+
+培养皿光滑底面。
+
+==================================================
+142. 报告第四部分
+==================================================
+
+fixture
+一共接触 vascular
+多少处？
+
+这些是否全部在：
+
+port extensions？
+
+==================================================
+143. 报告第五部分
+==================================================
+
+是否有任何：
+
+central vascular branch
+
+被 PLA fixture 接触？
+
+答案必须明确：
+
+YES / NO。
+
+==================================================
+144. 报告第六部分
+==================================================
+
+vascular core
+能否从顶部整体放入？
+
+==================================================
+145. 报告第七部分
+==================================================
+
+哪个 port 是：
+
+master datum？
+
+为什么？
+
+==================================================
+146. 报告第八部分
+==================================================
+
+其它 ports
+各允许多少轴向浮动？
+
+==================================================
+147. 报告第九部分
+==================================================
+
+anti-float 是怎么实现的？
+
+说明：
+
+saddle
++
+closure。
+
+==================================================
+148. 报告第十部分
+==================================================
+
+当前只证明：
+
+几何抗浮。
+
+不要声称：
+
+已经验证真实 PDMS 浮力。
+
+==================================================
+149. 报告第十一部分
+==================================================
+
+bottom flange
+需要多大的培养皿平坦区域？
+
+==================================================
+150. 报告第十二部分
+==================================================
+
+如果没有实际培养皿尺寸：
+
+明确写：
+
+DISH_FIT_NOT_VERIFIED
+
+并给：
+
+minimum required flat diameter。
+
+==================================================
+151. 报告第十三部分
+==================================================
+
+怎么防止：
+
+U-slot
+和底部法兰
+
+漏 PDMS？
+
+说明：
+
+几何 seal features。
+
+==================================================
+152. 必须声明
+==================================================
+
+physical sealing
+尚未实验验证。
+
+==================================================
+153. 报告第十四部分
+==================================================
+
+PLA frame
+是否无需自动支撑
+即可切片？
+
+==================================================
+154. 报告第十五部分
+==================================================
+
+下一次实际制造顺序：
+
+用 8–12 个简单步骤
+写清楚。
+
+==================================================
+155. permanent tests
+==================================================
+
+新增：
+
+tests/test_s1_9_vascular_casting_fixture.py
+
+永久保留。
+
+==================================================
+156. tests 至少覆盖
+==================================================
+
+1.
+source discovery
+
+2.
+source hash freeze
+
+3.
+vascular core unchanged
+
+4.
+no scaling
+
+5.
+bottomless frame
+
+6.
+four walls present
+
+7.
+top open
+
+8.
+no PLA floor
+
+9.
+outward flange
+
+10.
+seal loop closed
+
+11.
+minimum dish diameter
+
+12.
+port extension detection
+
+13.
+straight extension length
+
+14.
+U-slot open to top
+
+15.
+saddle generated
+
+16.
+closure generated
+
+17.
+master datum selection
+
+18.
+secondary axial float
+
+19.
+top insertion path
+
+20.
+closure insertion path
+
+21.
+no central vascular contact
+
+22.
+contact only on extensions
+
+23.
+illegal cavity intrusion
+
+24.
+bottom clearance
+
+25.
+wall clearance
+
+26.
+anti-float Z constraint
+
+27.
+pitch/roll constraint
+
+28.
+frame manifold
+
+29.
+closure manifold
+
+30.
+STL round trip
+
+31.
+frame support-free slice
+
+32.
+closure support-free slice
+
+33.
+no printer send/start
+
+34.
+cleanup protected hashes
+
+==================================================
+157. synthetic fixtures
+==================================================
+
+tests/data/casting_fixture/
+
+至少：
+
+one_inlet_two_outlets
+
+three_side_ports
+
+four_side_ports
+
+port_size_variation
+
+port_position_error
+
+top_loading_case
+
+overconstrained_fixture
+
+floating_secondary_port
+
+closure_collision
+
+dish_too_small
+
+==================================================
+158. tolerance synthetic test
+==================================================
+
+模拟：
+
+port position errors
+
+例如多个小扰动。
+
+验证：
+
+master + floating secondary
+
+比：
+
+all ports fully fixed
+
+更能完成装配。
+
+==================================================
+159. 不用 Monte Carlo 黑箱
+==================================================
+
+优先：
+
+deterministic worst-case perturbations。
+
+==================================================
+160. actual BG001 run
+==================================================
+
+必须使用：
+
+当前真实 ~60×50 mm
+BG001 vascular core with extensions。
+
+==================================================
+161. frame printing
+==================================================
+
+真实本地 Bambu slice：
+
+PLA frame
+
+closures
+
+分别切片。
+
+==================================================
+162. support preference
+==================================================
+
+目标：
+
+Auto Support OFF。
+
+==================================================
+163. 如果必须 support
+==================================================
+
+状态：
+
+FIXTURE_NOT_SUPPORT_FREE
+
+进入 NEEDS_ADJUSTMENT。
+
+==================================================
+164. core printing
+==================================================
+
+只做参考：
+
+core-only ABS slice。
+
+不重新开发支撑算法。
+
+==================================================
+165. Cleanup 后上下文
+==================================================
+
+最终报告附：
+
+项目文件数量：
+
+before
+after
+
+占用空间：
+
+before
+after。
+
+==================================================
+166. source protection
+==================================================
+
+新开发结束：
+
+再次复核
+所有 production upstream hashes。
+
+==================================================
+167. 状态定义
+==================================================
+
+允许：
+
+READY_FOR_HUMAN_REVIEW
+
+READY_FOR_HUMAN_REVIEW_WITH_DISH_FIT_PENDING
+
+NEEDS_ADJUSTMENT
+
+==================================================
+168. READY_FOR_HUMAN_REVIEW
+==================================================
+
+只有：
+
+bottomless frame
+
+no central vascular contact
+
+top loading pass
+
+all closures pass
+
+geometric anti-float pass
+
+fixture pieces manifold
+
+PLA support-free slice pass
+
+source unchanged
+
+且：
+
+实际 dish dimensions
+已知并 fit
+
+才允许。
+
+==================================================
+169. 如果 dish 尺寸未知
+==================================================
+
+其它全部通过：
+
+READY_FOR_HUMAN_REVIEW_WITH_DISH_FIT_PENDING
+
+==================================================
+170. 禁止状态
+==================================================
+
+禁止：
+
+MANUFACTURING_VALIDATED
+
+LEAK_PROOF_VALIDATED
+
+ANTI_FLOAT_FORCE_VALIDATED
+
+==================================================
+171. 最终 Codex 回复
+==================================================
+
+先用简单中文回答：
+
+1.
+清理了多少废弃文件？
+
+2.
+释放多少空间？
+
+3.
+生产输入有没有被改？
+
+4.
+当前 vascular core
+是不是独立 ABS 零件？
+
+5.
+PLA fixture
+是不是完全无底？
+
+6.
+PDMS 底面是否直接接触培养皿？
+
+7.
+fixture 是否只接触 port extensions？
+
+8.
+中央 cerebral vascular tree
+有没有任何 fixture contact？
+
+9.
+vascular core
+能否从顶部整体放入？
+
+10.
+哪个 port 是 master datum？
+
+11.
+其它 ports
+有多少浮动余量？
+
+12.
+anti-float closure
+是否几何上限制 +Z/pitch/roll？
+
+13.
+U-slots
+是否全部能关闭？
+
+14.
+外框要求培养皿
+至少多大平坦底面？
+
+15.
+PLA frame 和 closure
+能否 Auto Support OFF 切片？
+
+16.
+还没有物理验证什么？
+
+17.
+下一步用户应该打印哪几个零件？
+
+==================================================
+172. 本阶段成功定义
+==================================================
+
+真正成功不是：
+
+继续改复杂支撑。
+
+而是：
+
+将制造流程转换成：
+
+一个已经清理干净的
+独立 ABS vascular core
+
+从顶部装入：
+
+一个没有底板的
+PLA casting fixture。
+
+培养皿底面
+直接成为 PDMS 光滑底面。
+
+fixture：
+
+不接触中央 vascular tree，
+
+只通过：
+
+inlet/outlet extended straight sections
+
+完成：
+
+定位
+承重
+防浮
+防转。
+
+通过：
+
+U-shaped loading slots
+lower saddles
+master datum
+floating secondary ports
+removable closure retainers
+outward bonding flange
+external seal geometry
+
+形成一个：
+
+容易打印
+容易装配
+容易拆除
+不会在 PDMS 内制造额外空洞
+
+的新制造系统。
+
+现在：
+
+先安全清理废弃项目文件，
+
+确认 source protection，
+
+然后正式开发：
+
+s1-9_vascular_casting_fixture.py

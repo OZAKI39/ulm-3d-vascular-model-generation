@@ -44,7 +44,7 @@ def angle(a, b):
 
 
 def read_csv(path):
-    with Path(path).open(newline='', encoding='utf-8') as stream:
+    with Path(path).open(newline='', encoding='utf-8-sig') as stream:
         return list(csv.DictReader(stream))
 
 
@@ -237,17 +237,25 @@ def load_inputs(cfg):
     graph = read_source(paths['fitted_swc']).graph
     if set(graph.edges) != set(compact.edges) or set(graph) != set(compact):
         raise ValueError('Fitted/compact SWC topology mismatch')
-    endpoints, branches = decode_endpoints(graph, read_csv(paths['node_mapping']), read_csv(paths['edge_mapping']), transform, cfg)
+    mapping = read_csv(paths['node_mapping'])
+    for n in graph:
+        if sum(int(row['swc_id']) == n for row in mapping) != 1:
+            raise ValueError('CAP_PROVENANCE_UNRESOLVED_NODE_MAPPING_' + str(n))
+    endpoints, branches = decode_endpoints(graph, mapping, read_csv(paths['edge_mapping']), transform, cfg)
     candidate = manifest['candidates'][cfg['input']['candidate']]
     caps = candidate['surface_qc']['port_caps']
     if len(caps) != len(endpoints) or Path(manifest['selected_stl']).name != paths['source_stl'].name:
         raise ValueError('Frozen STL selection or endpoint count does not match the manifest')
     np.testing.assert_allclose(transform, manifest['selected_orientation']['transform_4x4'], atol=1e-10)
+    cap_matches = {}
     for endpoint in endpoints:
         native = graph.nodes[endpoint.swc_id]['coords']
-        if not any(np.linalg.norm(native[:3] - c['center_mm']) < cfg['geometry']['coordinate_tolerance_mm']
-                   and abs(native[3] - c['median_radius_mm']) < cfg['geometry']['coordinate_tolerance_mm'] for c in caps):
-            raise ValueError('Endpoint is inconsistent with the frozen surface cap provenance')
+        matches = [j for j, c in enumerate(caps)
+            if np.linalg.norm(native[:3] - c['center_mm']) < cfg['geometry']['coordinate_tolerance_mm']
+            and abs(native[3] - c['median_radius_mm']) < cfg['geometry']['coordinate_tolerance_mm']]
+        if len(matches) != 1 or matches[0] in cap_matches.values():
+            raise ValueError('CAP_PROVENANCE_UNRESOLVED_' + endpoint.endpoint_id)
+        cap_matches[endpoint.endpoint_id] = matches[0]
     mesh = trimesh.load_mesh(paths['source_stl'], process=True)
     if not mesh.is_volume:
         raise ValueError('SOURCE_CORE_NOT_CLOSED_POSITIVE_VOLUME')
@@ -256,7 +264,7 @@ def load_inputs(cfg):
         raise ValueError('Unknown endpoint in attachment_alignment.endpoint_ids')
     for endpoint in endpoints:
         if endpoint.endpoint_id in aligned_ids:
-            cap = next(c for c in caps if np.linalg.norm(graph.nodes[endpoint.swc_id]['coords'][:3] - c['center_mm']) < cfg['geometry']['coordinate_tolerance_mm'])
+            cap = caps[cap_matches[endpoint.endpoint_id]]
             align_known_cap(endpoint, mesh, cap, cfg)
     return dict(base=base, paths=paths, manifest=manifest, transform=transform, graph=graph,
                 branches=branches, endpoints=endpoints, mesh=mesh)
@@ -267,63 +275,14 @@ def polygon_wire(points):
 
 
 def align_known_cap(endpoint, source, cap_record, cfg):
-    """Match an already identified SWC/manifest cap; never discover endpoints.
-
-    The frozen print exporter creates a fan with a known center and vertex
-    count. Its boundary, rather than the 5 mm mean centerline direction, defines
-    the attachment. Float32 STL noise is projected onto the measured cap plane.
-    """
-    settings = cfg['attachment_alignment']
-    tolerance = settings['cap_match_tolerance_mm']
-    gap, center_id = cKDTree(source.vertices).query(endpoint.position)
-    if gap > tolerance:
-        raise ValueError('KNOWN_CAP_CENTER_NOT_FOUND')
-    face_ids = np.flatnonzero(np.any(source.faces == center_id, axis=1))
-    boundary = nx.Graph()
-    for triangle in source.faces[face_ids]:
-        rim = [int(n) for n in triangle if n != center_id]
-        boundary.add_edge(*rim)
-    if len(face_ids) != cap_record['vertices'] or len(boundary) != cap_record['vertices'] or not nx.is_connected(boundary) or any(boundary.degree(n) != 2 for n in boundary):
-        raise ValueError('KNOWN_CAP_FAN_TOPOLOGY_MISMATCH')
-    order = [min(boundary)]
-    while len(order) < len(boundary):
-        order.append(next(n for n in sorted(boundary.neighbors(order[-1])) if n not in order))
-    ring = source.vertices[order].copy()
-    center = ring.mean(axis=0)
-    normal = unit(np.sum(source.face_normals[face_ids] * source.area_faces[face_ids, None], axis=0))
-    plane_errors = (ring - center) @ normal
-    radial = np.linalg.norm(ring - center, axis=1)
-    if max(abs(plane_errors)) > tolerance or max(abs(radial - endpoint.radius)) > tolerance:
-        raise ValueError('KNOWN_CAP_NOT_PLANAR_CIRCULAR_WITH_EXPECTED_RADIUS')
-    if min(source.face_normals[face_ids] @ normal) < 1 - 1e-5 or normal @ endpoint.tangent <= 0:
-        raise ValueError('KNOWN_CAP_NORMAL_OR_ORIENTATION_MISMATCH')
-    ring -= plane_errors[:, None] * normal
-    if np.cross(ring[1] - center, ring[2] - center) @ normal < 0:
-        ring = ring[::-1]
-    qc = dict(method='SWC_IDENTIFIED_FROZEN_CAP_RING_AND_OUTWARD_NORMAL',
-        reference_swc_mean_tangent=endpoint.tangent.tolist(), cap_normal=normal.tolist(),
-        before_axis_error_deg=angle(endpoint.tangent, normal), after_axis_error_deg=0.0,
-        known_center_vertex_distance_mm=float(gap), center_adjustment_mm=float(np.linalg.norm(center - endpoint.position)),
-        cap_vertex_count=len(ring), original_ring_print_mm=source.vertices[order].tolist(),
-        aligned_ring_print_mm=ring.tolist(), maximum_stl_plane_projection_mm=float(max(abs(plane_errors))),
-        maximum_ring_radius_error_mm=float(max(abs(radial - endpoint.radius))),
-        radius_mm=endpoint.radius, radius_changed=False, frozen_source_modified=False)
-    endpoint.position, endpoint.tangent, endpoint.cap_ring = center, normal, ring
-    # The overlap is tapered and buried INSIDE the original lumen solid. A
-    # backward full-radius tube can protrude through a curved parent sidewall.
-    back = center - settings['collar_length_mm'] * normal
-    inset = back + settings['collar_inner_radius_fraction'] * (ring - center)
-    collar = cq.Solid.makeLoft([polygon_wire(inset), polygon_wire(ring)], ruled=True)
-    collar_mesh = shape_mesh(collar, cfg)
-    outside = trimesh.boolean.difference([collar_mesh, source], engine='manifold')
-    outside_volume = abs(float(outside.volume)) if len(outside.faces) else 0.0
-    qc.update(collar_length_mm=settings['collar_length_mm'], collar_inner_radius_fraction=settings['collar_inner_radius_fraction'],
-        collar_outside_source_volume_mm3=outside_volume,
-        collar_contained=outside_volume <= settings['collar_outside_volume_tolerance_mm3'])
-    if not qc['collar_contained']:
-        raise ValueError('ATTACHMENT_COLLAR_PROTRUDES_OUTSIDE_FROZEN_CORE')
-    endpoint.attachment_collar, endpoint.attachment_qc = collar, qc
-    return qc
+    # Compatibility entry: a single implementation shared by every port.
+    from .port_attachment_alignment import align_known_cap as align
+    try:
+        return align(endpoint, source, cap_record, cfg)
+    except ValueError as exc:
+        if 'KNOWN_CAP_' in str(exc):
+            raise ValueError('CAP_PROVENANCE_UNRESOLVED_' + endpoint.endpoint_id + ': ' + str(exc)) from exc
+        raise
 
 
 def attachment_lead(endpoint, cfg):
@@ -422,7 +381,7 @@ def natural_bend_points(endpoint, face, radius, cfg):
     return endpoint.position + attachment_lead(endpoint, cfg) * t + radius * (np.sin(parameters)[:, None] * t + (1 - np.cos(parameters))[:, None] * lateral)
 
 
-def make_route(endpoint, face, target, box, cfg, kind, tangent_scale=1.0, bend_radius=None):
+def make_route(endpoint, face, target, box, cfg, kind, tangent_scale=1.0, bend_radius=None, *, local_first_bend=None):
     """Constant radius; local overlap is additive and never edits the source STL."""
     face_axis(face)  # Explicitly reject prohibited Z boundaries at the CAD API.
     p, t, r = endpoint.position, endpoint.tangent, endpoint.radius
@@ -450,7 +409,13 @@ def make_route(endpoint, face, target, box, cfg, kind, tangent_scale=1.0, bend_r
     else:
         prewall = target - cfg['routing']['wall_approach_mm'] * n
         distance = float(np.linalg.norm(prewall - bend_start))
-        if bend_radius is None:
+        if local_first_bend is not None:
+            spline = local_first_bend
+            np.testing.assert_allclose(spline.startPoint().toTuple(), bend_start, atol=1e-7)
+            np.testing.assert_allclose(spline.endPoint().toTuple(), prewall, atol=1e-7)
+            if angle(spline.tangentAt(0).toTuple(), t) > 1e-4 or angle(spline.tangentAt(1).toTuple(), n) > 1e-4:
+                raise ValueError('LOCAL_FIRST_BEND_AXIS_MISMATCH')
+        elif bend_radius is None:
             spline = cq.Edge.makeSpline([cq.Vector(*bend_start), cq.Vector(*prewall)],
                 tangents=[cq.Vector(*(t * distance * tangent_scale)), cq.Vector(*(n * distance * tangent_scale))],
                 parameters=[0.0, 1.0], scale=False)
@@ -766,7 +731,8 @@ def inspect_native_continuation(graph, endpoint, retained_ids):
 
 def audit_native_restoration(inputs, cfg, start_checks):
     path = (ROOT / cfg['native_restoration']['source_swc']).resolve()
-    expected = inputs['manifest']['source_hashes'].get(str(path))
+    from .project_paths import frozen_hash
+    expected = frozen_hash(inputs['manifest']['source_hashes'], path)
     actual = sha256(path)
     if expected is None or expected != actual:
         raise ValueError('Original SWC hash does not match the frozen compact provenance')

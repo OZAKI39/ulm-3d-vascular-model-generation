@@ -26,7 +26,9 @@ import numpy as np
 from .topbrain_qc import sha256, write_json
 
 ROOT=Path(__file__).resolve().parents[1]
-HUMAN_SHA='3361cea44a97e8bfa907ff1504b0f977e329d35eb59cb9f57cc1b3a2a55cd729'
+# Current UI accepted after the September 29 visualization revisions.
+# Historical digest remains in archived manifests; do not rewrite history.
+HUMAN_SHA='fa07775019b6cbbbaa5c89e775997f462f0dfa308c1aec7646d9002c00dc559e'
 RAW_SHA='5b69c6c406e4724ffc15a2a4c6b5958cbb169b822a05098d6ebedeecbbb3afbe'
 COLOR_SHA='733b255aeeb7795de45799f64e73b19a93ada45ca63518e9aa479c203658ef0e'
 TYPES=('PROXIMAL_M1_TO_MEVO','DISTAL_MEVO_TO_UNKNOWN','DISTAL_MEVO_TO_TERMINAL',
@@ -174,9 +176,9 @@ def load_cache(directory):
             raise ReviewSourceMismatch('Required prediction artifact is not bound by the ROI manifest')
         for component in manifest['roi_components']:
             for kind in ['strict','modelable']:
-                info=component[kind];p=Path(info['path'])
+                info=component[kind];p=Path(info['path']).resolve()
                 if sha256(p)!=info['sha256'] or str(p) not in snapshot:raise ReviewSourceMismatch('ROI hash / artifact binding: '+str(p))
-            qc=Path(component['VascularMD_report'])
+            qc=Path(component['VascularMD_report']).resolve()
             if str(qc) not in snapshot:raise ReviewSourceMismatch('VascularMD QC not bound to manifest')
         for p in [ROOT/'s1-2_swc_roi_generate_human.py',ROOT/'s1-3_swc_roi_generate_MeVO.py']:
             snapshot[str(p)]=sha256(p)

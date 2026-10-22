@@ -465,6 +465,7 @@ def test_cap_correspondence_mismatch_is_not_silently_fitted(cfg, corruption):
 
 
 def test_real_bg001_o3_cap_provenance_and_alignment(cfg):
+    cfg['attachment_alignment']['endpoint_ids'] = ['O3']
     inputs = f.load_inputs(cfg)
     e = next(e for e in inputs['endpoints'] if e.endpoint_id == 'O3')
     assert e.original_swc_id == 2127 and e.attachment_qc['before_axis_error_deg'] > 40

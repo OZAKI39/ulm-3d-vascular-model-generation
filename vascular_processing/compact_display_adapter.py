@@ -1,4 +1,4 @@
-"""Read-only compact ROI data for the unchanged BraVa dual-viewport UI."""
+"""Read-only compact ROI data for the BraVa dual-viewport UI."""
 from pathlib import Path
 from types import SimpleNamespace
 import csv
@@ -9,11 +9,15 @@ import numpy as np
 from utils.rodent_vasculature import interactive as ui
 from utils.sampling.sampling_types import CutPort, ROIRecord
 from .brava_display_adapter import BraVaViewer
+from .compact_annotations import (DualPanelAnnotations, display_font, ORIENTATION_LEGEND_LABEL, SCALE_TEXT_GAP_PX,
+    CANDIDATE_LEGEND_LABEL, LEGEND_CENTRE_Y, SCALE_TITLE_FONT_SIZE, SCALE_LABEL_FONT_SIZE,
+    COMPACT_LEGEND_FONT_SIZE, COMPACT_AXIS_TITLE_FONT_SIZE)
 from .swc_export import read_source
 from .topbrain_qc import sha256, write_json
 
 MODES = ('MINI', 'BALANCED', 'RICH')
 CONTEXT_COLORS = {0: '#B0B0B0', 1: '#FF9F1C', 2: '#35D6E3'}
+GLOBAL_ARROW_SCALE = 1.6  # 20% smaller than the preceding 2x display scale.
 
 
 def compact_record(mode, item, original, rank):
@@ -114,9 +118,10 @@ def full_context(original, side_dir):
     return mesh, rgb
 
 
-class CompactBraVaViewer(BraVaViewer):
-    """Same render helpers/controls; new data and selected-edge colour only."""
+class CompactBraVaViewer(DualPanelAnnotations, BraVaViewer):
+    """Shared geometry/controls with compact data and display-only mm annotations."""
     output_subdirectory = 'compact_visualization'
+    roi_view_up = (0., 1., 0.)
 
     def load_dataset(self):
         return load_compact(self.dataset_dir)
@@ -143,9 +148,12 @@ class CompactBraVaViewer(BraVaViewer):
         self.index=modes.index(initial_roi); self.initial_roi=initial_roi
         self.events=[]; self.case_delta=0; self.group_index=0
         self.controllers=[None,None]; self.overlay_actors=[]; self.actor_to_index={}
+        self.orientation_labels=[None,None]
+        self.legend_layout_sizes=[None,None]
         self.context_side=None; self.context_actors=[]; self.highlight_history=[]
         self.plotter=pv.Plotter(shape=(1,2),border=True,border_color='#606060',off_screen=not show,window_size=(1800,900))
         self.plotter.theme.font.family=ui.UI_FONT_FAMILY
+        self.scale_alignment_observer=self.plotter.renderers[1].AddObserver('EndEvent',self.align_bottom_scale)
         self.select(self.index)
         actions={'a':lambda:self.redraw_boxes(list(range(len(self.rois))),'all candidates'),
             'r':lambda:self.redraw_boxes(list(range(len(self.rois))),'selected representatives'),
@@ -161,11 +169,14 @@ class CompactBraVaViewer(BraVaViewer):
         self.rotation=None
         if show:
             self.rotation=ui._install_synchronized_horizontal_rotation(self.plotter,
-                tuple(r.camera for r in self.plotter.renderers),left_view_up=(0.,1.,0.))
+                tuple(r.camera for r in self.plotter.renderers),left_view_up=(0.,1.,0.),
+                right_view_up=self.roi_view_up)
 
     def draw_context(self, side):
         self.plotter.subplot(0,0)
         if self.controllers[0] is not None:self.controllers[0].dispose()
+        if self.orientation_labels[0] is not None:
+            self.orientation_labels[0].dispose();self.orientation_labels[0]=None
         self.plotter.renderer.clear_actors();self.overlay_actors=[]
         self.context_side=side; mesh=self.full_mesh
         self.full_actor=self.plotter.add_mesh(mesh,scalars='display_rgb',rgb=True,preference='cell',
@@ -179,15 +190,42 @@ class CompactBraVaViewer(BraVaViewer):
             np.asarray(mesh.bounds).reshape(3,2).T,('context_bounds','context_bounds'))
         _,self.controllers[0]=ui._add_full_scene(self.plotter,None,geometry,spacing_xyz_um=(1.,1.,1.),
             volume_opacity=.32,sample_id='BG001',sampling_available=True,left_view_up=(0.,1.,0.))
-        selection_description=self.manifest.get('context_roi_description','Selected compact ROI')
-        self.plotter.add_text('BraVa BG001 | Complete global vasculature\nM1: orange | MeVO: cyan | Other/UNKNOWN: grey\n'+selection_description+': red',
-            position='upper_left',font_size=11,font=ui.UI_FONT_FAMILY,color='white',name='full_scene_title')
+        # Enlarge only the existing arrow glyphs about their original anchors,
+        # after camera setup, so neither vessels nor camera framing changes.
+        arrow_actors=[a for a in self.plotter.renderer.actors.values() if a.IsA('vtkActor')
+            and a.GetMapper() and a.GetMapper().GetInput()
+            and a.GetMapper().GetInput().GetPointData().GetArray('GlyphVector') is not None]
+        if len(arrow_actors)!=1:raise ValueError('EXPECTED_ONE_GLOBAL_ARROW_ACTOR')
+        self.context_arrow_origins=geometry.arrow_points_um.copy()
+        mesh=arrow_actors[0].mapper.dataset
+        points=mesh.points.reshape(len(self.context_arrow_origins),-1,3)
+        points[:]=self.context_arrow_origins[:,None,:]+GLOBAL_ARROW_SCALE*(points-self.context_arrow_origins[:,None,:])
+        mesh.GetPoints().Modified();mesh.Modified()
+        self.plotter.remove_actor('full_scene_title',reset_camera=False,render=False)
+        # Reserve space for the requested larger, more distant tick labels.
+        # Preserve the focal point, viewing direction and all world coordinates.
+        self.plotter.camera.Zoom(.90)
+        self.style_annotations(0)
         self.redraw_boxes(list(range(len(self.rois))),'selected representatives')
+
+    def redraw_boxes(self,indices,mode):
+        suppressed=self.plotter.suppress_rendering
+        self.plotter.suppress_rendering=True
+        try:super().redraw_boxes(indices,mode)
+        finally:self.plotter.suppress_rendering=suppressed
+        # The shared box helper recreates this annotation on every A/R/S/C action.
+        self.plotter.remove_actor('sampling_layer_mode',reset_camera=False,render=False)
+        for name in ('sampling_roi_labels-points','sampling_roi_labels-labels'):
+            self.plotter.remove_actor(name,reset_camera=False,render=False)
+        self.plotter.render()
 
     def select(self,index):
         # Parent owns the existing ROI box, right renderer, axes, camera and colours.
         # Updating cell RGB in the SAME full actor prevents accidental ROI-only context.
-        super().select(index)
+        suppressed=self.plotter.suppress_rendering
+        self.plotter.suppress_rendering=True
+        try:super().select(index)
+        finally:self.plotter.suppress_rendering=suppressed
         record=self.records[index]; mode=self.rois[index].name
         rgb=self.base_rgb.copy(); rgb[record.local_edge_global_ids]=[255,0,0]
         self.full_mesh.cell_data['display_rgb'][:]=rgb
@@ -196,23 +234,50 @@ class CompactBraVaViewer(BraVaViewer):
         self.highlight_history.append(dict(roi=mode, highlighted_edges=record.edge_count,
             full_context_edges=self.full_mesh.n_cells, full_context_nodes=self.full_mesh.n_points))
         self.plotter.subplot(0,1)
-        item=self.manifest['candidates'][mode]
-        detail=item.get('display_detail', 'Manufacturing compensated SWC' if self.view=='strict' else 'Native VascularMD surface')
-        status=item.get('display_status', 'COMPACT_PRINT_CANDIDATE')
-        self.plotter.add_text(f'BG001 | {mode}\n{status}\n{detail}\n'
-            f'Nodes {record.node_count} | branches {record.branch_count} | bifurcations {record.bifurcation_count}\n'
-            f'Inlet 1 | outlets {item["stats"]["outlet_count"]} | MANUFACTURING_NOT_VALIDATED',
-            position='upper_left',font_size=10,font=ui.UI_FONT_FAMILY,color='white',name='sampling_roi_information')
+        # Y-up makes this elongated ROI wider on screen; retain room for its
+        # physical axis labels; preserve the existing camera framing.
+        self.plotter.camera.Zoom(.85)
+        self.plotter.remove_actor('sampling_roi_information',reset_camera=False,render=False)
+        self.style_annotations(1)
         self.plotter.subplot(0,0); self.plotter.render()
 
     def run_window(self, *, show=True, smoke_seconds=0):
-        report=super().run_window(show=show,smoke_seconds=smoke_seconds)
+        try:
+            # VTK computes the strip's pixel rectangle on the first render.
+            # Settle overlay placement before the initial screenshot/window.
+            for _ in range(3):self.plotter.render_window.Render()
+            report=super().run_window(show=show,smoke_seconds=smoke_seconds)
+        finally:
+            self.plotter.renderers[1].RemoveObserver(self.scale_alignment_observer)
+            for labels in self.orientation_labels:
+                if labels is not None:labels.dispose()
         report.update(source='compact-brava',data_source=str(self.dataset_dir),initial_roi=self.initial_roi,
             full_global_node_count=len(self.original),full_global_edge_count=self.original.number_of_edges(),
             highlight_history=self.highlight_history,selected_colour='#FF0000',
             exact_original_edge_mapping=True,full_global_vasculature_always_retained=True,
             print_transform_applied=False,manufacturing_data_modified=False,
+            top_information_text_visible=False,legend_layout='centred_single_row_below_top',
+            arrow_legend=ORIENTATION_LEGEND_LABEL,arrow_legend_geometry='same vtkArrowSource as scene glyphs',
+            left_arrow_scale_relative_to_previous=.8,left_arrow_scale_from_original=GLOBAL_ARROW_SCALE,
+            candidate_legend=CANDIDATE_LEGEND_LABEL,legend_background_visible=False,
+            legend_centre_y=LEGEND_CENTRE_Y,diameter_text_gap_px=SCALE_TEXT_GAP_PX,
+            legend_font_size=COMPACT_LEGEND_FONT_SIZE,coordinate_title_font_size=COMPACT_AXIS_TITLE_FONT_SIZE,
+            diameter_title_font_size=SCALE_TITLE_FONT_SIZE,diameter_label_font_size=SCALE_LABEL_FONT_SIZE,
+            diameter_colorbar_layout='bottom_horizontal',
+            diameter_colorbar_alignment='colour-strip centre aligned with orientation-triad origin',
+            font=display_font()[0],font_file=display_font()[1],display_units='mm',decimal_places=2,
+            units='Internal geometry/scalars in um unchanged; displayed values converted to mm',
+            coordinate_tick_font_size=14,coordinate_tick_label_offset_px=20.,
+            coordinate_tick_groups_per_axis=1,
+            orientation_letters='fixed-size continuously projected text',roi_cluster_labels_visible=False,
+            right_view_up=list(self.roi_view_up),renderer_modified=True,
             differences=['ROI data now reads MINI/BALANCED/RICH; BALANCED default',
-                'Complete BG001 context retained; selected exact ROI edges coloured red'])
+                'Complete BG001 context retained; selected exact ROI edges coloured red',
+                'Lower centred legend row without background; MeVO candidate ROI label; scene-matching arrow glyph',
+                'Global arrows reduced 20% from previous display; right arrows unchanged',
+                'Horizontal diameter bar retained; larger title and numeric labels five pixels from strip',
+                'Helvetica or Arial; physical labels in mm with two decimals; larger offset axis numbers',
+                'Stable orientation letters; C/R labels hidden',
+                'Both subplots use Y-up, including ROI changes and automatic horizontal rotation'])
         write_json(self.run/f'brava_{self.view}_ui_compatibility.json',report)
         return report

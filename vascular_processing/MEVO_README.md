@@ -23,7 +23,7 @@
 从项目根目录执行以下命令。每次 inspect/extract/batch 的输出目录必须是新目录，已有结果不会被覆盖。
 
 ```bash
-MEVO_PY=/home/lzy/projects/ulm_particle_3d_particle0/.venv/bin/python
+MEVO_PY=/home/lzy/projects/temp_storage/ulm_particle_3d_particle0/.venv/bin/python
 MEVO_SOURCE='vessel_model/T - Brava/swc_files_vmd/BG001.CNG_vmd_smooth.swc'
 MEVO_LANDMARKS='configs/mevo/BG001.CNG_vmd_smooth.landmarks.yaml'
 

@@ -5,7 +5,7 @@
 在项目目录运行：
 
 ```bash
-/home/lzy/projects/ulm_particle_3d_particle0/.venv/bin/python tests/inspect_swc_rois.py
+/home/lzy/projects/temp_storage/ulm_particle_3d_particle0/.venv/bin/python tests/inspect_swc_rois.py
 ```
 
 三个视窗可独立旋转、缩放。把鼠标放在血管所在视窗中操作：
@@ -26,7 +26,7 @@
 也可以在启动时更换三个 ROI，例如：
 
 ```bash
-/home/lzy/projects/ulm_particle_3d_particle0/.venv/bin/python tests/inspect_swc_rois.py --anchors 8 155 647
+/home/lzy/projects/temp_storage/ulm_particle_3d_particle0/.venv/bin/python tests/inspect_swc_rois.py --anchors 8 155 647
 ```
 
 用 `--run-dir outputs/human_brava/sampling/20260923_185451_radius_plus_structure_k5` 固定本次采样批次。锚点编号应来自该批次 `manifests/candidate_rois.csv`，且三个 ROI 必须属于同一份源 SWC。
@@ -48,11 +48,11 @@ SWC 给出离散位置、半径和连接，并没有提供真实血管壁表面�
 无窗口生成三个视图的检查图：
 
 ```bash
-/home/lzy/projects/ulm_particle_3d_particle0/.venv/bin/python tests/inspect_swc_rois.py --off-screen
+/home/lzy/projects/temp_storage/ulm_particle_3d_particle0/.venv/bin/python tests/inspect_swc_rois.py --off-screen
 ```
 
 本次预览和数值记录位于 [swc_roi_inspection_output/verified_preview](swc_roi_inspection_output/verified_preview)。自动验证覆盖原始 ID 和坐标保留、真实节点半径、分叉管面截面半径、球半径、节点拾取对应关系、三种视图切换及源文件不变性：
 
 ```bash
-/home/lzy/projects/ulm_particle_3d_particle0/.venv/bin/python -m pytest -q tests/test_swc_roi_inspector.py
+/home/lzy/projects/temp_storage/ulm_particle_3d_particle0/.venv/bin/python -m pytest -q tests/test_swc_roi_inspector.py
 ```

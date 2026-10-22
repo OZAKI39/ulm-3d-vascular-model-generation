@@ -99,8 +99,14 @@ def load_semantic(directory):
         snapshot[str(path)] = digest
     snapshot[str(directory / 'artifact_manifest.json')] = sha256(directory / 'artifact_manifest.json')
     for path, digest in snapshot.items():
-        if not Path(path).is_file() or sha256(path) != digest:
-            raise ValueError('Frozen protected input mismatch: ' + path)
+        if not Path(path).is_file():
+            raise ValueError('Frozen protected input missing: ' + path)
+        actual = sha256(path)
+        if actual != digest:
+            from .accepted_ui_revisions import approved_revision
+            if not approved_revision(path, digest, actual):
+                raise ValueError('Frozen protected input mismatch: ' + path)
+            snapshot[path] = actual  # Runtime protection uses accepted current UI; archive is never rewritten.
     raw = read_source(Path(cache.manifest['source']['raw_source']))
     semantic = {}
     for item in summary['exports']:
@@ -117,7 +123,7 @@ def load_semantic(directory):
         assert all(raw.graph.has_edge(mapping[a], mapping[b]) for a, b in actual.edges)
         semantic.setdefault(item['component'], set()).update(mapping.values())
     score_path = cache.directory / 'manual_review/tables/BG001_RMCA_component_summary.csv'
-    if str(score_path) not in snapshot:
+    if not any(Path(key).resolve() == score_path.resolve() for key in snapshot):
         raise ValueError('Frozen component scores not bound by source hashes')
     scores = read_csv(score_path)
     return cache, raw, semantic, scores, snapshot

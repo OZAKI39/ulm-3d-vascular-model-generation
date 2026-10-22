@@ -1,0 +1,30 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_______ test_practical_delivery_integrity_and_no_false_production_freeze _______
+
+    def test_practical_delivery_integrity_and_no_false_production_freeze():
+        out=default_output()/'final_practical_v3';summary=json.loads((out/'final_practical_summary.json').read_text());manifest=json.loads((out/'production_candidate_freeze.json').read_text())
+        assert summary['repair_round_count']<=3 and summary['topology_round_count']<=3
+        assert summary['actual_native_slice_attempt_count']<=6
+        assert manifest['vascular_source_sha256']==digest(discover_source()['core'])
+        assert manifest['production_frozen']==all(summary['gates'].values())
+        if summary['failures']:assert manifest['production_candidate'] is None
+>       assert verify({str(out/p):h for p,h in manifest['files'].items()})['all_unchanged']
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_s1_11_vascular_core_support.py:761: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+hashes = {'/home/lzy/projects/vascular_printing/outputs/topbrain_brava_transfer/nn_production/BG001/RMCA/vascular_core_support_...practical_v3/selected/inverse_transform.json': '998976718ffcf6e512eb9169e3cbdcca3045fe949d675aaaf98c01cde114e4f0', ...}
+
+    def verify(hashes):
+        changed=[p for p,h in hashes.items() if not Path(p).is_file() or digest(p)!=h]
+        result=dict(all_unchanged=not changed,checked_files=len(hashes),changed=changed)
+>       if changed:raise RuntimeError('UPSTREAM_GEOMETRY_MODIFIED: '+repr(changed))
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       RuntimeError: UPSTREAM_GEOMETRY_MODIFIED: ['/home/lzy/projects/vascular_printing/outputs/topbrain_brava_transfer/nn_production/BG001/RMCA/vascular_core_support_production/final_practical_v3/selected/final_sliced.3mf']
+
+vascular_processing/support_inputs.py:74: RuntimeError
+=========================== short test summary info ============================
+FAILED tests/test_s1_11_vascular_core_support.py::test_practical_delivery_integrity_and_no_false_production_freeze
+1 failed, 103 deselected in 2.65s

@@ -1,0 +1,34 @@
+...F.................F...........F............F........                  [100%]
+=================================== FAILURES ===================================
+_____ test_synthetic_fixtures_are_real_closed_meshes[port_size_variation] ______
+tests/test_s1_9_vascular_casting_fixture.py:27: in test_synthetic_fixtures_are_real_closed_meshes
+    p=ROOT/'tests/data/casting_fixture'/case;assert json.loads((p/'fixture.json').read_text())['synthetic'];assert mesh_qc(trimesh.load_mesh(p/'core.stl'))['passed']
+                                                                                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   assert False
+_________________ test_closed_bottom_negative_case_is_detected _________________
+tests/test_s1_9_vascular_casting_fixture.py:53: in test_closed_bottom_negative_case_is_detected
+    l,g=synthetic;bad=g['frame'].fuse(bounds_box([-10,-10,0],[10,10,1]));assert bad.intersect(bounds_box([-9,-9,.1],[9,9,2])).Volume()>300
+                                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   assert 291.59999999999997 > 300
+E    +  where 291.59999999999997 = Volume()
+E    +    where Volume = <cadquery.occ_impl.shapes.Compound object at 0x75b81d732090>.Volume
+E    +      where <cadquery.occ_impl.shapes.Compound object at 0x75b81d732090> = intersect(<cadquery.occ_impl.shapes.Solid object at 0x75b81d847a10>)
+E    +        where intersect = <cadquery.occ_impl.shapes.Compound object at 0x75b81d732b10>.intersect
+E    +        and   <cadquery.occ_impl.shapes.Solid object at 0x75b81d847a10> = bounds_box([-9, -9, 0.1], [9, 9, 2])
+______________ test_excess_radial_error_not_hidden_by_axial_float ______________
+tests/test_s1_9_vascular_casting_fixture.py:95: in test_excess_radial_error_not_hidden_by_axial_float
+    l,_=synthetic;errors=[np.array([0,0,2 if i%2 else -2]) for i,p in enumerate(l['ports'])];assert not perturbation_fit(l['ports'],errors,True)
+                                                                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AssertionError: assert not True
+E    +  where True = perturbation_fit([{'port_id': 'P1', 'axis': [0.0, -1.0, 0.0], 'face': '-Y', 'wall_intersection': [0.0, -10.0, 12.0], ...}, {'port_id': ....0, 12.0], ...}, {'port_id': 'P4', 'axis': [0.0, 1.0, 0.0], 'face': '+Y', 'wall_intersection': [0.0, 10.0, 12.0], ...}], [array([ 0,  0, -2]), array([0, 0, 2]), array([ 0,  0, -2]), array([0, 0, 2])], True)
+____________ test_actual_pla_auto_off_slice_archive[closure_slice] _____________
+tests/test_s1_9_vascular_casting_fixture.py:124: in test_actual_pla_auto_off_slice_archive
+    r=actual['bambu'][part];assert r['slicer_success'] and r['support_free_slice_passed'] and r['native_support_moves']==0;assert r['actual_profile']['filament_type']==['PLA'];assert r['actual_profile']['nozzle_diameter']==['0.2'];assert not r['printer_start'] and not r['printer_upload']
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   assert (True and False)
+=========================== short test summary info ============================
+FAILED tests/test_s1_9_vascular_casting_fixture.py::test_synthetic_fixtures_are_real_closed_meshes[port_size_variation]
+FAILED tests/test_s1_9_vascular_casting_fixture.py::test_closed_bottom_negative_case_is_detected
+FAILED tests/test_s1_9_vascular_casting_fixture.py::test_excess_radial_error_not_hidden_by_axial_float
+FAILED tests/test_s1_9_vascular_casting_fixture.py::test_actual_pla_auto_off_slice_archive[closure_slice]
+4 failed, 51 passed in 4.77s

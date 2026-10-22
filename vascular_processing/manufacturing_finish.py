@@ -160,7 +160,7 @@ def finish(output):
             '- `orientation/`: preserved identity baseline, Top 5 STL, all transforms and scores.\n'
             '- `bambu_abs_vessel_calibration_coupon.stl`: 25 separate calibration cylinders; CSV maps diameter/angle to row/column.\n\n'
             'Run from project root (choose a new output directory):\n\n```bash\n'
-            '/home/lzy/projects/ulm_particle_3d_particle0/.venv/bin/python tools/manufacture_bg001_rmca.py --output outputs/topbrain_brava_transfer/nn_production/BG001/RMCA/manufacturing_run02\n```\n\n'
+            '/home/lzy/projects/temp_storage/ulm_particle_3d_particle0/.venv/bin/python tools/manufacture_bg001_rmca.py --output outputs/topbrain_brava_transfer/nn_production/BG001/RMCA/manufacturing_run02\n```\n\n'
             'Alternative detail profile: `--config config/bambu_abs_0p2_detail.yaml`. This does not change your physical nozzle. '
             'Stages `--stage prepare`, `--stage model`, `--stage finish` allow checkpointed operation; `all` is the default. '
             'A new full run refuses an existing output directory. Existing semantic/refinement results are always protected.\n',encoding='utf-8')

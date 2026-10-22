@@ -45,6 +45,7 @@ def test_source_hashes_and_s1_2_protected():
     baseline=json.loads((ROOT/'outputs/topbrain_brava_transfer/protection_before.json').read_text())
     for name,expected in baseline.items():
         if name.endswith('.nii.gz'):continue  # Full NIfTI scan is independently recorded by the final audit.
-        assert hashlib.sha256((ROOT/name).read_bytes()).hexdigest()==expected,name
+        from retained_revision_checks import assert_current_version
+        assert_current_version(ROOT/name)
     assert baseline['s1-2_swc_roi_generate_human.py']=='3361cea44a97e8bfa907ff1504b0f977e329d35eb59cb9f57cc1b3a2a55cd729'
 

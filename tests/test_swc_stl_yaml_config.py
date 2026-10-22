@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
-import ulm_3D_vascular.s2_swc_stl_model_generate as entrypoint
+import s2_swc_stl_model_generate as entrypoint
 from utils.cfd_lumen.model_yaml_config import load_swc_stl_yaml_config
 from utils.cfd_lumen.ultraliser_backend import _preserve_source_configuration
 

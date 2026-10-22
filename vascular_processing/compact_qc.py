@@ -120,7 +120,7 @@ def write_report(output, m):
         '- `orientation/`：仅 BALANCED 的 Top 3 方向，Top1 执行一次切片。\n'
         '- `QC/`：三候选同视角同比例、旧模型对比、方向对比和测试记录。\n\n'
         '从项目根目录运行，使用新的输出目录：\n\n```bash\n'
-        '/home/lzy/projects/ulm_particle_3d_particle0/.venv/bin/python tools/compact_bg001_rmca.py '
+        '/home/lzy/projects/temp_storage/ulm_particle_3d_particle0/.venv/bin/python tools/compact_bg001_rmca.py '
         '--output outputs/topbrain_brava_transfer/nn_production/BG001/RMCA/compact_run02\n```\n\n'
         '配置：`config/compact_manufacturing_profile.yaml`。支持 `--stage prepare/model/finish/verify`；默认 all。'
         '三个候选共用同一语义组件，默认不运行大模型入口。没有自动全局缩放或打印提交。\n',encoding='utf-8')

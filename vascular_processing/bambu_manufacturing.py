@@ -28,17 +28,78 @@ def json_object(path):
     return json.JSONDecoder().raw_decode(Path(path).read_text(encoding='utf-8-sig').lstrip())[0]
 
 
-def flatten(path, seen=()):
-    path=Path(path)
+def resolve_preset(name, directories):
+    if not isinstance(name,str) or Path(name).name!=name:
+        raise ValueError('INVALID_BAMBU_PRESET_NAME')
+    paths=list(dict.fromkeys((Path(d)/(name+'.json')).resolve() for d in directories
+                            if (Path(d)/(name+'.json')).is_file()))
+    if not paths:raise FileNotFoundError('BAMBU_PRESET_NOT_FOUND: '+name)
+    if len({sha256(p) for p in paths})>1:raise ValueError('AMBIGUOUS_BAMBU_PRESET: '+name)
+    return paths[0]
+
+
+def flatten(path, seen=(), *, search_dirs=(), resolve_includes=False):
+    path=Path(path).resolve()
     if path in seen:
         raise ValueError('Cyclic Bambu preset inheritance')
-    data=json_object(path);chain=[]
+    data=json_object(path);chain=[];base={}
+    def related(name):
+        local=path.parent/(name+'.json')
+        return resolve_preset(name,[path.parent] if local.is_file() else search_dirs)
     parent=data.get('inherits')
     if parent:
-        base,chain=flatten(path.parent/(parent+'.json'),(*seen,path))
-        base.update(data);data=base
+        base,chain=flatten(related(parent),(*seen,path),search_dirs=search_dirs,resolve_includes=resolve_includes)
+    if resolve_includes:
+        # Bambu v02.07.01.57 PresetBundle.cpp applies parent, include templates,
+        # then the local overrides. Preserve the 0.2 mm machine-start template.
+        includes=data.pop('include',[])
+        if isinstance(includes,str):includes=[includes]
+        for name in includes:
+            values,sources=flatten(related(name),(*seen,path),search_dirs=search_dirs,resolve_includes=True)
+            base.update({k:v for k,v in values.items() if k not in
+                         ('name','type','from','instantiation','setting_id','version')})
+            chain.extend(sources)
+        if parent and str(data.get('from','')).lower()=='user':
+            # Preset.cpp saves unchanged variant slots as nil. A flattened CLI
+            # profile must restore those inherited slots, as the GUI loader does.
+            for key,value in data.items():
+                if isinstance(value,list) and len(value)>1 and 'nil' in value:
+                    inherited=base.get(key)
+                    if not isinstance(inherited,list) or len(inherited)!=len(value):
+                        raise ValueError('UNRESOLVED_BAMBU_VARIANT_INHERITANCE: '+key)
+                    for variant in ('print_extruder_variant','printer_extruder_variant','filament_extruder_variant',
+                                    'print_extruder_id','printer_extruder_id'):
+                        if variant in data and variant in base and data[variant]!=base[variant]:
+                            raise ValueError('UNSUPPORTED_REORDERED_BAMBU_VARIANTS: '+variant)
+                    data[key]=[inherited[i] if v=='nil' else v for i,v in enumerate(value)]
+    base.update(data);data=base
     data.pop('inherits',None)
     return data,[*chain,dict(path=str(path),sha256=sha256(path))]
+
+
+def active_profiles(root,active,material):
+    """Resolve the selected GUI presets, including user presets and templates."""
+    root=Path(root);profiles={};sources=[];paths={}
+    filaments=active.get('filaments') or []
+    if len(filaments)!=1:raise ValueError('EXPECTED_ONE_ACTIVE_FILAMENT')
+    for kind,name in [('machine',active['machine']),('process',active['process']),('filament',filaments[0])]:
+        directories=[root/'system/BBL'/kind,*sorted((root/'user').glob('*/'+kind))]
+        path=resolve_preset(name,directories)
+        value,chain=flatten(path,search_dirs=directories,resolve_includes=True)
+        paths[kind+'_profile']=str(path);profiles[kind]=value;sources.extend(chain)
+    machine=profiles['machine'];nozzles=machine.get('nozzle_diameter',[])
+    if len(nozzles)!=1:raise ValueError('EXPECTED_ONE_ACTIVE_NOZZLE')
+    if profiles['filament'].get('filament_type')!=[material]:raise ValueError('ACTIVE_MATERIAL_MISMATCH')
+    for kind in ('process','filament'):
+        compatible=profiles[kind].get('compatible_printers',[])
+        if compatible and active['machine'] not in compatible:
+            raise ValueError('ACTIVE_'+kind.upper()+'_PRINTER_MISMATCH')
+    area=np.array([[float(x) for x in point.split('x')] for point in machine['printable_area']])
+    return dict(**paths,model=machine['printer_model'],status='BAMBU_PROFILE_CONFIRMED',
+        nozzle_diameter_mm=float(nozzles[0]),active_hardware_nozzle_matches=True,
+        build_volume_mm=[*np.ptp(area,axis=0).tolist(),float(machine['printable_height'])],
+        profile_sources=sources,flattened=profiles,active_gui_presets_modified=False,
+        material_selection='Exact active GUI machine, process and filament; user overrides and include templates resolved')
 
 
 def discover(config):
@@ -94,6 +155,10 @@ def discover(config):
             root=directory;report['active_preset_source']=str(path);break
     if not active:return report
     report['active_gui_presets']=active
+    if config['slicer'].get('use_active_gui_profiles',False):
+        try:report.update(active_profiles(root,active,config['printer']['filament']))
+        except (OSError,ValueError,KeyError) as exc:report['warnings'].append(str(exc))
+        return report
     system=root/'system/BBL'
     machine_path=system/'machine'/(active['machine']+'.json')
     if not machine_path.is_file():return report
@@ -185,7 +250,9 @@ def parse_sliced_archive(path):
             estimated_print_time_seconds=seconds,filament_used_g=usage,filament_records=filaments,
             support_information=support,support_settings=support_settings,
             actual_project_settings={k:project.get(k) for k in ['printer_model','printer_settings_id','print_settings_id',
-                'nozzle_diameter','filament_type','filament_settings_id','printable_height','printable_area','enable_support','support_type']},
+                'nozzle_diameter','filament_type','filament_settings_id','printable_height','printable_area','enable_support','support_type',
+                'support_style','layer_height','initial_layer_print_height','line_width','nozzle_temperature',
+                'nozzle_temperature_initial_layer','textured_plate_temp','textured_plate_temp_initial_layer']},
             actual_metadata=metadata,actual_gcode_headers=headers,warnings=warnings_found)
 
 

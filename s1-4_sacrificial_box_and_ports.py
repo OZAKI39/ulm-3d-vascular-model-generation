@@ -289,7 +289,23 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path, default=f.ROOT / 'config/sacrificial_box_BG001.yaml')
     parser.add_argument('--output-root', type=Path, help='Optional isolated output folder for verification')
+    parser.add_argument('--o3-preflight', action='store_true', help='Audit installed VMTK ramp, VTP bridge and the existing O3 seam; does not repair geometry')
+    parser.add_argument('--all-ports-aligned', action='store_true', help='Rebuild four attachments against frozen wall targets and generate before/after review')
     args = parser.parse_args()
+    use_aligned = args.all_ports_aligned or (not args.o3_preflight and
+        f.load_config(args.config).get('all_port_alignment', {}).get('enabled', False))
+    if use_aligned:
+        if args.o3_preflight:
+            parser.error('--all-ports-aligned and --o3-preflight are mutually exclusive')
+        from vascular_processing.all_port_attachment_run import run as all_ports
+        qc = all_ports(args.config, args.output_root)
+        print(qc['status'])
+        return 0 if qc['status'] == 'READY_FOR_HUMAN_REVIEW' else 2
+    if args.o3_preflight:
+        from vascular_processing.o3_smooth_preflight import run as o3_preflight
+        qc = o3_preflight(args.config, args.output_root)
+        print(qc['status'] + ': ' + qc.get('failure_code', ''))
+        return 2
     qc = run(args.config, args.output_root)
     return 0 if qc['status'] == 'READY_FOR_HUMAN_REVIEW' else 2
 

@@ -144,7 +144,8 @@ class BraVaViewer(TopBrainViewer):
                 bbox_size_um=tuple(high-low),local_edges=np.empty((0,2),dtype=int),
                 local_edge_points_um=np.empty((0,2,3)),local_edge_radius_um=np.empty((0,2)),cut_ports=(),
                 true_terminal_local_ids=())
-        self.controllers[1]=ui._add_sampling_roi_scene(self.plotter,record,add_orientation_axes=first)
+        self.controllers[1]=ui._add_sampling_roi_scene(self.plotter,record,add_orientation_axes=first,
+            view_up=getattr(self,'roi_view_up',None))
         if surface is not None:self.plotter.add_mesh(surface,color='#35D6E3',smooth_shading=True,opacity=.88,pickable=False)
         detail='Strict original SWC ROI' if surface is None else 'VascularMD surface | includes marked upstream M1 context'
         self.plotter.add_text(f'BG001 | {roi.name}\nANATOMICAL_TRANSFER_CANDIDATE\n{detail}\n'

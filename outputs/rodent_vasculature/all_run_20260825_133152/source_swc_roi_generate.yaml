@@ -1,0 +1,78 @@
+schema_version: 1
+
+# Relative paths are resolved from the ulm_3D_vascular project directory.
+paths:
+  input_dir: vessel_model/T - A high-resolution dataset of mouse brain vasculature
+  output_dir: outputs
+
+pipeline:
+  stage: all
+  source_run: null
+  cohort: raw-analysis
+  sample_id: fMOST_0_5_6_0_0_6_0001_02_01
+  parent_group_id: null
+  split: null
+  max_samples: 1
+
+coordinates:
+  spacing_xyz_um: [1.0, 1.0, 2.0]
+  expected_shape_zyx: [192, 192, 192]
+  enforce_expected_shape: true
+
+preprocessing:
+  smooth_centerlines: false
+  smoothing_window_points: 5
+  resample_step_um: 1.0
+  strict_nonpositive_radius: false
+  analysis_component_id: null
+
+exports:
+  save_graphml: true
+  save_vtp: true
+  save_npz: true
+
+visualization:
+  enabled: true
+  max_samples: 1
+  max_direction_arrows: 600
+  figure2a:
+    enabled: true
+    volume_opacity: 0.32
+    window_size: [1800, 900]
+    show_gui: false
+
+sampling:
+  enabled: true
+  seed: 42
+  anchor:
+    mode: farthest_point
+    min_distance_um: 45.0
+    max_candidates: 80
+  roi:
+    size_um: [80.0, 80.0, 120.0]
+    min_branch_count: 2
+    max_cut_ports: null
+  features:
+    mode: radius_plus_structure
+    radius_quantiles: [0.10, 0.25, 0.50, 0.75, 0.90]
+    scaler: robust
+    radius_weight: 1.0
+    structure_weight: 1.0
+  clustering:
+    method: kmeans
+    n_clusters: 5
+    exploratory_k: [2, 3, 4, 5, 8, 10]
+    kmeans_max_iter: 200
+  selection:
+    mode: coverage_balanced
+    target_count: 10
+    representatives_per_cluster: 2
+    max_overlap: 0.25
+    min_representative_distance_um: 20.0
+  comparison:
+    compare_feature_modes: true
+  visualization:
+    max_roi_previews: 12
+
+runtime:
+  verbose: true

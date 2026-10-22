@@ -40,7 +40,7 @@ def arguments(argv=None):
     parser.add_argument('--show-native-labels', action='store_true')
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--no-gui',action='store_true',help='Process and export only')
-    group.add_argument('--off-screen',action='store_true',help='Render an off-screen dual-viewport preview')
+    group.add_argument('--off-screen',action='store_true',help='Render an off-screen preview (compact-brava and manufacturing-stl also save six static views)')
     parser.add_argument('--smoke-gui-seconds',type=float,default=0.,help='Actual GUI smoke test with ROI switch and timed close')
     args=parser.parse_args(argv)
     # Preserve explicit legacy TopBrain requests, while launching current compact
@@ -124,9 +124,14 @@ def show_compact(args):
             return 0
         display=bool(os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY') or sys.platform in {'win32','darwin'})
         show=display and not args.off_screen
+        from vascular_processing.compact_static_views import export_compact_static_views
+        static_views=export_compact_static_views(args.compact_results,initial_roi=args.roi,
+                                                view=args.brava_view,output_dir=args.output_dir)
         viewer=CompactBraVaViewer(args.compact_results,initial_roi=args.roi,view=args.brava_view,
                                  show=show,output_dir=args.output_dir)
         report=viewer.run_window(show=show,smoke_seconds=args.smoke_gui_seconds)
+        report['static_views']=static_views
+        write_json(viewer.run/f'brava_{viewer.view}_ui_compatibility.json',report)
         print(json.dumps(report,indent=2,ensure_ascii=False))
         return 2 if args.smoke_gui_seconds and not report['gui_smoke_passed'] else 0
     except Exception as exc:
@@ -143,8 +148,13 @@ def show_manufacturing_stl(args):
             print(json.dumps(provenance,indent=2,ensure_ascii=False));return 0
         display=bool(os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY') or sys.platform in {'win32','darwin'})
         show=display and not args.off_screen
+        from vascular_processing.compact_static_views import export_manufacturing_static_views
+        static_views=export_manufacturing_static_views(args.stl_file,initial_roi=args.roi,
+                                                      output_dir=args.output_dir)
         viewer=ManufacturingSTLViewer(args.stl_file,initial_roi=args.roi,show=show,output_dir=args.output_dir)
         report=viewer.run_window(show=show,smoke_seconds=args.smoke_gui_seconds)
+        report['static_views']=static_views
+        write_json(viewer.run/f'brava_{viewer.view}_ui_compatibility.json',report)
         print(json.dumps(report,indent=2,ensure_ascii=False))
         return 2 if args.smoke_gui_seconds and not report['gui_smoke_passed'] else 0
     except Exception as exc:

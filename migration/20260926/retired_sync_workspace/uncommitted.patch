@@ -1,0 +1,38 @@
+diff --git a/config/sacrificial_box_BG001.yaml b/config/sacrificial_box_BG001.yaml
+index 2368e15..1b47078 100644
+--- a/config/sacrificial_box_BG001.yaml
++++ b/config/sacrificial_box_BG001.yaml
+@@ -90,3 +90,15 @@ visualization:
+ vmtk:
+   probe_python: /mnt/d/anaconda3/envs/vmtk-env/python.exe
+   timeout_seconds: 30
++
++# Required limits for the O3 correction. Current preflight stops if native ramp is absent.
++o3_smoothing:
++  handoff_overlap_mm: 0.8
++  local_fix_radius_mm: 5.0
++  minimum_clearance_mm: 1.6
++  clip_diameter_factors: [0.5, 1.0, 1.5]
++  extension_ratios: [4, 6, 8]
++  transition_ratios: [0.25, 0.50, 0.75]
++  preserve_shape_modes: [false, true]
++  interpolation_mode: ramp
++  slicer_executable: /mnt/d/3D Slicer 5.10.0/Slicer.exe
+diff --git a/s1-4_sacrificial_box_and_ports.py b/s1-4_sacrificial_box_and_ports.py
+index 4616f93..504a65d 100644
+--- a/s1-4_sacrificial_box_and_ports.py
++++ b/s1-4_sacrificial_box_and_ports.py
+@@ -289,7 +289,13 @@ def main():
+     parser = argparse.ArgumentParser(description=__doc__)
+     parser.add_argument('--config', type=Path, default=f.ROOT / 'config/sacrificial_box_BG001.yaml')
+     parser.add_argument('--output-root', type=Path, help='Optional isolated output folder for verification')
++    parser.add_argument('--o3-preflight', action='store_true', help='Audit installed VMTK ramp, VTP bridge and the existing O3 seam; does not repair geometry')
+     args = parser.parse_args()
++    if args.o3_preflight:
++        from vascular_processing.o3_smooth_preflight import run as o3_preflight
++        qc = o3_preflight(args.config, args.output_root)
++        print(qc['status'] + ': ' + qc.get('failure_code', ''))
++        return 2
+     qc = run(args.config, args.output_root)
+     return 0 if qc['status'] == 'READY_FOR_HUMAN_REVIEW' else 2
+ 

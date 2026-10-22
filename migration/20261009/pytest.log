@@ -1,0 +1,42 @@
+........................................................................ [ 63%]
+...............................F..........                               [100%]
+=================================== FAILURES ===================================
+_______ test_practical_delivery_integrity_and_no_false_production_freeze _______
+
+    def test_practical_delivery_integrity_and_no_false_production_freeze():
+        out=default_output()/'final_practical_v3';summary=json.loads((out/'final_practical_summary.json').read_text());manifest=json.loads((out/'production_candidate_freeze.json').read_text())
+        assert summary['repair_round_count']<=3 and summary['topology_round_count']<=3
+        assert summary['actual_native_slice_attempt_count']<=6
+        assert manifest['vascular_source_sha256']==digest(discover_source()['core'])
+        assert manifest['production_frozen']==all(summary['gates'].values())
+        if summary['failures']:assert manifest['production_candidate'] is None
+>       assert verify({str(out/p):h for p,h in manifest['files'].items()})['all_unchanged']
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_s1_11_vascular_core_support.py:761: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+hashes = {'/workspace/vascular_printing/outputs/topbrain_brava_transfer/nn_production/BG001/RMCA/vascular_core_support_producti...practical_v3/selected/inverse_transform.json': '998976718ffcf6e512eb9169e3cbdcca3045fe949d675aaaf98c01cde114e4f0', ...}
+
+    def verify(hashes):
+        changed=[p for p,h in hashes.items() if not Path(p).is_file() or digest(p)!=h]
+        result=dict(all_unchanged=not changed,checked_files=len(hashes),changed=changed)
+>       if changed:raise RuntimeError('UPSTREAM_GEOMETRY_MODIFIED: '+repr(changed))
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       RuntimeError: UPSTREAM_GEOMETRY_MODIFIED: ['/workspace/vascular_printing/outputs/topbrain_brava_transfer/nn_production/BG001/RMCA/vascular_core_support_production/final_practical_v3/selected/final_sliced.3mf']
+
+vascular_processing/support_inputs.py:74: RuntimeError
+=============================== warnings summary ===============================
+tests/test_s1_11_vascular_core_support.py: 76 warnings
+  /workspace/vascular_printing/.venv/lib/python3.13/site-packages/vtkmodules/util/numpy_support.py:244: DeprecationWarning: Setting the shape on a NumPy array has been deprecated in NumPy 2.5.
+  As an alternative, you can create a new view using np.reshape (with copy=False if needed).
+    result.shape = shape
+
+tests/test_s1_11_vascular_core_support.py::test_ascii_support_fallback_does_not_expand_geometry
+  /workspace/vascular_printing/.venv/lib/python3.13/site-packages/trimesh/triangles.py:302: RuntimeWarning: invalid value encountered in divide
+    center_mass = integrated[1:4] / volume
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_s1_11_vascular_core_support.py::test_practical_delivery_integrity_and_no_false_production_freeze
+1 failed, 113 passed, 77 warnings in 16.07s

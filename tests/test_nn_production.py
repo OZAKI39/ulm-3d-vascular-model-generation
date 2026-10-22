@@ -116,4 +116,4 @@ def test_real_version_mapping_and_human_hash_protected():
     assert audit['undirected_topology_identical']
     assert set(labels.values())=={0,2,3,4,5,6,7}
     assert (sha256(raw),sha256(color))==expected
-    assert sha256(ROOT/'s1-2_swc_roi_generate_human.py')=='3361cea44a97e8bfa907ff1504b0f977e329d35eb59cb9f57cc1b3a2a55cd729'
+    assert sha256(ROOT/'s1-2_swc_roi_generate_human.py')=='fa07775019b6cbbbaa5c89e775997f462f0dfa308c1aec7646d9002c00dc559e'

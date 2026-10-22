@@ -24,6 +24,7 @@ from utils.rodent_vasculature import run_rodent_vasculature_pipeline
 from utils.rodent_vasculature.interactive import show_saved_run
 from utils.sampling.pipeline import run_sampling_from_rodent_run
 from utils.swc_roi_yaml_config import SWCROIRunConfig, load_swc_roi_yaml_config
+from vascular_processing.spatial_display_adapter import show_spatial_saved_run
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -160,6 +161,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     config = settings.rodent
+    # Spatial sampling uses the current compact UI annotations and static export;
+    # MeVO-labelled runs retain their existing display path and data contract.
+    display_saved_run = show_saved_run if settings.mevo_enabled else show_spatial_saved_run
     if settings.mevo_enabled and config.stage in {"all", "hierarchical-graph"} and settings.sampling_enabled:
         from vascular_processing.mevo_display import preflight_mevo
         try:
@@ -272,7 +276,7 @@ def main(argv: list[str] | None = None) -> int:
     ):
         _print_stage("4.3.6", "生成双视窗屏幕外预览（当前不打开交互窗口）")
         try:
-            show_saved_run(
+            display_saved_run(
                 run.run_root,
                 sample_id=config.sample_id,
                 max_arrows=config.max_direction_arrows,
@@ -304,7 +308,7 @@ def main(argv: list[str] | None = None) -> int:
                 flush=True,
             )
         try:
-            show_saved_run(
+            display_saved_run(
                 run.run_root,
                 sample_id=config.sample_id,
                 max_arrows=config.max_direction_arrows,

@@ -9,8 +9,8 @@
 离线复核入口：
 
 ```bash
-/home/lzy/projects/ulm_particle_3d_particle0/.venv/bin/python tools/trace_brava_type_mapping.py
-/home/lzy/projects/ulm_particle_3d_particle0/.venv/bin/python tools/validate_topbrain_transfer.py --freeze-nn --calibrate-unknown
+/home/lzy/projects/temp_storage/ulm_particle_3d_particle0/.venv/bin/python tools/trace_brava_type_mapping.py
+/home/lzy/projects/temp_storage/ulm_particle_3d_particle0/.venv/bin/python tools/validate_topbrain_transfer.py --freeze-nn --calibrate-unknown
 ```
 
 第二条命令在现有缓存下只读验证，不重复配准、NN 查询或四组校准。`tools/setup_topbrain_brava_transfer.py` 现在仅离线检查已安装的 Open3D 0.20.0 和本地 libusb，不下载或安装。
@@ -22,9 +22,9 @@ RMCA 的 part01、02、04、05 均通过原生 VascularMD `model_network` 并输
 生产与显示入口：
 
 ```bash
-/home/lzy/projects/ulm_particle_3d_particle0/.venv/bin/python tools/transfer_topbrain_to_brava.py
-/home/lzy/projects/ulm_particle_3d_particle0/.venv/bin/python s1-3_swc_roi_generate_MeVO.py --source topbrain-brava
-/home/lzy/projects/ulm_particle_3d_particle0/.venv/bin/python s1-3_swc_roi_generate_MeVO.py --source topbrain-brava --brava-view surface
+/home/lzy/projects/temp_storage/ulm_particle_3d_particle0/.venv/bin/python tools/transfer_topbrain_to_brava.py
+/home/lzy/projects/temp_storage/ulm_particle_3d_particle0/.venv/bin/python s1-3_swc_roi_generate_MeVO.py --source topbrain-brava
+/home/lzy/projects/temp_storage/ulm_particle_3d_particle0/.venv/bin/python s1-3_swc_roi_generate_MeVO.py --source topbrain-brava --brava-view surface
 ```
 
 默认右视窗读取 strict 原始 ROI；surface 模式只列出成功建模组件，表面包含已注明的真实上游 M1 context。左右箭头切换 ROI，A/R/S/C 保留框选显示，F12 截图。UI 不做配准或标签查询。s1-2、共享 renderer、原始数据和冻结的配准实现保持不变。输出位于 `outputs/topbrain_brava_transfer/nn_production/BG001/`，原始输入和 donor 缓存由 `input_provenance.json` 绑定，完成的结果可直接复用。

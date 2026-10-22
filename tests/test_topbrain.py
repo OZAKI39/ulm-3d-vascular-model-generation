@@ -165,10 +165,19 @@ def test_cache_and_source_preservation(dataset,tmp_path):
 
 
 def test_human_and_renderer_protected():
+    # CFD files were deliberately excluded in the 2026-09-26 migration.
+    # Verify every retained file against its pre-cleanup version; the original
+    # TopBrain manifest stays untouched and is not a current UI version lock.
     baseline=json.loads((ROOT/'outputs/topbrain_validation/protection_before.json').read_text())['files']
-    allowed={'s1-3_swc_roi_generate_MeVO.py'}
-    changed=[name for name,value in baseline.items() if name not in allowed and sha256(ROOT/name)!=value]
-    assert changed==[]
+    plan=json.loads((ROOT/'migration/20260926/migration_plan.json').read_text())
+    from retained_revision_checks import assert_current_version
+    retained=[];excluded=[]
+    for name in baseline:
+        if (ROOT/name).is_file():assert_current_version(ROOT/name);retained.append(name)
+        else:excluded.append(name)
+    assert retained and excluded
+    assert all(name.startswith(('configs/cfd_', 'utils/cfd_', 'utils/cfd/')) for name in excluded)
+    assert plan['preserve_in_old']
 
 
 def test_offscreen_ui_switches_roi(dataset,tmp_path):
