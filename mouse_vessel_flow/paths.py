@@ -3,7 +3,7 @@ from pathlib import Path
 import json
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-CASE_NAMES = ('roi_only',)
+CASE_NAMES = ('roi_only', 'best_feasible', 'network_h0', 'mean_2mmps', 'stage_q')
 
 def project_path(relative):
     path = (PROJECT_ROOT / relative).resolve()

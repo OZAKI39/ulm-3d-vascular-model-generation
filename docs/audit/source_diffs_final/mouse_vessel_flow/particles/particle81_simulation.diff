@@ -1,0 +1,20 @@
+--- /home/lzy/projects/computation_examples/_shared/particle_workflow/particle_3d/src/particle_3d/particle81_simulation.py
++++ mouse_vessel_flow/particles/particle81_simulation.py
+@@ -24,7 +24,7 @@
+ from .physical_time_refinement import PhysicalTimeRefinementError
+ from .particle81_cache import cached_step_to
+ 
+-OUTPUT=REPO/'particle_3d/outputs/particle8_1'
++OUTPUT=REPO/'results/development/particle8_1'
+ SEED=2026092181
+ DT=.00025 # P7 single-MB validation step; not a production timestep decision.
+ HORIZON=1.5 # Per-MB elapsed physical-time safety limit, not acquisition duration.
+@@ -41,7 +41,7 @@
+     if _ENV is None:
+         provenance,mesh,field,boundaries,audit,samplers,wall=real_inlet()
+         classifier=ValidationBoundaryClassifier({k:v for k,v in boundaries.items() if k.startswith('OUTLET_')})
+-        mu,viscosity=viscosity_from_frozen(REPO/'formal_3D_flow_solver/FEM_SimVascular')
++        mu,viscosity=viscosity_from_frozen(REPO/'inputs/reference/fem')
+         _ENV=SimpleNamespace(provenance=provenance,mesh=mesh,field=field,boundaries=boundaries,audit=audit,
+             sampler=samplers['INLET'],wall=wall,classifier=classifier,mu=mu,viscosity=viscosity)
+     return _ENV

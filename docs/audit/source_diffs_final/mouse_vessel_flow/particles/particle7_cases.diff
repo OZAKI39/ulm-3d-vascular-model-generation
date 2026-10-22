@@ -1,0 +1,28 @@
+--- /home/lzy/projects/computation_examples/_shared/particle_workflow/particle_3d/src/particle_3d/particle7_cases.py
++++ mouse_vessel_flow/particles/particle7_cases.py
+@@ -1,4 +1,5 @@
+ """Synthetic infrastructure fixtures, explicitly not production suspension physics."""
++from mouse_vessel_flow.paths import PROJECT_ROOT
+ from functools import lru_cache
+ from pathlib import Path
+ import numpy as np
+@@ -14,8 +15,8 @@
+ from .audit import read_frozen
+ from .field import FrozenFEMField
+ 
+-REPO=Path(__file__).resolve().parents[3]
+-SONOVUE=Path('/home/lzy/projects/sonovue_size_distribution_v0')
++REPO=PROJECT_ROOT
++SONOVUE=PROJECT_ROOT/'inputs/reference/sonovue'
+ 
+ 
+ def rectangle(a,b,c,d): return np.array([[a,b,c],[a,c,d]],float)
+@@ -44,7 +45,7 @@
+ 
+ @lru_cache(maxsize=1)
+ def real_inlet():
+-    fem=REPO/'formal_3D_flow_solver/FEM_SimVascular'
++    fem=REPO/'inputs/reference/fem'
+     provenance,mesh,flow,boundaries=read_frozen(fem)
+     audit,samplers=frozen_boundary_flux(mesh,flow,boundaries)
+     return provenance,mesh,FrozenFEMField.from_grids(mesh,flow),boundaries,audit,samplers,WallGeometry.from_frozen(fem)

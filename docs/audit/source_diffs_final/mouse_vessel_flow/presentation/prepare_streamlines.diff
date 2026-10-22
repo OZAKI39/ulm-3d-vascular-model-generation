@@ -1,0 +1,81 @@
+--- /home/lzy/projects/computation_examples/mean-2p0-mmps-A-ROI-only-balanced-pressure-v1/visualization/prepare_streamlines.py
++++ mouse_vessel_flow/presentation/prepare_streamlines.py
+@@ -4,15 +4,16 @@
+ radius, seed offsets, target-outlet steering, or post-hoc path extension.
+ """
+ from pathlib import Path
++from mouse_vessel_flow.paths import project_path, new_output
+ from types import SimpleNamespace
+ from collections import Counter
+ import argparse,csv,hashlib,json,socket,sys,time
+ import numpy as np
+ import pyvista as pv
+ 
+-ROOT=Path(__file__).resolve().parent
+-CASE=ROOT/'input_data';OUT=CASE/'streamlines'
+-PARTICLE_SOURCE=Path('/home/lzy/projects/ulm_particle_formal_p9a5/particle_3d/src')
++ROOT=project_path('results/roi_only/visualization')
++CASE=ROOT/'input_data';OUT=None
++PARTICLE_SOURCE=project_path('mouse_vessel_flow/particles')
+ QUOTAS={'OUTLET_01':16,'OUTLET_02':56,'OUTLET_03':24}
+ STEP=.15e-6;ERROR=1e-11;SEED=2026092203
+ 
+@@ -21,12 +22,11 @@
+ def dump(p,d):Path(p).write_text(json.dumps(d,ensure_ascii=False,indent=2,allow_nan=False)+'\n')
+ 
+ 
+-def setup(source=PARTICLE_SOURCE):
+-    sys.path.insert(0,str(source))
+-    from particle_3d.field import FrozenFEMField
+-    from particle_3d.inlet_flux import InletFluxSampler
+-    from particle_3d.validation_boundary import ValidationBoundaryClassifier
+-    from particle_3d.particle82_point_native import NativePointTracer
++def setup():
++    from mouse_vessel_flow.particles.field import FrozenFEMField
++    from mouse_vessel_flow.particles.inlet_flux import InletFluxSampler
++    from mouse_vessel_flow.particles.validation_boundary import ValidationBoundaryClassifier
++    from mouse_vessel_flow.particles.particle82_point_native import NativePointTracer
+     a=np.load(CASE/'frozen_flow/flow_arrays_si.npz')
+     field=FrozenFEMField(a['points_m'],a['tetra'],a['velocity_m_s'],a['pressure_pa'])
+     boundaries={role:pv.read(CASE/'solver_mesh/mesh-surfaces'/f'{role}.vtp') for role in ['INLET',*QUOTAS]}
+@@ -62,16 +62,18 @@
+     return np.column_stack([np.interp(np.linspace(0,s[-1],count),s,path[:,k]) for k in [1,2,3]])
+ 
+ 
+-def main():
+-    p=argparse.ArgumentParser();p.add_argument('--particle-source',type=Path,default=PARTICLE_SOURCE)
+-    p.add_argument('--candidates',type=int,default=768);a=p.parse_args()
++def main(argv=None):
++    global CASE, OUT
++    p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True)
++    p.add_argument('--case',type=Path,default=CASE)
++    p.add_argument('--candidates',type=int,default=768);a=p.parse_args(argv);CASE=a.case.resolve();OUT=new_output(a.output)
+     OUT.mkdir(exist_ok=True);(OUT/'data').mkdir(exist_ok=True)
+     if (OUT/'COMPUTE_VALIDATION.json').exists():raise RuntimeError('Existing completed streamlines: render/review saved data; do not recompute')
+     paths=list((CASE/'frozen_flow').rglob('*'))+list((CASE/'solver_mesh').rglob('*'))
+     paths+=list((CASE/'figures').glob('*'))+list((CASE/'animations').glob('*'))
+     paths+=[CASE/'reports/physics_validation_H0.json',CASE/'reports/physics_validation_H0.json',CASE/'reports/render_manifest.json']
+     lock={str(p.relative_to(CASE)):sha(p) for p in paths if p.is_file()}
+-    dump(OUT/'SOURCE_LOCK.json',lock);start=time.time();env,native,sampler=setup(a.particle_source)
++    dump(OUT/'SOURCE_LOCK.json',lock);start=time.time();env,native,sampler=setup()
+     seeds,triangles=sampler.sample(np.random.default_rng(SEED),a.candidates)
+     records=[];counts=Counter();candidates={}
+     for i,position in enumerate(seeds):
+@@ -116,7 +118,7 @@
+     with (OUT/'data/catalog.csv').open('w',newline='') as f:
+         writer=csv.DictWriter(f,fieldnames=list(catalog[0]));writer.writeheader();writer.writerows(catalog)
+     changed=[p for p,h in lock.items() if sha(CASE/p)!=h];assert not changed
+-    dependencies={str(p.relative_to(a.particle_source)):sha(p) for p in a.particle_source.rglob('*') if p.suffix in ['.py','.cpp']}
++    dependencies={str(p.relative_to(PARTICLE_SOURCE)):sha(p) for p in PARTICLE_SOURCE.rglob('*') if p.suffix in ['.py','.cpp']}
+     result=dict(all_pass=True,field_case='mean-2p0-mmps-A-ROI-only-balanced-pressure-v1',inlet_mean_mm_s=2.,
+         source_field_sha256=sha(CASE/'frozen_flow/steady_flow_mean_2p0_mmps.vtu'),
+         source_npz_sha256=sha(CASE/'frozen_flow/flow_arrays_si.npz'),
+@@ -133,7 +135,7 @@
+         no_target_outlet_steering=True,no_artificial_path_extension=True,no_spline_smoothing=True,
+         physical_role='STEADY_FLOW_POINT_STREAMLINES_NOT_FINITE_SIZE_MICROBUBBLE_TRAJECTORIES',
+         original_inputs_and_visuals_unchanged=True,unchanged_file_count=len(lock),
+-        dependency_root=str(a.particle_source),dependency_sha256=dependencies,
++        dependency_root=str(PARTICLE_SOURCE),dependency_sha256=dependencies,
+         outputs_sha256={str(p.relative_to(OUT)):sha(p) for p in (OUT/'data').iterdir() if p.is_file()},
+         hostname=socket.gethostname(),elapsed_seconds=time.time()-start,script_sha256=sha(__file__))
+     dump(OUT/'COMPUTE_VALIDATION.json',result)

@@ -1,0 +1,15 @@
+--- /home/lzy/projects/computation_examples/_shared/particle_workflow/particle_3d/src/particle_3d/particle6_validation.py
++++ mouse_vessel_flow/particles/particle6_validation.py
+@@ -140,10 +140,10 @@
+ 
+ 
+ def real_case(repo,mu):
+-    repo=Path(repo);fem=repo/'formal_3D_flow_solver/FEM_SimVascular'
++    repo=Path(repo);fem=repo/'inputs/reference/fem'
+     _,mesh,flow,boundaries=read_frozen(fem);field=FrozenFEMField.from_grids(mesh,flow)
+     wall=WallGeometry.from_frozen(fem);classifier=ValidationBoundaryClassifier(boundaries)
+-    source=repo/'particle_3d/reports/particle5/data/10_initialization.json';p5init=json.loads(source.read_text())
++    source=repo/'inputs/reference/particles/particle5/data/10_initialization.json';p5init=json.loads(source.read_text())
+     init=p5init['original_p4_initialization'];shapes={p['particle_id']:Sphere(p['center_m'],p['radius_m']) for p in init['initial_state']['particles']}
+     def provider(i,shape,time):
+         sample=field.sample(shape.center_m)

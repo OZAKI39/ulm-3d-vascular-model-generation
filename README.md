@@ -1,16 +1,18 @@
 # 小鼠脑血管流场与微泡
 
-这是独立的小鼠血管工程。当前只保留 **ROI-only 流场及其 1500 条微泡轨迹**作为正式结果。BraVa 是另一个项目。
+这是独立的小鼠血管工程。**唯一日常开发与 Git 根目录就是本目录**，长期分支为 `dev/mouse-vessel-flow`。BraVa 是另一个项目。
 
-**2026-10-22：求解和网格软件已安装到 `/home/lzy/projects/new_vessel_flow_solvers`，并实际完成小规模运行。** 你指定的五类旧资料已从本工程删除，共 17,465 个文件、约 2.11 GB。原工作区及兼容链接未删除。
+**2026-10-23：按最新清理要求，保留以下独立算例的数据，共用一套当前程序。** ROI-only 是默认开发参考。2026-10-22 曾按当时指令删除另外四个算例在新工程中的副本；本次按最新要求，从保留的原件核对 SHA 后补回必要数据与配置，没有恢复重复执行源码。旧报告记录各自当时的状态。
 
-先看[本次安装与清理报告](docs/SOLVER_INSTALL_AND_CLEANUP_ZH.md)、[当前状态](docs/CURRENT_STATUS_PLAIN_ZH.md)和[最新结果图表与动画入口](results/current_review/index.html)。之前的整理报告、delivery 验证及删除前清单是历史记录；当前数据身份以 `configs/active_data_manifest.json` 为准。
+先看[本次清理报告](docs/CLEANUP_REPORT_ZH.md)、[直接 Git 开发方式](docs/GIT_WORKFLOW_ZH.md)和[最新结果图表与动画](results/current_review/index.html)。当前身份清单为 `configs/active_data_manifest.json`。
 
-| 当前方案 | 原始轨迹 | O1 / O2 / O3 出流 | 接触支持静止 | 执行失败 |
+| 算例 | 正式轨迹 | O1 / O2 / O3 出流 | 接触支持静止 | 执行失败 |
 |---|---:|---:|---:|---:|
-| [roi_only](cases/roi_only/case.json)，dt = 0.5 ms | 1500 | 787 / 61 / 467 | 185 | 0 |
+| ROI-only（默认，0.5 ms） | 1500 | 787 / 61 / 467 | 185 | 0 |
+| Best-feasible（0.5 ms） | 1500 | 0 / 133 / 1182 | 185 | 0 |
+| Network-H0（1 ms） | 500 | 0 / 139 / 291 | 70 | 0 |
 
-静止不等于出流。上述是保存的原结果，本次没有重新计算整条血管或微泡批次。
+原始 2 mm/s 与 Stage-Q 保留各自冻结场和历史证据，不作为另一套日常源码。静止不等于出流；这次没有重新计算完整血管或正式微泡。
 
 ## 启动
 
@@ -48,7 +50,7 @@ flowchart LR
 ```
 
 - [geometry.py](mouse_vessel_flow/geometry.py)：原始 fMOST 样本、anchor 003274 与真实 ROI。当前必要几何实现位于 `geometry_tools/`；没有带入打印模具或支撑设计程序。
-- [network.py](mouse_vessel_flow/network.py)、[boundary.py](mouse_vessel_flow/boundary.py)：完整阻力网络实现位于 `network_models/`，权威版本来自 `active_network_development`。当前运行入口只提供 ROI-only；仍需的网络基线输入保留。
+- [network.py](mouse_vessel_flow/network.py)、[boundary.py](mouse_vessel_flow/boundary.py)：完整阻力网络实现位于 `network_models/`，权威版本来自 `active_network_development`。各算例使用独立配置；仍需的网络基线输入保留。
 - [meshing.py](mouse_vessel_flow/meshing.py)、[fem.py](mouse_vessel_flow/fem.py)：原生网格和 FEM 的接口；原稳态停止、checkpoint、线性与非线性验收逻辑在 `solver_support/`。
 - [flow_field.py](mouse_vessel_flow/flow_field.py)：先验证冻结 SHA、点序、单元对应和边界身份，再构造原来的 `FrozenFEMField`。
 - [particles/injection.py](mouse_vessel_flow/particles/injection.py) → [dynamics.py](mouse_vessel_flow/particles/dynamics.py) → [trajectories.py](mouse_vessel_flow/particles/trajectories.py)：固定源顺序、单次准入、有限尺寸阻力、接触与原 P9A1/P6.5 时间积分；不是点流线替代粒子。旧阶段名称仍可能是有效算法，完整对应表见报告。
@@ -74,4 +76,4 @@ SonoVue 分布、D≤4 µm 条件分布、单次入口准入、固定来源顺�
 
 原流场展示可使用 `python -m mouse_vessel_flow.presentation.render_visualization --output 新目录 --stills-only` 或 `render_surface_fields`。这些渲染入口已迁入并检查导入/参数，本轮没有重新执行完整动画渲染。`presentation.prepare_streamlines` 是显式的新点诊断计算，不属于只读查看，也不是微泡生产。
 
-本次未启动新正式 CFD、微泡批次、网格加密、细档血管或 O2 敏感性任务，没有访问服务器或推送 GitHub。旧工作区仅列入 [待清理清单](docs/CLEANUP_REVIEW_ZH.md)，未删除；本工程内批准的五组副本已删除。
+本次没有启动新正式 CFD、微泡批次、网格加密、细档血管或 O2 敏感性任务，也没有访问计算服务器。旧工程及共享资源的待确认清单、已删除同步副本和 Git 推送状态以[本次清理报告](docs/CLEANUP_REPORT_ZH.md)为准。

@@ -1,0 +1,22 @@
+--- /home/lzy/projects/computation_examples/_shared/formal_3D_flow_solver/FEM_SimVascular/solver_support/src/flow_solver_support/solver_checks.py
++++ mouse_vessel_flow/solver_support/solver_checks.py
+@@ -1,4 +1,5 @@
+ """Solver log parsing and numerical invariance checks."""
++from mouse_vessel_flow.paths import PROJECT_ROOT
+ import csv
+ import gzip
+ import json
+@@ -6,10 +7,10 @@
+ import re
+ import xml.etree.ElementTree as ET
+ from pathlib import Path
+-from vascular_validation.provenance import sha256,write_json
+-from vascular_validation.validation import require
++from mouse_vessel_flow.mesh_tools.provenance import sha256,write_json
++from mouse_vessel_flow.mesh_tools.validation import require
+ 
+-ROOT=Path(__file__).resolve().parents[3]
++ROOT=PROJECT_ROOT
+ REPORT=ROOT/'reports/solver_acceptance'
+ NUMBER=r'[-+]?(?:\d*\.?\d+(?:[eE][-+]?\d+)?|nan|inf)'
+ ROW=re.compile(r'^\s*(?P<eq>NS|SS)\s+(?P<step>\d+)-(?P<nl>\d+)(?P<saved>s?)\s+(?P<elapsed>'+NUMBER+r')\s+[\[!]\s*(?P<ndb>[-+]?\d+)\s+(?P<nr1>'+NUMBER+r')\s+(?P<nr0>'+NUMBER+r')\s+(?P<lr>'+NUMBER+r')[\]!]\s+(?P<open>[\[!])\s*(?P<iterations>\d+)\s+(?P<ldb>[-+]?\d+)\s+(?P<pct>\d+)[\]!]\s*(?P<message>.*)$',re.I)

@@ -47,7 +47,7 @@ def test_embedded_tetgen_keeps_original_body_and_legacy_syntax():
     from mouse_vessel_flow.mesh_tools.tetgen_native import validate_root
     with pytest.raises(ValueError):validate_root(project_path('results/roi_only'))
 
-@pytest.mark.parametrize('case',['roi_only'])
+@pytest.mark.parametrize('case',['roi_only','best_feasible','network_h0'])
 def test_real_source_admission_and_job_binding(case):
     from mouse_vessel_flow.flow_field import load_case
     from mouse_vessel_flow.particles.injection import saved_events

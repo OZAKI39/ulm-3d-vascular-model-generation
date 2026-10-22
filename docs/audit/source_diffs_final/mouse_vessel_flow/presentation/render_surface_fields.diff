@@ -1,0 +1,49 @@
+--- /home/lzy/projects/computation_examples/mean-2p0-mmps-A-ROI-only-balanced-pressure-v1/visualization/render_surface_fields.py
++++ mouse_vessel_flow/presentation/render_surface_fields.py
+@@ -6,15 +6,16 @@
+ import argparse
+ import os
+ from pathlib import Path
++from mouse_vessel_flow.paths import project_path, new_output
+ import time
+ 
+-import render_visualization as shared
++from . import render_visualization as shared
+ import imageio_ffmpeg
+ import numpy as np
+ import pyvista as pv
+ from PIL import Image, ImageDraw, ImageFont
+ 
+-HERE = Path(__file__).resolve().parent
++HERE = project_path('results/roi_only/visualization')
+ DEFAULT_OUTPUT = HERE/'results/surface_fields'
+ SPECS = {
+     'pressure': dict(title='Full vessel | Pressure field', scalar='Pressure_Pa',
+@@ -110,14 +111,14 @@
+         no_extra_colorbar_text_all_frames=True,footer=SPECS[kind]['footer'],all_pass=True)
+ 
+ 
+-def main():
++def main(argv=None):
+     import json
+     parser = argparse.ArgumentParser(description=__doc__)
+     parser.add_argument('--case',type=Path,default=HERE/'input_data')
+-    parser.add_argument('--output',type=Path,default=DEFAULT_OUTPUT)
++    parser.add_argument('--output',type=Path,required=True)
+     parser.add_argument('--stills-only',action='store_true')
+-    args = parser.parse_args()
+-    case,output = args.case.resolve(),args.output.resolve()
++    args = parser.parse_args(argv)
++    case,output = args.case.resolve(),new_output(args.output)
+     start = time.time()
+     for name in ['figures','animations','inspection']:
+         (output/name).mkdir(parents=True,exist_ok=True)
+@@ -212,7 +213,7 @@
+             still_policy='One dominant clear label position per text at full opacity',
+             wss_display=compute['wss_display'],wss_method=compute['wss_method'],
+             source_fields_recomputed=False,views=views,videos=videos,
+-            script_sha256=shared.sha(Path(__file__)),shared_renderer_sha256=shared.sha(HERE/'render_visualization.py'),
++            script_sha256=shared.sha(Path(__file__)),shared_renderer_sha256=shared.sha(Path(shared.__file__)),
+             elapsed_seconds=time.time()-start))
+     if not args.stills_only:
+         write_gallery(output)

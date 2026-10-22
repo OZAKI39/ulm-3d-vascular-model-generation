@@ -1,0 +1,48 @@
+--- /home/lzy/projects/computation_examples/mean-2p0-mmps-A-ROI-only-balanced-pressure-v1/visualization/render_visualization.py
++++ mouse_vessel_flow/presentation/render_visualization.py
+@@ -13,6 +13,7 @@
+ import hashlib
+ import json
+ from pathlib import Path
++from mouse_vessel_flow.paths import project_path, new_output
+ import time
+ 
+ import imageio_ffmpeg
+@@ -29,7 +30,7 @@
+ import matplotlib
+ from matplotlib.colors import ListedColormap
+ 
+-HERE = Path(__file__).resolve().parent
++HERE = project_path('results/roi_only/visualization')
+ CASE = HERE / 'input_data'
+ CMAP = ListedColormap(matplotlib.colormaps['turbo'](np.linspace(.10, .96, 256)))
+ 
+@@ -51,7 +52,7 @@
+     return np.eye(3)*np.cos(angle)+(1-np.cos(angle))*np.outer(axis, axis)+np.sin(angle)*skew
+ 
+ 
+-OUT = HERE / 'results'
++OUT = None
+ SIZE = (1920, 1080)
+ FPS, FRAMES = 24, 432
+ VIEWPORT = (0., .070, .90, .930)
+@@ -570,15 +571,15 @@
+                 footer_only_primitive_count=True, no_extra_colorbar_text=True, all_pass=True)
+ 
+ 
+-def main():
++def main(argv=None):
+     global CASE, OUT
+     parser = argparse.ArgumentParser()
+     parser.add_argument('--stills-only', action='store_true')
+     parser.add_argument('--case', type=Path, default=CASE, help='Input case directory (default: bundled input_data)')
+-    parser.add_argument('--output', type=Path, default=OUT, help='Output directory (default: results)')
+-    args = parser.parse_args()
++    parser.add_argument('--output', type=Path, required=True, help='New output directory')
++    args = parser.parse_args(argv)
+     CASE = args.case.expanduser().resolve()
+-    OUT = args.output.expanduser().resolve()
++    OUT = new_output(args.output)
+     start = time.time()
+     for folder in ['animations', 'figures', 'inspection', 'data']:
+         (OUT / folder).mkdir(parents=True, exist_ok=True)

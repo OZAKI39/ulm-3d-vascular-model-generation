@@ -1,0 +1,24 @@
+--- /home/lzy/projects/computation_examples/_shared/particle_workflow/particle_3d/src/particle_3d/particle65_cases.py
++++ mouse_vessel_flow/particles/particle65_cases.py
+@@ -17,7 +17,7 @@
+ from .field import FrozenFEMField
+ 
+ MU=.00345312
+-REPO=Path(__file__).resolve().parents[3]
++REPO=Path(__file__).resolve().parents[2]
+ 
+ 
+ def synthetic(case):
+@@ -33,10 +33,10 @@
+ 
+ @lru_cache(maxsize=1)
+ def real_fixture():
+-    fem=REPO/'formal_3D_flow_solver/FEM_SimVascular'
++    fem=REPO/'inputs/reference/fem'
+     _,mesh,flow,boundaries=read_frozen(fem);field=FrozenFEMField.from_grids(mesh,flow)
+     wall=WallGeometry.from_frozen(fem);classifier=ValidationBoundaryClassifier(boundaries)
+-    source=REPO/'particle_3d/reports/particle5/data/09_real_near_wall.json'
++    source=REPO/'inputs/reference/particles/particle5/data/09_real_near_wall.json'
+     row=json.loads(source.read_text())[1]
+     assert row['case']=='MINIMUM_ORIGINAL_APPROACHING_GAP'
+     p=row['original_particle'];shapes={p['particle_id']:Sphere(p['center_m'],p['radius_m'])}

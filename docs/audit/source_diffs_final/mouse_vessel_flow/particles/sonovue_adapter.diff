@@ -1,0 +1,66 @@
+--- /home/lzy/projects/computation_examples/_shared/particle_workflow/particle_3d/src/particle_3d/sonovue_adapter.py
++++ mouse_vessel_flow/particles/sonovue_adapter.py
+@@ -1,7 +1,6 @@
+ """Thin read-only adapter to the separately frozen SonoVue sampler; no copied sampler."""
+ from dataclasses import dataclass, asdict
+ import hashlib
+-import importlib.util
+ import json
+ from pathlib import Path
+ import platform
+@@ -35,29 +34,34 @@
+ 
+ 
+ def read_sonovue(root):
++    """Read data locally and import the single relocated sampler explicitly.
++
++    Original source hashes remain historical identities; runtime hashes are
++    independently versioned. Archive bytes are checked, never executed.
++    """
++    from . import sonovue_sampler as module
++    from mouse_vessel_flow.provenance import sha256, verify_source_integrity
++    from mouse_vessel_flow.paths import project_path
++    import zipfile
+     root = Path(root).resolve()
+     receipt = {}
+-    for line in (root / "SHA256SUMS").read_text().splitlines():
+-        digest, relative = line.split("  ", 1)
+-        path = (root / relative).resolve()
+-        if not path.is_relative_to(root):
+-            raise ValueError("SonoVue manifest path escapes root")
+-        check_hash(path, digest)
+-        receipt[relative] = digest
+-    contract = json.loads((root / "contracts/SONOVUE_SAMPLER_CONTRACT_V0.json").read_text())
+-    if contract["status"] != "FROZEN_VALIDATED_PASS":
+-        raise ValueError("SonoVue contract is not frozen/validated")
+-    source = root / contract["sampler_source_file"]
+-    check_hash(source, contract["sampler_source_sha256"])
+-    check_hash(root / contract["histogram_file"], contract["histogram_sha256"])
+-    spec = importlib.util.spec_from_file_location("particle1_external_frozen_sonovue", source)
+-    module = importlib.util.module_from_spec(spec)
+-    # Executes the original module in memory; never writes a copied module/pyc.
+-    exec(compile(source.read_bytes(), str(source), "exec"), module.__dict__)
+-    if module.SAMPLER_VERSION != contract["sampler_version"]:
+-        raise ValueError("SonoVue version differs from frozen contract")
+-    distribution = module.SonoVueDistribution(root / contract["histogram_file"])
+-    return contract, distribution, receipt
++    with zipfile.ZipFile(project_path('inputs/reference/source_identity/sonovue_original_sources.zip')) as archive:
++        for line in (root/'SHA256SUMS').read_text().splitlines():
++            expected, relative = line.split('  ', 1)
++            target = (root/relative).resolve()
++            if not target.is_relative_to(root): raise ValueError('SonoVue manifest escapes root')
++            if relative in archive.namelist():
++                actual = hashlib.sha256(archive.read(relative)).hexdigest()
++            else:
++                actual = sha256(target)
++            if actual != expected: raise ValueError('SonoVue identity changed: '+relative)
++            receipt[relative] = actual
++    verify_source_integrity()
++    contract=json.loads((root/'contracts/SONOVUE_SAMPLER_CONTRACT_V0.json').read_text())
++    if contract['status'] != 'FROZEN_VALIDATED_PASS': raise ValueError('SonoVue not frozen')
++    if module.SAMPLER_VERSION != contract['sampler_version']: raise ValueError('Sampler version changed')
++    check_hash(root/contract['histogram_file'],contract['histogram_sha256'])
++    return contract,module.SonoVueDistribution(root/contract['histogram_file']),receipt
+ 
+ 
+ def sample_single_validation_size(root, *, seed):

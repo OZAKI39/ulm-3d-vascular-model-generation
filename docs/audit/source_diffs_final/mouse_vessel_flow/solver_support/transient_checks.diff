@@ -1,0 +1,17 @@
+--- /home/lzy/projects/computation_examples/_shared/formal_3D_flow_solver/FEM_SimVascular/solver_support/src/flow_solver_support/transient_checks.py
++++ mouse_vessel_flow/solver_support/transient_checks.py
+@@ -1,10 +1,11 @@
+ """Frozen production policy, transient checks and native checkpoint audit."""
++from mouse_vessel_flow.paths import PROJECT_ROOT
+ import gzip,json,math,struct,xml.etree.ElementTree as ET
+ from pathlib import Path
+ import numpy as np
+-from vascular_validation.provenance import sha256,write_json
+-from vascular_validation.validation import require,steady_state
+-ROOT=Path(__file__).resolve().parents[3]
++from mouse_vessel_flow.mesh_tools.provenance import sha256,write_json
++from mouse_vessel_flow.mesh_tools.validation import require,steady_state
++ROOT=PROJECT_ROOT
+ REPORT=ROOT/'reports/transient_validation';OUTPUT=ROOT/'outputs/transient_validation';CONFIG=ROOT/'configs/transient_validation';LOG=ROOT/'logs/transient_validation'
+ def load(name,stage='transient_validation'):
+     return json.loads((ROOT/'reports'/stage/(name+'.json')).read_text())

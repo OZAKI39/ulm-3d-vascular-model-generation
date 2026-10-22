@@ -1,0 +1,71 @@
+--- /home/lzy/projects/computation_examples/_shared/particle_workflow/particle_3d/src/particle_3d/population_inlet_p9a4.py
++++ mouse_vessel_flow/particles/population_inlet_p9a4.py
+@@ -3,7 +3,6 @@
+ from pathlib import Path
+ from types import SimpleNamespace
+ import hashlib
+-import importlib.util
+ import json
+ import multiprocessing
+ import numpy as np
+@@ -15,38 +14,20 @@
+ from .inlet_flux import frozen_boundary_flux
+ 
+ MASTER_SEED = 2026092594
+-REPORT_RELATIVE = 'particle_3d/reports/particle9a4_population_inlet'
++REPORT_RELATIVE = 'inputs/reference/particles/particle9a4_population_inlet'
+ _WORKER_SOURCE = None
+ 
+ 
+-def load_new_environment(root):
+-    root = Path(root).resolve()
+-    reference = root/'particle_3d/reports/network_derived_flow_mb_validation_v1'
+-    authority = json.loads((reference/'data/old_new_flow_contract.json').read_text())
+-    if authority['sha256']['NEW'] != NEW_FLOW_SHA256:
+-        raise ValueError('Authoritative NEW metadata changed')
+-    bundle = reference/'server_bundle'
+-    if sha256(bundle/'inputs/NEW.vtu') != NEW_FLOW_SHA256:
+-        raise ValueError('NEW file SHA mismatch: OLD substitution prohibited')
+-    # Reuse the audited input adapter, including old/new canonical mesh checks.
+-    path = reference/'scripts/runner.py'
+-    spec = importlib.util.spec_from_file_location('p9a4_audited_network_input_adapter', path)
+-    module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+-    env = module.make_environment(bundle, 'NEW')
+-    audit, samplers = frozen_boundary_flux(env.mesh, pv.read(bundle/'inputs/NEW.vtu'), env.boundaries)
+-    env.sampler, env.flux_audit = samplers['INLET'], audit
+-    env.audit = audit
+-    env.new_flow_path, env.new_flow_sha256 = bundle/'inputs/NEW.vtu', NEW_FLOW_SHA256
+-    env.repo_root = root
+-    env.distribution = TruncatedSonoVue(root/'sonovue_size_distribution_v0')
+-    env.checker = FiniteSizeAdmission(None, None, wall=env.wall, field=env.field)
+-    return env
++def load_new_environment(root=None):
++    """Explicit local Network-H0 loader; no dynamic report-script import."""
++    from mouse_vessel_flow.flow_field import load_case
++    return load_case('network_h0')
+ 
+ 
+ def make_contract(root, env, *, lambda_enter_estimate=None):
+     """Nominal full-population anchor; continuous infusion is an assumption."""
+     root = Path(root)
+-    old_path = root/'particle_3d/contracts/PARTICLE7_INLET_POPULATION_V0.json'
++    old_path = root/'configs/particles/contracts/PARTICLE7_INLET_POPULATION_V0.json'
+     old = json.loads(old_path.read_text())
+     if old['MB_NOMINAL_CONCENTRATION_V0'] != 'NOMINAL_WELL_MIXED_POST_BOLUS_ANCHOR':
+         raise ValueError('Legacy concentration provenance changed')
+@@ -91,11 +72,11 @@
+         raise ValueError('Source CDF differs from contract')
+     if contract['C_modeled_D_le_4um_m3'] != contract['C_total_m3']*env.distribution.mass:
+         raise ValueError('Conditional concentration must include the original retained mass')
+-    snapshot_path = env.repo_root/'particle_3d/reports/network_derived_flow_mb_validation_v1/data/code_snapshot_manifest.json'
++    snapshot_path = env.repo_root/'inputs/reference/particles/network_derived_flow_mb_validation_v1/data/code_snapshot_manifest.json'
+     original = json.loads(snapshot_path.read_text())
+-    for relative, expected in original.items():
+-        if sha256(env.repo_root/relative) != expected:
+-            raise ValueError('Original protected science changed: '+relative)
++    from mouse_vessel_flow.provenance import protected_originals, verify_source_integrity
++    if protected_originals() != original: raise ValueError('Original protected identity changed')
++    verify_source_integrity()
+     scientific_identity = dict(original_snapshot_sha256=sha256(snapshot_path),
+         continuous_infusion_sha256=sha256(Path(__file__).with_name('continuous_infusion.py')),
+         population_adapter_sha256=sha256(__file__))

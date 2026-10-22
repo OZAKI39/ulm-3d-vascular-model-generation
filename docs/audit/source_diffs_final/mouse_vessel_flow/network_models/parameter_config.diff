@@ -1,0 +1,21 @@
+--- /home/lzy/projects/computation_examples/_shared/active_network_development/ulm_3D_vascular/network_1d0d/parameter_config.py
++++ mouse_vessel_flow/network_models/parameter_config.py
+@@ -28,9 +28,6 @@
+     names=('parameterized_hydraulics.py','parameter_fit.py','parameter_config.py','parameter_freeze.py',
+            'hydraulic_resistance.py','network_solver.py','idealized_h0.py','boundary_conditions.py','audit.py')
+     hashes={name:sha256(Path(__file__).parent/name) for name in names if (Path(__file__).parent/name).exists()}
+-    for name in ('fit_a_parameterized_0d.py','freeze_a_parameterized_0d.py'):
+-        path=Path(__file__).resolve().parents[1]/'scripts'/name
+-        hashes['scripts/'+name]=sha256(path)
+     return hashes
+ 
+ 
+@@ -158,7 +155,7 @@
+         reference=(loaded['path'].parent/loaded['config']['regression_reference_json']).resolve()
+         reference_source='CURRENT_SAVED_H0_0D_REPORT'
+         if not reference.exists():
+-            reference=Path(__file__).resolve().parents[1]/'configs/parameterized_hydraulics/legacy_h0_snapshot.json'
++            reference=Path(__file__).resolve().parents[2]/'configs/geometry/original/parameterized_hydraulics/legacy_h0_snapshot.json'
+             reference_source='RECORDED_CURRENT_SNAPSHOT_FALLBACK_NOT_EXPERIMENTAL_TRUTH'
+         gold=json.loads(reference.read_text()) # 0D-only H0 regression oracle; never a fit target
+         pressures=np.array([r['pressure_realcut_Pa'] for r in gold['ports']])

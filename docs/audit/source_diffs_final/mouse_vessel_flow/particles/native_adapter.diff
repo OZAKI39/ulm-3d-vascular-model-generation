@@ -1,0 +1,33 @@
+--- /home/lzy/projects/computation_examples/mean-2p0-mmps-A-ROI-only-balanced-pressure-v1/particle_3d/reports/microbubble_roi_only_dt0p5ms_n1500/scripts/native_adapter.py
++++ mouse_vessel_flow/particles/native_adapter.py
+@@ -17,7 +17,9 @@
+     if _LIB is None:
+         source=HERE/'closest_native.cpp'
+         digest=hashlib.sha256(source.read_bytes()).hexdigest()[:16]
+-        path=HERE/f'closest_native_{digest}.so'
++        from mouse_vessel_flow.paths import project_path
++        cache=project_path('.cache/native');cache.mkdir(parents=True,exist_ok=True)
++        path=cache/f'closest_native_{digest}.so'
+         if not path.exists():
+             subprocess.run(['g++','-O2','-ffp-contract=off','-fno-fast-math','-shared','-fPIC',
+                             str(source),'-o',str(path)],check=True)
+@@ -35,7 +37,7 @@
+ 
+ 
+ def import_binding(function,module_name,attributes):
+-    from particle_3d.particle6_stepper import bind_query_dependency
++    from mouse_vessel_flow.particles.particle6_stepper import bind_query_dependency
+     def imports(name,globals=None,locals=None,fromlist=(),level=0):
+         if name==module_name and level==1:
+             actual=builtins.__import__(name,globals,locals,fromlist,level)
+@@ -45,8 +47,8 @@
+ 
+ 
+ def accelerated_job(job):
+-    from particle_3d.particle9a_motion import Particle9AStepper
+-    from particle_3d.particle6_stepper import bind_query_dependency
++    from mouse_vessel_flow.particles.particle9a_motion import Particle9AStepper
++    from mouse_vessel_flow.particles.particle6_stepper import bind_query_dependency
+     class CompiledGeometryStepper(Particle9AStepper):
+         def __init__(self,*args,**kwargs):
+             super().__init__(*args,**kwargs)
