@@ -1,0 +1,277 @@
+--- /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/evidence/pzt_monitor_20261019/before/0/ui.py
++++ /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/src/ui.py
+@@ -8,6 +8,7 @@
+ from pipeline import Pipeline
+ from live_geometry import new_geometry,validate_geometry
+ from desktop import open_directory
++from pzt_panel import PZTPanel
+ from piv_display import piv_arrows,arrow_shape,ARROW_RGB,OUTLINE_RGB,REFERENCE_SPEED,GAIN_SECONDS,MAX_LENGTH_PX,STROKE_PX,HALO_PX,display_vectors,display_is_smoothed
+ from overlay_style import DEFAULT_LAYERS,overlay_opacity,overlay_caption
+ 
+@@ -198,7 +199,7 @@
+   super().__init__();self.cfg=cfg;self.output=Path(output);self.pipe=None;self.record=None;self.started=time.monotonic();self.elapsed_limit=seconds;self.capture=capture;self.metrics_last=None;self.saved_preview=False
+   self.setWindowTitle('F10Y · Chronos collective observation');self.resize(1480,1000)
+   self.setStyleSheet('QWidget{background:#15212d;color:#e9eff4;font-size:13px;} QPushButton,QComboBox,QLineEdit{background:#263a4b;border:1px solid #4c657b;border-radius:4px;padding:7px;} QPushButton:hover{background:#36556b;} QGroupBox{border:1px solid #3d5366;margin-top:12px;padding-top:12px;} QGroupBox::title{subcontrol-origin:margin;left:10px;}')
+-  central=W.QWidget();self.setCentralWidget(central);grid=W.QGridLayout(central);self.canvas=Canvas();self.canvas.diagnostics=bool(cfg.get('diagnostics',False));grid.addWidget(self.canvas,0,0);side=W.QWidget();side.setFixedWidth(380);form=W.QVBoxLayout(side);grid.addWidget(side,0,1);self.curves=Curves();grid.addWidget(self.curves,1,0,1,2);grid.setRowStretch(0,1)
++  central=W.QWidget();self.setCentralWidget(central);grid=W.QGridLayout(central);self.canvas=Canvas();self.canvas.diagnostics=bool(cfg.get('diagnostics',False));grid.addWidget(self.canvas,0,0);side=W.QWidget();side.setFixedWidth(450);form=W.QVBoxLayout(side);grid.addWidget(side,0,1);self.curves=Curves();grid.addWidget(self.curves,1,0,1,2);grid.setRowStretch(0,1)
+   title=W.QLabel('CHRONOS | OBSERVATION\n2D visible trends · no hardware control');title.setWordWrap(True);title.setStyleSheet('font-size:15px;font-weight:600');form.addWidget(title)
+   group=W.QGroupBox('1  Source and session');g=W.QGridLayout(group);g.setColumnStretch(0,1);g.setColumnStretch(1,1);self.mode=W.QComboBox();self.mode.addItems(['REALTIME_REPLAY','LIVE_CAMERA']);self.mode.setCurrentText(cfg['source_mode']);g.addWidget(self.mode,0,0,1,2)
+   self.speed=W.QComboBox();self.speed.addItems(['0.5','1.0','2.0']);self.speed.setCurrentText(str(cfg['speed']));self.loop=W.QCheckBox('Loop (reset session)');self.loop.setChecked(cfg['loop']);g.addWidget(self.speed,1,0);g.addWidget(self.loop,1,1)
+@@ -206,6 +207,10 @@
+   for i,(name,fn) in enumerate([('Start',self.start),('Stop',self.stop),('Pause',self.pause),('Resume',self.resume),('Reconnect',self.reconnect),('Open records',self.open_records)]):
+    b=W.QPushButton(name);b.clicked.connect(fn);g.addWidget(b,2+i//2,i%2);self.buttons[name]=b
+   form.addWidget(group)
++  tabs=W.QTabWidget();form.addWidget(tabs,1);observation=W.QWidget();observation_form=W.QVBoxLayout(observation);observation_form.setContentsMargins(4,4,4,4)
++  observation_scroll=W.QScrollArea();observation_scroll.setWidgetResizable(True);observation_scroll.setWidget(observation);tabs.addTab(observation_scroll,'Observation')
++  self.pzt_panel=PZTPanel(cfg);pzt_scroll=W.QScrollArea();pzt_scroll.setWidgetResizable(True);pzt_scroll.setWidget(self.pzt_panel);tabs.addTab(pzt_scroll,'PZT status / layout');tabs.setCurrentIndex(1);self.side_tabs=tabs
++  form=observation_form
+   group=W.QGroupBox('2  Image layers and channel mask');g=W.QGridLayout(group);g.setColumnStretch(0,1);g.setColumnStretch(1,1);self.checks={}
+   for i,name in enumerate(['Candidates','PIV','Mask','Regions','Shape','Curves','Measured frame','Smooth PIV']):
+    b=W.QCheckBox(name);b.setChecked(DEFAULT_LAYERS.get(name,name=='Curves'));self.checks[name]=b;g.addWidget(b,i//2,i%2)
+@@ -220,7 +225,7 @@
+    try:self.canvas.active_geometry=json.loads(Path(cfg['live_geometry']).read_text())
+    except (OSError,ValueError):self.mask_help.setText('Saved mask unavailable. Draw a new mask on the live image.')
+   form.addWidget(group)
+-  group=W.QGroupBox('3  PZT event log (record only)');g=W.QGridLayout(group);g.setColumnStretch(0,1);g.setColumnStretch(1,1);self.event_source=W.QComboBox();self.event_source.addItems(['SIMULATED_EVENT','MANUAL_ANNOTATION']);g.addWidget(self.event_source,0,0,1,2);self.channel=W.QComboBox();self.channel.addItems(['ALL','X+','X-','Y+','Y-']);g.addWidget(self.channel,1,0,1,2);self.note=W.QLineEdit();self.note.setPlaceholderText('Conditions / event note');g.addWidget(self.note,2,0,1,2)
++  group=W.QGroupBox('3  PZT event log (record only)');g=W.QGridLayout(group);g.setColumnStretch(0,1);g.setColumnStretch(1,1);self.event_source=W.QComboBox();self.event_source.addItems(['SIMULATED_EVENT','MANUAL_ANNOTATION']);g.addWidget(self.event_source,0,0,1,2);self.channel=W.QComboBox();self.channel.addItems(['ALL','PZT1','PZT2','PZT3','PZT4']);g.addWidget(self.channel,1,0,1,2);self.note=W.QLineEdit();self.note.setPlaceholderText('Conditions / event note');g.addWidget(self.note,2,0,1,2)
+   for i,state in enumerate(['ON','OFF']):
+    b=W.QPushButton('Mark '+state);b.clicked.connect(lambda _,s=state:self.mark_event(s));g.addWidget(b,3,i)
+   form.addWidget(group);self.info=W.QLabel('Stopped');self.info.setWordWrap(True);self.info.setMinimumHeight(110);form.addWidget(self.info);form.addStretch()
+@@ -323,7 +328,7 @@
+     self.grab().save(str(self.output/'ui_actual.png'));self.saved_preview=True
+    if self.elapsed_limit and time.monotonic()-self.started>=self.elapsed_limit:self.close()
+  def closeEvent(self,e):
+-  self.timer.stop();self.stop()
++  self.timer.stop();self.pzt_panel.shutdown();self.stop()
+   if self.record:self.record.close()
+   summary=dict(closed=True,source_mode=self.cfg['source_mode'],last_session=str(self.pipe.output) if self.pipe else None)
+   if self.cfg.get('diagnostics',False):summary.update(canvas_paint_ms=stats(self.canvas.paint_times),ui_state_update_ms=stats(self.pipe.ui_times if self.pipe else []))
+--- /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/evidence/pzt_monitor_20261019/before/1/README.md
++++ /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/README.md
+@@ -59,3 +59,7 @@
+ - [F10Y_DEVELOPMENT_REPORT.md](F10Y_DEVELOPMENT_REPORT.md)：最终结果、全部 35 项问题。
+ 
+ 所有速度均为图像像素单位。二维候选靠近、密度增长、区域连通都不是物理融合或三维聚集证据。`TRAINING_READY=false`，`SCIENTIFIC_CONTROL_ADMITTED=false`。
++
++## PZT 状态与用户俯视布局（2026-10-19）
++
++右侧新增 **PZT status / layout** 页签，自动读取 Windows AFG 控制器发布的四路连接、ON/OFF、频率、Vpp、相位和波形。**Edit layout** 手动登记各 PZT 中心、朝向、直径及接线确认，保存后立即生效。实际接线未知时保持未登记；详细步骤见 [PZT_MONITOR_GUIDE.md](PZT_MONITOR_GUIDE.md)。
+--- /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/evidence/pzt_monitor_20261019/before/2/default.json
++++ /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/configs/default.json
+@@ -17,5 +17,7 @@
+   "record_experiment_video": true,
+   "video_queue": 48,
+   "video_annotation_wait_ms": 250,
+-  "diagnostics": false
++  "diagnostics": false,
++  "pzt_status_path": "/mnt/f/Tektronix_control/observation_status.json",
++  "pzt_layout_path": "/home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/configs/pzt_layout.json"
+ }
+--- /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/evidence/pzt_monitor_20261019/before/3/afg_gui.py
++++ /home/lzy/projects/external_connect/Tektronix_control/afg_gui.py
+@@ -10,6 +10,7 @@
+ from dataclasses import asdict
+ 
+ from afg_control import BASE, ChannelSettings, Rig, load_config
++from afg_telemetry import TelemetryPublisher
+ 
+ MODES = {"Continuous Sine": "continuous", "Sweep": "sweep", "N-Cycle Burst": "burst", "External Gate": "gated"}
+ SOURCES = {"Manual / SW (MAN)": "MAN", "Internal (TIM)": "TIM", "External (EXT)": "EXT"}
+@@ -37,6 +38,10 @@
+         self.fields = {}
+         self.states = {}
+         self.last_readback = {}
++        self.telemetry = TelemetryPublisher(BASE / "observation_status.json", self.config)
++        self.telemetry.publish()
++        self.telemetry_future = None
++        self.telemetry_index = 0
+         root.title("AFG1062 - Four-Channel PZT Control")
+         root.geometry("1240x850")
+         root.minsize(1000, 740)
+@@ -144,6 +149,7 @@
+                       f"{min(outer.winfo_reqheight()+32, root.winfo_screenheight()-100)}+20+20")
+         root.protocol("WM_DELETE_WINDOW", self.close)
+         root.after(20, self.poll)
++        root.after(1000, self.poll_telemetry)
+ 
+     def button(self, parent, label, action):
+         button = ttk.Button(parent, text=label, command=action)
+@@ -189,6 +195,8 @@
+                     for state in self.states.values():
+                         state.set("Output: read status again")
+                     self.last_readback.clear()
++                    self.telemetry.invalidate(message=str(e))
++                    self.telemetry.publish()
+                     if not self.closing:
+                         messagebox.showerror(title, str(e))
+                 if self.closing:
+@@ -198,6 +206,21 @@
+             pass
+         self.root.after(20, self.poll)
+ 
++    def poll_telemetry(self):
++        # Share the existing single-worker executor. Never open a second VISA
++        # session, and never disable GUI controls for a background query.
++        if self.closing:
++            return
++        if not self.busy and (self.telemetry_future is None or self.telemetry_future.done()):
++            if self.rig is not None:
++                names = list(self.config["channels"])
++                name = names[self.telemetry_index % len(names)]
++                self.telemetry_index += 1
++                self.telemetry_future = self.executor.submit(self.telemetry.sample, self.rig, name)
++            else:
++                self.telemetry.publish("DISCONNECTED")
++        self.root.after(1000, self.poll_telemetry)
++
+     def connect(self):
+         if self.rig is not None:
+             self.refresh()
+@@ -208,6 +231,8 @@
+             return rig
+         def done(rig):
+             self.rig = rig
++            self.telemetry.data["devices"] = dict(rig.identities)
++            self.telemetry.publish("CONNECTED")
+             self.connection.set("Connected: " + "    |    ".join(f"{a} = {d['serial']}  Firmware {d['firmware']}" for a, d in rig.identities.items()))
+             self.note("Connection read instrument identities only. No channel settings or outputs were changed.")
+         self.submit("Connect Devices", action, done)
+@@ -227,6 +252,8 @@
+ 
+     def show_states(self, result):
+         for name, value in result.items():
++            if hasattr(self, "telemetry"):
++                self.telemetry.record(name, value)
+             if name in self.states:
+                 previous = self.last_readback.setdefault(name, {})
+                 previous.update(value)
+@@ -235,6 +262,8 @@
+                     text += (f"\nLast read: {previous['frequency_hz']/1e6:g} MHz / {previous['amplitude_vpp']:g} Vpp"
+                              f"\nPhase {previous['phase_deg']:.2f}°")
+                 self.states[name].set(text)
++        if hasattr(self, "telemetry"):
++            self.telemetry.publish()
+ 
+     def refresh(self):
+         self.submit("Read Instrument Status", lambda: self.require_rig().status(), self.show_states)
+@@ -288,7 +317,7 @@
+             if failures:
+                 raise RuntimeError("Could not verify these outputs are OFF. Check the instruments:\n" + "\n".join(failures))
+         future = self.executor.submit(action)
+-        future.add_done_callback(lambda f: self.events.put(("All Outputs OFF", f, lambda _: [s.set("Output: OFF; apply settings before enabling") for s in self.states.values()])))
++        future.add_done_callback(lambda f: self.events.put(("All Outputs OFF", f, lambda _: self.show_states({n: {"output": False} for n in self.states}))))
+         self.note("Stop requested; waiting for USB confirmation.")
+ 
+     def align(self, alias):
+@@ -356,6 +385,7 @@
+                 future.result()
+             except Exception as e:
+                 messagebox.showerror("Output Shutdown Not Verified", str(e) + "\nCheck the generators or switch off the amplifiers.")
++            self.telemetry.publish("CLOSED")
+             self.executor.shutdown(wait=False)
+             self.root.destroy()
+         wait()
+--- /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/evidence/pzt_monitor_20261019/before/4/afg_gui.py
++++ /mnt/f/Tektronix_control/afg_gui.py
+@@ -10,6 +10,7 @@
+ from dataclasses import asdict
+ 
+ from afg_control import BASE, ChannelSettings, Rig, load_config
++from afg_telemetry import TelemetryPublisher
+ 
+ MODES = {"Continuous Sine": "continuous", "Sweep": "sweep", "N-Cycle Burst": "burst", "External Gate": "gated"}
+ SOURCES = {"Manual / SW (MAN)": "MAN", "Internal (TIM)": "TIM", "External (EXT)": "EXT"}
+@@ -37,6 +38,10 @@
+         self.fields = {}
+         self.states = {}
+         self.last_readback = {}
++        self.telemetry = TelemetryPublisher(BASE / "observation_status.json", self.config)
++        self.telemetry.publish()
++        self.telemetry_future = None
++        self.telemetry_index = 0
+         root.title("AFG1062 - Four-Channel PZT Control")
+         root.geometry("1240x850")
+         root.minsize(1000, 740)
+@@ -144,6 +149,7 @@
+                       f"{min(outer.winfo_reqheight()+32, root.winfo_screenheight()-100)}+20+20")
+         root.protocol("WM_DELETE_WINDOW", self.close)
+         root.after(20, self.poll)
++        root.after(1000, self.poll_telemetry)
+ 
+     def button(self, parent, label, action):
+         button = ttk.Button(parent, text=label, command=action)
+@@ -189,6 +195,8 @@
+                     for state in self.states.values():
+                         state.set("Output: read status again")
+                     self.last_readback.clear()
++                    self.telemetry.invalidate(message=str(e))
++                    self.telemetry.publish()
+                     if not self.closing:
+                         messagebox.showerror(title, str(e))
+                 if self.closing:
+@@ -198,6 +206,21 @@
+             pass
+         self.root.after(20, self.poll)
+ 
++    def poll_telemetry(self):
++        # Share the existing single-worker executor. Never open a second VISA
++        # session, and never disable GUI controls for a background query.
++        if self.closing:
++            return
++        if not self.busy and (self.telemetry_future is None or self.telemetry_future.done()):
++            if self.rig is not None:
++                names = list(self.config["channels"])
++                name = names[self.telemetry_index % len(names)]
++                self.telemetry_index += 1
++                self.telemetry_future = self.executor.submit(self.telemetry.sample, self.rig, name)
++            else:
++                self.telemetry.publish("DISCONNECTED")
++        self.root.after(1000, self.poll_telemetry)
++
+     def connect(self):
+         if self.rig is not None:
+             self.refresh()
+@@ -208,6 +231,8 @@
+             return rig
+         def done(rig):
+             self.rig = rig
++            self.telemetry.data["devices"] = dict(rig.identities)
++            self.telemetry.publish("CONNECTED")
+             self.connection.set("Connected: " + "    |    ".join(f"{a} = {d['serial']}  Firmware {d['firmware']}" for a, d in rig.identities.items()))
+             self.note("Connection read instrument identities only. No channel settings or outputs were changed.")
+         self.submit("Connect Devices", action, done)
+@@ -227,6 +252,8 @@
+ 
+     def show_states(self, result):
+         for name, value in result.items():
++            if hasattr(self, "telemetry"):
++                self.telemetry.record(name, value)
+             if name in self.states:
+                 previous = self.last_readback.setdefault(name, {})
+                 previous.update(value)
+@@ -235,6 +262,8 @@
+                     text += (f"\nLast read: {previous['frequency_hz']/1e6:g} MHz / {previous['amplitude_vpp']:g} Vpp"
+                              f"\nPhase {previous['phase_deg']:.2f}°")
+                 self.states[name].set(text)
++        if hasattr(self, "telemetry"):
++            self.telemetry.publish()
+ 
+     def refresh(self):
+         self.submit("Read Instrument Status", lambda: self.require_rig().status(), self.show_states)
+@@ -288,7 +317,7 @@
+             if failures:
+                 raise RuntimeError("Could not verify these outputs are OFF. Check the instruments:\n" + "\n".join(failures))
+         future = self.executor.submit(action)
+-        future.add_done_callback(lambda f: self.events.put(("All Outputs OFF", f, lambda _: [s.set("Output: OFF; apply settings before enabling") for s in self.states.values()])))
++        future.add_done_callback(lambda f: self.events.put(("All Outputs OFF", f, lambda _: self.show_states({n: {"output": False} for n in self.states}))))
+         self.note("Stop requested; waiting for USB confirmation.")
+ 
+     def align(self, alias):
+@@ -356,6 +385,7 @@
+                 future.result()
+             except Exception as e:
+                 messagebox.showerror("Output Shutdown Not Verified", str(e) + "\nCheck the generators or switch off the amplifiers.")
++            self.telemetry.publish("CLOSED")
+             self.executor.shutdown(wait=False)
+             self.root.destroy()
+         wait()

@@ -1,0 +1,137 @@
+Chronos 1.4 本地采集工具
+=======================
+
+启动
+双击 start_chronos.cmd，然后点击“打开实时画面”。
+预览窗口内按 S 后台保存无文字覆盖的原始 PNG，按 R 重新连接刷新，按 Q 或 Esc 退出。
+图片、每张图片的接收时间、接收帧率日志、会话汇总均保存在 data 下独立文件夹。
+当前已配置的相机 IP：192.168.0.10；电脑有线网口：192.168.0.101；掩码均为 255.255.255.0。
+当前相机实测使用 UDP，端口 5000–5001。每次只运行一个视频接收程序，关闭 VLC 后再运行 Python。
+首次搭建的 Python 5 分钟测试平均约 59.6 fps，发生 1 次中断后自动恢复；VLC 长时验证约一分钟后停止更新。
+建议先用“打开实时画面”（Python），无中断稳定性仍需继续观察。详见“验收记录.txt”。
+程序只接收视频、查询状态和在电脑保存数据，不控制 AFG1062、功放或 PZT。
+
+低延迟更新（2026-10-15）
+请关闭旧预览和旧面板，重新双击 start_chronos.cmd，在“预览模式”选择“低延迟（推荐）”。
+低延迟模式将 FFmpeg 解码线程从本机原来的 16 改为 1，避免跨帧多线程带来的解码排队。
+UDP 重排序队列设为 32 包，最大重排序等待设为 20 ms，接收缓冲区为 256 KiB。
+20 ms 是网络重排序等待配置，不是实测场景到屏幕延迟。
+保留必要的 H.264 探测/编码头缓存；本相机实测不能直接使用 nobuffer 加极小探测缓存。
+预览只绘制新帧，缩放仅用于显示；保存的 PNG 仍是 1280×1024 原图（以相机实际输出为准）。
+截图由后台线程处理，最多排队 4 张，队列满时会提示跳过，避免保存阻塞实时预览。
+按 R 可主动断开当前 RTSP 接收并重新连接，通常需要重新等待关键帧；不是无间断操作。
+无新解码帧超过 250 ms 时显示等待状态，避免长时间保留旧画面。
+“兼容模式（原缓存）”保留原解码线程和传输缓冲策略，供遇到低延迟画面异常时切换。
+切换模式需要退出并重新打开预览；只改下拉框不会影响已经运行的窗口。
+也可运行：.\.venv\Scripts\python.exe test_chronos.py --latency-mode low
+对照运行：.\.venv\Scripts\python.exe test_chronos.py --latency-mode compatibility
+重连等待已改为 0.5 秒、读超时为 1.5 秒；这些只影响断线恢复速度，不能直接降低正常流的延迟。
+summary.json 的 decode_to_display_ms 是本机解码完成到提交显示的时间，排除相机编码、网络/解码器缓存和屏幕刷新。
+因此该指标、接收帧率、首次出图时间都不能替代与 HDMI 对照的光学延迟测量。
+未修改相机固件、曝光、分辨率或高速录制参数。
+
+文件
+chronos_launcher.py：中文操作面板。
+check_connection.py：网页、API、视频端口与 OpenCV 解码支持检查；不会修改相机。
+test_chronos.py：实时预览、截图、接收速率日志、断线后重连。
+chronos_common.py：公共配置和最新帧接收器。
+calibrate_scale.py：对测微尺原图点击两点，按已知长度计算 µm/pixel。
+analyze_stability.py：对连续截图测量质心、外轮廓面积、最小外接矩形长宽比、圆度和波动。
+measure_latency.py：显示计时时钟，并汇总人工读取的成对时间差。
+open_vlc.py：启动 tools 中已下载并核对官方 SHA256 的 VLC 3.0.24 便携版。
+chronos_config.json：相机地址、传输方式、超时、数据目录配置。
+
+日常操作
+1. 先开启相机并连接网线。相机保持 Main 页面实时模式。
+2. 点击“连接诊断”。诊断文件里 videoState 应为 live。
+   回放模式的 RTSP 会显示回放画面，因此不能仅凭有图像就认定是实时场景。
+3. 打开实时画面，用手动改变照明或移动视野中的物体确认图像随场景变化。
+4. 点击“5 分钟稳定性测试”可在后台接收 300 秒并自动保存最多 5 张图片。
+5. 对同一静止目标测量波动时，先固定相机、光照、焦点和样品，再“采样 60 秒”。
+
+可直接运行的 PowerShell 命令
+Set-Location F:\CHRONOS_control
+.\.venv\Scripts\python.exe check_connection.py
+.\.venv\Scripts\python.exe test_chronos.py
+.\.venv\Scripts\python.exe test_chronos.py --headless --seconds 300 --save-every 60 --max-images 5
+.\.venv\Scripts\python.exe test_chronos.py --seconds 60 --save-every 1 --max-images 60
+
+测微尺标定（需要实际测微尺）
+将测微尺放入与实验相同的光路、物镜和焦平面，先保存一张 PNG。
+从操作面板选择“测微尺标定”，选择该图，填写两个刻度间的实际长度（单位微米）。
+点击两个刻度后按 Enter；R 重选，Esc 取消。
+结果写入 calibration.json，带标定线的核查图写入 calibration.png。
+标定使用原始图像坐标，预览缩放不会改变计算比例。
+一次标定假设横纵方向比例一致；如光学系统存在非等比缩放，需要分别验证。
+更换物镜、变焦、中继镜、ROI、分辨率或视频缩放后必须重新标定。
+标定文件不会自动判断这些光学变化；同尺寸图像也不代表同一比例。
+不要用通道“看起来的宽度”或未知物体尺寸代替测微尺。
+
+轮廓与静止目标波动
+在“分析截图中的轮廓”选择某次采样的 images 文件夹，填写只包含目标的区域 x y 宽 高。
+默认检测深色目标，并逐帧自动阈值分割；结果必须人工核对 overlays 图中的绿色轮廓。
+默认选取区域内最大的完整外轮廓，排除碰到区域边缘的对象；它不能跟踪多个对象的身份。
+外轮廓面积包含内部孔洞，长宽比来自最小外接矩形。它是基线方法，不保证等同真实微泡团边界。
+若光照变化导致结果不稳定，可通过 --threshold 固定阈值，或调整 --polarity bright。
+例（请替换图片文件夹路径和区域）：
+.\.venv\Scripts\python.exe analyze_stability.py --images "data\capture_实际时间\images" --roi 500 300 200 200 --threshold 100 --calibration calibration.json
+不提供 --calibration 时只输出像素单位，不会编造物理尺度。
+summary.json 的 sample_std 为样本标准差；检测失败的帧保留在 CSV 中。
+只统计已检测的帧会产生选择偏差，使用前查看检测成功率和叠加图。
+请由实验人员确认样品确实静止；程序不能把真实运动与测量噪声区分开。
+
+近似画面延迟（需要可见的光学参考）
+在可安全调整光路的条件下，让相机拍到“延迟测量时钟”。不要为了软件测试强行改动显微镜安装。
+让参考时钟和实时预览同时出现在电脑屏幕上，对两者同时截图或用另一台相机同时拍照。
+从同一张图读出直接时钟值 reference_ms 和视频里的旧时钟值 stream_ms。
+时间差 reference_ms - stream_ms 为近似场景到显示延迟；重复读取 10 次以上。
+必须取同一时刻、同一次时钟运行的两个读数，不能凭按键或人工反应时间估计。
+.\.venv\Scripts\python.exe measure_latency.py --clock
+.\.venv\Scripts\python.exe measure_latency.py --pair 15324 15010 --pair 20211 19890
+上面两个时间对仅是命令格式示例，不是本相机的实测数据。
+该方法受显示刷新、相机曝光、截图时序影响，不能当作硬件同步的精密延迟测量。
+如果显微镜光路无法拍屏，可用同时可见的闪光事件配合外部拍摄；不能直接沿用本时钟读数工具。
+
+速率与数据的含义
+RTSP 是监看视频，接收约 60 fps 不代表相机的千帧/秒高速图像全部传给了电脑。
+receive_fps_last_5s 是最近 5 秒内成功解码帧的实际到达速率，reported_stream_fps 只是视频元数据。
+启动时积累的缓冲帧可能使短时间速率偏高，应看稳定阶段。
+接收线程持续读取，只保留最新一帧供显示；慢显示或截图会跳过旧帧，skipped_by_consumer 不是网络丢包数。
+seconds_since_last_frame 仅指电脑解码后多久没新帧，不能代表场景到屏幕的端到端延迟。
+截图按给定时间间隔保存，不是逐帧无损录像。高速短片仍在相机网页/触屏中录制和导出。
+断流时预览显示等待信息，不把旧图冒充最新画面。
+
+排错
+浏览器地址：http://192.168.0.10
+相机自带 API 文档：http://192.168.0.10/apidoc/
+使用 VLC：先退出 Python 预览，再点操作面板的“使用 VLC 预览”。已设置 UDP 5000 和 500 ms 网络缓存。
+如果手动打开 VLC：“打开网络串流”输入 rtsp://192.168.0.10，先使用 500 ms 网络缓存。
+本相机应将 VLC 的 RTP/RTSP 客户端端口设为 5000；内附启动程序已经处理。
+VLC 官方下载：https://www.videolan.org/vlc/
+Python 采集工具不依赖 VLC。不要同时开启 VLC 与 Python 占用视频端口。
+相机重启后检查静态 IP 是否保持；Network Status 的 inet addr 才是相机 IPv4，SMB 地址是文件服务器地址。
+若网页可达但没有视频，检查 UDP 5000–5001 入站规则、是否有其他播放器以及相机是否正在实时显示。
+当前 Windows/OpenCV 需要在进程启动前传入 FFmpeg 参数；test_chronos.py 已自动处理。
+连接最初可能出现 H.264 PPS/关键帧警告；若随后显示图像且连续接收正常，记录此现象即可。
+连续出现花屏或断流时保存日志，核对相机软件版本与官方发行说明，不自动升级固件。
+厂商 v0.7.2 发行说明提到修复 VLC RTSP 超时；当前实测现象相似，但尚不能据此确定根因。
+完整软件版本需从相机 About 页面核对，不能仅把 cameraApiVersion 当作固件版本。
+
+防火墙规则
+在你明确授权后添加的规则名称：Chronos14-192.168.0.10-UDP5000。
+仅允许 Public 网络配置、当前相机以太网口、本机 192.168.0.101、来源 192.168.0.10、UDP 5000–5001。
+不关闭防火墙，也不允许任意来源访问。更换相机 IP 或网络类别后需要核对规则。
+如不再需要，以管理员身份在 PowerShell 运行：
+Remove-NetFirewallRule -Name 'Chronos14-192.168.0.10-UDP5000'
+allow_chronos_udp.ps1 是此规则的可复查脚本，不会在普通启动时自动修改防火墙。
+
+参考资料
+Krontech 官方网络控制教程：https://assets.krontech.ca/2024/04/Network-Control-Tutorial.pdf
+Krontech API 文档：https://support.krontech.ca/en/articles/9903772-chronos-0-7-0-api-documentation
+OpenCV 视频超时参数：https://docs.opencv.org/4.13.0/d4/d15/group__videoio__flags__base.html
+Krontech 软件发行说明：https://www.krontech.ca/software-resources/
+
+完成边界
+相机网络、真实图像采集、显示、截图与接收帧率可由软件验证。
+µm/pixel、真实延迟、静止微泡团的测量波动还需要你提供真实标定物与实验条件，不能由软件凭空完成。
+本目录未加入 AI 训练、AFG1062、功放或 PZT 控制。

@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mevo:m4-channel:3.0",
+  "title": "F10X full-channel apparent-motion state",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "frame_id",
+    "source_PTS",
+    "ROI",
+    "channel_mask_sha256",
+    "windows",
+    "groups",
+    "training_ready",
+    "hardware_control_executed"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "M4-channel-3.0"
+    },
+    "frame_id": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "source_PTS": {
+      "type": "number"
+    },
+    "ROI": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "type": "number"
+      }
+    },
+    "channel_mask_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "windows": {
+      "type": "object",
+      "required": [
+        "x",
+        "y",
+        "candidate_count",
+        "vx",
+        "vy",
+        "snr",
+        "last_update_pts",
+        "age_ms",
+        "valid",
+        "fresh",
+        "stale",
+        "safe",
+        "active",
+        "reason_code"
+      ],
+      "properties": {
+        "x": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "y": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "candidate_count": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "vx": {
+          "type": "array",
+          "items": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "vy": {
+          "type": "array",
+          "items": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "snr": {
+          "type": "array",
+          "items": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "last_update_pts": {
+          "type": "array",
+          "items": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "age_ms": {
+          "type": "array",
+          "items": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "valid": {
+          "type": "array",
+          "items": {
+            "type": "boolean"
+          }
+        },
+        "fresh": {
+          "type": "array",
+          "items": {
+            "type": "boolean"
+          }
+        },
+        "stale": {
+          "type": "array",
+          "items": {
+            "type": "boolean"
+          }
+        },
+        "safe": {
+          "type": "array",
+          "items": {
+            "type": "boolean"
+          }
+        },
+        "active": {
+          "type": "array",
+          "items": {
+            "type": "boolean"
+          }
+        },
+        "reason_code": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 8
+          }
+        }
+      }
+    },
+    "groups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "physical_id",
+          "six"
+        ],
+        "properties": {
+          "physical_id": {
+            "type": "null"
+          },
+          "six": {
+            "type": "object",
+            "required": [
+              "values",
+              "valid",
+              "reasons"
+            ]
+          }
+        }
+      }
+    },
+    "training_ready": {
+      "const": false
+    },
+    "hardware_control_executed": {
+      "const": false
+    }
+  },
+  "additionalProperties": true,
+  "$comment": "Cross-field lengths, fresh/valid/geometry, no-future timestamps and invalid-null constraints checked by src/channel_state.py."
+}

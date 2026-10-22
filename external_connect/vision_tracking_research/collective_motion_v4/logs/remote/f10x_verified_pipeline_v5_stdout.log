@@ -1,0 +1,34 @@
+.....F.                                                                  [100%]
+=================================== FAILURES ===================================
+____________________ test_state_legacy_adapters_and_expiry _____________________
+
+    def test_state_legacy_adapters_and_expiry():
+     from xcommon import empty
+     state=dict(schema_version='M4-channel-3.0',source='FILE',session_id='TEST',frame_id=4,source_PTS=.1332,host_receive_timestamp=100.,ROI=[432,0,912,1120],calibration_status='PIXEL_ONLY_NO_PHYSICAL_SCALE',stale_or_discontinuous=False,channel_mask_valid=True,backend='B4',training_ready=False,hardware_control_executed=False,time_window={},groups=[],windows=dict(x=[700],y=[400],vx=[None],vy=[None],valid=[False],fresh=[False],stale=[True],safe=[True],last_update_pts=[None],age_ms=[None]))
+     assert validate_channel(state)
+     v1=to_v1(state);v2=to_v2(state);assert not any(v1['motion']['valid'].values());assert v1['schema_version']=='M4-collective-1.0'
+     import jsonschema
+     schema=json.loads((ROOT.parent/'collective_motion_v2/configs/collective_state_v2.schema.json').read_text());jsonschema.validate(v2,schema)
+>    stale=expire(state,100.101);assert stale['stale_or_discontinuous'];assert stale['windows']['vx']==[None]
+           ^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_contracts.py:36: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'schema_version': 'M4-channel-3.0', 'source': 'FILE', 'session_id': 'TEST', 'frame_id': 4, ...}
+now = 100.101
+
+    def expire(state,now):
+     out=copy.deepcopy(state);age=(now-out['host_receive_timestamp'])*1000
+     if age<=100:return out
+     out['stale_or_discontinuous']=True;out['age_ms']=age
+     w=out['windows'];n=len(w['x']);w['valid']=[False]*n;w['fresh']=[False]*n;w['stale']=[True]*n;w['vx']=[None]*n;w['vy']=[None]*n
+     out['fresh_valid_group_count']=0;out['valid_window_fraction_channel']=0.
+>    out['reason_dictionary'][8]='STALE_OBSERVATION'
+     ^^^^^^^^^^^^^^^^^^^^^^^^
+E    KeyError: 'reason_dictionary'
+
+src/channel_state.py:36: KeyError
+=========================== short test summary info ============================
+FAILED tests/test_contracts.py::test_state_legacy_adapters_and_expiry - KeyEr...
+1 failed, 6 passed in 1.30s

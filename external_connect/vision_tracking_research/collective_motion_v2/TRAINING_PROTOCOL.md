@@ -1,0 +1,11 @@
+# Training protocol
+
+Immutable training execution snapshot: `7aed42436` on branch `dev/f10v-geometry-aware-motion-20261017`; full SHA and source hashes are recorded in each run. Formal output root: `/workspace/f10v_vision_20261017/runs/prototype_7aed`. Separate venv: `/workspace/f10v_vision_20261017/.venv`. No F10U or physics environment was modified.
+
+Five main configurations (gray, gray+heat, heat-only, robust gray+heat, GeoMotion), two seeds (1729,2718), plus two-frame and no-local-supervision auxiliaries. Same cached training/validation samples, batch 192, AdamW 0.001, weight decay 0.0001, cosine schedule, at most 40 epochs, minimum 16 before early stopping, patience 8. Per-run cap 900 s; suite cap 7,200 s. Actual epochs, steps, wall times and stop reasons are reported individually; early stopping makes actual budgets unequal and this is not hidden.
+
+Checkpoint selection: validation normalized MAE + 0.2 cross-entropy. Optimization uses smooth-L1 regression, 0.05 heteroscedastic Gaussian NLL scale loss and 0.2 class loss; GeoMotion adds 0.2 local displacement loss. NLL means are detached so scale fitting does not alter regression-gradient weighting. Negative total loss is possible as uncertainty shrinks; it is not an accuracy percentage.
+
+Measured development profiling compared batches 32/96/192 and FP32/BF16. Batch 192 BF16 was chosen for throughput and finite gradients, with peak allocation around 4.97 GiB (5087.4 MiB) for GeoMotion. CPU DataLoader uses four workers, pinned memory, two-batch prefetch and persistent workers; training caches avoid detection in the GPU loop except H4's intentional CPU perturbation. GPU geometry fits remain float32. `torch.compile` was not used because eager throughput was adequate and compile amortization was not needed. DDP is inapplicable to one GPU. Warmup/profile iterations are excluded from formal training evidence.
+
+Best and last checkpoints contain model, optimizer, scheduler and RNG states; periodic epoch checkpoints remain on the server. `--resume` restores states after a completed checkpoint; it is not a promise of bitwise continuation of worker prefetch RNG after arbitrary interruption. No final-test sample enters this script. Model choices and synthetic calibration are frozen before final-test inference. No final-test-driven retraining.

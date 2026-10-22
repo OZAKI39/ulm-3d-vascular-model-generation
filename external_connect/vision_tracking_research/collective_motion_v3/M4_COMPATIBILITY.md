@@ -1,0 +1,5 @@
+# M4观测兼容
+
+复用F10V的M4-collective-2.0 Schema、VersionedGate及to_v1；未修改原1.0工程。全部正式定速回放逐消息schema.validate，并实际发送到本机MockConsumer。使用单槽最新帧、host monotonic clock、源PTS，断帧清空窗口，重复/逆序/过期拒判，断流后100 ms将运动和分布过期清空；不能复用旧状态冒充新观测。
+
+available_capture_timestamp=null，科学准确率未验证，hardware_control_executed=false，training_ready=false。相机到控制器端到端延迟NOT_MEASURED。最初回放因缺calibration_version被Schema阻止，未被当成完整回放；修复后重新完整执行。权重SHA最初每帧重复计算的慢版本保留在results/replay_before_hash_cache_fix，正式版模型加载时计算一次。

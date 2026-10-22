@@ -1,0 +1,337 @@
+--- /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/src/pzt_status.py.before
++++ /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/src/pzt_status.py
+@@ -10,6 +10,7 @@
+ 
+ NAMES = ('PZT1', 'PZT2', 'PZT3', 'PZT4')
+ MAX_AGE_S = 8.
++STATUS_POLL_S = .04
+ 
+ 
+ MODEL_PATH = Path(__file__).resolve().parents[1]/'configs/pzt_experiment_model.json'
+@@ -157,6 +158,7 @@
+         self.wake = threading.Event()
+         self.outbound = None
+         self.request_error = None
++        self.file_token = None
+         self.thread = threading.Thread(target=self.run, name='pzt-status-file', daemon=True)
+         self.thread.start()
+ 
+@@ -174,10 +176,20 @@
+                 except OSError as exc:
+                     with self.lock:
+                         self.request_error = dict(request_id=request['request_id'], error=str(exc))
+-            data = read_status(self.path)
+-            with self.lock:
+-                self.data = data
+-            self.wake.wait(.5)
++            # Check metadata often, parse JSON only on a new atomic publication.
++            # This keeps slow Windows filesystem work out of Qt and avoids
++            # rereading/decoding identical snapshots at every UI refresh.
++            try:
++                stat = self.path.stat()
++                token = (stat.st_mtime_ns, stat.st_size)
++            except OSError:
++                token = None
++            if token != self.file_token or token is None:
++                data = read_status(self.path)
++                with self.lock:
++                    self.data = data
++                self.file_token = token
++            self.wake.wait(STATUS_POLL_S)
+             self.wake.clear()
+ 
+     def snapshot(self):
+--- /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/src/pzt_panel.py.before
++++ /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/src/pzt_panel.py
+@@ -169,7 +169,7 @@
+         self.read_button.setToolTip('Query the four generator channels through the Windows controller. Does not change outputs.')
+         buttons.addWidget(self.read_button,0,0);buttons.addWidget(self.edit_button,0,1);outer.addLayout(buttons)
+         self.top=TopView();outer.addWidget(self.top,1)
+-        self.timer=C.QTimer(self);self.timer.timeout.connect(self.refresh);self.timer.start(500);self.refresh()
++        self.timer=C.QTimer(self);self.timer.timeout.connect(self.refresh);self.timer.start(50);self.refresh()
+ 
+     def read_status(self):
+         try:
+@@ -208,7 +208,8 @@
+         for endpoint,(box,label) in self.cards.items():
+             view=endpoint_view(self.data,endpoint)
+             target=self.layout_data['assignments'][endpoint]['pzt'] or 'Unassigned'
+-            box.setTitle(f'{endpoint} → {target}')
++            title=f'{endpoint} → {target}'
++            if box.title()!=title:box.setTitle(title)
+             params=view['parameters']
+             lines=[f"{view['connection']} | {view['output']}"]
+             if params:
+@@ -216,12 +217,18 @@
+                 lines += [f"{params['frequency_hz']/1e6:g} MHz · {params['amplitude_vpp']:g} Vpp",
+                           f"Phase {params['phase_deg']:.1f}° · {params.get('waveform','?')} / {mode}"]
+             else:lines+=['Parameters unavailable']
+-            label.setText('\n'.join(lines));label.setStyleSheet(f"color:{view['color']};font-size:12px;")
++            text='\n'.join(lines)
++            if label.text()!=text:label.setText(text)
++            if label.property('status_color')!=view['color']:
++                label.setStyleSheet(f"color:{view['color']};font-size:12px;")
++                label.setProperty('status_color',view['color'])
+             label.setToolTip('Generator readback; Vpp is not acoustic pressure. ON is not physical cable sensing.\n'+
+                 json.dumps(dict(identity=ENDPOINTS[endpoint],last_read_s=view['age_s'],parameters=params,error=view['error']),indent=2))
+-        self.top.layout_data=self.layout_data
+-        self.top.views=physical_views(self.data,self.layout_data)
+-        self.top.update()
++        views=physical_views(self.data,self.layout_data)
++        drawing_key=tuple((n,v.get('endpoint'),v['output'],v['color']) for n,v in views.items())
++        self.top.layout_data=self.layout_data;self.top.views=views
++        if drawing_key!=getattr(self,'_drawing_key',None):
++            self._drawing_key=drawing_key;self.top.update()
+ 
+     def shutdown(self):
+         self.timer.stop();self.reader.close()
+--- /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/PZT_MONITOR_GUIDE.md.before
++++ /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/PZT_MONITOR_GUIDE.md
+@@ -42,9 +42,9 @@
+ 
+ 原控制器中的 PZT1–4 是输出通道标签，不能直接当作 X±、Y± 的物理位置。新界面按用户保存的对应关系，把实际读回状态显示到相应实体 PZT 上；同时检查设备别名、USB 序列号和 CH，不依赖枚举顺序。
+ 
+-卡片显示连接状态、实际 ON/OFF、频率（MHz）、幅值（Vpp）、相位（度）、波形和模式。SIN 为正弦波，SQU 为方波，CW 为固定频率。读数时间、负载、扫频/突发详细参数及错误信息放在鼠标悬停提示中，避免挤占主界面。
++卡片显示连接状态、实际 ON/OFF、频率（MHz）、幅值（Vpp）、相位（度）、波形和模式。SIN 为正弦波，SQU 为方波，CW 为固定频率。读数时间、当前参数及错误信息放在鼠标悬停提示中，避免挤占主界面。为加快刷新，后台仅查询上述显示所需的七项读数；负载、偏置、调制及扫频/突发详细参数仍可在 Windows 控制器的 **Read Instrument Status** 中完整读取。
+ 
+-自动监视通常每路约 4 秒更新一次，超过 8 秒失效。手动 **Read PZT status** 请求会使用原 Windows 控制器的同一个 USB 工作队列，新读取四路而非仅刷新缓存。状态读取采用已验证的逐条查询方式；原控制操作保持其已有协议。查询超时会保留驱动的会话错误保护，不尝试把迟到回包当作有效数据。读失败或身份不符显示 UNKNOWN，不沿用旧参数。**Vpp 是发生器读回值，不是声压 Pa；ON 不证明实际 PZT 电缆接通或已经发声。** 用户的通道对应选择是人工接线记录，不是硬件检测结果。
++自动监视在一路读完后尽快读取下一路；本机两台 AFG1062 实测每路约 **0.94 秒**更新一次（优化前约 **4.02 秒**），超过 8 秒仍按原规则失效。控制操作优先于下一次后台读取，正在执行的单路查询仍可能带来约 0.24 秒等待。手动 **Read PZT status** 请求会使用原 Windows 控制器的同一个 USB 工作队列，新读取四路而非仅刷新缓存。状态读取采用已验证的逐条查询方式；原控制操作保持其已有协议。查询超时会保留驱动的会话错误保护，不尝试把迟到回包当作有效数据。读失败或身份不符显示 UNKNOWN，不沿用旧参数。**Vpp 是发生器读回值，不是声压 Pa；ON 不证明实际 PZT 电缆接通或已经发声。** 用户的通道对应选择是人工接线记录，不是硬件检测结果。
+ 
+ 相机 Start/Stop 只处理观测和录像；PZT 输出继续由原 Windows AFG 控制器操作。观测界面通过文件发送仅允许 `READ_STATUS` 的读取请求，并消费与请求 ID 对应的回执；不发送硬件控制命令、不另开 VISA 会话。过期请求、旧控制器会话的请求、其他操作指令不会被执行。
+ 
+@@ -58,4 +58,6 @@
+ 
+ 旧版手填坐标已备份；不会据此自动猜测接线。几何与通道映射的修改不影响发生器配置。
+ 
+-2026-10-19 实机验证：从尚未连接的 Windows 控制器发起按钮读取，约 4.98 秒收到完整回执，其中四路查询阶段约 2.30 秒；四路均成功、均为 OFF。这是本次实测时间，不是固定实时期限。
++2026-10-19 刷新优化实机验证：单路七项显示读数约 242 ms，完整参数读取约 576 ms，20 组对照读数全部一致。已连接状态下点击 **Read PZT status**，四路读取并返回界面约 1.39 秒；连续监视记录 53 次更新，每路间隔 0.927–0.967 秒。设备设置前后相同，四路均 OFF，保存的通道映射 SHA-256 未变。测试在未启动相机处理时进行；这些是本机实测时间，不是硬实时期限或从点击到实际声学输出的延迟。首次连接还需要设备枚举时间，本次未重测冷连接；优化前的 4.98 秒冷连接结果不能直接与上述已连接读取比较。
++
++状态文件在独立线程每 40 ms 检查一次，仅文件变化时解析；界面每 50 ms 获取最新状态，只重绘变化的文字和布局状态。验证脚本、前后代码差异、实际读数、时间记录与截图位于 `evidence/pzt_latency_20261019/`。
+--- /home/lzy/projects/external_connect/Tektronix_control/afg_gui.py.before
++++ /home/lzy/projects/external_connect/Tektronix_control/afg_gui.py
+@@ -4,6 +4,7 @@
+ from pathlib import Path
+ import queue
+ import sys
++import time
+ import tkinter as tk
+ from tkinter import filedialog, messagebox, ttk
+ from concurrent.futures import ThreadPoolExecutor
+@@ -42,6 +43,7 @@
+         self.telemetry.publish()
+         self.telemetry_future = None
+         self.telemetry_index = 0
++        self.telemetry_heartbeat_due = 0.
+         root.title("AFG1062 - Four-Channel PZT Control")
+         root.geometry("1240x850")
+         root.minsize(1000, 740)
+@@ -149,7 +151,7 @@
+                       f"{min(outer.winfo_reqheight()+32, root.winfo_screenheight()-100)}+20+20")
+         root.protocol("WM_DELETE_WINDOW", self.close)
+         root.after(20, self.poll)
+-        root.after(1000, self.poll_telemetry)
++        root.after(20, self.poll_telemetry)
+ 
+     def button(self, parent, label, action):
+         button = ttk.Button(parent, text=label, command=action)
+@@ -220,9 +222,10 @@
+                 name = names[self.telemetry_index % len(names)]
+                 self.telemetry_index += 1
+                 self.telemetry_future = self.executor.submit(self.telemetry.sample, self.rig, name)
+-            else:
++            elif time.monotonic() >= self.telemetry_heartbeat_due:
+                 self.telemetry.publish("DISCONNECTED")
+-        self.root.after(1000, self.poll_telemetry)
++                self.telemetry_heartbeat_due = time.monotonic() + 1.
++        self.root.after(20, self.poll_telemetry)
+ 
+     def read_for_observer(self, request):
+         def action():
+--- /home/lzy/projects/external_connect/Tektronix_control/afg_telemetry.py.before
++++ /home/lzy/projects/external_connect/Tektronix_control/afg_telemetry.py
+@@ -7,11 +7,35 @@
+ import copy
+ import json
+ import logging
++import math
+ import os
+ from pathlib import Path
+ import threading
+ import time
+ import uuid
++
++
++def read_monitor_channel(rig, name):
++    """Seven current display values, using scalar queries on the existing session.
++
++    This is observation data, never an input to Rig._verify / output admission.
++    The full control readback remains unchanged in afg_control.py.
++    """
++    with rig.lock:
++        session, channel = rig._target(name)
++        prefix = f"SOURce{channel['channel']}:"
++        commands = [f"OUTPut{channel['channel']}:STATe?", prefix+'FREQuency:FIXed?',
++                    prefix+'VOLTage:LEVel:IMMediate:AMPLitude?', prefix+'PHASe:ADJust?',
++                    prefix+'FUNCtion:SHAPe?', prefix+'FREQuency:MODE?', prefix+'BURSt:STATe?']
++        values = [rig._query(session, command) for command in commands]
++        frequency, amplitude, phase_rad = map(float, values[1:4])
++        if not all(math.isfinite(v) for v in (frequency, amplitude, phase_rad)) or frequency <= 0 or amplitude < 0:
++            raise ValueError('Invalid monitor parameter response')
++        if not values[4] or not values[5]:
++            raise ValueError('Empty waveform or mode response')
++        return dict(output=rig._state(values[0]), frequency_hz=frequency, amplitude_vpp=amplitude,
++                    phase_deg=math.degrees(phase_rad) % 360, waveform=values[4],
++                    frequency_mode=values[5], burst_enabled=rig._state(values[6]))
+ 
+ 
+ class TelemetryPublisher:
+@@ -21,7 +45,7 @@
+         self.data = dict(schema=1, source='AFG_GUI_READBACK', session=uuid.uuid4().hex,
+                          pid=os.getpid(), sequence=0, controller='DISCONNECTED',
+                          devices={}, channels={}, wiring_sensed=False,
+-                         refresh_supported=True, refresh=None, read_protocol='sequential')
++                         refresh_supported=True, refresh=None, read_protocol='sequential_display_7')
+         self.seen_request = None
+         for name, ch in config['channels'].items():
+             self.data['channels'][name] = dict(device=ch['device'], channel=ch['channel'],
+@@ -38,6 +62,7 @@
+             if 'frequency_hz' in value:
+                 row['parameters'] = copy.deepcopy({k: v for k, v in value.items() if k != 'output'})
+                 row['parameters_unix_s'] = now
++                row['parameter_scope'] = 'FULL_READBACK' if 'load_ohm' in value else 'DISPLAY_PARAMETERS'
+ 
+     def invalidate(self, names=None, message='Readback unavailable'):
+         with self.lock:
+@@ -50,17 +75,7 @@
+             self.data['devices'] = copy.deepcopy(rig.identities)
+             self.data['controller'] = 'CONNECTED'
+         try:
+-            # Use the already verified sequential query path for monitoring.
+-            # Keep control operations on their existing optimized protocol.
+-            # The same Rig lock protects this temporary software setting and
+-            # prevents a control job from observing the override.
+-            with rig.lock:
+-                protocol = rig.config.get('query_batch_mode', 'sequential')
+-                try:
+-                    rig.config['query_batch_mode'] = 'sequential'
+-                    value = rig.read_channel(name)
+-                finally:
+-                    rig.config['query_batch_mode'] = protocol
++            value = read_monitor_channel(rig, name)
+             self.record(name, value)
+         except Exception as exc:
+             device = self.data['channels'][name]['device']
+--- /mnt/f/Tektronix_control/afg_gui.py.before
++++ /mnt/f/Tektronix_control/afg_gui.py
+@@ -4,6 +4,7 @@
+ from pathlib import Path
+ import queue
+ import sys
++import time
+ import tkinter as tk
+ from tkinter import filedialog, messagebox, ttk
+ from concurrent.futures import ThreadPoolExecutor
+@@ -42,6 +43,7 @@
+         self.telemetry.publish()
+         self.telemetry_future = None
+         self.telemetry_index = 0
++        self.telemetry_heartbeat_due = 0.
+         root.title("AFG1062 - Four-Channel PZT Control")
+         root.geometry("1240x850")
+         root.minsize(1000, 740)
+@@ -149,7 +151,7 @@
+                       f"{min(outer.winfo_reqheight()+32, root.winfo_screenheight()-100)}+20+20")
+         root.protocol("WM_DELETE_WINDOW", self.close)
+         root.after(20, self.poll)
+-        root.after(1000, self.poll_telemetry)
++        root.after(20, self.poll_telemetry)
+ 
+     def button(self, parent, label, action):
+         button = ttk.Button(parent, text=label, command=action)
+@@ -220,9 +222,10 @@
+                 name = names[self.telemetry_index % len(names)]
+                 self.telemetry_index += 1
+                 self.telemetry_future = self.executor.submit(self.telemetry.sample, self.rig, name)
+-            else:
++            elif time.monotonic() >= self.telemetry_heartbeat_due:
+                 self.telemetry.publish("DISCONNECTED")
+-        self.root.after(1000, self.poll_telemetry)
++                self.telemetry_heartbeat_due = time.monotonic() + 1.
++        self.root.after(20, self.poll_telemetry)
+ 
+     def read_for_observer(self, request):
+         def action():
+--- /mnt/f/Tektronix_control/afg_telemetry.py.before
++++ /mnt/f/Tektronix_control/afg_telemetry.py
+@@ -7,11 +7,35 @@
+ import copy
+ import json
+ import logging
++import math
+ import os
+ from pathlib import Path
+ import threading
+ import time
+ import uuid
++
++
++def read_monitor_channel(rig, name):
++    """Seven current display values, using scalar queries on the existing session.
++
++    This is observation data, never an input to Rig._verify / output admission.
++    The full control readback remains unchanged in afg_control.py.
++    """
++    with rig.lock:
++        session, channel = rig._target(name)
++        prefix = f"SOURce{channel['channel']}:"
++        commands = [f"OUTPut{channel['channel']}:STATe?", prefix+'FREQuency:FIXed?',
++                    prefix+'VOLTage:LEVel:IMMediate:AMPLitude?', prefix+'PHASe:ADJust?',
++                    prefix+'FUNCtion:SHAPe?', prefix+'FREQuency:MODE?', prefix+'BURSt:STATe?']
++        values = [rig._query(session, command) for command in commands]
++        frequency, amplitude, phase_rad = map(float, values[1:4])
++        if not all(math.isfinite(v) for v in (frequency, amplitude, phase_rad)) or frequency <= 0 or amplitude < 0:
++            raise ValueError('Invalid monitor parameter response')
++        if not values[4] or not values[5]:
++            raise ValueError('Empty waveform or mode response')
++        return dict(output=rig._state(values[0]), frequency_hz=frequency, amplitude_vpp=amplitude,
++                    phase_deg=math.degrees(phase_rad) % 360, waveform=values[4],
++                    frequency_mode=values[5], burst_enabled=rig._state(values[6]))
+ 
+ 
+ class TelemetryPublisher:
+@@ -21,7 +45,7 @@
+         self.data = dict(schema=1, source='AFG_GUI_READBACK', session=uuid.uuid4().hex,
+                          pid=os.getpid(), sequence=0, controller='DISCONNECTED',
+                          devices={}, channels={}, wiring_sensed=False,
+-                         refresh_supported=True, refresh=None, read_protocol='sequential')
++                         refresh_supported=True, refresh=None, read_protocol='sequential_display_7')
+         self.seen_request = None
+         for name, ch in config['channels'].items():
+             self.data['channels'][name] = dict(device=ch['device'], channel=ch['channel'],
+@@ -38,6 +62,7 @@
+             if 'frequency_hz' in value:
+                 row['parameters'] = copy.deepcopy({k: v for k, v in value.items() if k != 'output'})
+                 row['parameters_unix_s'] = now
++                row['parameter_scope'] = 'FULL_READBACK' if 'load_ohm' in value else 'DISPLAY_PARAMETERS'
+ 
+     def invalidate(self, names=None, message='Readback unavailable'):
+         with self.lock:
+@@ -50,17 +75,7 @@
+             self.data['devices'] = copy.deepcopy(rig.identities)
+             self.data['controller'] = 'CONNECTED'
+         try:
+-            # Use the already verified sequential query path for monitoring.
+-            # Keep control operations on their existing optimized protocol.
+-            # The same Rig lock protects this temporary software setting and
+-            # prevents a control job from observing the override.
+-            with rig.lock:
+-                protocol = rig.config.get('query_batch_mode', 'sequential')
+-                try:
+-                    rig.config['query_batch_mode'] = 'sequential'
+-                    value = rig.read_channel(name)
+-                finally:
+-                    rig.config['query_batch_mode'] = protocol
++            value = read_monitor_channel(rig, name)
+             self.record(name, value)
+         except Exception as exc:
+             device = self.data['channels'][name]['device']

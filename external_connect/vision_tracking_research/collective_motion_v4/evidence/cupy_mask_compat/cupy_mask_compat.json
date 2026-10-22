@@ -1,0 +1,7 @@
+{
+  "upstream_head": "d50d505109f9ef9f8ddbd971380ee2ac74f38682",
+  "before_sha256": "0a46bc99acaa20be94ea0c0f9825963ef2706e94bb8d9338162ea14aa1902364",
+  "after_sha256": "af0c6fc9410e95d2cba0b6505e9a4325793f98cc369e3d1728a370ccecd58300",
+  "reason": "Upstream float32 CUDA kernel uses int32 pointer, whereas CuPy bool cumsum defaults to int64; mismatched indexing caused illegal memory access. No PIV numerical algorithm changed.",
+  "diff": "--- upstream/gpu_process.py\n+++ compatible/gpu_process.py\n@@ -1158,7 +1158,7 @@\n         \n         if mask is not None:\n             # Find the offset of the non-masked elements in the stack.\n-            k_offset = cp.cumsum(mask)\n+            k_offset = cp.cumsum(mask, dtype=self.dtype_i)\n             \n             # Get the 3D stack with masked windows removed.\n             cuda_get_stack = self.mod_get_stack.get_function(\"cuda_get_masked_stack\")\n"
+}

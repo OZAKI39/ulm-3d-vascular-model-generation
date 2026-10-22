@@ -1,0 +1,871 @@
+{
+   "sensorVDark": {
+      "type": "i",
+      "notifies": false,
+      "set": false,
+      "doc": "Maximum vertical resolution, in pixels, of the optical black regions of the sensor.",
+      "get": true
+   },
+   "sensorName": {
+      "type": "s",
+      "notifies": false,
+      "set": false,
+      "doc": "Descriptive name of the image sensor.",
+      "get": true
+   },
+   "sensorVIncrement": {
+      "type": "i",
+      "notifies": false,
+      "set": false,
+      "doc": "Minimum step size allowed, in pixels, for changes in the vertical resolution of the image sensor.",
+      "get": true
+   },
+   "exposurePercent": {
+      "type": "d",
+      "notifies": false,
+      "set": true,
+      "doc": "The current exposure time rescaled between `exposureMin` and `exposureMax`. This value is 0% when exposure is at minimum, and increases linearly until exposure is at maximum, when it is 100%.",
+      "get": true
+   },
+   "totalSegments": {
+      "type": "i",
+      "notifies": false,
+      "set": false,
+      "get": true,
+      "doc": "Total number of video segments that have been saved into memory."
+   },
+   "ioMappingStopRec": {
+      "type": "a{sv}",
+      "notifies": true,
+      "set": true,
+      "doc": "Recording stop signal configuration",
+      "get": true
+   },
+   "ioStatusSourceIo3": {
+      "type": "b",
+      "notifies": false,
+      "set": false,
+      "doc": "The current logic levle seeon on IO input 3 (opto-isolated input).",
+      "get": true
+   },
+   "recTrigDelay": {
+      "type": "v",
+      "notifies": true,
+      "set": true,
+      "doc": "The number of frames to delay the trigger rising edge by in 'normal' and 'segmented' recording modes.",
+      "get": true
+   },
+   "ioMappingShutter": {
+      "type": "a{sv}",
+      "notifies": true,
+      "set": true,
+      "doc": "Timing block shutter control signal configuration",
+      "get": true
+   },
+   "sensorBitDepth": {
+      "type": "i",
+      "notifies": false,
+      "set": false,
+      "doc": "Number of bits per pixel sampled by the image sensor.",
+      "get": true
+   },
+   "focusPeakingLevel": {
+      "type": "d",
+      "notifies": true,
+      "set": true,
+      "get": true,
+      "doc": "Edge sensitivity at which focus peaking is detected, with 0.0 disabling focus peaking and 1.0 for maximum sensitivity."
+   },
+   "frameRate": {
+      "type": "d",
+      "notifies": false,
+      "set": true,
+      "doc": "The estimated estimated recording rate in frames per second (reciprocal of `framePeriod`).",
+      "get": true
+   },
+   "playbackLength": {
+      "type": "i",
+      "notifies": true,
+      "set": true,
+      "get": true,
+      "doc": "The number of frames which should be replayed when in playback mode."
+   },
+   "videoSegments": {
+      "type": "a{sv}",
+      "notifies": false,
+      "set": false,
+      "get": true,
+      "doc": "Array of video segments, describing the size and metadata of that has been recorded."
+   },
+   "cameraMemoryGB": {
+      "type": "d",
+      "notifies": false,
+      "set": false,
+      "doc": "Amount of video memory attached to the FPGA in GiB",
+      "get": true
+   },
+   "batteryCritical": {
+      "type": "b",
+      "notifies": true,
+      "set": false,
+      "doc": "True when the battery voltate is critically low and a powerdown is imminent",
+      "get": true
+   },
+   "playbackStart": {
+      "type": "i",
+      "notifies": true,
+      "set": true,
+      "get": true,
+      "doc": "The starting frame from which video should be replayed when in playback mode."
+   },
+   "currentGain": {
+      "type": "d",
+      "notifies": true,
+      "set": true,
+      "doc": "The current gain of the image sensor as a linear multiplier of `sensorIso`.",
+      "get": true
+   },
+   "ioMappingIo1": {
+      "type": "a{sv}",
+      "notifies": true,
+      "set": true,
+      "doc": "Ouput driver 1 configuration",
+      "get": true
+   },
+   "ioMappingIo2": {
+      "type": "a{sv}",
+      "notifies": true,
+      "set": true,
+      "doc": "Output driver 2 configuration",
+      "get": true
+   },
+   "recMaxFrames": {
+      "type": "v",
+      "notifies": true,
+      "set": true,
+      "doc": "Limit on the maximum number of frames for the recording sequencer to use.",
+      "get": true
+   },
+   "ioMappingStartRec": {
+      "type": "a{sv}",
+      "notifies": true,
+      "set": true,
+      "doc": "Recording start signal configuration",
+      "get": true
+   },
+   "ioMappingCombAnd": {
+      "type": "a{sv}",
+      "notifies": true,
+      "set": true,
+      "doc": "Combinatorial block AND input configuration",
+      "get": true
+   },
+   "ioMappingToggleSet": {
+      "type": "a{sv}",
+      "notifies": true,
+      "set": true,
+      "doc": "Toggle/flip-flop block SET input configuration",
+      "get": true
+   },
+   "state": {
+      "type": "s",
+      "args": {
+         "analogCal": {
+            "doc": "The camera is currently performing analog calibration of the image sensor."
+         },
+         "idle": {
+            "doc": "The camera is powered up and operating, but not doing anything."
+         },
+         "reset": {
+            "doc": "The camera is in the process of resetting the FPGA and image sensor."
+         },
+         "blackCal": {
+            "doc": "The camera is currently calibrating using a dark reference image."
+         },
+         "recording": {
+            "doc": "The camera is running a recording program to save images into video memory."
+         }
+      },
+      "notifies": true,
+      "set": false,
+      "get": true,
+      "doc": "The current operating state of the camera."
+   },
+   "ioSourceStatus": {
+      "type": "a{sv}",
+      "notifies": false,
+      "set": false,
+      "doc": "The available IO signals and their current values.",
+      "get": true
+   },
+   "minFramePeriod": {
+      "type": "i",
+      "notifies": true,
+      "set": false,
+      "doc": "The minimum frame period, in nanoseconds, at the current resolution settings.",
+      "get": true
+   },
+   "sensorVMax": {
+      "type": "i",
+      "notifies": false,
+      "set": false,
+      "doc": "Maximum vertical resolution, in pixels, of the active area of the image sensor.",
+      "get": true
+   },
+   "batteryChargePercent": {
+      "type": "d",
+      "notifies": false,
+      "set": false,
+      "doc": "Estimated battery charge, with 0% being depleted and 100% being fully charged.",
+      "get": true
+   },
+   "ioThresholdIo1": {
+      "type": "d",
+      "notifies": true,
+      "set": true,
+      "doc": "Voltage threshold at which trigger input signal 1 should go high.",
+      "get": true
+   },
+   "ioThresholdIo2": {
+      "type": "d",
+      "notifies": true,
+      "set": true,
+      "doc": "Voltage threshold at which trigger input signal 2 should go high.",
+      "get": true
+   },
+   "wbTemperature": {
+      "type": "i",
+      "notifies": true,
+      "set": true,
+      "doc": "Color temperature, in degrees Kelvin, to use for white balance.",
+      "get": true
+   },
+   "wbColor": {
+      "type": "ad",
+      "notifies": true,
+      "set": true,
+      "doc": "The Red, Green and Blue gain coefficients to achieve white balance.",
+      "get": true
+   },
+   "config": {
+      "type": "a{sv}",
+      "notifies": false,
+      "set": false,
+      "doc": "Return a configuration dictionary of all saveable parameters",
+      "get": true
+   },
+   "framePeriod": {
+      "type": "i",
+      "notifies": true,
+      "set": true,
+      "doc": "The time, in nanoseconds, to record a single frame.",
+      "get": true
+   },
+   "ioDetailedStatus": {
+      "type": "a{sv}",
+      "returns": {
+         "detailedComb": {
+            "type": "dict",
+            "doc": "Dictionary of booleans showing the internal state of the combinatorial logic block."
+         },
+         "edgeTimers": {
+            "type": "dict",
+            "doc": "Dictionary containing the time in clock cycles since the last rising and falling edges were measured for each output signal."
+         },
+         "output": {
+            "type": "dict",
+            "doc": "Dictionary of booleans showing the state of all the output signals from the IO block."
+         },
+         "sources": {
+            "type": "dict",
+            "doc": "The contents of the `ioSouceStatus` parameter."
+         }
+      },
+      "notifies": false,
+      "set": false,
+      "get": true,
+      "doc": "Detailed status of the IO block."
+   },
+   "videoConfig": {
+      "type": "a{sv}",
+      "notifies": false,
+      "set": false,
+      "get": true,
+      "doc": "Dictionary of parameters saved persistently by the video system."
+   },
+   "sensorVMin": {
+      "type": "i",
+      "notifies": false,
+      "set": false,
+      "doc": "Minimum vertical resolution, in pixels, of the active area of the image sensor.",
+      "get": true
+   },
+   "exposurePeriod": {
+      "type": "i",
+      "notifies": true,
+      "set": true,
+      "doc": "Minimum period, in nanoseconds, that the image sensor is currently exposing frames for.",
+      "get": true
+   },
+   "fanOverride": {
+      "type": "d",
+      "notifies": true,
+      "set": true,
+      "doc": "Fan speed in the range of 0=off to 1.0=full, or -1 for automatic fan control.",
+      "get": true
+   },
+   "digitalGain": {
+      "type": "d",
+      "notifies": true,
+      "set": true,
+      "doc": "Digital image gain applied during video processing.",
+      "get": true
+   },
+   "colorMatrix": {
+      "type": "ad",
+      "notifies": true,
+      "set": true,
+      "doc": "The matrix coefficients for a 3x3 color matrix converting the image sensor color space into sRGB. The values are stored in row-scan order.",
+      "get": true
+   },
+   "backlightEnabled": {
+      "type": "b",
+      "notifies": true,
+      "set": true,
+      "doc": "True if the LCD on the back of the camera is lit. Can be set to False to dim the screen and save a small amount of power.",
+      "get": true
+   },
+   "cameraModel": {
+      "type": "s",
+      "notifies": false,
+      "set": false,
+      "doc": "Camera model name",
+      "get": true
+   },
+   "cameraApiVersion": {
+      "type": "s",
+      "notifies": false,
+      "set": false,
+      "doc": "Version string of the pychronos module",
+      "get": true
+   },
+   "batteryVoltage": {
+      "type": "d",
+      "notifies": false,
+      "set": false,
+      "doc": "The voltage that is currently being output by the battery. A fully charged battery outputs between 12V and 12.5V.",
+      "get": true
+   },
+   "playbackRate": {
+      "type": "i",
+      "notifies": true,
+      "set": true,
+      "get": true,
+      "doc": "The rate at which video is being replayed when in playback mode."
+   },
+   "wbCustomColor": {
+      "type": "ad",
+      "notifies": true,
+      "set": true,
+      "doc": "The Red, Green and Blue gain coefficients last computed by `startWhiteBalance()`.",
+      "get": true
+   },
+   "disableRingBuffer": {
+      "type": "v",
+      "description": "By default, the camera will enable the ring buffer, so once the maximum record length has been reached, the camera will overwrite the oldest footage in the recording in normal recording mode, or overwrite the oldest segment in sedgmented recording mode.",
+      "notifies": false,
+      "set": true,
+      "get": true,
+      "doc": "When true, the camera will stop recording once the RAM buffer is full instead of looping over."
+   },
+   "miscScratchPad": {
+      "type": "a{sv}",
+      "notifies": true,
+      "set": true,
+      "doc": "A dictionary of arbitrary values that can be stored in the camera.",
+      "get": true
+   },
+   "cameraSerial": {
+      "type": "s",
+      "notifies": false,
+      "set": false,
+      "doc": "Unique camera serial number",
+      "get": true
+   },
+   "shippingMode": {
+      "type": "b",
+      "notifies": true,
+      "set": true,
+      "doc": "True when the camera is configured for shipping mode",
+      "get": true
+   },
+   "sensorPixelRate": {
+      "type": "d",
+      "notifies": false,
+      "set": false,
+      "doc": "Approximate throughput of the image sensor in pixels per second.",
+      "get": true
+   },
+   "ioMappingTrigger": {
+      "type": "a{sv}",
+      "notifies": true,
+      "set": true,
+      "doc": "Recording trigger signal configuration",
+      "get": true
+   },
+   "sensorIso": {
+      "type": "i",
+      "notifies": false,
+      "set": false,
+      "doc": "ISO number of the image sensor with nominal (0dB) gain applied.",
+      "get": true
+   },
+   "sensorHIncrement": {
+      "type": "i",
+      "notifies": false,
+      "set": false,
+      "doc": "Minimum step size allowed, in pixels, for changes in the horizontal resolution of the image sensor.",
+      "get": true
+   },
+   "ioDelayTime": {
+      "type": "d",
+      "notifies": true,
+      "set": true,
+      "doc": "Delay time, in seconds, for the programmable delay block",
+      "get": true
+   },
+   "playbackPosition": {
+      "type": "i",
+      "notifies": false,
+      "set": true,
+      "get": true,
+      "doc": "The current frame being display when the camera is in playback mode."
+   },
+   "ioMappingToggleFlip": {
+      "type": "a{sv}",
+      "notifies": true,
+      "set": true,
+      "doc": "Toggle/flip-flop block FLIP input configuration",
+      "get": true
+   },
+   "cameraMaxFrames": {
+      "type": "i",
+      "notifies": true,
+      "set": false,
+      "doc": "The maximum number of frames the camera's memory can save at the current resolution.",
+      "get": true
+   },
+   "totalFrames": {
+      "type": "i",
+      "notifies": false,
+      "set": false,
+      "get": true,
+      "doc": "Total number of frames of recorded video that are have been saved into memory."
+   },
+   "cameraIdNumber": {
+      "type": "i",
+      "notifies": true,
+      "set": true,
+      "doc": "Unique camera number assigned by the user",
+      "get": true
+   },
+   "batteryPresent": {
+      "type": "b",
+      "notifies": true,
+      "set": false,
+      "doc": "True when the battery is installed, and False when the camera is only running on adaptor power",
+      "get": true
+   },
+   "recSegments": {
+      "type": "v",
+      "notifies": true,
+      "set": true,
+      "doc": "The number of segments used by the recording sequencer when in 'segmented' recording mode.",
+      "get": true
+   },
+   "batteryChargeNormalized": {
+      "type": "d",
+      "notifies": false,
+      "set": false,
+      "doc": "Estimated battery charge, with 0.0 being depleted and 1.0 being fully charged.",
+      "get": true
+   },
+   "exposureNormalized": {
+      "type": "d",
+      "notifies": false,
+      "set": true,
+      "doc": "The current exposure time rescaled between `exposureMin` and `exposureMax`. This value is 0 when exposure is at minimum, and increases linearly until exposure is at maximum, when it is 1.0.",
+      "get": true
+   },
+   "overlayFormat": {
+      "type": "s",
+      "notifies": true,
+      "set": true,
+      "get": true,
+      "doc": "Format string for the overlay text box"
+   },
+   "recMode": {
+      "type": "s",
+      "enum": {
+         "normal": "Frames are saved continuously into a ring buffer of up to `recMaxFrames` in length until the recording is terminated by the recording end trigger.",
+         "burst": "Each rising edge of the recording trigger starts a new segment in video memory, with frames being saved for as long as the recording trigger is active.",
+         "segmented": "Up to `recMaxFrames` of video memory is divided into `recSegments` number of of ring buffers. The camera saves video into one ring buffer at a time, switching to the next ring buffer at each recording trigger."
+      },
+      "notifies": true,
+      "set": true,
+      "get": true,
+      "doc": "Mode in which the recording sequencer stores frames into video memory."
+   },
+   "shutterAngle": {
+      "type": "d",
+      "notifies": false,
+      "set": true,
+      "doc": "The angle in degrees for which frames are being exposed relative to the frame time.",
+      "get": true
+   },
+   "sensorTemperature": {
+      "type": "d",
+      "notifies": false,
+      "set": false,
+      "doc": "The temperature, in degrees Celcius, measured near the image sensor.",
+      "get": true
+   },
+   "ioMapping": {
+      "type": "a{sv}",
+      "description": "This parameter contains a complex dictionary that both configures and describes the entire IO block in a single `set` operation. It is difficult to describe all of the nuances in which this parameter operates, so we recommend using the other IO block parameters to achieve your goal instead.",
+      "notifies": false,
+      "set": true,
+      "get": true,
+      "doc": "Legacy interface to the IO block."
+   },
+   "externalStorage": {
+      "type": "a{sv}",
+      "description": "of the reported storage devices are in units of kB.",
+      "notifies": false,
+      "set": false,
+      "get": true,
+      "doc": "The currently attached external storage partitions and their status. The sizes"
+   },
+   "sensorMaxGain": {
+      "type": "i",
+      "notifies": false,
+      "set": false,
+      "doc": "Maximum gain of the image sensor as a linear muliplier of the `sensorISO`.",
+      "get": true
+   },
+   "overlayEnable": {
+      "type": "b",
+      "notifies": true,
+      "set": true,
+      "get": true,
+      "doc": "Enabled the overlay text box when in playback mode"
+   },
+   "videoState": {
+      "type": "s",
+      "enum": {
+         "live": "",
+         "play": "",
+         "filesave": "",
+         "paused": ""
+      },
+      "notifies": true,
+      "set": false,
+      "get": true,
+      "doc": "Current state of the video system."
+   },
+   "networkHostname": {
+      "type": "s",
+      "notifies": false,
+      "set": true,
+      "doc": "Hostname to be used for dhcp requests and to be displayed on the command line.",
+      "get": true
+   },
+   "ioMappingGate": {
+      "type": "a{sv}",
+      "notifies": true,
+      "set": true,
+      "doc": "Gate input signal configuration",
+      "get": true
+   },
+   "externalPower": {
+      "type": "b",
+      "notifies": true,
+      "set": false,
+      "doc": "True when the AC adaptor is present, and False when on battery power.",
+      "get": true
+   },
+   "sensorHMin": {
+      "type": "i",
+      "notifies": false,
+      "set": false,
+      "doc": "Minimum horizontal resolution, in pixels, of the active area of the image sensor.",
+      "get": true
+   },
+   "cameraFpgaVersion": {
+      "type": "s",
+      "notifies": false,
+      "set": false,
+      "doc": "Version string of the FPGA bitstream that is currently running",
+      "get": true
+   },
+   "currentIso": {
+      "type": "d",
+      "notifies": false,
+      "set": true,
+      "doc": "The ISO number of the image sensor at the current current gain.",
+      "get": true
+   },
+   "lastShutdownReason": {
+      "type": "s",
+      "notifies": false,
+      "set": false,
+      "doc": "The reason for the last shutdown that happened.",
+      "get": true
+   },
+   "sensorHMax": {
+      "type": "i",
+      "notifies": false,
+      "set": false,
+      "doc": "Maximum horizontal resolution, in pixels, of the active area of the image sensor.",
+      "get": true
+   },
+   "ioOutputStatus": {
+      "type": "a{sv}",
+      "notifies": false,
+      "set": false,
+      "doc": "The output signals from the IO block and their current values.",
+      "get": true
+   },
+   "exposureMax": {
+      "type": "i",
+      "description": "a frame for at the current `resolution` and `framePeriod`.",
+      "notifies": true,
+      "set": false,
+      "get": true,
+      "doc": "The maximum possible time, in nanoseconds, that the image sensor is capable of exposing"
+   },
+   "ioMappingDelay": {
+      "type": "a{sv}",
+      "notifies": true,
+      "set": true,
+      "doc": "Programmable delay block input configuration",
+      "get": true
+   },
+   "exposureMin": {
+      "type": "i",
+      "description": "a frame for at the current `resolution` and `framePeriod`.",
+      "notifies": true,
+      "set": false,
+      "get": true,
+      "doc": "The minimum possible time, in nanoseconds, that the image sensor is capable of exposing"
+   },
+   "cameraTallyMode": {
+      "type": "s",
+      "enum": {
+         "off": "All recording LEDs on the camera are turned off.",
+         "auto": "The recording LEDs on the camera are on whenever the `status` property is equal to 'recording'.",
+         "on": "All recording LEDs on the camera are turned on."
+      },
+      "notifies": true,
+      "set": true,
+      "get": true,
+      "doc": "Mode in which the recording LEDs should operate."
+   },
+   "videoZoom": {
+      "type": "d",
+      "notifies": true,
+      "set": true,
+      "get": true,
+      "doc": "Video scaling ratio to apply to the video stream (1.0 = fit to screen)"
+   },
+   "powerOnWhenMainsConnected": {
+      "type": "b",
+      "notifies": true,
+      "set": true,
+      "doc": "True if the camera should power itself on when plugged into mains power.",
+      "get": true
+   },
+   "ioMappingCombXor": {
+      "type": "a{sv}",
+      "notifies": true,
+      "set": true,
+      "doc": "Combinatorial block XOR input configuration",
+      "get": true
+   },
+   "powerOffWhenMainsLost": {
+      "type": "b",
+      "notifies": true,
+      "set": true,
+      "doc": "True if the camera should power itself down when disconnected from mains power.",
+      "get": true
+   },
+   "sensorColorPattern": {
+      "type": "s",
+      "description": "For example, a typical 2x2 Bayer pattern sensor might have a value of 'GRBG', while a monochrome image sensor would have a value of 'mono'.",
+      "notifies": false,
+      "set": false,
+      "get": true,
+      "doc": "String describing the color filter array pattern of the image sensor."
+   },
+   "recPreBurst": {
+      "type": "v",
+      "notifies": true,
+      "set": true,
+      "doc": "The number of frames leading up to the trigger rising edge to save when in 'burst' recording mode.",
+      "get": true
+   },
+   "calSuggested": {
+      "type": "b",
+      "notifies": true,
+      "set": false,
+      "doc": "True when the calibration of the camera needs updating.",
+      "get": true
+   },
+   "overlayPosition": {
+      "type": "s",
+      "notifies": true,
+      "set": true,
+      "get": true,
+      "doc": "Location in the video stream to position the overlay textbox. This can take the values \"top\", \"bottom\" or a position of the form HPOSxVPOS."
+   },
+   "zebraLevel": {
+      "type": "d",
+      "notifies": true,
+      "set": true,
+      "get": true,
+      "doc": "Pixel threshold at which zebra striping is enabled. Values close to 0.0 only trigger zebra stripes near saturation, and values near 1.0 would enable zebra stripes even when the image is black."
+   },
+   "ioMappingToggleClear": {
+      "type": "a{sv}",
+      "notifies": true,
+      "set": true,
+      "doc": "Toggle/flip-flop block CLEAR input configuration",
+      "get": true
+   },
+   "resolution": {
+      "type": "a{sv}",
+      "description": "The optional `hOffset` and `vOffset` parameters allow the user to select where on the sensor to position the frame when operating at a cropped resolution. If not provided when setting, the camera will attempt to centre the cropped image on the image sensor.\u000a When setting resolution, the `minFrameTime` may be optionally provided to allow the image sensor to better tune itself for the desired frame period. When omitted, it is assumed that the sensor will tune itself for its maximum framerate.",
+      "notifies": true,
+      "args": {
+         "vDark": {
+            "type": "int, optional",
+            "doc": "The number of vertical dark rows to read out."
+         },
+         "vOffset": {
+            "type": "int, optional",
+            "doc": "Vertical offset, in pixels, from the top left of the full frame at which the first pixel will be read out."
+         },
+         "minFrameTime": {
+            "type": "float, optional",
+            "doc": "The minimum frame time, in seconds, that the image sensor is capable of recording frames when at this resolution configuration."
+         },
+         "hRes": {
+            "type": "int",
+            "doc": "Horizontal resolution of the catpured image, in pixels."
+         },
+         "hOffset": {
+            "type": "int, optional",
+            "doc": "Horizontal offset, in pixels, from the top left of the full frame at which the first pixel will be read out."
+         },
+         "vRes": {
+            "type": "int",
+            "doc": "Vertical resolution of the captured image, in pixels."
+         }
+      },
+      "set": true,
+      "get": true,
+      "doc": "Resolution geometry at which the image sensor should capture frames."
+   },
+   "cameraDescription": {
+      "type": "s",
+      "notifies": true,
+      "set": true,
+      "doc": "Descriptive string assigned by the user",
+      "get": true
+   },
+   "systemTemperature": {
+      "type": "d",
+      "notifies": false,
+      "set": false,
+      "doc": "The temperature, in degrees Celcius, measured near the main processor.",
+      "get": true
+   },
+   "ioStatusSourceIo1": {
+      "type": "b",
+      "notifies": false,
+      "set": false,
+      "doc": "The current logic level seen on the IO input 1 (BNC jack).",
+      "get": true
+   },
+   "ioMappingCombOr1": {
+      "type": "a{sv}",
+      "notifies": true,
+      "set": true,
+      "doc": "Combinatorial block OR input 1 configuration",
+      "get": true
+   },
+   "ioMappingCombOr2": {
+      "type": "a{sv}",
+      "notifies": true,
+      "set": true,
+      "doc": "Combinatorial block OR input 2 configuration",
+      "get": true
+   },
+   "ioMappingCombOr3": {
+      "type": "a{sv}",
+      "notifies": true,
+      "set": true,
+      "doc": "Combinatorial block OR input 3 configuration",
+      "get": true
+   },
+   "ioStatusSourceIo2": {
+      "type": "b",
+      "notifies": false,
+      "set": false,
+      "doc": "The current logic level seen on IO input 2 (green IO connector).",
+      "get": true
+   },
+   "focusPeakingColor": {
+      "type": "s",
+      "enum": {
+         "black": "",
+         "red": "",
+         "yellow": "",
+         "cyan": "",
+         "blue": "",
+         "magenta": "",
+         "white": "",
+         "green": ""
+      },
+      "notifies": true,
+      "set": true,
+      "get": true,
+      "doc": "The color to display when focus peaking detects a sharp edge."
+   },
+   "dateTime": {
+      "type": "s",
+      "notifies": false,
+      "set": false,
+      "doc": "The current date and time in ISO-8601 format.",
+      "get": true
+   },
+   "exposureMode": {
+      "type": "s",
+      "enum": {
+         "normal": "Frame and exposure timing operate on fixed periods and are free-running.",
+         "shutterGating": "Frame starts on the rising edge of the trigger signal, and exposes the frame for as long as the trigger signal is held high, regardless of the `exposurePeriod` property. Once readout completes, the camera will wait for another rising edge before starting the next frame. When in this mode, the `framePeriod` property constrains the minimum time between frames.",
+         "frameTrigger": "Frame starts on the rising edge of the trigger signal, and exposes the frame for `exposurePeriod` nanoseconds. Once readout completes, the camera will wait for another rising edge before starting the next frame. In this mode, the `framePeriod` property constrains the minimum time between frames."
+      },
+      "notifies": true,
+      "set": true,
+      "get": true,
+      "doc": "Mode in which frame timing and exposure should operate."
+   },
+   "pmicFirmwareVersion": {
+      "type": "s",
+      "notifies": false,
+      "set": false,
+      "doc": "The Power Management IC's firmware version.",
+      "get": true
+   }
+}

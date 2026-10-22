@@ -1,0 +1,245 @@
+{
+   "get": {
+      "args": {
+         "*names": {
+            "type": "string",
+            "doc": "list of parameter names to rerieve from the API."
+         }
+      },
+      "description": "The resulting dictionary will contain an element for each parameter that was successfully read from the API. If any parameters could not be read, they will be included in an `error` dictionary giving the reasons that they could not be retrieved.",
+      "brief": "Retrieves parameter values from the API."
+   },
+   "startLivedisplay": {
+      "description": "When in live display mode, the camera will replay the active video data being acquired from the image sensor onto the LCD screen, HDMI port and its RTSP stream. The video stream will monitor for changes in the video geometry, or hotplug events and may restart and reconfigure itself as necessary to keep the video data flowing. The show must go on.\u000a Any video properties that relate to video playback rate and position have no meaning or effect when in this state.",
+      "brief": "Switches the video system into live display mode."
+   },
+   "startCalibration": {
+      "args": {
+         "saveCal": {
+            "type": "bool, optional",
+            "doc": "Whether the results of calibration should be saved to the filesystem for later use. (default: false)"
+         },
+         "factory": {
+            "type": "bool, optional",
+            "doc": "Whether factory calibration algorithms should be performed. (default: false)"
+         },
+         "analogCal": {
+            "type": "bool, optional",
+            "doc": "Perform autonomous analog calibration of the image sensor. (default: false)"
+         },
+         "blackCal": {
+            "type": "bool, optional",
+            "doc": "Perform a full black calibration assuming the user has closed the aperture or lens cap. (default: false)"
+         },
+         "zeroTimeBlackCal": {
+            "type": "bool, optional",
+            "doc": "Perform a fast black calibration by reducing the exposure time and aperture to their minimum values. (default: false)"
+         }
+      },
+      "description": "Black calibration takes a sequence of images with the lens cap or shutter closed and averages them to find the black level of each pixel on the image sensor. This value is then be subtracted during playback to correct for image offset defects.\u000a Analog calibration consists of any automated image sensor calibration that can be performed quickly and autonomously without any setup from the user (eg: no closing of the aperture or calibration jigs).\u000a Factory calibration algorithms may require special test equipment or setups. Factory calibration also implies that calibration data will be saved, and that conflicting user calibration data will be removed.",
+      "yields": "float : The sleep time, in seconds, between steps of the calibration procedure.\u000a",
+      "brief": "Begin one or more calibration procedures at the current settings."
+   },
+   "getResolutionTimingLimits": {
+      "args": {
+         "vOffset": {
+            "type": "int, optional",
+            "doc": "Vertical offset of the image from the top edge of the image sensor. (default: center the image vertically)"
+         },
+         "minFrameTime": {
+            "type": "float, optional",
+            "doc": "Minimum time period, in seconds between frames, that the imager sensor will operate at. (default: image sensor minimum)"
+         },
+         "hRes": {
+            "type": "int",
+            "doc": "Horizontal image resolution, in pixels."
+         },
+         "hOffset": {
+            "type": "int, optional",
+            "doc": "Horizontal offset of the image from the right edge of the image sensor. (default: center the image horizontally)"
+         },
+         "vRes": {
+            "type": "int",
+            "doc": "Vertical image resolution, in pixels."
+         },
+         "bitDepth": {
+            "type": "int, optional",
+            "doc": "Desired pixel bit depth to use for image readout. (default: image sensor maximum)"
+         }
+      },
+      "description": "This method checks the sensor's ability to operate at the desired resolution parameters and, if successful, reports on some of the parameters that would apply if that resolution was configured. Otherwise, this method will generate an error to indicate that the resolution setting is not supported by the image sensor.",
+      "returns": {
+         "exposureMax": {
+            "type": "int",
+            "doc": "The maximmum exposure period in nanoseconds, that the image sensor can expose a frame for if framePeriod was set equal to minFramePeriod."
+         },
+         "minFramePeriod": {
+            "type": "int",
+            "doc": "The minimum frame period, in nanoseconds between frames, that the image sensor can operate at."
+         },
+         "exposureMin": {
+            "type": "int",
+            "doc": "The minimum exposure period in nanoseconds that the image sensor can exposure a frame for."
+         },
+         "cameraMaxFrames": {
+            "type": "int",
+            "doc": "The maximum number of frames that the camera can save at this resolution and framerate setting."
+         }
+      },
+      "brief": "Tests the camera ability to support a desired resolution and framerate."
+   },
+   "exportCalData": {
+      "description": "This method iterates through the image sensor's internal calibration modes and generates factory calibration sample data to be processed externally. The calibration data will be saved to a USB thumb drive, typically mounted at /media/sda1.\u000a After external processing of the calibration samples is complete, the resulting calibration data can be imported to the camera using the `importCalData` method.",
+      "brief": "Generates factory calibration samples and saves them to external storage"
+   },
+   "startRecording": {
+      "args": {
+         "recMode": {
+            "type": "RecModes, optional",
+            "doc": "Override the current `recMode` property when starting the recording."
+         }
+      },
+      "yields": "float: The sleep time, in seconds, between steps of the recording.\u000a",
+      "brief": "Program the recording sequencer and start recording."
+   },
+   "availableKeys": {
+      "description": "This method returns a dictionary with an entry for each parameter that can be accessed via the API. Each entry will describe the `type` of the parameter as a D-Bus signature, a `doc` string that describes the function of the parameter, as well `get`, `set`, and `notify` flags that indicate whether the parameter can is read-only, read-write or generates `notify` events when its value changes.\u000a The dictionary for each key may also include additional details depending on the type of the parameter. String parameters describing an enumerated type, may include an `enum` dictionary which maps each of the acceptable values to a brief docstring describing what that value does.\u000a Dictionary types may include an `args` dictionary describing the each member of the dictionary does when it is set in the API, or they may include a `returns` dictionary describing what each dictionary member means when it is returned by the API.\u000a Each key may also include a `description` member, which provides a detailed multi-line documentation string. This is intended to provide more detail than may be available in the single-line `doc`.",
+      "returns": {
+         "keys": {
+            "type": "dict",
+            "doc": "A dictionary describing each parameter in the API."
+         }
+      },
+      "brief": "Gets a list of the parameters available in the API."
+   },
+   "stopFilesave": {
+      "description": "When the video system has started a filesave operation, it can take a very long time to complete denepding on the quanitity of footage being saved, and the speed of media to which it is being written. If operation was started in error, or the user changes their mind, then this method may be used to terminate that operation rather than waiting for it to complete.\u000a It is acceptable to call this method even when no filesave operation is in progress, however, it may result in an otherwise unexpected restart of the video system.",
+      "brief": "Terminates an ongoing filesave operation"
+   },
+   "availableCalls": {
+      "description": "This method returns a dictionary with an entry for each method that can be called via the API. Each entry will include a `brief` string that summarizes the purpose of the API method. Optionally, the entries may also contain a `description` with a more extensive detail, as well as `args` and `returns` dictionaries that list the parameters that the method accepts, and any values that the method returns.",
+      "returns": {
+         "calls": {
+            "type": "dict",
+            "doc": "A dictionary describing each method that is callable by the API."
+         }
+      },
+      "brief": "Gets a list of the methds that can be called via the API."
+   },
+   "clearCalibration": {
+      "args": {
+         "factory": {
+            "type": "bool, optional",
+            "doc": "Also remove factory calibration data. (default: false)"
+         }
+      },
+      "description": "When called with no arguments, this removes only the user calibration, allowing the camera to return to its factory new state. The caller may also specify the removal of factory calibration data, though this is not recommended unless the user has made a backup of their calibration data first.",
+      "brief": "Removes user calibration data, returning the camera to its factory state."
+   },
+   "importCalData": {
+      "description": "This method looks for any calibration data present on a USB thumb drive, typically mounted at /media/sda1, and copies the calibration data to the camera's internal filesystem for later use.\u000a This method is used during factory calibration to import calibration data that the camera is not capable of generating on its own. Typically the camera will be connected to a test jig to stimulate the camera, with data being acquired using the `exportCalData` method.",
+      "brief": "Imports calibration data that was generated off-camera."
+   },
+   "reboot": {
+      "args": {
+         "power": {
+            "type": "boolean, optional",
+            "doc": "When true, the camera will perform a full power cycle."
+         },
+         "settings": {
+            "type": "boolean, optional",
+            "doc": "When true, the user and API settings are removed during the reboot, returning the camera to its factory default state."
+         },
+         "reload": {
+            "type": "boolean, optional",
+            "doc": "When true, the control API and user interfaces will restart themeselves (default: true)."
+         }
+      },
+      "description": "This method allows the user to restart their camera software, and optionally perform a full power cycle and/or return to factory default settings at the same time.",
+      "brief": "Restarts the control API and/or the camera."
+   },
+   "startFilesave": {
+      "args": {
+         "device": {
+            "type": "string",
+            "doc": "Name of the external storage device where video should be saved."
+         },
+         "length": {
+            "type": "int, optional",
+            "doc": "The number of frames of video that should be saved (default: all frames)."
+         },
+         "format": {
+            "type": "string",
+            "doc": "Enumerate the output video format."
+         },
+         "filename": {
+            "type": "string, optional",
+            "doc": "Name to give to the video file (or directory for TIFF and DNG formats). When omitted, a filename is generated using the current date and time."
+         },
+         "bitrate": {
+            "type": "int, optional",
+            "doc": "For compressed formats, this sets the desired bitrate of the encoded file in bits per second (0.25 bits per pixel per second)."
+         },
+         "start": {
+            "type": "int, optional",
+            "doc": "The frame number in recorded video where the saved video begin (default: 0)."
+         },
+         "framerate": {
+            "type": "int, optional",
+            "doc": "For formats with a media container (such as MPEG-4), this determines the framerate of the encoded media file (default: 60 frames per second)."
+         }
+      },
+      "description": "Upon calling this method, the video system will switch to the `filesave` state and begin encoding video data to the output `device`. During this procedure, the `playbackStart`, `playbackPosition` and `playbackLength` parameters will be updated to track the progress of the filesave.\u000a When the filesave is completed, the video system will exit the `filesave` state, and revert back to whichever state it was in when the `startFilesave` method was called.",
+      "brief": "Saves a region of recorded video to external storage."
+   },
+   "flushRecording": {
+      "description": "Normally when recording video, the camera will overwrite video data only as needed to make room for new data from the the image sensor. This method discards all video data from the video memory so that the user can start fresh on their next recording.",
+      "brief": "Flushes recoreded video data from memory."
+   },
+   "set": {
+      "args": {
+         "**values": {
+            "type": "dict",
+            "doc": "A dictionary naming each of the parameters to update, and the to which they should be set."
+         }
+      },
+      "description": "The resulting dictionary will contain an element for each paramer that was successfully set in the API. If any parameters could not be set, they will be included in an `error` dictionary given the reason that they could not be set. Typically this is either because the value given was not valid for the parameter, or the parameter did not exist.",
+      "brief": "Sets parameter values in the API."
+   },
+   "startPlayback": {
+      "args": {
+         "position": {
+            "type": "int",
+            "doc": "The starting frame number from which video should play."
+         },
+         "loopcount": {
+            "type": "int, optional",
+            "doc": "The number of frames, after which the video system should return back to `position` and continue playback. This allows the user to select a subset of the video to play."
+         },
+         "framerate": {
+            "type": "int",
+            "doc": "The rate, in frames per second, at which video should advance through the playback memory."
+         }
+      },
+      "description": "When in playback mode, the camera will replay the captured video on the LCD, HDMI port and its RTSP stream. The user may configure the starting frame number and the rate at which video is replayed.\u000a The actual video stream replayed by the camera is fixed at either 30 or 60fps, the camera will either skip or duplicate frames to achieve the requested framerate. For example, setting the `framerate` to 120fps will typically play every 2nd frame at 60fps.\u000a The `framerate` can be either positive for forward playback, or negative to rewind backwards through video. A value of zero will effectively pause the video on the current frame.",
+      "brief": "Switches the video system into playback mode, or sets the playback position and rate."
+   },
+   "startWhiteBalance": {
+      "args": {
+         "vStart": {
+            "type": "int, optional",
+            "doc": "Veritcal position at which the white reference should be taken."
+         },
+         "hStart": {
+            "type": "int, optional",
+            "doc": "Horizontal position at which the white reference should be taken."
+         }
+      },
+      "description": "Take a white reference sample from the live video stream, and compute the white balance coefficients for the current lighting conditions. If successful, the results of the white balance calculation will be stored in `wbCustomColor` and `wbTemperature` will be set to 0K.",
+      "yields": "float: The sleep time, in seconds, between steps of the white balance procedure.\u000a",
+      "brief": "Begin the white balance procedure."
+   },
+   "stopRecording": {
+      "brief": "Terminate a recording if one is in progress."
+   }
+}

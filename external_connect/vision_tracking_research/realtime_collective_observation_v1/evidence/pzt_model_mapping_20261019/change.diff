@@ -1,0 +1,859 @@
+--- /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/evidence/pzt_model_mapping_20261019/before/README.md
++++ /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/README.md
+@@ -60,6 +60,6 @@
+ 
+ 所有速度均为图像像素单位。二维候选靠近、密度增长、区域连通都不是物理融合或三维聚集证据。`TRAINING_READY=false`，`SCIENTIFIC_CONTROL_ADMITTED=false`。
+ 
+-## PZT 状态与用户俯视布局（2026-10-19）
++## PZT 状态与实验模型（2026-10-19）
+ 
+-右侧新增 **PZT status / layout** 页签，自动读取 Windows AFG 控制器发布的四路连接、ON/OFF、频率、Vpp、相位和波形。**Edit layout** 手动登记各 PZT 中心、朝向、直径及接线确认，保存后立即生效。实际接线未知时保持未登记；详细步骤见 [PZT_MONITOR_GUIDE.md](PZT_MONITOR_GUIDE.md)。
++右侧 **PZT status / layout** 使用当前 F10M-R3 的固定装置模型，显示 PDMS、中央通道、两个顶部孔及 X±、Y± 四枚 7 mm PZT。点击 **PZT connections**，只需确认 A/CH1、A/CH2、B/CH1、B/CH2 分别接到哪枚实体 PZT。实际连接与读回参数自动按对应关系显示，不再手填几何坐标；重复分配被拒绝，未确认的关系不猜测。操作说明见 [PZT_MONITOR_GUIDE.md](PZT_MONITOR_GUIDE.md)。
+--- /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/evidence/pzt_model_mapping_20261019/before/microbubble_aggregation.md
++++ /home/lzy/projects/microbubble_aggregation.md
+@@ -248,7 +248,7 @@
+ 
+ PIV 当前采用细黄色开放箭头，固定网格与因果平滑减少跳动。平滑带来一定响应延迟，只改善显示，不提高测量精度。新画的 mask 默认使用图像坐标，未校正相机晃动；因此应保持镜头和装置稳定。
+ 
+-**PZT 事件按钮只记时间，不控制输出。** 实际信号发生器仍使用独立的 `F:\Tektronix_control\start_gui.cmd`，设置频率、输入 Vpp、相位及启停，具体见 [AFG 控制说明][afg-guide]。硬件 PZT1–4 与空间 X±、Y± 的关系需要根据实际接线记录；不能将仿真的 Pa 数值直接填入 Vpp。
++**PZT 事件按钮只记时间，不控制输出。** 实际信号发生器仍使用独立的 `F:\Tektronix_control\start_gui.cmd`，设置频率、输入 Vpp、相位及启停，具体见 [AFG 控制说明][afg-guide]。观测界面现在按当前实验模型固定显示 X±、Y± 四枚 PZT；点击 **PZT connections**，确认 A/CH1、A/CH2、B/CH1、B/CH2 分别连接哪枚实体 PZT，即可把实际输出状态和参数对应到俯视位置。无需再手填坐标；不能将仿真的 Pa 数值直接填入 Vpp。
+ 
+ ### 5.3 Stop 后保存了什么
+ 
+--- /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/evidence/pzt_model_mapping_20261019/before/PZT_MONITOR_GUIDE.md
++++ /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/PZT_MONITOR_GUIDE.md
+@@ -1,61 +1,56 @@
+-# PZT 状态与俯视布局
++# PZT 状态与实验模型
+ 
+-## 第一次使用
++## 使用方法
+ 
+-1. Windows 打开 `F:\Tektronix_control\start_gui.cmd`，点击 **Connect Devices (Read Only)**。只保留一个 AFG 控制器窗口。此操作读取设备，不修改输出。
+-2. 启动原来的观测界面：
++1. Windows 打开 `F:\Tektronix_control\start_gui.cmd`，点击 **Connect Devices (Read Only)**；只运行一个 AFG 控制器。
++2. 启动观测界面，右侧选择 **PZT status / layout**：
+ 
+    ```bash
+    bash /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/start_live.sh
+    ```
+ 
+-3. 右侧选择 **PZT status / layout**。四路状态会自动更新；首次完整读取约需 4–5 秒。相机的 **Start / Stop** 与 PZT 输出独立，开始录像不会开启 PZT。
+-4. 点击 **Edit layout**，根据实际接线填写位置。默认没有任何已登记位置，不使用仿真的位置替代真实装置。
++3. 点击 **PZT connections**。沿实际电缆核对四个输出，各自在 **Connected PZT** 下选择 **X− / X+ / Y− / Y+**，然后点击 **Save connections**。不确定的行保留 **Unassigned**。
+ 
+-## 填写俯视布局
++你只需要确认信号发生器通道接到哪枚实体 PZT，不需要输入几何坐标。不得将两路分配给同一枚 PZT；重复选择会提示并阻止保存。部分确认也可以保存，其他位置继续保持未分配。取消窗口不修改已保存关系。
+ 
+-| 栏目 | 填写方法 |
+-|---|---|
+-| PZT | 固定通道标识，先沿实际电缆确认对应哪一枚 |
+-| Position set | 已确认位置才勾选；取消勾选可从图中移除 |
+-| X / Y (mm) | PZT 中心位置，使用你选定的同一个原点，单位毫米 |
+-| Normal (°) | 发声面朝向：0° 向右（+X），90° 向上（+Y），180° 向左，270° 向下 |
+-| Diameter (mm) | 实际直径；输入框初值 7 mm，保存前按实物确认 |
+-| Wiring check | 人工检查后的接线状态；初值 Not checked |
++## 固定实验模型
+ 
+-点击 **Save** 后立即更新，重新启动仍保留。**Cancel** 放弃此次修改。布局保存于 `configs/pzt_layout.json`，有格式和有限数值检查。
++俯视图复用当前 F10M-R3 装置几何，原点在 PDMS 中心，+X 向右、+Y 向上。四枚 PZT 直径均为 **7 mm**，朝向装置内部。
+ 
+-俯视方向为从 +Z 看向 XY，+X 向右、+Y 向上，XY 使用相同缩放。银灰短条示意竖放圆片的顶部投影，箭头是用户输入的发声法向，旁边标记通道和输出状态。位置是实验台坐标，尚未与相机图像配准；箭头不是声力计算结果。发生器通道映射来自其 `config.json`：
++| 实体 PZT | 中心 X/Y/Z（mm） | 发声朝向 |
++|---|---|---|
++| X− | −16.25 / 0 / 0 | +X |
++| X+ | +16.25 / 0 / 0 | −X |
++| Y− | 0 / −4.5 / 0 | +Y |
++| Y+ | 0 / +4.5 / 0 | −Y |
+ 
+-| PZT | 发生器 | USB 序列号 | 输出 |
+-|---|---|---|---|
+-| PZT1 | A | 2147075 | CH1 |
+-| PZT2 | A | 2147075 | CH2 |
+-| PZT3 | B | 2439003 | CH1 |
+-| PZT4 | B | 2439003 | CH2 |
++图中显示 32.5 × 9 mm 的 PDMS 俯视轮廓、直径 1.6 mm 的中央通道、封闭 X 端，以及两个直径 1.5 mm 的顶部开口。顶部孔中心沿用原模型的 X=±10.85 mm；5.4 mm 定位参考仍保留原记录中的测量参考限制。
+ 
+-## 读取状态与启动后参数
++银灰短条表示竖直 PZT 圆片的俯视投影，箭头表示发声面朝向。XY 使用同一比例，位置不会随信号发生器通道选择而移动。此图是装置布局，不是声场，也尚未与相机图像配准。
+ 
+-- **AFG connected**：对应通道最近成功读回。**ON / OFF**：实际查询的发生器输出开关，不是用户尚未提交的输入框。
+-- 参数显示实际频率（MHz）、幅值（Vpp）、相位（度）、波形和模式。SIN 是正弦波、SQU 是方波、CW 是固定频率；Sweep / Burst 的详细参数及负载设定可将鼠标停在卡片上查看。
+-- 相位沿用现有驱动的弧度到度转换，不将两台发生器的读回相位当作经过测量的跨设备相位同步。
+-- **Last read** 显示读取距今多久。每秒安排一路只读查询，四路轮询；用户控制操作优先，繁忙时暂缓后台读取。它不是毫秒级启动时刻测量。
+-- 连续超过 8 秒没有新读数时显示 **Readback expired / UNKNOWN**，旧参数不再作为当前值展示。控制器关闭、状态文件不可用、查询失败也会明确显示；一台设备读失败会使该设备两路失效，另一台可继续更新。
+-- **Wire** 来自你的人工确认。AFG 的 USB 接通和输出 ON 不能证明放大器或 PZT 电缆接通，也不能证明实际发出了超声。软件没有这类负载传感器读数。
+-- **Vpp 是发生器输出读回值，不是声压 Pa**。未做电声标定，因此不换算声压或实际 PZT 推力。
++## 通道与参数
+ 
+-## 日常操作
++| 本界面通道 | 设备 USB 序列号 | 原 Windows 控制器标签 |
++|---|---|---|
++| A/CH1 | 2147075 | PZT1 |
++| A/CH2 | 2147075 | PZT2 |
++| B/CH1 | 2439003 | PZT3 |
++| B/CH2 | 2439003 | PZT4 |
+ 
+-在原 Windows AFG 窗口按既有流程配置并启动输出后，观测界面自动更新相应读回参数。仅在 AFG 输入框中打字、尚未 Apply 的内容不会被显示成实际参数。读回 OFF 时仍可以显示已配置频率和幅值，但不会标成正在输出。
++原控制器中的 PZT1–4 是输出通道标签，不能直接当作 X±、Y± 的物理位置。新界面按用户保存的对应关系，把实际读回状态显示到相应实体 PZT 上；同时检查设备别名、USB 序列号和 CH，不依赖枚举顺序。
+ 
+-**AFG controller folder** 打开控制器文件夹，双击 `start_gui.cmd` 即可。不要同时打开多个控制程序。布局可以先填写，不要求相机或发生器在线。
++卡片显示连接状态、实际 ON/OFF、频率（MHz）、幅值（Vpp）、相位（度）、波形和模式。SIN 为正弦波，SQU 为方波，CW 为固定频率。读数时间、负载、扫频/突发详细参数及错误信息放在鼠标悬停提示中，避免挤占主界面。
+ 
+-实时观测程序只消费 `F:\Tektronix_control\observation_status.json`；不另外打开 VISA 会话，不发送 ON、OFF、触发或参数写入命令。现有视频仍保存相机画面与识别叠加，PZT 侧栏是监视界面，不属于实验视频图像。
++状态通常每路约 4 秒更新一次，超过 8 秒失效。读失败或身份不符显示 UNKNOWN，不沿用旧参数。**Vpp 是发生器读回值，不是声压 Pa；ON 不证明实际 PZT 电缆接通或已经发声。** 用户的通道对应选择是人工接线记录，不是硬件检测结果。
+ 
+-## 实现与验证
++相机 Start/Stop 只处理观测和录像；PZT 输出继续由原 Windows AFG 控制器操作。观测界面仅消费状态文件，不发送硬件控制命令，不另开 VISA 会话。
+ 
+-- Windows 与 WSL 的 `Tektronix_control/afg_gui.py` 同步增加了 `afg_telemetry.py`。后台读取复用原单线程 USB 工作队列；原 `afg_control.py` 保持原样。关闭控制器时仍使用其原有退出行为。
+-- 只读参数与输出开关分别计时：单独 OFF 回执不会将旧频率和相位刷新成新测量。状态文件原子替换；WSL 在后台线程读取挂载盘，避免拖慢画面。
+-- `src/pzt_status.py` 处理新鲜度和布局持久化；`src/pzt_panel.py` 实现英文状态卡、俯视图及对齐的编辑表格。
+-- `evidence/pzt_monitor_20261019/` 保存修改前备份、测试、实际设备查询、代码哈希和视觉检查。截图中的四向测试布局只供 UI 检查，不写入用户正式布局。
+-- 2026-10-19 真实设备只读 GUI 联调完成，四通道全部读回成功；测试前后设置一致、全部输出 OFF，新增遥测发送的全部 SCPI 都为查询命令。真实 ON 过程未在此次开发中主动执行；ON 状态、断连、参数过期和关闭路径通过离线测试覆盖。
++## 保存与复现
++
++- `configs/pzt_experiment_model.json`：从当前实验模型提取的几何及原始文件 SHA-256。
++- `configs/pzt_layout.json`：用户确认的通道对应关系，重启后保留。
++- `src/pzt_status.py`：身份校验、过期处理和映射验证。
++- `src/pzt_panel.py`：简洁英文状态卡、固定俯视图和连接设置。
++- `evidence/pzt_model_mapping_20261019/`：旧布局备份、测试和截图。带 `fixture_not_actual_wiring` 的截图仅验证映射显示，不代表实际接线，也没有写入用户配置。
++
++旧版手填坐标已备份；不会据此自动猜测接线。几何与通道映射的修改不影响发生器配置。
+--- /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/evidence/pzt_model_mapping_20261019/before/configs/pzt_layout.json
++++ /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/configs/pzt_layout.json
+@@ -1,40 +1,30 @@
+ {
+-  "schema": 1,
+-  "view": "XY_TOP",
+-  "units": "mm",
+-  "source": "USER_ENTERED",
+-  "pzts": {
+-    "PZT1": {
+-      "placed": false,
+-      "wiring": "Not checked",
+-      "x_mm": 0.0,
+-      "y_mm": 0.0,
+-      "normal_deg": 0.0,
+-      "diameter_mm": 7.0
++  "schema": 2,
++  "model_id": "F10M_R3_PDMS_FOUR_PZT",
++  "assignments": {
++    "A/CH1": {
++      "device": "A",
++      "channel": 1,
++      "serial": "2147075",
++      "pzt": null
+     },
+-    "PZT2": {
+-      "placed": false,
+-      "wiring": "Not checked",
+-      "x_mm": 0.0,
+-      "y_mm": 0.0,
+-      "normal_deg": 0.0,
+-      "diameter_mm": 7.0
++    "A/CH2": {
++      "device": "A",
++      "channel": 2,
++      "serial": "2147075",
++      "pzt": null
+     },
+-    "PZT3": {
+-      "placed": false,
+-      "wiring": "Not checked",
+-      "x_mm": 0.0,
+-      "y_mm": 0.0,
+-      "normal_deg": 0.0,
+-      "diameter_mm": 7.0
++    "B/CH1": {
++      "device": "B",
++      "channel": 1,
++      "serial": "2439003",
++      "pzt": null
+     },
+-    "PZT4": {
+-      "placed": false,
+-      "wiring": "Not checked",
+-      "x_mm": 0.0,
+-      "y_mm": 0.0,
+-      "normal_deg": 0.0,
+-      "diameter_mm": 7.0
++    "B/CH2": {
++      "device": "B",
++      "channel": 2,
++      "serial": "2439003",
++      "pzt": null
+     }
+   }
+ }--- /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/evidence/pzt_model_mapping_20261019/before/src/pzt_panel.py
++++ /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/src/pzt_panel.py
+@@ -1,251 +1,208 @@
+-"""PZT telemetry cards and an explicitly user-defined XY top view."""
++"""Fixed experimental apparatus with explicit AFG-channel-to-PZT assignment."""
+ import json
+ import math
+ from pathlib import Path
+-import time
+ 
+ from PySide6 import QtCore as C, QtGui as G, QtWidgets as W
+-from pzt_status import NAMES, StatusReader, blank_layout, channel_view, save_layout, validate_layout
++from pzt_status import (StatusReader, EXPERIMENT_MODEL, ENDPOINTS, PHYSICAL_PZTS,
++                        experiment_layout, endpoint_view, physical_views, save_layout, validate_layout)
+ from desktop import open_directory
+-
+-
+-class LayoutEditor(W.QDialog):
+-    def __init__(self, data, parent=None):
+-        super().__init__(parent)
+-        self.setWindowTitle('PZT layout — manual lab coordinates')
+-        self.resize(880, 380)
+-        outer = W.QVBoxLayout(self)
+-        help_text = W.QLabel('View from +Z toward XY. +X is right; +Y is up. Coordinates are in mm.\n'
+-            'Normal angle: 0° points +X; 90° points +Y. Set the emitting direction.\n'
+-            'Enable only known positions. Wiring is your manual cable check, not a device measurement.')
+-        help_text.setWordWrap(True)
+-        outer.addWidget(help_text)
+-        grid = W.QGridLayout()
+-        outer.addLayout(grid)
+-        for col, text in enumerate(('PZT', 'Position set', 'X (mm)', 'Y (mm)', 'Normal (°)', 'Diameter (mm)', 'Wiring check')):
+-            grid.addWidget(W.QLabel(text), 0, col)
+-            if col > 1:
+-                grid.setColumnStretch(col, 1)
+-        self.fields = {}
+-        for i, name in enumerate(NAMES, 1):
+-            row = data['pzts'][name]
+-            grid.addWidget(W.QLabel(name), i, 0)
+-            placed = W.QCheckBox()
+-            placed.setChecked(row['placed'])
+-            grid.addWidget(placed, i, 1)
+-            fields = dict(placed=placed)
+-            for col, key in enumerate(('x_mm', 'y_mm', 'normal_deg', 'diameter_mm'), 2):
+-                spin = W.QDoubleSpinBox()
+-                spin.setDecimals(3)
+-                spin.setRange(.01 if key == 'diameter_mm' else -10000, 1000 if key == 'diameter_mm' else 10000)
+-                spin.setSingleStep(.1 if key != 'normal_deg' else 5.)
+-                spin.setValue(row[key])
+-                spin.setMinimumWidth(100)
+-                grid.addWidget(spin, i, col)
+-                fields[key] = spin
+-            wiring = W.QComboBox()
+-            wiring.addItems(['Not checked', 'Connected', 'Disconnected'])
+-            wiring.setCurrentText(row['wiring'])
+-            grid.addWidget(wiring, i, 6)
+-            fields['wiring'] = wiring
+-            self.fields[name] = fields
+-        outer.addStretch()
+-        buttons = W.QDialogButtonBox(W.QDialogButtonBox.Save | W.QDialogButtonBox.Cancel)
+-        buttons.accepted.connect(self.accept)
+-        buttons.rejected.connect(self.reject)
+-        outer.addWidget(buttons)
+-
+-    def value(self):
+-        result = blank_layout()
+-        for name, fields in self.fields.items():
+-            result['pzts'][name] = {k: (w.isChecked() if k == 'placed' else w.currentText() if k == 'wiring' else w.value())
+-                                    for k, w in fields.items()}
+-        return validate_layout(result)
+ 
+ 
+ class TopView(W.QWidget):
+     def __init__(self, parent=None):
+         super().__init__(parent)
+-        self.setMinimumHeight(180)
++        self.setMinimumHeight(220)
+         self.setSizePolicy(W.QSizePolicy.Expanding, W.QSizePolicy.Expanding)
+-        self.layout_data = blank_layout()
+-        self.views = {}
+-        self.setToolTip('Schematic XY top view. Bars represent vertical PZT discs; arrows are user-entered emitting normals.\n'
+-                        'No automatic camera registration, acoustic force or pressure field is inferred.')
++        self.layout_data = experiment_layout()
++        self.views = physical_views({}, self.layout_data)
++        self.show_output = True
++        self.setToolTip('XY top view of the current 32.5 × 9 × 9 mm PDMS model. Four 7 mm PZTs face inward.\n'
++                        'Arrows show emitting normals. Top-port centres retain the model reference assumption.\n'
++                        'Channel assignments are entered by the user, not sensed by the generator.')
+ 
+     def paintEvent(self, event):
+         p = G.QPainter(self)
+         p.setRenderHint(G.QPainter.Antialiasing)
+         p.fillRect(self.rect(), G.QColor('#101b26'))
+         p.setPen(G.QColor('#d9e6ee'))
+-        p.drawText(12, 20, 'TOP VIEW · XY (mm) · user layout')
+-        rows = {n: r for n, r in self.layout_data['pzts'].items() if r['placed']}
+-        if not rows:
+-            p.setPen(G.QColor('#c6d5df'))
+-            p.drawText(self.rect().adjusted(20, 35, -20, -20), C.Qt.AlignCenter | C.Qt.TextWordWrap,
+-                       'Positions are not set.\nSelect Edit layout and enter the actual PZT positions.')
+-            return
+-        xs, ys = [0.], [0.]
+-        for row in rows.values():
+-            half = row['diameter_mm'] * .65
+-            xs += [row['x_mm'] - half, row['x_mm'] + half]
+-            ys += [row['y_mm'] - half, row['y_mm'] + half]
+-        lo_x, hi_x, lo_y, hi_y = min(xs), max(xs), min(ys), max(ys)
+-        # One isotropic scale: never distort relative positions or diameters.
+-        scale = min(max(1, self.width()-115) / max(hi_x-lo_x, 1.),
+-                    max(1, self.height()-100) / max(hi_y-lo_y, 1.))
+-        center_x, center_y = (hi_x+lo_x)/2, (hi_y+lo_y)/2
++        p.drawText(12, 20, 'Top view')
++        p.drawText(self.width()-111, 20, '+X right · +Y up')
++        model = EXPERIMENT_MODEL
++        length, width = model['block_mm'][:2]
++        scale = min(max(1, self.width()-130)/(length+2), max(1, self.height()-140)/(width+1))
++        cx, cy = self.width()/2, (self.height()+14)/2
+         def point(x, y):
+-            return C.QPointF(self.width()/2+(x-center_x)*scale, (self.height()+20)/2-(y-center_y)*scale)
+-        p.setPen(G.QPen(G.QColor('#4b6376'), 1, C.Qt.DashLine))
+-        p.drawLine(point(lo_x, 0), point(hi_x, 0))
+-        p.drawLine(point(0, lo_y), point(0, hi_y))
+-        p.setPen(G.QColor('#b6c9d6'))
+-        p.drawText(self.width()-115, 20, '+X right · +Y up')
+-        p.drawText(point(0, 0)+C.QPointF(4, 14), '0')
+-        for name, row in rows.items():
+-            at = point(row['x_mm'], row['y_mm'])
+-            view = self.views.get(name, {})
+-            color = G.QColor(view.get('color', '#a3afbd'))
++            return C.QPointF(cx+x*scale, cy-y*scale)
++        # Model footprint and the sealed water channel, using one XY scale.
++        block = C.QRectF(cx-length*scale/2, cy-width*scale/2, length*scale, width*scale)
++        p.setPen(G.QPen(G.QColor('#8199ac'), 1.2))
++        p.setBrush(G.QColor(94, 121, 145, 45))
++        p.drawRect(block)
++        diameter = model['channel_diameter_mm']
++        p.setBrush(G.QColor(91, 166, 190, 45))
++        p.setPen(G.QPen(G.QColor('#71a0b3'), 1))
++        p.drawRect(C.QRectF(block.left(), cy-diameter*scale/2, block.width(), diameter*scale))
++        for port in model['ports']:
++            p.setBrush(G.QColor('#243d4b'))
++            p.setPen(G.QPen(G.QColor('#a3c0cf'), 1))
++            r=port['diameter_mm']*scale/2
++            p.drawEllipse(point(*port['center_xy_mm']), r, r)
++        for name in PHYSICAL_PZTS:
++            row=model['pzts'][name]
++            x,y,_=row['center_mm']
++            at=point(x,y)
++            view=self.views.get(name,{})
++            color=G.QColor(view.get('color','#a3afbd'))
+             p.save()
+             p.translate(at)
+-            p.rotate(-row['normal_deg'])
+-            length = row['diameter_mm'] * scale
+-            gradient = G.QLinearGradient(-4, 0, 4, 0)
+-            gradient.setColorAt(0, G.QColor('#596c7e'))
+-            gradient.setColorAt(.65, G.QColor('#ccd8e2'))
+-            gradient.setColorAt(1, G.QColor('#8298ab'))
++            p.rotate(-math.degrees(math.atan2(row['normal'][1],row['normal'][0])))
++            disc_length=row['diameter_mm']*scale
++            gradient=G.QLinearGradient(-6,0,0,0)
++            gradient.setColorAt(0,G.QColor('#647c8e'))
++            gradient.setColorAt(.65,G.QColor('#d4e0e7'))
++            gradient.setColorAt(1,G.QColor('#8fa5b6'))
+             p.setBrush(G.QBrush(gradient))
+-            p.setPen(G.QPen(color, 1.5))
+-            p.drawRoundedRect(C.QRectF(-4, -length/2, 8, length), 2, 2)
+-            p.setPen(G.QPen(color, 1.6))
+-            p.drawLine(C.QPointF(6, 0), C.QPointF(25, 0))
+-            p.drawLine(C.QPointF(25, 0), C.QPointF(20, -4))
+-            p.drawLine(C.QPointF(25, 0), C.QPointF(20, 4))
++            p.setPen(G.QPen(color,1.2))
++            p.drawRoundedRect(C.QRectF(-6,-disc_length/2,6,disc_length),1.5,1.5)
++            p.setPen(G.QPen(color,1.3))
++            p.drawLine(C.QPointF(3,0),C.QPointF(20,0))
++            p.drawLine(C.QPointF(20,0),C.QPointF(15,-3.5))
++            p.drawLine(C.QPointF(20,0),C.QPointF(15,3.5))
+             p.restore()
++            text=name+'\n'+(view.get('endpoint') or '—')
++            if view.get('endpoint') and self.show_output:
++                text+='\n'+view.get('output','UNKNOWN')
++            if name=='X-': rect=C.QRectF(1,cy-28,max(58,block.left()-9),56)
++            elif name=='X+': rect=C.QRectF(block.right()+8,cy-28,self.width()-block.right()-9,56)
++            elif name=='Y+': rect=C.QRectF(cx-65,block.top()-63,130,54)
++            else: rect=C.QRectF(cx-65,block.bottom()+9,130,54)
+             p.setPen(color)
+-            # Put each label radially outside the group to keep the centre open.
+-            dx, dy = row['x_mm']-center_x, row['y_mm']-center_y
+-            label = f"{name} {view.get('output', 'UNKNOWN')}"
+-            rect = C.QRectF(at.x()-48, at.y()+max(12, length/2+5) if dy <= 0 else at.y()-max(32, length/2+25), 96, 20)
+-            if abs(dx) > abs(dy):
+-                rect = C.QRectF(at.x()+12 if dx > 0 else at.x()-108, at.y()-10, 96, 20)
+-            # Keep all labels visible even for layouts with strongly unequal spans.
+-            rect.moveLeft(max(3, min(rect.left(), self.width()-99)))
+-            rect.moveTop(max(26, min(rect.top(), self.height()-42)))
+-            p.fillRect(rect, G.QColor(16, 27, 38, 225))
+-            p.drawText(rect, C.Qt.AlignCenter, label)
+-        bar_mm = 10 ** math.floor(math.log10(max((hi_x-lo_x)/5, .01)))
+-        p.setPen(G.QPen(G.QColor('#c1d1db'), 1.4))
+-        p.drawLine(C.QPointF(14, self.height()-17), C.QPointF(14+bar_mm*scale, self.height()-17))
+-        p.drawText(int(20+bar_mm*scale), self.height()-12, f'{bar_mm:g} mm')
+-        p.drawText(self.width()-160, self.height()-12, 'Arrows: emitting normal')
++            font=p.font();font.setPixelSize(12);p.setFont(font)
++            p.drawText(rect,C.Qt.AlignCenter,text)
++        p.setPen(G.QPen(G.QColor('#b9cbd7'),1.2))
++        p.drawLine(C.QPointF(14,self.height()-16),C.QPointF(14+5*scale,self.height()-16))
++        p.drawText(int(20+5*scale),self.height()-12,'5 mm')
++
++
++class ConnectionEditor(W.QDialog):
++    def __init__(self,data,parent=None):
++        super().__init__(parent)
++        self.setWindowTitle('PZT connections')
++        self.resize(650,620)
++        outer=W.QVBoxLayout(self)
++        self.preview=TopView()
++        self.preview.show_output=False
++        self.preview.setMinimumHeight(240)
++        outer.addWidget(self.preview,1)
++        grid=W.QGridLayout()
++        grid.setColumnStretch(3,1)
++        outer.addLayout(grid)
++        for col,title in enumerate(('Generator','USB serial','Channel','Connected PZT')):
++            grid.addWidget(W.QLabel(title),0,col)
++        self.fields={}
++        for i,(endpoint,row) in enumerate(data['assignments'].items(),1):
++            for col,text in enumerate((row['device'],row['serial'],f"CH{row['channel']}")):
++                grid.addWidget(W.QLabel(text),i,col)
++            combo=W.QComboBox()
++            combo.addItem('Unassigned',None)
++            for pzt in PHYSICAL_PZTS:combo.addItem(pzt,pzt)
++            combo.setCurrentIndex(combo.findData(row['pzt']))
++            grid.addWidget(combo,i,3)
++            self.fields[endpoint]=combo
++        self.error=W.QLabel()
++        self.error.setStyleSheet('color:#edaf91;')
++        self.error.setMinimumHeight(20)
++        outer.addWidget(self.error)
++        buttons=W.QDialogButtonBox(W.QDialogButtonBox.Save|W.QDialogButtonBox.Cancel)
++        self.save_button=buttons.button(W.QDialogButtonBox.Save)
++        self.save_button.setText('Save connections')
++        buttons.accepted.connect(self.accept)
++        buttons.rejected.connect(self.reject)
++        outer.addWidget(buttons)
++        for combo in self.fields.values():combo.currentIndexChanged.connect(self.validate_selection)
++        self.validate_selection()
++
++    def value(self):
++        result=experiment_layout()
++        for endpoint,combo in self.fields.items():result['assignments'][endpoint]['pzt']=combo.currentData()
++        return validate_layout(result)
++
++    def validate_selection(self,*args):
++        try:
++            data=self.value()
++        except ValueError as exc:
++            self.error.setText(str(exc));self.save_button.setEnabled(False)
++            return
++        self.error.setText('');self.save_button.setEnabled(True)
++        self.preview.layout_data=data
++        self.preview.views=physical_views({},data)
++        self.preview.update()
+ 
+ 
+ class PZTPanel(W.QWidget):
+-    def __init__(self, cfg, parent=None, reader_factory=StatusReader):
++    def __init__(self,cfg,parent=None,reader_factory=StatusReader):
+         super().__init__(parent)
+-        self.layout_path = Path(cfg.get('pzt_layout_path', Path(__file__).resolve().parents[1]/'configs/pzt_layout.json'))
+-        self.status_path = Path(cfg.get('pzt_status_path', '/mnt/f/Tektronix_control/observation_status.json'))
+-        self.layout_data = blank_layout()
+-        load_error = None
++        self.layout_path=Path(cfg.get('pzt_layout_path',Path(__file__).resolve().parents[1]/'configs/pzt_layout.json'))
++        self.status_path=Path(cfg.get('pzt_status_path','/mnt/f/Tektronix_control/observation_status.json'))
++        self.layout_data=experiment_layout()
++        load_error=None
+         if self.layout_path.exists():
+-            try:
+-                self.layout_data = validate_layout(json.loads(self.layout_path.read_text()))
+-            except (OSError, ValueError, KeyError, TypeError) as exc:
+-                load_error = f'Layout not loaded: {exc}'
+-        self.reader = reader_factory(self.status_path)
+-        self.data = {}
+-        outer = W.QVBoxLayout(self)
+-        outer.setContentsMargins(0, 0, 0, 0)
+-        self.hint = W.QLabel(load_error or 'Read-only. AFG controller → Connect Devices (Read Only).')
+-        self.hint.setWordWrap(True)
+-        outer.addWidget(self.hint)
+-        cards = W.QGridLayout()
+-        cards.setColumnStretch(0, 1)
+-        cards.setColumnStretch(1, 1)
+-        self.cards = {}
+-        for i, name in enumerate(NAMES):
+-            box = W.QGroupBox(name)
+-            box.setStyleSheet('QGroupBox{margin-top:10px;padding-top:5px;}')
+-            box.setMinimumWidth(185)
+-            layout = W.QVBoxLayout(box)
+-            layout.setContentsMargins(7, 5, 7, 5)
+-            text = W.QLabel()
+-            text.setTextFormat(C.Qt.PlainText)
+-            text.setWordWrap(True)
+-            text.setMinimumHeight(72)
+-            layout.addWidget(text)
+-            cards.addWidget(box, i//2, i%2)
+-            self.cards[name] = (box, text)
++            try:self.layout_data=validate_layout(json.loads(self.layout_path.read_text()))
++            except (OSError,ValueError,KeyError,TypeError) as exc:load_error=f'Confirm connections: {exc}'
++        self.reader=reader_factory(self.status_path)
++        self.data={}
++        outer=W.QVBoxLayout(self);outer.setContentsMargins(0,0,0,0)
++        self.hint=W.QLabel(load_error or '');self.hint.setWordWrap(True);self.hint.setVisible(bool(load_error));outer.addWidget(self.hint)
++        cards=W.QGridLayout();cards.setColumnStretch(0,1);cards.setColumnStretch(1,1)
++        self.cards={}
++        for i,endpoint in enumerate(ENDPOINTS):
++            box=W.QGroupBox(endpoint);box.setStyleSheet('QGroupBox{margin-top:10px;padding-top:5px;}');box.setMinimumWidth(185)
++            layout=W.QVBoxLayout(box);layout.setContentsMargins(7,5,7,5)
++            text=W.QLabel();text.setTextFormat(C.Qt.PlainText);text.setWordWrap(True);text.setMinimumHeight(58)
++            layout.addWidget(text);cards.addWidget(box,i//2,i%2);self.cards[endpoint]=(box,text)
+         outer.addLayout(cards)
+-        self.top = TopView()
+-        buttons = W.QGridLayout()
+-        buttons.setColumnStretch(0, 1)
+-        buttons.setColumnStretch(1, 1)
+-        self.edit_button = W.QPushButton('Edit layout')
+-        self.edit_button.clicked.connect(self.edit_layout)
+-        folder = W.QPushButton('AFG controller folder')
+-        folder.clicked.connect(self.open_controller)
+-        buttons.addWidget(self.edit_button, 0, 0)
+-        buttons.addWidget(folder, 0, 1)
+-        outer.addLayout(buttons)
+-        outer.addWidget(self.top, 1)
+-        note = W.QLabel('Vpp: generator readback, not acoustic Pa.\nWiring: manual check; not sensed. ON: output enabled, not proof of emitted sound.')
+-        note.setWordWrap(True)
+-        note.setStyleSheet('color:#b8cedc;font-size:12px;')
+-        outer.addWidget(note)
+-        self.timer = C.QTimer(self)
+-        self.timer.timeout.connect(self.refresh)
+-        self.timer.start(500)
+-        self.refresh()
++        buttons=W.QGridLayout();buttons.setColumnStretch(0,1);buttons.setColumnStretch(1,1)
++        self.edit_button=W.QPushButton('PZT connections');self.edit_button.clicked.connect(self.edit_connections)
++        folder=W.QPushButton('AFG controller');folder.clicked.connect(self.open_controller)
++        folder.setToolTip('Open the Windows controller folder. Run start_gui.cmd and Connect Devices (Read Only).')
++        buttons.addWidget(self.edit_button,0,0);buttons.addWidget(folder,0,1);outer.addLayout(buttons)
++        self.top=TopView();outer.addWidget(self.top,1)
++        self.timer=C.QTimer(self);self.timer.timeout.connect(self.refresh);self.timer.start(500);self.refresh()
+ 
+     def open_controller(self):
+         try:
+-            ok, message = open_directory(self.status_path.parent)
+-            self.hint.setText('Open start_gui.cmd, then Connect Devices (Read Only).' if ok else message)
+-        except OSError as exc:
+-            self.hint.setText(str(exc))
+-
+-    def edit_layout(self):
+-        dialog = LayoutEditor(self.layout_data, self)
+-        if dialog.exec() == W.QDialog.Accepted:
++            ok,message=open_directory(self.status_path.parent)
++            if not ok:self.hint.setText(message);self.hint.show()
++        except OSError as exc:self.hint.setText(str(exc));self.hint.show()
++
++    def edit_connections(self):
++        dialog=ConnectionEditor(self.layout_data,self)
++        if dialog.exec()==W.QDialog.Accepted:
+             try:
+-                self.layout_data = save_layout(self.layout_path, dialog.value())
+-                self.hint.setText('Layout saved. Positions and wiring checks are user-entered.')
+-                self.refresh()
+-            except (OSError, ValueError, KeyError, TypeError) as exc:
+-                W.QMessageBox.warning(self, 'Layout not saved', str(exc))
++                self.layout_data=save_layout(self.layout_path,dialog.value())
++                self.hint.clear();self.hint.hide();self.refresh()
++            except (OSError,ValueError,KeyError,TypeError) as exc:W.QMessageBox.warning(self,'Connections not saved',str(exc))
+ 
+     def refresh(self):
+-        self.data = self.reader.snapshot()
+-        views = {}
+-        for name, (box, label) in self.cards.items():
+-            view = channel_view(self.data, name)
+-            views[name] = view
+-            box.setTitle(f"{name} · {view['mapping']}" if view['mapping'] else name)
+-            params = view['parameters']
+-            lines = [f"{view['connection']} | {view['output']}"]
++        self.data=self.reader.snapshot()
++        for endpoint,(box,label) in self.cards.items():
++            view=endpoint_view(self.data,endpoint)
++            target=self.layout_data['assignments'][endpoint]['pzt'] or 'Unassigned'
++            box.setTitle(f'{endpoint} → {target}')
++            params=view['parameters']
++            lines=[f"{view['connection']} | {view['output']}"]
+             if params:
+-                mode = 'Burst' if params.get('burst_enabled') else str(params.get('frequency_mode', '?'))
+-                lines += [f"{params['frequency_hz']/1e6:g} MHz  ·  {params['amplitude_vpp']:g} Vpp",
+-                          f"Phase {params['phase_deg']:.1f}° · {params.get('waveform', '?')} / {mode}"]
+-            else:
+-                lines += ['Parameters: unavailable', 'No fresh parameter readback']
+-            age = view['age_s']
+-            if age is not None:
+-                lines.append(f'Last read: {max(age, 0):.1f} s ago')
+-            else:
+-                lines.append('Last read: none')
+-            lines.append('Wire: ' + self.layout_data['pzts'][name]['wiring'])
+-            label.setText('\n'.join(lines))
+-            label.setStyleSheet(f"color:{view['color']};font-size:12px;")
+-            detail = dict(parameters=params, error=view['error'], serial=self.data.get('channels', {}).get(name, {}).get('serial'))
+-            label.setToolTip(json.dumps(detail, indent=2, ensure_ascii=False))
+-        self.top.layout_data = self.layout_data
+-        self.top.views = views
++                mode='Burst' if params.get('burst_enabled') else str(params.get('frequency_mode','?'))
++                lines += [f"{params['frequency_hz']/1e6:g} MHz · {params['amplitude_vpp']:g} Vpp",
++                          f"Phase {params['phase_deg']:.1f}° · {params.get('waveform','?')} / {mode}"]
++            else:lines+=['Parameters unavailable']
++            label.setText('\n'.join(lines));label.setStyleSheet(f"color:{view['color']};font-size:12px;")
++            label.setToolTip('Generator readback; Vpp is not acoustic pressure. ON is not physical cable sensing.\n'+
++                json.dumps(dict(identity=ENDPOINTS[endpoint],last_read_s=view['age_s'],parameters=params,error=view['error']),indent=2))
++        self.top.layout_data=self.layout_data
++        self.top.views=physical_views(self.data,self.layout_data)
+         self.top.update()
+ 
+     def shutdown(self):
+-        self.timer.stop()
+-        self.reader.close()
++        self.timer.stop();self.reader.close()
+--- /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/evidence/pzt_model_mapping_20261019/before/src/pzt_status.py
++++ /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/src/pzt_status.py
+@@ -1,4 +1,4 @@
+-"""Read-only Windows telemetry consumer and manually registered lab layout."""
++"""Read-only telemetry, fixed experiment geometry, and user channel assignments."""
+ import copy
+ import json
+ import math
+@@ -11,38 +11,44 @@
+ MAX_AGE_S = 8.
+ 
+ 
+-def blank_layout():
+-    return dict(schema=1, view='XY_TOP', units='mm', source='USER_ENTERED',
+-                pzts={n: dict(placed=False, x_mm=0., y_mm=0., normal_deg=0.,
+-                    diameter_mm=7., wiring='Not checked') for n in NAMES})
++MODEL_PATH = Path(__file__).resolve().parents[1]/'configs/pzt_experiment_model.json'
++EXPERIMENT_MODEL = json.loads(MODEL_PATH.read_text(encoding='utf-8'))
++PHYSICAL_PZTS = ('X-', 'X+', 'Y-', 'Y+')
++ENDPOINTS = {
++    'A/CH1': dict(device='A', channel=1, serial='2147075'),
++    'A/CH2': dict(device='A', channel=2, serial='2147075'),
++    'B/CH1': dict(device='B', channel=1, serial='2439003'),
++    'B/CH2': dict(device='B', channel=2, serial='2439003'),
++}
++
++
++def experiment_layout():
++    # Geometry is fixed by the experiment model. Only cable assignments are user input.
++    return dict(schema=2, model_id=EXPERIMENT_MODEL['model_id'],
++                assignments={key: dict(**identity, pzt=None) for key, identity in ENDPOINTS.items()})
+ 
+ 
+ def validate_layout(data):
+-    if not isinstance(data, dict):
+-        raise ValueError('Expected a layout object.')
+-    if data.get('schema') != 1 or data.get('view') != 'XY_TOP' or data.get('units') != 'mm':
+-        raise ValueError('Expected a top-view layout in millimetres (schema 1).')
+-    if set(data.get('pzts', {})) != set(NAMES):
+-        raise ValueError('The layout must contain PZT1 through PZT4.')
+-    result = blank_layout()
+-    for name in NAMES:
+-        row = data['pzts'][name]
+-        if not isinstance(row, dict):
+-            raise ValueError(f'{name}: expected position fields.')
+-        if type(row.get('placed')) is not bool:
+-            raise ValueError(f'{name}: position enabled must be true or false.')
+-        clean = dict(placed=row['placed'], wiring=row.get('wiring', 'Not checked'))
+-        if clean['wiring'] not in ('Not checked', 'Connected', 'Disconnected'):
+-            raise ValueError(f'{name}: invalid manual wiring status.')
+-        for key in ('x_mm', 'y_mm', 'normal_deg', 'diameter_mm'):
+-            value = float(row[key])
+-            if not math.isfinite(value) or abs(value) > 10000:
+-                raise ValueError(f'{name}: {key} must be finite and within 10000.')
+-            clean[key] = value
+-        if not .01 <= clean['diameter_mm'] <= 1000:
+-            raise ValueError(f'{name}: diameter must be between 0.01 and 1000 mm.')
+-        clean['normal_deg'] %= 360.
+-        result['pzts'][name] = clean
++    if not isinstance(data, dict) or data.get('schema') != 2:
++        raise ValueError('Select the PZT connected to each AFG channel.')
++    if data.get('model_id') != EXPERIMENT_MODEL['model_id']:
++        raise ValueError('Connections belong to a different experiment model.')
++    if not isinstance(data.get('assignments'), dict) or set(data['assignments']) != set(ENDPOINTS):
++        raise ValueError('Expected A/CH1, A/CH2, B/CH1 and B/CH2.')
++    result = experiment_layout()
++    selected = set()
++    for key, identity in ENDPOINTS.items():
++        row = data['assignments'][key]
++        if not isinstance(row, dict) or any(row.get(k) != v for k, v in identity.items()):
++            raise ValueError(f'{key}: generator identity does not match.')
++        target = row.get('pzt')
++        if target is not None and target not in PHYSICAL_PZTS:
++            raise ValueError(f'{key}: select X-, X+, Y- or Y+.')
++        if target in selected:
++            raise ValueError(f'{target} is selected more than once.')
++        if target is not None:
++            selected.add(target)
++        result['assignments'][key]['pzt'] = target
+     return result
+ 
+ 
+@@ -53,6 +59,26 @@
+     temporary = path.with_suffix('.tmp')
+     temporary.write_text(json.dumps(result, indent=2), encoding='utf-8')
+     os.replace(temporary, path)
++    return result
++
++
++def endpoint_view(data, endpoint, now=None):
++    identity = ENDPOINTS[endpoint]
++    matches = [name for name, row in data.get('channels', {}).items()
++               if all(row.get(key) == value for key, value in identity.items())]
++    if len(matches) == 1:
++        return channel_view(data, matches[0], now)
++    view = channel_view({}, endpoint, now)
++    view['connection'] = 'Identity mismatch' if data.get('channels') else 'No readback'
++    return view
++
++
++def physical_views(data, layout, now=None):
++    result = {name: dict(connection='Unassigned', output='Unassigned', color='#a3afbd',
++                        parameters={}, endpoint=None) for name in PHYSICAL_PZTS}
++    for endpoint, row in validate_layout(layout)['assignments'].items():
++        if row['pzt'] is not None:
++            result[row['pzt']] = dict(endpoint_view(data, endpoint, now), endpoint=endpoint)
+     return result
+ 
+ 
+--- /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/evidence/pzt_model_mapping_20261019/before/tests/test_pzt_monitor.py
++++ /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/tests/test_pzt_monitor.py
+@@ -8,12 +8,12 @@
+ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+ sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'src'))
+ import pytest
+-from pzt_status import NAMES, blank_layout, channel_view, read_status, save_layout, validate_layout, StatusReader
++from pzt_status import NAMES, EXPERIMENT_MODEL, ENDPOINTS, experiment_layout, endpoint_view, physical_views, channel_view, read_status, save_layout, validate_layout, StatusReader
+ 
+ 
+ def example_status(now=100.):
+     return dict(schema=1, source='AFG_GUI_READBACK', controller='CONNECTED', published_unix_s=now,
+-        channels={name: dict(device='A' if i < 2 else 'B', channel=i%2+1, state='READ_OK',
++        channels={name: dict(device='A' if i < 2 else 'B', channel=i%2+1, serial='2147075' if i < 2 else '2439003', state='READ_OK',
+             read_unix_s=now, parameters_unix_s=now, output=(i == 0),
+             parameters=dict(frequency_hz=2.5e6, amplitude_vpp=.1, phase_deg=90., waveform='SIN', frequency_mode='CW'))
+                   for i, name in enumerate(NAMES)})
+@@ -59,19 +59,46 @@
+     assert 'error' in read_status(path)
+ 
+ 
+-def test_manual_layout_is_blank_until_enabled_and_persists(tmp_path):
+-    data = blank_layout()
+-    assert not any(r['placed'] for r in data['pzts'].values())
+-    data['pzts']['PZT1'].update(placed=True, x_mm=-16.25, y_mm=0, normal_deg=-360, wiring='Connected')
+-    path = tmp_path/'layout.json'
+-    saved = save_layout(path, data)
+-    assert saved == validate_layout(json.loads(path.read_text()))
+-    assert saved['pzts']['PZT1']['normal_deg'] == 0
+-    assert saved['pzts']['PZT1']['x_mm'] == -16.25
+-    data['pzts']['PZT2']['x_mm'] = float('nan')
+-    with pytest.raises(ValueError):
+-        save_layout(path, data)
+-    assert json.loads(path.read_text()) == saved
++def test_experiment_geometry_and_channel_assignment_persistence(tmp_path):
++    data=experiment_layout()
++    assert all(row['pzt'] is None for row in data['assignments'].values())
++    assert EXPERIMENT_MODEL['block_mm']==[32.5,9,9]
++    assert EXPERIMENT_MODEL['pzts']['X-']['center_mm']==[-16.25,0,0]
++    assert EXPERIMENT_MODEL['pzts']['Y+']['center_mm']==[0,4.5,0]
++    assert all(row['diameter_mm']==7 for row in EXPERIMENT_MODEL['pzts'].values())
++    data['assignments']['A/CH1']['pzt']='Y+'
++    path=tmp_path/'layout.json'
++    saved=save_layout(path,data)
++    assert saved==validate_layout(json.loads(path.read_text()))
++    data['assignments']['B/CH2']['pzt']='Y+'
++    with pytest.raises(ValueError,match='more than once'):save_layout(path,data)
++    assert json.loads(path.read_text())==saved
++
++
++def test_mapping_routes_the_correct_real_channel_and_rejects_wrong_identity():
++    data=example_status()
++    layout=experiment_layout()
++    layout['assignments']['A/CH1']['pzt']='Y+'
++    layout['assignments']['B/CH2']['pzt']='X-'
++    views=physical_views(data,layout,101.)
++    assert views['Y+']['output']=='ON' and views['Y+']['endpoint']=='A/CH1'
++    assert views['X-']['output']=='OFF' and views['X-']['endpoint']=='B/CH2'
++    assert views['X+']['output']=='Unassigned' and not views['X+']['parameters']
++    # Do not route by legacy labels PZT1/PZT4 or by enumeration order.
++    data['channels']['PZT1'],data['channels']['PZT4']=data['channels']['PZT4'],data['channels']['PZT1']
++    assert physical_views(data,layout,101.)['Y+']['output']=='ON'
++    data['channels']['PZT4']['serial']='WRONG_SERIAL'
++    invalid=physical_views(data,layout,101.)['Y+']
++    assert invalid['output']=='UNKNOWN' and invalid['connection']=='Identity mismatch'
++    assert not invalid['parameters']
++
++
++def test_mapping_cannot_guess_legacy_geometry_or_change_device_identity():
++    with pytest.raises(ValueError):validate_layout({'schema':1,'pzts':{}})
++    data=experiment_layout();data['assignments']['A/CH1']['serial']='WRONG'
++    with pytest.raises(ValueError,match='identity'):validate_layout(data)
++    data=experiment_layout();data['assignments']['A/CH1']['pzt']='PZT1'
++    with pytest.raises(ValueError):validate_layout(data)
+ 
+ 
+ def test_worker_recovers_from_missing_status_file(tmp_path):
+@@ -93,34 +120,36 @@
+     assert not reader.thread.is_alive()
+ 
+ 
+-def test_layout_editor_alignment_and_monitor_read_only(tmp_path):
++def test_connection_editor_alignment_duplicate_check_and_monitor(tmp_path):
+     from PySide6 import QtWidgets as W
+-    from pzt_panel import LayoutEditor, PZTPanel
+-    app = W.QApplication.instance() or W.QApplication([])
++    from pzt_panel import ConnectionEditor,PZTPanel
++    app=W.QApplication.instance() or W.QApplication([])
+     class Reader:
+-        def __init__(self, path): pass
+-        def snapshot(self): return example_status(time.time())
+-        def close(self): pass
+-    panel = PZTPanel(dict(pzt_layout_path=str(tmp_path/'layout.json')), reader_factory=Reader)
+-    panel.resize(440, 690)
+-    panel.show()
+-    editor = LayoutEditor(blank_layout())
+-    editor.show()
+-    app.processEvents()
++        def __init__(self,path):pass
++        def snapshot(self):return example_status(time.time())
++        def close(self):pass
++    panel=PZTPanel(dict(pzt_layout_path=str(tmp_path/'layout.json')),reader_factory=Reader)
++    panel.resize(440,600);panel.show()
++    editor=ConnectionEditor(experiment_layout());editor.show();app.processEvents()
+     try:
+-        rows = list(editor.fields.values())
+-        for key in ('x_mm', 'y_mm', 'normal_deg', 'diameter_mm', 'wiring'):
+-            assert len({r[key].geometry().x() for r in rows}) == 1
+-            assert len({r[key].width() for r in rows}) == 1
+-        rows[0]['placed'].setChecked(True)
+-        rows[0]['x_mm'].setValue(-12.)
+-        assert editor.value()['pzts']['PZT1']['x_mm'] == -12.
+-        assert 'AFG connected | ON' in panel.cards['PZT1'][1].text()
+-        assert '0.1 Vpp' in panel.cards['PZT1'][1].text()
+-        assert 'Wire: Not checked' in panel.cards['PZT1'][1].text()
+-        assert not any(b.text() in ('ON', 'OFF', 'Apply') for b in panel.findChildren(W.QPushButton))
+-        assert panel.top.layout_data == blank_layout()
++        combos=list(editor.fields.values())
++        assert len({c.geometry().x() for c in combos})==1
++        assert len({c.width() for c in combos})==1
++        combos[0].setCurrentIndex(combos[0].findData('Y+'))
++        assert editor.value()['assignments']['A/CH1']['pzt']=='Y+'
++        combos[1].setCurrentIndex(combos[1].findData('Y+'))
++        assert not editor.save_button.isEnabled() and 'more than once' in editor.error.text()
++        combos[1].setCurrentIndex(0)
++        assert editor.save_button.isEnabled()
++        panel.layout_data=editor.value();panel.refresh()
++        assert 'A/CH1 → Y+'==panel.cards['A/CH1'][0].title()
++        assert 'AFG connected | ON' in panel.cards['A/CH1'][1].text()
++        assert panel.top.views['Y+']['output']=='ON'
++        assert panel.top.views['X-']['output']=='Unassigned'
++        assert '0.1 Vpp' in panel.cards['A/CH1'][1].text()
++        assert not panel.hint.isVisible()
++        assert not panel.findChildren(W.QDoubleSpinBox)
++        assert not editor.findChildren(W.QDoubleSpinBox)
++        assert not any(b.text() in ('ON','OFF','Apply') for b in panel.findChildren(W.QPushButton))
+     finally:
+-        editor.close()
+-        panel.shutdown()
+-        panel.close()
++        editor.close();panel.shutdown();panel.close()

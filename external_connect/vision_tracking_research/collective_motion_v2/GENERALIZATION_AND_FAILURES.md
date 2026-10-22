@@ -1,0 +1,13 @@
+# Generalization and failures
+
+**SINGLE_RECORDING_GENERALIZATION_NOT_VERIFIED.** Four material regions/frame pools and unique synthetic seeds prevent exact source-patch reuse across splits, but cannot establish cross-recording generalization. F10T human detection review is reused only as historical Figure1 evidence, not as six-parameter motion truth or network training masks.
+
+All trained models fail the validation 5% joint-risk admission. The fallback rejects all final-test estimates and all real-replay AI estimates. That also rejects all216 non-global/unobservable samples, but simultaneously discards all1320 observable-global samples: this is not successful semantic classification. GeoMotion's raw classifier predicts global for all1536 final samples. Direct6+heat recognizes118/162 not-observable examples, wrongly calls54 global samples unobservable, and misses all54 non-affine examples. PIV's quality residual detects51/54 non-affine examples, wrongly accepts one and rejects two for insufficient evidence.
+
+The most serious errors are translation and vorticity. Low variation in model outputs, visible in Figure3, shows mean/prior collapse rather than learned reliable motion. Gray-only, heat-only, fusion and robust fusion differ, but none resolves it. Finite gradient tests, independent checkpoint loading, and exp/log coordinate tests passed; these engineering checks cannot prove that the trained features recover motion.
+
+A plausible mechanism is loss of small subpixel-motion evidence under downsampling and spatially diffuse local matching, combined with background/material shortcuts and validation class loss dominating checkpoint choice. This is a hypothesis, not a proven causal diagnosis. GeoMotion checkpoints selected at epoch1 are explicitly disclosed; later training worsened the preregistered validation score. We did not change the score after seeing final-test results.
+
+Stationary source dots, finite feathered patches, limited real appearance diversity, per-frame blur/noise, dropout, repeated patterns and absent depth variation limit synthetic realism. Severe heat errors particularly harm heat-only input. `all_failures.jsonl`, confusion matrices, source/case breakdowns, and posthoc collapse diagnostics preserve the negative evidence. Optional NeuFlow/SynthPix are NOT_RUN and not ranked.
+
+Next round: use new development material and a new final holdout; validate an established local matching/flow initialization, texture-supported motion losses and coarse-to-fine motion range; require visible improvement on held-out development material before expanding training. Collect independent recording sessions and known stage motion for real six-parameter truth. Keep PIV observation-only and retain its failure/rejection checks.

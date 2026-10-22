@@ -1,0 +1,7 @@
+[
+  {
+    "name": "f10w_replay_r2_20261017",
+    "command": "while supervisorctl status f10w_replay_diagnostics_20261017 | grep -q RUNNING; do sleep 2; done\npython -m unittest discover -s tests -v\nmkdir -p \"$F10W_OUTPUT_ROOT/results/replay_before_hash_cache_fix\"\nfor p in \"$F10W_OUTPUT_ROOT\"/results/causal_replay_*.json; do mv \"$p\" \"$F10W_OUTPUT_ROOT/results/replay_before_hash_cache_fix/\"; done\npython scripts/causal_replay.py\npython scripts/remote_asset_audit.py",
+    "timeout": 900
+  }
+]

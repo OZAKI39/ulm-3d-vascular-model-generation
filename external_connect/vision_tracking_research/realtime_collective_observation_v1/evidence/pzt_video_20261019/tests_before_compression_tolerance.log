@@ -1,0 +1,44 @@
+.F............................                                           [100%]
+=================================== FAILURES ===================================
+_______ test_video_has_timestamp_matched_readbacks_and_keeps_raw_pixels ________
+
+tmp_path = PosixPath('/tmp/pytest-of-lzy/pytest-26/test_video_has_timestamp_match0')
+
+    def test_video_has_timestamp_matched_readbacks_and_keeps_raw_pixels(tmp_path):
+        s=source();start=time.monotonic()
+        r=ExperimentVideoRecorder(tmp_path,dict(video_annotation_wait_ms=0),start)
+        contexts=[s.capture(packet(arrival=t)) for t in [100.,100.04,102.,111.]]
+        for i,context in enumerate(contexts):
+            assert r.submit(packet(i,start+i*.04),0,None,DEFAULT_LAYERS,context)
+        report=r.close()
+        assert report['video_complete'],report['error']
+        rows=[json.loads(line) for line in (tmp_path/'video_frames.jsonl').read_text().splitlines()]
+        samples=[json.loads(line) for line in (tmp_path/'pzt_readbacks.jsonl').read_text().splitlines()]
+        assert len(samples)==2 # Same readback reused and evaluated for expiry per frame.
+        by_id={row['sample_id']:row for row in samples}
+        recovered=[frame_views(dict(frame_unix_s=row['pzt_frame_unix_s'],sample=by_id[row['pzt_sample_id']])) for row in rows]
+        assert [v['A/CH1']['output'] for v in recovered]==['ON','ON','OFF','UNKNOWN']
+        assert by_id[rows[0]['pzt_sample_id']]['layout']['assignments']['A/CH1']['pzt']=='Y-'
+        raw,t=decode(tmp_path/'experiment_raw.mp4');over,ot=decode(tmp_path/'experiment_overlay.mp4')
+        assert t==ot and len(raw)==len(over)==4
+        assert raw[0].shape==(192,256,3) and over[0].shape==(720,736,3)
+        # AFG state changes appear in the sidebar, not the untouched raw recording.
+        # Inspect the changed ON/OFF text, not the mostly black entire sidebar.
+        change=np.abs(over[0][98:118,280:370].astype(float)-over[2][98:118,280:370])
+        assert np.count_nonzero(change>20)>50
+>       assert np.array_equal(raw[0],raw[1])
+E       assert False
+E        +  where False = <function array_equal at 0x702088a0e2b0>(array([[[119, 119, 119],\n        [119, 119, 119],\n        [119, 119, 119],\n        ...,\n        [119, 119, 119],\n     ...    ...,\n        [119, 119, 119],\n        [119, 119, 119],\n        [119, 119, 119]]], shape=(192, 256, 3), dtype=uint8), array([[[119, 119, 119],\n        [119, 119, 119],\n        [119, 119, 119],\n        ...,\n        [119, 119, 119],\n     ...    ...,\n        [119, 119, 119],\n        [119, 119, 119],\n        [119, 119, 119]]], shape=(192, 256, 3), dtype=uint8))
+E        +    where <function array_equal at 0x702088a0e2b0> = np.array_equal
+
+tests/test_pzt_video.py:80: AssertionError
+=============================== warnings summary ===============================
+tests/test_ui.py::test_ui_buttons_and_unexpected_close
+tests/test_ui.py::test_ui_buttons_and_unexpected_close
+  /home/lzy/projects/computation_examples/_archives/mevo_vision_f10y_20261017/external_connect/vision_tracking_research/realtime_collective_observation_v1/.venv/lib/python3.12/site-packages/openpiv/validation.py:45: RuntimeWarning: All-NaN slice encountered
+    return np.nanmedian(windows, axis=(-2, -1))
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_pzt_video.py::test_video_has_timestamp_matched_readbacks_and_keeps_raw_pixels
+1 failed, 29 passed, 2 warnings in 5.14s

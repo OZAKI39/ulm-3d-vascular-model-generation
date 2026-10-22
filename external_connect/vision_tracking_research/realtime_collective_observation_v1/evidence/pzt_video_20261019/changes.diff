@@ -1,0 +1,573 @@
+--- src/experiment_video.py.before
++++ src/experiment_video.py
+@@ -22,6 +22,7 @@
+ from ycommon import clean, dump
+ from piv_display import piv_arrows,arrow_shape,draw_cv_arrows,DISPLAY_SPEC,REFERENCE_SPEED,GAIN_SECONDS,MAX_LENGTH_PX,display_vectors,display_is_smoothed
+ from overlay_style import DEFAULT_LAYERS,DISPLAY_POLICY,overlay_opacity,overlay_caption
++from pzt_video import PZTVideoRenderer, sample_id, EXPERIMENT_MODEL
+ 
+ TIME_BASE = Fraction(1, 1_000_000)
+ 
+@@ -70,7 +71,7 @@
+                 v=np.asarray(display_vectors(state,smoothed)).reshape(-1,4)
+                 if len(v) and np.any(np.linalg.norm(v[:,2:],axis=1)*GAIN_SECONDS>MAX_LENGTH_PX):
+                     cv2.putText(image,'Long arrows capped',(image.shape[1]-170,y+5),cv2.FONT_HERSHEY_SIMPLEX,.4,(255,226,59),1,cv2.LINE_AA)
+-    # A small in-image caption only; no sidebar, controls, curves or Qt border.
++    # Camera caption; the PZT sidebar is composed separately, without UI controls.
+     lines = [f"UTC {utc.replace('T',' ')[:23]} | t={elapsed:.3f} s"]
+     if packet.source_mode=='REALTIME_REPLAY':lines[0]+=' | Replay'
+     if state:
+@@ -92,19 +93,21 @@
+ 
+ 
+ class VideoPair:
+-    def __init__(self, directory, index, shape):
++    def __init__(self, directory, index, shape, overlay_shape=None):
+         self.shape = shape[:2]
+         self.outputs = []
+         suffix = '' if index == 1 else f'_part{index:03d}'
+         self.names = [f'experiment_raw{suffix}.mp4', f'experiment_overlay{suffix}.mp4']
+         h,w = self.shape
+         self.encoded_wh = [w+w%2,h+h%2]  # Pad odd dimensions; never crop pixels.
++        oh,ow = (overlay_shape or shape)[:2]
++        self.overlay_encoded_wh = [ow+ow%2,oh+oh%2]
+         try:
+-            for name in self.names:
++            for name,wh in zip(self.names,(self.encoded_wh,self.overlay_encoded_wh)):
+                 container = av.open(str(directory/name),'w',options={'movflags':'+frag_keyframe+empty_moov+default_base_moof'})
+                 stream = container.add_stream('libx264',rate=30)
+                 self.outputs.append((container,stream))
+-                stream.width,stream.height = self.encoded_wh
++                stream.width,stream.height = wh
+                 stream.pix_fmt = 'yuv420p'
+                 stream.time_base = TIME_BASE
+                 stream.codec_context.time_base = TIME_BASE
+@@ -163,10 +166,12 @@
+         self.first_arrival = None
+         self.last_elapsed_s = 0.
+         self.match_counts = dict(EXACT_FRAME=0,RECENT_PAST_FRAME=0,NO_CURRENT_ANALYSIS=0)
++        self.pzt_renderer = PZTVideoRenderer()
++        self.pzt_sample_count = 0
+         self.thread = threading.Thread(target=self.run,name='experiment-video-encoder',daemon=True)
+         self.thread.start()
+ 
+-    def submit(self, packet, geometry_revision, geometry, layers):
++    def submit(self, packet, geometry_revision, geometry, layers, pzt=None):
+         if self.closed or self.done.is_set():return False
+         self.submitted += 1
+         if self.error or self.queue.full():
+@@ -176,7 +181,8 @@
+             return False
+         item = dict(packet=replace(packet,image=packet.image.copy()),revision=geometry_revision,
+             geometry=geometry,layers=dict(layers),enqueued=time.monotonic(),
+-            receive_utc=datetime.now(timezone.utc).isoformat(timespec='microseconds'))
++            receive_utc=datetime.now(timezone.utc).isoformat(timespec='microseconds'),
++            pzt=clean(pzt or dict(frame_unix_s=time.time(),sample=dict(scope='NOT_RECORDED'))))
+         try:self.queue.put_nowait(item)
+         except queue.Full:
+             self.dropped += 1
+@@ -218,7 +224,7 @@
+     def report(self):
+         status=self.status()
+         if not self.diagnostics:status.pop('queue_size',None)
+-        return dict(**status,schema='EXPERIMENT_VIDEO_1.0',start_utc=self.start_utc,
++        return dict(**status,schema='EXPERIMENT_VIDEO_1.1',start_utc=self.start_utc,
+             start_monotonic=self.start_monotonic,first_received_monotonic=self.first_arrival,
+             last_frame_elapsed_s=self.last_elapsed_s,time_base='1/1000000',
+             timeline='WSL/local monotonic receive intervals; variable frame rate; no synthetic frames',
+@@ -227,6 +233,11 @@
+             raw_encoding='H.264 CRF18 yuv420p; unannotated, not lossless sensor data',
+             annotations='Exact frame preferred; recent past overlay delay labelled; future/stale/other-ROI results excluded',
+             piv_display=DISPLAY_SPEC,overlay_display=DISPLAY_POLICY,
++            pzt_recording=dict(samples='pzt_readbacks.jsonl',geometry='pzt_experiment_model.json',
++                sample_count=self.pzt_sample_count,frame_reference='video_frames.jsonl: pzt_sample_id, pzt_frame_unix_s',
++                association='Latest monitor observation available at local frame arrival; no future readback; not exposure synchronized',
++                replay_policy='No live AFG values assigned to historical replay',
++                overlay='Native camera pixels plus black PZT status/layout sidebar; raw video dimensions unchanged'),
+             source_modes=sorted({part['source_mode'] for part in self.parts}),
+             match_counts=self.match_counts,parts=self.parts,dropped_frame_examples=list(self.drop_examples),
+             metadata='video_frames.jsonl',video_complete=bool(self.closed and not self.error and self.written and not self.dropped))
+@@ -234,9 +245,13 @@
+     def run(self):
+         pair = None
+         metadata = None
++        pzt_metadata = None
++        last_pzt_id = None
+         try:
+             dump(self.directory/'video_manifest.json',self.report())
++            dump(self.directory/'pzt_experiment_model.json',EXPERIMENT_MODEL)
+             metadata = (self.directory/'video_frames.jsonl').open('x',encoding='utf-8',buffering=1)
++            pzt_metadata = (self.directory/'pzt_readbacks.jsonl').open('x',encoding='utf-8',buffering=1)
+             while not self.done.is_set() or not self.queue.empty():
+                 try:item = self.queue.get(timeout=.05)
+                 except queue.Empty:continue
+@@ -245,16 +260,24 @@
+                 if self.first_arrival is None:self.first_arrival = p.arrival_monotonic
+                 elapsed = p.arrival_monotonic-self.first_arrival
+                 self.last_elapsed_s = elapsed
++                overlay = render_overlay(p,state,item['geometry'],item['layers'],match,lag,
++                    item['receive_utc'],elapsed,self.ttl_ms)
++                overlay = self.pzt_renderer.compose(overlay,item['pzt'])
++                pzt_id = sample_id(item['pzt']['sample'])
++                if pzt_id != last_pzt_id:
++                    pzt_metadata.write(json.dumps(dict(sample_id=pzt_id,**item['pzt']['sample']),separators=(',',':'),allow_nan=False)+'\n')
++                    self.pzt_sample_count += 1
++                    last_pzt_id = pzt_id
+                 if pair is None or pair.shape!=p.image.shape[:2]:
+                     if pair:pair.close();pair=None
+-                    pair = VideoPair(self.directory,len(self.parts)+1,p.image.shape)
++                    pair = VideoPair(self.directory,len(self.parts)+1,p.image.shape,overlay.shape)
+                     self.parts.append(dict(part=len(self.parts)+1,raw=pair.names[0],overlay=pair.names[1],
+                         source_mode=p.source_mode,image_wh=[p.image.shape[1],p.image.shape[0]],encoded_wh=pair.encoded_wh,
++                        overlay_encoded_wh=pair.overlay_encoded_wh,
++                        overlay_camera_xy=[0,(overlay.shape[0]-p.image.shape[0])//2],
+                         start_elapsed_s=elapsed,frames=0))
+                 part = self.parts[-1]
+                 pts = round((elapsed-part['start_elapsed_s'])*1e6)
+-                overlay = render_overlay(p,state,item['geometry'],item['layers'],match,lag,
+-                    item['receive_utc'],elapsed,self.ttl_ms)
+                 encoded_pts = pair.write(p.image,overlay,pts)
+                 row = dict(record_index=self.written,part=part['part'],part_frame_index=pair.frames-1,
+                     video_pts_us=encoded_pts,requested_pts_us=pts,pts_adjusted=encoded_pts!=pts,
+@@ -271,7 +294,8 @@
+                     analysis_completed_monotonic=state.get('completed_monotonic') if state else None,
+                     motion_valid=bool(state and state.get('valid')),motion_reference=state.get('motion_reference') if state else None,
+                     piv_display_smoothed=bool(state and display_is_smoothed(state,item['layers'])),
+-                    candidate_count=len(state.get('candidates',[])) if state else None)
++                    candidate_count=len(state.get('candidates',[])) if state else None,
++                    pzt_sample_id=pzt_id,pzt_frame_unix_s=item['pzt']['frame_unix_s'])
+                 metadata.write(json.dumps(clean(row),separators=(',',':'),allow_nan=False)+'\n')
+                 self.written += 1;part['frames'] += 1;self.match_counts[match] += 1
+                 if self.written%30==1:dump(self.directory/'video_manifest.json',self.report())
+@@ -281,6 +305,7 @@
+                 try:pair.close()
+                 except Exception:self.error = (self.error or '')+'\n'+traceback.format_exc()
+             if metadata:metadata.close()
++            if pzt_metadata:pzt_metadata.close()
+             self.closed = True
+             try:dump(self.directory/'video_manifest.json',self.report())
+             except Exception:self.error = (self.error or '')+'\n'+traceback.format_exc()
+--- src/pipeline.py.before
++++ src/pipeline.py
+@@ -37,7 +37,7 @@
+ class Pipeline:
+  def __init__(self,cfg,output,observer_factory=Observer):
+   self.cfg=cfg.copy();self.output=Path(output);self.output.mkdir(parents=True,exist_ok=True);self.factory=observer_factory;self.input=LatestSlot();self.raw=None;self.analyzed_packet=None;self.state=None;self.lock=threading.Lock();self.status='STOPPED';self.events=[];self.counter=Counter();self.stop_event=threading.Event();self.source=None;self.worker=None;self.publisher=None;self.start_time=time.monotonic();self.timings={};self.samples=deque(maxlen=3600);self.record=None;self.error=None;self.stages=deque(maxlen=300);self.ui_times=deque(maxlen=6000);self.last_ui_key=None;self.transitions=[];self.metric_history=deque(maxlen=600);self.published=None;self.geometry_revision=0
+-  self.video_record=None;self.video_geometry=None;self.video_layers=dict(DEFAULT_LAYERS,**cfg.get('video_layers',{}));self._stopped=False
++  self.video_record=None;self.video_geometry=None;self.video_layers=dict(DEFAULT_LAYERS,**cfg.get('video_layers',{}));self._stopped=False;self.pzt_video_source=None
+  def set_video_layers(self,layers):
+   with self.lock:self.video_layers={name:bool(layers.get(name,default)) for name,default in DEFAULT_LAYERS.items()}
+  def set_live_geometry(self,path):
+@@ -64,7 +64,10 @@
+   self.counter['bridge_received']+=1
+   with self.lock:
+    self.raw=p;revision=self.geometry_revision;geometry=self.video_geometry;layers=self.video_layers
+-  if self.video_record:self.video_record.submit(p,revision,geometry,layers)
++  if self.video_record:
++   try:pzt=self.pzt_video_source.capture(p) if self.pzt_video_source else None
++   except Exception as exc:pzt=dict(frame_unix_s=time.time(),sample=dict(scope='UNAVAILABLE',error=str(exc)))
++   self.video_record.submit(p,revision,geometry,layers,pzt)
+   self.input.put(p)
+  def start(self,source_factory=None):
+   if self.worker and self.worker.is_alive():raise RuntimeError('ALREADY_RUNNING')
+--- src/ui.py.before
++++ src/ui.py
+@@ -244,7 +244,7 @@
+   self.cfg.update(source_mode=self.mode.currentText(),speed=float(self.speed.currentText()),loop=self.loop.isChecked())
+   self.cfg['video_layers']={k:v.isChecked() for k,v in self.checks.items()}
+   if self.cfg['source_mode']=='REALTIME_REPLAY':self.cfg['source_sha256']=sha(self.cfg['video'])
+-  self.output.mkdir(parents=True,exist_ok=True);self.pipe=Pipeline(self.cfg,self.output/f'session_{time.time_ns()}');self.pipe.start();self.started=time.monotonic()
++  self.output.mkdir(parents=True,exist_ok=True);self.pipe=Pipeline(self.cfg,self.output/f'session_{time.time_ns()}');self.pipe.pzt_video_source=self.pzt_panel.video_source;self.pipe.start();self.started=time.monotonic()
+   if self.capture and self.record is None:self.record=ScreenRecorder(self.capture)
+  def stop(self):
+   if self.pipe:
+--- src/pzt_status.py.before
++++ src/pzt_status.py
+@@ -7,6 +7,7 @@
+ import threading
+ import time
+ import uuid
++from collections import deque
+ 
+ NAMES = ('PZT1', 'PZT2', 'PZT3', 'PZT4')
+ MAX_AGE_S = 8.
+@@ -159,6 +160,7 @@
+         self.outbound = None
+         self.request_error = None
+         self.file_token = None
++        self.history = deque(maxlen=128)
+         self.thread = threading.Thread(target=self.run, name='pzt-status-file', daemon=True)
+         self.thread.start()
+ 
+@@ -188,6 +190,8 @@
+                 data = read_status(self.path)
+                 with self.lock:
+                     self.data = data
++                    self.history.append(dict(data=data, observed_monotonic=time.monotonic(),
++                                             observed_unix_s=time.time()))
+                 self.file_token = token
+             self.wake.wait(STATUS_POLL_S)
+             self.wake.clear()
+@@ -198,6 +202,14 @@
+             if self.request_error:
+                 result['_request_error'] = copy.deepcopy(self.request_error)
+             return result
++
++    def snapshot_at(self, frame_monotonic):
++        """Only observations available before this frame arrived, never future readback."""
++        with self.lock:
++            for sample in reversed(self.history):
++                if sample['observed_monotonic'] <= frame_monotonic:
++                    return copy.deepcopy(sample)
++        return None
+ 
+     def request_refresh(self):
+         with self.lock:
+--- src/pzt_panel.py.before
++++ src/pzt_panel.py
+@@ -7,6 +7,7 @@
+ from PySide6 import QtCore as C, QtGui as G, QtWidgets as W
+ from pzt_status import (StatusReader, EXPERIMENT_MODEL, ENDPOINTS, PHYSICAL_PZTS,
+                         experiment_layout, endpoint_view, physical_views, save_layout, validate_layout)
++from pzt_video import PZTVideoSource
+ 
+ 
+ class TopView(W.QWidget):
+@@ -151,6 +152,7 @@
+             try:self.layout_data=validate_layout(json.loads(self.layout_path.read_text()))
+             except (OSError,ValueError,KeyError,TypeError) as exc:load_error=f'Confirm connections: {exc}'
+         self.reader=reader_factory(self.status_path)
++        self.video_source=PZTVideoSource(self.reader,self.layout_data)
+         self.data={}
+         self.pending_request=None
+         outer=W.QVBoxLayout(self);outer.setContentsMargins(0,0,0,0)
+@@ -185,6 +187,7 @@
+         if dialog.exec()==W.QDialog.Accepted:
+             try:
+                 self.layout_data=save_layout(self.layout_path,dialog.value())
++                self.video_source.set_layout(self.layout_data)
+                 self.hint.clear();self.hint.hide();self.refresh()
+             except (OSError,ValueError,KeyError,TypeError) as exc:W.QMessageBox.warning(self,'Connections not saved',str(exc))
+ 
+--- tests/test_experiment_video.py.before
++++ tests/test_experiment_video.py
+@@ -55,10 +55,13 @@
+     raw,pts=decode(tmp_path/'experiment_raw.mp4');overlay,op=decode(tmp_path/'experiment_overlay.mp4')
+     assert len(raw)==len(overlay)==len(rows)==5 and pts==op
+     assert pts==pytest.approx([0.,.037,.100,.251,.310],abs=2e-6)
+-    assert all(a.shape==(192,256,3) for a in raw+overlay) # Original pixels, not window dimensions.
++    assert all(a.shape==(192,256,3) for a in raw) # Raw camera pixels remain unchanged.
++    assert all(a.shape==(720,736,3) for a in overlay)
++    camera_overlay=[a[264:456,:256] for a in overlay]
+     assert np.abs(raw[0].astype(float)-np.repeat(packets[0].image[...,None],3,axis=2)).mean()<2
+-    assert np.abs(raw[0][110:130,120:140].astype(float)-overlay[0][110:130,120:140]).mean()>2
+-    assert np.abs(raw[2][110:130,120:140].astype(float)-overlay[2][110:130,120:140]).mean()<2
++    assert np.abs(raw[0][110:130,120:140].astype(float)-camera_overlay[0][110:130,120:140]).mean()>2
++    assert np.abs(raw[2][110:130,120:140].astype(float)-camera_overlay[2][110:130,120:140]).mean()<2
++    assert report['parts'][0]['overlay_camera_xy']==[0,264]
+ 
+ 
+ def test_resolution_changes_split_files_without_losing_timeline(tmp_path):
+@@ -126,7 +129,7 @@
+     assert report['dropped_frame_examples'][0]['frame_id']==2
+ 
+ 
+-def test_start_stop_buttons_save_camera_only_video_and_open_session(tmp_path,monkeypatch):
++def test_start_stop_buttons_save_camera_and_pzt_video_and_open_session(tmp_path,monkeypatch):
+     from PySide6.QtWidgets import QApplication
+     from ui import Window
+     import ui
+@@ -160,7 +163,9 @@
+         assert summary['state']=='SAVED' and 'Videos saved' in w.video_status.text()
+         w.buttons['Open records'].click();assert opened==[first]
+         for name in ['experiment_raw.mp4','experiment_overlay.mp4']:
+-            frames,_=decode(first/name);assert len(frames)==summary['written_frames'] and frames[0].shape==(192,256,3)
++            frames,_=decode(first/name);assert len(frames)==summary['written_frames']
++            assert frames[0].shape==((192,256,3) if name=='experiment_raw.mp4' else (720,736,3))
++        assert (first/'pzt_readbacks.jsonl').exists()
+         w.buttons['Start'].click();wait_record();second=w.pipe.output
+         assert first!=second
+         w.close() # Closing a running window must also finalize both files.
+--- README.md.before
++++ README.md
+@@ -21,16 +21,20 @@
+ 无需另开录像开关。点击 **Start** 后，收到第一帧就自动录制；点击 **Stop** 或正常关闭窗口会完成视频收尾。底部状态栏显示录制/保存状态，有漏录或错误时明确提示。**Open records** 直接打开本次会话目录，包含：
+ 
+ - `experiment_raw.mp4`：原始接收画面，无软件界面或识别标记（H.264 压缩，不是无损传感器数据）。
+-- `experiment_overlay.mp4`：同一批画面，加上当前勾选的候选泡、PIV、mask、群体范围/形状，以及 UTC、实验时间、候选数和必要的叠加时间差提示。完整帧对应关系在逐帧记录中；画面没有侧栏、按钮或曲线面板。
+-- `video_frames.jsonl`：每个录像帧对应的接收 UTC、单调时间、源帧号、源时间戳（如有）、MP4 PTS、识别帧号、对应方式和 mask 版本。
++- `experiment_overlay.mp4`：同一批画面，加上当前勾选的候选泡、PIV、mask、群体范围/形状，以及 UTC、实验时间、候选数和必要的叠加时间差提示。右侧新增黑底 PZT 信息区：四路 ON/OFF、MHz、Vpp、相位、波形/模式和读数年龄，以及当前实验模型俯视图和通道对应关系。不会录入操作按钮或整个软件窗口。
++- `video_frames.jsonl`：每个录像帧对应的接收 UTC、单调时间、源帧号、源时间戳（如有）、MP4 PTS、识别帧号、对应方式、mask 版本，以及 `pzt_sample_id` 和 PZT 状态评价时刻 `pzt_frame_unix_s`。
++- `pzt_readbacks.jsonl`：按 `sample_id` 关联的实际发生器读回、各路读回时间、WSL 收到读回的时间和当时保存的通道对应关系。相同样本跨帧复用，避免重复写入。
++- `pzt_experiment_model.json`：本次录像所用的固定 PZT/PDMS 布局模型。
+ - `video_manifest.json`：视频文件、编码信息、帧数、漏录、录制状态与时间基准说明。
+ - `states.jsonl.gz`：开启自动视频时保存科研观测数据，含逐帧候选位置和有效速度向量；另有事件、mask 变更和运行汇总。
+ 
+-每次 Start 建立新的 `session_*`，不会覆盖上次视频。无图像时不制造空视频。分辨率变化会自动分段为 `_part002.mp4` 等，原始像素不缩放，奇数边长仅在右/下补一像素。再次按 Stop 不会重复写坏文件。
++每次 Start 建立新的 `session_*`，不会覆盖上次视频。无图像时不制造空视频。分辨率变化会自动分段为 `_part002.mp4` 等。原始相机像素不缩放；叠加视频在右侧扩展 PZT 信息区，小画面上下补黑，奇数边长仅在右/下补一像素。Manifest 分别记录原始/叠加视频尺寸及相机区域偏移。再次按 Stop 不会重复写坏文件。
+ 
+ 录像编码队列最多缓存 48 帧，用于吸收启动时 GPU 初始化造成的短暂积压；这不会延长检测有效期，也不阻塞相机接收。持续编码不足仍会明确记录漏帧并提示，不能把缓冲当作帧率保证。
+ 
+ 录像使用本机实际接收时间间隔，不强行按固定帧率加速或补帧。识别结果优先匹配同一帧；当分析较慢时，仅使用仍在时效内的过去结果，固定位置标注 `Overlay delay` 和时间差（数据记录为 `RECENT_PAST_FRAME`），不把它称为精确同帧识别。过时、未来帧、其他会话或其他 mask 的结果不叠加。图层开关会影响叠加视频；`Measured frame` 仅影响监看画面，录像仍保留接收到的图像序列。原始视频始终不加标记。
++
++PZT 状态只使用**该预览帧抵达 WSL 之前已经收到**的读回；排队编码期间发生的新状态不会回填旧帧。断连、过期或读失败显示 UNKNOWN，不继续显示旧 ON/参数。读回存在轮询延迟，没有与曝光做硬件同步；它适合对照实验过程，不代表精确的声学启停时刻。回放旧录像没有同步 PZT 历史时明确显示 `PZT history not recorded`，不叠加当前发生器参数。保存连接设置后的新帧使用新映射，旧帧保持原映射。
+ 
+ 时间戳是**预览帧接收时间**，不是未经提供的相机曝光时间；录像记录的是收到的预览流，不等于相机内部的高速原片。暂停回放/断流产生的时间间隔保留，不填造运动。实验录像与旧 `--capture-ui` 软件界面录屏是独立功能，普通 Start 不会录制软件窗口。
+ 
+--- PZT_MONITOR_GUIDE.md.before
++++ PZT_MONITOR_GUIDE.md
+@@ -61,3 +61,13 @@
+ 2026-10-19 刷新优化实机验证：单路七项显示读数约 242 ms，完整参数读取约 576 ms，20 组对照读数全部一致。已连接状态下点击 **Read PZT status**，四路读取并返回界面约 1.39 秒；连续监视记录 53 次更新，每路间隔 0.927–0.967 秒。设备设置前后相同，四路均 OFF，保存的通道映射 SHA-256 未变。测试在未启动相机处理时进行；这些是本机实测时间，不是硬实时期限或从点击到实际声学输出的延迟。首次连接还需要设备枚举时间，本次未重测冷连接；优化前的 4.98 秒冷连接结果不能直接与上述已连接读取比较。
+ 
+ 状态文件在独立线程每 40 ms 检查一次，仅文件变化时解析；界面每 50 ms 获取最新状态，只重绘变化的文字和布局状态。验证脚本、前后代码差异、实际读数、时间记录与截图位于 `evidence/pzt_latency_20261019/`。
++
++## 将 PZT 信息录入实验视频
++
++照常点击 **Start → Stop**；保存完成后点击 **Open records**，打开 `experiment_overlay.mp4`。左侧为相机画面与识别结果，右侧为黑底 PZT 参数卡和俯视布局，包括四路对应关系、ON/OFF、频率、Vpp、相位、波形/模式及读回年龄。原始 `experiment_raw.mp4` 仍保留相机原尺寸。
++
++逐帧 `video_frames.jsonl` 中的 `pzt_sample_id` 对应 `pzt_readbacks.jsonl` 中同名 ID；后者保存读回原值、身份、时间和通道映射。`pzt_frame_unix_s` 用于按该帧时刻判断读数是否过期，`pzt_experiment_model.json` 保存本次布局几何。可据此分析微泡运动与发生器状态的关系。
++
++录像使用帧抵达前已经获取的最近读回，不使用后来的状态修饰过去画面；读回不是曝光同步数据，ON 仍不等于实际声压检测。回放没有配套 PZT 历史的旧视频时显示 NOT RECORDED。断连、读取失败、超时和未分配的通道也会保留其真实状态。
++
++2026-10-19 录像验证：真实预览收到的 11 帧全部写入，原始/叠加视频 PTS 一致，没有使用未来 PZT 读回；30 项相关测试通过。额外以已录图像验证 30 帧/秒编码，90 帧全部写入，无编码丢帧。此项是编码测试，不代表相机接收或识别速率。代码、试录、逐帧证据和截图见 `evidence/pzt_video_20261019/`。
+--- /dev/null
++++ src/pzt_video.py
+@@ -0,0 +1,153 @@
++"""Frame-associated, read-only PZT context and a camera-video sidebar (no Qt capture)."""
++from collections import deque
++import copy
++import hashlib
++import json
++import math
++import threading
++import time
++
++import cv2
++import numpy as np
++
++from pzt_status import ENDPOINTS, EXPERIMENT_MODEL, PHYSICAL_PZTS, endpoint_view, validate_layout
++
++
++class PZTVideoSource:
++    """Share the monitor's existing reader; no additional file or VISA polling."""
++    def __init__(self, reader, layout):
++        self.reader = reader
++        self.lock = threading.Lock()
++        self.layouts = deque(maxlen=128)
++        self.set_layout(layout)
++
++    def set_layout(self, layout):
++        layout = validate_layout(layout)
++        with self.lock:
++            revision = self.layouts[-1][1] + 1 if self.layouts else 0
++            self.layouts.append((time.monotonic(), revision, layout))
++
++    def capture(self, packet):
++        # The local frame-arrival time is the association boundary, not encoder
++        # time or camera exposure time. Older preview clips have no AFG history.
++        frame_wall = time.time() + packet.arrival_monotonic - time.monotonic()
++        with self.lock:
++            layout = next((r for r in reversed(self.layouts) if r[0] <= packet.arrival_monotonic), None)
++            layout = copy.deepcopy(layout)
++        sample = dict(scope='NOT_RECORDED', layout=layout[2] if layout else None,
++                      layout_revision=layout[1] if layout else None, observation=None)
++        if packet.source_mode == 'LIVE_CAMERA':
++            observation = self.reader.snapshot_at(packet.arrival_monotonic)
++            sample.update(scope='LIVE_HOST_READBACK', observation=observation)
++            if observation:
++                frame_wall = observation['observed_unix_s'] + packet.arrival_monotonic - observation['observed_monotonic']
++        else:
++            sample['scope'] = 'REPLAY_NO_SYNCHRONIZED_PZT'
++        return dict(frame_unix_s=frame_wall, sample=sample)
++
++
++def sample_id(sample):
++    return hashlib.sha256(json.dumps(sample, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()).hexdigest()[:24]
++
++
++def frame_views(context):
++    sample = (context or {}).get('sample') or {}
++    observation = sample.get('observation') or {}
++    data = observation.get('data') or {}
++    if sample.get('scope') != 'LIVE_HOST_READBACK':
++        data = {}
++    return {key: endpoint_view(data, key, (context or {}).get('frame_unix_s', 0.)) for key in ENDPOINTS}
++
++
++def _bgr(hex_color):
++    return tuple(int(hex_color[i:i+2], 16) for i in (5, 3, 1))
++
++
++class PZTVideoRenderer:
++    """Cache the sidebar between readback changes; preserve native camera pixels."""
++    def __init__(self):
++        self.key = None
++        self.panel = None
++
++    def compose(self, camera, context):
++        sample = (context or {}).get('sample') or dict(scope='NOT_RECORDED')
++        views = frame_views(context)
++        # Expiry must be reevaluated at each frame, even if the file stopped updating.
++        display = {key: {k: v for k, v in row.items() if k not in ('age_s', 'error')} for key, row in views.items()}
++        ages = {key: math.floor(max(0., row['age_s'])) if row['age_s'] is not None else None for key, row in views.items()}
++        key = (sample_id(sample), json.dumps(display, sort_keys=True), tuple(ages.values()))
++        if key != self.key:
++            self.panel = self.draw(sample, views, ages)
++            self.key = key
++        scale = max(1., min(2., camera.shape[0]/720.))
++        panel = self.panel if scale == 1. else cv2.resize(self.panel, None, fx=scale, fy=scale, interpolation=cv2.INTER_LINEAR)
++        h, w = camera.shape[:2]
++        canvas = np.zeros((max(h, panel.shape[0]), w+panel.shape[1], 3), dtype=np.uint8)
++        canvas[(canvas.shape[0]-h)//2:(canvas.shape[0]-h)//2+h, :w] = camera
++        canvas[:panel.shape[0], w:] = panel
++        return canvas
++
++    @staticmethod
++    def draw(sample, views, ages):
++        image = np.zeros((720, 480, 3), dtype=np.uint8)
++        white = (232, 226, 216)
++        muted = (185, 172, 155)
++        def text(s, x, y, scale=.50, color=white):
++            cv2.putText(image, str(s), (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, scale, color, 1, cv2.LINE_AA)
++        text('PZT STATUS / LAYOUT', 20, 30, .65)
++        live = sample.get('scope') == 'LIVE_HOST_READBACK'
++        text('Live AFG readback' if live else 'PZT history not recorded', 20, 53, .45, muted)
++        layout = sample.get('layout') or {}
++        assignments = layout.get('assignments', {})
++        for i, endpoint in enumerate(ENDPOINTS):
++            x, y = 16+(i%2)*232, 72+(i//2)*130
++            view = views[endpoint]
++            color = _bgr(view['color'])
++            target = assignments.get(endpoint, {}).get('pzt') or 'Unassigned'
++            cv2.rectangle(image, (x,y), (x+216,y+116), (83,74,63), 1)
++            text(f'{endpoint} > {target}', x+8,y+20,.49)
++            state = view['output'] if live else 'NOT RECORDED'
++            text(state, x+8,y+42,.50,color)
++            params = view['parameters']
++            if params:
++                text(f"{params['frequency_hz']/1e6:g} MHz | {params['amplitude_vpp']:g} Vpp", x+8,y+63,.46)
++                text(f"Phase {params['phase_deg']:.1f} deg", x+8,y+83,.46)
++                mode = 'Burst' if params.get('burst_enabled') else params.get('frequency_mode','?')
++                text(f"{params.get('waveform','?')} / {mode} | age {ages[endpoint]} s", x+8,y+103,.43,muted)
++            else:
++                text(view['connection'] if live else 'No synchronized data', x+8,y+70,.43,muted)
++        text('Top view',20,357,.55)
++        text('+X right | +Y up',296,357,.43,muted)
++        scale, cx, cy = 10., 240, 505
++        length, width = EXPERIMENT_MODEL['block_mm'][:2]
++        def point(x,y): return (round(cx+x*scale),round(cy-y*scale))
++        a, b = point(-length/2,width/2), point(length/2,-width/2)
++        cv2.rectangle(image,a,b,(25,21,18),-1)
++        cv2.rectangle(image,a,b,(172,153,129),1)
++        d = EXPERIMENT_MODEL['channel_diameter_mm']
++        cv2.rectangle(image,point(-length/2,d/2),point(length/2,-d/2),(50,33,24),-1)
++        cv2.rectangle(image,point(-length/2,d/2),point(length/2,-d/2),(179,160,113),1)
++        for port in EXPERIMENT_MODEL['ports']:
++            cv2.circle(image,point(*port['center_xy_mm']),round(port['diameter_mm']*scale/2),(207,192,163),1,cv2.LINE_AA)
++        for name in PHYSICAL_PZTS:
++            pzt = EXPERIMENT_MODEL['pzts'][name]
++            x,y = point(*pzt['center_mm'][:2])
++            nx,ny = pzt['normal'][:2];ny = -ny
++            endpoint = next((key for key,row in assignments.items() if row['pzt']==name), None)
++            view = views.get(endpoint, {})
++            color = _bgr(view.get('color','#a3afbd'))
++            r = round(pzt['diameter_mm']*scale/2)
++            for k,shade in enumerate((105,155,220,190,140)):
++                off = k-2
++                if nx:cv2.line(image,(x+off,y-r),(x+off,y+r),(shade+min(20,255-shade),shade,shade-15),1)
++                else:cv2.line(image,(x-r,y+off),(x+r,y+off),(shade+min(20,255-shade),shade,shade-15),1)
++            cv2.arrowedLine(image,(x+nx*6,y+ny*6),(x+nx*23,y+ny*23),color,1,cv2.LINE_AA,tipLength=.25)
++            tx,ty = (10,492) if name=='X-' else (410,492) if name=='X+' else (204,393) if name=='Y+' else (204,585)
++            text(name,tx,ty,.48,color)
++            text(endpoint or '--',tx,ty+19,.40,color)
++            text(view.get('output','--') if live else 'N/A',tx,ty+38,.39,color)
++        cv2.line(image,(20,651),(70,651),muted,1)
++        text('5 mm',78,656,.42,muted)
++        text('Vpp: generator output, not acoustic pressure',20,687,.42,muted)
++        text('Host readback timing; not exposure-synchronized',20,707,.40,muted)
++        return image
+--- /dev/null
++++ tests/test_pzt_video.py
+@@ -0,0 +1,82 @@
++"""Timing, provenance and encoding tests with explicitly synthetic AFG values."""
++from collections import deque
++import copy
++import json
++import threading
++import time
++
++import numpy as np
++
++from test_experiment_video import packet, decode
++from test_pzt_monitor import example_status
++from pzt_status import StatusReader, experiment_layout, ENDPOINTS
++from pzt_video import PZTVideoSource, frame_views
++from experiment_video import ExperimentVideoRecorder, DEFAULT_LAYERS
++
++
++def source():
++    reader = StatusReader.__new__(StatusReader)
++    reader.lock = threading.Lock()
++    first = example_status(1000.)
++    second = example_status(1002.)
++    second['channels']['PZT1']['output'] = False
++    reader.history = deque([dict(data=first,observed_monotonic=99.,observed_unix_s=1000.),
++                            dict(data=second,observed_monotonic=101.,observed_unix_s=1002.)])
++    layout = experiment_layout()
++    for key,target in zip(ENDPOINTS,['Y-','X-','Y+','X+']):layout['assignments'][key]['pzt']=target
++    context = PZTVideoSource(reader,layout)
++    context.layouts = deque([(90.,0,layout)])
++    return context
++
++
++def test_future_readback_mapping_edits_expiry_and_replay_are_not_misattributed():
++    s = source()
++    old = s.capture(packet(arrival=100.))
++    assert old['sample']['observation']['observed_monotonic']==99.
++    assert frame_views(old)['A/CH1']['output']=='ON'
++    new = s.capture(packet(arrival=102.))
++    assert frame_views(new)['A/CH1']['output']=='OFF'
++    expired = s.capture(packet(arrival=111.))
++    assert frame_views(expired)['A/CH1']['output']=='UNKNOWN'
++    assert not frame_views(expired)['A/CH1']['parameters']
++    layout = copy.deepcopy(s.layouts[0][2])
++    layout['assignments']['A/CH1']['pzt'],layout['assignments']['A/CH2']['pzt']='X-','Y-'
++    s.layouts.append((103.,1,layout))
++    assert s.capture(packet(arrival=102.))['sample']['layout_revision']==0
++    assert s.capture(packet(arrival=104.))['sample']['layout_revision']==1
++    replay = packet(arrival=104.);replay.source_mode='REALTIME_REPLAY'
++    context = s.capture(replay)
++    assert context['sample']['scope']=='REPLAY_NO_SYNCHRONIZED_PZT'
++    assert context['sample']['observation'] is None
++    assert not frame_views(context)['A/CH1']['parameters']
++    assert s.capture(packet(arrival=98.))['sample']['observation'] is None
++    # Snapshots cannot be rewritten by later monitor updates.
++    s.reader.history[0]['data']['channels']['PZT1']['output']=False
++    assert frame_views(old)['A/CH1']['output']=='ON'
++
++
++def test_video_has_timestamp_matched_readbacks_and_keeps_raw_pixels(tmp_path):
++    s=source();start=time.monotonic()
++    r=ExperimentVideoRecorder(tmp_path,dict(video_annotation_wait_ms=0),start)
++    contexts=[s.capture(packet(arrival=t)) for t in [100.,100.04,102.,111.]]
++    for i,context in enumerate(contexts):
++        assert r.submit(packet(i,start+i*.04),0,None,DEFAULT_LAYERS,context)
++    report=r.close()
++    assert report['video_complete'],report['error']
++    rows=[json.loads(line) for line in (tmp_path/'video_frames.jsonl').read_text().splitlines()]
++    samples=[json.loads(line) for line in (tmp_path/'pzt_readbacks.jsonl').read_text().splitlines()]
++    assert len(samples)==2 # Same readback reused and evaluated for expiry per frame.
++    by_id={row['sample_id']:row for row in samples}
++    recovered=[frame_views(dict(frame_unix_s=row['pzt_frame_unix_s'],sample=by_id[row['pzt_sample_id']])) for row in rows]
++    assert [v['A/CH1']['output'] for v in recovered]==['ON','ON','OFF','UNKNOWN']
++    assert by_id[rows[0]['pzt_sample_id']]['layout']['assignments']['A/CH1']['pzt']=='Y-'
++    raw,t=decode(tmp_path/'experiment_raw.mp4');over,ot=decode(tmp_path/'experiment_overlay.mp4')
++    assert t==ot and len(raw)==len(over)==4
++    assert raw[0].shape==(192,256,3) and over[0].shape==(720,736,3)
++    # AFG state changes appear in the sidebar, not the untouched raw recording.
++    # Inspect the changed ON/OFF text, not the mostly black entire sidebar.
++    change=np.abs(over[0][98:118,280:370].astype(float)-over[2][98:118,280:370])
++    assert np.count_nonzero(change>20)>50
++    original=np.repeat(packet().image[...,None],3,axis=2).astype(float)
++    assert all(np.abs(a.astype(float)-original).mean()<2 for a in raw) # H.264 is lossy.
++    assert json.loads((tmp_path/'pzt_experiment_model.json').read_text())['block_mm']==[32.5,9,9]

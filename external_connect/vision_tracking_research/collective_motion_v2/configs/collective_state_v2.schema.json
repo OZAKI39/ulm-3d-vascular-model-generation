@@ -1,0 +1,412 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "F10V M4 version2 observation-only learned motion",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source",
+    "session_id",
+    "frame_id",
+    "available_capture_timestamp",
+    "host_receive_timestamp",
+    "processing_finished_timestamp",
+    "source_PTS",
+    "ROI",
+    "calibration_status",
+    "image_quality",
+    "distribution",
+    "motion",
+    "time_window",
+    "age_ms",
+    "stale_or_discontinuous",
+    "action_event",
+    "hardware_control_executed",
+    "training_ready",
+    "model_provenance"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "M4-collective-2.0"
+    },
+    "source": {
+      "type": "string"
+    },
+    "session_id": {
+      "type": "string"
+    },
+    "frame_id": {
+      "type": "integer"
+    },
+    "available_capture_timestamp": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "source_PTS": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "host_receive_timestamp": {
+      "type": "number"
+    },
+    "processing_finished_timestamp": {
+      "type": "number"
+    },
+    "ROI": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "type": "integer"
+      }
+    },
+    "distribution": {
+      "type": "object",
+      "properties": {
+        "group_center_xy": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "number"
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "distribution_orientation": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "motion": {
+      "type": "object",
+      "required": [
+        "values",
+        "valid",
+        "reasons",
+        "observability_status"
+      ],
+      "properties": {
+        "values": {
+          "type": "object",
+          "required": [
+            "translation_vx",
+            "translation_vy",
+            "divergence",
+            "vorticity",
+            "shear1",
+            "shear2"
+          ],
+          "properties": {
+            "translation_vx": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "translation_vy": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "divergence": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "vorticity": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "shear1": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "shear2": {
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "valid": {
+          "type": "object",
+          "required": [
+            "translation_vx",
+            "translation_vy",
+            "divergence",
+            "vorticity",
+            "shear1",
+            "shear2"
+          ],
+          "properties": {
+            "translation_vx": {
+              "type": "boolean"
+            },
+            "translation_vy": {
+              "type": "boolean"
+            },
+            "divergence": {
+              "type": "boolean"
+            },
+            "vorticity": {
+              "type": "boolean"
+            },
+            "shear1": {
+              "type": "boolean"
+            },
+            "shear2": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "reasons": {
+          "type": "object",
+          "required": [
+            "translation_vx",
+            "translation_vy",
+            "divergence",
+            "vorticity",
+            "shear1",
+            "shear2"
+          ],
+          "properties": {
+            "translation_vx": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "translation_vy": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "divergence": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "vorticity": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "shear1": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "shear2": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "observability_status": {
+          "enum": [
+            "VALID_GLOBAL_MOTION",
+            "NON_AFFINE_MOTION",
+            "NOT_OBSERVABLE"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "valid": {
+                "properties": {
+                  "translation_vx": {
+                    "const": false
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "values": {
+                "properties": {
+                  "translation_vx": {
+                    "type": "null"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "valid": {
+                "properties": {
+                  "translation_vy": {
+                    "const": false
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "values": {
+                "properties": {
+                  "translation_vy": {
+                    "type": "null"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "valid": {
+                "properties": {
+                  "divergence": {
+                    "const": false
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "values": {
+                "properties": {
+                  "divergence": {
+                    "type": "null"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "valid": {
+                "properties": {
+                  "vorticity": {
+                    "const": false
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "values": {
+                "properties": {
+                  "vorticity": {
+                    "type": "null"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "valid": {
+                "properties": {
+                  "shear1": {
+                    "const": false
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "values": {
+                "properties": {
+                  "shear1": {
+                    "type": "null"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "valid": {
+                "properties": {
+                  "shear2": {
+                    "const": false
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "values": {
+                "properties": {
+                  "shear2": {
+                    "type": "null"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "action_event": {
+      "type": "null"
+    },
+    "hardware_control_executed": {
+      "const": false
+    },
+    "training_ready": {
+      "const": false
+    },
+    "model_provenance": {
+      "type": "object",
+      "required": [
+        "name",
+        "weight_sha256",
+        "calibration_version"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "weight_sha256": {
+          "type": "string"
+        },
+        "calibration_version": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

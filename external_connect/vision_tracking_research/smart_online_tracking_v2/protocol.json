@@ -1,0 +1,99 @@
+{
+  "status": "PREREGISTERED_PENDING_EXPERT_LABELS",
+  "source_sha256": "3fc13aaa611a4eeb94b27804524318b3a8411cc38967804c6620913cfb9c484c",
+  "split_ranges_inclusive": {
+    "train": [
+      0,
+      270
+    ],
+    "validation": [
+      360,
+      570
+    ],
+    "test": [
+      660,
+      936
+    ]
+  },
+  "sequence_length": 8,
+  "no_random_adjacent_split": true,
+  "cross_session_generalization": "NOT_VERIFIED",
+  "live_candidates": "QUARANTINE_UNASSIGNED; do not train or evaluate until provenance/review frozen",
+  "expert_label_classes": [
+    "SINGLE_BUBBLE",
+    "AGGREGATE",
+    "BACKGROUND_ARTIFACT",
+    "UNCERTAIN",
+    "OUT_OF_FOCUS"
+  ],
+  "default_scope": "FULL_FRAME; ROI-only reviews must be explicitly recorded and excluded from full-frame metrics",
+  "evaluation": {
+    "instance_match_iou": 0.5,
+    "single_center_match_radius_px": 6,
+    "assignment": "scipy.optimize.linear_sum_assignment, one-to-one with explicit unmatched objects",
+    "ignore_classes": [
+      "UNCERTAIN",
+      "OUT_OF_FOCUS"
+    ],
+    "ignore_prediction_overlap_fraction": 0.5,
+    "group_metrics": [
+      "IoU",
+      "Dice",
+      "centroid_error_px",
+      "area_error_px2",
+      "Rg_error_px",
+      "Q_error_px2",
+      "aspect_ratio_error"
+    ],
+    "confidence_selection": "training/validation only; no test tuning",
+    "short_track_metrics": "Only on human-matched 8-frame sequences; physical identity not inferred from direction"
+  },
+  "inference_budget": {
+    "cellpose_models": 1,
+    "model": "Cellpose 3 cyto3 lightweight alternative",
+    "finetune": "NOT_RUN until expert training labels and fixed validation split exist",
+    "first_model_test_max_frames": 12,
+    "causal_comparison_window_s": 3,
+    "live_run_s_each": 20,
+    "live_roi_xywh": [
+      496,
+      568,
+      256,
+      384
+    ],
+    "saved_video_roi_xywh": [
+      650,
+      350,
+      180,
+      350
+    ],
+    "static_frame_indices": [
+      0,
+      54,
+      120,
+      127,
+      360,
+      402,
+      450,
+      457,
+      660,
+      714,
+      780,
+      787
+    ],
+    "causal_comparison_frames_inclusive": [
+      780,
+      869
+    ],
+    "static_scope": "12 source frames x FULL_FRAME and ROI, both routes; one warmup per scope plus explicit startup measurements",
+    "live_comparison_limit": "Sequential camera trials are not identical input; fixed saved-video comparison is paired."
+  },
+  "no_sam2": true,
+  "no_led_test": true,
+  "hardware_control": false,
+  "preregistered_live_roi_utc": "2026-10-16T12:36:46.325747+00:00",
+  "live_roi_basis": "Original bridge_smoke first_frame, before A/B inference. No resize; same live ROI for both routes.",
+  "freshness_limit_ms": 100,
+  "live_startup_limit_s": 25,
+  "scene_coverage": "Existing video and current live scene; scene/focus/turn/aggregate classes need expert confirmation."
+}

@@ -1,0 +1,11 @@
+# Models
+
+Both models use official TorchVision MobileNetV3-small blocks, randomly initialized; no pretrained model or unverified weight is substituted. Source: https://docs.pytorch.org/vision/stable/models/generated/torchvision.models.mobilenet_v3_small.html . Exact installed package/source identities are in `evidence/dependencies.json`.
+
+Direct6 uses width_mult=0.5, all official feature blocks, a task-specific 24-channel projection, 4×4 spatial pooling, shared weights for all frames, concatenated per-frame features and temporal differences, and the two actual time intervals. A 192-unit head returns six means, six log standard deviations and three observation-class logits. It has 635,199 parameters for gray-only and 635,271 for gray+heatmap. Preserving 4×4 spatial features prevents a global-average-only architecture from discarding all spatial deformation information. A separately trained two-frame ablation uses the first/last frames with the same endpoint interval.
+
+GeoMotion uses the first two official MobileNetV3-small feature blocks (stride 4), a 24-channel projection, local normalized feature correlation within radius 3 feature pixels, soft-argmax local displacement, learned weights, endpoint/adjacent-pair consistency and weighted Huber affine fitting. Three frames contribute through f0→f2 and composed f0→f1→f2 matching. The fit uses `torch.linalg.solve`, not a reimplemented solver. A head predicts six uncertainty scales and three observation classes. Total 8,979 parameters. Feature-stride/resize coordinates are explicitly mapped to raw pixels.
+
+GeoMotion outputs the six parameters through a differentiable near-identity matrix-log series during training, tested against SciPy. Inference uses the original F10U SciPy matrix logarithm. The network learns local matching and confidence; the weighted affine fit is a thin project adapter, not a separate generic optical-flow library. Local geometric supervision comes from exact generated motion, including the smooth nonlinear field. The no-local-supervision auxiliary retains the same architecture and data, removing that loss only.
+
+All methods are interval estimators without persistent bubble IDs. A low six-parameter error on synthetic triples is not physical calibration. Training does not establish real-device control admission.

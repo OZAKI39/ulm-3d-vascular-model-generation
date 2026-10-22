@@ -1,0 +1,297 @@
+--- src/experiment_video.py.before
++++ src/experiment_video.py
+@@ -1,8 +1,8 @@
+ """Bounded, timestamped experiment recording; never captures the Qt window.
+ 
+ Two H.264 files share the same received images and presentation timestamps.
+-Annotations use an exact analyzed frame when available, otherwise an explicitly
+-labelled, recent *past* result. They never borrow a future frame or ROI.
++Annotations use an exact analyzed frame when available, otherwise a recent past
++result with its lag recorded in metadata. They never borrow a future frame or ROI.
+ """
+ from collections import OrderedDict, deque
+ from dataclasses import replace
+@@ -20,9 +20,10 @@
+ import numpy as np
+ 
+ from ycommon import clean, dump
+-from piv_display import piv_arrows,arrow_shape,draw_cv_arrows,DISPLAY_SPEC,REFERENCE_SPEED,GAIN_SECONDS,MAX_LENGTH_PX,display_vectors,display_is_smoothed
+-from overlay_style import DEFAULT_LAYERS,DISPLAY_POLICY,overlay_opacity,overlay_caption
++from piv_display import piv_arrows,arrow_shape,draw_cv_arrows,DISPLAY_SPEC,REFERENCE_SPEED,display_vectors,display_is_smoothed
++from overlay_style import DEFAULT_LAYERS,DISPLAY_POLICY,overlay_opacity
+ from pzt_video import PZTVideoRenderer, sample_id, EXPERIMENT_MODEL
++from video_text import draw_text, text_width, font_record
+ 
+ TIME_BASE = Fraction(1, 1_000_000)
+ 
+@@ -67,28 +68,21 @@
+                 y=image.shape[0]-18
+                 cv2.rectangle(image,(6,y-16),(260,y+12),(25,25,25),-1)
+                 draw_cv_arrows(image,[arrow_shape([16,y],[REFERENCE_SPEED,0])])
+-                cv2.putText(image,f'{REFERENCE_SPEED:g} px/s | '+('smoothed' if smoothed else 'raw'),(49,y+5),cv2.FONT_HERSHEY_SIMPLEX,.45,(235,235,235),1,cv2.LINE_AA)
+-                v=np.asarray(display_vectors(state,smoothed)).reshape(-1,4)
+-                if len(v) and np.any(np.linalg.norm(v[:,2:],axis=1)*GAIN_SECONDS>MAX_LENGTH_PX):
+-                    cv2.putText(image,'Long arrows capped',(image.shape[1]-170,y+5),cv2.FONT_HERSHEY_SIMPLEX,.4,(255,226,59),1,cv2.LINE_AA)
++                draw_text(image,f'{REFERENCE_SPEED:g} px/s',49,y+5,16,(235,235,235))
+     # Camera caption; the PZT sidebar is composed separately, without UI controls.
+     lines = [f"UTC {utc.replace('T',' ')[:23]} | t={elapsed:.3f} s"]
+     if packet.source_mode=='REALTIME_REPLAY':lines[0]+=' | Replay'
+     if state:
+         count = len(state.get('candidates', []))
+-        lines.append(f'Candidates: {count} | '+overlay_caption(lag_ms or 0.))
+-        if not state.get('valid'):lines.append('Motion unavailable')
+-        elif state.get('motion_reference')=='IMAGE_SPACE_UNREGISTERED':lines.append('Image motion; camera drift not corrected')
+-    else:
+-        lines.append('Waiting for current analysis')
+-    font_scale = max(.28, min(.56, image.shape[1]/1200))
+-    line_h = max(13, round(font_scale*29))
+-    cv2.rectangle(image,(0,0),(image.shape[1]-1,min(image.shape[0]-1,line_h*3+8)),(25,25,25),-1)
++        lines.append(f'Candidates: {count}')
++    size=max(11,min(20,round(image.shape[1]/55)))
++    line_h=size+5
++    cv2.rectangle(image,(0,0),(image.shape[1]-1,min(image.shape[0]-1,line_h*len(lines)+5)),(25,25,25),-1)
+     for i,line in enumerate(lines):
+         # Fit narrow camera crops without changing image size.
+-        width = cv2.getTextSize(line,cv2.FONT_HERSHEY_SIMPLEX,font_scale,1)[0][0]
+-        scale = font_scale*min(1.,(image.shape[1]-12)/max(width,1))
+-        cv2.putText(image,line,(6,(i+1)*line_h),cv2.FONT_HERSHEY_SIMPLEX,scale,(225,225,225),1,cv2.LINE_AA)
++        width=text_width(line,size)
++        fitted=max(6,round(size*min(1.,(image.shape[1]-12)/max(width,1))))
++        draw_text(image,line,6,(i+1)*line_h,fitted,(225,225,225))
+     return image
+ 
+ 
+@@ -231,8 +225,9 @@
+             utc_scope='local host receive wall clock; not camera exposure time',
+             recording_scope='Received preview frames only; not the camera internal high-speed recording',
+             raw_encoding='H.264 CRF18 yuv420p; unannotated, not lossless sensor data',
+-            annotations='Exact frame preferred; recent past overlay delay labelled; future/stale/other-ROI results excluded',
++            annotations='Exact frame preferred; recent past overlay delay recorded in metadata; future/stale/other-ROI results excluded',
+             piv_display=DISPLAY_SPEC,overlay_display=DISPLAY_POLICY,
++            typography=font_record(),
+             pzt_recording=dict(samples='pzt_readbacks.jsonl',geometry='pzt_experiment_model.json',
+                 sample_count=self.pzt_sample_count,frame_reference='video_frames.jsonl: pzt_sample_id, pzt_frame_unix_s',
+                 association='Latest monitor observation available at local frame arrival; no future readback; not exposure synchronized',
+--- src/pzt_video.py.before
++++ src/pzt_video.py
+@@ -3,7 +3,6 @@
+ import copy
+ import hashlib
+ import json
+-import math
+ import threading
+ import time
+ 
+@@ -11,6 +10,7 @@
+ import numpy as np
+ 
+ from pzt_status import ENDPOINTS, EXPERIMENT_MODEL, PHYSICAL_PZTS, endpoint_view, validate_layout
++from video_text import draw_text
+ 
+ 
+ class PZTVideoSource:
+@@ -74,10 +74,9 @@
+         views = frame_views(context)
+         # Expiry must be reevaluated at each frame, even if the file stopped updating.
+         display = {key: {k: v for k, v in row.items() if k not in ('age_s', 'error')} for key, row in views.items()}
+-        ages = {key: math.floor(max(0., row['age_s'])) if row['age_s'] is not None else None for key, row in views.items()}
+-        key = (sample_id(sample), json.dumps(display, sort_keys=True), tuple(ages.values()))
++        key = (json.dumps(sample.get('layout'), sort_keys=True), sample.get('scope'), json.dumps(display, sort_keys=True))
+         if key != self.key:
+-            self.panel = self.draw(sample, views, ages)
++            self.panel = self.draw(sample, views)
+             self.key = key
+         scale = max(1., min(2., camera.shape[0]/720.))
+         panel = self.panel if scale == 1. else cv2.resize(self.panel, None, fx=scale, fy=scale, interpolation=cv2.INTER_LINEAR)
+@@ -88,15 +87,14 @@
+         return canvas
+ 
+     @staticmethod
+-    def draw(sample, views, ages):
++    def draw(sample, views):
+         image = np.zeros((720, 480, 3), dtype=np.uint8)
+         white = (232, 226, 216)
+         muted = (185, 172, 155)
+         def text(s, x, y, scale=.50, color=white):
+-            cv2.putText(image, str(s), (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, scale, color, 1, cv2.LINE_AA)
+-        text('PZT STATUS / LAYOUT', 20, 30, .65)
++            draw_text(image, s, x, y, max(12,round(scale*36)),color)
++        text('PZT', 20, 34, .65)
+         live = sample.get('scope') == 'LIVE_HOST_READBACK'
+-        text('Live AFG readback' if live else 'PZT history not recorded', 20, 53, .45, muted)
+         layout = sample.get('layout') or {}
+         assignments = layout.get('assignments', {})
+         for i, endpoint in enumerate(ENDPOINTS):
+@@ -105,19 +103,17 @@
+             color = _bgr(view['color'])
+             target = assignments.get(endpoint, {}).get('pzt') or 'Unassigned'
+             cv2.rectangle(image, (x,y), (x+216,y+116), (83,74,63), 1)
+-            text(f'{endpoint} > {target}', x+8,y+20,.49)
++            text(f'{endpoint} → {target}', x+8,y+20,.49)
+             state = view['output'] if live else 'NOT RECORDED'
+             text(state, x+8,y+42,.50,color)
+             params = view['parameters']
+             if params:
+                 text(f"{params['frequency_hz']/1e6:g} MHz | {params['amplitude_vpp']:g} Vpp", x+8,y+63,.46)
+-                text(f"Phase {params['phase_deg']:.1f} deg", x+8,y+83,.46)
++                text(f"Phase {params['phase_deg']:.1f}°", x+8,y+83,.46)
+                 mode = 'Burst' if params.get('burst_enabled') else params.get('frequency_mode','?')
+-                text(f"{params.get('waveform','?')} / {mode} | age {ages[endpoint]} s", x+8,y+103,.43,muted)
++                text(f"{params.get('waveform','?')} / {mode}", x+8,y+103,.43,muted)
+             else:
+-                text(view['connection'] if live else 'No synchronized data', x+8,y+70,.43,muted)
+-        text('Top view',20,357,.55)
+-        text('+X right | +Y up',296,357,.43,muted)
++                if live:text(view['connection'], x+8,y+70,.43,muted)
+         scale, cx, cy = 10., 240, 505
+         length, width = EXPERIMENT_MODEL['block_mm'][:2]
+         def point(x,y): return (round(cx+x*scale),round(cy-y*scale))
+@@ -148,6 +144,4 @@
+             text(view.get('output','--') if live else 'N/A',tx,ty+38,.39,color)
+         cv2.line(image,(20,651),(70,651),muted,1)
+         text('5 mm',78,656,.42,muted)
+-        text('Vpp: generator output, not acoustic pressure',20,687,.42,muted)
+-        text('Host readback timing; not exposure-synchronized',20,707,.40,muted)
+         return image
+--- src/ui.py.before
++++ src/ui.py
+@@ -9,6 +9,7 @@
+ from live_geometry import new_geometry,validate_geometry
+ from desktop import open_directory
+ from pzt_panel import PZTPanel
++from video_text import register_qt_arial
+ from piv_display import piv_arrows,arrow_shape,ARROW_RGB,OUTLINE_RGB,REFERENCE_SPEED,GAIN_SECONDS,MAX_LENGTH_PX,STROKE_PX,HALO_PX,display_vectors,display_is_smoothed
+ from overlay_style import DEFAULT_LAYERS,overlay_opacity,overlay_caption
+ 
+@@ -196,9 +197,9 @@
+  def close(self):self.done.set();self.thread.join(15)
+ class Window(W.QMainWindow):
+  def __init__(self,cfg,output,auto=False,seconds=None,capture=None):
+-  super().__init__();self.cfg=cfg;self.output=Path(output);self.pipe=None;self.record=None;self.started=time.monotonic();self.elapsed_limit=seconds;self.capture=capture;self.metrics_last=None;self.saved_preview=False
++  super().__init__();register_qt_arial();self.setFont(G.QFont('Arial'));self.cfg=cfg;self.output=Path(output);self.pipe=None;self.record=None;self.started=time.monotonic();self.elapsed_limit=seconds;self.capture=capture;self.metrics_last=None;self.saved_preview=False
+   self.setWindowTitle('F10Y · Chronos collective observation');self.resize(1480,1000)
+-  self.setStyleSheet('QWidget{background:#000000;color:#e9eff4;font-size:13px;} QPushButton,QComboBox,QLineEdit{background:#121212;border:1px solid #4c5962;border-radius:4px;padding:7px;} QPushButton:hover{background:#262626;} QGroupBox{border:1px solid #3d454c;margin-top:12px;padding-top:12px;} QGroupBox::title{subcontrol-origin:margin;left:10px;} QTabBar::tab{background:#101010;padding:6px;border:1px solid #3d454c;} QTabBar::tab:selected{background:#242424;} QToolTip{background:#161616;color:#e9eff4;}')
++  self.setStyleSheet('QWidget{background:#000000;color:#e9eff4;font-family:Arial;font-size:13px;} QPushButton,QComboBox,QLineEdit{background:#121212;border:1px solid #4c5962;border-radius:4px;padding:7px;} QPushButton:hover{background:#262626;} QGroupBox{border:1px solid #3d454c;margin-top:12px;padding-top:12px;} QGroupBox::title{subcontrol-origin:margin;left:10px;} QTabBar::tab{background:#101010;padding:6px;border:1px solid #3d454c;} QTabBar::tab:selected{background:#242424;} QToolTip{background:#161616;color:#e9eff4;}')
+   central=W.QWidget();self.setCentralWidget(central);grid=W.QGridLayout(central);self.canvas=Canvas();self.canvas.diagnostics=bool(cfg.get('diagnostics',False));grid.addWidget(self.canvas,0,0);side=W.QWidget();side.setFixedWidth(450);form=W.QVBoxLayout(side);grid.addWidget(side,0,1);self.curves=Curves();grid.addWidget(self.curves,1,0,1,2);grid.setRowStretch(0,1)
+   title=W.QLabel('CHRONOS | OBSERVATION');title.setWordWrap(True);title.setStyleSheet('font-size:15px;font-weight:600');form.addWidget(title)
+   group=W.QGroupBox('1  Source and session');g=W.QGridLayout(group);g.setColumnStretch(0,1);g.setColumnStretch(1,1);self.mode=W.QComboBox();self.mode.addItems(['REALTIME_REPLAY','LIVE_CAMERA']);self.mode.setCurrentText(cfg['source_mode']);g.addWidget(self.mode,0,0,1,2)
+--- README.md.before
++++ README.md
+@@ -21,7 +21,7 @@
+ 无需另开录像开关。点击 **Start** 后，收到第一帧就自动录制；点击 **Stop** 或正常关闭窗口会完成视频收尾。底部状态栏显示录制/保存状态，有漏录或错误时明确提示。**Open records** 直接打开本次会话目录，包含：
+ 
+ - `experiment_raw.mp4`：原始接收画面，无软件界面或识别标记（H.264 压缩，不是无损传感器数据）。
+-- `experiment_overlay.mp4`：同一批画面，加上当前勾选的候选泡、PIV、mask、群体范围/形状，以及 UTC、实验时间、候选数和必要的叠加时间差提示。右侧新增黑底 PZT 信息区：四路 ON/OFF、MHz、Vpp、相位、波形/模式和读数年龄，以及当前实验模型俯视图和通道对应关系。不会录入操作按钮或整个软件窗口。
++- `experiment_overlay.mp4`：同一批画面，加上当前勾选的候选泡、PIV、mask、群体范围/形状，以及 UTC、实验时间、候选数。右侧新增黑底 PZT 信息区：四路 ON/OFF、MHz、Vpp、相位和波形/模式，以及当前实验模型俯视图和通道对应关系。不会录入操作按钮或整个软件窗口。
+ - `video_frames.jsonl`：每个录像帧对应的接收 UTC、单调时间、源帧号、源时间戳（如有）、MP4 PTS、识别帧号、对应方式、mask 版本，以及 `pzt_sample_id` 和 PZT 状态评价时刻 `pzt_frame_unix_s`。
+ - `pzt_readbacks.jsonl`：按 `sample_id` 关联的实际发生器读回、各路读回时间、WSL 收到读回的时间和当时保存的通道对应关系。相同样本跨帧复用，避免重复写入。
+ - `pzt_experiment_model.json`：本次录像所用的固定 PZT/PDMS 布局模型。
+@@ -32,9 +32,9 @@
+ 
+ 录像编码队列最多缓存 48 帧，用于吸收启动时 GPU 初始化造成的短暂积压；这不会延长检测有效期，也不阻塞相机接收。持续编码不足仍会明确记录漏帧并提示，不能把缓冲当作帧率保证。
+ 
+-录像使用本机实际接收时间间隔，不强行按固定帧率加速或补帧。识别结果优先匹配同一帧；当分析较慢时，仅使用仍在时效内的过去结果，固定位置标注 `Overlay delay` 和时间差（数据记录为 `RECENT_PAST_FRAME`），不把它称为精确同帧识别。过时、未来帧、其他会话或其他 mask 的结果不叠加。图层开关会影响叠加视频；`Measured frame` 仅影响监看画面，录像仍保留接收到的图像序列。原始视频始终不加标记。
++录像使用本机实际接收时间间隔，不强行按固定帧率加速或补帧。识别结果优先匹配同一帧；当分析较慢时，仅使用仍在时效内的过去结果，只在逐帧数据中保存时间差和 `RECENT_PAST_FRAME` 标记，不把它称为精确同帧识别。过时、未来帧、其他会话或其他 mask 的结果不叠加。图层开关会影响叠加视频；`Measured frame` 仅影响监看画面，录像仍保留接收到的图像序列。原始视频始终不加标记。
+ 
+-PZT 状态只使用**该预览帧抵达 WSL 之前已经收到**的读回；排队编码期间发生的新状态不会回填旧帧。断连、过期或读失败显示 UNKNOWN，不继续显示旧 ON/参数。读回存在轮询延迟，没有与曝光做硬件同步；它适合对照实验过程，不代表精确的声学启停时刻。回放旧录像没有同步 PZT 历史时明确显示 `PZT history not recorded`，不叠加当前发生器参数。保存连接设置后的新帧使用新映射，旧帧保持原映射。
++PZT 状态只使用**该预览帧抵达 WSL 之前已经收到**的读回；排队编码期间发生的新状态不会回填旧帧。断连、过期或读失败显示 UNKNOWN，不继续显示旧 ON/参数。读回存在轮询延迟，没有与曝光做硬件同步；它适合对照实验过程，不代表精确的声学启停时刻。回放旧录像没有同步 PZT 历史时通道显示 `NOT RECORDED`，不叠加当前发生器参数。保存连接设置后的新帧使用新映射，旧帧保持原映射。
+ 
+ 时间戳是**预览帧接收时间**，不是未经提供的相机曝光时间；录像记录的是收到的预览流，不等于相机内部的高速原片。暂停回放/断流产生的时间间隔保留，不填造运动。实验录像与旧 `--capture-ui` 软件界面录屏是独立功能，普通 Start 不会录制软件窗口。
+ 
+@@ -46,7 +46,7 @@
+ 
+ 检测图层按新结果批量绘制并缓存为透明图像，后续画面刷新直接叠加，减少逐泡重画对界面和录像的干扰。缓存随检测、图层、窗口尺寸和有效状态更新，不积累旧位置，也不会延续过期结果。
+ 
+-PIV 改为亮黄色细线和开放式箭头端，使用窄暗色衬边，不再画粗黑边和实心三角。界面线宽约 1.35 px；界面与视频共用箭头几何。长度采用 `0.8 s × 显示速度 px/s`，带 `25 px/s` 标尺，超过 40 px 限长并提示。小于 3 px 的箭头不画，避免近零速度被画成杂点。
++PIV 改为亮黄色细线和开放式箭头端，使用窄暗色衬边，不再画粗黑边和实心三角。界面线宽约 1.35 px；界面与视频共用箭头几何。长度采用 `0.8 s × 显示速度 px/s`，带 `25 px/s` 标尺，超过 40 px 限长（界面保留提示，视频仅保留标尺，方法写入 manifest）。小于 3 px 的箭头不画，避免近零速度被画成杂点。
+ 
+ **Smooth PIV 默认开启**：在固定 72 px 网格内取当前有效速度的局部均值，再使用 0.12 s 时间常数的因果平滑，减少箭头起点换位和长度/方向噪声。图例标记 `smoothed`；这只是显示处理，有响应延迟，不是额外测量或逐泡轨迹。无当前支持的网格立即撤下；停流、反向、无效结果、超时、重新连接和区域改变不会沿用旧方向。关闭 **Smooth PIV** 可检查 `raw` 箭头，每个 48 px 网格选取一个原始实测向量。右侧速度、科学统计和 `states.jsonl.gz` 中的原始速度向量均不做此平滑；录像逐帧记录显示开关，manifest 保存显示方法，复现时可从完整原始状态顺序重建显示场。
+ 
+@@ -71,3 +71,5 @@
+ **Read PZT status** 可直接发起四路只读查询并等待完成回执；背景已统一为黑色。每次启动自动恢复最后保存的 PZT 对应关系。详细说明见上述指南。
+ 
+ PZT 刷新已优化：本机实测每路从约 4.02 s 缩短到 0.94 s，已连接状态下手动四路读取约 1.39 s。后台只读七项显示参数，完整输出校验保持原样；验证见 `evidence/pzt_latency_20261019/`。
++
++录像及观测界面使用实际 Arial 字体；录像删除说明性页脚、读数年龄、重复标题和分析提示句，只保留时间、候选数、速度标尺、PZT 状态/参数及布局标记。解释、时效及对应关系仍保存在记录文件。默认读取 Windows 安装的 `/mnt/c/Windows/Fonts/arial.ttf`；其他环境可用 `F10Y_ARIAL_FONT` 指定已安装的 Arial 文件，缺失时明确报错，不静默替换字体。字体身份及 SHA-256 写入视频 manifest。
+--- PZT_MONITOR_GUIDE.md.before
++++ PZT_MONITOR_GUIDE.md
+@@ -64,10 +64,12 @@
+ 
+ ## 将 PZT 信息录入实验视频
+ 
+-照常点击 **Start → Stop**；保存完成后点击 **Open records**，打开 `experiment_overlay.mp4`。左侧为相机画面与识别结果，右侧为黑底 PZT 参数卡和俯视布局，包括四路对应关系、ON/OFF、频率、Vpp、相位、波形/模式及读回年龄。原始 `experiment_raw.mp4` 仍保留相机原尺寸。
++照常点击 **Start → Stop**；保存完成后点击 **Open records**，打开 `experiment_overlay.mp4`。左侧为相机画面与识别结果，右侧为黑底 PZT 参数卡和俯视布局，包括四路对应关系、ON/OFF、频率、Vpp、相位、波形/模式。原始 `experiment_raw.mp4` 仍保留相机原尺寸。
+ 
+ 逐帧 `video_frames.jsonl` 中的 `pzt_sample_id` 对应 `pzt_readbacks.jsonl` 中同名 ID；后者保存读回原值、身份、时间和通道映射。`pzt_frame_unix_s` 用于按该帧时刻判断读数是否过期，`pzt_experiment_model.json` 保存本次布局几何。可据此分析微泡运动与发生器状态的关系。
+ 
+ 录像使用帧抵达前已经获取的最近读回，不使用后来的状态修饰过去画面；读回不是曝光同步数据，ON 仍不等于实际声压检测。回放没有配套 PZT 历史的旧视频时显示 NOT RECORDED。断连、读取失败、超时和未分配的通道也会保留其真实状态。
+ 
+ 2026-10-19 录像验证：真实预览收到的 11 帧全部写入，原始/叠加视频 PTS 一致，没有使用未来 PZT 读回；30 项相关测试通过。额外以已录图像验证 30 帧/秒编码，90 帧全部写入，无编码丢帧。此项是编码测试，不代表相机接收或识别速率。代码、试录、逐帧证据和截图见 `evidence/pzt_video_20261019/`。
++
++视频文字统一使用 Arial，删除底部说明和读数年龄等辅助文字。UNKNOWN、NOT RECORDED 等实际状态仍保留；时间关联和声学含义说明仅放在文档及数据记录中。
+--- /dev/null
++++ src/video_text.py
+@@ -0,0 +1,63 @@
++"""Actual Arial glyphs, blended only over their small image region."""
++from functools import lru_cache
++from pathlib import Path
++import hashlib
++import os
++
++import numpy as np
++from PIL import Image, ImageDraw, ImageFont
++
++
++@lru_cache(maxsize=1)
++def arial_path():
++    candidates = [os.environ.get('F10Y_ARIAL_FONT'), '/mnt/c/Windows/Fonts/arial.ttf',
++                  '/usr/share/fonts/truetype/msttcorefonts/Arial.ttf',
++                  '/usr/share/fonts/truetype/msttcorefonts/arial.ttf',
++                  str(Path.home()/'.local/share/fonts/arial.ttf')]
++    for name in candidates:
++        if name and Path(name).is_file() and ImageFont.truetype(name,16).getname()[0]=='Arial':
++            return str(Path(name).resolve())
++    raise RuntimeError('Arial font not found. Set F10Y_ARIAL_FONT to the installed arial.ttf.')
++
++
++@lru_cache(maxsize=32)
++def font(size):
++    return ImageFont.truetype(arial_path(),max(6,round(size)))
++
++
++@lru_cache(maxsize=256)
++def glyph(text,size):
++    face=font(size)
++    x0,y0,x1,y1=face.getbbox(text,anchor='ls')
++    mask=Image.new('L',(max(1,x1-x0),max(1,y1-y0)))
++    ImageDraw.Draw(mask).text((-x0,-y0),text,font=face,fill=255,anchor='ls')
++    return np.asarray(mask,dtype=np.uint16),x0,y0
++
++
++def text_width(text,size):
++    return font(size).getlength(text)
++
++
++def draw_text(image,text,x,y,size=16,color=(232,226,216)):
++    mask,dx,dy=glyph(str(text),round(size))
++    x,y=round(x)+dx,round(y)+dy
++    h,w=mask.shape
++    left,top=max(0,x),max(0,y);right,bottom=min(image.shape[1],x+w),min(image.shape[0],y+h)
++    if right<=left or bottom<=top:return
++    alpha=mask[top-y:bottom-y,left-x:right-x,None]
++    roi=image[top:bottom,left:right]
++    roi[:]=((roi.astype(np.uint16)*(255-alpha)+np.asarray(color,dtype=np.uint16)*alpha+127)//255).astype(np.uint8)
++
++
++@lru_cache(maxsize=1)
++def font_record():
++    path=arial_path()
++    return dict(family='Arial',path=path,sha256=hashlib.sha256(Path(path).read_bytes()).hexdigest(),
++                captions='Essential measurements and status only; interpretation stored in metadata')
++
++
++def register_qt_arial():
++    from PySide6.QtGui import QFontDatabase
++    if 'Arial' not in QFontDatabase.families():
++        if QFontDatabase.addApplicationFont(arial_path())<0:
++            raise RuntimeError('Could not load Arial for the observation interface.')
