@@ -2,6 +2,8 @@
 
 这里保存以前的研究证据；本次没有恢复研究队列，也没有把失败改成成功。可执行的当前诊断数值函数统一在 `src/human_vessel_flow/`，不从本目录动态加载脚本。
 
+用户确认删除旧工程后，又补齐了[事件区的两份对照流场](field_events/reference_fields/README.md)、末步检查点、原生实验实际编译源码及[早期停止任务的必要证据](retired_run_evidence/README.md)。这些是原有记录，没有新增计算。大批旧中间结果已清理；来源对应关系见 `docs/cleanup_confirmed_20261023/preservation_receipt.json`。
+
 2026-10-23 补齐了原始 Gmsh V2 生成器 `reference_pipe/gmsh_reference/reference_v2.py` 及其少量冻结前置输入，并保留早期同步工作区中缺失的 P1 检查点、P2 边界输入和执行记录。该生成器保持原 SHA，属于来源证据，不作为当前运行入口；本轮没有安装新 Gmsh、重新生成网格或恢复试算。新增保留位置和 SHA 见 `docs/cleanup_20261023/preservation_receipt.json`。
 
 | 需要查看的问题 | 原报告 | 应保留的含义 |

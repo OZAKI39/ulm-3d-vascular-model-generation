@@ -2,7 +2,7 @@
 
 本工程研究 **BraVa BG001 RMCA 四端口人体血管，入口 18 mL/min**。**本目录是唯一日常开发与 Git 根目录，长期分支为 `dev/human-vessel-flow`。** 代码、输入、旧结果和必要诊断证据已独立整理在这里。小鼠血管工程另在 `new_mouse_vessel_flow`，没有把它的血管、流场或粒子队列合并进来。
 
-先看[本次清理报告](docs/CLEANUP_REPORT_ZH.md)、[直接 Git 开发方式](docs/GIT_WORKFLOW_ZH.md)和[当前方法清单](docs/CURRENT_METHODS_ZH.md)，或打开[结果图表与四视角动画](results/reviews/migration_final/OPEN_RESULTS.html)。此前迁移过程见[中文迁移报告](docs/MIGRATION_REPORT_ZH.md)，详细来源在[模块对应表](docs/MODULE_MAPPING.csv)、[函数与类对应表](docs/FUNCTION_CLASS_MAPPING.csv)和[冻结文件索引](docs/CASE_INDEX.md)。本地冻结资料的当前身份清单为 `configs/active_data_manifest.json`。
+先看[确认删除后的清理报告](docs/CONFIRMED_CLEANUP_REPORT_ZH.md)、[直接 Git 开发方式](docs/GIT_WORKFLOW_ZH.md)和[当前方法清单](docs/CURRENT_METHODS_ZH.md)，或打开[结果图表与四视角动画](results/reviews/migration_final/OPEN_RESULTS.html)。首次清理过程见[前次报告](docs/CLEANUP_REPORT_ZH.md)，此前迁移过程见[中文迁移报告](docs/MIGRATION_REPORT_ZH.md)，详细来源在[模块对应表](docs/MODULE_MAPPING.csv)、[函数与类对应表](docs/FUNCTION_CLASS_MAPPING.csv)和[冻结文件索引](docs/CASE_INDEX.md)。本地冻结资料的当前身份清单为 `configs/active_data_manifest.json`。
 
 ## 当前可以做什么
 
@@ -74,4 +74,6 @@ bash scripts/run_small_tests.sh validation/small_tests
 
 参考管的 `REFERENCE_PIPE_FIELD_FAIL_SCIENTIFIC`、`MIXED_FIELD_ERROR`、`P1_FIELD_TRAJECTORY_IMPACT_LARGE` 均保留。P2/P1 为 `STOP_NATIVE_P2P1_ROUTE_RESOURCE_LIMIT`，曲面压力回填也仍有失败。微泡异常速度、近壁场误差及正式轨迹收敛需要后续科学研究，工程整理没有解决或掩盖这些问题。
 
-2026-10-23 已清除两处经过身份核对的历史 GitHub 同步工作区，停用旧同步入口，并直接在本目录建立 Git。原始 BraVa 工程、共享依赖和服务器工作区保留；本轮未登录服务器。需要人工确认的原工程和备份见[当前待确认清单](docs/cleanup_20261023/PENDING_REVIEW.csv)。GitHub 发布时排除的大文件不能自动视为可删除文件。
+2026-10-23 首次清理了两处历史 GitHub 同步工作区，并直接在本目录建立 Git。随后用户确认的 **9 项已全部删除**，包括旧 BraVa 工程、旧校准目录、两处本地服务器迁移目录、混合历史工作区中的 BraVa 子目录和四份旧发布清单。[原待确认清单](docs/cleanup_20261023/PENDING_REVIEW.csv)现记录为已处理。
+
+两套正式冻结场、正式微泡完整状态、必要诊断证据和旧代码历史继续保留；事件研究使用的两份对照场也已补齐。顶层旧快捷入口 `../brava_flow_roi_18mlmin` 现在指向本工程，原内部目录布局已退出使用。共享依赖、其他项目及服务器工作区未删除；本轮未登录服务器。

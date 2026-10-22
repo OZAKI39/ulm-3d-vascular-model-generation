@@ -27,3 +27,7 @@ Git 保存当前源码、配置、必要原生源码和补丁、轻量输入、�
 不要创建日期命名的同步分支、完整 clone、worktree、镜像或工程压缩包来完成普通推送。旧共享同步入口已经退出并指向当前目录，不再自动复制或发布。完整 CFD、GPU 群体与 P2 科学验证不是 Git 同步步骤。
 
 初始提交 `4a2d4e7` 保存已整理工程以及本次移除的一次性迁移工具。历史脚本仅用于追溯，不能据此恢复旧队列。需要追溯单文件时可用 `git show 提交:相对路径`，无需另建运行工程。
+
+2026-10-23 经用户确认删除原 BraVa 工程前，原仓库的 4 个分支、全部 37 个历史/reflog 提交及未挂接对象已保存在本目录 `.git` 的 `refs/archive/brava-original/` 与 `refs/archive/brava-unreferenced-objects/`。这些是本地历史引用，不是额外工作树，也不参与普通 `git push`。完整历史约占 1 GB；远端原发布分支不改写。详情见 [历史保留凭据](cleanup_confirmed_20261023/history_preservation_receipt.json)。
+
+例如可直接查看原文件：`git show a4b238b:ACTIVE_DEVELOPMENT_SCOPE.md`。重新 clone 当前开发分支只会取得已发布的当前工程，不包含上述仅本地保留的原仓库历史或大型科研数据。
