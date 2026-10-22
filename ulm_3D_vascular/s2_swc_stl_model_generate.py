@@ -1,1 +1,0 @@
-../vascular_printing/s2_swc_stl_model_generate.py

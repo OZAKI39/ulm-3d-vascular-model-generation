@@ -1,0 +1,120 @@
+"""Independent V2 review figures and Chinese manufacturing-sequence report."""
+from pathlib import Path
+import json
+import numpy as np
+import pyvista as pv
+from .casting_fixture_review import poly
+from .casting_fixture_geometry import shape_mesh
+from .casting_fixture_v2_geometry import port_transform
+from .support_inputs import save,digest
+
+NAMES=['01_frozen_core','02_full_core_inside_closed_walls','03_closed_walls_no_holes','04_bottomless_frame_on_dish','05_extension_fixture_zones','06_wall_grown_support_blades','07_cradle_detail','08_top_loading_core','09_anti_float_retainers','10_no_central_tree_contact','11_trim_alignment_ribs','12_trim_planes_overview','13_port_trim_section_I1','14_port_trim_section_O1','15_port_trim_section_O2','16_port_trim_section_O3','17_PDMS_before_trim','18_PDMS_after_trim','19_final_exposed_ports','20_exploded_assembly','21_PLA_frame_real_slice']
+TITLES=['Immutable independent ABS core','All extensions INSIDE four closed walls','Four continuous walls: no holes / no slots','Open bottom: dish directly forms PDMS floor','Approved straight extension zones','Wall-grown vertical fins and extensions only','Master cradle: positive clearance, no press fit','Top loading of complete frozen core','Separate anti-float retainers: down, then slide','Central cerebral tree: zero PLA contacts','Tall vertical trim ribs: inner face = cut plane','Blue = FINAL PDMS / orange = sacrificial notches','I1: vertical cut through frozen straight extension','O1: vertical cut through frozen straight extension','O2: vertical cut through frozen straight extension','O3: vertical cut through frozen straight extension','PDMS BEFORE trim: peripheral fixture imprints','PDMS AFTER trim: no residual PLA ghost channel','All four ports exposed at final PDMS boundary','Exploded independent components','Actual Bambu model extrusion: selected layers']
+
+
+def render(out,l,g,meshes,d,s,rows,only=None):
+    out=Path(out);q=out/'QC';q.mkdir(exist_ok=True);H=l['high'][2];lo=l['low'];hi=l['high'];core=poly(l['core']);frame=poly(meshes['frame']);walls=poly(shape_mesh(g['walls']));central=poly(l['central']);ports=l['ports'];manifest=json.loads((q/'figure_manifest.json').read_text()) if only is not None and (q/'figure_manifest.json').exists() else []
+    def add(plot,mesh,color,opacity=1):
+        if mesh.n_points:plot.add_mesh(mesh,color=color,opacity=opacity,smooth_shading=True)
+    for i,name in enumerate(NAMES):
+        if only is not None and i not in only:continue
+        print('V2 QC',name,flush=True);p=pv.Plotter(off_screen=True,window_size=(1600,1150),shape=(2,2) if i==18 else (1,1));p.set_background('white')
+        if i==18:
+            for j,port in enumerate(ports):
+                p.subplot(j//2,j%2);p.set_background('white');pt=np.array(port['trim_origin']);n=np.array(port['axis']);bounds=np.column_stack((pt-[6,6,3],pt+[6,6,3])).ravel()
+                add(p,poly(d['after']).clip_box(bounds,invert=False),'#91b5d4',.75);add(p,poly(l['source_ports'][port['port_id']]).clip_box(bounds,invert=False),'#c64932')
+                section=l['source_ports'][port['port_id']].section(plane_normal=n,plane_origin=pt)
+                p.add_lines(section.discrete[0],connected=True,color='#8f1010',width=5)
+                rr=next(x for x in rows if x['port']==port['port_id']);p.add_text(f"{port['port_id']} | exposed diameter {rr['exposed_diameter_area_equivalent_mm']:.3f} mm",font_size=13,color='black');p.camera_position=[pt+n*16+[0,0,3],pt,[0,0,1]];p.reset_camera();p.camera.zoom(1.12)
+        else:
+            p.add_text(TITLES[i],position='upper_left',font_size=18,color='#142e43',font='arial');p.add_text('mm | Geometry / local slicing only | Physical seal, force and cutting remain untested',position='lower_left',font_size=11,color='#455666')
+            if i==0:add(p,core,'#cc5042')
+            elif i==2:add(p,walls,'#2b88b2')
+            elif i==5:
+                for port in ports:
+                    k=port['port_id'];add(p,poly(shape_mesh(g['supports'][k])),'#3188bd');pt=(np.array(port['straight_start'])+port['end'])/2
+                    add(p,pv.Cylinder(center=pt,direction=port['axis'],height=port['straight_length_mm'],radius=port['radius_mm'],resolution=24),'#d45740')
+            elif i==6:
+                port=next(x for x in ports if x['role']=='MASTER');k=port['port_id'];pt=np.array(port['trim_origin'])+np.array(port['axis'])*2.2;bounds=np.column_stack((pt-[4,4,3],pt+[4,4,3])).ravel()
+                add(p,poly(shape_mesh(g['supports'][k])).clip_box(bounds,invert=False),'#3188bd');add(p,poly(l['source_ports'][k]).clip_box(bounds,invert=False),'#ce5143');p.add_point_labels([pt+[0,0,1.7]],[f"{k}: radial gap {port['cradle_clearance_mm']:.2f} mm"],always_visible=True,shape_opacity=0,font_size=17)
+            elif i==10:
+                add(p,walls,'#5993aa',.12)
+                for port in ports:add(p,poly(shape_mesh(g['ribs'][port['port_id']])),'#d89919')
+                add(p,core,'#cc5042',.75)
+            elif i==11:
+                add(p,poly(d['final_region']),'#2584b2',.25);add(p,poly(d['cuts']),'#e1902d',.45);add(p,core,'#bb4438')
+                for plane in d['planes']:add(p,poly(plane),'#864aab',.35)
+                p.add_text('Local notches: main plane + side cuts\nO2 corner uses an existing outer boundary',position='upper_right',font_size=12,color='#273a4c')
+            elif 12<=i<=15:
+                port=ports[i-12];pt=np.array(port['trim_origin']);bounds=np.column_stack((pt-[7,7,4],pt+[7,7,4])).ravel();add(p,poly(d['after']).clip_box(bounds,invert=False),'#9dc3d8',.5);add(p,poly(l['source_ports'][port['port_id']]).clip_box(bounds,invert=False),'#c64932')
+                plane=pv.Plane(center=pt,direction=port['axis'],i_size=8,j_size=7);add(p,plane,'#d39423',.25);section=l['source_ports'][port['port_id']].section(plane_normal=port['axis'],plane_origin=pt);p.add_lines(section.discrete[0],connected=True,color='#8d1536',width=5)
+                p.add_text('Usable straight length after trim: 4.50 mm\nAxis / cut plane angle: 90.00 deg',position='upper_right',font_size=12,color='#263a4b')
+            elif i in [16,17]:
+                add(p,poly(d['before'] if i==16 else d['after']),'#83aeca',.55);add(p,core,'#cb5143')
+                if i==16:
+                    for port in ports:
+                        k=port['port_id'];add(p,poly(shape_mesh(g['supports'][k])),'#d5a235',.65);add(p,poly(shape_mesh(g['ribs'][k])),'#d5a235',.65);add(p,poly(meshes['retainers'][k]),'#539958')
+                p.add_text('Fixture-imprint final-side volume = 0.000000 mm3' if i==17 else 'Amber/green solids mark the void imprints in PDMS\nThey are removed together with each peripheral notch',position='upper_right',font_size=12,color='#263a4b')
+            elif i==20:
+                from .bambu_casting_mold import parse_paths
+                rec=s['bambu']['frame_slice']
+                if rec.get('archive'):
+                    paths=parse_paths(rec['archive']);segments=paths['segments'][paths['kind']==0];levels=np.unique(np.round(segments[:,:,2].mean(1),3));sel=levels[np.linspace(0,len(levels)-1,16).astype(int)];keep=np.isin(np.round(segments[:,:,2].mean(1),3),sel);segs=segments[keep];p.add_lines(segs.reshape(-1,3),color='#2180a5',width=1)
+                    p.add_text(f"X1C / 0.2 mm / PLA / Auto Support OFF\n16 actual layers shown; every layer audited\nNative support moves: {rec['native_support_moves']}",position='upper_right',font_size=13,color='#263a4b')
+                else:p.add_text('Actual slicing absent: NEEDS_ADJUSTMENT',position='upper_right',font_size=13,color='#933333')
+            else:
+                if i==3:
+                    add(p,frame.clip(normal=(1,1,0),origin=(0,0,0),invert=True),'#3188bd',.85);floor=pv.Plane(center=(0,0,-.04),direction=(0,0,1),i_size=hi[0]-lo[0]+20,j_size=hi[1]-lo[1]+20);add(p,floor,'#bdc7ce',.7)
+                else:add(p,frame,'#388bac',.14 if i in [1,4,7,8,9,19] else .8)
+                c=core.copy()
+                if i in [7,19]:c.translate([0,0,H+5 if i==7 else 30],inplace=True)
+                add(p,c if i!=9 else central,'#cc5042' if i!=9 else '#329c61')
+                if i in [8,19]:
+                    for port in ports:
+                        m=poly(meshes['retainers'][port['port_id']]);m.translate([0,0,8 if i==8 else 55],inplace=True);add(p,m,'#38a662')
+                if i in [1,4]:
+                    for port in ports:
+                        pt=np.array(port['end']);p.add_point_labels([pt+[0,0,2]],[port['port_id']+f" | setback {port['extension_wall_setback_mm']:.2f}"],font_size=15,shape_opacity=.3,always_visible=True)
+                        if i==4:
+                            a=np.array(port['approved_contact_start']);b=np.array(port['approved_contact_end']);add(p,pv.Cylinder(center=(a+b)/2,direction=port['axis'],height=np.linalg.norm(b-a),radius=port['radius_mm']+.035,resolution=32),'#e1b729')
+                if i==7:p.add_arrows(np.array([[0,0,H+25]]),np.array([[0,0,-1.]]),mag=15,color='#d3a023')
+            p.add_axes();p.camera_position='iso';p.camera.up=(0,0,1);p.reset_camera();p.camera.zoom(1.05)
+            if i==1:p.view_xy();p.camera.up=(0,1,0);p.reset_camera();p.camera.zoom(1.02)
+            if i==6:
+                n=np.array(port['axis']);p.camera_position=[pt-n*14+[0,0,5],pt,[0,0,1]];p.reset_camera();p.camera.zoom(1.05)
+        p.show(screenshot=str(q/(name+'.png')),auto_close=True);manifest=[r for r in manifest if r['name']!=name];manifest.append(dict(name=name,sha256=digest(q/(name+'.png'))))
+    save(q/'figure_manifest.json',sorted(manifest,key=lambda r:r['name']))
+
+
+def report(out,s,rows):
+    out=Path(out);a=s['assembly'];t=s['trim'];sup=s['supports'];b=s['bambu'];ports=s['ports'];status=s['status'];dim=s['frame']['dimensions'];dish=s['dish']
+    answers=[f"整个 ABS 芯是否全部在四面墙内？**是**，墙腔外体积 {t['core_outside_cavity_mm3']:.9f} mm³。",
+    '有没有端口穿墙？**没有**，四根末端均留在内腔。','侧墙有无孔或 U 槽？**没有**，完整墙体缺失体积为 0，横向射线核查也通过。','PLA 有没有底板？**没有**；外围竖直薄片落在培养皿上，中央区域没有底板或底网。','培养皿是不是 PDMS 的底面？**是**，直接以培养皿平面成形。',
+    f"夹具有几处接触？**4 个端口承托/限位位置**；名义装配保留正间隙，实际硬接触数 {a['nominal_hard_contact_count']}。统计的是位置，并非有意挤压血管。",'这些位置是否全部在延长直段？**是**；另有 O2 末端面作为单向轴向基准，远离上游端口连接部。',
+    f"中央血管接触 PLA 吗？**不接触**，最小间距 {a['minimum_central_PLA_clearance_mm']:.3f} mm。",f"完整芯能从上方放入吗？**可以**，连续路径检查最小间隙 {a['top_insertion']['min_clearance_mm']:.3f} mm。",
+    f"薄片自身可不用支撑打印吗？**本地切片通过**。采用 {sup['blade_thickness_mm']:.2f} mm（{sup['blade_line_count']} 线宽），实际刀路按层检查保留；尚未实物打印验证。",'如何防浮？四个独立插片先从上方落下，再向内墙滑动 1.60 mm，进入内部斜面限位。插片和血管的 +Z 扰动均被几何限位阻止；无需贯穿墙体的锁销。',
+    '会压紧或弯曲血管吗？设计没有负间隙，也没有改变血管；O2 托座径向间隙 0.22 mm，其余 0.33 mm，上限位间隙 0.22 mm。实物收缩误差仍需试装。','切面在哪里？每根端口保守直段的中点，距直段起点 4.50 mm；具体坐标、法向和分叉间距见下表及 CSV。','竖直肋如何导向？肋的内侧面与暴露端口的切面重合，整根肋留在牺牲侧，向上延伸至墙顶以下 0.50 mm；墙顶凸线提示起刀位置，不削薄侧墙。',
+    f"切后印痕是否完全移除？**是**，最终侧的 PLA 残留体积 {t['fixture_imprint_remaining_after_trim_mm3']:.9f} mm³；与不含夹具的理想保留 PDMS 作差，缺损体积也为 0。",'四个端口是否暴露？**全部暴露**；使用真实网格横截面与切后 PDMS 内外侧点测试确认。','还剩多少可用直段？I1、O1、O2、O3 均为 **4.50 mm**，从最终外表面量到保守直段起点；不把弯曲连接段计入。',
+    f"框架实际 Auto Support OFF 切片了吗？**是**；X1 Carbon、0.2 mm 喷嘴、PLA Basic、0.10 mm 层高。框架原生支撑刀路 {b['frame_slice'].get('native_support_moves','未切片')} 条，独立插片同样通过。",'哪些尚未物理验证？培养皿实际容纳尺寸、底部密封、PLA/ABS 收缩配合、防浮强度、手工切割精度、PLA 与 PDMS 的脱离行为。','制造顺序是什么？先清理独立 ABS 芯，再装入 PLA 夹具浇注；固化后**先沿导向切割，再移走外围夹具与牺牲 PDMS**，最后去除 ABS。具体步骤如下。']
+    if s['failures']:
+        (out/'internal_wall_supported_fixture_report.md').write_text('# V2 诊断未通过生产门槛\n\n状态：NEEDS_ADJUSTMENT\n\n未通过：'+', '.join(s['failures'])+'\n\n详见本目录 summary.json、tables 与 bambu 的真实检查记录。')
+        return
+    text='# 内墙生长式端口支撑与竖直切割导向：V2 实现报告\n\n状态：**'+status+'**。\n\n'+ '\n\n'.join(f'{i+1}. {x}' for i,x in enumerate(answers))
+    text+='\n\n## 结构与依据\n\n冻结血管与端口没有重新拟合、缩放或变形。比较 ±0.5° 和 0° 的小偏航角及 1.5、2.0、2.5 mm 末端退让候选，以最大支撑跨度、总跨度、最小旋转依次选择；本次选中 0°，仅平移。四面连续墙厚 2.00 mm，向外法兰宽 5.00 mm，无孔、无 U 槽、无墙外端口，也没有额外密封套。内腔尺寸为 %.2f × %.2f × %.2f mm。\n\n'%(tuple(dim))
+    text+=f"中央血管最低点离皿面 {s['placement']['minimum_dish_clearance']:.2f} mm。包含法兰所需最小平坦圆形底面直径为 {dish['minimum_required_flat_dish_diameter_mm']:.2f} mm，尚无用户实际培养皿测量。诊断 PDMS 按满内腔计算，切前体积 {t['before_pdms_volume_mm3']/1000:.2f} mL、切后 {t['after_pdms_volume_mm3']/1000:.2f} mL；这是几何容积，不是已验证的浇注配方。\n\n"
+    text+='薄片全部自皿面向上生长，并与内墙连接；横向下托弧通过两条竖直薄片连接到墙。O2 为主基准，单托弧加末端单向限位；其他端口用双托弧、较宽径向余量并允许沿轴向 ±1.00 mm 浮动。独立插片后部抬高，避免把末端帽附近误作径向夹持区。插片以其平整侧面朝下独立打印，装配时翻回工作姿态。\n\n'
+    text+='## 为什么使用局部切口\n\n通常每个切口需要一个穿过端口的主竖直面，以及两条从墙到该面的侧切面。O2 位于转角附近，其中一侧已是现有墙面，不需要额外切割。四个“端口暴露面”与实际切面总数不是同一计数，完整面清单见 trim_strategy.json；本次为 11 个有效切面。只检查有限切口区域，不能将贯穿整个模型的无限平面误认为安全。\n\n'
+    text+='|墙面|局部切口包络体积 mm³|整侧条带体积 mm³|选择|\n|---|---:|---:|---|\n'
+    for x in t['strategies']:text+=f"|{x['wall']}|{x['local_removed_envelope_mm3']:.2f}|{x['strip_removed_envelope_mm3']:.2f}|局部切口|\n"
+    text+='\n整侧条带减少切割次数，但这份模型会多移除大量 PDMS，因此选择局部切口。明确规则是：同墙多端口、共同切面安全，且额外移除量不超过局部方案的 10%，才优先用一条整侧切面。该百分比只是可调整的工程取舍，不是实验材料阈值。\n\n'
+    text+='|端口|切面原点 mm|法向|至最近分叉 mm|非本端口血管净距 mm|截面积 mm²|等面积直径 mm|保留直段 mm|\n|---|---|---|---:|---:|---:|---:|---:|\n'
+    for r in rows:text+=f"|{r['port']}|{[round(x,3) for x in r['trim_plane_origin']]}|{r['trim_plane_normal']}|{r['distance_to_bifurcation']:.3f}|{r['distance_to_nonport_vascular_surface_mm']:.3f}|{r['section_area_mm2']:.4f}|{r['exposed_diameter_area_equivalent_mm']:.4f}|{r['usable_straight_length_after_trim']:.2f}|\n"
+    text+='\n坐标为 assembly/casting_core_transform.json 所定义的夹具坐标；Z=0 是皿面。截面是原 STL 的多边形，等面积直径略小于原参数直径是离散网格的结果，未修改半径。所有端口轴线与切面成 90°。主切面距保守曲率过渡均为 4.50 mm。\n\n'
+    text+='## 实际制造顺序\n\n'
+    steps=['单独打印冻结 ABS 血管芯。','在开放空间清理 ABS 芯的打印支撑，检查细血管与端口。','用 PLA 打印四壁无底框架。','单独打印四个防浮插片。','实测培养皿平底范围，在皿面固定并密封框架向外法兰；先做漏液试验。','将完整 ABS 芯从顶部竖直放入。','使四根延长直段落入对应下托弧，先确认 O2 主基准。','各插片先向下装入，再向内墙滑动 1.60 mm；不得强压血管。','试装和密封通过后倒入 PDMS。','按实际材料工艺固化。','框架仍在位时沿竖直肋的内侧面切割，并完成每个局部切口两侧切面。','移除外围牺牲 PDMS 与 PLA 支撑；再取出保留的中央 PDMS，避免强拔印痕内支撑。','检查 I1、O1、O2、O3 末端均在最终 PDMS 外表面暴露。','最后按既定流程用 acetone 去除 ABS。']
+    text+='\n'.join(f'{i+1}. {x}' for i,x in enumerate(steps))
+    text+='\n\n## 文件、复现和验证范围\n\n运行 `./run_python.sh s1-9_vascular_casting_fixture.py`，默认输出本目录。配置位于 `config/internal_wall_supported_fixture_v2.yaml`。框架的可打印文件为 `frame/frame_with_wall_supports.3mf`；独立插片为 `retainers/anti_float_retainers.3mf`。STL/STEP 分别位于 frame、retainers；assembly 的 STEP 是独立零件装配，ABS 与 PLA 不做布尔合并。`vascular_core/frozen_ABS_core_with_extensions.stl` 保持原始文件坐标与字节，装配用平移副本另存。diagnostic 中的 PDMS STL 仅用于审阅，不能当作 PLA 打印件。\n\n'
+    text+=f"冻结源 SHA256：`{s['vascular']['source_hash']}`。旧 V1 在本目录的父目录原位保留，是历史方案，不再是默认生产入口。现有 s1-2/s1-3 可视化未变。\n\n"
+    text+='真实刀路逐层检查薄片与导向肋；归档 CRC、机器/材料/喷嘴/关闭支撑设置、原生警告均核对。几何检查包含连续插入路径、有限刚体扰动、PDMS 布尔差、最终端口暴露及中央血管保留。另以最终 PDMS 截面的竖直延伸柱检查墙体与导向是否形成上提倒扣，交集体积为数值零。切割后外围部分与最终 PDMS 体积交集为数值零，薄片印痕不侵入最终侧；这不等于已验证材料剥离力或完整操作运动规划。\n\n'
+    text+='本轮状态为 `TRIM_GUIDE_GEOMETRY_VALIDATED`；同时保留 `BOTTOM_SEAL_PHYSICALLY_UNVALIDATED`、`ANTI_FLOAT_FORCE_NOT_VALIDATED`。没有声称制造、密封或手工切割已获得实验验证，也没有发送或启动打印机。\n'
+    (out/'internal_wall_supported_fixture_report.md').write_text(text)

@@ -1,1 +1,0 @@
-../../vascular_printing/tests/test_s1_6_abs_casting_mold.py

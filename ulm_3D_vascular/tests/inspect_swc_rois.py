@@ -1,1 +1,0 @@
-../../vascular_printing/tests/inspect_swc_rois.py

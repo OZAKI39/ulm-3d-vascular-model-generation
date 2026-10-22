@@ -1,1 +1,0 @@
-../../vascular_printing/tests/README_swc_roi_inspection.md

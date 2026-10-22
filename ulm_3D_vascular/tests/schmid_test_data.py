@@ -1,1 +1,0 @@
-../../vascular_printing/tests/schmid_test_data.py

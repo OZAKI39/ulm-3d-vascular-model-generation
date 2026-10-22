@@ -1,1 +1,0 @@
-../../vascular_printing/tests/test_swc_stl_yaml_config.py

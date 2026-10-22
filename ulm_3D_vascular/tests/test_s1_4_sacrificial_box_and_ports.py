@@ -1,1 +1,0 @@
-../../vascular_printing/tests/test_s1_4_sacrificial_box_and_ports.py

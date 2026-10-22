@@ -1,1 +1,0 @@
-../../vascular_printing/tests/test_schmid_pkl_graph.py

@@ -1,1 +1,0 @@
-"""Independent SimVascular feasibility validation."""

@@ -1,1 +1,0 @@
-../../vascular_printing/tests/test_nne2_catalog.py

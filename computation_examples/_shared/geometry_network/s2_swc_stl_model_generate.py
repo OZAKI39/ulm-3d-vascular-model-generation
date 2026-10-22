@@ -1,0 +1,1 @@
+../../../geometry_inputs/s2_swc_stl_model_generate.py
