@@ -72,7 +72,7 @@ for i,batch in enumerate(plan['batches']):
  log=AUDIT/f'{args.project}_push_{i+1:02d}.log'
  print('Push',args.project,i+1,'/',len(plan['batches']),receipt['commits'][i]['sha'],flush=True)
  with log.open('ab') as f:
-  proc=subprocess.run(['git','-C',str(root),'-c','gc.auto=0','-c','credential.helper=','-c','credential.helper=!gh auth git-credential','-c','pack.threads=2','-c','pack.window=0','-c','pack.windowMemory=64m','-c','pack.deltaCacheSize=64m','push','--porcelain','origin',f'HEAD:refs/heads/{branch}'],stdout=f,stderr=subprocess.STDOUT)
+  proc=subprocess.run(['git','-C',str(root),'-c','gc.auto=0','-c','credential.helper=','-c','credential.helper=!gh auth git-credential','-c','http.version=HTTP/1.1','-c','http.lowSpeedLimit=1024','-c','http.lowSpeedTime=60','-c','pack.threads=2','-c','pack.useSparse=false','-c','pack.window=0','-c','pack.windowMemory=64m','-c','pack.deltaCacheSize=64m','push','--progress','--porcelain','origin',f'HEAD:refs/heads/{branch}'],stdout=f,stderr=subprocess.STDOUT)
  if proc.returncode:raise SystemExit(f'push failed; inspect {log}')
  remote=git('ls-remote','origin','refs/heads/'+branch).decode().split()[0]
  assert remote==receipt['commits'][i]['sha']
