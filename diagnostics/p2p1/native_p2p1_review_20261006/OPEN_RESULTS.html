@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BraVa native P2/P1 validation</title>
+<style>body{font:17px/1.65 system-ui,sans-serif;max-width:1350px;margin:32px auto;padding:0 22px;color:#202c39}img{width:100%;height:auto}figure{margin:32px 0}figcaption{color:#445365}a{color:#155faa}.state{padding:16px;background:#fff2d5;border-left:5px solid #ae7520}code{overflow-wrap:anywhere}</style>
+<h1>原生 P2/P1：表示通过，曲面装配阻断</h1>
+<p class="state"><b>NOT_EVALUABLE</b>：A/B/C/D1通过；实际native曲面mixed assembly不一致，按门槛停止。新增CFD和粒子轨迹均为0。</p>
+<p><a href="NATIVE_P2P1_DEVELOPMENT_REVIEW_ZH.md">完整中文报告</a> · <a href="NATIVE_P2P1_PATH_AUDIT_ZH.md">原生路径审计</a> · <a href="P2_DECISION_GATE.json">决策门</a> · <a href="TEST_RESULTS.json">58项工程检查</a> · <a href="EXECUTION_RECEIPT.json">执行记录</a></p>
+<figure><a href="01_P1_VS_P2_REPRESENTATION.png"><img src="01_P1_VS_P2_REPRESENTATION.png" alt="原生二次表示误差、近壁rank对照、真实138584壁面边与自由节点"></a><figcaption>图1：P2精确复现二次场。138584只有1个自由速度节点，可解除强制全零，但G仍受rank≤1限制；不是实际CFD结果。<a href="01_REAL_138584_EDGES.csv">边表CSV</a>。</figcaption></figure>
+<figure><a href="02_P1_VS_P2_POISEUILLE_REPRESENTATION.png"><img src="02_P1_VS_P2_POISEUILLE_REPRESENTATION.png" alt="冻结V2上P1与P2的Poiseuille速度、梯度、shear和curl表示误差"></a><figcaption>图2：原960探针保持，误差纵轴用log展示舍入到百分数量级差异；0.1µm仅诊断。解析节点插值不等于施加no-slip后的CFD。<a href="02_POISEUILLE_REPRESENTATION.csv">CSV</a>。</figcaption></figure>
+<figure><a href="03_CURVED_GEOMETRY_NATIVE_ASSEMBLY.png"><img src="03_CURVED_GEOMETRY_NATIVE_ASSEMBLY.png" alt="实际construct_fluid在两个合法曲面单元上使用不一致的连续性积分Jacobian"></a><figcaption>图3：直接捕获production construct_fluid的单元残差。第一个连续性积分点使用affine Jacobian，其余使用curved Jacobian。该缺陷阻断CFD，不等于测出了P2 CFD场误差。<a href="03_CURVED_GEOMETRY_AUDIT.csv">CSV</a>。</figcaption></figure>
+<p>原始数据：<a href="P2_REPRESENTATION_FIXTURES.npz">表示fixtures</a> · <a href="P2_POISEUILLE_SAMPLES.npz">Poiseuille全部采样</a> · <a href="P2_CURVED_GEOMETRY_SAMPLES.npz">原生曲面逐点数据</a>。无平滑、无域外结果删除、无自动下一任务。</p>
+</html>

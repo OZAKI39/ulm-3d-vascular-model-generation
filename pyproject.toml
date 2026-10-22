@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "human-vessel-flow"
+version = "0.1.0"
+description = "Independent BraVa BG001 RMCA frozen CFD and microbubble workflow"
+requires-python = ">=3.12,<3.13"
+dependencies = ["numpy==2.2.6", "scipy==1.15.3", "vtk==9.7.1", "pyvista==0.49.0", "matplotlib", "trimesh", "imageio", "imageio-ffmpeg", "psutil"]
+
+[project.optional-dependencies]
+test = ["pytest"]
+gpu = ["torch==2.6.0", "ninja"]
+
+[project.scripts]
+human-flow = "human_vessel_flow.main:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+py-modules = ["sonovue_sampler"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"particle_3d.population_v1" = ["cuda/*.cu", "cuda/*.cpp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+

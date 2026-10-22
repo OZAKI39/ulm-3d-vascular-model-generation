@@ -1,0 +1,90 @@
+{
+  "status": "LOCAL_P2_NOT_YET_SPATIALLY_RESOLVED",
+  "nearwall": "IMPLEMENTATION_MATCHES_DECLARED_MODEL",
+  "source_commit": "5622c1a9549c19306b28eb5479c87600d76997c0",
+  "gates": {
+    "frozen_before_any_local_CFD": true,
+    "scope": "CORE_ONLY_IDENTICAL_PHYSICAL_COORDINATES",
+    "P2_medium_fine": {
+      "bulk_velocity_relative_L2_max": 0.02,
+      "each_wall_height_velocity_relative_L2_max": 0.05,
+      "each_wall_height_gradient_relative_L2_max": 0.08,
+      "each_wall_height_WSS_relative_L2_max": 0.08,
+      "each_wall_height_normal_velocity_difference_L2_over_fine_velocity_L2_max": 0.005,
+      "pressure_RMS_difference_over_network_cut_pressure_span_max": 0.02,
+      "pressure_reference": "same absolute network gauge",
+      "gradient_and_WSS_limits_reason": "8% is below existing 25/20 global 16.59% G and 22.11% WSS, and near-wall 13.37% G / 13.70% WSS. Historical evidence uses different BCs: benchmark magnitude only, not matched scientific convergence ratio.",
+      "normal_velocity_reason": "Use fixed velocity norm scale to avoid undefined relative error when exact normal component is zero; report raw differences and raw div as well.",
+      "all_sample_coordinates_inside_required": true,
+      "no_artificial_zone_in_statistics": true
+    },
+    "solver": {
+      "nonlinear_relative_residual_max": 1e-08,
+      "nonlinear_absolute_residual_max": 1e-10,
+      "max_nonlinear_iterations": 40,
+      "pressure_continuation_fractions": [
+        0.25,
+        0.5,
+        1.0
+      ],
+      "quadrature_degree": 6,
+      "symmetric_viscous_stress": true,
+      "rho_kg_m3": 1056,
+      "mu_Pa_s": 0.00345312
+    },
+    "trajectory_if_field_gate_passes": {
+      "particle_ids": [
+        440,
+        1505,
+        1189,
+        636,
+        393,
+        1329,
+        637
+      ],
+      "MB_MB": false,
+      "dt_s": 0.0005,
+      "identical_terminal_and_local_exit_required": true,
+      "residence_and_path_relative_difference_max": 0.02,
+      "endpoint_distance_m_max": 5e-05,
+      "velocity_history_relative_L2_max": 0.05,
+      "gap_history_RMS_difference_m_max": 5e-07,
+      "full_birth_to_global_outlet_replay": "Not justified by three disconnected local CFD domains under a new BC. Do not silently splice calibrated full-domain fields; report unavailable global metrics explicitly."
+    },
+    "stopping": "If A P2 medium/fine fails, LOCAL_P2_NOT_YET_SPATIALLY_RESOLVED; no B/C solves, no automatic third mesh, no trajectory claims from unstable fields.",
+    "nearwall": {
+      "geometry_absolute_error_m_max": 1e-12,
+      "formula_relative_error_max": 1e-10,
+      "saved_interval_velocity_error_m_s_max": 1e-10,
+      "hard_contact_velocity_continuity": "Not declared by the unilateral active-set model. Distinguish an expected normal-velocity jump from a blending implementation bug.",
+      "blend_weight_C1_required": true,
+      "coefficient_caps_C0_required": true
+    }
+  },
+  "important_metrics": {
+    "tetra": [
+      28268,
+      101401
+    ],
+    "DOF": [
+      130794,
+      447679
+    ],
+    "nearwall_u_relative_percent": [
+      21.76,
+      21.62,
+      20.22
+    ],
+    "nearwall_G_relative_percent": [
+      21.75,
+      21.47,
+      19.31
+    ],
+    "WSS_relative_percent": 15.95,
+    "saved_states_rechecked": 33198,
+    "max_velocity_reproduction_error_m_s": 3.06e-18
+  },
+  "new_trajectories": 0,
+  "tool": "DOLFINx 0.11.0, 8 MPI",
+  "failure_reason": "A core nearwall mesh-stability gate failed; B/C and new trajectory stages not run."
+}

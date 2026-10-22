@@ -1,0 +1,719 @@
+--- /home/lzy/projects/computation_examples/_shared/particle_workflow/particle_3d/src/particle_3d/particle7_cases.py
++++ src/particle_3d/particle7_cases.py
+@@ -14,8 +14,8 @@
+ from .audit import read_frozen
+ from .field import FrozenFEMField
+ 
+-REPO=Path(__file__).resolve().parents[3]
+-SONOVUE=Path('/home/lzy/projects/sonovue_size_distribution_v0')
++REPO=Path(__file__).resolve().parents[2]
++SONOVUE=REPO/'inputs/distributions/sonovue'
+ 
+ 
+ def rectangle(a,b,c,d): return np.array([[a,b,c],[a,c,d]],float)
+--- /home/lzy/projects/computation_examples/_shared/particle_workflow/particle_3d/src/particle_3d/particle8_replay.py
++++ src/particle_3d/particle8_replay.py
+@@ -10,7 +10,7 @@
+ import math
+ import numpy as np
+ 
+-REPO = Path(__file__).resolve().parents[3]
++REPO = Path(__file__).resolve().parents[2]
+ P7 = REPO / 'particle_3d/reports/particle7'
+ DEFAULT_OUTPUT = REPO / 'particle_3d/reports/particle8'
+ SCHEMA = 'PARTICLE8_REPLAY_V1'
+--- /home/lzy/projects/computation_examples/_shared/particle_workflow/particle_3d/src/particle_3d/rbc_distribution.py
++++ src/particle_3d/rbc_distribution.py
+@@ -11,7 +11,7 @@
+ import platform
+ import numpy as np
+ 
+-DEFAULT_CONTRACT = Path(__file__).resolve().parents[2] / "contracts/C57BL6_RBC_GEOMETRY_DISTRIBUTION_V0.json"
++DEFAULT_CONTRACT = Path(__file__).resolve().parents[2] / "configs/particle_contracts/C57BL6_RBC_GEOMETRY_DISTRIBUTION_V0.json"
+ DISTRIBUTION_ID = "C57BL6_RBC_GEOMETRY_DISTRIBUTION_V0"
+ COLUMNS = ["rbc_id", "candidate_id", "D_um", "V_fL", "a_um", "b_um", "c_um",
+            "a_m", "b_m", "c_m", "volume_m3", "r", "jeffery_lambda"]
+--- /home/lzy/projects/computation_examples/_shared/particle_workflow/particle_3d/src/particle_3d/sonovue_adapter.py
++++ src/particle_3d/sonovue_adapter.py
+@@ -1,7 +1,7 @@
+-"""Thin read-only adapter to the separately frozen SonoVue sampler; no copied sampler."""
++"""Read-only frozen SonoVue adapter using the project's normal imported sampler."""
+ from dataclasses import dataclass, asdict
+ import hashlib
+-import importlib.util
++import sonovue_sampler
+ import json
+ from pathlib import Path
+ import platform
+@@ -42,18 +42,19 @@
+         path = (root / relative).resolve()
+         if not path.is_relative_to(root):
+             raise ValueError("SonoVue manifest path escapes root")
++        if relative == 'src/sonovue_sampler.py':
++            path = Path(sonovue_sampler.__file__).resolve()
+         check_hash(path, digest)
+         receipt[relative] = digest
+     contract = json.loads((root / "contracts/SONOVUE_SAMPLER_CONTRACT_V0.json").read_text())
+     if contract["status"] != "FROZEN_VALIDATED_PASS":
+         raise ValueError("SonoVue contract is not frozen/validated")
+-    source = root / contract["sampler_source_file"]
++    if contract["sampler_source_file"] != 'src/sonovue_sampler.py':
++        raise ValueError('Unexpected frozen sampler module')
++    source = Path(sonovue_sampler.__file__).resolve()
+     check_hash(source, contract["sampler_source_sha256"])
+     check_hash(root / contract["histogram_file"], contract["histogram_sha256"])
+-    spec = importlib.util.spec_from_file_location("particle1_external_frozen_sonovue", source)
+-    module = importlib.util.module_from_spec(spec)
+-    # Executes the original module in memory; never writes a copied module/pyc.
+-    exec(compile(source.read_bytes(), str(source), "exec"), module.__dict__)
++    module = sonovue_sampler
+     if module.SAMPLER_VERSION != contract["sampler_version"]:
+         raise ValueError("SonoVue version differs from frozen contract")
+     distribution = module.SonoVueDistribution(root / contract["histogram_file"])
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/tests/test_exact_cylinder_diagnostic.py
++++ tests/reference_pipe/test_exact_cylinder_diagnostic.py
+@@ -5,8 +5,7 @@
+ ROOT=Path(__file__).resolve().parents[1]
+ c=json.loads((ROOT/'PARTICLE_CFD_INPUT_CONTRACT.json').read_text())
+ source=c['source_server_root'] if str(ROOT).startswith('/workspace') else c['source_local_root']
+-sys.path[:0]=[str(Path(source).parent),str(ROOT/'gmsh_reference')]
+-from exact_cylinder_particle import (ExactCylinder,exact_gap,exact_certificate,exact_first_handoff,exact_constraints)
++from human_vessel_flow.reference_pipe.exact_cylinder_particle import (ExactCylinder,exact_gap,exact_certificate,exact_first_handoff,exact_constraints)
+ from particle_3d.particle_shapes import Sphere
+ from particle_3d.nearfield_regularization import NearFieldRegularizationV1
+ 
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/tests/test_field_error_decomposition.py
++++ tests/reference_pipe/test_field_error_decomposition.py
+@@ -2,8 +2,7 @@
+ from pathlib import Path
+ import sys
+ import numpy as np
+-sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'gmsh_reference'))
+-from field_error_decomposition import decompose,classification
++from human_vessel_flow.reference_pipe.field_error_decomposition import decompose,classification
+ 
+ def test_opposed_errors_cancel_without_subtracting_norms():
+  exact=np.array([[0.,0.,1.]])
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/tests/test_gmsh_geometry_gate.py
++++ tests/reference_pipe/test_gmsh_geometry_gate.py
+@@ -3,8 +3,7 @@
+ import sys
+ import numpy as np
+ 
+-sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'gmsh_reference'))
+-from audit_reference import finite_facet_deviation
++from human_vessel_flow.reference_pipe.audit_reference import finite_facet_deviation
+ 
+ 
+ def test_cylindrical_chord_uses_edge_minimum_not_triangle_centroid():
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/tests/test_gpu_manufactured_identity.py
++++ tests/reference_pipe/test_gpu_manufactured_identity.py
+@@ -2,10 +2,7 @@
+ import importlib.util
+ from pathlib import Path
+ 
+-PATH = Path(__file__).resolve().parents[1] / 'gmsh_reference/gpu_manufactured.py'
+-SPEC = importlib.util.spec_from_file_location('gpu_manufactured', PATH)
+-MODULE = importlib.util.module_from_spec(SPEC)
+-SPEC.loader.exec_module(MODULE)
++from human_vessel_flow.reference_pipe import gpu_manufactured as MODULE
+ 
+ 
+ def test_requested_gpu_does_not_certify_native_backend():
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/tests/test_reference_interfaces.py
++++ tests/reference_pipe/test_reference_interfaces.py
+@@ -4,9 +4,8 @@
+ import numpy as np
+ import pyvista as pv
+ import pytest
+-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
+-from pipe_probe_geometry import strict_cells
+-from poiseuille import reference
++from human_vessel_flow.reference_pipe.pipe_probe_geometry import strict_cells
++from human_vessel_flow.reference_pipe.poiseuille import reference
+ 
+ 
+ @pytest.fixture
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/tests/test_serialized_output.py
++++ tests/reference_pipe/test_serialized_output.py
+@@ -6,8 +6,7 @@
+ import pytest
+ 
+ ROOT=Path(__file__).resolve().parents[1]
+-sys.path[:0]=[str(ROOT.parent/'vendor'),str(ROOT/'scripts')]
+-from pipe_measurements import serialized_node_mapping
++from human_vessel_flow.reference_pipe.pipe_measurements import serialized_node_mapping
+ 
+ 
+ @pytest.fixture
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/tests/test_supervisor_stop.py
++++ tests/reference_pipe/test_supervisor_stop.py
+@@ -5,8 +5,7 @@
+ import time
+ import psutil
+ 
+-sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
+-from managed_job import stop_tree
++from human_vessel_flow.reference_pipe.managed_job import stop_tree
+ 
+ 
+ def test_kill_resistant_descendant_without_pidfd(monkeypatch):
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/scripts/audit_pipe_fidelity.py
++++ src/human_vessel_flow/reference_pipe/audit_pipe_fidelity.py
+@@ -1,13 +1,14 @@
+ """Finite-facet cylinder and cap trace QA; independent of any CFD solution."""
++from ..paths import ROOT as PROJECT_ROOT
+ from pathlib import Path
+ import argparse
+ import hashlib
+ import json
+ import numpy as np
+ import pyvista as pv
+-from pipe_surface_qa import surface_qa
++from .pipe_surface_qa import surface_qa
+ 
+-ROOT = Path(__file__).resolve().parents[1]
++ROOT = PROJECT_ROOT / 'diagnostics/reference_pipe'
+ 
+ 
+ def summary(values):
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/scripts/manufactured_boundary.py
++++ src/human_vessel_flow/reference_pipe/manufactured_boundary.py
+@@ -2,7 +2,7 @@
+ import json
+ import numpy as np
+ import pyvista as pv
+-from audit_pipe_fidelity import boundary_profile
++from .audit_pipe_fidelity import boundary_profile
+ 
+ 
+ def prepare(mesh, run, inputs, mean, mu):
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/scripts/managed_job.py
++++ src/human_vessel_flow/reference_pipe/managed_job.py
+@@ -1,4 +1,5 @@
+ """One supervised job with explicit limits, reclaimable-cache accounting and tree stop."""
++from ..paths import ROOT as PROJECT_ROOT
+ from pathlib import Path
+ import datetime
+ import json
+@@ -8,7 +9,7 @@
+ import time
+ import psutil
+ 
+-ROOT = Path(__file__).resolve().parents[1]
++ROOT = PROJECT_ROOT / 'diagnostics/reference_pipe'
+ 
+ 
+ def put(path, value):
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/scripts/manufactured_mesh_statistics.py
++++ src/human_vessel_flow/reference_pipe/manufactured_mesh_statistics.py
+@@ -1,13 +1,14 @@
+ """Actual final tetra sizes for one manufactured case; no mesh mutation."""
++from ..paths import ROOT as PROJECT_ROOT
+ from pathlib import Path
+ import argparse
+ import itertools
+ import json
+ import numpy as np
+ import pyvista as pv
+-from pipe_probe_geometry import strict_cells
++from .pipe_probe_geometry import strict_cells
+ 
+-ROOT=Path(__file__).resolve().parents[1]
++ROOT = PROJECT_ROOT / 'diagnostics/reference_pipe'
+ 
+ 
+ def stats(x):
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/scripts/prepare_pipe_cfd.py
++++ src/human_vessel_flow/reference_pipe/prepare_pipe_cfd.py
+@@ -1,4 +1,5 @@
+ """Prepare one gated pipe CFD case with production svMultiPhysics and CPU PETSc."""
++from ..paths import ROOT as PROJECT_ROOT
+ from pathlib import Path
+ import argparse
+ import hashlib
+@@ -10,7 +11,7 @@
+ import numpy as np
+ import pyvista as pv
+ 
+-ROOT = Path(__file__).resolve().parents[1]
++ROOT = PROJECT_ROOT / 'diagnostics/reference_pipe'
+ CASE = ROOT.parent
+ 
+ 
+@@ -63,7 +64,7 @@
+         elif role == 'OUTLET_01':
+             bc.find('Value').text = '0'
+     if manufactured:
+-        from manufactured_boundary import prepare, configure_xml
++        from .manufactured_boundary import prepare, configure_xml
+         boundary = prepare(mesh, run, inputs, proto['mean_velocity_m_s'], proto['mu_Pa_s'])
+         configure_xml(equation)
+     ET.indent(xml, space='  ')
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/scripts/diagnose_manufactured_wss.py
++++ src/human_vessel_flow/reference_pipe/diagnose_manufactured_wss.py
+@@ -1,11 +1,12 @@
+ """Raw WSS interpolation diagnostic; keeps the original calibration gates unchanged."""
++from ..paths import ROOT as PROJECT_ROOT
+ from pathlib import Path
+ import argparse
+ import json
+ import numpy as np
+ import pyvista as pv
+ 
+-ROOT=Path(__file__).resolve().parents[1]
++ROOT = PROJECT_ROOT / 'diagnostics/reference_pipe'
+ 
+ 
+ def main(name):
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/scripts/analyze_pipe_calibration.py
++++ src/human_vessel_flow/reference_pipe/analyze_pipe_calibration.py
+@@ -1,4 +1,5 @@
+ """Compare a converged native field at the frozen exact-cylinder probe positions."""
++from ..paths import ROOT as PROJECT_ROOT
+ from pathlib import Path
+ import argparse
+ import csv
+@@ -12,11 +13,10 @@
+ matplotlib.use('Agg')
+ import matplotlib.pyplot as plt
+ 
+-ROOT = Path(__file__).resolve().parents[1]
+-sys.path.insert(0, str(ROOT.parent / 'vendor'))
+-from pipe_measurements import PipeMeasurements
+-from poiseuille import reference
+-from pipe_probe_geometry import frozen_probes, strict_cells
++ROOT = PROJECT_ROOT / 'diagnostics/reference_pipe'
++from .pipe_measurements import PipeMeasurements
++from .poiseuille import reference
++from .pipe_probe_geometry import frozen_probes, strict_cells
+ 
+ 
+ def error(actual, exact):
+@@ -145,7 +145,7 @@
+         boundary = json.loads((case/'reports/BOUNDARY_FIDELITY.json').read_text())
+         particle_rows = [row for row in records if row['role']=='PARTICLE_RELEVANT']
+         bulk_rows = [row for row in records if row['role']=='BULK']
+-        from audit_pipe_fidelity import boundary_profile
++        from .audit_pipe_fidelity import boundary_profile
+         inlet = pv.read(case/'SV_MESH/mesh-surfaces/INLET.vtp')
+         _, expected_inlet = boundary_profile(inlet,radius,mean)
+         index = {int(gid):i for i,gid in enumerate(grid.point_data['GlobalNodeID'])}
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/scripts/audit_particle_cfd_inputs.py
++++ src/human_vessel_flow/reference_pipe/audit_particle_cfd_inputs.py
+@@ -1,11 +1,12 @@
+ """Read-only production input audit; does not import or integrate particles."""
++from ..paths import ROOT as PROJECT_ROOT
+ from pathlib import Path
+ import argparse
+ import datetime
+ import hashlib
+ import json
+ 
+-ROOT = Path(__file__).resolve().parents[1]
++ROOT = PROJECT_ROOT / 'diagnostics/reference_pipe'
+ 
+ 
+ def sha(path):
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/scripts/run_pipe_cfd.py
++++ src/human_vessel_flow/reference_pipe/run_pipe_cfd.py
+@@ -1,12 +1,12 @@
+ """Reuse the production solver runner and gates, adapting only the port integrals."""
++from ..paths import ROOT as PROJECT_ROOT
+ from pathlib import Path
+ import importlib.util
+ import json
+ import sys
+ 
+-CASE_ROOT = Path(__file__).resolve().parents[2]
+-sys.path.insert(0, str(CASE_ROOT / 'vendor'))
+-from pipe_measurements import PipeMeasurements
++CASE_ROOT = PROJECT_ROOT / 'diagnostics/reference_pipe'
++from .pipe_measurements import PipeMeasurements
+ 
+ spec = importlib.util.spec_from_file_location('unchanged_production_runner', CASE_ROOT / 'scripts/solve_remote.py')
+ runner = importlib.util.module_from_spec(spec)
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/scripts/audit_native_pipe_fix.py
++++ src/human_vessel_flow/reference_pipe/audit_native_pipe_fix.py
+@@ -1,4 +1,5 @@
+ """Check the user-defined native pipe mesh gate independently of flow accuracy."""
++from ..paths import ROOT as PROJECT_ROOT
+ from pathlib import Path
+ import argparse
+ import hashlib
+@@ -10,9 +11,9 @@
+ from scipy.sparse.csgraph import connected_components
+ from scipy.spatial import cKDTree
+ 
+-from pipe_surface_qa import surface_qa
++from .pipe_surface_qa import surface_qa
+ 
+-ROOT = Path(__file__).resolve().parents[1]
++ROOT = PROJECT_ROOT / 'diagnostics/reference_pipe'
+ 
+ 
+ def main(case_name, mesh_dir):
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/scripts/particle_field_inputs.py
++++ src/human_vessel_flow/reference_pipe/particle_field_inputs.py
+@@ -1,4 +1,5 @@
+ """Raw P1 u/G/shear/curl at the immutable manufactured probes; no CFD launch."""
++from ..paths import ROOT as PROJECT_ROOT
+ from pathlib import Path
+ import argparse
+ import hashlib
+@@ -7,11 +8,10 @@
+ import numpy as np
+ import pyvista as pv
+ 
+-ROOT = Path(__file__).resolve().parents[1]
+-sys.path.insert(0, str(ROOT.parent/'vendor'))
+-from pipe_measurements import PipeMeasurements
+-from pipe_probe_geometry import frozen_probes, strict_cells
+-from poiseuille import reference
++ROOT = PROJECT_ROOT / 'diagnostics/reference_pipe'
++from .pipe_measurements import PipeMeasurements
++from .pipe_probe_geometry import frozen_probes, strict_cells
++from .poiseuille import reference
+ 
+ 
+ def sha(p):
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/scripts/audit_pipe_mesh.py
++++ src/human_vessel_flow/reference_pipe/audit_pipe_mesh.py
+@@ -6,7 +6,6 @@
+ from scipy.spatial import cKDTree
+ R=Path(__file__).resolve().parents[1];B=R.parent
+ import sys
+-sys.path.insert(0,str(B/'vendor'))
+ from vascular_validation.mesh_diagnostics import tetra_sicn
+ 
+ def run(name):
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/scripts/prepare_manufactured_pipe.py
++++ src/human_vessel_flow/reference_pipe/prepare_manufactured_pipe.py
+@@ -1,13 +1,14 @@
+ """Prepare one conforming high-fidelity surface; TetGen remains the only volume mesher."""
++from ..paths import ROOT as PROJECT_ROOT
+ from pathlib import Path
+ import argparse
+ import hashlib
+ import json
+ import numpy as np
+ import pyvista as pv
+-from pipe_surface_qa import surface_qa
++from .pipe_surface_qa import surface_qa
+ 
+-ROOT = Path(__file__).resolve().parents[1]
++ROOT = PROJECT_ROOT / 'diagnostics/reference_pipe'
+ 
+ 
+ def annulus(inner, outer):
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/gmsh_reference/audit_reference.py
++++ src/human_vessel_flow/reference_pipe/audit_reference.py
+@@ -12,10 +12,9 @@
+ from scipy.sparse.csgraph import connected_components
+ 
+ HERE = Path(__file__).resolve().parent
+-sys.path.insert(0, str(HERE.parent/'scripts'))
+-from pipe_surface_qa import surface_qa
+-from pipe_probe_geometry import frozen_probes, strict_cells
+-from audit_pipe_fidelity import boundary_profile
++from .pipe_surface_qa import surface_qa
++from .pipe_probe_geometry import frozen_probes, strict_cells
++from .audit_pipe_fidelity import boundary_profile
+ 
+ 
+ def stats(x):
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/gmsh_reference/build_reference.py
++++ src/human_vessel_flow/reference_pipe/build_reference.py
+@@ -10,7 +10,6 @@
+ import numpy as np
+ 
+ HERE = Path(__file__).resolve().parent
+-sys.path.insert(0, str(HERE.parent / 'runtime/gmsh'))
+ 
+ 
+ def sha(path):
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/gmsh_reference/validate_field.py
++++ src/human_vessel_flow/reference_pipe/validate_field.py
+@@ -13,11 +13,10 @@
+ ROOT = HERE.parent
+ NAME = 'R1_GMSH_V2'
+ CASE = ROOT/'manufactured_pipe'/NAME/'cfd'
+-sys.path[:0] = [str(ROOT/'scripts'),str(ROOT.parent/'vendor')]
+-from pipe_measurements import PipeMeasurements
+-from pipe_probe_geometry import frozen_probes, strict_cells
+-from particle_field_inputs import curl, shear, errors
+-from poiseuille import reference
++from .pipe_measurements import PipeMeasurements
++from .pipe_probe_geometry import frozen_probes, strict_cells
++from .particle_field_inputs import curl, shear, errors
++from .poiseuille import reference
+ 
+ 
+ def sha(path):
+@@ -33,7 +32,7 @@
+ 
+ 
+ def prepare():
+-    from prepare_pipe_cfd import main as prepare_existing
++    from .prepare_pipe_cfd import main as prepare_existing
+     qa=read(ROOT/'GMSH_REFERENCE_MESH_V2_RESULT.json')
+     assert qa['status']=='GMSH_REFERENCE_MESH_V2_PASS' and all(qa['checks'].values())
+     plan=read(HERE/'GMSH_REFERENCE_MESH_V2_PLAN.json')
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/gmsh_reference/field_error_decomposition.py
++++ src/human_vessel_flow/reference_pipe/field_error_decomposition.py
+@@ -5,10 +5,9 @@
+ import pyvista as pv
+ HERE=Path(__file__).resolve().parent
+ ROOT=HERE.parent
+-sys.path.insert(0,str(ROOT/'scripts'))
+-from poiseuille import reference
+-from pipe_probe_geometry import strict_cells
+-from particle_field_inputs import curl,shear
++from .poiseuille import reference
++from .pipe_probe_geometry import strict_cells
++from .particle_field_inputs import curl,shear
+ CASE=ROOT/'manufactured_pipe/R1_GMSH_V2/cfd_gpu'
+ OUT=HERE/'error_diagnosis'
+ def read(p):return json.loads(Path(p).read_text())
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/gmsh_reference/reference_v2.py
++++ src/human_vessel_flow/reference_pipe/reference_v2.py
+@@ -14,8 +14,7 @@
+ 
+ HERE = Path(__file__).resolve().parent
+ ROOT = HERE.parent
+-sys.path[:0] = [str(ROOT/'runtime/gmsh'), str(ROOT/'scripts')]
+-from audit_pipe_fidelity import boundary_profile
++from .audit_pipe_fidelity import boundary_profile
+ 
+ 
+ def sha(path):
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/gmsh_reference/plot_gpu_field.py
++++ src/human_vessel_flow/reference_pipe/plot_gpu_field.py
+@@ -1,4 +1,5 @@
+ """Scientific field/steady evidence only; no CPU/GPU performance comparison."""
++from ..paths import ROOT as PROJECT_ROOT
+ from pathlib import Path
+ import json
+ 
+@@ -6,7 +7,7 @@
+ matplotlib.use('Agg')
+ import matplotlib.pyplot as plt
+ 
+-ROOT = Path(__file__).resolve().parents[1]
++ROOT = PROJECT_ROOT / 'diagnostics/reference_pipe'
+ 
+ 
+ def main():
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/gmsh_reference/gpu_manufactured.py
++++ src/human_vessel_flow/reference_pipe/gpu_manufactured.py
+@@ -1,4 +1,5 @@
+ """Execute frozen V2 through the existing formal BraVa GPU runner, without tuning."""
++from ..paths import ROOT as PROJECT_ROOT
+ from pathlib import Path
+ import argparse
+ import hashlib
+@@ -11,12 +12,12 @@
+ import sys
+ import time
+ 
+-ROOT = Path(__file__).resolve().parents[1]
+-PROJECT = ROOT.parent
++ROOT = PROJECT_ROOT / 'diagnostics/reference_pipe'
++PROJECT = PROJECT_ROOT
+ OLD = ROOT / 'manufactured_pipe/R1_GMSH_V2/cfd'
+ CASE = OLD.parent / 'cfd_gpu'
+ IDENTITY = ROOT / 'GPU_MANUFACTURED_RUN_IDENTITY.json'
+-STACK = Path('/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy')
++STACK = PROJECT_ROOT / 'native'
+ 
+ 
+ def sha(path):
+@@ -85,7 +86,6 @@
+     assert qa['status'] == 'GMSH_REFERENCE_MESH_V2_PASS' and all(qa['checks'].values())
+     assert hashes['SV_MESH/mesh-complete.mesh.vtu'] == qa['volume_sha256']
+     assert sha(ROOT / 'gmsh_reference/candidate_v2/mesh/volume.vtu') == qa['volume_sha256']
+-    sys.path.insert(0, str(PROJECT / 'vendor'))
+     from flow_solver_support.transient_checks import checkpoint_audit
+     checkpoint = checkpoint_audit(OLD / 'run/8-procs/stFile_010.bin', 10, .01, ranks=8)
+     CASE.mkdir()
+@@ -147,8 +147,7 @@
+ 
+ def run():
+     import psutil
+-    sys.path.insert(0, str(ROOT / 'scripts'))
+-    from managed_job import stop_tree
++    from .managed_job import stop_tree
+     identity = read(IDENTITY)
+     assert identity['status'] == 'PREPARED_GPU_ONLY'
+     assert not (CASE / 'run/solver.log').exists()
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/gmsh_reference/plot_error_diagnosis.py
++++ src/human_vessel_flow/reference_pipe/plot_error_diagnosis.py
+@@ -1,11 +1,12 @@
+ """Exactly two diagnostic figures, each PNG 300 dpi and vector PDF."""
++from ..paths import ROOT as PROJECT_ROOT
+ from pathlib import Path
+ import json
+ import numpy as np
+ import matplotlib
+ matplotlib.use('Agg')
+ import matplotlib.pyplot as plt
+-ROOT=Path(__file__).resolve().parents[1]
++ROOT = PROJECT_ROOT / 'diagnostics/reference_pipe'
+ OUT=ROOT/'gmsh_reference/error_diagnosis'
+ FIG=ROOT/'gmsh_reference/figures'
+ def read(n):return json.loads((ROOT/n).read_text())
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/gmsh_reference/check_capability.py
++++ src/human_vessel_flow/reference_pipe/check_capability.py
+@@ -12,7 +12,6 @@
+ def main():
+     if (HERE/'CAPABILITY.json').exists():
+         raise SystemExit('Capability receipt is frozen; do not overwrite this one-candidate experiment.')
+-    sys.path.insert(0, str(RUNTIME))
+     import gmsh
+     gmsh.initialize([], readConfigFiles=False)
+     try:
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/gmsh_reference/particle_p1_sensitivity.py
++++ src/human_vessel_flow/reference_pipe/particle_p1_sensitivity.py
+@@ -8,13 +8,12 @@
+ HERE=Path(__file__).resolve().parent;ROOT=HERE.parent;OUT=HERE/'error_diagnosis'
+ contract=json.loads((ROOT/'PARTICLE_CFD_INPUT_CONTRACT.json').read_text())
+ source=Path(contract['source_server_root'] if str(ROOT).startswith('/workspace') else contract['source_local_root'])
+-sys.path[:0]=[str(source.parent),str(ROOT/'scripts'),str(HERE)]
+ from particle_3d.field import FrozenFEMField,FlowSample
+ from particle_3d.particle_shapes import Sphere
+ from particle_3d.physical_time_refinement import refine_interval
+ from particle_3d.particle4_motion import ParticleWorldState
+-from poiseuille import reference
+-from exact_cylinder_particle import ExactCylinder,exact_gap,DiagnosticProductionDynamics
++from .poiseuille import reference
++from .exact_cylinder_particle import ExactCylinder,exact_gap,DiagnosticProductionDynamics
+ PLAN=json.loads((HERE/'GMSH_REFERENCE_MESH_V2_PLAN.json').read_text())
+ PROTO=json.loads((ROOT/'manufactured_pipe/PROTOCOL.json').read_text())
+ R=PLAN['radius_m'];L=PLAN['length_m'];MU=PROTO['mu_Pa_s'];MEAN=PROTO['mean_velocity_m_s']
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/gmsh_reference/certify_gpu_field.py
++++ src/human_vessel_flow/reference_pipe/certify_gpu_field.py
+@@ -6,13 +6,12 @@
+ 
+ HERE = Path(__file__).resolve().parent
+ ROOT = HERE.parent
+-sys.path[:0] = [str(HERE), str(ROOT / 'scripts'), str(ROOT.parent / 'vendor')]
+-from gpu_manufactured import CASE, IDENTITY, read, put, sha
+-from pipe_measurements import PipeMeasurements
++from .gpu_manufactured import CASE, IDENTITY, read, put, sha
++from .pipe_measurements import PipeMeasurements
+ from flow_solver_support.steady_monitor import stop_gate
+ from flow_solver_support.transient_checks import checkpoint_audit
+ from flow_solver_support.solver_checks import linear_gate, nonlinear_gate
+-from validate_field import analyze
++from .validate_field import analyze
+ 
+ 
+ def main():
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/scripts/design_boundary.py
++++ src/human_vessel_flow/boundary.py
+@@ -1,48 +1,59 @@
++"""Original Poiseuille centreline resistance estimate; no calibration CFD is used.
++
++This designs pressures for a future solve. It does not certify the 3D split.
++"""
+ from pathlib import Path
+ import numpy as np,json,trimesh,csv
+-ROOT=Path(__file__).resolve().parents[1]
+-a=json.loads((ROOT/'inputs/port_attachment_summary.json').read_text())
+-g=json.loads((ROOT/'inputs/geometry.json').read_text())
+-swc=np.loadtxt(ROOT/'inputs/fitted_centerline.swc')
+-T=np.array(json.loads((ROOT/'inputs/print_transform.json').read_text())['transform_4x4'])
+-xyz=swc[:,2:5]@T[:3,:3].T+T[:3,3]
+-index={int(row[0]):i for i,row in enumerate(swc)}
+-parents={i:index[int(row[6])] for i,row in enumerate(swc) if row[6]>=0}
+-children={i:[] for i in range(len(swc))}
+-for i,j in parents.items():children[j].append(i)
+-root=next(i for i in children if i not in parents);leaves=[i for i in children if not children[i]]
+-assert len(leaves)==3
+-mu=g['material']['dynamic_viscosity_Pa_s'];flows={};paths={};tips={};tubes={}
+-for name,v in a['per_port'].items():
+- ring=np.array(v['cap']['aligned_ring_print_mm']);c=ring.mean(0)
+- pool=[root] if name=='I1' else leaves
+- tip=min(pool,key=lambda i:np.linalg.norm(xyz[i]-c));err=np.linalg.norm(xyz[tip]-c)
+- assert err<.2,(name,err)
+- tips[name]=dict(swc_node=int(swc[tip,0]),position_source_mm=xyz[tip].tolist(),cap_distance_mm=float(err))
+- if name!='I1':
+-  path=[];i=tip
+-  while i!=root:path.append(i);i=parents[i]
+-  paths[name]=path
+-  for i in path:flows[i]=flows.get(i,0)+1e-7
+- src=Path(v['port_stl'].replace('/home/lzy/projects/ulm_3D_vascular/','/home/lzy/projects/vascular_printing/'))
+- tube=trimesh.load_mesh(src,process=True)
+- area=g['ports'][name]['area_m2'];length=tube.volume*1e-9/area
+- radius=np.sqrt(area/np.pi);R=8*mu*length/(np.pi*radius**4)
+- tubes[name]=dict(length_m=float(length),R_Pa_s_m3=float(R),source=str(src),method='constant-section swept port volume divided by measured cap area; approximate collar contribution retained')
+-R={};rows=[]
+-for i,j in parents.items():
+- length=np.linalg.norm(xyz[i]-xyz[j])*1e-3
+- radii=np.linspace(swc[j,5],swc[i,5],101)*1e-3
+- resistance=8*mu/np.pi*length*np.trapezoid(1/radii**4,dx=.01)
+- R[i]=resistance
+- rows.append(dict(child=int(swc[i,0]),parent=int(swc[j,0]),length_m=length,r_start_m=radii[0],r_end_m=radii[-1],R_Pa_s_m3=resistance,Q_target_m3_s=flows[i],drop_Pa=resistance*flows[i]))
+-drops={k:sum(R[i]*flows[i] for i in path)+tubes[k]['R_Pa_s_m3']*1e-7 for k,path in paths.items()}
+-pressure={k:max(drops.values())-v for k,v in drops.items()}
+-result=dict(method='Poiseuille resistance along fitted centerline plus constant-area engineered tube estimate; preliminary design, not a 3D flow result',
+- Q_in_m3_s=3e-7,Q_out_target_m3_s=1e-7,outlet_pressures_Pa=pressure,inlet_estimate_Pa=max(drops.values())+tubes['I1']['R_Pa_s_m3']*3e-7,
+- ports=tips,tubes=tubes,root_to_outlet_drop_Pa=drops,uniform_target_fractions={k:1/3 for k in paths},
+- limitations=['Inertia and three-dimensional junction/curvature effects not captured by this resistance estimate.','Final boundary pressures and achieved splits require actual CFD verification.'])
+-(ROOT/'inputs/boundary_design.json').write_text(json.dumps(result,indent=2)+'\n')
+-with (ROOT/'reports/network_edges.csv').open('w') as f:
+- w=csv.DictWriter(f,fieldnames=list(rows[0]));w.writeheader();w.writerows(rows)
+-print(json.dumps(result,indent=2))
++from .paths import ROOT, write_json, fresh_directory
++
++def estimate(root=ROOT):
++    a=json.loads((root/'inputs/geometry/port_attachment_summary.json').read_text())
++    g=json.loads((root/'inputs/geometry/geometry.json').read_text())
++    swc=np.loadtxt(root/'inputs/geometry/fitted_centerline.swc')
++    T=np.array(json.loads((root/'inputs/geometry/print_transform.json').read_text())['transform_4x4'])
++    xyz=swc[:,2:5]@T[:3,:3].T+T[:3,3]
++    index={int(row[0]):i for i,row in enumerate(swc)}
++    parents={i:index[int(row[6])] for i,row in enumerate(swc) if row[6]>=0}
++    children={i:[] for i in range(len(swc))}
++    for i,j in parents.items():children[j].append(i)
++    root=next(i for i in children if i not in parents);leaves=[i for i in children if not children[i]]
++    assert len(leaves)==3
++    mu=g['material']['dynamic_viscosity_Pa_s'];flows={};paths={};tips={};tubes={}
++    for name,v in a['per_port'].items():
++     ring=np.array(v['cap']['aligned_ring_print_mm']);c=ring.mean(0)
++     pool=[root] if name=='I1' else leaves
++     tip=min(pool,key=lambda i:np.linalg.norm(xyz[i]-c));err=np.linalg.norm(xyz[tip]-c)
++     assert err<.2,(name,err)
++     tips[name]=dict(swc_node=int(swc[tip,0]),position_source_mm=xyz[tip].tolist(),cap_distance_mm=float(err))
++     if name!='I1':
++      path=[];i=tip
++      while i!=root:path.append(i);i=parents[i]
++      paths[name]=path
++      for i in path:flows[i]=flows.get(i,0)+1e-7
++     src=root/'inputs/geometry/ports'/(name+'.stl')
++     tube=trimesh.load_mesh(src,process=True)
++     area=g['ports'][name]['area_m2'];length=tube.volume*1e-9/area
++     radius=np.sqrt(area/np.pi);R=8*mu*length/(np.pi*radius**4)
++     tubes[name]=dict(length_m=float(length),R_Pa_s_m3=float(R),source=str(src),method='constant-section swept port volume divided by measured cap area; approximate collar contribution retained')
++    R={};rows=[]
++    for i,j in parents.items():
++     length=np.linalg.norm(xyz[i]-xyz[j])*1e-3
++     radii=np.linspace(swc[j,5],swc[i,5],101)*1e-3
++     resistance=8*mu/np.pi*length*np.trapezoid(1/radii**4,dx=.01)
++     R[i]=resistance
++     rows.append(dict(child=int(swc[i,0]),parent=int(swc[j,0]),length_m=length,r_start_m=radii[0],r_end_m=radii[-1],R_Pa_s_m3=resistance,Q_target_m3_s=flows[i],drop_Pa=resistance*flows[i]))
++    drops={k:sum(R[i]*flows[i] for i in path)+tubes[k]['R_Pa_s_m3']*1e-7 for k,path in paths.items()}
++    pressure={k:max(drops.values())-v for k,v in drops.items()}
++    result=dict(method='Poiseuille resistance along fitted centerline plus constant-area engineered tube estimate; preliminary design, not a 3D flow result',
++     Q_in_m3_s=3e-7,Q_out_target_m3_s=1e-7,outlet_pressures_Pa=pressure,inlet_estimate_Pa=max(drops.values())+tubes['I1']['R_Pa_s_m3']*3e-7,
++     ports=tips,tubes=tubes,root_to_outlet_drop_Pa=drops,uniform_target_fractions={k:1/3 for k in paths},
++     limitations=['Inertia and three-dimensional junction/curvature effects not captured by this resistance estimate.','Final boundary pressures and achieved splits require actual CFD verification.'])
++    return result, rows
++
++def write_design(output, root=ROOT):
++    output=fresh_directory(output,root)
++    result,rows=estimate(root)
++    write_json(output/'boundary_design.json',result)
++    with (output/'network_edges.csv').open('w') as f:
++        writer=csv.DictWriter(f,fieldnames=list(rows[0]));writer.writeheader();writer.writerows(rows)
++    return result

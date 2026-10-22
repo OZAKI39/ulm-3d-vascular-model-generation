@@ -1,0 +1,180 @@
+1: #include <../src/mat/impls/aij/seq/aij.h>
+2: #include <../src/mat/impls/sbaij/seq/sbaij.h>
+3: #include <petscbt.h>
+4: #include <../src/mat/utils/freespace.h>
+5: 
+6: static PetscErrorCode MatFactorGetSolverType_petsc(Mat A, MatSolverType *type)
+7: {
+8:   PetscFunctionBegin;
+9:   *type = MATSOLVERPETSC;
+10:   PetscFunctionReturn(PETSC_SUCCESS);
+11: }
+12: 
+13: PETSC_INTERN PetscErrorCode MatGetFactor_seqaij_petsc(Mat A, MatFactorType ftype, Mat *B)
+14: {
+15:   PetscInt n = A->rmap->n;
+16: 
+17:   PetscFunctionBegin;
+18:   if (PetscDefined(USE_COMPLEX) && (ftype == MAT_FACTOR_CHOLESKY || ftype == MAT_FACTOR_ICC) && A->hermitian == PETSC_BOOL3_TRUE && A->symmetric != PETSC_BOOL3_TRUE) {
+19:     PetscCall(PetscInfo(A, "Hermitian MAT_FACTOR_CHOLESKY or MAT_FACTOR_ICC are not supported. Use MAT_FACTOR_LU instead.\n"));
+20:     *B = NULL;
+21:     PetscFunctionReturn(PETSC_SUCCESS);
+22:   }
+23: 
+24:   PetscCall(MatCreate(PetscObjectComm((PetscObject)A), B));
+25:   PetscCall(MatSetSizes(*B, n, n, n, n));
+26:   if (ftype == MAT_FACTOR_LU || ftype == MAT_FACTOR_ILU || ftype == MAT_FACTOR_ILUDT) {
+27:     PetscCall(MatSetType(*B, MATSEQAIJ));
+28: 
+29:     (*B)->ops->ilufactorsymbolic = MatILUFactorSymbolic_SeqAIJ;
+30:     (*B)->ops->lufactorsymbolic  = MatLUFactorSymbolic_SeqAIJ;
+31: 
+32:     PetscCall(MatSetBlockSizesFromMats(*B, A, A));
+33:     PetscCall(PetscStrallocpy(MATORDERINGND, (char **)&(*B)->preferredordering[MAT_FACTOR_LU]));
+34:     PetscCall(PetscStrallocpy(MATORDERINGNATURAL, (char **)&(*B)->preferredordering[MAT_FACTOR_ILU]));
+35:     PetscCall(PetscStrallocpy(MATORDERINGNATURAL, (char **)&(*B)->preferredordering[MAT_FACTOR_ILUDT]));
+36:   } else if (ftype == MAT_FACTOR_CHOLESKY || ftype == MAT_FACTOR_ICC) {
+37:     PetscCall(MatSetType(*B, MATSEQSBAIJ));
+38:     PetscCall(MatSeqSBAIJSetPreallocation(*B, 1, MAT_SKIP_ALLOCATION, NULL));
+39: 
+40:     (*B)->ops->iccfactorsymbolic      = MatICCFactorSymbolic_SeqAIJ;
+41:     (*B)->ops->choleskyfactorsymbolic = MatCholeskyFactorSymbolic_SeqAIJ;
+42:     PetscCall(PetscStrallocpy(MATORDERINGND, (char **)&(*B)->preferredordering[MAT_FACTOR_CHOLESKY]));
+43:     PetscCall(PetscStrallocpy(MATORDERINGNATURAL, (char **)&(*B)->preferredordering[MAT_FACTOR_ICC]));
+44:   } else SETERRQ(PETSC_COMM_SELF, PETSC_ERR_SUP, "Factor type not supported");
+45:   (*B)->factortype = ftype;
+46: 
+47:   PetscCall(PetscFree((*B)->solvertype));
+48:   PetscCall(PetscStrallocpy(MATSOLVERPETSC, &(*B)->solvertype));
+49:   (*B)->canuseordering = PETSC_TRUE;
+50:   PetscCall(PetscObjectComposeFunction((PetscObject)*B, "MatFactorGetSolverType_C", MatFactorGetSolverType_petsc));
+51:   PetscFunctionReturn(PETSC_SUCCESS);
+52: }
+53: 
+54: PetscErrorCode MatLUFactorSymbolic_SeqAIJ(Mat B, Mat A, IS isrow, IS iscol, const MatFactorInfo *info)
+55: {
+56:   Mat_SeqAIJ        *a = (Mat_SeqAIJ *)A->data, *b;
+57:   IS                 isicol;
+58:   const PetscInt    *r, *ic, *ai = a->i, *aj = a->j, *ajtmp;
+59:   PetscInt           i, n = A->rmap->n;
+60:   PetscInt          *bi, *bj;
+61:   PetscInt          *bdiag, row, nnz, nzi, reallocs = 0, nzbd, *im;
+62:   PetscReal          f;
+63:   PetscInt           nlnk, *lnk, k, **bi_ptr;
+64:   PetscFreeSpaceList free_space = NULL, current_space = NULL;
+65:   PetscBT            lnkbt;
+66:   PetscBool          diagDense;
+67: 
+68:   PetscFunctionBegin;
+69:   PetscCheck(A->rmap->N == A->cmap->N, PETSC_COMM_SELF, PETSC_ERR_ARG_WRONG, "matrix must be square");
+70:   PetscCall(MatGetDiagonalMarkers_SeqAIJ(A, NULL, &diagDense));
+71:   PetscCheck(diagDense, PETSC_COMM_SELF, PETSC_ERR_ARG_WRONGSTATE, "Matrix is missing diagonal entries");
+72: 
+73:   PetscCall(ISInvertPermutation(iscol, PETSC_DECIDE, &isicol));
+74:   PetscCall(ISGetIndices(isrow, &r));
+75:   PetscCall(ISGetIndices(isicol, &ic));
+76: 
+77:   /* get new row and diagonal pointers, must be allocated separately because they will be given to the Mat_SeqAIJ and freed separately */
+78:   PetscCall(PetscShmgetAllocateArray(n + 1, sizeof(PetscInt), (void **)&bi));
+79:   PetscCall(PetscMalloc1(n + 1, &bdiag));
+80:   bi[0] = bdiag[0] = 0;
+81: 
+82:   /* linked list for storing column indices of the active row */
+83:   nlnk = n + 1;
+84:   PetscCall(PetscLLCreate(n, n, nlnk, lnk, lnkbt));
+85: 
+86:   PetscCall(PetscMalloc2(n + 1, &bi_ptr, n + 1, &im));
+87: 
+88:   /* initial FreeSpace size is f*(ai[n]+1) */
+89:   f = info->fill;
+90:   if (n == 1) f = 1; /* prevent failure in corner case of 1x1 matrix with fill < 0.5 */
+91:   PetscCall(PetscFreeSpaceGet(PetscRealIntMultTruncate(f, ai[n] + 1), &free_space));
+92:   current_space = free_space;
+93: 
+94:   for (i = 0; i < n; i++) {
+95:     /* copy previous fill into linked list */
+96:     nzi   = 0;
+97:     nnz   = ai[r[i] + 1] - ai[r[i]];
+98:     ajtmp = aj + ai[r[i]];
+99:     PetscCall(PetscLLAddPerm(nnz, ajtmp, ic, n, &nlnk, lnk, lnkbt));
+100:     nzi += nlnk;
+101: 
+102:     /* add pivot rows into linked list */
+103:     row = lnk[n];
+104:     while (row < i) {
+105:       nzbd  = bdiag[row] + 1;     /* num of entries in the row with column index <= row */
+106:       ajtmp = bi_ptr[row] + nzbd; /* points to the entry next to the diagonal */
+107:       PetscCall(PetscLLAddSortedLU(ajtmp, row, &nlnk, lnk, lnkbt, i, nzbd, im));
+108:       nzi += nlnk;
+109:       row = lnk[row];
+110:     }
+111:     bi[i + 1] = bi[i] + nzi;
+112:     im[i]     = nzi;
+113: 
+114:     /* mark bdiag */
+115:     nzbd = 0;
+116:     nnz  = nzi;
+117:     k    = lnk[n];
+118:     while (nnz-- && k < i) {
+119:       nzbd++;
+120:       k = lnk[k];
+121:     }
+122:     bdiag[i] = nzbd; /* note: bdiag[i] = nnzL as input for PetscFreeSpaceContiguous_LU() */
+123: 
+124:     /* if free space is not available, make more free space */
+125:     if (current_space->local_remaining < nzi) {
+126:       /* estimated additional space needed */
+127:       nnz = PetscIntMultTruncate(2, PetscIntMultTruncate(n - 1, nzi));
+128:       PetscCall(PetscFreeSpaceGet(nnz, &current_space));
+129:       reallocs++;
+130:     }
+131: 
+132:     /* copy data into free space, then initialize lnk */
+133:     PetscCall(PetscLLClean(n, n, nzi, lnk, current_space->array, lnkbt));
+134: 
+135:     bi_ptr[i] = current_space->array;
+136:     current_space->array += nzi;
+137:     current_space->local_used += nzi;
+138:     current_space->local_remaining -= nzi;
+139:   }
+140: 
+141:   PetscCall(ISRestoreIndices(isrow, &r));
+142:   PetscCall(ISRestoreIndices(isicol, &ic));
+143: 
+144:   /*   copy free_space into bj and free free_space; set bi, bj, bdiag in new datastructure; */
+145:   PetscCall(PetscShmgetAllocateArray(bi[n], sizeof(PetscInt), (void **)&bj));
+146:   PetscCall(PetscFreeSpaceContiguous_LU(&free_space, bj, n, bi, bdiag));
+147:   PetscCall(PetscLLDestroy(lnk, lnkbt));
+148:   PetscCall(PetscFree2(bi_ptr, im));
+149: 
+150:   /* put together the new matrix */
+151:   PetscCall(MatSeqAIJSetPreallocation_SeqAIJ(B, MAT_SKIP_ALLOCATION, NULL));
+152:   b          = (Mat_SeqAIJ *)B->data;
+153:   b->free_ij = PETSC_TRUE;
+154:   PetscCall(PetscShmgetAllocateArray(bdiag[0] + 1, sizeof(PetscScalar), (void **)&b->a));
+155:   b->free_a = PETSC_TRUE;
+156:   b->j      = bj;
+157:   b->i      = bi;
+158:   b->diag   = bdiag;
+159:   b->ilen   = NULL;
+160:   b->imax   = NULL;
+161:   b->row    = isrow;
+162:   b->col    = iscol;
+163:   PetscCall(PetscObjectReference((PetscObject)isrow));
+164:   PetscCall(PetscObjectReference((PetscObject)iscol));
+165:   b->icol = isicol;
+166:   PetscCall(PetscMalloc1(n, &b->solve_work));
+167: 
+168:   /* In b structure:  Free imax, ilen, old a, old j.  Allocate solve_work, new a, new j */
+169:   b->maxnz = b->nz = bdiag[0] + 1;
+170: 
+171:   B->factortype            = MAT_FACTOR_LU;
+172:   B->info.factor_mallocs   = reallocs;
+173:   B->info.fill_ratio_given = f;
+174: 
+175:   if (ai[n]) {
+176:     B->info.fill_ratio_needed = ((PetscReal)(bdiag[0] + 1)) / ((PetscReal)ai[n]);
+177:   } else {
+178:     B->info.fill_ratio_needed = 0.0;
+179:   }
+180: #if defined(PETSC_USE_INFO)

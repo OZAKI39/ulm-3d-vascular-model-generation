@@ -1,0 +1,1936 @@
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/scripts/generate_mesh.py
++++ native/tetgen_mesh.py
+@@ -1,20 +1,25 @@
+-# Executed with official SimVascular embedded Python 3.5.
+-import os,json,time,sv,vtk
+-ROOT=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+-out=os.path.join(ROOT,'mesh','generation')
+-os.makedirs(out,exist_ok=True)
+-assert not os.path.exists(os.path.join(out,'volume.vtu'))
+-mesher=sv.meshing.TetGen();mesher.load_model(os.path.join(ROOT,'inputs','labelled_core_m.vtp'))
+-mesher.set_walls([1]);assert sorted(mesher.get_model_face_ids())==[1,2,3,4,5]
+-options=sv.meshing.TetGenOptions(global_edge_size=0.0002,surface_mesh_flag=True,volume_mesh_flag=True)
+-options.use_mmg=False
+-start=time.time();mesher.generate_mesh(options)
+-mesh=mesher.get_mesh();assert mesh.GetNumberOfCells()>0
+-mesher.write_mesh(os.path.join(out,'volume.vtu'))
+-def write_surface(data,name):
+- w=vtk.vtkXMLPolyDataWriter();w.SetFileName(os.path.join(out,name));w.SetInputData(data);assert w.Write()==1
+-write_surface(mesher.get_surface(),'surface.vtp')
+-for fid in mesher.get_model_face_ids():write_surface(mesher.get_face_polydata(fid),'face_'+str(fid)+'.vtp')
+-r=dict(status='GENERATED_PENDING_AUDIT',global_edge_size_m=.0002,points=mesh.GetNumberOfPoints(),cells=mesh.GetNumberOfCells(),elapsed_s=time.time()-start,generator='SimVascular 2023-05-31 sv.meshing.TetGen',boundary_layers=False)
+-with open(os.path.join(out,'generation.json'),'w') as f:json.dump(r,f,indent=2)
+-print('MESH_GENERATION='+json.dumps(r))
++"""Run only with SimVascular's embedded Python. Input and new output are explicit."""
++import os, sys, json, time
++
++def main():
++    import sv, vtk
++    source, output=sys.argv[1:]
++    if os.path.exists(output):raise ValueError('Output already exists')
++    os.makedirs(output)
++    mesher=sv.meshing.TetGen();mesher.load_model(source)
++    mesher.set_walls([1]);assert sorted(mesher.get_model_face_ids())==[1,2,3,4,5]
++    options=sv.meshing.TetGenOptions(global_edge_size=0.0002,surface_mesh_flag=True,volume_mesh_flag=True)
++    options.use_mmg=False
++    start=time.time();mesher.generate_mesh(options)
++    mesh=mesher.get_mesh();assert mesh.GetNumberOfCells()>0
++    mesher.write_mesh(os.path.join(output,'volume.vtu'))
++    def write_surface(data,name):
++        writer=vtk.vtkXMLPolyDataWriter();writer.SetFileName(os.path.join(output,name));writer.SetInputData(data);assert writer.Write()==1
++    write_surface(mesher.get_surface(),'surface.vtp')
++    for fid in mesher.get_model_face_ids():write_surface(mesher.get_face_polydata(fid),'face_'+str(fid)+'.vtp')
++    result=dict(status='GENERATED_PENDING_AUDIT',global_edge_size_m=.0002,points=mesh.GetNumberOfPoints(),cells=mesh.GetNumberOfCells(),elapsed_s=time.time()-start,generator='SimVascular 2023-05-31 sv.meshing.TetGen',boundary_layers=False)
++    with open(os.path.join(output,'generation.json'),'w') as f:json.dump(result,f,indent=2)
++    print(json.dumps(result))
++
++if __name__=='__main__':main()
++
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/vendor/flow_solver_support/solver_checks.py
++++ src/flow_solver_support/solver_checks.py
+@@ -9,7 +9,7 @@
+ from vascular_validation.provenance import sha256,write_json
+ from vascular_validation.validation import require
+ 
+-ROOT=Path(__file__).resolve().parents[3]
++ROOT=Path(__file__).resolve().parents[2]
+ REPORT=ROOT/'reports/solver_acceptance'
+ NUMBER=r'[-+]?(?:\d*\.?\d+(?:[eE][-+]?\d+)?|nan|inf)'
+ ROW=re.compile(r'^\s*(?P<eq>NS|SS)\s+(?P<step>\d+)-(?P<nl>\d+)(?P<saved>s?)\s+(?P<elapsed>'+NUMBER+r')\s+[\[!]\s*(?P<ndb>[-+]?\d+)\s+(?P<nr1>'+NUMBER+r')\s+(?P<nr0>'+NUMBER+r')\s+(?P<lr>'+NUMBER+r')[\]!]\s+(?P<open>[\[!])\s*(?P<iterations>\d+)\s+(?P<ldb>[-+]?\d+)\s+(?P<pct>\d+)[\]!]\s*(?P<message>.*)$',re.I)
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/vendor/flow_solver_support/steady_monitor.py
++++ src/flow_solver_support/steady_monitor.py
+@@ -7,7 +7,7 @@
+ from vascular_validation.validation import require
+ from .transient_checks import interval_metrics
+ 
+-ROOT = Path(__file__).resolve().parents[3]
++ROOT = Path(__file__).resolve().parents[2]
+ REPORT = ROOT/'reports/steady_convergence'
+ CONFIG = ROOT/'configs/steady_convergence'
+ OUTPUT = ROOT/'outputs/steady_convergence'
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/vendor/flow_solver_support/transient_checks.py
++++ src/flow_solver_support/transient_checks.py
+@@ -4,7 +4,7 @@
+ import numpy as np
+ from vascular_validation.provenance import sha256,write_json
+ from vascular_validation.validation import require,steady_state
+-ROOT=Path(__file__).resolve().parents[3]
++ROOT=Path(__file__).resolve().parents[2]
+ REPORT=ROOT/'reports/transient_validation';OUTPUT=ROOT/'outputs/transient_validation';CONFIG=ROOT/'configs/transient_validation';LOG=ROOT/'logs/transient_validation'
+ def load(name,stage='transient_validation'):
+     return json.loads((ROOT/'reports'/stage/(name+'.json')).read_text())
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/scripts/design_boundary.py
++++ src/human_vessel_flow/boundary.py
+@@ -1,48 +1,60 @@
++"""Original Poiseuille centreline resistance estimate; no calibration CFD is used.
++
++This designs pressures for a future solve. It does not certify the 3D split.
++"""
+ from pathlib import Path
+ import numpy as np,json,trimesh,csv
+-ROOT=Path(__file__).resolve().parents[1]
+-a=json.loads((ROOT/'inputs/port_attachment_summary.json').read_text())
+-g=json.loads((ROOT/'inputs/geometry.json').read_text())
+-swc=np.loadtxt(ROOT/'inputs/fitted_centerline.swc')
+-T=np.array(json.loads((ROOT/'inputs/print_transform.json').read_text())['transform_4x4'])
+-xyz=swc[:,2:5]@T[:3,:3].T+T[:3,3]
+-index={int(row[0]):i for i,row in enumerate(swc)}
+-parents={i:index[int(row[6])] for i,row in enumerate(swc) if row[6]>=0}
+-children={i:[] for i in range(len(swc))}
+-for i,j in parents.items():children[j].append(i)
+-root=next(i for i in children if i not in parents);leaves=[i for i in children if not children[i]]
+-assert len(leaves)==3
+-mu=g['material']['dynamic_viscosity_Pa_s'];flows={};paths={};tips={};tubes={}
+-for name,v in a['per_port'].items():
+- ring=np.array(v['cap']['aligned_ring_print_mm']);c=ring.mean(0)
+- pool=[root] if name=='I1' else leaves
+- tip=min(pool,key=lambda i:np.linalg.norm(xyz[i]-c));err=np.linalg.norm(xyz[tip]-c)
+- assert err<.2,(name,err)
+- tips[name]=dict(swc_node=int(swc[tip,0]),position_source_mm=xyz[tip].tolist(),cap_distance_mm=float(err))
+- if name!='I1':
+-  path=[];i=tip
+-  while i!=root:path.append(i);i=parents[i]
+-  paths[name]=path
+-  for i in path:flows[i]=flows.get(i,0)+1e-7
+- src=Path(v['port_stl'].replace('/home/lzy/projects/ulm_3D_vascular/','/home/lzy/projects/vascular_printing/'))
+- tube=trimesh.load_mesh(src,process=True)
+- area=g['ports'][name]['area_m2'];length=tube.volume*1e-9/area
+- radius=np.sqrt(area/np.pi);R=8*mu*length/(np.pi*radius**4)
+- tubes[name]=dict(length_m=float(length),R_Pa_s_m3=float(R),source=str(src),method='constant-section swept port volume divided by measured cap area; approximate collar contribution retained')
+-R={};rows=[]
+-for i,j in parents.items():
+- length=np.linalg.norm(xyz[i]-xyz[j])*1e-3
+- radii=np.linspace(swc[j,5],swc[i,5],101)*1e-3
+- resistance=8*mu/np.pi*length*np.trapezoid(1/radii**4,dx=.01)
+- R[i]=resistance
+- rows.append(dict(child=int(swc[i,0]),parent=int(swc[j,0]),length_m=length,r_start_m=radii[0],r_end_m=radii[-1],R_Pa_s_m3=resistance,Q_target_m3_s=flows[i],drop_Pa=resistance*flows[i]))
+-drops={k:sum(R[i]*flows[i] for i in path)+tubes[k]['R_Pa_s_m3']*1e-7 for k,path in paths.items()}
+-pressure={k:max(drops.values())-v for k,v in drops.items()}
+-result=dict(method='Poiseuille resistance along fitted centerline plus constant-area engineered tube estimate; preliminary design, not a 3D flow result',
+- Q_in_m3_s=3e-7,Q_out_target_m3_s=1e-7,outlet_pressures_Pa=pressure,inlet_estimate_Pa=max(drops.values())+tubes['I1']['R_Pa_s_m3']*3e-7,
+- ports=tips,tubes=tubes,root_to_outlet_drop_Pa=drops,uniform_target_fractions={k:1/3 for k in paths},
+- limitations=['Inertia and three-dimensional junction/curvature effects not captured by this resistance estimate.','Final boundary pressures and achieved splits require actual CFD verification.'])
+-(ROOT/'inputs/boundary_design.json').write_text(json.dumps(result,indent=2)+'\n')
+-with (ROOT/'reports/network_edges.csv').open('w') as f:
+- w=csv.DictWriter(f,fieldnames=list(rows[0]));w.writeheader();w.writerows(rows)
+-print(json.dumps(result,indent=2))
++from .paths import ROOT, write_json, fresh_directory
++
++def estimate(root=ROOT):
++    project_root=root
++    a=json.loads((root/'inputs/geometry/port_attachment_summary.json').read_text())
++    g=json.loads((root/'inputs/geometry/geometry.json').read_text())
++    swc=np.loadtxt(root/'inputs/geometry/fitted_centerline.swc')
++    T=np.array(json.loads((root/'inputs/geometry/print_transform.json').read_text())['transform_4x4'])
++    xyz=swc[:,2:5]@T[:3,:3].T+T[:3,3]
++    index={int(row[0]):i for i,row in enumerate(swc)}
++    parents={i:index[int(row[6])] for i,row in enumerate(swc) if row[6]>=0}
++    children={i:[] for i in range(len(swc))}
++    for i,j in parents.items():children[j].append(i)
++    root=next(i for i in children if i not in parents);leaves=[i for i in children if not children[i]]
++    assert len(leaves)==3
++    mu=g['material']['dynamic_viscosity_Pa_s'];flows={};paths={};tips={};tubes={}
++    for name,v in a['per_port'].items():
++     ring=np.array(v['cap']['aligned_ring_print_mm']);c=ring.mean(0)
++     pool=[root] if name=='I1' else leaves
++     tip=min(pool,key=lambda i:np.linalg.norm(xyz[i]-c));err=np.linalg.norm(xyz[tip]-c)
++     assert err<.2,(name,err)
++     tips[name]=dict(swc_node=int(swc[tip,0]),position_source_mm=xyz[tip].tolist(),cap_distance_mm=float(err))
++     if name!='I1':
++      path=[];i=tip
++      while i!=root:path.append(i);i=parents[i]
++      paths[name]=path
++      for i in path:flows[i]=flows.get(i,0)+1e-7
++     src=project_root/'inputs/geometry/ports'/(name+'.stl')
++     tube=trimesh.load_mesh(src,process=True)
++     area=g['ports'][name]['area_m2'];length=tube.volume*1e-9/area
++     radius=np.sqrt(area/np.pi);R=8*mu*length/(np.pi*radius**4)
++     tubes[name]=dict(length_m=float(length),R_Pa_s_m3=float(R),source=str(src),method='constant-section swept port volume divided by measured cap area; approximate collar contribution retained')
++    R={};rows=[]
++    for i,j in parents.items():
++     length=np.linalg.norm(xyz[i]-xyz[j])*1e-3
++     radii=np.linspace(swc[j,5],swc[i,5],101)*1e-3
++     resistance=8*mu/np.pi*length*np.trapezoid(1/radii**4,dx=.01)
++     R[i]=resistance
++     rows.append(dict(child=int(swc[i,0]),parent=int(swc[j,0]),length_m=length,r_start_m=radii[0],r_end_m=radii[-1],R_Pa_s_m3=resistance,Q_target_m3_s=flows[i],drop_Pa=resistance*flows[i]))
++    drops={k:sum(R[i]*flows[i] for i in path)+tubes[k]['R_Pa_s_m3']*1e-7 for k,path in paths.items()}
++    pressure={k:max(drops.values())-v for k,v in drops.items()}
++    result=dict(method='Poiseuille resistance along fitted centerline plus constant-area engineered tube estimate; preliminary design, not a 3D flow result',
++     Q_in_m3_s=3e-7,Q_out_target_m3_s=1e-7,outlet_pressures_Pa=pressure,inlet_estimate_Pa=max(drops.values())+tubes['I1']['R_Pa_s_m3']*3e-7,
++     ports=tips,tubes=tubes,root_to_outlet_drop_Pa=drops,uniform_target_fractions={k:1/3 for k in paths},
++     limitations=['Inertia and three-dimensional junction/curvature effects not captured by this resistance estimate.','Final boundary pressures and achieved splits require actual CFD verification.'])
++    return result, rows
++
++def write_design(output, root=ROOT):
++    output=fresh_directory(output,root)
++    result,rows=estimate(root)
++    write_json(output/'boundary_design.json',result)
++    with (output/'network_edges.csv').open('w') as f:
++        writer=csv.DictWriter(f,fieldnames=list(rows[0]));writer.writeheader();writer.writerows(rows)
++    return result
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/scripts/prepare_case.py
++++ src/human_vessel_flow/fem.py
+@@ -1,34 +1,54 @@
++"""Explicit native FEM preparation; Python does not implement another CFD solver."""
+ from pathlib import Path
+-import argparse,json,hashlib,xml.etree.ElementTree as ET,shutil
+-ROOT=Path(__file__).resolve().parents[1]
+-TEMPLATE=Path('/home/lzy/projects/temp_storage/github_sync_20260927/ulm_flow_mean_2p0_mmps/formal_3D_flow_solver/FEM_SimVascular/flow_cases/mean-2p0-mmps-A-ROI-only-balanced-pressure-v1')
+-p=argparse.ArgumentParser();p.add_argument('name');p.add_argument('--mode',choices=['calibration','pressure'],required=True);p.add_argument('--pressures',type=Path);args=p.parse_args()
+-case=ROOT/'cases'/args.name;assert not case.exists();(case/'run').mkdir(parents=True);(case/'reports').mkdir()
+-(case/'SV_MESH').symlink_to('../../mesh/SV_MESH',target_is_directory=True)
+-geom=json.loads((ROOT/'reports/geometry_qc.json').read_text());g=json.loads((ROOT/'inputs/geometry.json').read_text())
+-Q=3e-7;area=geom['ports']['INLET']['actual']['area_m2'];U=Q/area;dt=.01
+-policy=dict(dt_s=dt,save_interval_steps=10,steady_last_intervals=5,velocity_change_limit=1e-5,flow_change_limit=1e-6,mass_limit=1e-6,
+- maximum_total_steps=500,maximum_wall_time_s=21600,Q_target_m3_s=Q,Umean_m_s=U,A_in_m2=area,
+- initial_state='zero',dt_rationale='Implicit generalized-alpha march toward a stationary solution; 0.01 s is a steady relaxation time step, not a time-resolved physiological waveform claim. Strict consecutive steady and residual gates retained.',
+- rho_kg_m3=1056,mu_Pa_s=.00345312,mode=args.mode)
+-pressures=json.loads(args.pressures.read_text()) if args.pressures else {'OUTLET_01':0.,'OUTLET_02':0.,'OUTLET_03':0.}
+-xml=ET.parse(TEMPLATE/'run/solver.xml');xml.find('.//Time_step_size').text=str(dt);xml.find('.//Number_of_time_steps').text='500'
+-for bc in xml.findall('.//Add_BC'):
+- role=bc.get('name');value=bc.find('Value')
+- if role=='INLET':value.text=format(-Q,'.17g')
+- elif role.startswith('OUTLET_'):
+-  if args.mode=='calibration' and role in ('OUTLET_01','OUTLET_03'):
+-   bc.find('Type').text='Dir';value.text='1e-7'
+-   for tag,text in [('Profile','Parabolic'),('Impose_flux','true'),('Zero_out_perimeter','true')]:ET.SubElement(bc,tag).text=text
+-  else:value.text=format(pressures[role],'.17g')
+-ET.indent(xml,space='  ');xml.write(case/'run/solver.xml',encoding='utf-8',xml_declaration=True)
+-(case/'policy.json').write_text(json.dumps(policy,indent=2)+'\n')
+-shutil.copy2(TEMPLATE/'run/PETSC_OPTIONS.txt',case/'run/PETSC_OPTIONS.txt')
+-hashes={str(f.relative_to(case)):hashlib.sha256(f.read_bytes()).hexdigest() for f in [case/'run/solver.xml',case/'run/PETSC_OPTIONS.txt',case/'policy.json']}
+-for f in (ROOT/'mesh/SV_MESH').rglob('*'):
+- if f.is_file():hashes['SV_MESH/'+str(f.relative_to(ROOT/'mesh/SV_MESH'))]=hashlib.sha256(f.read_bytes()).hexdigest()
+-(case/'input_hashes.json').write_text(json.dumps(hashes,indent=2)+'\n')
+-(case/'purpose.json').write_text(json.dumps(dict(mode=args.mode,
+- calibration='Qin=3e-7, QO1=QO3=1e-7 m3/s, PO2=0 Pa. Use measured terminal pressures as initial inverse design for a separate final case with natural pressure conditions at all three outlets.' if args.mode=='calibration' else 'Final all-pressure-outlet forward verification; outlet flow rates are measured, not prescribed.',
+- prescribed_pressures_Pa=pressures if args.mode=='pressure' else {'OUTLET_02':0},source='real BraVa accepted four-port core'),indent=2)+'\n')
+-print(case)
++import json, shutil, xml.etree.ElementTree as ET
++from .paths import ROOT, read_json, write_json, fresh_directory, sha256
++from .boundary import estimate
++
++def native_status(root=ROOT):
++    config=read_json(root/'configs/cfd/native.json')
++    if not config.get('executable'):
++        return dict(status='BLOCKED',reason=config['reason'])
++    for name in ['executable','petsc_library']:
++        if sha256(config[name])!=config[name+'_sha256']:
++            raise ValueError('Native binary identity changed: '+name)
++    if sha256(config['wrapper'])!=config['wrapper_sha256']:
++        raise ValueError('Native runtime wrapper identity changed')
++    return dict(status='PASS_BINARY_IDENTITY',executable=config['executable'],
++                CFD_executed_this_refactor=False,scientific_accuracy_certified=False)
++
++def prepare_case(output, root=ROOT, mpi_ranks=8):
++    """New centreline-pressure case. Historical calibration/final XMLs are read-only."""
++    if type(mpi_ranks) is not int or mpi_ranks<1:raise ValueError('Positive MPI rank count required')
++    output=fresh_directory(output,root)
++    (output/'run').mkdir();(output/'reports').mkdir()
++    template=root/'cases/balanced_pressure_final'
++    xml=ET.parse(template/'run/solver.xml')
++    mesh=root/'inputs/mesh/SV_MESH'
++    xml.find('.//Mesh_file_path').text=str(mesh/'mesh-complete.mesh.vtu')
++    for face in xml.findall('.//Add_face'):
++        face.find('Face_file_path').text=str(mesh/'mesh-surfaces'/(face.get('name')+'.vtp'))
++    design,edges=estimate(root)
++    pressure={f'OUTLET_{i:02d}':design['outlet_pressures_Pa'][f'O{i}'] for i in (1,2,3)}
++    for bc in xml.findall('.//Add_BC'):
++        if bc.get('name') in pressure:
++            assert bc.findtext('Type')=='Neu'
++            bc.find('Value').text=format(pressure[bc.get('name')],'.17g')
++    ET.indent(xml,space='  ');xml.write(output/'run/solver.xml',encoding='utf-8',xml_declaration=True)
++    shutil.copy2(template/'run/PETSC_OPTIONS.txt',output/'run/PETSC_OPTIONS.txt')
++    policy=read_json(template/'policy.json')
++    policy.pop('solver_build_manifest',None)
++    policy.update(MPI_ranks=mpi_ranks,boundary_origin='CENTRELINE_POISEUILLE_RESISTANCE_ESTIMATE',
++                  mode='pressure',mesh_arrays=str(mesh/'mesh_arrays.npz'),
++                  native_config=str(root/'configs/cfd/native.json'))
++    write_json(output/'policy.json',policy);write_json(output/'boundary_design.json',design)
++    files=[output/'run/solver.xml',output/'run/PETSC_OPTIONS.txt',output/'policy.json']+list(mesh.rglob('*.vtp'))+[mesh/'mesh-complete.mesh.vtu',mesh/'mesh_arrays.npz']
++    write_json(output/'input_hashes.json',{str(p):sha256(p) for p in files})
++    write_json(output/'PLAN.json',dict(executed=False,scientific_status='UNSOLVED_NEW_CASE',
++        pressure_Pa=pressure,actual_3D_outlet_split='NOT_RUN',MPI_ranks=mpi_ranks,
++        authoritative_mesh=str(mesh),no_mesh_symlink=True,reference_template='Historical pressure case; only new outlet pressures/paths/explicit ranks changed'))
++    return output
++
++def solve(case, root=ROOT):
++    from .native_runner import run
++    native_status(root)
++    return run(Path(case).resolve(),read_json(root/'configs/cfd/native.json'))
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/scripts/prepare_geometry.py
++++ src/human_vessel_flow/geometry.py
+@@ -1,59 +1,83 @@
+-from pathlib import Path
+-import json, hashlib, shutil
++"""The accepted four-port core and its upstream printing provenance, in SI units."""
+ import numpy as np
+-import pyvista as pv
+-import trimesh
+-ROOT=Path(__file__).resolve().parents[1]
+-C=Path('/home/lzy/projects/vascular_printing/outputs/topbrain_brava_transfer/nn_production/BG001/RMCA/compact_manufacturing_roi')
+-P=C/'print_fixture_design_all_ports_aligned'
+-source=P/'core/BG001_RMCA_BALANCED_core_with_ports_all_aligned.stl'
+-a=json.loads((P/'all_port_attachment_summary.json').read_text())
+-assert hashlib.sha256(source.read_bytes()).hexdigest()=='b9fb2d8a57b58b877f940f6c2486f923d93ac71b42793593f4092180dcb7e35e'
+-t=trimesh.load_mesh(source,process=True)
+-assert t.is_watertight and t.is_winding_consistent and len(t.split())==1
+-# Source in mm. Translate to a centered canonical simulation frame, then scale to SI.
+-origin=t.bounds.mean(axis=0); points=(t.vertices-origin)*1e-3
+-tri=np.asarray(t.faces); tags=np.ones(len(tri),np.int32)
+-ports={}; role_ids={'I1':4,'O1':3,'O2':5,'O3':2}
+-for name,tag in role_ids.items():
+- v=a['per_port'][name]; center=np.asarray(v['outside_end_mm']);wall=np.asarray(v['wall_target_mm'])
+- normal=(center-wall)/np.linalg.norm(center-wall)
+- plane=np.max(np.abs((t.vertices[tri]-center)@normal),axis=1)
+- near=np.max(np.linalg.norm(t.vertices[tri]-center,axis=2),axis=1)
+- mask=(plane<2e-5)&(near<1.2*v['radius_mm'])
+- assert mask.sum()>3,(name,plane.min(),mask.sum())
+- assert (tags[mask]==1).all()
+- tags[mask]=tag
+- area=t.area_faces[mask].sum()*1e-6
+- normals=t.face_normals[mask]
+- assert np.min(normals@normal)>.999
+- ports[name]=dict(face_id=tag,role={'I1':'INLET','O1':'OUTLET_01','O2':'OUTLET_02','O3':'OUTLET_03'}[name],
+-  center_m=((center-origin)*1e-3).tolist(),center_source_mm=center.tolist(),outward_normal=normal.tolist(),radius_m=v['radius_mm']*1e-3,
+-  area_m2=area,triangles=int(mask.sum()),mean_velocity_m_s=(3e-7 if name=='I1' else 1e-7)/area,
+-  Reynolds_number=(3e-7 if name=='I1' else 1e-7)/area*2*v['radius_mm']*1e-3/(.00345312/1056))
+-surf=pv.PolyData(points,np.c_[np.full(len(tri),3),tri].ravel());surf.cell_data['ModelFaceID']=tags
+-surf.save(ROOT/'inputs/labelled_core_m.vtp')
+-np.savez_compressed(ROOT/'inputs/source_surface.npz',points_m=points,triangles=tri,facet_tags=tags)
+-shutil.copy2(source,ROOT/'inputs/source_core_mm.stl')
+-transforms={}
+-for n,d in [('0','candidate_00_upright'),('15','candidate_15_side')]:
+- src=C/'final_abs_casting_mold/candidate_0_and_15'/d
+- data=json.loads((src/'print_transform.json').read_text());T=np.asarray(data['transform_4x4']);R=T[:3,:3]
+- assert np.allclose(R@R.T,np.eye(3),atol=1e-12) and np.isclose(np.linalg.det(R),1)
+- transforms[n]={'source_mm_to_candidate_mm':T.tolist(),'canonical_origin_source_mm':origin.tolist(),'candidate_id':int(n)}
+- for f in ['manifest.json','print_transform.json','casting_restore_transform.json']:
+-  shutil.copy2(src/f,ROOT/'inputs'/('candidate_'+n+'_'+f))
+-for f in ['print_transform.json','compact_manifest.json']:
+- shutil.copy2(C/f,ROOT/'inputs'/f)
+-for f in ['compensated.swc','original_radius.swc']:
+- shutil.copy2(C/'candidates/BALANCED'/f,ROOT/'inputs'/f)
+-shutil.copy2(C/'candidates/BALANCED/VascularMD/compensated_vmd_smooth.swc',ROOT/'inputs/fitted_centerline.swc')
+-# Keep original source summary: port identity derives from manufacturing provenance, never boundary tag sorting.
+-shutil.copy2(P/'all_port_attachment_summary.json',ROOT/'inputs/port_attachment_summary.json')
+-report=dict(source=str(source),sha256=hashlib.sha256(source.read_bytes()).hexdigest(),geometry='four_port_core_including_engineered_tubes_no_box',
+- units={'source':'mm','simulation':'m'},origin_source_mm=origin.tolist(),points=len(points),triangles=len(tri),closed=t.is_watertight,
+- volume_m3=t.volume*1e-9,ports=ports,pose_transforms=transforms,material={'density_kg_m3':1056,'dynamic_viscosity_Pa_s':.00345312},
+- Q_in_m3_s=3e-7,Q_in_uL_min=18000,outlet_target_m3_s=1e-7,gravity=False,
+- pose_equivalence='Rigid stationary Newtonian model without gravity: one physical solution, rotated fields for two print poses. Printed box excluded.')
+-(ROOT/'inputs/geometry.json').write_text(json.dumps(report,indent=2)+'\n')
+-print(json.dumps(report,indent=2))
++from .paths import ROOT, sha256, read_json, fresh_directory, write_json
++from .transforms import source_mm_to_cfd_m
++
++def describe(root=ROOT):
++    data = read_json(root/'inputs/geometry/geometry.json')
++    return dict(model='BraVa BG001 RMCA', source_geometry=data['geometry'],
++                source_units='mm', computation_units='m', ports=data['ports'],
++                candidate_0_and_15='Rigid poses of the same physical solution',
++                source_sha256=sha256(root/'inputs/geometry/source_core_mm.stl'))
++
++def verify_geometry(root=ROOT):
++    import trimesh
++    record = read_json(root/'inputs/geometry/geometry.json')
++    mesh = trimesh.load_mesh(root/'inputs/geometry/source_core_mm.stl', process=True)
++    assert sha256(root/'inputs/geometry/source_core_mm.stl') == record['sha256']
++    assert mesh.is_watertight and mesh.is_winding_consistent and len(mesh.split()) == 1
++    with np.load(root/'inputs/geometry/source_surface.npz') as data:
++        assert np.array_equal(source_mm_to_cfd_m(mesh.vertices, root), data['points_m'])
++        assert np.array_equal(mesh.faces, data['triangles'])
++        assert set(np.unique(data['facet_tags'])) == {1,2,3,4,5}
++    assert {k:v['face_id'] for k,v in record['ports'].items()} == {'I1':4,'O1':3,'O2':5,'O3':2}
++    from .transforms import cfd_m_to_candidate_mm, rotate_vectors
++    poses={}
++    for candidate in (0,15):
++        original=read_json(root/f'inputs/geometry/candidate_{candidate}_print_transform.json')
++        matrix=np.asarray(record['pose_transforms'][str(candidate)]['source_mm_to_candidate_mm'])
++        np.testing.assert_array_equal(matrix,original['transform_4x4'])
++        np.testing.assert_allclose(matrix[:3,:3]@matrix[:3,:3].T,np.eye(3),rtol=0,atol=1e-14)
++        np.testing.assert_allclose(np.linalg.det(matrix[:3,:3]),1.,rtol=0,atol=1e-14)
++        displayed=cfd_m_to_candidate_mm(source_mm_to_cfd_m(mesh.vertices,root),candidate,root)
++        expected=mesh.vertices@matrix[:3,:3].T+matrix[:3,3]
++        np.testing.assert_allclose(displayed,expected,rtol=0,atol=1e-12)
++        restored=np.c_[displayed,np.ones(len(displayed))]@np.asarray(original['casting_restore_transform']).T
++        np.testing.assert_allclose(restored[:,:3],mesh.vertices,rtol=0,atol=1e-12)
++        vectors=np.array([[.001,.002,-.003],[-.02,.005,.01]])
++        np.testing.assert_allclose(np.linalg.norm(rotate_vectors(vectors,candidate,root),axis=1),np.linalg.norm(vectors,axis=1),rtol=1e-14,atol=0)
++        poses[str(candidate)]=dict(status='PASS',proper_rigid_rotation=True,
++            maximum_position_roundtrip_error_mm=float(np.max(np.abs(restored[:,:3]-mesh.vertices))),
++            speed_preserved=True,independent_CFD_case=False)
++    return dict(status='PASS', closed=True, source_points=len(mesh.vertices),source_triangles=len(mesh.faces),
++                mm_to_m_exact=True, ports=['INLET','OUTLET_01','OUTLET_02','OUTLET_03'],poses=poses)
++
++def prepare_surface(output, root=ROOT):
++    """Original four-port tagging recipe, writing a new output, never the inputs.
++
++    The accepted source is already a closed printing core. This function does
++    not rerun the upstream printing reconstruction or invent a new lumen.
++    """
++    import trimesh
++    import pyvista as pv
++    output=fresh_directory(output,root)
++    source=root/'inputs/geometry/source_core_mm.stl'
++    original=read_json(root/'inputs/geometry/geometry.json')
++    assert sha256(source)==original['sha256']
++    attachment=read_json(root/'inputs/geometry/port_attachment_summary.json')
++    mesh=trimesh.load_mesh(source,process=True)
++    assert mesh.is_watertight and mesh.is_winding_consistent and len(mesh.split())==1
++    origin=mesh.bounds.mean(axis=0);points=(mesh.vertices-origin)*1e-3
++    triangles=np.asarray(mesh.faces);tags=np.ones(len(triangles),np.int32);ports={}
++    role_ids={'I1':4,'O1':3,'O2':5,'O3':2}
++    for name,tag in role_ids.items():
++        value=attachment['per_port'][name];center=np.asarray(value['outside_end_mm']);wall=np.asarray(value['wall_target_mm'])
++        normal=(center-wall)/np.linalg.norm(center-wall)
++        plane=np.max(np.abs((mesh.vertices[triangles]-center)@normal),axis=1)
++        near=np.max(np.linalg.norm(mesh.vertices[triangles]-center,axis=2),axis=1)
++        mask=(plane<2e-5)&(near<1.2*value['radius_mm'])
++        assert mask.sum()>3 and (tags[mask]==1).all()
++        tags[mask]=tag;area=mesh.area_faces[mask].sum()*1e-6
++        assert np.min(mesh.face_normals[mask]@normal)>.999
++        ports[name]=dict(face_id=tag,role={'I1':'INLET','O1':'OUTLET_01','O2':'OUTLET_02','O3':'OUTLET_03'}[name],
++            center_m=((center-origin)*1e-3).tolist(),center_source_mm=center.tolist(),outward_normal=normal.tolist(),
++            radius_m=value['radius_mm']*1e-3,area_m2=float(area),triangles=int(mask.sum()))
++    surface=pv.PolyData(points,np.c_[np.full(len(triangles),3),triangles].ravel());surface.cell_data['ModelFaceID']=tags
++    surface.save(output/'labelled_core_m.vtp')
++    np.savez_compressed(output/'source_surface.npz',points_m=points,triangles=triangles,facet_tags=tags)
++    record=dict(source=str(source),source_sha256=sha256(source),units={'source':'mm','simulation':'m'},
++        origin_source_mm=origin.tolist(),ports=ports,pose_transforms=original['pose_transforms'],
++        same_physical_solution_for_candidate_0_and_15=True,CFD_executed=False)
++    write_json(output/'GEOMETRY_IDENTITY.json',record)
++    return record
++
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/scripts/audit_mesh.py
++++ src/human_vessel_flow/mesh_audit.py
+@@ -10,8 +10,7 @@
+ from scipy.sparse import coo_matrix
+ from scipy.sparse.csgraph import connected_components
+ 
+-ROOT = Path(__file__).resolve().parents[1]
+-sys.path.insert(0, str(ROOT / 'vendor'))
++from .paths import ROOT, fresh_directory
+ from vascular_validation.geometry import (ROLE_IDS, polydata, triangles_of, surface_stats,
+                                     enclosed_volume, closest_surface_distances, surface_samples)
+ from vascular_validation.mesh_diagnostics import volume_validity, tetra_sicn, quality_summary
+@@ -41,11 +40,10 @@
+     require(len(nodes) - len(unique) + len(triangles) == 1, 'Port is not a topological disk')
+ 
+ 
+-def main():
+-    parser = argparse.ArgumentParser()
+-    parser.add_argument('--attempt', choices=['primary', 'fallback'], default='primary')
+-    args = parser.parse_args()
+-    raw = ROOT / 'mesh/generation'
++def audit_generated(raw, output, reference_surface=ROOT/'inputs/geometry/source_surface.npz'):
++    raw=Path(raw).resolve()
++    output=fresh_directory(output)
++    (output/'reports').mkdir()
+     generation = json.loads((raw / 'generation.json').read_text())
+     require(generation['status'] == 'GENERATED_PENDING_AUDIT', 'Mesh generation did not pass')
+     policy = {'h_ref_m':.0002, 'h_wall_m':.0002}
+@@ -87,7 +85,7 @@
+             require(tags[index] == 0, 'Duplicate or merged exterior face label')
+             tags[index] = face_id
+     require(np.all(tags > 0), 'Unlabeled exterior surface')
+-    with np.load(ROOT / 'inputs/source_surface.npz') as original:
++    with np.load(reference_surface) as original:
+         source_points = original['points_m']
+         source_triangles = original['triangles']
+         source_tags = original['facet_tags']
+@@ -122,7 +120,8 @@
+                 'ports': ports, 'boundary_roles_complete': True,
+                 'face_vertex_max_match_distance_m': maximum_match_distance}
+ 
+-    output = ROOT / 'mesh/SV_MESH'
++    result_root=output
++    output = result_root / 'SV_MESH'
+     (output / 'mesh-surfaces').mkdir(parents=True, exist_ok=True)
+     # Coordinates and cells are the actual SV result; only standard identity arrays are assigned.
+     grid.point_data['GlobalNodeID'] = np.arange(1, len(points)+1, dtype=np.int32)
+@@ -142,16 +141,14 @@
+                         boundary_triangles=boundary, facet_tags=tags, adjacent_tetra=adjacent,
+                         min_sicn=quality_values)
+     np.savez_compressed(output / 'wall_distances.npz', source_to_new_m=forward, new_to_source_m=backward)
+-    write_json(ROOT / 'reports/mesh_validity.json', dict(validity, status='PASS', generation=generation,
++    write_json(result_root / 'reports/mesh_validity.json', dict(validity, status='PASS', generation=generation,
+                boundary_roles_complete=True, raw_volume_sha256=sha256(raw/'volume.vtu'),
+                solver_mesh_sha256=sha256(output/'mesh-complete.mesh.vtu')))
+-    write_json(ROOT / 'reports/mesh_quality.json', dict(quality, tetra=len(tetra), status='MEASURED',
++    write_json(result_root / 'reports/mesh_quality.json', dict(quality, tetra=len(tetra), status='MEASURED',
+                metric='minSICN: constant linear tetrahedral ideal-map signed inverse Frobenius condition number'))
+-    write_json(ROOT / 'reports/geometry_qc.json', geometry)
++    write_json(result_root / 'reports/geometry_qc.json', geometry)
+     print(json.dumps({'validity': validity, 'quality': quality, 'wall': geometry['wall'],
+                       'volume_relative_error': geometry['volume_relative_error'],
+                       'ports': {k: {'area_relative_error': v['area_relative_error'], 'normal_dot': v['normal_dot']} for k, v in ports.items()}}, indent=2))
+ 
+-
+-if __name__ == '__main__':
+-    main()
++    return dict(mesh=output,reports=result_root/'reports',validity=validity,quality=quality,geometry=geometry)
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/scripts/solve_remote.py
++++ src/human_vessel_flow/native_runner.py
+@@ -1,15 +1,9 @@
+-"""H0 case runner adapted from the unchanged production runner.
+-Source SHA256: d458c0c97a9f6d61a3f98e1d12e5e40ac6877b70aca1173be87bda3d19417ed8
++"""BraVa case runner with explicit local case and native dependency arguments.
++Source SHA256: f27feeaa5fdbd39581117b6bf93ed18b9ccf31412fa65a1af5feebdeaebacac5
+ Numerical command, options, policy and gates are reused without changes.
+ """
+ from pathlib import Path
+ import sys, os, json, time, subprocess, socket, hashlib, traceback, re, argparse, resource
+-parser=argparse.ArgumentParser()
+-parser.add_argument('--case', type=Path, required=True)
+-parser.add_argument('--reference-root', type=Path, required=True)
+-args=parser.parse_args()
+-ROOT = args.reference_root
+-sys.path.insert(0,str(ROOT/'vendor'))
+ from vascular_validation.postprocess import SolutionMeasurements
+ from flow_solver_support.steady_monitor import SteadyStopMonitor
+ from flow_solver_support.checkpoint_checks import checkpoint_one_rank
+@@ -23,8 +17,8 @@
+ def sha(p): return hashlib.sha256(Path(p).read_bytes()).hexdigest()
+ def capture(args): return subprocess.check_output(args,text=True).strip()
+ 
+-def main():
+-    case = args.case; run = case/'run'; reports = case/'reports'
++def run(case, native, measurement_class=SolutionMeasurements):
++    case=Path(case).resolve(); run=case/'run'; reports=case/'reports'
+     assert not (run/'solver.log').exists() and not (run/'STOP_SIM').exists(), 'No overwrite permitted'
+     for name, expected in json.loads((case/'input_hashes.json').read_text()).items():
+         assert sha(case/name)==expected, name
+@@ -33,29 +27,24 @@
+     result_dir=run/(str(ranks)+'-procs')
+     def checkpoint(path,step,dt):
+         return checkpoint_one_rank(path,step,dt) if ranks==1 else checkpoint_audit(path,step,dt,ranks=ranks)
+-    stack=Path('/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy')
+-    build=json.loads((stack/'sv1_3q/reports/svmp_reuse_build.json').read_text())
+-    exe=build['executable']; w=build['PETSc_build']
+-    assert sha(exe)=='0e509fe21424b5b1f731c4b4f519839b0104bfb2aab0817b01556cc4054f7fc7'
+-    if policy.get('solver_build_manifest'):
+-        custom=json.loads((ROOT/policy['solver_build_manifest']).read_text())
+-        exe=custom['executable']
+-        assert sha(exe)==custom['executable_sha256']
+-        if not policy.get('backend_validation_case',False):
+-            assert json.loads((ROOT/'gpu_solver_fix/backend_equivalence.json').read_text())['passed']
+-
+-    assert sha(Path(w['prefix'])/'lib/libpetsc.so')=='b79e98d278e105aa8a1848bd08d66ef36a3e2425458610f97213d3fc8e45c5ef'
++    exe=native['executable']
++    if not exe:raise ValueError('Native production binary is not configured')
++    assert sha(exe)==native['executable_sha256']
++    library=Path(native['petsc_library'])
++    assert sha(library)==native['petsc_library_sha256']
++    w=dict(candidate_wrapper=native['wrapper'],launcher=native['mpi_launcher'])
++    build=dict(runtime_library_path=native['runtime_library_path'])
+     options=(run/'PETSC_OPTIONS.txt').read_text().strip()
+     env={k:os.environ[k] for k in ('HOME','USER','LOGNAME','LANG') if k in os.environ}
+-    env.update(PATH='/usr/bin:/bin:/usr/local/cuda/bin',LC_ALL='C',OMP_NUM_THREADS='1',
++    env.update(PATH='/usr/bin:/bin:/usr/local/cuda-12.6/bin:/usr/lib/wsl/lib',LC_ALL='C',OMP_NUM_THREADS='1',
+         CUDA_VISIBLE_DEVICES='0', LD_LIBRARY_PATH=build['runtime_library_path'], PETSC_OPTIONS=options)
+     command=[w['candidate_wrapper'],w['launcher'],'-n',str(ranks),w['candidate_wrapper'],exe,'solver.xml']
+-    host=dict(hostname=socket.gethostname(),remote=True,cpu=capture(['lscpu']),ram=capture(['free','-b']),
++    host=dict(hostname=socket.gethostname(),remote=False,cpu=capture(['lscpu']),ram=capture(['free','-b']),
+         gpu=capture(['nvidia-smi','--query-gpu=name,driver_version,memory.total','--format=csv,noheader']),
+         cgroup={p:Path(p).read_text().strip() for p in ('/sys/fs/cgroup/cpu.max','/sys/fs/cgroup/memory.max')},
+         output_path=str(case),python=sys.version)
+     write(reports/'host.json',host)
+-    measure=SolutionMeasurements(case/'SV_MESH/mesh_arrays.npz',policy['Q_target_m3_s'],policy['Umean_m_s'])
++    measure=measurement_class(Path(policy['mesh_arrays']),policy['Q_target_m3_s'],policy['Umean_m_s'])
+     monitor=SteadyStopMonitor(measure,policy); seen=set(); stop=None; errors=[]; samples=[]
+     start=time.time(); log=run/'solver.log'; peak_tree_rss_kib=0; peak_process_hwm_kib=0
+     import shutil
+@@ -102,7 +91,7 @@
+         code=proc.wait()
+     history=parse_solver_log(log.read_text(errors='replace'),dt)
+     record=dict(exit_code=code,wall_time_s=time.time()-start,start_unix=start,end_unix=time.time(),
+-        command=command,solver_sha256=sha(exe),PETSc_library_sha256=sha(Path(w['prefix'])/'lib/libpetsc.so'),
++        command=command,solver_sha256=sha(exe),PETSc_library_sha256=sha(library),
+         PETSC_OPTIONS=options,initial_state='zero',MPI_ranks=ranks,OMP_NUM_THREADS=1,history=history,
+         stop=stop,states=monitor.states,intervals=monitor.intervals,GPU_samples=samples,log_sha256=sha(log), peak_tree_RSS_MiB_sampled=peak_tree_rss_kib/1024, peak_single_process_HWM_MiB=peak_process_hwm_kib/1024, child_rusage_maxrss_MiB=resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss/1024, memory_method='5-second /proc sampling; tree RSS includes runner and descendants; process HWM and wait4 child high-water also recorded')
+     failures=[]
+@@ -114,7 +103,7 @@
+         record.update(status='FAIL', health_failures=failures+[{'gate':'output','error':'No completed native solution was written'}], final_step=None, final_vtu=None)
+         write(reports/'execution.json',record)
+         print('FAIL: no completed native solution',flush=True)
+-        return
++        return record
+     final=max(outputs,key=lambda p:int(p.stem.rsplit('_',1)[1]))
+     step=int(final.stem.rsplit('_',1)[1]); u,p=measure.read(final)
+     record.update(final_step=step,final_vtu=str(final.relative_to(case)),final=measure.measure(u,p),
+@@ -123,7 +112,5 @@
+     write(reports/'execution.json',record)
+     print(json.dumps({k:record[k] for k in ('status','exit_code','wall_time_s','final_step','final','health_failures')},indent=2),flush=True)
+ 
+-if __name__=='__main__':
+-    try: main()
+-    except Exception:
+-        traceback.print_exc(); raise
++
++    return record
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/population_v1/analysis/common_curved_geometry_review_20261006/validate.py
++++ src/human_vessel_flow/p2_geometry.py
+@@ -1,8 +1,6 @@
+-"""Independent geometry reference + actual native element/matrix regressions."""
+-from common import *
++"""Independent common-geometry reference; P2 CFD remains scientifically unqualified."""
++from pathlib import Path
+ import numpy as np
+-import subprocess
+-import csv
+ 
+ EDGES=np.array([[0,1],[1,2],[2,0],[0,3],[1,3],[2,3]])
+ DL=np.vstack([np.eye(3),-np.ones(3)])
+@@ -11,6 +9,7 @@
+ HP2=np.concatenate([4*np.einsum('ai,aj->aij',DL,DL),
+     np.array([4*(np.outer(DL[i],DL[j])+np.outer(DL[j],DL[i])) for i,j in EDGES])])
+ PACK=[(0,0),(1,1),(2,2),(0,1),(1,2),(0,2)]
++
+ 
+ def basis(xi,n):
+     L=np.r_[xi,1-np.sum(xi)]
+@@ -51,169 +50,3 @@
+         rng=np.random.default_rng(61006+n);y[:,:3]=rng.normal(size=(n,3))*H
+         y[:,3]=rng.normal(size=n);a[:,:3]=rng.normal(size=(n,3))*.2;bf=rng.normal(size=(n,3))*.1
+     return y,a,bf
+-
+-def main():
+-    protocol=read(HERE/'COMMON_GEOMETRY_HARNESS_PROTOCOL.json')
+-    identity=read(HERE/'COMMON_GEOMETRY_PATCH_IDENTITY.json')
+-    assert identity['protocol_sha256']==sha(HERE/'COMMON_GEOMETRY_HARNESS_PROTOCOL.json')
+-    old=np.load(PREVIOUS/'P2_CURVED_GEOMETRY_SAMPLES.npz');rt=HERE/'runtime';rt.mkdir(exist_ok=True)
+-    tests=[];cases=[];arrays={};csvrows=[];baseline_pressure=[]
+-    def test(name,error=0.,limit=1e-11,**detail):
+-        ok=bool(np.isfinite(error) and error<=limit)
+-        tests.append(dict(name=name,status='PASS' if ok else 'FAIL',error=float(error),limit=limit,**detail))
+-        return ok
+-    def run(exe,inp,prefix,mode='native',reference=None):
+-        cmd=[str(rt/('harness_'+exe)),str(inp),str(prefix),mode]
+-        if reference:cmd.append(str(reference))
+-        subprocess.run(cmd,env=native_env(),check=True,stdout=subprocess.DEVNULL)
+-    for cell in ['central_wall','inlet_rim']:
+-      for variant,n in [('affine',4),('affine',10),('curved',10)]:
+-       X=old[f'{cell}_{variant}_nodes'][:n]
+-       H=float(np.linalg.norm(X[:4,None]-X[None,:4],axis=2).max())
+-       for field in (['A','R'] if n==4 else ['A','B','C','P','R']):
+-        tag=f'{cell}_{variant}_P{1 if n==4 else 2}_{field}';prefix=rt/tag
+-        y,a,bf=fields(X,field,H);inp=rt/(tag+'_input.txt')
+-        with inp.open('w') as f:
+-            f.write(str(n)+'\n')
+-            for v in [X,y,a,bf]:np.savetxt(f,v,fmt='%.17g')
+-        runs={}
+-        for name in ['original','baseline_trace','patched','patched_trace']:
+-            pre=rt/(tag+'_'+name);run(name,inp,pre);runs[name]=read_RK(pre,n)
+-        rawbase=np.loadtxt(rt/(tag+'_baseline_trace_q.txt'))
+-        rawpatch=np.loadtxt(rt/(tag+'_patched_trace_q.txt'))
+-        qb=unpack(rawbase,n);qp=unpack(rawpatch,n)
+-        refs=[geometry(xi,X) for xi in qp['xi']]
+-        refpath=rt/(tag+'_reference.txt')
+-        with refpath.open('w') as f:
+-            f.write(str(len(refs))+'\n')
+-            for i,r in enumerate(refs):
+-                values=np.r_[qp['opt'][i],qp['wref'][i]*r['det'],r['N'],r['P'],r['D'].ravel(),
+-                    r['Dp'].ravel(),r['H'].ravel(),r['metric'].ravel()]
+-                f.write(' '.join(format(v,'.17g') for v in values)+'\n')
+-        run('original',inp,rt/(tag+'_reference'),'reference',refpath)
+-        RR,KR=read_RK(rt/(tag+'_reference'),n)
+-        us=H**2 if field=='C' else H
+-        sr=max(float(abs(RR[:3]).max()),H**2,.00345312*H*us,1056*H**2*us**2)
+-        sc=H**2*us
+-        for name in ['baseline_trace','patched_trace']:
+-            plain='original' if name=='baseline_trace' else 'patched'
+-            R0,K0=runs[plain];R1,K1=runs[name]
+-            test(tag+'_'+name+'_observation_does_not_change_R',float(abs(R1-R0).max())/max(float(abs(R0).max()),sr))
+-            test(tag+'_'+name+'_observation_does_not_change_K',float(abs(K1-K0).max())/max(float(abs(K0).max()),1e-100))
+-        RP,KP=runs['patched'];RB,KB=runs['original']
+-        test(tag+'_patched_momentum_vs_common_reference',float(abs(RP[:3]-RR[:3]).max())/sr)
+-        test(tag+'_patched_continuity_vs_common_reference',float(abs(RP[3]-RR[3]).max())/sc)
+-        for nm,sl in [('momentum',slice(0,12)),('continuity',slice(12,16))]:
+-            test(tag+'_patched_'+nm+'_matrix_vs_common_reference',float(abs(KP[sl]-KR[sl]).max())/max(float(abs(KR[sl]).max()),1e-100))
+-        if variant=='affine':
+-            test(tag+'_affine_R_before_after',float(abs(RP-RB).max())/max(float(abs(RB).max()),sr))
+-            test(tag+'_affine_K_before_after',float(abs(KP-KB).max())/max(float(abs(KB).max()),1e-100))
+-        if field=='R':
+-            repeat=rt/(tag+'_repeat');run('patched',inp,repeat)
+-            test(tag+'_deterministic_output_repeat',0. if sha(Path(str(repeat)+'_RK.txt'))==sha(rt/(tag+'_patched_RK.txt')) else 1.,0.)
+-        metrics={};data={}
+-        for name,q in [('before',qb),('after',qp)]:
+-            rr={k:np.array([r[k] for r in refs]) for k in refs[0]}
+-            refnodes=RN if n==4 else RN10
+-            vinv=np.einsum('ai,naj->nij',refnodes,q['D'])
+-            pinv=q['Dp'][:,:3,:]
+-            vJ=np.linalg.inv(vinv);pJ=np.linalg.inv(pinv)
+-            usedJ=vJ.copy()
+-            if name=='before':usedJ[(q['opt']==2)&(q['g']==0)]=pJ[(q['opt']==2)&(q['g']==0)]
+-            vworld=q['N']@(X-X[3])+X[3]
+-            pworld=q['P']@X[:4] if name=='before' else vworld
+-            u=q['N']@y[:,:3];G=np.einsum('ai,naj->nij',y[:,:3],q['D']);div=np.trace(G,axis1=1,axis2=2)
+-            p=q['P']@y[:4,3];gp=np.einsum('a,naj->nj',y[:4,3],q['Dp'])
+-            exu=rr['N']@y[:,:3];exG=np.einsum('ai,naj->nij',y[:,:3],rr['D'])
+-            exp=rr['P']@y[:4,3];exgp=np.einsum('a,naj->nj',y[:4,3],rr['Dp'])
+-            m=dict(pressure_basis_grad_scaled=float(abs(q['Dp']-rr['Dp']).max())/float(abs(rr['Dp']).max()),
+-                velocity_J_scaled=float(abs(vJ-rr['J']).max())/H,pressure_transform_J_scaled=float(abs(pJ-rr['J']).max())/H,
+-                inverse_scaled=float(abs(pinv-rr['inv']).max())/float(abs(rr['inv']).max()),
+-                used_det_relative=float(np.max(abs(q['det']/rr['det']-1))),
+-                metric_relative=float(abs(q['metric']-rr['metric']).max())/float(abs(rr['metric']).max()),
+-                physical_q_position_over_H=float(abs(pworld-rr['x']).max())/H,
+-                u_scaled=float(abs(u-exu).max())/us,G_scaled=float(abs(G-exG).max())/(us/H),
+-                p_scaled=float(abs(p-exp).max()),gradp_scaled=float(abs(gp-exgp).max())*H)
+-            if field in ['A','B','C']:
+-                d=rr['x']-X[3];au=np.zeros_like(u);aG=np.zeros_like(G)
+-                if field=='A':au=d;aG[:]=np.eye(3)
+-                if field=='B':au[:,0]=d[:,0];au[:,1]=-d[:,1];aG[:]=np.diag([1,-1,0])
+-                if field=='C':au[:,2]=d[:,2]**2;aG[:,2,2]=2*d[:,2]
+-                m.update(analytic_u_scaled=float(abs(u-au).max())/us,analytic_G_scaled=float(abs(G-aG).max())/(us/H),
+-                    analytic_div_scaled=float(abs(div-np.trace(aG,axis1=1,axis2=2)).max())/(us/H),
+-                    analytic_axial_pressure_scaled=float(abs(p-(.3+d[:,2]/H)).max()),
+-                    analytic_axial_gradp_scaled=float(abs(gp-np.array([0.,0.,1/H])).max())*H)
+-                curl=np.stack([G[:,2,1]-G[:,1,2],G[:,0,2]-G[:,2,0],G[:,1,0]-G[:,0,1]],axis=1)
+-                m['analytic_curl_scaled']=float(abs(curl).max())/(us/H)
+-            if field=='P':
+-                general=.3+(rr['x']-X[3])@np.array([1.,2.,3.])/H
+-                m['general_linear_p_representation_error']=float(abs(p-general).max())
+-                m['general_linear_gradp_representation_error']=float(abs(gp-np.array([1.,2.,3.])/H).max())*H
+-            metrics[name]=m
+-            if name=='after':
+-                for k,v in m.items():
+-                    if 'representation_error' not in k:test(tag+'_'+k,v,1e-12 if k=='physical_q_position_over_H' else 1e-11)
+-                test(tag+'_P1_reference_pressure_basis_unchanged',float(abs(q['P']-rr['P']).max()))
+-                # Physical Hessian checked at momentum points: native P1/P1 continuity retains old cached Hessian (zero).
+-                mom=q['opt']==1
+-                test(tag+'_native_Hessian_chain_rule',float(abs(q['H'][mom]-rr['H'][mom]).max())*H**2)
+-            data[name]=dict(velocity_J=vJ,pressure_transform_J=pJ,used_J_from_captured_transforms_and_branch=usedJ,
+-                used_det=q['det'],inverse_pressure=pinv,xq_velocity=vworld,xq_pressure_geometry=pworld,metric=q['metric'],
+-                weights=q['wref']*q['det'],u=u,G=G,div=div,p=p,gradp=gp)
+-        # Direct weak-form references do not call fluid kernels.
+-        cont=qp['opt']==2;mom=qp['opt']==1
+-        qwt=np.array([r['det'] for r in refs])*qp['wref']
+-        if n==10:
+-            direct=np.einsum('n,na,n->a',qwt[cont],qp['P'][cont],data['after']['div'][cont])
+-            test(tag+'_direct_continuity',float(abs(RP[3,:4]-direct).max())/sc)
+-        if field=='P':
+-            direct=-np.einsum('n,n,na j->ja',qwt[mom],data['after']['p'][mom],np.array([r['D'] for r in refs])[mom])
+-            test(tag+'_direct_pressure_only_momentum',float(abs(RP[:3]-direct).max())/sr)
+-            baseline_pressure.append(dict(case=tag,before=metrics['before'],after=metrics['after']))
+-        taub=np.loadtxt(rt/(tag+'_baseline_trace_tau.txt'));taup=np.loadtxt(rt/(tag+'_patched_trace_tau.txt'))
+-        if variant=='affine':test(tag+'_affine_actual_stabilization_parameters',float(abs(taub[:,2:]-taup[:,2:]).max())/max(float(abs(taub[:,2:]).max()),1e-100))
+-        # Momentum tauM must use the captured common metric without any coefficient changes.
+-        expected=[]
+-        for i,r in enumerate(refs):
+-            u=data['after']['u'][i];tau=1/(1056*np.sqrt(4/.01**2+u@r['metric']@u+36*(.00345312/1056)**2*np.sum(r['metric']**2)))
+-            expected.append(tau if qp['opt'][i]==1 or n==4 else 0.)
+-        test(tag+'_actual_tauM_common_metric',float(abs(taup[:,2]-expected).max())/max(max(expected),1e-100))
+-        for name,(R,K) in runs.items():arrays[tag+'_'+name+'_R']=R;arrays[tag+'_'+name+'_K']=K
+-        arrays[tag+'_reference_R']=RR;arrays[tag+'_reference_K']=KR
+-        arrays[tag+'_nodes']=X;arrays[tag+'_fields']=y;arrays[tag+'_before_q']=rawbase;arrays[tag+'_after_q']=rawpatch
+-        arrays[tag+'_before_tau']=taub;arrays[tag+'_after_tau']=taup
+-        for stage,vals in data.items():
+-            for k,v in vals.items():arrays[tag+'_'+stage+'_'+k]=v
+-        record=dict(case=tag,cell=cell,variant=variant,velocity_nodes=n,field=field,H_m=H,metrics=metrics,
+-            continuity_before_vs_common_relative_L2=float(np.linalg.norm(RB[3,:4]-RR[3,:4])/max(np.linalg.norm(RR[3,:4]),sc*1e-14)),
+-            continuity_after_scaled_max=float(abs(RP[3]-RR[3]).max())/sc,
+-            momentum_after_scaled_max=float(abs(RP[:3]-RR[:3]).max())/sr,
+-            P1_R_max_abs_change=float(abs(RP-RB).max()) if n==4 else None,
+-            P1_K_max_abs_change=float(abs(KP-KB).max()) if n==4 else None)
+-        cases.append(record)
+-        for st,m in metrics.items():csvrows.append(dict(case=tag,stage=st,**m))
+-        print(tag,'failures so far',sum(t['status']=='FAIL' for t in tests),flush=True)
+-    # Inherited representation evidence is hashed, not rerun as new A-D1 work.
+-    put('INHERITED_REGRESSION.json',dict(rerun=False,files={n:sha(PREVIOUS/n) for n in
+-        ['P2_REPRESENTATION_FIXTURES.json','P2_FIELD_SAMPLER_TESTS.json','P2_POISEUILLE_REPRESENTATION.json','P2_CURVED_GEOMETRY_SAMPLES.npz']},
+-        statement='Prior A-D1 evidence retained; this study only executes new element geometry regressions'))
+-    np.savez_compressed(HERE/'COMMON_GEOMETRY_SAMPLES.npz',**arrays)
+-    keys=list(dict.fromkeys(k for r in csvrows for k in r))
+-    with (HERE/'COMMON_GEOMETRY_METRICS.csv').open('w') as f:
+-        w=csv.DictWriter(f,keys);w.writeheader();w.writerows(csvrows)
+-    p1tests=[t for t in tests if '_P1_' in t['name'] and ('central_wall_affine_P1_' in t['name'] or 'inlet_rim_affine_P1_' in t['name'])]
+-    p1pass=all(t['status']=='PASS' for t in p1tests)
+-    put('P1_REGRESSION_RESULTS.json',dict(status='PASS' if p1pass else 'P1_REGRESSION_FAILED',
+-        cases=[c for c in cases if c['velocity_nodes']==4],tests=p1tests,production_modified=False))
+-    ok=all(t['status']=='PASS' for t in tests)
+-    put('COMMON_GEOMETRY_HARNESS_RESULTS.json',dict(status='PASS' if ok else 'COMMON_GEOMETRY_FIX_NOT_EVALUABLE',
+-        cases=cases,passed=sum(t['status']=='PASS' for t in tests),failed=sum(t['status']=='FAIL' for t in tests),tests=tests,
+-        protocol_sha256=sha(HERE/'COMMON_GEOMETRY_HARNESS_PROTOCOL.json'),
+-        trace_semantics='D/metric/det/weights and tau captured from native assembly. Full J matrices reconstructed from captured reference-coordinate gradients; used J selection follows audited native branch, independently checked against captured determinant.',
+-        CFD_steps=0,linear_solves=0))
+-    base=read(HERE/'CURVED_MIXED_BLOCKER_BASELINE.json');base['linear_pressure_extension']=baseline_pressure
+-    put('CURVED_MIXED_BLOCKER_BASELINE.json',base)
+-    if not p1pass:raise SystemExit('P1_REGRESSION_FAILED')
+-    if not ok:raise SystemExit('COMMON_GEOMETRY_FIX_NOT_EVALUABLE')
+-
+-if __name__=='__main__':main()
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/scripts/postprocess_flow.py
++++ src/human_vessel_flow/postprocess.py
+@@ -3,7 +3,8 @@
+ import argparse,json,hashlib,csv,shutil,sys
+ import numpy as np
+ import pyvista as pv
+-ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'vendor'))
++from .paths import ROOT
++import xml.etree.ElementTree as ET
+ from vascular_validation.postprocess import SolutionMeasurements
+ from flow_solver_support.wss_case import recover,material,coordinate_identity
+ from flow_solver_support.flow_parser import parse_solver_log
+@@ -11,23 +12,30 @@
+ 
+ def sha(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()
+ def dump(p,x):Path(p).write_text(json.dumps(x,indent=2,allow_nan=False)+'\n')
+-def main():
+- ap=argparse.ArgumentParser();ap.add_argument('case',type=Path);a=ap.parse_args();case=a.case.resolve()
++def postprocess(case):
++ case=Path(case).resolve()
++ if case.is_relative_to(ROOT/'cases') or (case/'frozen_flow').exists() or (case/'postprocess').exists():
++  raise ValueError('Only a new, unprocessed case may be frozen; historical results are protected')
++ xml=ET.parse(case/'run/solver.xml')
++ mesh_root=Path(xml.findtext('.//Mesh_file_path')).resolve().parent
+  e=json.loads((case/'reports/execution.json').read_text());assert e['status']=='PASS','Never use an incomplete/failed CFD result'
+  shutil.copy2(__file__,case/'reports/executed_postprocess.py')
+  policy=json.loads((case/'policy.json').read_text());mu=material(case)['mu_Pa_s']
+  for path,h in json.loads((case/'input_hashes.json').read_text()).items():assert sha(case/path)==h,path
+  history=parse_solver_log((case/'run/solver.log').read_text(errors='replace'),policy['dt_s'])
+  linear_gate(dict(exit_code=e['exit_code'],history=history));nonlinear_gate(history)
+- final=case/e['final_vtu'];mesh=pv.read(case/'SV_MESH/mesh-complete.mesh.vtu');flow=pv.read(final)
++ final=case/e['final_vtu'];mesh=pv.read(mesh_root/'mesh-complete.mesh.vtu');flow=pv.read(final)
+  coordinate_identity(flow.points,mesh.points)
+  canonical_tet=mesh.cells.reshape(-1,5)[:,1:];native_tet=flow.cells.reshape(-1,5)[:,1:]
+  assert native_tet.shape==canonical_tet.shape and np.array_equal(np.sort(native_tet,axis=1),np.sort(canonical_tet,axis=1)), 'Native tetra rows or node membership mismatch'
+  correspondence=dict(point_order_identical=True,tetra_rows_identical_ignoring_local_vertex_order=True,local_order_changed_cells=int(np.count_nonzero(np.any(native_tet!=canonical_tet,axis=1))),gradients_use_canonical_connectivity=True)
+- measure=SolutionMeasurements(case/'SV_MESH/mesh_arrays.npz',policy['Q_target_m3_s'],policy['Umean_m_s'])
++ measure=SolutionMeasurements(mesh_root/'mesh_arrays.npz',policy['Q_target_m3_s'],policy['Umean_m_s'])
+  u,p=measure.read(final);metrics=measure.measure(u,p)
+  assert max(metrics['epsilon_Q'],metrics['epsilon_mass'])<=policy['mass_limit'] and metrics['wall_noslip_pass']
+- arrays=np.load(case/'SV_MESH/mesh_arrays.npz');x=arrays['points_m'];t=arrays['tetra'];b=arrays['boundary_triangles'];tags=arrays['facet_tags']
++ if policy['mode']!='calibration':
++  # Same original gate, checked before any new result is labelled/frozen PASS.
++  assert max(abs(q-1/3)*100 for q in metrics['outlet_fractions'].values())<=.5,'Historical split gate failed: preserve this result for review; no automatic pressure calibration'
++ arrays=np.load(mesh_root/'mesh_arrays.npz');x=arrays['points_m'];t=arrays['tetra'];b=arrays['boundary_triangles'];tags=arrays['facet_tags']
+  surface,raw=recover(x,t,b,tags,u,p,mu)
+  area=raw['area'];w=raw['magnitude']
+  zero=w==0;wall_nodes=np.unique(b[tags==1]);all_wall_owner=np.all(np.isin(t[raw['owners']],wall_nodes),axis=1)
+@@ -44,7 +52,7 @@
+  maximum_abs_normal_traction_Pa=float(np.max(np.abs(np.einsum('ij,ij->i',raw['traction'],raw['normal'])))),
+  raw_cells=len(w),exact_zero_faces=int(zero.sum()),exact_zero_area_fraction=float(area[zero].sum()/area.sum()),exact_zero_faces_with_all_wall_tetra_nodes=int(np.count_nonzero(zero & all_wall_owner)),method='mu*(G+G.T)*n followed by tangential projection; raw P1 adjacent-tetra value per triangle; area-weighted nodal average only for display')
+  out=case/'postprocess';out.mkdir(exist_ok=True);surface.save(out/'wall_wss_si.vtp')
+- exterior=pv.read(case/'SV_MESH/mesh-complete.exterior.vtp');ids=exterior['GlobalNodeID'].astype(int)-1
++ exterior=pv.read(mesh_root/'mesh-complete.exterior.vtp');ids=exterior['GlobalNodeID'].astype(int)-1
+  exterior.point_data['Pressure_Pa']=p[ids];exterior.point_data['Velocity']=u[ids];exterior.save(out/'pressure_surface_si.vtp')
+  frozen=case/'frozen_flow';frozen.mkdir(exist_ok=True);shutil.copy2(final,frozen/'steady_flow.vtu')
+  np.savez_compressed(frozen/'flow_arrays_si.npz',points_m=x,tetra=t,boundary_triangles=b,facet_tags=tags,velocity_m_s=u,pressure_pa=p)
+@@ -52,7 +60,7 @@
+  rows.extend(dict(boundary=r,Q_m3_s=q,Q_uL_min=q*6e10,fraction_percent=metrics['outlet_fractions'][r]*100,mean_pressure_Pa=metrics['area_average_pressure_pa'][r]) for r,q in metrics['outlet_flows_m3_s'].items())
+  with (out/'boundary_summary.csv').open('w') as f:
+   writer=csv.DictWriter(f,fieldnames=list(rows[0]));writer.writeheader();writer.writerows(rows)
+- record=dict(status='PASS',postprocess_data_sha256={str(path.relative_to(case)):sha(path) for path in [out/'wall_wss_si.vtp',out/'pressure_surface_si.vtp',frozen/'flow_arrays_si.npz']},postprocess_source_sha256=sha(__file__),mesh_flow_correspondence=correspondence,case=case.name,mode=policy['mode'],flow_sha256=sha(frozen/'steady_flow.vtu'),mesh_sha256=sha(case/'SV_MESH/mesh-complete.mesh.vtu'),mu_Pa_s=mu,
++ record=dict(status='PASS',postprocess_data_sha256={str(path.relative_to(case)):sha(path) for path in [out/'wall_wss_si.vtp',out/'pressure_surface_si.vtp',frozen/'flow_arrays_si.npz']},postprocess_source_sha256=sha(__file__),mesh_flow_correspondence=correspondence,case=case.name,mode=policy['mode'],flow_sha256=sha(frozen/'steady_flow.vtu'),mesh_sha256=sha(mesh_root/'mesh-complete.mesh.vtu'),mu_Pa_s=mu,
+  measurements=metrics,raw_WSS=wss,last_interval_changes=delta,final_step=e['final_step'],physical_time_s=e['final_step']*policy['dt_s'],
+  max_split_deviation_percentage_points=max(abs(q-1/3)*100 for q in metrics['outlet_fractions'].values()),
+  split_is_prescribed_for_calibration_only=policy['mode']=='calibration',single_mesh_not_mesh_independence=True)
+@@ -62,7 +70,7 @@
+   dump(out/'designed_outlet_pressures_Pa.json',pressures)
+   dump(out/'pressure_design_note.json',dict(method='Measure area-average pressure at fully extended equal-flow calibration outlets; subtract common minimum; re-solve with natural pressure traction at every outlet',reference_shift_Pa=base,final_3D_split_not_yet_verified=True))
+  else:
+-  assert record['max_split_deviation_percentage_points']<=.5,'Final achieved split needs a pressure correction, not relabeling as balanced'
+-  dump(ROOT/'reports/ACTIVE_FLOW.json',{**record,'case':str(case.relative_to(ROOT))})
++  # A new execution never replaces the historical active BraVa flow.
++  dump(case/'reports/NEW_FLOW_IDENTITY.json',{**record,'local_accuracy_certification':'NOT_RUN','historical_active_flow_replaced':False})
+  print(json.dumps(record,indent=2))
+-if __name__=='__main__':main()
++ return record
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/scripts/audit_pipe_fidelity.py
++++ src/human_vessel_flow/reference_pipe/audit_pipe_fidelity.py
+@@ -1,18 +1,5 @@
+-"""Finite-facet cylinder and cap trace QA; independent of any CFD solution."""
+-from pathlib import Path
+-import argparse
+-import hashlib
+-import json
++"""Original P1 cap trace quadrature; no field correction."""
+ import numpy as np
+-import pyvista as pv
+-from pipe_surface_qa import surface_qa
+-
+-ROOT = Path(__file__).resolve().parents[1]
+-
+-
+-def summary(values):
+-    return dict(zip(['min', 'median', 'P95', 'P99', 'max'], map(float, np.quantile(values, [0, .5, .95, .99, 1]))))
+-
+ 
+ def boundary_profile(poly, radius, mean=.1):
+     """Exact degree-four quadrature of the squared P1-trace error on cap triangles."""
+@@ -45,84 +32,3 @@
+                   profile_scaling_factor=1., node_count=poly.n_points, triangles=len(tri))
+     result['PASS'] = bool(result['profile_relative_L2'] <= .01 and result['Q_relative_error'] <= .005 and rim_raw < 1e-7)
+     return result, values
+-
+-
+-def main(name, directory, input_only=False):
+-    source = ROOT / 'straight_pipe/manufactured' / name
+-    config = json.loads((source / 'INPUT.json').read_text())
+-    radius, length = config['radius_m'], config['length_m']
+-    path = source / 'model.vtp' if input_only else directory / 'audited_exterior.vtp'
+-    mesh = pv.read(path); tags = mesh['ModelFaceID']
+-    wall = mesh.extract_cells(tags == 1).extract_surface(algorithm='dataset_surface')
+-    central = wall.clip(normal=[0, 0, 1], origin=[0, 0, .4 * length], invert=False)
+-    central = central.clip(normal=[0, 0, 1], origin=[0, 0, .6 * length], invert=True).triangulate()
+-    tri = np.asarray(central.points, float)[central.faces.reshape(-1, 4)[:, 1:]]
+-    xy = tri[..., :2]
+-    minima = np.full(len(xy), np.inf)
+-    for i, j in [(0, 1), (1, 2), (2, 0)]:
+-        a, delta = xy[:, i], xy[:, j] - xy[:, i]
+-        denom = np.sum(delta**2, axis=1)
+-        t = np.divide(-np.sum(a * delta, axis=1), denom, out=np.zeros(len(a)), where=denom > 0)
+-        closest = a + np.clip(t, 0, 1)[:, None] * delta
+-        minima = np.minimum(minima, np.linalg.norm(closest, axis=1))
+-    cross = lambda a, b: a[:, 0] * b[:, 1] - a[:, 1] * b[:, 0]
+-    signs = np.stack([cross(xy[:, j]-xy[:, i], -xy[:, i]) for i,j in [(0,1),(1,2),(2,0)]], axis=1)
+-    area2 = cross(xy[:,1]-xy[:,0],xy[:,2]-xy[:,0])
+-    origin_inside = ((signs > 0).all(axis=1) | (signs < 0).all(axis=1)) & (abs(area2) > 0)
+-    minima[origin_inside] = 0.
+-    inward_bound = radius - float(minima.min())
+-    outward_bound = float(np.linalg.norm(xy, axis=2).max()) - radius
+-    azimuth = 2 * np.pi * (np.arange(2048) + .193) / 2048
+-    directions = np.c_[np.cos(azimuth), np.sin(azimuth)]
+-    samples = []
+-    planes = np.linspace(.4, .6, 21)
+-    for z in planes:
+-        cut = wall.slice(normal=[0,0,1], origin=[0,0,z * length])
+-        lines = cut.lines.reshape(-1,3); assert np.all(lines[:,0] == 2)
+-        a = np.asarray(cut.points[lines[:,1],:2],float)
+-        delta = np.asarray(cut.points[lines[:,2],:2],float) - a
+-        distance = np.empty(len(directions))
+-        for start in range(0,len(directions),128):
+-            d = directions[start:start+128]
+-            denominator = d[:,None,0]*delta[None,:,1]-d[:,None,1]*delta[None,:,0]
+-            with np.errstate(divide='ignore',invalid='ignore'):
+-                rr = cross(a,delta)[None,:]/denominator
+-                f = (a[None,:,0]*d[:,None,1]-a[None,:,1]*d[:,None,0])/denominator
+-            good=(rr>0)&(f>=-1e-10)&(f<=1+1e-10)&np.isfinite(rr)
+-            distance[start:start+len(d)] = np.where(good,rr,np.inf).min(axis=1)
+-        assert np.isfinite(distance).all()
+-        samples.append(radius-distance)
+-    qa = surface_qa(path,radius,length)
+-    p = mesh.points[mesh.faces.reshape(-1,4)[:,1:]]
+-    areas = np.linalg.norm(np.cross(p[:,1]-p[:,0],p[:,2]-p[:,0]),axis=1)/2
+-    caps={}
+-    for tag,label in [(2,'INLET'),(3,'OUTLET')]:
+-        cap=mesh.extract_cells(tags==tag).extract_surface(algorithm='dataset_surface')
+-        caps[label],_=boundary_profile(cap,radius)
+-    geometry = dict(central_z_over_L=[.4,.6], radial_samples=len(planes)*len(azimuth),
+-                    inward_deviation_m=summary(np.asarray(samples).ravel()),
+-                    finite_triangle_max_inward_bound_m=inward_bound,
+-                    finite_triangle_max_outward_bound_m=outward_bound,
+-                    maximum_absolute_wall_deviation_m=max(inward_bound,outward_bound),
+-                    finite_triangle_method='Central clipped finite triangles; exact minimum radial norm over projected triangle edges/interior, maximum at vertices. Dense rays provide quantiles, not the acceptance bound.',
+-                    cap_area_m2={k:v['cap_area_m2'] for k,v in qa['ports'].items()},
+-                    cap_area_relative_error={k:v['cap_area_relative_error'] for k,v in qa['ports'].items()},
+-                    wall_area_m2=float(areas[tags==1].sum()),
+-                    wall_area_relative_error=abs(float(areas[tags==1].sum())/(2*np.pi*radius*length)-1),
+-                    volume_m3=qa['signed_volume_m3'],
+-                    volume_relative_error=abs(qa['signed_volume_m3']/(np.pi*radius**2*length)-1))
+-    geometry['PASS'] = bool(qa['status']=='PASS' and geometry['maximum_absolute_wall_deviation_m'] <= .05e-6 and max(geometry['cap_area_relative_error'].values()) <= .0005)
+-    result=dict(status='PASS' if geometry['PASS'] and all(c['PASS'] for c in caps.values()) else 'FAIL',
+-                source_sha256=hashlib.sha256(path.read_bytes()).hexdigest(), input_only=input_only,
+-                surface=geometry,boundary=caps,wall_stress_probe_m=1e-7,wall_stress_is_production_hard_gate=False,
+-                thresholds=dict(surface_max_m=.05e-6,cap_area_relative=.0005,profile_L2=.01,Q_relative=.005),
+-                note='Cap velocity trace is evaluated on both ports. Outlet uses separate exact Cauchy traction; its solution velocity is not prescribed.')
+-    output = source if input_only else directory
+-    (output/'FIDELITY_QA.json').write_text(json.dumps(result,indent=2)+'\n')
+-    np.savez_compressed(output/'FIDELITY_SAMPLES.npz', z_over_L=planes,azimuth_rad=azimuth,inward_deviation_m=samples)
+-    print(json.dumps(result,indent=2))
+-
+-
+-if __name__=='__main__':
+-    parser=argparse.ArgumentParser();parser.add_argument('case');parser.add_argument('directory',type=Path);parser.add_argument('--input-only',action='store_true')
+-    args=parser.parse_args();main(args.case,args.directory,args.input_only)
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/gmsh_reference/audit_reference.py
++++ src/human_vessel_flow/reference_pipe/audit_reference.py
+@@ -1,26 +1,5 @@
+-"""Read-only scientific gates and lossless Gmsh -> existing linear-tetra interface."""
+-from pathlib import Path
+-import hashlib
+-import itertools
+-import json
+-import sys
+-import argparse
+-
++"""Exact finite-facet radial error, retained from Gmsh V2 QA."""
+ import numpy as np
+-import pyvista as pv
+-from scipy.sparse import coo_matrix
+-from scipy.sparse.csgraph import connected_components
+-
+-HERE = Path(__file__).resolve().parent
+-sys.path.insert(0, str(HERE.parent/'scripts'))
+-from pipe_surface_qa import surface_qa
+-from pipe_probe_geometry import frozen_probes, strict_cells
+-from audit_pipe_fidelity import boundary_profile
+-
+-
+-def stats(x):
+-    return dict(zip(['min', 'P5', 'median', 'P95', 'max'], map(float, np.quantile(x, [0, .05, .5, .95, 1]))))
+-
+ 
+ def finite_facet_deviation(xyz, radius):
+     """Exact max radial deviation on each planar triangle, not centroid sagitta."""
+@@ -36,169 +15,3 @@
+     inside = (np.all(signs > 0, axis=1) | np.all(signs < 0, axis=1))
+     minima[inside] = 0
+     return np.maximum(np.abs(radius-minima), np.max(np.abs(np.linalg.norm(xy, axis=2)-radius), axis=1))
+-
+-
+-def main(v2=False):
+-    plan_path = HERE/('GMSH_REFERENCE_MESH_V2_PLAN.json' if v2 else 'GMSH_REFERENCE_MESH_PLAN.json')
+-    plan = json.loads(plan_path.read_text())
+-    out = HERE/('candidate_v2' if v2 else 'candidate_0')
+-    identity = json.loads((out/'IDENTITY.json').read_text())
+-    radius, length = plan['radius_m'], plan['length_m']
+-    with np.load(out/'RAW_MESH.npz') as data:
+-        points, tetra = data['points_m'], data['tetra']
+-        cad, cad_role = data['cad_triangles'], data['cad_role']
+-        gmsh_nodes, gmsh_tets = data['gmsh_node_ids'], data['gmsh_tet_ids']
+-    signed = np.linalg.det(points[tetra[:, 1:]]-points[tetra[:, :1]])/6
+-    faces = np.concatenate([tetra[:, f] for f in [(0,1,2),(0,1,3),(0,2,3),(1,2,3)]])
+-    owners = np.tile(np.arange(len(tetra)), 4)
+-    keys, first, inv, count = np.unique(np.sort(faces, axis=1), axis=0, return_index=True, return_inverse=True, return_counts=True)
+-    order = np.argsort(inv, kind='stable')
+-    starts = np.r_[0, np.cumsum(count)[:-1]]
+-    shared = owners[order[np.c_[starts[count==2], starts[count==2]+1]]]
+-    graph = coo_matrix((np.ones(2*len(shared)),
+-                       (np.r_[shared[:,0],shared[:,1]], np.r_[shared[:,1],shared[:,0]])),
+-                      shape=(len(tetra),len(tetra))).tocsr()
+-    components = int(connected_components(graph, directed=False)[0])
+-    lookup = {tuple(k):i for i,k in enumerate(keys)}
+-    cad_keys = np.sort(cad, axis=1)
+-    cad_ids = np.array([lookup.get(tuple(k), -1) for k in cad_keys])
+-    matched = cad_ids >= 0
+-    expected = np.where(cad_role > 0, 1, 2)
+-    conforming = bool(np.all(matched) and np.all(count[cad_ids] == expected))
+-    cad_duplicate = len(cad_keys)-len(np.unique(cad_keys, axis=0))
+-    boundary = faces[first[count == 1]].copy()
+-    adjacent = owners[first[count == 1]]
+-    xyz = points[boundary]
+-    normals = np.cross(xyz[:,1]-xyz[:,0], xyz[:,2]-xyz[:,0])
+-    flip = np.einsum('ni,ni->n', normals, xyz.mean(1)-points[tetra[adjacent]].mean(1)) < 0
+-    boundary[flip] = boundary[flip][:,[0,2,1]]
+-    role_lookup = {tuple(k):int(v) for k,v in zip(cad_keys[cad_role > 0], cad_role[cad_role > 0])}
+-    tags = np.array([role_lookup.get(tuple(sorted(k)), 0) for k in boundary], np.int32)
+-    mesh = out/'mesh'
+-    mesh.mkdir(exist_ok=False)
+-    grid = pv.UnstructuredGrid(np.c_[np.full(len(tetra), 4), tetra].ravel(), np.full(len(tetra), 10, np.uint8), points)
+-    grid.point_data['GlobalNodeID'] = np.arange(1,len(points)+1, dtype=np.int32)
+-    grid.cell_data['GlobalElementID'] = np.arange(1,len(tetra)+1, dtype=np.int32)
+-    grid.point_data['GmshNodeID'] = gmsh_nodes
+-    grid.cell_data['GmshElementID'] = gmsh_tets
+-    grid.save(mesh/'volume.vtu')
+-    def surface(selected, path):
+-        node, index = np.unique(boundary[selected], return_inverse=True)
+-        poly = pv.PolyData(points[node], np.c_[np.full(sum(selected), 3), index.reshape(-1,3)].ravel())
+-        poly.point_data['GlobalNodeID'] = (node+1).astype(np.int32)
+-        poly.cell_data['GlobalElementID'] = (adjacent[selected]+1).astype(np.int32)
+-        poly.cell_data['ModelFaceID'] = tags[selected]
+-        poly.save(path)
+-        return poly
+-    surface(np.ones(len(boundary), dtype=bool), mesh/'audited_exterior.vtp')
+-    caps = {}
+-    for tag, name in [(1,'WALL'),(2,'INLET'),(3,'OUTLET_01')]:
+-        poly = surface(tags == tag, mesh/(name+'.vtp'))
+-        if tag != 1:
+-            caps[name], velocity = boundary_profile(poly, radius)
+-            if v2:
+-                center_id = int(np.argmin(np.linalg.norm(poly.points[:,:2],axis=1)))
+-                caps[name].update(center_radius_m=float(np.linalg.norm(poly.points[center_id,:2])),
+-                                 center_velocity_m_s=float(velocity[center_id]))
+-                caps[name]['center_pass'] = bool(caps[name]['center_radius_m']<1e-12 and abs(velocity[center_id]-.2)<1e-12)
+-    ext = surface_qa(mesh/'audited_exterior.vtp', radius, length)
+-    wall = points[boundary[tags == 1]]
+-    center = wall.mean(1)
+-    central = (center[:,2]>=.4*length) & (center[:,2]<=.6*length)
+-    wall_grid_comparison = None
+-    if v2:
+-        with np.load(HERE/'candidate_0/mesh/BOUNDARY_TOPOLOGY.npz') as previous:
+-            old_wall = previous['points_m'][previous['boundary_triangles'][previous['facet_tags']==1]]
+-        old_center = old_wall.mean(1)
+-        old_wall = old_wall[(old_center[:,2]>=.4*length)&(old_center[:,2]<=.6*length)]
+-        def coordinate_rows(triangles):
+-            # Comparison only: native mesh points are never rounded or moved.
+-            vertices = np.round(triangles,12)
+-            order = np.lexsort((vertices[:,:,2],vertices[:,:,1],vertices[:,:,0]),axis=1)
+-            rows = np.take_along_axis(vertices,order[:,:,None],axis=1).reshape(-1,9)
+-            return rows[np.lexsort(rows[:,::-1].T[::-1])]
+-        a,b = coordinate_rows(old_wall),coordinate_rows(wall[central])
+-        same = a.shape==b.shape and np.array_equal(a,b)
+-        wall_grid_comparison = dict(PASS=bool(same),old_facets=len(a),new_facets=len(b),
+-                                    comparison_roundoff_m=1e-12,
+-                                    definition='Coordinate triangle sets in central slab, independent of node IDs; comparison rounding only, no mesh modification')
+-    n = np.cross(wall[:,1]-wall[:,0],wall[:,2]-wall[:,0])
+-    n /= np.linalg.norm(n, axis=1)[:,None]
+-    altitude = np.abs(np.einsum('nvi,ni->nv',points[tetra[adjacent[tags == 1]]]-center[:,None,:],n)).max(1)
+-    # Include every triangle intersecting the central slab for a conservative
+-    # finite-facet bound; these triangles span fixed straight axial intervals.
+-    intersects = (wall[:,:,2].max(1)>=.4*length) & (wall[:,:,2].min(1)<=.6*length)
+-    deviation = finite_facet_deviation(wall[intersects], radius)
+-    edges = np.array(list(itertools.combinations(range(4),2)))
+-    distance = radius-np.linalg.norm(points[tetra].mean(1)[:,:2], axis=1)
+-    bulk_ids = np.flatnonzero(distance>=150e-6)
+-    bulk = np.linalg.norm(points[tetra[bulk_ids][:,edges[:,0]]]-points[tetra[bulk_ids][:,edges[:,1]]],axis=2).mean(1)
+-    z_bulk = points[tetra[bulk_ids]].mean(1)[:,2]
+-    central_bulk = bulk[(z_bulk>=.4*length)&(z_bulk<=.6*length)]
+-    central_bulk_stats = stats(central_bulk)
+-    height_stats, bulk_stats = stats(altitude[central]), stats(bulk)
+-    _, nc = np.unique(points, axis=0, return_counts=True)
+-    wall_nodes = np.unique(boundary[tags==1])
+-    allwall = np.all(np.isin(tetra, wall_nodes), axis=1)
+-    ratio = (central_bulk_stats if v2 else bulk_stats)['median']/plan['bulk_metric_P0_m']
+-    checks = dict(nonempty=len(tetra)>0, first_order_tetra_only=identity['volume_element_properties']==[['Tetrahedron 4',3,1,4]],
+-                  zero_volume_absent=bool(np.all(signed != 0)), inverted_absent=bool(np.all(signed > 0)),
+-                  duplicate_tetra_absent=len(np.unique(np.sort(tetra,axis=1),axis=0))==len(tetra),
+-                  connected_volume=components==1, manifold_volume=bool(np.all(count<=2)),
+-                  closed_oriented_labelled_surface=ext['status']=='PASS',
+-                  roles_preserved=set(tags)=={1,2,3}, internal_interfaces_conforming=conforming,
+-                  duplicate_CAD_faces_absent=cad_duplicate==0, duplicate_nodes_absent=bool(np.all(nc==1)),
+-                  finite_volume=bool(np.isfinite(points).all() and np.isfinite(signed).all() and signed.sum()>0),
+-                  ends_preserved=max(p['axial_coordinate_max_error_m'] for p in ext['ports'].values())<=1e-12,
+-                  finite_facet_geometry=float(deviation.max())<=.05e-6,
+-                  wall_altitude=20e-6<=height_stats['median']<=30e-6,
+-                  bulk_scale=.75<=ratio<=1.25)
+-    if v2:
+-        checks['cap_trace'] = all(c['PASS'] and c['center_pass'] and c['rim_analytic_coordinate_roundoff_m_s']<1e-12 for c in caps.values())
+-        checks['central_wall_grid_unchanged'] = wall_grid_comparison['PASS']
+-    proto = json.loads((HERE.parent/'manufactured_pipe/PROTOCOL.json').read_text())
+-    levels, probes, groups, planes, angles = frozen_probes(proto,radius,length)
+-    probe_cells, _ = strict_cells(grid,points,tetra,probes)
+-    if v2:
+-        checks['strict_frozen_probe_coverage'] = bool(np.all(probe_cells>=0))
+-    np.savez_compressed(mesh/'BOUNDARY_TOPOLOGY.npz',points_m=points,tetra=tetra,boundary_triangles=boundary,
+-                        facet_tags=tags,adjacent_tetra=adjacent,all_wall_tetra_ids=np.flatnonzero(allwall))
+-    np.savez_compressed(out/'QA_SAMPLES.npz', central_altitude_m=altitude[central],
+-                        central_wall_centers_m=center[central],bulk_mean_edge_m=bulk,
+-                        central_bulk_mean_edge_m=central_bulk,
+-                        central_facet_deviation_m=deviation, probes_m=probes,probe_cell=probe_cells)
+-    result = dict(status='GMSH_REFERENCE_MESH_PASS' if all(checks.values()) else 'REFERENCE_MESH_FAIL',
+-                  VALIDATION_ONLY=True, checks=checks, points=len(points),tetra=len(tetra),
+-                  zero_volume=int(sum(signed==0)), negative_inverted=int(sum(signed<0)),
+-                  duplicate_tetra=len(tetra)-len(np.unique(np.sort(tetra,axis=1),axis=0)),
+-                  volume_components=components, surface=ext, all_WALL_tetra_count=int(sum(allwall)),
+-                  internal_CAD_triangles=int(sum(cad_role==0)), CAD_face_multiplicity_pass=conforming,
+-                  duplicate_CAD_triangles=cad_duplicate,
+-                  wall_altitude_m=height_stats, bulk_mean_edge_m=bulk_stats, bulk_P0_ratio=ratio,
+-                  historical_matched_central_bulk=dict(z_over_L=[.4,.6], wall_distance_min_m=150e-6,
+-                      count=len(central_bulk), mean_edge_m=central_bulk_stats,
+-                      P0_ratio=central_bulk_stats['median']/plan['bulk_metric_P0_m'],
+-                      gate_pass=.75<=central_bulk_stats['median']/plan['bulk_metric_P0_m']<=1.25),
+-                  bulk_scope_note='Full-length statistics follow the new plan; the frozen P0 183.512362 um reference was central z/L=0.4-0.6. The separately reported central comparison matches its population. Neither can be replaced by nominal size.',
+-                  central_finite_facet_deviation_max_m=float(deviation.max()),
+-                  strict_frozen_probes=dict(total=len(probes),inside=int(sum(probe_cells>=0))),
+-                  cap_analytical_trace_diagnostic=caps, identity=identity,
+-                  volume_sha256=hashlib.sha256((mesh/'volume.vtu').read_bytes()).hexdigest(),
+-                  correction_permitted=bool(all(v for k,v in checks.items() if k not in ['wall_altitude','bulk_scale'])
+-                                            and not checks['wall_altitude'] and 15e-6<=height_stats['median']<=35e-6),
+-                  physics_or_BraVa_modified=False)
+-    if v2:
+-        result.update(status='GMSH_REFERENCE_MESH_V2_PASS' if all(checks.values()) else 'REFERENCE_MESH_FAIL_FINAL',
+-                      central_wall_grid_comparison=wall_grid_comparison,
+-                      correction_permitted=False,bulk_scope_note='Gate uses central z/L=0.4-0.6 and centroid d_wall>=150 um, identical to P0. Full-length bulk_mean_edge_m is diagnostic only.',
+-                      QA_source_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest())
+-    result_path = HERE.parent/'GMSH_REFERENCE_MESH_V2_RESULT.json' if v2 else HERE/'GMSH_REFERENCE_MESH_RESULT.json'
+-    result_path.write_text(json.dumps(result,indent=2)+'\n')
+-    (mesh/'NATIVE_MESH_QA.json').write_text(json.dumps(dict(result,status='PASS' if all(checks.values()) else 'FAIL'),indent=2)+'\n')
+-    print(json.dumps({k:v for k,v in result.items() if k not in ['identity','surface']},indent=2))
+-
+-
+-if __name__ == '__main__':
+-    parser=argparse.ArgumentParser()
+-    parser.add_argument('--v2',action='store_true')
+-    main(parser.parse_args().v2)
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/gmsh_reference/field_error_decomposition.py
++++ src/human_vessel_flow/reference_pipe/field_error_decomposition.py
+@@ -1,23 +1,12 @@
+-"""Read-only frozen V2 decomposition; no meshing, CFD or acceptance changes."""
+-from pathlib import Path
+-import hashlib,json,sys
++"""Original frozen V2 error decomposition and classification thresholds."""
+ import numpy as np
+-import pyvista as pv
+-HERE=Path(__file__).resolve().parent
+-ROOT=HERE.parent
+-sys.path.insert(0,str(ROOT/'scripts'))
+-from poiseuille import reference
+-from pipe_probe_geometry import strict_cells
+-from particle_field_inputs import curl,shear
+-CASE=ROOT/'manufactured_pipe/R1_GMSH_V2/cfd_gpu'
+-OUT=HERE/'error_diagnosis'
+-def read(p):return json.loads(Path(p).read_text())
+-def sha(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()
+-def put(p,d):Path(p).write_text(json.dumps(d,indent=2,allow_nan=False)+'\n')
++
+ def magnitude(x):return np.linalg.norm(x.reshape(len(x),-1),axis=1)
++
+ def stats(x):
+  a=magnitude(x);l2=float(np.linalg.norm(a));rms=l2/np.sqrt(len(a))
+  return dict(L2=l2,RMS=rms,median=float(np.median(a)),P95=float(np.percentile(a,95)),max=float(a.max()))
++
+ def decompose(actual,space,exact):
+  total=actual-exact;es=space-exact;ed=actual-space;den=float(np.linalg.norm(exact));ns=float(np.linalg.norm(es));nd=float(np.linalg.norm(ed));nt=float(np.linalg.norm(total))
+  cross=float(2*np.sum(es*ed)/den**2)
+@@ -30,144 +19,10 @@
+   alignment_cosine=float(np.sum(es*ed)/(ns*nd)) if min(ns,nd)>64*np.finfo(float).eps*den else None,
+   point_identity_max_abs=point_res,energy_identity_abs_residual=energy_res,exact_L2=den,exact_RMS=den/np.sqrt(len(exact)),
+   total_absolute=stats(total),space_absolute=stats(es),discrete_absolute=stats(ed))
++
+ def classification(d):
+  # PASS takes precedence in the overlapping user rules: a passing CFD band remains PASS.
+  if d['total_relative_L2']<=.05:return 'PASS'
+  if d['space_relative_L2']>.05:
+   return 'P1_SPACE_LIMIT_SUPPORTED' if d['discrete_relative_L2']<=.05 else 'MIXED_ERROR'
+  return 'DISCRETE_SOLUTION_LIMIT_SUPPORTED'
+-def load_inputs():
+- f=read(ROOT/'FIELD_VALIDATION.json');ident=read(ROOT/'GPU_MANUFACTURED_RUN_IDENTITY.json')
+- assert f['status']=='REFERENCE_PIPE_FIELD_FAIL_SCIENTIFIC'
+- assert f['GPU_execution_identity_sha256']==sha(ROOT/'GPU_MANUFACTURED_RUN_IDENTITY.json')
+- for k,h in f['source_sha256'].items():assert sha(ROOT/k)==h,k
+- for k in ['final_VTU','final_native_checkpoint']:
+-  s=ident['steady_saved_state'];assert sha(ROOT/s[k])==s[k+'_sha256']
+- with np.load(CASE/'SV_MESH/mesh_arrays.npz') as data:points=data['points_m'];tets=data['tetra']
+- with np.load(CASE/'analysis/FIELD_SAMPLES.npz') as data:frozen={k:data[k] for k in data.files}
+- plan=read(HERE/'GMSH_REFERENCE_MESH_V2_PLAN.json');proto=read(ROOT/'manufactured_pipe/PROTOCOL.json')
+- return f,ident,points,tets,frozen,plan,proto
+-
+-def main():
+- OUT.mkdir(exist_ok=True)
+- f,ident,points,tets,v,plan,proto=load_inputs()
+- radius,length=plan['radius_m'],plan['length_m'];mean,mu=proto['mean_velocity_m_s'],proto['mu_Pa_s']
+- exact=lambda x:reference(x,radius,length,mean,mu)
+- # Direct exact values at EVERY node. No wall reset, CFD data or recovered gradients.
+- node=exact(points)['u_m_s'];dx=points[tets[:,1:]]-points[tets[:,:1]]
+- gp=np.linalg.solve(dx,node[tets[:,1:]]-node[tets[:,:1]]).transpose(0,2,1)
+- grid=pv.read(CASE/'SV_MESH/mesh-complete.mesh.vtu')
+- def sample(x,c=None):
+-  if c is None:c,_=strict_cells(grid,points,tets,x)
+-  assert np.all(c>=0),'No moving, extrapolation or deletion permitted'
+-  b=np.linalg.solve(dx[c].transpose(0,2,1),(x-points[tets[c,0]])[...,None])[...,0];w=np.c_[1-b.sum(1),b]
+-  return c,w,np.einsum('ni,nij->nj',w,node[tets[c]]),np.einsum('ni,nij->nj',w,v['nodal_velocity'][tets[c]])
+- x=v['points_m'];c,w,up,uc=sample(x,v['cell'])
+- sampling_roundoff=float(np.max(np.abs(uc-v['velocity'])))
+- assert sampling_roundoff<=64*np.finfo(float).eps*np.max(np.abs(v['nodal_velocity']))
+- uc=v['velocity']  # authoritative saved probe values, not recomputed CFD metrics
+- ue=exact(x)['u_m_s'];ge=exact(x)['G_s_inv'];gc=v['gradient']
+- assert np.array_equal(ue,v['exact_velocity'])
+- n=-np.c_[x[:,:2]/np.linalg.norm(x[:,:2],axis=1)[:,None],np.zeros(len(x))]
+- fields={'G':(gc,gp[c],ge),'s':(shear(gc,n),shear(gp[c],n),shear(ge,n)),'curl':(curl(gc),curl(gp[c]),curl(ge))}
+- rows=[]
+- offsets=points[tets[c]]-x[:,None,:];radial=-n
+- # Exact quadratic Jensen deficit, separated in the local radial/tangential plane.
+- vr=np.einsum('nij,nj->ni',offsets,radial)**2
+- tangential=np.c_[-radial[:,1],radial[:,0],np.zeros(len(x))]
+- vt=np.einsum('nij,nj->ni',offsets,tangential)**2
+- er=-2*mean/radius**2*np.sum(w*vr,axis=1);et=-2*mean/radius**2*np.sum(w*vt,axis=1)
+- assert np.max(np.abs(er+et-(up-ue)[:,2]))<1e-15
+- for g,old in enumerate(f['groups']):
+-  m=v['groups']==g;d=decompose(uc[m],up[m],ue[m]);assert abs(d['total_relative_L2']-old['metrics']['u']['relative_L2'])<1e-14
+-  derivative={k:decompose(a[m],b[m],e[m]) for k,(a,b,e) in fields.items()}
+-  for k,val in derivative.items():assert abs(val['total_relative_L2']-old['metrics'][k]['relative_L2'])<1e-12
+-  axial={k:stats(val[m,2:3]) for k,val in [('total',uc-ue),('space',up-ue),('discrete',uc-up)]}
+-  transverse={k:dict(**stats(val[m,:2]),RMS_um_s=stats(val[m,:2])['RMS']*1e6,RMS_over_Umean=stats(val[m,:2])['RMS']/mean) for k,val in [('CFD',uc),('P1',up)]}
+-  for name in ['total_absolute','space_absolute','discrete_absolute']:
+-   d[name]['RMS_mm_s']=d[name]['RMS']*1e3;d[name]['RMS_over_Umean']=d[name]['RMS']/mean
+-   d[name]['L2_mm_s']=d[name]['L2']*1e3
+-   d[name]['statistics_mm_s']={key:value*1e3 for key,value in stats({'total_absolute':uc-ue,'space_absolute':up-ue,'discrete_absolute':uc-up}[name][m]).items()}
+-  d['exact_L2_mm_s']=d['exact_L2']*1e3;d['exact_RMS_mm_s']=d['exact_RMS']*1e3
+-  for name,val in [('CFD',uc),('P1',up)]:
+-   transverse[name]['statistics_um_s']={key:value*1e6 for key,value in stats(val[m,:2]).items()}
+-  den=np.linalg.norm(ue[m])
+-  rows.append(dict(wall_distance_m=old['wall_distance_m'],role=old['role'],samples=int(m.sum()),velocity=d,axial_absolute_m_s=axial,
+-   transverse_absolute=transverse,derivatives=derivative,classification=classification(d),
+-   quadratic_space_identity=dict(radial_relative_L2=float(np.linalg.norm(er[m])/den),tangential_relative_L2=float(np.linalg.norm(et[m])/den)),
+-   old_wall_zero_interpolant_max_difference_m_s=float(np.max(np.abs(up[m]-v['interpolant_velocity'][m])))))
+- # Predeclared 16 rays, theta=(j+1/2)*2pi/16, central z=L/2; 3840 or fewer points.
+- depths=np.unique(np.r_[np.geomspace(.1e-6,25e-6,80),np.linspace(25e-6,radius,161)])
+- theta=(np.arange(16)+.5)*2*np.pi/16
+- xx=np.stack([(radius-depths[:,None])*np.cos(theta),(radius-depths[:,None])*np.sin(theta),np.full((len(depths),16),length/2)],axis=-1).reshape(-1,3)
+- cr,wr,ur,hr=sample(xx);ar=exact(xx)['u_m_s']
+- profile={}
+- for key,a in [('P1',ur),('CFD',hr)]:
+-  delta=(a-ar)[:,2].reshape(-1,16);ex=ar[:,2].reshape(-1,16)
+-  rel=np.linalg.norm(delta,axis=1)/np.linalg.norm(ex,axis=1)
+-  stable={}
+-  for threshold in [.05,.04,.03]:
+-   good=rel<=threshold;ids=np.flatnonzero(np.logical_and.accumulate(good[::-1])[::-1])
+-   sustained=[k for k in range(len(depths)-9) if good[k:k+10].all()]
+-   stable[str(threshold)]=dict(first_below_and_stays_to_center_m=float(depths[ids[0]]) if len(ids) else None,
+-    first_ten_consecutive_samples_start_m=float(depths[sustained[0]]) if sustained else None,
+-    first_ten_consecutive_samples_end_m=float(depths[sustained[0]+9]) if sustained else None)
+-  profile[key]=dict(relative_axial_L2=rel.tolist(),axial_RMS_m_s=np.sqrt(np.mean(delta**2,axis=1)).tolist(),stable_thresholds=stable)
+- # Limited zero-CFD localization analysis, only discrete-limited failing bulk bands.
+- localization=[]
+- edges=np.stack([points[tets[:,j]]-points[tets[:,i]] for i in range(4) for j in range(i+1,4)],axis=1)
+- for g,row in enumerate(rows):
+-  if row['role']!='BULK' or row['classification']!='DISCRETE_SOLUTION_LIMIT_SUPPORTED':continue
+-  m=v['groups']==g;cc=c[m];xxp=x[m];error=uc[m]-up[m];mag=magnitude(error)
+-  centroid=points[tets[cc]].mean(1);dc=radius-np.linalg.norm(centroid[:,:2],axis=1)
+-  ed=edges[cc];ed/=np.linalg.norm(ed,axis=2)[:,:,None]
+-  feats=dict(distance_to_inlet_m=xxp[:,2],distance_to_outlet_m=length-xxp[:,2],distance_to_nearest_cap_m=np.minimum(xxp[:,2],length-xxp[:,2]),
+-    cell_centroid_distance_to_shell_m=np.min(abs(dc[:,None]-np.array([25,50,75])*1e-6),axis=1),
+-    mean_edge_axial_alignment=np.mean(abs(ed[:,:,2]),axis=1),mean_edge_radial_alignment=np.mean(abs(np.einsum('nij,nj->ni',ed,-n[m])),axis=1))
+-  correlations={key:float(np.corrcoef(value,mag)[0,1]) if np.ptp(value)>64*np.finfo(float).eps*max(np.max(abs(value)),1e-12) and np.ptp(mag)>1e-16 else None for key,value in feats.items()}
+-  by_z=[dict(z_over_L=float(z/length),**stats(error[np.isclose(xxp[:,2],z,rtol=0,atol=1e-15)])) for z in np.unique(xxp[:,2])]
+-  localization.append(dict(wall_distance_m=row['wall_distance_m'],correlation_with_discrete_error_magnitude=correlations,
+-    notable_associations=[k for k,vv in correlations.items() if vv is not None and abs(vv)>=.5],
+-    by_axial_plane=by_z,axial_absolute_m_s=stats(error[:,2:3]),transverse_absolute_m_s=stats(error[:,:2]),
+-    scope='96 frozen points at z/L=0.4,0.5,0.6 only; association is not causation; cannot diagnose end regions directly'))
+- qa=read(ROOT/'GMSH_REFERENCE_MESH_V2_RESULT.json');hwall=qa['wall_altitude_m']['median']
+- wall_candidates=[dict(wall_distance_m=r['wall_distance_m'],space_relative_L2=r['velocity']['space_relative_L2'],h_wall_estimate_m=hwall*np.sqrt(.04/r['velocity']['space_relative_L2'])) for r in rows if r['role']=='PARTICLE_RELEVANT']
+- hrec=min(hwall,min(q['h_wall_estimate_m'] for q in wall_candidates));hrec=np.floor(hrec*1e6)/1e6
+- bulk_candidates=[dict(wall_distance_m=r['wall_distance_m'],space_relative_L2=r['velocity']['space_relative_L2'],target_estimate_m=plan['bulk_size_m']*np.sqrt(.04/r['velocity']['space_relative_L2'])) for r in rows if r['role']=='BULK' and r['classification']=='P1_SPACE_LIMIT_SUPPORTED']
+- bulk_min=min([v['target_estimate_m'] for v in bulk_candidates],default=plan['bulk_size_m'])
+- near=next(r for r in rows if r['role']=='PARTICLE_RELEVANT')
+- radial_term=near['quadratic_space_identity']['radial_relative_L2']
+- tangential_term=near['quadratic_space_identity']['tangential_relative_L2']
+- chord_limit=plan['actual_wall_chord_m']*np.sqrt(max(0.,.04-radial_term)/tangential_term)
+- angular=int(np.ceil((2*np.pi*radius/chord_limit)/4)*4)
+- proposed_chord=2*radius*np.sin(np.pi/angular)
+- proposal=dict(status='PROPOSAL_ONLY',mesh_generated=False,CFD_runs=0,design_model='h_new=h_old*sqrt(0.04/E_space); local design estimate, NOT a verified convergence rate',
+-  recommended_wall_altitude_m=float(hrec),wall_estimates=wall_candidates,old_wall_altitude_m=hwall,
+-  old_bulk_target_m=plan['bulk_size_m'],bulk_estimates=bulk_candidates,recommended_bulk_target_range_m=[float(np.ceil(.9*bulk_min*1e6/10)*10e-6),float(np.floor(bulk_min*1e6/10)*10e-6)],
+-  wall_altitude_alone_sufficient=False,
+-  tangential_design_estimate=dict(current_chord_m=plan['actual_wall_chord_m'],current_intervals=plan['circumferential_intervals'],
+-    allowable_chord_m=float(chord_limit),proposed_intervals_multiple_of_four=angular,proposed_chord_m=float(proposed_chord),
+-    proposed_sagitta_m=float(radius*(1-np.cos(np.pi/angular))),
+-    rule='Retain measured radial-error norm without assuming it improves; require radial_norm + tangential_norm*(chord_new/chord_old)^2 <=0.04. Conditional design model only.',
+-    same_cylinder_geometry=True,requires_conforming_cap_rim_if_ever_authorized=True),
+-  bulk_scope='Only representation-supported failing central core bands; do not globally refine the 29.8/59.7 um discrete-limited shell/transition regions',
+-  caveats=['Fixed-point near-wall errors need not scale as h squared when only normal altitude changes.',
+-   'Tangential quadratic interpolation error and finite wall facets remain; wall recommendation is necessary estimate, not a guaranteed PASS.',
+-   'Passing bands are not failures and do not drive global refinement. No solver, BC, cap or acceptance change authorized.'])
+- put(ROOT/'PROPOSED_V3_MESH_POLICY.json',proposal)
+- inputs={str(p.relative_to(ROOT)):sha(p) for p in [ROOT/'FIELD_VALIDATION.json',ROOT/'GPU_MANUFACTURED_RUN_IDENTITY.json',CASE/'analysis/FIELD_SAMPLES.npz',CASE/'SV_MESH/mesh_arrays.npz',HERE/'candidate_v2/QA_SAMPLES.npz',ROOT/'PARTICLE_CFD_INPUT_CONTRACT.json',Path(__file__)]}
+- result=dict(status='MIXED_FIELD_ERROR',DIAGNOSTIC_ONLY=True,CFD_runs=0,mesh_changes=False,original_field_gate_unchanged=True,input_sha256=inputs,
+-  point_count=960,units=dict(velocity='m/s unless explicitly suffixed',gradient_s_curl='1/s',Umean_m_s=mean),CFD_reconstruction_max_roundoff_m_s=sampling_roundoff,exact_P1_nodal_wall_values_not_overwritten=True,classification_precedence='PASS first, then A/B/C for failing bands',
+-  vector_identity='e_total=e_space+e_discrete; verified with 32 eps field-scale tolerance; energy with 128 eps energy-scale tolerance',
+-  cross_term_units='Dimensionless squared relative norm; not percent; multiply by 10000 for percent-squared',
+-  alignment_zero_policy='N/A if either error norm <=64 eps times reference norm',groups=rows,
+-  radial_profile=dict(z_over_L=.5,ray_count=16,point_count=len(xx),theta_rad=theta.tolist(),wall_distances_m=depths.tolist(),fields=profile,
+-   stability_definition='Report first qualifying point that stays below threshold to center, plus explicitly limited first ten-consecutive-sample window'),
+-  discrete_bulk_localization=localization,localization_definition='Pearson |r|>=0.5 is a descriptive association flag only; constant features=N/A',
+-  proposal_sha256=sha(ROOT/'PROPOSED_V3_MESH_POLICY.json'))
+- np.savez_compressed(OUT/'DECOMPOSITION_SAMPLES.npz',points_m=x,cell=c,groups=v['groups'],u_exact=ue,u_P1=up,u_CFD=uc,G_P1=gp[c],
+-  quadratic_radial_error_m_s=er,quadratic_tangential_error_m_s=et,radial_points_m=xx,radial_cell=cr,radial_u_exact=ar,radial_u_P1=ur,radial_u_CFD=hr)
+- result['sample_sha256']=sha(OUT/'DECOMPOSITION_SAMPLES.npz')
+- put(ROOT/'V2_FIELD_ERROR_DECOMPOSITION.json',result)
+- print(json.dumps(dict(status=result['status'],groups=[dict(d_um=r['wall_distance_m']*1e6,classification=r['classification'],total=r['velocity']['total_relative_L2'],space=r['velocity']['space_relative_L2'],discrete=r['velocity']['discrete_relative_L2'],cos=r['velocity']['alignment_cosine']) for r in rows],proposal=proposal),indent=2))
+-if __name__=='__main__':main()
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/gmsh_reference/gpu_manufactured.py
++++ src/human_vessel_flow/reference_pipe/gpu_manufactured.py
+@@ -1,37 +1,5 @@
+-"""Execute frozen V2 through the existing formal BraVa GPU runner, without tuning."""
+-from pathlib import Path
+-import argparse
+-import hashlib
+-import json
+-import os
+-import re
+-import shlex
+-import shutil
+-import subprocess
+-import sys
+-import time
+-
+-ROOT = Path(__file__).resolve().parents[1]
+-PROJECT = ROOT.parent
+-OLD = ROOT / 'manufactured_pipe/R1_GMSH_V2/cfd'
+-CASE = OLD.parent / 'cfd_gpu'
+-IDENTITY = ROOT / 'GPU_MANUFACTURED_RUN_IDENTITY.json'
+-STACK = Path('/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy')
+-
+-
+-def sha(path):
+-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+-
+-
+-def read(path):
+-    return json.loads(Path(path).read_text())
+-
+-
+-def put(path, value):
+-    pending = Path(path).with_suffix(Path(path).suffix + '.pending')
+-    pending.write_text(json.dumps(value, indent=2, allow_nan=False) + '\n')
+-    pending.replace(path)
+-
++"""Original native backend/option checks, without the historical launcher."""
++import re, shlex
+ 
+ def science_options(text):
+     tokens = shlex.split(text)
+@@ -40,7 +8,6 @@
+         del tokens[index:index + 2]
+     return [value for value in tokens if value != '-log_view_gpu_time']
+ 
+-
+ def backend_evidence(text):
+     # Only actual PETSc object views qualify; command-line requests do not.
+     types = set(re.findall(r'^\s*type:\s*(\w+)\s*$', text, re.M))
+@@ -48,7 +15,6 @@
+     vector = sorted(types & {'cuda', 'seqcuda', 'mpicuda'})
+     return dict(verified=bool(matrix and vector), matrix_types=matrix,
+                 vector_types=vector, device_backend='CUDA' if matrix and vector else None)
+-
+ 
+ def fatal_reason(text):
+     if re.search(r'DIVERGED_\w+', text):
+@@ -59,184 +25,3 @@
+                  r'error while loading shared libraries|lib.*not found', text, re.I):
+         return 'GPU_BACKEND_OR_DEVICE_ERROR'
+     return None
+-
+-
+-def prepare():
+-    assert not CASE.exists() and not IDENTITY.exists(), 'Never overwrite a run'
+-    authority = PROJECT / 'cases/balanced_pressure_final'
+-    production = read(authority / 'reports/execution.json')
+-    assert production['status'] == 'PASS'
+-    options = (authority / 'run/PETSC_OPTIONS.txt').read_text().strip()
+-    assert options == production['PETSC_OPTIONS']
+-    assert science_options(options) == science_options((OLD / 'run/PETSC_OPTIONS.txt').read_text())
+-    build = read(STACK / 'sv1_3q/reports/svmp_reuse_build.json')
+-    binary = PROJECT / 'gpu_solver_fix/svmultiphysics'
+-    library = Path(build['PETSc_build']['prefix']) / 'lib/libpetsc.so'
+-    assert sha(binary) == production['solver_sha256']
+-    assert sha(library) == production['PETSc_library_sha256']
+-    reuse = STACK / 'sv1_3q/external/svMultiPhysics-reuse/Code/Source/solver/sv13q_reuse.h'
+-    reuse_policy = STACK / 'sv1_3q/configs/policy.json'
+-    assert sha(reuse) == 'db635f95a7e0c187fa9768f1a836b57034bef4aca4319c2c24b0cd8fbddae220'
+-    assert sha(reuse_policy) == '410fb4d14dc817e8c96986d627ca322e8cc097557baf6109c88be000599da77a'
+-    hashes = read(OLD / 'input_hashes.json')
+-    for name, expected in hashes.items():
+-        assert sha(OLD / name) == expected, name
+-    qa = read(ROOT / 'GMSH_REFERENCE_MESH_V2_RESULT.json')
+-    assert qa['status'] == 'GMSH_REFERENCE_MESH_V2_PASS' and all(qa['checks'].values())
+-    assert hashes['SV_MESH/mesh-complete.mesh.vtu'] == qa['volume_sha256']
+-    assert sha(ROOT / 'gmsh_reference/candidate_v2/mesh/volume.vtu') == qa['volume_sha256']
+-    sys.path.insert(0, str(PROJECT / 'vendor'))
+-    from flow_solver_support.transient_checks import checkpoint_audit
+-    checkpoint = checkpoint_audit(OLD / 'run/8-procs/stFile_010.bin', 10, .01, ranks=8)
+-    CASE.mkdir()
+-    (CASE / 'run').mkdir()
+-    (CASE / 'reports').mkdir()
+-    shutil.copytree(OLD / 'SV_MESH', CASE / 'SV_MESH')
+-    for name in ('solver.xml', 'inlet_exact_velocity.dat', 'outlet_exact_traction.vtp'):
+-        shutil.copy2(OLD / 'run' / name, CASE / 'run' / name)
+-    (CASE / 'run/PETSC_OPTIONS.txt').write_text(options + '\n')
+-    policy = read(OLD / 'policy.json')
+-    assert policy['MPI_ranks'] == production['MPI_ranks'] == 8
+-    policy.update(maximum_wall_time_s=14400,
+-                  resource_plan='Formal BraVa GPU production: 8 MPI ranks share visible GPU 0; OMP=1; unchanged RA/ASM/local CPU LU')
+-    put(CASE / 'policy.json', policy)
+-    shutil.copy2(OLD / 'reports/FROZEN_SOLVER_IDENTITY.json', CASE / 'reports/SCIENTIFIC_BASELINE_IDENTITY.json')
+-    input_hashes = {name: sha(CASE / name) for name in hashes}
+-    put(CASE / 'input_hashes.json', input_hashes)
+-    assert {k: v for k, v in input_hashes.items() if k not in ('policy.json', 'run/PETSC_OPTIONS.txt')} == {
+-        k: v for k, v in hashes.items() if k not in ('policy.json', 'run/PETSC_OPTIONS.txt')}
+-    command = production['command']
+-    assert command == [build['PETSc_build']['candidate_wrapper'], build['PETSc_build']['launcher'],
+-                       '-n', '8', build['PETSc_build']['candidate_wrapper'], str(binary), 'solver.xml']
+-    gpu = subprocess.check_output(['nvidia-smi', '--query-gpu=name,driver_version,memory.total,uuid',
+-                                   '--format=csv,noheader'], text=True).strip()
+-    runtime = subprocess.check_output(['/usr/local/cuda/bin/nvcc', '--version'], text=True).strip()
+-    identity = dict(status='PREPARED_GPU_ONLY', VALIDATION_ONLY=True,
+-        execution_authority='cases/balanced_pressure_final/reports/execution.json',
+-        execution_authority_sha256=sha(authority / 'reports/execution.json'),
+-        scientific_authority='manufactured_pipe/R1_GMSH_V2/cfd',
+-        case=str(CASE.relative_to(ROOT)), mesh_sha256=qa['volume_sha256'],
+-        scientific_input_hashes={k: v for k, v in input_hashes.items() if k not in ('policy.json', 'run/PETSC_OPTIONS.txt')},
+-        solver_xml_byte_identical=True, PETSc_scientific_options_equal=True,
+-        solver_binary=str(binary), solver_sha256=sha(binary), PETSc_library=str(library),
+-        PETSc_library_sha256=sha(library), PETSC_OPTIONS=options,
+-        PETSC_OPTIONS_sha256=sha(CASE / 'run/PETSC_OPTIONS.txt'),
+-        command=command, MPI_ranks=8, OMP_NUM_THREADS=1, CUDA_VISIBLE_DEVICES='0',
+-        rank_GPU_mapping='All 8 historical production ranks share the single visible GPU 0',
+-        use_gpu_aware_mpi=False, host=gpu, CUDA_toolkit=runtime,
+-        runtime_library_path=build['runtime_library_path'],
+-        environment_wrapper_sha256=sha(command[0]), MPI_launcher_sha256=sha(command[1]),
+-        preconditioner_reuse=dict(policy='RA', option='-sv_pc_adaptive_rebuild true',
+-            source=str(reuse), source_sha256=sha(reuse), reference_policy=str(reuse_policy),
+-            reference_policy_sha256=sha(reuse_policy), max_age_steps=5, growth_factor=1.5,
+-            execution_settings_authority='Formal BraVa execution, not the older one-rank policy experiment'),
+-        initial_state='GPU_FRESH_STEP0', restart_assessment=dict(
+-            native_checkpoint_valid=True, checkpoint_sha256=checkpoint['sha256'],
+-            complete_integration_history=True, same_binary_mesh_physics_ranks=True,
+-            selected=False, reason='No saved rank-local node-order mapping is available for an independent restart correspondence check. User permits fresh GPU when compatibility remains uncertain; no conversion.'),
+-        dt_s=policy['dt_s'], nonlinear_tolerance=policy['nonlinear_tolerance'],
+-        steady_policy={k: policy[k] for k in ('save_interval_steps', 'steady_last_intervals',
+-            'velocity_change_limit', 'flow_change_limit', 'mass_limit')},
+-        maximum_wall_time_s=14400, native_checkpoint_cadence=10, saved_VTU_cadence=10,
+-        runtime_backend=dict(verified=False), automatic_CPU_fallback=False, automatic_BraVa=False)
+-    put(IDENTITY, identity)
+-    put(CASE / 'reports/FROZEN_SOLVER_IDENTITY.json', identity)
+-    print(json.dumps(dict(status=identity['status'],case=identity['case'],MPI_ranks=8,
+-                         initial_state=identity['initial_state']), indent=2), flush=True)
+-
+-
+-def run():
+-    import psutil
+-    sys.path.insert(0, str(ROOT / 'scripts'))
+-    from managed_job import stop_tree
+-    identity = read(IDENTITY)
+-    assert identity['status'] == 'PREPARED_GPU_ONLY'
+-    assert not (CASE / 'run/solver.log').exists()
+-    identity.update(status='GPU_MANUFACTURED_RUNNING', started_unix=time.time())
+-    put(IDENTITY, identity)
+-    command = [sys.executable, str(ROOT / 'scripts/run_pipe_cfd.py'), '--case', str(CASE),
+-               '--reference-root', str(PROJECT)]
+-    proc = subprocess.Popen(command, start_new_session=True)
+-    offset = 0
+-    observed = {}
+-    log_text = ''
+-    samples = []
+-    failure = None
+-    start = time.monotonic()
+-    prior_cpu = 0.
+-    prior_time = start
+-    try:
+-        while proc.poll() is None:
+-            now = time.monotonic()
+-            cpu = 0.
+-            rss = 0
+-            try:
+-                parent = psutil.Process(proc.pid)
+-                for child in [parent] + parent.children(recursive=True):
+-                    try:
+-                        observed[(child.pid, child.create_time())] = child
+-                        times = child.cpu_times()
+-                        cpu += times.user + times.system
+-                        rss += child.memory_info().rss
+-                    except psutil.Error:
+-                        pass
+-            except psutil.Error:
+-                pass
+-            path = CASE / 'run/solver.log'
+-            chunk = ''
+-            if path.exists():
+-                with path.open(errors='replace') as stream:
+-                    stream.seek(offset)
+-                    chunk = stream.read()
+-                    offset = stream.tell()
+-                log_text += chunk
+-            evidence = backend_evidence(log_text)
+-            identity['runtime_backend'] = evidence
+-            failure = fatal_reason(chunk)
+-            if failure == 'GPU_BACKEND_OR_DEVICE_ERROR' and not evidence['verified']:
+-                failure = 'GPU_BACKEND_UNAVAILABLE'
+-            if not evidence['verified'] and len(re.findall(r'^\s*NS\s+\d+-', log_text, re.M)) >= 2:
+-                failure = 'GPU_BACKEND_UNAVAILABLE'
+-            if now - start >= 14400:
+-                failure = 'GPU_CFD_TIME_LIMIT'
+-            gpu = subprocess.check_output(['nvidia-smi', '--query-gpu=utilization.gpu,memory.used',
+-                                          '--format=csv,noheader,nounits'], text=True).strip()
+-            utilization, memory = map(float, gpu.split(','))
+-            samples.append(dict(elapsed_s=now-start, GPU_utilization_percent=utilization,
+-                GPU_memory_MiB=memory, CPU_cores=max(0.,cpu-prior_cpu)/max(now-prior_time,1e-6),
+-                tree_RSS_GiB=rss/2**30))
+-            prior_cpu, prior_time = cpu, now
+-            identity.update(wall_time_s=now-start, last_resource_sample=samples[-1],
+-                peak_VRAM_MiB_sampled=max(s['GPU_memory_MiB'] for s in samples),
+-                preconditioner_reuse_observed=bool(re.search(r'SV13Q_BEGIN.*policy=RA.*reuse=1', log_text)))
+-            put(IDENTITY, identity)
+-            if failure:
+-                stop_tree(proc, observed)
+-                break
+-            time.sleep(5)
+-    finally:
+-        if proc.poll() is None:
+-            stop_tree(proc, observed)
+-    code = proc.wait()
+-    put(CASE / 'reports/GPU_RESOURCE_SAMPLES.json', samples)
+-    identity.update(wrapper_exit_code=code, wall_time_s=time.monotonic()-start,
+-                    failure_reason=failure, completed_unix=time.time())
+-    execution_path = CASE / 'reports/execution.json'
+-    if execution_path.exists():
+-        result = read(execution_path)
+-        identity['execution_sha256'] = sha(execution_path)
+-        identity['final_step'] = result.get('final_step')
+-        passed = result['status'] == 'PASS' and code == 0 and failure is None and identity['runtime_backend']['verified']
+-    else:
+-        passed = False
+-    identity['status'] = 'GPU_MANUFACTURED_STEADY_PASS' if passed else failure or 'GPU_MANUFACTURED_CFD_FAIL'
+-    put(IDENTITY, identity)
+-    print(json.dumps({k: identity[k] for k in ('status', 'wall_time_s', 'runtime_backend', 'failure_reason')},indent=2),flush=True)
+-    return 0 if passed else 1
+-
+-
+-if __name__ == '__main__':
+-    parser = argparse.ArgumentParser()
+-    parser.add_argument('stage', choices=['prepare', 'run'])
+-    stage = parser.parse_args().stage
+-    sys.exit(prepare() if stage == 'prepare' else run())
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/scripts/managed_job.py
++++ src/human_vessel_flow/reference_pipe/managed_job.py
+@@ -1,4 +1,5 @@
+ """One supervised job with explicit limits, reclaimable-cache accounting and tree stop."""
++from ..paths import ROOT as PROJECT_ROOT
+ from pathlib import Path
+ import datetime
+ import json
+@@ -8,7 +9,7 @@
+ import time
+ import psutil
+ 
+-ROOT = Path(__file__).resolve().parents[1]
++ROOT = PROJECT_ROOT / 'diagnostics/reference_pipe'
+ 
+ 
+ def put(path, value):
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/scripts/particle_field_inputs.py
++++ src/human_vessel_flow/reference_pipe/particle_field_inputs.py
+@@ -1,31 +1,12 @@
+-"""Raw P1 u/G/shear/curl at the immutable manufactured probes; no CFD launch."""
+-from pathlib import Path
+-import argparse
+-import hashlib
+-import json
+-import sys
++"""Original P1 particle-field diagnostics in SI."""
+ import numpy as np
+-import pyvista as pv
+-
+-ROOT = Path(__file__).resolve().parents[1]
+-sys.path.insert(0, str(ROOT.parent/'vendor'))
+-from pipe_measurements import PipeMeasurements
+-from pipe_probe_geometry import frozen_probes, strict_cells
+-from poiseuille import reference
+-
+-
+-def sha(p):
+-    return hashlib.sha256(p.read_bytes()).hexdigest()
+-
+ 
+ def curl(g):
+     return np.stack([g[:,2,1]-g[:,1,2],g[:,0,2]-g[:,2,0],g[:,1,0]-g[:,0,1]],axis=1)
+ 
+-
+ def shear(g,n):
+     gn=np.einsum('nij,nj->ni',g,n)
+     return gn-n*np.sum(n*gn,axis=1)[:,None]
+-
+ 
+ def errors(actual,exact):
+     delta=(actual-exact).reshape(len(actual),-1)
+@@ -34,81 +15,3 @@
+                 absolute_RMS=norm/np.sqrt(len(actual)),
+                 max_absolute_error=float(np.linalg.norm(delta,axis=1).max()),
+                 reference_L2=den)
+-
+-
+-def analyze(name):
+-    case=ROOT/'manufactured_pipe'/name/'cfd'
+-    inp=ROOT/'straight_pipe/manufactured'/name/'INPUT.json'
+-    inputs=json.loads(inp.read_text());proto=json.loads((ROOT/'manufactured_pipe/PROTOCOL.json').read_text())
+-    execution=json.loads((case/'reports/execution.json').read_text());assert execution['status']=='PASS'
+-    previous=json.loads((case/'analysis/CALIBRATION.json').read_text())
+-    field_path=case/execution['final_vtu'];mesh_path=case/'SV_MESH/mesh-complete.mesh.vtu'
+-    for p in [field_path,mesh_path]:assert sha(p)==previous['source_sha256'][str(p.relative_to(ROOT))]
+-    m=PipeMeasurements(case/'SV_MESH/mesh_arrays.npz',inputs['analytic']['Q_m3_s'],proto['mean_velocity_m_s'])
+-    u,p=m.read(field_path);points,tets=m.points,m.tetra
+-    dx=points[tets[:,1:]]-points[tets[:,:1]]
+-    G=np.linalg.solve(dx,u[tets[:,1:]]-u[tets[:,:1]]).transpose(0,2,1)
+-    levels,x,groups,planes,angles=frozen_probes(proto,inputs['radius_m'],inputs['length_m'])
+-    frozen=np.load(case/'analysis/FIXED_PROBES.npz')
+-    assert np.array_equal(x,frozen['points_m'])
+-    cells,locators=strict_cells(pv.read(mesh_path),points,tets,x)
+-    assert np.array_equal(cells,frozen['cell']), 'Frozen containment decision changed'
+-    assert np.array_equal(G,frozen['gradient_all_tetra']), 'Raw P1 gradient changed'
+-    valid=cells>=0;uh=np.full((len(x),3),np.nan);gh=np.full((len(x),3,3),np.nan)
+-    c=cells[valid]
+-    b=np.linalg.solve(dx[c].transpose(0,2,1),(x[valid]-points[tets[c,0]])[...,None])[...,0]
+-    weights=np.c_[1-b.sum(axis=1),b]
+-    uh[valid]=np.einsum('ni,nij->nj',weights,u[tets[c]]);gh[valid]=G[c]
+-    assert np.array_equal(uh,frozen['velocity'])
+-    n=-np.c_[np.cos(angles),np.sin(angles),np.zeros(len(x))]
+-    exact=reference(x,inputs['radius_m'],inputs['length_m'],proto['mean_velocity_m_s'],proto['mu_Pa_s'])
+-    actual=dict(u=uh,G=gh,s=shear(gh,n),curl=curl(gh))
+-    expected=dict(u=exact['u_m_s'],G=exact['G_s_inv'],s=shear(exact['G_s_inv'],n),curl=curl(exact['G_s_inv']))
+-    rows=[]
+-    for group,d in enumerate(levels):
+-        mask=groups==group;role=proto['probe_roles'][group];complete=bool(valid[mask].all())
+-        metrics={k:errors(actual[k][mask],expected[k][mask]) if complete else None for k in actual}
+-        old=previous['samples'][group]
+-        if complete:assert abs(metrics['u']['relative_L2']-old['velocity_relative_L2'])<1e-14
+-        rows.append(dict(wall_distance_m=d,role=role,samples=int(mask.sum()),inside=int(valid[mask].sum()),
+-            complete_coverage=complete,metrics=metrics,old_du_dn_relative_L2=old['gradient_relative_L2'],
+-            WSS_diagnostic_relative_L2=old['raw_wall_WSS_relative_L2'],
+-            input_gates={k:complete and metrics[k]['relative_L2']<=limit for k,limit in [('u',.05),('G',.08),('s',.08),('curl',.08)]} if role=='PARTICLE_RELEVANT' else None))
+-    return dict(case=name,status='LEGACY_POSTPROCESS_ONLY',historical_status_unchanged=previous['status'],
+-        current_particle_input_gates_pass=all(all(q['input_gates'].values()) for q in rows if q['input_gates'] is not None),
+-        groups=rows,raw_WSS_relative_L2=previous['raw_WSS_relative_L2'],
+-        internal_sections=previous['interior_sections'],dp_dz_relative_error=previous['pressure_gradient_relative_error'],
+-        input_sha256={str(q.relative_to(ROOT)):sha(q) for q in [field_path,mesh_path,inp,case/'analysis/FIXED_PROBES.npz',case/'analysis/CALIBRATION.json']},
+-        probes_sha256=hashlib.sha256(np.ascontiguousarray(x).tobytes()).hexdigest(),
+-        raw_fields_and_saved_gradients_match=True,raw_velocity_and_cell_ids_match=True)
+-
+-
+-def main():
+-    ap=argparse.ArgumentParser();ap.add_argument('--legacy',action='store_true');args=ap.parse_args()
+-    assert args.legacy
+-    result=dict(schema='LEGACY_PARTICLE_INPUT_BASELINE_V1',CFD_runs=0,
+-        derivative_definition='G_ij=du_i/dx_j; inward analytic n=(-cos(theta),-sin(theta),0); s=(I-nn^T)G n; curl from same G',
+-        error_definition='absolute_L2=sqrt(sum over probes of squared vector/Frobenius error); RMS=L2/sqrt(N); max_absolute_error=max per-probe vector/Frobenius error',
+-        units=dict(u='m/s',G='1/s',s='1/s',curl='1/s'),
+-        smoothing=False,extrapolation=False,probe_changes=False,WSS_role='CFD_DERIVATIVE_DIAGNOSTIC',
+-        input_contract_sha256=sha(ROOT/'PARTICLE_CFD_INPUT_CONTRACT.json'),
+-        sources_sha256={n:sha(ROOT/'scripts'/n) for n in ['particle_field_inputs.py','pipe_probe_geometry.py','poiseuille.py','pipe_measurements.py']},
+-        cases=[analyze(n) for n in ['R1_P0','R1_P1']])
+-    (ROOT/'LEGACY_P0_P1_PARTICLE_INPUT_BASELINE.json').write_text(json.dumps(result,indent=2,allow_nan=False)+'\n')
+-    block=['\n<!-- LEGACY_INPUT_BASELINE_START -->','## 旧 P0/P1 的真实粒子输入基线（仅新增后处理）','',
+-        '直接读取已收敛原始场，重新严格定位并证明 probe 坐标、cell ID、u 和全部原始 P1 G 与保存数据一致。没有重新运行 CFD，旧 CALIBRATION.json 及其 FAIL 判定不变。下表每项均为相对 L2；五个 band 每组96点，G为完整张量，s/curl为完整向量。绝对 L2、RMS、最大逐点绝对误差及全部冻结探针见[基线 JSON](LEGACY_P0_P1_PARTICLE_INPUT_BASELINE.json)。','',
+-        '| Case | 壁距 µm | 覆盖 | u | G | s | curl | 旧 du/dn | WSS（诊断） |',
+-        '|---|---:|---:|---:|---:|---:|---:|---:|---:|']
+-    for case in result['cases']:
+-        for q in case['groups']:
+-            if q['role']!='PARTICLE_RELEVANT':continue
+-            values=[q['metrics'][k]['relative_L2'] for k in ['u','G','s','curl']]+[q['old_du_dn_relative_L2'],q['WSS_diagnostic_relative_L2']]
+-            block.append(f"| {case['case']} | {q['wall_distance_m']*1e6:g} | {q['inside']}/{q['samples']} | "+' | '.join(f'{v*100:.4f}%' for v in values)+' |')
+-    block.extend(['','WSS 的分类和 u/G/s/curl 门槛均沿用已冻结合同；没有根据这些新数值改变门槛。','<!-- LEGACY_INPUT_BASELINE_END -->',''])
+-    path=ROOT/'PARTICLE_CFD_INPUT_AUDIT_ZH.md';text=path.read_text()
+-    if '<!-- LEGACY_INPUT_BASELINE_START -->' in text:text=text[:text.index('<!-- LEGACY_INPUT_BASELINE_START -->')].rstrip()+'\n'
+-    path.write_text(text+'\n'.join(block))
+-    print('\n'.join(block))
+-
+-
+-if __name__=='__main__':main()
+--- /home/lzy/projects/computation_examples/_shared/particle_workflow/particle_3d/src/particle_3d/particle7_cases.py
++++ src/particle_3d/particle7_cases.py
+@@ -14,8 +14,8 @@
+ from .audit import read_frozen
+ from .field import FrozenFEMField
+ 
+-REPO=Path(__file__).resolve().parents[3]
+-SONOVUE=Path('/home/lzy/projects/sonovue_size_distribution_v0')
++REPO=Path(__file__).resolve().parents[2]
++SONOVUE=REPO/'inputs/distributions/sonovue'
+ 
+ 
+ def rectangle(a,b,c,d): return np.array([[a,b,c],[a,c,d]],float)
+--- /home/lzy/projects/computation_examples/_shared/particle_workflow/particle_3d/src/particle_3d/particle8_replay.py
++++ src/particle_3d/particle8_replay.py
+@@ -10,7 +10,7 @@
+ import math
+ import numpy as np
+ 
+-REPO = Path(__file__).resolve().parents[3]
++REPO = Path(__file__).resolve().parents[2]
+ P7 = REPO / 'particle_3d/reports/particle7'
+ DEFAULT_OUTPUT = REPO / 'particle_3d/reports/particle8'
+ SCHEMA = 'PARTICLE8_REPLAY_V1'
+--- /home/lzy/projects/computation_examples/_shared/particle_workflow/particle_3d/src/particle_3d/rbc_distribution.py
++++ src/particle_3d/rbc_distribution.py
+@@ -11,7 +11,7 @@
+ import platform
+ import numpy as np
+ 
+-DEFAULT_CONTRACT = Path(__file__).resolve().parents[2] / "contracts/C57BL6_RBC_GEOMETRY_DISTRIBUTION_V0.json"
++DEFAULT_CONTRACT = Path(__file__).resolve().parents[2] / "docs/provenance/inherited_contracts/C57BL6_RBC_GEOMETRY_DISTRIBUTION_V0.json"
+ DISTRIBUTION_ID = "C57BL6_RBC_GEOMETRY_DISTRIBUTION_V0"
+ COLUMNS = ["rbc_id", "candidate_id", "D_um", "V_fL", "a_um", "b_um", "c_um",
+            "a_m", "b_m", "c_m", "volume_m3", "r", "jeffery_lambda"]
+--- /home/lzy/projects/computation_examples/_shared/particle_workflow/particle_3d/src/particle_3d/sonovue_adapter.py
++++ src/particle_3d/sonovue_adapter.py
+@@ -1,7 +1,7 @@
+-"""Thin read-only adapter to the separately frozen SonoVue sampler; no copied sampler."""
++"""Read-only frozen SonoVue adapter using the project's normal imported sampler."""
+ from dataclasses import dataclass, asdict
+ import hashlib
+-import importlib.util
++import sonovue_sampler
+ import json
+ from pathlib import Path
+ import platform
+@@ -42,18 +42,19 @@
+         path = (root / relative).resolve()
+         if not path.is_relative_to(root):
+             raise ValueError("SonoVue manifest path escapes root")
++        if relative == 'src/sonovue_sampler.py':
++            path = Path(sonovue_sampler.__file__).resolve()
+         check_hash(path, digest)
+         receipt[relative] = digest
+     contract = json.loads((root / "contracts/SONOVUE_SAMPLER_CONTRACT_V0.json").read_text())
+     if contract["status"] != "FROZEN_VALIDATED_PASS":
+         raise ValueError("SonoVue contract is not frozen/validated")
+-    source = root / contract["sampler_source_file"]
++    if contract["sampler_source_file"] != 'src/sonovue_sampler.py':
++        raise ValueError('Unexpected frozen sampler module')
++    source = Path(sonovue_sampler.__file__).resolve()
+     check_hash(source, contract["sampler_source_sha256"])
+     check_hash(root / contract["histogram_file"], contract["histogram_sha256"])
+-    spec = importlib.util.spec_from_file_location("particle1_external_frozen_sonovue", source)
+-    module = importlib.util.module_from_spec(spec)
+-    # Executes the original module in memory; never writes a copied module/pyc.
+-    exec(compile(source.read_bytes(), str(source), "exec"), module.__dict__)
++    module = sonovue_sampler
+     if module.SAMPLER_VERSION != contract["sampler_version"]:
+         raise ValueError("SonoVue version differs from frozen contract")
+     distribution = module.SonoVueDistribution(root / contract["histogram_file"])
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/vendor/vascular_validation/execution.py
++++ src/vascular_validation/execution.py
+@@ -6,7 +6,7 @@
+ from pathlib import Path
+ from .provenance import now, write_json
+ 
+-ROOT = Path(__file__).resolve().parents[3]
++ROOT = Path(__file__).resolve().parents[2]
+ 
+ 
+ def read_resource_log(path):
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/vendor/vascular_validation/visuals.py
++++ src/vascular_validation/visuals.py
+@@ -1,7 +1,7 @@
+ """Scientific figures from actual geometry and result arrays, rendered on the CPU."""
+ import os
+ from pathlib import Path
+-ROOT = Path(__file__).resolve().parents[3]
++ROOT = Path(__file__).resolve().parents[2]
+ os.environ['LIBGL_ALWAYS_SOFTWARE'] = '1'
+ os.environ['MPLCONFIGDIR'] = str(ROOT / 'outputs/mesh_and_flow/plot_cache')
+ import matplotlib
+--- /home/lzy/projects/computation_examples/_shared/particle_workflow/particle_3d/tests/population_v1/test_phase4.py
++++ tests/population_v1/test_phase4.py
+@@ -20,11 +20,8 @@
+     tri=np.array([[[-1e-4,-2e-5,1e-5],[-1e-4,0,1e-5],[-1e-4,-2e-5,3e-5]],
+                   [[-1e-4,0,1e-5],[-1e-4,2e-5,1e-5],[-1e-4,0,3e-5]]])
+     env.sampler=InletFluxSampler(tri,np.array([[.01,.01,.03],[.01,.01,.03]]))
+-    root=Path(__file__).resolve()
+-    candidates=[Path('/home/lzy/projects/sonovue_size_distribution_v0'),*list(root.parents)]
+-    found=next((p for p in candidates if (p/'contracts/SONOVUE_SAMPLER_CONTRACT_V0.json').exists()),None)
+-    if found is None:
+-        found=next(p/'sonovue_size_distribution_v0' for p in root.parents if (p/'sonovue_size_distribution_v0/contracts/SONOVUE_SAMPLER_CONTRACT_V0.json').exists())
++    from human_vessel_flow.paths import ROOT
++    found=ROOT/'inputs/distributions/sonovue'
+     env.distribution=TruncatedSonoVue(found);env.flow_sha256='SYNTHETIC_TEST_EXPLICITLY_NOT_PRODUCTION'
+     env.checker=FiniteSizeAdmission(None,None,wall=env.wall,field=env.field)
+     return env
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/tests/test_exact_cylinder_diagnostic.py
++++ tests/reference_pipe/test_exact_cylinder_diagnostic.py
+@@ -2,11 +2,7 @@
+ from pathlib import Path
+ import json,sys
+ import numpy as np
+-ROOT=Path(__file__).resolve().parents[1]
+-c=json.loads((ROOT/'PARTICLE_CFD_INPUT_CONTRACT.json').read_text())
+-source=c['source_server_root'] if str(ROOT).startswith('/workspace') else c['source_local_root']
+-sys.path[:0]=[str(Path(source).parent),str(ROOT/'gmsh_reference')]
+-from exact_cylinder_particle import (ExactCylinder,exact_gap,exact_certificate,exact_first_handoff,exact_constraints)
++from human_vessel_flow.reference_pipe.exact_cylinder_particle import (ExactCylinder,exact_gap,exact_certificate,exact_first_handoff,exact_constraints)
+ from particle_3d.particle_shapes import Sphere
+ from particle_3d.nearfield_regularization import NearFieldRegularizationV1
+ 
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/tests/test_field_error_decomposition.py
++++ tests/reference_pipe/test_field_error_decomposition.py
+@@ -2,8 +2,7 @@
+ from pathlib import Path
+ import sys
+ import numpy as np
+-sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'gmsh_reference'))
+-from field_error_decomposition import decompose,classification
++from human_vessel_flow.reference_pipe.field_error_decomposition import decompose,classification
+ 
+ def test_opposed_errors_cancel_without_subtracting_norms():
+  exact=np.array([[0.,0.,1.]])
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/tests/test_gmsh_geometry_gate.py
++++ tests/reference_pipe/test_gmsh_geometry_gate.py
+@@ -3,8 +3,7 @@
+ import sys
+ import numpy as np
+ 
+-sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'gmsh_reference'))
+-from audit_reference import finite_facet_deviation
++from human_vessel_flow.reference_pipe.audit_reference import finite_facet_deviation
+ 
+ 
+ def test_cylindrical_chord_uses_edge_minimum_not_triangle_centroid():
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/tests/test_gpu_manufactured_identity.py
++++ tests/reference_pipe/test_gpu_manufactured_identity.py
+@@ -1,11 +1,7 @@
+ """Guards against silent fallback and accidental scientific-option changes."""
+-import importlib.util
+ from pathlib import Path
+ 
+-PATH = Path(__file__).resolve().parents[1] / 'gmsh_reference/gpu_manufactured.py'
+-SPEC = importlib.util.spec_from_file_location('gpu_manufactured', PATH)
+-MODULE = importlib.util.module_from_spec(SPEC)
+-SPEC.loader.exec_module(MODULE)
++from human_vessel_flow.reference_pipe import gpu_manufactured as MODULE
+ 
+ 
+ def test_requested_gpu_does_not_certify_native_backend():
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/tests/test_reference_interfaces.py
++++ tests/reference_pipe/test_reference_interfaces.py
+@@ -4,9 +4,8 @@
+ import numpy as np
+ import pyvista as pv
+ import pytest
+-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
+-from pipe_probe_geometry import strict_cells
+-from poiseuille import reference
++from human_vessel_flow.reference_pipe.pipe_probe_geometry import strict_cells
++from human_vessel_flow.reference_pipe.poiseuille import reference
+ 
+ 
+ @pytest.fixture
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/tests/test_serialized_output.py
++++ tests/reference_pipe/test_serialized_output.py
+@@ -6,8 +6,7 @@
+ import pytest
+ 
+ ROOT=Path(__file__).resolve().parents[1]
+-sys.path[:0]=[str(ROOT.parent/'vendor'),str(ROOT/'scripts')]
+-from pipe_measurements import serialized_node_mapping
++from human_vessel_flow.reference_pipe.pipe_measurements import serialized_node_mapping
+ 
+ 
+ @pytest.fixture
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/production_workflow/tests/test_supervisor_stop.py
++++ tests/reference_pipe/test_supervisor_stop.py
+@@ -5,8 +5,7 @@
+ import time
+ import psutil
+ 
+-sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
+-from managed_job import stop_tree
++from human_vessel_flow.reference_pipe.managed_job import stop_tree
+ 
+ 
+ def test_kill_resistant_descendant_without_pidfd(monkeypatch):
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/population_v1/analysis/speed_event_cause_review/test_diagnostics.py
++++ tests/test_event_diagnostics.py
+@@ -5,9 +5,10 @@
+ import numpy as np
+ import pytest
+ from scipy import sparse
+-from diagnostic_core import held_alignment, increment_loads, segment_cells, strict_probe
++from human_vessel_flow.event_diagnostics import held_alignment, increment_loads, segment_cells, strict_probe
+ 
+-HERE=Path(__file__).resolve().parent
++from human_vessel_flow.paths import ROOT
++HERE=ROOT/'diagnostics/field_events/speed_event_cause_review'
+ 
+ 
+ def test_held_velocity_alignment_and_birth_row():

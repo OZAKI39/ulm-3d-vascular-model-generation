@@ -1,0 +1,93 @@
+--- a/set_bc.cpp
++++ b/set_bc.cpp
+@@ -1,3 +1,4 @@
++#include "dispatch_trace.h"
+ // SPDX-FileCopyrightText: Copyright (c) Stanford University, The Regents of the University of California, and others.
+ // SPDX-License-Identifier: BSD-3-Clause
+ 
+@@ -933,6 +934,7 @@
+ //
+ void set_bc_dir(ComMod& com_mod, SolutionStates& solutions)
+ {
++  dispatch_trace::hit("set_bc_dir");
+   // Local aliases for solution arrays
+   auto& An = solutions.current.get_acceleration();
+   auto& Yn = solutions.current.get_velocity();
+@@ -1157,6 +1159,7 @@
+ //
+ void set_bc_dir_l(ComMod& com_mod, const bcType& lBc, const faceType& lFa, Array<double>& lA, Array<double>& lY, int lDof)
+ {
++  dispatch_trace::hit("set_bc_dir_l",lFa.name);
+   using namespace consts;
+ 
+   #define n_debug_set_bc_dir_l
+@@ -1218,6 +1221,7 @@
+ //
+ void set_bc_dir_w(ComMod& com_mod, const SolutionStates& solutions)
+ {
++  dispatch_trace::hit("set_bc_dir_w");
+   using namespace consts;
+ 
+   const int cEq = com_mod.cEq;
+@@ -1238,6 +1242,7 @@
+ //
+ void set_bc_dir_wl(ComMod& com_mod, const bcType& lBc, const mshType& lM, const faceType& lFa, const SolutionStates& solutions)
+ {
++  dispatch_trace::hit("set_bc_dir_wl",lFa.name);
+   // Local aliases for solution arrays
+   const auto& Do = solutions.old.get_displacement();
+   const auto& Yg = solutions.intermediate.get_velocity();
+@@ -1471,6 +1476,7 @@
+ //
+ void set_bc_neu(ComMod& com_mod, const CmMod& cm_mod, const SolutionStates& solutions)
+ {
++  dispatch_trace::hit("set_bc_neu");
+   const auto& Yn = solutions.current.get_velocity();
+   const auto& Do = solutions.old.get_displacement();
+ 
+@@ -1520,6 +1526,7 @@
+ //
+ void set_bc_neu_l(ComMod& com_mod, const CmMod& cm_mod, const bcType& lBc, const faceType& lFa, const SolutionStates& solutions)
+ {
++  dispatch_trace::hit("set_bc_neu_l",lFa.name);
+   const auto& Yn = solutions.current.get_velocity();
+   const auto& Do = solutions.old.get_displacement();
+   const auto& Yg = solutions.intermediate.get_velocity();
+@@ -1925,6 +1932,7 @@
+ //
+ void set_bc_trac_l(ComMod& com_mod, const CmMod& cm_mod, const bcType& lBc, const faceType& lFa, const SolutionStates& solutions)
+ {
++  dispatch_trace::hit("set_bc_trac_l",lFa.name);
+   // Local alias for old displacement
+   const auto& Do = solutions.old.get_displacement();
+ 
+--- a/nn.cpp
++++ b/nn.cpp
+@@ -1,3 +1,4 @@
++#include "dispatch_trace.h"
+ // SPDX-FileCopyrightText: Copyright (c) Stanford University, The Regents of the University of California, and others.
+ // SPDX-License-Identifier: BSD-3-Clause
+ 
+@@ -676,6 +677,7 @@
+     const Array<double>& xib, const Array<double>& Nb, const Vector<double>& xp, Vector<double>& xi, 
+     Vector<double>& N, Array<double>& Nx)
+ {
++  dispatch_trace::hit("get_nnx",std::to_string(eNoN));
+   #define n_debug_get_nnx 
+   #ifdef debug_get_nnx 
+   DebugMsg dmsg(__func__, com_mod.cm.idcm());
+--- a/eq_assem.cpp
++++ b/eq_assem.cpp
+@@ -1,3 +1,4 @@
++#include "dispatch_trace.h"
+ // SPDX-FileCopyrightText: Copyright (c) Stanford University, The Regents of the University of California, and others.
+ // SPDX-License-Identifier: BSD-3-Clause
+ 
+@@ -31,6 +32,7 @@
+ 
+ void b_assem_neu_bc(ComMod& com_mod, const faceType& lFa, const Vector<double>& hg, const SolutionStates& solutions)
+ {
++  dispatch_trace::hit("b_assem_neu_bc",lFa.name);
+   // Local aliases for solution arrays
+   const auto& Do = solutions.old.get_displacement();
+   const auto& Yg = solutions.intermediate.get_velocity();

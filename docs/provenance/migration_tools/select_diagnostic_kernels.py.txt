@@ -1,0 +1,53 @@
+"""Keep current numerical diagnostics, excluding retired launch/build campaigns."""
+from pathlib import Path
+import ast, json, shutil, difflib
+from inventory_sources import ROOT, B, sha, dump
+
+def select_functions(source, names, header):
+    text=source.read_text();tree=ast.parse(text)
+    definitions={n.name:n for n in tree.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+    return header+'\n\n'+'\n\n'.join(ast.get_source_segment(text,definitions[name]) for name in names)+'\n'
+
+def main():
+    folder=ROOT/'src/human_vessel_flow/reference_pipe'
+    keep={'__init__','poiseuille','pipe_measurements','pipe_probe_geometry','exact_cylinder_particle','managed_job','pipe_surface_qa'}
+    reductions={
+        'field_error_decomposition':(['magnitude','stats','decompose','classification'],'"""Original frozen V2 error decomposition and classification thresholds."""\nimport numpy as np'),
+        'gpu_manufactured':(['science_options','backend_evidence','fatal_reason'],'"""Original native backend/option checks, without the historical launcher."""\nimport re, shlex'),
+        'audit_reference':(['finite_facet_deviation'],'"""Exact finite-facet radial error, retained from Gmsh V2 QA."""\nimport numpy as np'),
+        'audit_pipe_fidelity':(['boundary_profile'],'"""Original P1 cap trace quadrature; no field correction."""\nimport numpy as np'),
+        'particle_field_inputs':(['curl','shear','errors'],'"""Original P1 particle-field diagnostics in SI."""\nimport numpy as np')}
+    selections=[]
+    for p in folder.glob('*.py'):
+        if p.stem in reductions:
+            names,header=reductions[p.stem];original=B/'production_workflow'/('gmsh_reference' if p.stem in {'field_error_decomposition','gpu_manufactured','audit_reference'} else 'scripts')/p.name
+            p.write_text(select_functions(original,names,header));selections.append(dict(source=str(original),source_sha256=sha(original),destination=str(p.relative_to(ROOT)),functions=names,new_sha256=sha(p)))
+        elif p.stem not in keep:
+            selections.append(dict(destination=str(p.relative_to(ROOT)),decision='NOT_ACTIVE: retired campaign or report launcher; original workspace preserved'))
+            p.unlink()
+    analysis=B/'population_v1/analysis'
+    additions=[(analysis/'speed_event_cause_review/diagnostic_core.py','src/human_vessel_flow/event_diagnostics.py','source'),
+               (analysis/'speed_event_cause_review/test_diagnostics.py','tests/test_event_diagnostics.py','test'),
+               (analysis/'p2_linear_algebra_review_20261006/gpu_budget.py','src/human_vessel_flow/p2_gpu_budget.py','source'),
+               (B/'production_workflow/manufactured_pipe/PROTOCOL.json','diagnostics/reference_pipe/manufactured_pipe/PROTOCOL.json','immutable_contract')]
+    pre=[dict(source=str(s),destination=d,category=k,size=s.stat().st_size,sha256=sha(s)) for s,d,k in additions]
+    curved=analysis/'common_curved_geometry_review_20261006/validate.py'
+    pre.append(dict(source=str(curved),destination='src/human_vessel_flow/p2_geometry.py',category='adapted_source',size=curved.stat().st_size,sha256=sha(curved)))
+    dump(ROOT/'docs/provenance/DIAGNOSTIC_SOURCES_BEFORE_COPY.json',pre)
+    for s,d,k in additions:
+        target=ROOT/d;target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(s,target)
+    target=ROOT/'tests/test_event_diagnostics.py'
+    text=target.read_text().replace('from diagnostic_core import','from human_vessel_flow.event_diagnostics import')
+    text=text.replace('HERE=Path(__file__).resolve().parent',"from human_vessel_flow.paths import ROOT\nHERE=ROOT/'diagnostics/field_events/speed_event_cause_review'")
+    target.write_text(text)
+    text=curved.read_text();constants=text[text.index('EDGES='):text.index('\ndef basis')]
+    functions=['basis','geometry','unpack','read_RK','fields']
+    header='"""Independent common-geometry reference; P2 CFD remains scientifically unqualified."""\nfrom pathlib import Path\nimport numpy as np\n\n'+constants
+    (ROOT/'src/human_vessel_flow/p2_geometry.py').write_text(select_functions(curved,functions,header))
+    # Imported support functions must stay inside this project, even for optional old helpers.
+    for foldername in ['vascular_validation','flow_solver_support']:
+        for p in (ROOT/'src'/foldername).glob('*.py'):
+            p.write_text(p.read_text().replace('Path(__file__).resolve().parents[3]','Path(__file__).resolve().parents[2]'))
+    dump(ROOT/'docs/provenance/CURRENT_DIAGNOSTIC_SELECTION.json',selections)
+
+if __name__=='__main__':main()

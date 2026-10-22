@@ -1,0 +1,24 @@
+"""Retain the original mesh audit as an explicit function with exclusive output."""
+from pathlib import Path
+import difflib
+from inventory_sources import ROOT, B, sha, dump
+
+def main():
+    source=B/'scripts/audit_mesh.py';text=source.read_text()
+    text=text.replace("ROOT = Path(__file__).resolve().parents[1]\nsys.path.insert(0, str(ROOT / 'vendor'))",'from .paths import ROOT, fresh_directory')
+    start=text.index('def main():');end=text.index("    generation =",start)
+    text=text[:start]+'''def audit_generated(raw, output, reference_surface=ROOT/'inputs/geometry/source_surface.npz'):
+    raw=Path(raw).resolve()
+    output=fresh_directory(output)
+    (output/'reports').mkdir()
+'''+text[end:]
+    text=text.replace("ROOT / 'inputs/source_surface.npz'",'reference_surface')
+    text=text.replace("    output = ROOT / 'mesh/SV_MESH'","    result_root=output\n    output = result_root / 'SV_MESH'")
+    text=text.replace("ROOT / 'reports/", "result_root / 'reports/")
+    text=text[:text.index("\n\nif __name__ == '__main__':")]
+    text+='\n    return dict(mesh=output,reports=result_root/\'reports\',validity=validity,quality=quality,geometry=geometry)\n'
+    target=ROOT/'src/human_vessel_flow/mesh_audit.py';target.write_text(text)
+    dump(ROOT/'docs/provenance/MESH_AUDIT_REFACTOR.json',dict(source=str(source),source_sha256=sha(source),destination=str(target.relative_to(ROOT)),new_sha256=sha(target),changes=['Normal imports','Explicit input and new output','No changes to topology, correspondence or quality tolerances']))
+    (ROOT/'docs/provenance/MESH_AUDIT_REFACTOR.patch').write_text(''.join(difflib.unified_diff(source.read_text().splitlines(True),text.splitlines(True),fromfile=str(source),tofile=str(target))))
+
+if __name__=='__main__':main()

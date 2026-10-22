@@ -1,0 +1,85 @@
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/scripts/solve_remote.py
++++ /home/lzy/projects/new_human_vessel_flow/src/human_vessel_flow/native_runner.py
+@@ -4,12 +4,6 @@
+ """
+ from pathlib import Path
+ import sys, os, json, time, subprocess, socket, hashlib, traceback, re, argparse, resource
+-parser=argparse.ArgumentParser()
+-parser.add_argument('--case', type=Path, required=True)
+-parser.add_argument('--reference-root', type=Path, required=True)
+-args=parser.parse_args()
+-ROOT = args.reference_root
+-sys.path.insert(0,str(ROOT/'vendor'))
+ from vascular_validation.postprocess import SolutionMeasurements
+ from flow_solver_support.steady_monitor import SteadyStopMonitor
+ from flow_solver_support.checkpoint_checks import checkpoint_one_rank
+@@ -23,8 +17,8 @@
+ def sha(p): return hashlib.sha256(Path(p).read_bytes()).hexdigest()
+ def capture(args): return subprocess.check_output(args,text=True).strip()
+ 
+-def main():
+-    case = args.case; run = case/'run'; reports = case/'reports'
++def run(case, native, measurement_class=SolutionMeasurements):
++    case=Path(case).resolve(); run=case/'run'; reports=case/'reports'
+     assert not (run/'solver.log').exists() and not (run/'STOP_SIM').exists(), 'No overwrite permitted'
+     for name, expected in json.loads((case/'input_hashes.json').read_text()).items():
+         assert sha(case/name)==expected, name
+@@ -33,29 +27,24 @@
+     result_dir=run/(str(ranks)+'-procs')
+     def checkpoint(path,step,dt):
+         return checkpoint_one_rank(path,step,dt) if ranks==1 else checkpoint_audit(path,step,dt,ranks=ranks)
+-    stack=Path('/workspace/formal_3D_flow_solver_FEM_SimVascular_lzy')
+-    build=json.loads((stack/'sv1_3q/reports/svmp_reuse_build.json').read_text())
+-    exe=build['executable']; w=build['PETSc_build']
+-    assert sha(exe)=='0e509fe21424b5b1f731c4b4f519839b0104bfb2aab0817b01556cc4054f7fc7'
+-    if policy.get('solver_build_manifest'):
+-        custom=json.loads((ROOT/policy['solver_build_manifest']).read_text())
+-        exe=custom['executable']
+-        assert sha(exe)==custom['executable_sha256']
+-        if not policy.get('backend_validation_case',False):
+-            assert json.loads((ROOT/'gpu_solver_fix/backend_equivalence.json').read_text())['passed']
+-
+-    assert sha(Path(w['prefix'])/'lib/libpetsc.so')=='b79e98d278e105aa8a1848bd08d66ef36a3e2425458610f97213d3fc8e45c5ef'
++    exe=native['executable']
++    if not exe:raise ValueError('Native production binary is not configured')
++    assert sha(exe)==native['executable_sha256']
++    library=Path(native['petsc_library'])
++    assert sha(library)==native['petsc_library_sha256']
++    w=dict(candidate_wrapper=native['wrapper'],launcher=native['mpi_launcher'])
++    build=dict(runtime_library_path=native['runtime_library_path'])
+     options=(run/'PETSC_OPTIONS.txt').read_text().strip()
+     env={k:os.environ[k] for k in ('HOME','USER','LOGNAME','LANG') if k in os.environ}
+-    env.update(PATH='/usr/bin:/bin:/usr/local/cuda/bin',LC_ALL='C',OMP_NUM_THREADS='1',
++    env.update(PATH='/usr/bin:/bin:/usr/local/cuda-12.6/bin:/usr/lib/wsl/lib',LC_ALL='C',OMP_NUM_THREADS='1',
+         CUDA_VISIBLE_DEVICES='0', LD_LIBRARY_PATH=build['runtime_library_path'], PETSC_OPTIONS=options)
+     command=[w['candidate_wrapper'],w['launcher'],'-n',str(ranks),w['candidate_wrapper'],exe,'solver.xml']
+-    host=dict(hostname=socket.gethostname(),remote=True,cpu=capture(['lscpu']),ram=capture(['free','-b']),
++    host=dict(hostname=socket.gethostname(),remote=False,cpu=capture(['lscpu']),ram=capture(['free','-b']),
+         gpu=capture(['nvidia-smi','--query-gpu=name,driver_version,memory.total','--format=csv,noheader']),
+         cgroup={p:Path(p).read_text().strip() for p in ('/sys/fs/cgroup/cpu.max','/sys/fs/cgroup/memory.max')},
+         output_path=str(case),python=sys.version)
+     write(reports/'host.json',host)
+-    measure=SolutionMeasurements(case/'SV_MESH/mesh_arrays.npz',policy['Q_target_m3_s'],policy['Umean_m_s'])
++    measure=measurement_class(Path(policy['mesh_arrays']),policy['Q_target_m3_s'],policy['Umean_m_s'])
+     monitor=SteadyStopMonitor(measure,policy); seen=set(); stop=None; errors=[]; samples=[]
+     start=time.time(); log=run/'solver.log'; peak_tree_rss_kib=0; peak_process_hwm_kib=0
+     import shutil
+@@ -102,7 +91,7 @@
+         code=proc.wait()
+     history=parse_solver_log(log.read_text(errors='replace'),dt)
+     record=dict(exit_code=code,wall_time_s=time.time()-start,start_unix=start,end_unix=time.time(),
+-        command=command,solver_sha256=sha(exe),PETSc_library_sha256=sha(Path(w['prefix'])/'lib/libpetsc.so'),
++        command=command,solver_sha256=sha(exe),PETSc_library_sha256=sha(library),
+         PETSC_OPTIONS=options,initial_state='zero',MPI_ranks=ranks,OMP_NUM_THREADS=1,history=history,
+         stop=stop,states=monitor.states,intervals=monitor.intervals,GPU_samples=samples,log_sha256=sha(log), peak_tree_RSS_MiB_sampled=peak_tree_rss_kib/1024, peak_single_process_HWM_MiB=peak_process_hwm_kib/1024, child_rusage_maxrss_MiB=resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss/1024, memory_method='5-second /proc sampling; tree RSS includes runner and descendants; process HWM and wait4 child high-water also recorded')
+     failures=[]
+@@ -123,7 +112,5 @@
+     write(reports/'execution.json',record)
+     print(json.dumps({k:record[k] for k in ('status','exit_code','wall_time_s','final_step','final','health_failures')},indent=2),flush=True)
+ 
+-if __name__=='__main__':
+-    try: main()
+-    except Exception:
+-        traceback.print_exc(); raise
++
++    return record

@@ -1,0 +1,50 @@
+13: const char *const PCFieldSplitSchurPreTypes[]  = {"SELF", "SELFP", "A11", "USER", "FULL", "PCFieldSplitSchurPreType", "PC_FIELDSPLIT_SCHUR_PRE_", NULL};
+53:   Mat                       schurp;     /* Assembled approximation to S built by MatSchurComplement to be used as a matrix for constructing the preconditioner when solving with S */
+96:   case PC_FIELDSPLIT_SCHUR_PRE_SELFP:
+172:   MatSchurComplementAinvType atype;
+188:     case PC_FIELDSPLIT_SCHUR_PRE_SELFP:
+190:         PetscCall(MatSchurComplementGetAinvType(jac->schur, &atype));
+598:     /*  MatCreateSubMatrix() for [S]BAIJ matrices can only work if the indices include entire blocks of the matrix */
+705:         PetscCall(MatCreateSubMatrix(pc->pmat, ilink->is, ilink->is_col, MAT_INITIAL_MATRIX, &jac->pmat[i]));
+741:       if (!pmat) PetscCall(MatCreateSubMatrix(pc->pmat, ilink->is, ilink->is_col, scall, &jac->pmat[i]));
+751:         PetscCall(MatCreateSubMatrix(pc->mat, ilink->is, ilink->is_col, MAT_INITIAL_MATRIX, &jac->mat[i]));
+765:         PetscCall(MatCreateSubMatrix(pc->mat, ilink->is, ilink->is_col, scall, &jac->mat[i]));
+793:           PetscCall(MatCreateSubMatrix(pc->mat, ilink->next->is, ilink->is, MAT_INITIAL_MATRIX, &jac->Afield[1]));
+795:           PetscCall(MatCreateSubMatrix(pc->pmat, ilink->next->is, ilink->is, MAT_INITIAL_MATRIX, &jac->Afield[1]));
+806:           PetscCall(MatCreateSubMatrix(pc->mat, ilink->next->is, ilink->is, scall, &jac->Afield[1]));
+808:           PetscCall(MatCreateSubMatrix(pc->pmat, ilink->next->is, ilink->is, scall, &jac->Afield[1]));
+816:             PetscCall(MatCreateSubMatrix(pc->mat, ilink->is, NULL, MAT_INITIAL_MATRIX, &jac->Afield[i]));
+818:             PetscCall(MatCreateSubMatrix(pc->pmat, ilink->is, NULL, MAT_INITIAL_MATRIX, &jac->Afield[i]));
+831:             PetscCall(MatCreateSubMatrix(pc->mat, ilink->is, NULL, scall, &jac->Afield[i]));
+833:             PetscCall(MatCreateSubMatrix(pc->pmat, ilink->is, NULL, scall, &jac->Afield[i]));
+865:       PetscCall(MatSchurComplementGetKSP(jac->schur, &kspInner));
+867:       PetscCall(MatCreateSubMatrix(jac->offdiag_use_amat ? pc->mat : pc->pmat, ilink->is, ilink->next->is, scall, &jac->B));
+868:       if (!flg) PetscCall(MatCreateSubMatrix(jac->offdiag_use_amat ? pc->mat : pc->pmat, ilink->next->is, ilink->is, scall, &jac->C));
+875:       PetscCall(MatSchurComplementUpdateSubMatrices(jac->schur, jac->mat[0], jac->pmat[0], jac->B, jac->C, jac->mat[1]));
+876:       if (jac->schurpre == PC_FIELDSPLIT_SCHUR_PRE_SELFP) {
+878:         PetscCall(MatSchurComplementGetPmat(jac->schur, MAT_INITIAL_MATRIX, &jac->schurp));
+881:         PetscCall(MatSchurComplementComputeExplicitOperator(jac->schur, &jac->schur_user));
+895:       PetscCall(MatCreateSubMatrix(jac->offdiag_use_amat ? pc->mat : pc->pmat, ilink->is, ilink->next->is, MAT_INITIAL_MATRIX, &jac->B));
+896:       if (!flg) PetscCall(MatCreateSubMatrix(jac->offdiag_use_amat ? pc->mat : pc->pmat, ilink->next->is, ilink->is, MAT_INITIAL_MATRIX, &jac->C));
+906:       PetscCall(MatSchurComplementSetSubMatrices(jac->schur, jac->mat[0], jac->pmat[0], jac->B, jac->C, jac->mat[1]));
+909:       PetscCall(MatSchurComplementGetKSP(jac->schur, &kspt));
+923:         PetscCall(MatSchurComplementGetKSP(jac->schur, &kspInner));
+949:         PetscCall(MatSchurComplementSetKSP(jac->schur, jac->head->ksp));
+960:         PetscCall(MatSchurComplementGetKSP(jac->schur, &kspInner));
+993:       if (jac->schurpre == PC_FIELDSPLIT_SCHUR_PRE_SELFP) PetscCall(MatSchurComplementGetPmat(jac->schur, MAT_INITIAL_MATRIX, &jac->schurp));
+1004:         if (jac->schurfactorization != PC_FIELDSPLIT_SCHUR_FACT_FULL || jac->kspupper != jac->head->ksp) PetscCall(MatSchurComplementComputeExplicitOperator(jac->schur, &jac->schur_user));
+1039:     PetscCall(MatCreateSubMatrix(jac->offdiag_use_amat ? pc->mat : pc->pmat, ilink->is, ilink->next->is, MAT_INITIAL_MATRIX, &jac->B));
+1044:     PetscCall(MatCreateSubMatrix(jac->offdiag_use_amat ? pc->mat : pc->pmat, ilink->next->is, ilink->is, MAT_INITIAL_MATRIX, &jac->C));
+1291:           PetscCall(MatSchurComplementComputeExplicitOperator(jac->schur, &jac->schur_user));
+1496:           PetscCall(MatSchurComplementComputeExplicitOperator(jac->schur, &jac->schur_user));
+2269:   PetscCall(MatSchurComplementGetKSP(jac->schur, *subksp));
+2833:               `PC_FIELDSPLIT_SCHUR_PRE_SELFP`, and `PC_FIELDSPLIT_SCHUR_PRE_FULL`
+2837: + -pc_fieldsplit_schur_precondition (self|selfp|user|a11|full) - default is `a11`. See notes for meaning of various arguments
+2850: .     selfp - the preconditioning for the Schur complement is generated from an explicitly-assembled approximation $ Sp = A11 - A10 inv(diag(A00)) A01 $
+2865:           `MatSchurComplementSetAinvType()`, `PCLSC`, `PCFieldSplitSetSchurFactType()`
+2922:           `MatCreateSchurComplement()`, `MatSchurComplementGetKSP()`, `MatSchurComplementComputeExplicitOperator()`, `MatGetSchurComplement()`
+2952: .seealso: [](sec_block_matrices), `PC`, `PCFieldSplitGetSubKSP()`, `PCFIELDSPLIT`, `PCFieldSplitSchurPreType`, `PCFieldSplitSetSchurPre()`, `MatSchurComplement`, `PCFieldSplitSchurGetS()`
+2967:   PetscCheck(S && (*S == jac->schur), PETSC_COMM_SELF, PETSC_ERR_ARG_WRONG, "MatSchurComplement restored is not the same as gotten");
+3116: .seealso: [](sec_block_matrices), `PC`, `PCFIELDSPLIT`, `MatSchurComplementGetSubMatrices()`, `MatSchurComplementSetSubMatrices()`
+3578: .   -pc_fieldsplit_schur_precondition (self|selfp|user|a11|full)                     - default is `a11`; see `PCFieldSplitSetSchurPre()`
+3672:           `MatSchurComplementSetAinvType()`, `PCFieldSplitSetSchurScale()`, `PCFieldSplitSetDetectSaddlePoint()`

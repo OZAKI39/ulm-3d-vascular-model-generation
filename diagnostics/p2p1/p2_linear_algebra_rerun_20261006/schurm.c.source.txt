@@ -1,0 +1,27 @@
+3: const char *const MatSchurComplementAinvTypes[] = {"DIAG", "LUMP", "BLOCKDIAG", "FULL", "MatSchurComplementAinvType", "MAT_SCHUR_COMPLEMENT_AINV_", NULL};
+110:   Na->ainvtype = MAT_SCHUR_COMPLEMENT_AINV_DIAG;
+111:   PetscCall(PetscOptionsEnum("-mat_schur_complement_ainv_type", "Type of approximation for DIAGFORM(A00) used when assembling Sp = A11 - A10 inv(DIAGFORM(A00)) A01", "MatSchurComplementSetAinvType", MatSchurComplementAinvTypes, (PetscEnum)Na->ainvtype,
+541:   PetscCall(MatMatMult(C, AinvBd, *S ? MAT_REUSE_MATRIX : MAT_INITIAL_MATRIX, PETSC_DETERMINE, S));
+642:              `MAT_SCHUR_COMPLEMENT_AINV_DIAG`, `MAT_SCHUR_COMPLEMENT_AINV_LUMP`, `MAT_SCHUR_COMPLEMENT_AINV_BLOCK_DIAG`, or `MAT_SCHUR_COMPLEMENT_AINV_FULL`
+647: - Sp - approximate Schur complement from which a preconditioner can be built $A11 - A10 inv(DIAGFORM(A00)) A01$
+705: - ainvtype - type of approximation to be used to form approximate Schur complement $Sp = A11 - A10 inv(DIAGFORM(A00)) A01$:
+706:              `MAT_SCHUR_COMPLEMENT_AINV_DIAG`, `MAT_SCHUR_COMPLEMENT_AINV_LUMP`, `MAT_SCHUR_COMPLEMENT_AINV_BLOCK_DIAG`, or `MAT_SCHUR_COMPLEMENT_AINV_FULL`
+726:   PetscCheck(ainvtype == MAT_SCHUR_COMPLEMENT_AINV_DIAG || ainvtype == MAT_SCHUR_COMPLEMENT_AINV_LUMP || ainvtype == MAT_SCHUR_COMPLEMENT_AINV_BLOCK_DIAG || ainvtype == MAT_SCHUR_COMPLEMENT_AINV_FULL, PETSC_COMM_SELF, PETSC_ERR_ARG_WRONG, "Unknown MatSchurComplementAinvType: %d", (int)ainvtype);
+740: . ainvtype - type of approximation used to form approximate Schur complement Sp = A11 - A10 inv(DIAGFORM(A00)) A01:
+741:              `MAT_SCHUR_COMPLEMENT_AINV_DIAG`, `MAT_SCHUR_COMPLEMENT_AINV_LUMP`, `MAT_SCHUR_COMPLEMENT_AINV_BLOCK_DIAG`, or `MAT_SCHUR_COMPLEMENT_AINV_FULL`
+763:   $Sp = A11 - A10 inv(DIAGFORM(A00)) A01$
+772: . ainvtype - type of approximation for DIAGFORM(A00) used when forming $Sp = A11 - A10 inv(DIAGFORM(A00)) A01$. See `MatSchurComplementAinvType`.
+787:   /* Use an appropriate approximate inverse of A00 to form A11 - A10 inv(DIAGFORM(A00)) A01; a NULL A01, A10 or A11 indicates a zero matrix. */
+806:     if (ainvtype == MAT_SCHUR_COMPLEMENT_AINV_LUMP || ainvtype == MAT_SCHUR_COMPLEMENT_AINV_DIAG) {
+829:       PetscCall(VecReciprocal(diag));
+830:       PetscCall(MatDiagonalScale(AdB, diag, NULL));
+832:     } else if (ainvtype == MAT_SCHUR_COMPLEMENT_AINV_BLOCK_DIAG) {
+842:       PetscCall(MatMatMult(A00_inv, A01, MAT_INITIAL_MATRIX, PETSC_DETERMINE, &AdB));
+845:     /* Cannot really reuse Sp in MatMatMult() because of MatAYPX() -->
+846:          MatAXPY() --> MatHeaderReplace() --> MatDestroy_XXX_MatMatMult()  */
+848:     PetscCall(MatMatMult(A10, AdB, MAT_INITIAL_MATRIX, PETSC_DETERMINE, Sp));
+882:   MatSchurComplementGetPmat - Obtain a matrix for preconditioning the Schur complement by assembling $Sp = A11 - A10 inv(DIAGFORM(A00)) A01$
+897:   `MAT_SCHUR_COMPLEMENT_AINV_DIAG`, `MAT_SCHUR_COMPLEMENT_AINV_LUMP`, `MAT_SCHUR_COMPLEMENT_AINV_BLOCK_DIAG`, or `MAT_SCHUR_COMPLEMENT_AINV_FULL`
+943:   PetscCall(MatMatMult(Na->B, product->B, MAT_INITIAL_MATRIX, PETSC_DETERMINE, &work1));
+951:   PetscCall(MatMatMult(Na->C, work2, MAT_REUSE_MATRIX, PETSC_DETERMINE, &work1));
+956:     PetscCall(MatMatMult(Na->D, product->B, MAT_INITIAL_MATRIX, PETSC_DETERMINE, &work1));

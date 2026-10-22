@@ -1,0 +1,13 @@
+{
+  "frozen_before_boundary_execution": true,
+  "threshold": 1e-11,
+  "position_over_H_threshold": 1e-12,
+  "fixtures": ["143654 wall affine/curved", "35265 wall affine/curved", "35265 inlet cap affine/curved", "rigidly rotated/translated copy of 35265 cap as outlet-oriented algebra control"],
+  "outlet_control": "X'=(x,-y,L-z); det(rotation)=+1; retained inlet cell only, not a newly selected actual outlet cell or mesh",
+  "strong_dirichlet": "Call actual set_bc_dir; six TRI6 node velocities become zero, all other velocity nodes and all pressure slots remain unchanged",
+  "traction": "Call actual set_bc_trac_l using six nodal traction vectors through native generic BC provider; compare identical native quadrature against independent TRI6 map/normal/weights",
+  "Cauchy": "On planar inlet/outlet cap use exact Poiseuille full stress traction with pressure=0.4 Pa and frozen pipe R,U,mu; affine and curved face edge controls, no time stepping",
+  "wall_traction": "General nodal vector traction on curved wall tests integration only; not claimed exact interpolation of arbitrary analytic stress-normal product",
+  "weak_dirichlet": "Call actual set_bc_dir_wl, and expose native get_nnx inversions at the same face quadrature. Compare P1 pressure basis at common TET10 reference point vs independent corner-geometry inverse. Preserve any native exception",
+  "stop": "Any remaining mixed boundary mapping inconsistency -> MIXED_CURVED_BOUNDARY_ASSEMBLY_BLOCKED; no boundary patch or CFD automatically follows"
+}

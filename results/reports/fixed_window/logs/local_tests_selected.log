@@ -1,0 +1,173 @@
+FFF.                                                                     [100%]
+=================================== FAILURES ===================================
+_________ test_A_B_early_coverage_and_downstream_independent_proposals _________
+
+    def test_A_B_early_coverage_and_downstream_independent_proposals():
+        env=source_env();results=[]
+        for mode in ['all_fast','one_outlet_only']:
+            s=DiagnosticSource(env,mode);e=DiagnosticEngine(mode);c=contract(s)
+>           result=run_fixed_window(e,s,c);assert e.time==c['T_end_s'];assert s.stopped_at==c['T_infusion_s']
+                   ^^^^^^^^^^^^^^^^^^^^^^^
+
+ulm_particle_formal_p9a5/particle_3d/tests/population_v1/test_fixed_window.py:58: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+engine = <test_fixed_window.DiagnosticEngine object at 0x7e4b4f6e06e0>
+source = <test_fixed_window.DiagnosticSource object at 0x7e4b4f6e0440>
+contract = {'schema': 'FIXED_WINDOW_POPULATION_EXPERIMENT_V1', 'flow_sha256': 'SYNTHETIC_TEST_EXPLICITLY_NOT_PRODUCTION', 'T_infusion_s': 1.24081566, 'T_observation_s': 10.0, ...}
+progress = None
+
+    def run_fixed_window(engine,source,contract,progress=None):
+        """One exact global clock; outcomes are diagnostics and never clock inputs."""
+        validate_contract(contract,source)
+        if engine.time!=0 or engine.realization_id!=contract['realization_id'] or engine.dt!=contract['nominal_dt_s']:
+            raise ValueError('Fresh realization, matching dt and realization ID required')
+        tin=float(contract['T_infusion_s']);end=float(contract['T_end_s']);timeline=[];proposals=[]
+        def mark(phase):
+            row=dict(engine.accounting(),phase=phase,source_on=engine.time<tin,
+                T_infusion_s=tin,T_end_s=end);timeline.append(row)
+            if progress:progress(row)
+        mark('INFUSION_ON' if tin>0 else 'INFUSION_OFF')
+        if tin==0:source.stop(0.)
+        while engine.time<end:
+            source_on=engine.time<tin;row=source.peek() if source_on else None
+            birth=row['birth_time_s'] if row is not None and row['birth_time_s']<tin else float('inf')
+            r=engine.time/engine.dt;tick=(int(np.floor(r+8*abs(np.spacing(r))))+1)*engine.dt
+            if tick<=engine.time:tick=engine.time+engine.dt
+            # Empty populations still reach fixed times; no zero-state dynamics are needed.
+            target=min(tick if engine.pool.n else float('inf'),birth,tin if source_on else end,end)
+            engine.advance(float(target))
+            if engine.time!=target:raise RuntimeError('Integrator did not reach exact requested time')
+            if source_on and target==tin:
+                source.stop(tin);mark('INFUSION_OFF')
+            elif row is not None and target==birth:
+                proposal=dict(row);proposals.append(proposal)
+                if engine.recorder is not None and hasattr(engine.recorder,'proposal'):engine.recorder.proposal(proposal)
+                source.admit(engine)
+            if progress:progress(dict(engine.accounting(),phase='INFUSING' if engine.time<tin else 'OBSERVING',source_on=engine.time<tin))
+        mark('OBSERVATION_END_BEFORE_CENSOR')
+        censor_remaining(engine,end)
+        if hasattr(engine,'flush_output'):engine.flush_output()
+        mark('EXPERIMENT_END')
+        categories=Counter(terminal_category(r) for r in engine.terminals)
+        if sum(categories.values())!=engine.counts['accepted_birth_count']:raise AssertionError('Exclusive terminal accounting failed')
+        if len({r['particle_id'] for r in engine.terminals})!=len(engine.terminals):raise AssertionError('Duplicate terminal ID')
+        if len(proposals)!=engine.counts['source_event_count']:raise AssertionError('Proposal accounting failed')
+        if any(r['birth_time_s']>=tin for r in proposals):raise AssertionError('Post-infusion birth')
+>       return dict(status='COMPLETED_FIXED_WINDOW',**engine.accounting(),terminal_categories=dict(categories),
+            previous_protocol='OUTCOME_DEPENDENT_COVERAGE_STOP',current_protocol=SCHEMA,
+            T_infusion_s=tin,T_observation_s=10.,T_end_s=end,infusion_stop_time_s=tin,
+            source_stop_rule_is_data_dependent=False,expected_source_count=source.rate*tin,
+            actual_source_count=len(proposals),accepted_birth_count=engine.counts['accepted_birth_count'],
+            source_rejection_count=len(proposals)-engine.counts['accepted_birth_count'],
+            source_proposals=proposals,population_timeline=timeline,
+            scientific_integrity_pass=engine.counts['solver_failed_count']==0)
+E       TypeError: dict() got multiple values for keyword argument 'accepted_birth_count'
+
+ulm_particle_formal_p9a5/particle_3d/src/particle_3d/population_v1/fixed_window.py:134: TypeError
+___________ test_C_D_E_H_actual_cpu_censor_exact_time_and_accounting ___________
+
+    def test_C_D_E_H_actual_cpu_censor_exact_time_and_accounting():
+        env=slow_environment();s=PerfusionSource(env,concentration_m3=2/env.sampler.Q_m3_s,seed=4);c=contract(s)
+        e=PopulationEngine(env,dt=c['nominal_dt_s'],pairs=True)
+>       result=run_fixed_window(e,s,c);assert result['actual_source_count']>0
+               ^^^^^^^^^^^^^^^^^^^^^^^
+
+ulm_particle_formal_p9a5/particle_3d/tests/population_v1/test_fixed_window.py:79: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+engine = <particle_3d.population_v1.engine.PopulationEngine object at 0x7e4b4f6e12b0>
+source = <particle_3d.population_v1.source.PerfusionSource object at 0x7e4b4f826850>
+contract = {'schema': 'FIXED_WINDOW_POPULATION_EXPERIMENT_V1', 'flow_sha256': 'SYNTHETIC_TEST_EXPLICITLY_NOT_PRODUCTION', 'T_infusion_s': 1.24081566, 'T_observation_s': 10.0, ...}
+progress = None
+
+    def run_fixed_window(engine,source,contract,progress=None):
+        """One exact global clock; outcomes are diagnostics and never clock inputs."""
+        validate_contract(contract,source)
+        if engine.time!=0 or engine.realization_id!=contract['realization_id'] or engine.dt!=contract['nominal_dt_s']:
+            raise ValueError('Fresh realization, matching dt and realization ID required')
+        tin=float(contract['T_infusion_s']);end=float(contract['T_end_s']);timeline=[];proposals=[]
+        def mark(phase):
+            row=dict(engine.accounting(),phase=phase,source_on=engine.time<tin,
+                T_infusion_s=tin,T_end_s=end);timeline.append(row)
+            if progress:progress(row)
+        mark('INFUSION_ON' if tin>0 else 'INFUSION_OFF')
+        if tin==0:source.stop(0.)
+        while engine.time<end:
+            source_on=engine.time<tin;row=source.peek() if source_on else None
+            birth=row['birth_time_s'] if row is not None and row['birth_time_s']<tin else float('inf')
+            r=engine.time/engine.dt;tick=(int(np.floor(r+8*abs(np.spacing(r))))+1)*engine.dt
+            if tick<=engine.time:tick=engine.time+engine.dt
+            # Empty populations still reach fixed times; no zero-state dynamics are needed.
+            target=min(tick if engine.pool.n else float('inf'),birth,tin if source_on else end,end)
+            engine.advance(float(target))
+            if engine.time!=target:raise RuntimeError('Integrator did not reach exact requested time')
+            if source_on and target==tin:
+                source.stop(tin);mark('INFUSION_OFF')
+            elif row is not None and target==birth:
+                proposal=dict(row);proposals.append(proposal)
+                if engine.recorder is not None and hasattr(engine.recorder,'proposal'):engine.recorder.proposal(proposal)
+                source.admit(engine)
+            if progress:progress(dict(engine.accounting(),phase='INFUSING' if engine.time<tin else 'OBSERVING',source_on=engine.time<tin))
+        mark('OBSERVATION_END_BEFORE_CENSOR')
+        censor_remaining(engine,end)
+        if hasattr(engine,'flush_output'):engine.flush_output()
+        mark('EXPERIMENT_END')
+        categories=Counter(terminal_category(r) for r in engine.terminals)
+        if sum(categories.values())!=engine.counts['accepted_birth_count']:raise AssertionError('Exclusive terminal accounting failed')
+        if len({r['particle_id'] for r in engine.terminals})!=len(engine.terminals):raise AssertionError('Duplicate terminal ID')
+        if len(proposals)!=engine.counts['source_event_count']:raise AssertionError('Proposal accounting failed')
+        if any(r['birth_time_s']>=tin for r in proposals):raise AssertionError('Post-infusion birth')
+>       return dict(status='COMPLETED_FIXED_WINDOW',**engine.accounting(),terminal_categories=dict(categories),
+            previous_protocol='OUTCOME_DEPENDENT_COVERAGE_STOP',current_protocol=SCHEMA,
+            T_infusion_s=tin,T_observation_s=10.,T_end_s=end,infusion_stop_time_s=tin,
+            source_stop_rule_is_data_dependent=False,expected_source_count=source.rate*tin,
+            actual_source_count=len(proposals),accepted_birth_count=engine.counts['accepted_birth_count'],
+            source_rejection_count=len(proposals)-engine.counts['accepted_birth_count'],
+            source_proposals=proposals,population_timeline=timeline,
+            scientific_integrity_pass=engine.counts['solver_failed_count']==0)
+E       TypeError: dict() got multiple values for keyword argument 'accepted_birth_count'
+
+ulm_particle_formal_p9a5/particle_3d/src/particle_3d/population_v1/fixed_window.py:134: TypeError
+_________ test_E_birth_exactly_at_stop_excluded_and_empty_reaches_end __________
+
+    def test_E_birth_exactly_at_stop_excluded_and_empty_reaches_end():
+        env=source_env();s=DiagnosticSource(env,'all_fast',rate=1);first=s.peek()['birth_time_s'];e=DiagnosticEngine('all_fast')
+>       c=contract(s,tin=first);result=run_fixed_window(e,s,c)
+                                       ^^^^^^^^^^^^^^^^^^^^^^^
+
+ulm_particle_formal_p9a5/particle_3d/tests/population_v1/test_fixed_window.py:92: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+ulm_particle_formal_p9a5/particle_3d/src/particle_3d/population_v1/fixed_window.py:99: in run_fixed_window
+    validate_contract(contract,source)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+c = {'schema': 'FIXED_WINDOW_POPULATION_EXPERIMENT_V1', 'flow_sha256': 'SYNTHETIC_TEST_EXPLICITLY_NOT_PRODUCTION', 'T_infusion_s': 0.32039180384676635, 'T_observation_s': 10.0, ...}
+source = <test_fixed_window.DiagnosticSource object at 0x7e4b4d1607d0>
+
+    def validate_contract(c,source=None):
+        required=['schema','flow_sha256','T_infusion_s','T_observation_s','T_end_s','concentration_m3',
+            'Q_in_m3_s','lambda_source_s_inv','source_distribution_sha256','master_seed','realization_id',
+            'nominal_dt_s','stopping_policy','outcome_dependent_stop','right_censor_policy']
+        if any(k not in c for k in required):raise ValueError('Incomplete fixed-window contract')
+        if c['schema']!=SCHEMA or c['stopping_policy']!=STOPPING or c['outcome_dependent_stop'] is not False or c['right_censor_policy']!='ACTIVE_AT_T_END':
+            raise ValueError('Outcome-dependent or unknown protocol is forbidden')
+        for k in ['T_infusion_s','T_observation_s','T_end_s','concentration_m3','Q_in_m3_s','lambda_source_s_inv','nominal_dt_s']:
+            if isinstance(c[k],bool) or not np.isfinite(c[k]) or c[k]<0:raise ValueError('Invalid '+k)
+        if c['T_observation_s']!=10. or Decimal(str(c['T_end_s']))!=Decimal(str(c['T_infusion_s']))+Decimal('10.0') or c['nominal_dt_s']<=0:
+>           raise ValueError('Observation must be exactly 10 s; endpoint must equal infusion + 10 s')
+E           ValueError: Observation must be exactly 10 s; endpoint must equal infusion + 10 s
+
+ulm_particle_formal_p9a5/particle_3d/src/particle_3d/population_v1/fixed_window.py:26: ValueError
+=============================== warnings summary ===============================
+tests/population_v1/test_fixed_window.py: 10 warnings
+  /home/lzy/projects/temp_storage/ulm_particle_3d_particle0/.venv/lib/python3.13/site-packages/vtkmodules/util/numpy_support.py:244: DeprecationWarning: Setting the shape on a NumPy array has been deprecated in NumPy 2.5.
+  As an alternative, you can create a new view using np.reshape (with copy=False if needed).
+    result.shape = shape
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED ulm_particle_formal_p9a5/particle_3d/tests/population_v1/test_fixed_window.py::test_A_B_early_coverage_and_downstream_independent_proposals
+FAILED ulm_particle_formal_p9a5/particle_3d/tests/population_v1/test_fixed_window.py::test_C_D_E_H_actual_cpu_censor_exact_time_and_accounting
+FAILED ulm_particle_formal_p9a5/particle_3d/tests/population_v1/test_fixed_window.py::test_E_birth_exactly_at_stop_excluded_and_empty_reaches_end
+3 failed, 1 passed, 2 deselected, 10 warnings in 2.55s

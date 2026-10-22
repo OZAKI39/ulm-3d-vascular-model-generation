@@ -1,0 +1,826 @@
+# Codex 新一轮开发提示词
+## 主题：目标 BC 执行路径审计 + 条件性一次 P2/P1 manufactured pipe GPU CFD
+
+你现在继续开发当前 BraVa 3D 微泡持续灌注/轨迹项目。
+
+上一轮已经完成：
+
+- mixed P2/P1 curved **volume assembly common-geometry patch**；
+- 两个真实曲面单元 central wall 143654 / inlet rim 35265 的 volume harness 已达到预声明数值门槛；
+- continuity、pressure gradient transform、common J/detJ/invJ、stabilization metric 已统一；
+- P1/P1 production local path 保持不变；
+- strong Dirichlet 与 prescribed traction/Cauchy boundary path 已通过；
+- 仍存在一个独立的 **weak Dirichlet curved mixed geometry** 缺陷；
+- 因 Phase F 的通用 boundary gate，上一轮没有运行 P2 pipe/BraVa CFD。
+
+当前报告状态：
+
+`COMMON_GEOMETRY_FIX_NOT_EVALUABLE`
+
+但是本轮不能把“库里 weak Dirichlet 有 bug”自动等同于“当前目标 pipe/BraVa 一定会走 weak Dirichlet”。
+
+本轮首先只回答：
+
+> **当前真实 manufactured pipe 和历史 BraVa solver.xml 的 BC，运行时到底 dispatch 到哪些 native boundary paths？**
+>
+> **如果目标 P2 manufactured pipe 根本不调用 weak Dirichlet，则上一轮 volume/common-geometry 修复是否已经足以允许一次严格受控 P2/P1 pipe GPU CFD？**
+
+本轮最多运行：
+- **1 次** P2/P1 manufactured pipe GPU CFD；
+- **0 次** BraVa CFD；
+- **0 次** particle trajectory；
+- **0 次** population。
+
+如果 pipe 目标 BC 确实调用 weak Dirichlet，则只允许修这一条 boundary path，重新通过 harness 后才可决定是否运行 pipe CFD。
+
+---
+
+# 0. 服务器规则
+
+服务器连接方式你已经知道。
+不要把 SSH 地址、端口、凭据写入 GitHub、报告、源码或 commit。
+
+任何服务器操作前：
+
+```bash
+cat /etc/vast-agents-guide.md
+```
+
+然后核对：
+- 当前 project root
+- 当前 branch / HEAD
+- git status
+- 当前 common-geometry validation patch/source identity
+- production binary SHA
+- PETSc/CUDA identity
+- CPU quota / RAM / GPU / VRAM / 其它任务
+- 当前监督器规则
+
+禁止：
+- 修改系统 CUDA/PETSc
+- 修改 cgroup
+- 修改其它项目服务
+- 覆盖 production binary
+- 覆盖历史 P1 CFD
+- 自动 push
+
+所有新增 build/run 放独立 validation 目录。
+所有长任务 supervised，并保存 receipt。
+
+---
+
+# 1. 首先阅读当前权威文件
+
+至少读取：
+
+1. `README.md`
+2. `brava_flow_roi_18mlmin/ACTIVE_DEVELOPMENT_SCOPE.md`
+3. `brava_flow_roi_18mlmin/AGENTS.md`
+4. `brava_flow_roi_18mlmin/CURRENT_RESULTS_ZH.md`
+5. 最新：
+   - `COMMON_CURVED_GEOMETRY_MAPPING_REVIEW_ZH.md`
+   - `MIXED_CURVED_GEOMETRY_ROOT_CAUSE_ZH.md`
+   - `MIXED_CURVED_GEOMETRY_CALL_GRAPH.json`
+   - `COMMON_GEOMETRY_PATCH.diff`
+   - `COMMON_GEOMETRY_PATCH_IDENTITY.json`
+   - `COMMON_GEOMETRY_HARNESS_RESULTS.json`
+   - `BOUNDARY_MIXED_GEOMETRY_AUDIT.json`
+   - `P1_REGRESSION_RESULTS.json`
+6. 前一轮：
+   - `NATIVE_P2P1_DEVELOPMENT_REVIEW_ZH.md`
+   - `P2_FIELD_SAMPLER_CONTRACT.json`
+   - `P2_FIELD_SAMPLER_TESTS.json`
+   - `P2_POISEUILLE_REPRESENTATION.json`
+7. 当前 manufactured pipe authoritative：
+   - V2 mesh plan
+   - current manufactured `solver.xml`
+   - current GPU execution identity
+   - current FIELD_VALIDATION
+8. 当前 historical BraVa：
+   - `cases/balanced_pressure_final/run/solver.xml`
+   - `reports/ACTIVE_FLOW.json`
+   - current execution identity
+
+不要重新做：
+- P2 representation fixture
+- Poiseuille exact interpolation
+- RT0 reference
+- stabilization-term analysis
+- volume common-geometry root cause analysis
+
+这些只作为 regression。
+
+---
+
+# 2. 必须继承的当前结论
+
+## Volume mixed P2/P1 common geometry
+已经修复：
+- common TET10 geometry J/detJ/invJ
+- P1 pressure physical gradient使用 common curved geometry
+- continuity integration weight统一
+- stabilization Kxi/tau geometry一致
+- two retained curved cells volume harness通过
+- P1/P1 local R/K regression unchanged
+
+不得重复声称“volume mapping仍未知”。
+
+## Remaining library bug
+weak Dirichlet path：
+- curved wall fixture 可直接触发 native shape-function exception；
+- cap fixture 可完成，但pressure reference point不一致；
+- strong Dirichlet已通过；
+- prescribed traction/Cauchy已通过。
+
+这个 bug 是真实 bug，但**是否属于当前 target case 执行路径尚未完成审计**。
+
+---
+
+# 3. Phase A —— 精确解析两个 target solver.xml
+
+必须读取实际文件，不引用记忆。
+
+## Manufactured pipe
+解析每个 BC：
+- face name
+- XML Type
+- Time dependence
+- profile
+- impose_flux
+- zero_out_perimeter
+- traction file / multiplier
+- 其它 flags
+
+## Historical BraVa
+同样解析：
+- INLET
+- WALL
+- O1/O2/O3
+
+输出：
+
+`TARGET_BC_CONFIG_AUDIT.json`
+
+禁止只写“Dir/Neu/Traction”文本总结。
+必须保存完整 relevant XML fields 及 solver.xml SHA。
+
+---
+
+# 4. Phase B —— 从 XML 一直追到 native set_bc_* 的静态调用图
+
+从 production retained exact source 开始。
+
+至少追踪：
+
+```text
+solver.xml parser
+→ BC type enum / internal BC object
+→ equation setup
+→ boundary assembly dispatch
+→ native boundary function
+```
+
+必须定位并区分：
+
+- `set_bc_dir`
+- `set_bc_dir_wl`
+- `set_bc_trac_l`
+- `set_bc_neu` 或实际 natural/Neumann path
+- traction/Cauchy path
+- any wrapper/helper that may redirect based on flags
+
+重点回答：
+
+1. `<Type>Dir</Type>` 在 fluid 3D mixed P2/P1 下走 strong 还是 weak Dirichlet？
+2. `General` inlet + prescribed spatial values 是否仍是同一个 strong path？
+3. `Impose_flux=true` 是否改变 boundary enforcement path，还是只改变输入值归一化？
+4. `<Type>Traction</Type>` 是否完全不进入 weak Dirichlet？
+5. `<Type>Neu</Type>` 是否完全不进入 weak Dirichlet？
+6. `Zero_out_perimeter` 是否只影响 inlet data，还是会调用另一个 weak enforcement path？
+7. P2 boundary TRI6 velocity DOF如何被 strong Dirichlet约束？
+8. pressure P1 是否在这些 target BC paths 中需要 boundary inverse mapping？
+
+输出：
+
+`TARGET_BC_STATIC_DISPATCH_AUDIT_ZH.md`
+`TARGET_BC_STATIC_CALL_GRAPH.json`
+
+---
+
+# 5. Phase C —— 真实配置 native dispatch harness
+
+不能只靠源码阅读。
+
+建立一个**不做 time stepping / 不做 nonlinear solve**的 native dispatch harness。
+
+目标：
+加载或按真实配置构造：
+- manufactured pipe BC set
+- historical BraVa BC set
+
+要求在 boundary setup / assembly 时记录：
+- face
+- internal BC type
+- actual boundary function entered
+- call count
+- whether `set_bc_dir_wl` entered
+- whether pressure inverse map used
+- whether TET10/TET4 common geometry path used
+
+如果完整 solver setup 过重，可构造最小 native harness，但：
+- BC type必须来自真实 parser/setup语义；
+- 不能手工写死“它应该走某函数”。
+
+至少产生：
+
+`TARGET_BC_RUNTIME_DISPATCH.json`
+
+表格格式：
+
+| case | face | XML type | internal type | native function | weak-dir? | result |
+|---|---|---|---|---|---|---|
+
+### Stop A
+如果 static 与 runtime dispatch 不一致：
+状态：
+
+`BC_DISPATCH_NOT_ESTABLISHED`
+
+停止，不跑 CFD。
+
+---
+
+# 6. Phase D —— 根据目标路径决定 weak Dirichlet 是否需要修
+
+分类：
+
+## Case D1：manufactured pipe 不调用 weak Dirichlet
+
+若 pipe 的：
+- inlet
+- wall
+- outlet
+
+全部只调用已经通过的：
+- strong Dirichlet
+- prescribed traction/Cauchy
+- 或其它已验证且不经过weak path的 natural path
+
+则状态：
+
+`PIPE_TARGET_BC_SET_CLEAR_OF_WEAK_DIRICHLET`
+
+不修 weak Dirichlet。
+不要为了“库更完整”扩大本轮。
+
+继续 Phase E。
+
+## Case D2：manufactured pipe 任一 target boundary 调用 weak Dirichlet
+
+则：
+- 不允许 pipe CFD；
+- 只修 `set_bc_dir_wl` / 对应 weak path 的 common geometry；
+- 不修改其它 boundary path。
+
+### Weak path修复要求
+
+pressure field 仍为 P1；
+physical inverse / basis evaluation / gradient transform 必须基于 common curved TET10 geometry语义。
+
+具体：
+- 先通过 velocity/common geometry inverse 得到统一 reference coordinate；
+- P1 pressure basis在**同一 ξ**上评价；
+- 不允许再对 xql/TET4做第二次独立physical inverse；
+- boundary quadrature x/J/normal/weight统一来自 common geometry；
+- pressure field basis与geometry basis解耦。
+
+必须重新跑上一轮：
+- curved wall weak fixture
+- curved cap weak fixture
+- rigid outlet control
+- strong Dirichlet regression
+- traction regression
+
+gate仍使用上一轮冻结的 numerical thresholds，不看结果后放宽。
+
+只有 weak path全部通过，才允许继续Phase E。
+
+若修不通过：
+`WEAK_DIRICHLET_COMMON_GEOMETRY_FIX_FAILED`
+停止P2路线，不跑CFD。
+
+---
+
+# 7. Phase D-BraVa —— 只审计，不运行 BraVa
+
+无论pipe如何，必须同时记录BraVa：
+- INLET实际path
+- WALL实际path
+- OUTLET_01/02/03实际path
+
+分类：
+- `BRAVA_TARGET_BC_SET_CLEAR_OF_WEAK_DIRICHLET`
+或
+- `BRAVA_FUTURE_WEAK_DIRICHLET_BLOCKER_PRESENT`
+
+如果BraVa有weak blocker，但pipe没有：
+- 本轮不要修BraVa专用weak path；
+- 先做pipe scientific test；
+- 把它作为未来 BraVa P2 pilot 前置条件。
+
+---
+
+# 8. Phase E —— CFD前的最终 readiness gate
+
+只有以下全部成立才可运行一次 P2 pipe CFD：
+
+1. volume common-geometry patch 已通过；
+2. P1/P1 regression通过；
+3. manufactured pipe target BC runtime dispatch已建立；
+4. pipe不经过未修复weak Dirichlet；
+5. strong Dirichlet path通过；
+6. Cauchy/traction outlet path通过；
+7. P2 curved mesh elevation QA可复现上一轮结果；
+8. P2 CPU sampler仍通过；
+9. production P1 baseline文件hash不变。
+
+输出：
+
+`P2_PIPE_READINESS_GATE.json`
+
+唯一允许状态：
+- `READY_FOR_ONE_P2P1_PIPE_GPU_CFD`
+- `NOT_READY_FOR_P2P1_PIPE_GPU_CFD`
+
+若NOT_READY：
+本轮结束。
+
+---
+
+# 9. Phase F —— 仅 1 次 P2/P1 manufactured pipe GPU CFD
+
+只有 readiness=READY 才执行。
+
+## 9.1 Mesh
+复用上一轮已验证策略：
+- frozen Gmsh V2 TET4 corner topology
+- deterministic unique-edge TET10 elevation
+- wall midpoint投影到解析圆柱
+- inlet/outlet midpoint保持cap平面
+- no refinement
+- no parameter sweep
+- no corner-node movement
+
+重新做最小QA：
+- high-order Jacobian positive/certified
+- shared midpoint conformity
+- boundary labels
+- no duplicate edge nodes
+- wall geometry
+- cap plane
+- exact input hashes
+
+不要重新研究mesher。
+
+## 9.2 Solver
+使用validation patched svMultiPhysics binary：
+- common curved volume mapping patch
+- 若pipe target确需且已验证，再包含weak boundary patch
+- 否则不要包含无关weak patch
+
+保持原 manufactured physics：
+
+- rho
+- mu
+- Umean
+- exact inlet profile
+- full analytical Cauchy outlet traction
+- wall no-slip
+- CFD dt=原值
+- generalized-alpha不变
+- nonlinear tolerance不变
+- PETSc/CUDA route不变
+- FP64
+- same steady criterion
+
+唯一科学变化：
+**velocity P1 → P2，pressure保持P1。**
+
+不得：
+- 改stabilization coefficient
+- 改BC
+- 改Umean
+- 改mesh refinement
+- 改probe位置
+
+## 9.3 Resources
+使用实际服务器GPU/CPU资源。
+不跑CPU CFD。
+不做speed benchmark。
+
+P2 pipe CFD hard limit：
+**4小时 wall time**
+
+如果预测资源超过cgroup：
+运行前停止，不OOM试错。
+
+监督：
+- GPU memory
+- CPU RSS
+- linear solver status
+- nonlinear iteration
+- checkpoint
+- STOP_SIM
+- exit code
+
+---
+
+# 10. Phase G —— P2实际场读取必须保留原生高阶DOF
+
+使用上一轮 validation P2 sampler。
+
+禁止：
+- P2→P1降阶输出后再采样
+- gradient recovery
+- smoothing
+- cell-to-point averaging
+- probe shift
+- extrapolation
+
+必须确认 solver output/restart 中：
+- 10-node velocity DOF实际保存
+- 4-node pressure语义明确
+- sampler读取的节点编号与solver一致
+
+如果 output 丢失高阶 velocity DOF：
+`P2_OUTPUT_HIGH_ORDER_DOF_NOT_PRESERVED`
+停止，不做科学比较。
+
+---
+
+# 11. Phase H —— 唯一科学问题：actual P2 CFD 是否真正改善？
+
+在同一固定 probes 上同时比较：
+
+1. exact analytic Poiseuille
+2. exact-node P1 interpolation
+3. exact-node P2 interpolation
+4. original actual P1 GPU CFD
+5. new actual P2/P1 GPU CFD
+
+指标：
+
+## Particle bands
+wall distance:
+- 0.377 µm
+- 1 µm
+- 2 µm
+- 5 µm
+- 10 µm
+
+报告：
+- u relative L2
+- G Frobenius relative L2
+- s relative L2
+- curl relative L2
+
+## Bulk
+- 29.838961 µm
+- 59.677923 µm
+- 149.194807 µm
+- 298.389615 µm
+
+报告u。
+
+## Integral
+- internal Q
+- dp/dz
+- mass imbalance
+- wall no-slip
+- finite fields
+
+## Local structural diagnostics
+若定义与P2语义一致：
+- local div distribution
+- fixed probe cell geometry
+- no exact-zero positive-volume velocity tetra caused purely by all constrained velocity DOF
+- G jump statistics只作diagnostic，不要求C1 derivative
+
+不要引入事后新阈值。
+
+---
+
+# 12. 必须做新的 P1/P2 error decomposition
+
+对每组probe定义：
+
+```text
+e_P1_repr = I_P1(u_exact) - u_exact
+e_P2_repr = I_P2(u_exact) - u_exact
+e_P1_disc = u_P1_CFD - I_P1(u_exact)
+e_P2_disc = u_P2_CFD - I_P2(u_exact)
+e_P1_total = u_P1_CFD - u_exact
+e_P2_total = u_P2_CFD - u_exact
+```
+
+向量范数不能简单百分数相减。
+
+保存：
+- norm
+- squared norm
+- cross term
+- cosine between representation/discrete errors
+
+特别回答：
+
+### 0.377 µm
+P1 representation≈9.76%这一已知项消失后，actual P2 total 是否明显下降？
+
+### 149.195 µm
+同样判断representation-supported failure。
+
+### 29.839 / 59.678 µm
+原本P1 representation很小、主要是discrete-solution difference。
+P2 actual discrete error是否改善？
+
+这是本轮最重要的科学判别。
+
+---
+
+# 13. Pipe结果的分类
+
+最终只能选择：
+
+## `P2_PIPE_ACTUAL_FIELD_PROMISING`
+要求：
+- representation确实到roundoff；
+- actual P2 u/G/s/curl总体呈实质改善；
+- 原representation-supported failures明显下降；
+- 无新的重大local/BC/solver异常；
+- 29/59µm即使未完全解决，也有清楚的discrete-error结论。
+
+这不等于trajectory validated。
+
+## `P2_PIPE_REPRESENTATION_WIN_BUT_DISCRETE_SOLUTION_NOT_IMPROVED`
+表示：
+- P2表示很好；
+- actual CFD仍有类似误差。
+
+这是非常重要的负结果。
+停止P2 BraVa，不扫参数。
+
+## `P2_PIPE_NO_WIN`
+actual场明显无改善/更差/不稳定。
+
+停止native P2路线。
+
+## `P2_PIPE_NOT_EVALUABLE`
+任何：
+- BC path不清
+- high-order output不可信
+- solver未稳
+- run失败
+- geometry语义再次不明确
+
+不得强判。
+
+---
+
+# 14. 本轮绝对不运行 BraVa P2 CFD
+
+即使pipe是PROMISING：
+本轮仍然不运行：
+- BraVa P2 CFD
+- ID1189新场
+- ID822新场
+- trajectory
+- particle dt
+- population
+
+只在报告最后建议下一轮是否值得进入 BraVa P2 pilot。
+
+---
+
+# 15. 可视化
+
+至少生成：
+
+## `01_TARGET_BC_DISPATCH.png`
+图示：
+- Pipe INLET/WALL/OUTLET
+- BraVa INLET/WALL/O1/O2/O3
+- XML Type
+- native dispatch function
+- strong/weak/natural/traction
+- weak-path relevance
+
+必须一眼看出 weak Dirichlet 是否影响target cases。
+
+## `02_P2_PIPE_FIELD_VALIDATION.png`（如运行CFD）
+- particle bands
+- bulk
+- u/G/s/curl
+- P1 vs P2 vs exact
+
+## `03_P2_PIPE_ERROR_DECOMPOSITION.png`
+- P1 representation
+- P1 discrete
+- P1 total
+- P2 representation
+- P2 discrete
+- P2 total
+- cross-term/cos信息
+
+## `04_P2_PIPE_LOCAL_DIAGNOSTICS.png`
+- selected near-wall profiles
+- exact / P1 actual / P2 actual
+- no smoothing
+
+全部：
+- 300 dpi
+- 保存CSV/NPZ图源
+- 不删除失败点
+- invalid保持invalid
+- 不用视觉平滑作为成功证据
+
+---
+
+# 16. 测试
+
+至少：
+
+### BC dispatch
+- parser→internal enum
+- internal enum→actual native function
+- runtime call counters
+- real pipe config
+- real BraVa config
+
+### common geometry regression
+- 上一轮volume harness全通过
+- P1/P1 unchanged
+
+### boundary
+- strong Dir
+- traction/Cauchy
+- Neu/natural path
+- impose_flux inlet
+- zero_out_perimeter handling
+- weak path（仅若target需要才patch）
+
+### P2 mesh/output
+- high-order topology
+- midpoint uniqueness
+- boundary labels
+- Jacobian positivity
+- output/restart preserves high-order velocity DOFs
+
+### field sampler
+- exact P2 quadratic regression
+- exact Poiseuille regression
+
+测试通过只证明实现，不证明物理准确。
+
+---
+
+# 17. 资源与执行上限
+
+非CFD开发/审计：
+- 90 min supervised计算预算（源码阅读/报告不计入）
+
+新CFD：
+- 最多1次
+- manufactured P2/P1 pipe
+- hard limit 4 h
+
+禁止：
+- restart反复扫设置
+- 多个P2 mesh候选
+- 多个stabilization参数
+- dt sweep
+- CPU rerun
+
+如果首次P2 run因纯工程可修错误在几分钟内失败：
+允许最多1次同身份修正后重启，
+但必须记录失败和原因；
+不能把科学失败当工程失败反复重跑。
+
+---
+
+# 18. 输出文件
+
+至少：
+
+- `TARGET_BC_CONFIG_AUDIT.json`
+- `TARGET_BC_STATIC_CALL_GRAPH.json`
+- `TARGET_BC_STATIC_DISPATCH_AUDIT_ZH.md`
+- `TARGET_BC_RUNTIME_DISPATCH.json`
+- `P2_PIPE_READINESS_GATE.json`
+- `TEST_RESULTS.json`
+- `EXECUTION_RECEIPT.json`
+- `INPUT_SHA256.json`
+- `RESULT_IDENTITY.json`
+
+如patch weak path：
+- `WEAK_DIRICHLET_COMMON_GEOMETRY_PATCH.diff`
+- `WEAK_DIRICHLET_PATCH_RESULTS.json`
+
+如运行P2 pipe：
+- `P2_PIPE_RUN_IDENTITY.json`
+- `P2_PIPE_FIELD_VALIDATION.json`
+- `P2_PIPE_ERROR_DECOMPOSITION.json`
+- raw P2 sampler NPZ/CSV
+- final native checkpoint / high-order field identity
+
+主报告：
+
+`P2_TARGET_BC_AND_PIPE_CFD_REVIEW_ZH.md`
+
+---
+
+# 19. 报告首页必须回答
+
+| 问题 | 结果 |
+|---|---|
+| manufactured pipe 的真实 BC 是否调用 weak Dirichlet？ | YES/NO |
+| BraVa 的真实 BC 是否调用 weak Dirichlet？ | YES/NO |
+| strong Dir / traction / Neu 的native路径分别是什么？ | ... |
+| common-curved volume patch 是否仍全部通过？ | YES/NO |
+| 是否需要修 weak Dirichlet 才能运行pipe？ | YES/NO |
+| 是否实际运行了一次P2/P1 pipe CFD？ | YES/NO |
+| P2 actual CFD在0.377µm是否改善？ | ... |
+| 149.195µm是否改善？ | ... |
+| 29.839/59.678µm discrete error如何变化？ | ... |
+| G/s/curl是否整体改善？ | ... |
+| 是否出现新的P2 solver/geometry/BC异常？ | ... |
+| 下一步是否值得进入BraVa P2 pilot？ | YES/NO/NOT_EVALUABLE |
+
+---
+
+# 20. 停止规则
+
+## Stop A
+BC static/runtime dispatch无法建立：
+→ 不跑CFD。
+
+## Stop B
+pipe target经过未修复weak Dirichlet：
+→ 先修；
+修不通过→不跑CFD。
+
+## Stop C
+volume regression/P1 regression退化：
+→ 不跑CFD。
+
+## Stop D
+P2 output不能保留原生高阶DOF：
+→ 不做科学比较。
+
+## Stop E
+P2 pipe不能达到steady/finite/BC完整性：
+→ P2_PIPE_NOT_EVALUABLE。
+
+## Stop F
+P2 representation win但actual discrete solution无改善：
+→ 不跑BraVa，不扫参数。
+
+---
+
+# 21. 本轮禁止事项
+
+禁止：
+
+- 新BraVa CFD
+- 新particle run
+- 1565 rerun
+- 46-track
+- population
+- particle dt
+- P3/P4
+- mesh refinement
+- stabilization修改
+- RT production
+- 新solver框架
+- WSS作为主要成功标准
+- 看结果后修改scientific gate
+- 把P2 representation成功直接写成trajectory修复
+
+---
+
+# 22. 最终只能给一个主建议
+
+报告结尾只能三选一：
+
+1. `NEXT_RECOMMENDATION = RUN_ONE_BRAVA_P2P1_FIELD_PILOT`
+2. `STOP_NATIVE_P2P1_ROUTE`
+3. `P2P1_PIPE_RESULT_NOT_EVALUABLE`
+
+如果选择1：
+只表示下一轮值得跑**一次 BraVa P2/P1 field pilot**；
+不表示允许population或trajectory production。
+
+完成后：
+- 所有监督任务退出
+- TASK移除
+- 只commit本轮相关文件
+- 不push，除非用户明确授权

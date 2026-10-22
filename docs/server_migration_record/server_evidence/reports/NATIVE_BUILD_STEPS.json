@@ -1,0 +1,151 @@
+[
+  {
+    "name": "mpi_version",
+    "command": [
+      "/workspace/brava_cfd/bin/brava-env",
+      "/workspace/brava_cfd/deps/openmpi-4.1.6/bin/mpiexec",
+      "--version"
+    ],
+    "cwd": "/workspace/brava_cfd",
+    "returncode": 0
+  },
+  {
+    "name": "mpi_wrapper_show",
+    "command": [
+      "/workspace/brava_cfd/bin/brava-env",
+      "/workspace/brava_cfd/deps/openmpi-4.1.6/bin/mpicc",
+      "--showme"
+    ],
+    "cwd": "/workspace/brava_cfd",
+    "returncode": 0
+  },
+  {
+    "name": "mpi_launch",
+    "command": [
+      "/workspace/brava_cfd/bin/brava-env",
+      "/workspace/brava_cfd/bin/brava-mpi",
+      "-n",
+      "2",
+      "/bin/hostname"
+    ],
+    "cwd": "/workspace/brava_cfd",
+    "returncode": 0
+  },
+  {
+    "name": "petsc_configure",
+    "command": [
+      "/workspace/brava_cfd/bin/brava-env",
+      "env",
+      "PETSC_DIR=/workspace/brava_cfd/sources/petsc-3.25.5",
+      "PETSC_ARCH=arch-brava-cuda126",
+      "/usr/bin/python3",
+      "-B",
+      "configure",
+      "--prefix=/workspace/brava_cfd/deps/petsc-cuda12",
+      "PETSC_ARCH=arch-brava-cuda126",
+      "--with-cc=/workspace/brava_cfd/deps/openmpi-4.1.6/bin/mpicc",
+      "--with-cxx=/workspace/brava_cfd/deps/openmpi-4.1.6/bin/mpicxx",
+      "--with-mpiexec=/workspace/brava_cfd/bin/brava-mpi",
+      "--with-fc=0",
+      "--with-fortran-bindings=0",
+      "--with-debugging=0",
+      "--with-shared-libraries=1",
+      "--with-scalar-type=real",
+      "--with-precision=double",
+      "--with-64-bit-indices=0",
+      "--with-blaslapack-lib=[/usr/lib/x86_64-linux-gnu/liblapack.so.3,/usr/lib/x86_64-linux-gnu/libblas.so.3]",
+      "--with-x=0",
+      "--with-cxx-dialect=C++17",
+      "--with-hip=0",
+      "--with-opencl=0",
+      "--with-cuda=1",
+      "--with-cuda-dir=/usr/local/cuda",
+      "--with-cudac=/usr/local/cuda/bin/nvcc",
+      "--with-cuda-arch=89",
+      "--with-cuda-dialect=C++17",
+      "CUDAFLAGS=-ccbin /usr/bin/g++"
+    ],
+    "cwd": "/workspace/brava_cfd/sources/petsc-3.25.5",
+    "returncode": 0
+  },
+  {
+    "name": "petsc_make",
+    "command": [
+      "/workspace/brava_cfd/bin/brava-env",
+      "make",
+      "-j8",
+      "PETSC_DIR=/workspace/brava_cfd/sources/petsc-3.25.5",
+      "PETSC_ARCH=arch-brava-cuda126",
+      "all"
+    ],
+    "cwd": "/workspace/brava_cfd/sources/petsc-3.25.5",
+    "returncode": 0
+  },
+  {
+    "name": "petsc_install",
+    "command": [
+      "/workspace/brava_cfd/bin/brava-env",
+      "make",
+      "PETSC_DIR=/workspace/brava_cfd/sources/petsc-3.25.5",
+      "PETSC_ARCH=arch-brava-cuda126",
+      "install"
+    ],
+    "cwd": "/workspace/brava_cfd/sources/petsc-3.25.5",
+    "returncode": 0
+  },
+  {
+    "name": "petsc_check",
+    "command": [
+      "/workspace/brava_cfd/bin/brava-env",
+      "make",
+      "PETSC_DIR=/workspace/brava_cfd/deps/petsc-cuda12",
+      "PETSC_ARCH=",
+      "check"
+    ],
+    "cwd": "/workspace/brava_cfd/sources/petsc-3.25.5",
+    "returncode": 0
+  },
+  {
+    "name": "svmp_configure",
+    "command": [
+      "/workspace/brava_cfd/bin/brava-env",
+      "cmake",
+      "-S",
+      "/workspace/brava_cfd/project/gpu_solver_fix/source",
+      "-B",
+      "/workspace/brava_cfd/build/svmp-cuda12",
+      "-DCMAKE_C_COMPILER=/usr/bin/gcc",
+      "-DCMAKE_CXX_COMPILER=/usr/bin/g++",
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DCMAKE_CXX_STANDARD=17",
+      "-DSV_LOCAL_VTK_PATH=/workspace/brava_cfd/deps/vtk-9.3",
+      "-DSV_PETSC_DIR=/workspace/brava_cfd/deps/petsc-cuda12",
+      "-DSV_ADDITIONAL_CMAKE_ARGS=-DSV_USE_TETGEN:BOOL=OFF;-DTETGEN_LIBRARY_NAME:FILEPATH=/workspace/brava_cfd/deps/tetgen/lib/lib_simvascular_thirdparty_tetgen.a;-DCMAKE_CXX_FLAGS:STRING=-I/workspace/brava_cfd/deps/tetgen/include;-DBLAS_LIBRARIES:FILEPATH=/usr/lib/x86_64-linux-gnu/libblas.so.3;-DLAPACK_LIBRARIES:FILEPATH=/usr/lib/x86_64-linux-gnu/liblapack.so.3;-DMPI_C_COMPILER:FILEPATH=/workspace/brava_cfd/deps/openmpi-4.1.6/bin/mpicc;-DMPI_CXX_COMPILER:FILEPATH=/workspace/brava_cfd/deps/openmpi-4.1.6/bin/mpicxx"
+    ],
+    "cwd": "/workspace/brava_cfd",
+    "returncode": 0
+  },
+  {
+    "name": "svmp_make",
+    "command": [
+      "/workspace/brava_cfd/bin/brava-env",
+      "cmake",
+      "--build",
+      "/workspace/brava_cfd/build/svmp-cuda12",
+      "--parallel",
+      "8"
+    ],
+    "cwd": "/workspace/brava_cfd",
+    "returncode": 0
+  },
+  {
+    "name": "svmp_ldd",
+    "command": [
+      "/workspace/brava_cfd/bin/brava-env",
+      "ldd",
+      "/workspace/brava_cfd/build/svmp-cuda12/svMultiPhysics-build/bin/svmultiphysics"
+    ],
+    "cwd": "/workspace/brava_cfd",
+    "returncode": 0
+  }
+]

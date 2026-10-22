@@ -1,0 +1,68 @@
+--- /home/lzy/projects/computation_examples/brava_flow_roi_18mlmin/scripts/audit_mesh.py
++++ /home/lzy/projects/new_human_vessel_flow/src/human_vessel_flow/mesh_audit.py
+@@ -10,8 +10,7 @@
+ from scipy.sparse import coo_matrix
+ from scipy.sparse.csgraph import connected_components
+ 
+-ROOT = Path(__file__).resolve().parents[1]
+-sys.path.insert(0, str(ROOT / 'vendor'))
++from .paths import ROOT, fresh_directory
+ from vascular_validation.geometry import (ROLE_IDS, polydata, triangles_of, surface_stats,
+                                     enclosed_volume, closest_surface_distances, surface_samples)
+ from vascular_validation.mesh_diagnostics import volume_validity, tetra_sicn, quality_summary
+@@ -41,11 +40,10 @@
+     require(len(nodes) - len(unique) + len(triangles) == 1, 'Port is not a topological disk')
+ 
+ 
+-def main():
+-    parser = argparse.ArgumentParser()
+-    parser.add_argument('--attempt', choices=['primary', 'fallback'], default='primary')
+-    args = parser.parse_args()
+-    raw = ROOT / 'mesh/generation'
++def audit_generated(raw, output, reference_surface=ROOT/'inputs/geometry/source_surface.npz'):
++    raw=Path(raw).resolve()
++    output=fresh_directory(output)
++    (output/'reports').mkdir()
+     generation = json.loads((raw / 'generation.json').read_text())
+     require(generation['status'] == 'GENERATED_PENDING_AUDIT', 'Mesh generation did not pass')
+     policy = {'h_ref_m':.0002, 'h_wall_m':.0002}
+@@ -87,7 +85,7 @@
+             require(tags[index] == 0, 'Duplicate or merged exterior face label')
+             tags[index] = face_id
+     require(np.all(tags > 0), 'Unlabeled exterior surface')
+-    with np.load(ROOT / 'inputs/source_surface.npz') as original:
++    with np.load(reference_surface) as original:
+         source_points = original['points_m']
+         source_triangles = original['triangles']
+         source_tags = original['facet_tags']
+@@ -122,7 +120,8 @@
+                 'ports': ports, 'boundary_roles_complete': True,
+                 'face_vertex_max_match_distance_m': maximum_match_distance}
+ 
+-    output = ROOT / 'mesh/SV_MESH'
++    result_root=output
++    output = result_root / 'SV_MESH'
+     (output / 'mesh-surfaces').mkdir(parents=True, exist_ok=True)
+     # Coordinates and cells are the actual SV result; only standard identity arrays are assigned.
+     grid.point_data['GlobalNodeID'] = np.arange(1, len(points)+1, dtype=np.int32)
+@@ -142,16 +141,14 @@
+                         boundary_triangles=boundary, facet_tags=tags, adjacent_tetra=adjacent,
+                         min_sicn=quality_values)
+     np.savez_compressed(output / 'wall_distances.npz', source_to_new_m=forward, new_to_source_m=backward)
+-    write_json(ROOT / 'reports/mesh_validity.json', dict(validity, status='PASS', generation=generation,
++    write_json(result_root / 'reports/mesh_validity.json', dict(validity, status='PASS', generation=generation,
+                boundary_roles_complete=True, raw_volume_sha256=sha256(raw/'volume.vtu'),
+                solver_mesh_sha256=sha256(output/'mesh-complete.mesh.vtu')))
+-    write_json(ROOT / 'reports/mesh_quality.json', dict(quality, tetra=len(tetra), status='MEASURED',
++    write_json(result_root / 'reports/mesh_quality.json', dict(quality, tetra=len(tetra), status='MEASURED',
+                metric='minSICN: constant linear tetrahedral ideal-map signed inverse Frobenius condition number'))
+-    write_json(ROOT / 'reports/geometry_qc.json', geometry)
++    write_json(result_root / 'reports/geometry_qc.json', geometry)
+     print(json.dumps({'validity': validity, 'quality': quality, 'wall': geometry['wall'],
+                       'volume_relative_error': geometry['volume_relative_error'],
+                       'ports': {k: {'area_relative_error': v['area_relative_error'], 'normal_dot': v['normal_dot']} for k, v in ports.items()}}, indent=2))
+ 
+-
+-if __name__ == '__main__':
+-    main()
++    return dict(mesh=output,reports=result_root/'reports',validity=validity,quality=quality,geometry=geometry)

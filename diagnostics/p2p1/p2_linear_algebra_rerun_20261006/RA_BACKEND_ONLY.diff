@@ -1,0 +1,20 @@
+--- native/sv13q_reuse.h
++++ validation/sv13q_reuse.h
+@@ -20,7 +20,7 @@
+ 
+ // Keeps original RHS until the stale attempt is accepted. No failed correction is exported.
+ inline PetscErrorCode sv13q_solve(KSP ksp, Mat matrix, Vec rhs, SV13QReuse& state,
+-                                PetscInt step, PetscInt equation) {
++                                PetscInt step, PetscInt equation, Mat preconditioner = nullptr) {
+   PetscFunctionBeginUser;
+   const char* why = state.rebuild_reason(step);
+   PetscBool reuse = why ? PETSC_FALSE : PETSC_TRUE;
+@@ -42,7 +42,7 @@
+       "SV13Q_BEGIN logical=%d attempt=%d step=%d equation=%d policy=%s reuse=%d age=%d ref=%d rebuild_reason=%s builds=%d attempts=%d ksp=%p pc=%p\n",
+       (int)state.logical,(int)attempt,(int)step,(int)equation,state.policy(),(int)reuse,(int)age,
+       (int)old_reference,why ? why : "REUSE",(int)state.builds,(int)state.attempts,(void*)ksp,(void*)pc));
+-    PetscCall(KSPSetOperators(ksp,matrix,matrix));
++    PetscCall(KSPSetOperators(ksp,matrix,preconditioner ? preconditioner : matrix));
+     PetscCall(KSPSetUp(ksp));
+     PetscCall(KSPSolve(ksp,rhs,rhs));
+     PetscInt iterations=0, maximum=0;

@@ -1,0 +1,24 @@
+3232:     size_t bufferSize2 = 0;
+3233:     size_t bufferSize3 = 0;
+3234:     size_t bufferSize4 = 0;
+3235:     size_t bufferSize5 = 0;
+3236: 
+3237:     /* ask bufferSize1 bytes for external memory */
+3238:     stat = cusparseSpGEMMreuse_workEstimation(Ccusp->handle, opA, opB, Amat->matDescr, BmatSpDescr, Cmat->matDescr, CUSPARSE_SPGEMM_DEFAULT, mmdata->spgemmDesc, &bufferSize1, NULL);
+3239:     PetscCallCUSPARSE(stat);
+3240:     PetscCallCUDA(cudaMalloc((void **)&dBuffer1, bufferSize1));
+3241:     /* inspect the matrices A and B to understand the memory requirement for the next step */
+3242:     stat = cusparseSpGEMMreuse_workEstimation(Ccusp->handle, opA, opB, Amat->matDescr, BmatSpDescr, Cmat->matDescr, CUSPARSE_SPGEMM_DEFAULT, mmdata->spgemmDesc, &bufferSize1, dBuffer1);
+3243:     PetscCallCUSPARSE(stat);
+3244: 
+3245:     stat = cusparseSpGEMMreuse_nnz(Ccusp->handle, opA, opB, Amat->matDescr, BmatSpDescr, Cmat->matDescr, CUSPARSE_SPGEMM_DEFAULT, mmdata->spgemmDesc, &bufferSize2, NULL, &bufferSize3, NULL, &bufferSize4, NULL);
+3246:     PetscCallCUSPARSE(stat);
+3247:     PetscCallCUDA(cudaMalloc((void **)&dBuffer2, bufferSize2));
+3248:     PetscCallCUDA(cudaMalloc((void **)&dBuffer3, bufferSize3));
+3249:     PetscCallCUDA(cudaMalloc((void **)&mmdata->dBuffer4, bufferSize4));
+3250:     stat = cusparseSpGEMMreuse_nnz(Ccusp->handle, opA, opB, Amat->matDescr, BmatSpDescr, Cmat->matDescr, CUSPARSE_SPGEMM_DEFAULT, mmdata->spgemmDesc, &bufferSize2, dBuffer2, &bufferSize3, dBuffer3, &bufferSize4, mmdata->dBuffer4);
+3251:     PetscCallCUSPARSE(stat);
+3252:     PetscCallCUDA(cudaFree(dBuffer1));
+3253:     PetscCallCUDA(cudaFree(dBuffer2));
+3254: 
+3255:     /* get matrix C non-zero entries C_nnz1 */

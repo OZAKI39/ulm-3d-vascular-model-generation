@@ -1,0 +1,25 @@
+--- executed/p2_system.py
++++ guarded/p2_system.py
+@@ -1,5 +1,7 @@
+ from launch import *
++from gpu_budget import gate
+ import re
++if (HERE/'P2_SYSTEM_ATTEMPT.json').exists():raise SystemExit('P2_SYSTEM_ALREADY_ATTEMPTED_NO_RETRY')
+ parity=read(HERE/'P1_LINEAR_SOLVER_PARITY.json');assert parity['status']=='PASS';selected=parity['selected_candidate'];assert selected in parity['passed_candidates']
+ assert read(TARGET/'P2_CURVED_MESH_QA.json')['status']=='PASS';assert read(TARGET/'P2_PIPE_READINESS_GATE.json')['nine_implementation_prerequisites_pass']
+ for n,h in read(HERE/'INPUT_SHA256.json').items():assert sha(BASE/n)==h,n
+@@ -19,6 +21,14 @@
+ if not preflight['prelaunch_safe']:
+  put('P2_LINEAR_SYSTEM_RESOURCE_RESULT.json',dict(status='P2_LINEAR_SYSTEM_MEMORY_UNSAFE',setup='NOT_RUN_PREALLOCATION_SCREEN',solve='NOT_RUN',selected_candidate=selected,prelaunch=preflight,actual_P2_PC_peak_RSS_GiB=None,headroom_20percent_proven=False))
+  sys.exit(0)
++# Safety correction after the unexpected first attempt: do not repeat it.
++budget_path=HERE/'P2_GPU_WORKSPACE_PREFLIGHT.json'
++budget=read(budget_path) if budget_path.exists() else None
++free=float(subprocess.check_output(['nvidia-smi','--query-gpu=memory.free','--format=csv,noheader,nounits'],text=True).strip())
++gpu_gate=gate(budget,free)
++put('GPU_ALLOCATION_PRELAUNCH_GATE.json',gpu_gate)
++if not gpu_gate['PASS']:raise SystemExit(gpu_gate['reason'])
++put('P2_SYSTEM_ATTEMPT.json',dict(attempts=1,scope='single native P2 linear system, no retry'))
+ (HERE/'runtime/p2_system/run/PETSC_OPTIONS.txt').write_text(options+'\n')
+ put('P2_LINEAR_SYSTEM_RESOURCE_RESULT.json',dict(status='RUNNING',selected_candidate=selected,setup='RUNNING',solve='PENDING',CFD_timesteps=0,prelaunch=preflight))
+ run('p2_system','single')
