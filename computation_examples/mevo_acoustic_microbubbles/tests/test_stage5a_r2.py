@@ -1,0 +1,410 @@
+"""R2 real-matrix regressions, native mapping, geometry and full integrator checks."""
+
+from pathlib import Path
+import numpy as np
+import pytest
+from scipy import sparse
+from scipy.integrate import solve_ivp
+import test_stage5a_motion as old
+from mevo_mb.bubbles.motion_qp_r2 import NativeQP, certificate
+from mevo_mb.bubbles.motion_r2 import MotionR2, SemiImplicit
+from mevo_mb.bubbles.motion_sweep_r2 import pair_sweep, segment_triangle2, triangle_minimum
+from mevo_mb.bubbles.constrained_motion import AcceptedCache
+
+
+@pytest.mark.parametrize(
+    "fixture",
+    [
+        "20261006T200738743816Z_failure_replay",
+        "20261006T210101208569Z_B2_osqp",
+        "20261006T210102848863Z_B3_osqp",
+    ],
+)
+def test_real_failed_qp(fixture):
+    p = Path("results/stage5/motion_solver_r2/fixtures") / fixture
+    d = dict(np.load(next(z for z in p.glob("*.npz") if z.name not in ["A.npz", "G.npz"])))
+    a, g = sparse.load_npz(p / "A.npz"), sparse.load_npz(p / "G.npz")
+    qp = NativeQP()
+    u, lam, diag = qp.solve(a, d["b"], g, d["lower"], feasible=d.get("feasible"))
+    assert diag["pass_gate"] and diag["kkt"] <= 1e-9
+    v, m, w = qp.solve(a, d["b"], g, d["lower"], warm_primal=u, warm_dual=lam)
+    np.testing.assert_allclose(u, v, atol=1e-8, rtol=1e-8)
+    np.testing.assert_allclose(g.T @ lam, g.T @ m, atol=1e-8, rtol=1e-7)
+    assert abs(w["objective"] - diag["objective"]) < 1e-9 * max(1, abs(w["objective"]))
+
+
+@pytest.mark.parametrize("solver", ["prox", "prox_sparse", "osqp", "clarabel"])
+def test_native_lower_sign_and_bound(solver):
+    a = sparse.eye(2, format="csc")
+    g = sparse.csc_matrix([[1.0, 0.0]])
+    u, lam, d = NativeQP(solver, 1e-10).candidate(a, np.array([-1.0, 2.0]), g, np.array([0.5]))
+    np.testing.assert_allclose(u, [0.5, 2.0], atol=1e-8)
+    np.testing.assert_allclose(lam, [1.5], atol=1e-8)
+    assert certificate(a, np.array([-1.0, 2.0]), g, np.array([0.5]), u, -lam)["kkt"] > 1
+
+
+@pytest.mark.parametrize("epsilon", [0.0, 1e-12, 1e-8])
+def test_parallel_different_bounds_and_nonunique_dual(epsilon):
+    a = sparse.eye(2, format="csc")
+    g = sparse.csc_matrix([[1.0, 0.0], [1.0, epsilon], [1.0, 0.0]])
+    lo = np.array([0.1, 0.2, 0.2])
+    b = np.array([-1.0, 1.0])
+    u, lam, d = NativeQP().solve(a, b, g, lo)
+    assert d["pass_gate"] and np.min(g @ u - lo) > -1e-9
+    np.testing.assert_allclose(u, [0.2, 1.0], atol=1e-7)
+
+
+@pytest.mark.parametrize("objective_scale", [0.01, 1.0, 100.0])
+@pytest.mark.parametrize("row_scale", [0.1, 1.0, 10.0])
+def test_objective_units_row_scaling(objective_scale, row_scale):
+    a = sparse.csc_matrix([[2.0, 0.2], [0.2, 3.0]])
+    b = np.array([-1.0, 2.0])
+    g = sparse.eye(2, format="csc")
+    lo = np.array([0.0, 0.0])
+    u, lam, d = NativeQP().solve(a * objective_scale, b * objective_scale, g * row_scale, lo * row_scale)
+    audit = certificate(a, b, g, lo, u, lam * row_scale / objective_scale)
+    assert audit["pass_gate"]
+    np.testing.assert_allclose(u, [0.0, 2 / 3], atol=1e-9)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "test_T1_stokes_force_and_flow",
+        "test_T2_common_translation",
+        "test_T3_squeeze_large_dt",
+        "test_T4_separating_inactive",
+        "test_T5_tangential_not_locked",
+        "test_T6_wall_large_dt",
+        "test_T10_components_global",
+        "test_T11_warm_cold_and_cache_ids",
+    ],
+)
+def test_physical_limits(monkeypatch, name):
+    # Exercise the new adapter with the original model-limit reference tests.
+    class Adapter(MotionR2):
+        def constrained(self, *args, **kw):
+            return super().constrained(*args, **kw)
+
+    monkeypatch.setattr(old, "ConstrainedLubrication", Adapter)
+    getattr(old, name)()
+
+
+@pytest.mark.parametrize("count", [3, 30])
+def test_chains(monkeypatch, count):
+    monkeypatch.setattr(old, "ConstrainedLubrication", MotionR2)
+    old.test_contact_chain(count)
+
+
+def test_endpoint_safe_midpath_wall():
+    tri = np.array([[-2.0, -2.0, 0.0], [2.0, -2.0, 0.0], [0.0, 2.0, 0.0]])
+    p = np.array([0.0, 0.0, -1.0])
+    q = np.array([0.0, 0.0, 1.0])
+    assert segment_triangle2(p, p, *tri) == pytest.approx(1.0)
+    assert segment_triangle2(q, q, *tri) == pytest.approx(1.0)
+    assert segment_triangle2(p, q, *tri) == 0.0
+    # Finite radius detects an edge graze even without centerline intersection.
+    p = np.array([2.1, -2.0, -1.0])
+    q = np.array([2.1, -2.0, 1.0])
+    assert triangle_minimum(p, q, tri[None]) == pytest.approx(0.1)
+
+
+def analytic_sweep(geometry):
+    def sweep(x, y, r, tol):
+        pg = pair_sweep(x, y, r)
+        w = min(geometry.wall_gap_and_normal(x, r)[0].min(), geometry.wall_gap_and_normal(y, r)[0].min())
+        return dict(
+            pass_gate=min(pg, w) >= -tol, minimum_pair_swept_gap_m=pg, minimum_wall_swept_gap_bound_m=w
+        )
+
+    return sweep
+
+
+@pytest.mark.parametrize("wall", [False, True])
+@pytest.mark.parametrize("strategy", ["picard", "quasi_newton"])
+def test_whole_integrator_squeeze_wall_refinement(wall, strategy):
+    R = old.R
+    v = 0.001
+    model = MotionR2(old.MU)
+    geometry = old.Plane() if wall else old.NoWall()
+    x0 = np.array([[0.0, 0.0, -1.05 * R]]) if wall else old.pair(0.05)
+    flow = np.array([[0.0, 0.0, v]]) if wall else np.array([[v, 0.0, 0.0], [-v, 0.0, 0.0]])
+
+    def forcing(x, r, t):
+        return dict(
+            primary_force_N=np.zeros_like(x), secondary_force_N=np.zeros_like(x), flow_velocity_m_s=flow
+        )
+
+    def rhs(t, h):
+        c = model.coefficient(h, R, "wall" if wall else "pair")[0]
+        return [-v / (1 + c / old.DRAG)] if wall else [-2 * v / (1 + 2 * c / old.DRAG)]
+
+    duration = 20e-6
+    ref = solve_ivp(rhs, [0, duration], [0.05 * R], rtol=1e-12, atol=1e-20).y[0, -1]
+    errors = []
+    for dt in [5e-6, 2.5e-6, 1.25e-6]:
+        step = SemiImplicit(
+            MotionR2(old.MU), geometry, forcing, analytic_sweep(geometry), nonlinear_strategy=strategy
+        )
+        x = x0.copy()
+        r = np.full(len(x), R)
+        for i in range(round(duration / dt)):
+            x, _, _, _ = step.advance(x, r, np.arange(len(x)), i * dt, dt, "test")
+        gap = -x[0, 2] - R if wall else np.linalg.norm(x[1] - x[0]) - 2 * R
+        errors.append(abs(gap - ref))
+    assert errors[1] < errors[0] * 0.65 and errors[2] < errors[1] * 0.65
+
+
+def test_negative_initial_band_release_and_cache_rollback():
+    geometry = old.NoWall()
+    x = old.pair()
+    x[1, 0] -= 5e-12
+    r = np.full(2, old.R)
+
+    def forcing(x, r, t):
+        return dict(
+            primary_force_N=np.zeros_like(x),
+            secondary_force_N=np.zeros_like(x),
+            flow_velocity_m_s=np.array([[-0.001, 0.0, 0.0], [0.001, 0.0, 0.0]]),
+        )
+
+    model = MotionR2(old.MU)
+    prior = AcceptedCache((5, 9), {}, {}, (), "accepted")
+    model.cache = prior
+    step = SemiImplicit(model, geometry, forcing, analytic_sweep(geometry))
+    y, u, cache, d = step.advance(x, r, np.array([5, 9]), 0, 1e-8, "test")
+    assert np.linalg.norm(y[1] - y[0]) > np.linalg.norm(x[1] - x[0])
+    assert model.cache is prior
+
+
+def test_atomic_checkpoint_restore(tmp_path):
+    from scripts.stage5a_r2.run import checkpoint, restore
+
+    c = AcceptedCache((3,), {3: np.ones(3)}, {("wall", 3): 2.0}, (("wall", 3),), "test")
+    p = tmp_path / "checkpoint.npz"
+    x = np.zeros((1, 3))
+    r = np.array([old.R])
+    ids = np.array([3])
+    mask = np.ones(1, bool)
+    checkpoint(p, x, x, r, ids, mask, 3.0, dict(next_dt=1e-6), c, "identity")
+    d, m, recovered = restore(p)
+    np.testing.assert_array_equal(d["positions_m"], x)
+    assert recovered.dual == c.dual and m["controller"]["next_dt"] == 1e-6
+    assert not p.with_suffix(".tmp").exists()
+
+
+def test_solver_success_still_requires_certificate_and_recoverable_fallback(monkeypatch):
+    # A native solved-but-wrong candidate cannot leak into accepted motion.
+    original = NativeQP.candidate
+    calls = []
+
+    def injected(self, *args, **kwargs):
+        calls.append(self.name)
+        if self.name == "prox":
+            a, b, g, lo = args[:4]
+            u = np.ones(len(b))
+            lam = np.zeros(len(lo))
+            return (
+                u,
+                lam,
+                dict(
+                    certificate(a, b, g, lo, u, lam),
+                    status="QPSolverOutput.PROXQP_SOLVED",
+                    setup_s=0.0,
+                    update_s=0.0,
+                    solve_s=0.0,
+                    polish_s=0.0,
+                    iterations=1,
+                ),
+            )
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(NativeQP, "candidate", injected)
+    a = sparse.eye(1, format="csc")
+    g = a.copy()
+    u, lam, d = NativeQP().solve(a, np.array([-1.0]), g, np.array([0.0]))
+    assert calls == ["prox", "osqp"] and d["fallbacks"] == 1
+    assert d["kkt"] <= 1e-9 and u[0] < 1e-9
+
+
+def test_inaccurate_status_requires_crosscheck(monkeypatch):
+    original = NativeQP.candidate
+
+    def inaccurate(self, *args, **kwargs):
+        u, lam, d = original(self, *args, **kwargs)
+        if self.name == "prox":
+            d["status"] = "solved inaccurate"
+        return u, lam, d
+
+    monkeypatch.setattr(NativeQP, "candidate", inaccurate)
+    a = sparse.eye(1, format="csc")
+    _, _, d = NativeQP().solve(a, np.array([-1.0]), a, np.zeros(1))
+    assert d["fallbacks"] == 1 and d["attempts"][0]["pass_gate"]
+
+
+@pytest.mark.parametrize("scale", [0.001, 1000.0])
+def test_velocity_unit_equivalence(scale):
+    a = sparse.csc_matrix([[2.0, 0.2], [0.2, 3.0]])
+    b = np.array([-1.0, 2.0])
+    g = sparse.eye(2, format="csc")
+    lo = np.zeros(2)
+    z, lam, d = NativeQP().solve(a * scale**2, b * scale, g * scale, lo)
+    assert certificate(a, b, g, lo, z * scale, lam)["pass_gate"]
+
+
+def test_exact_continuation_equivalence(tmp_path):
+    from scripts.stage5a_r2.run import checkpoint, restore
+
+    x = old.pair(0.05)
+    r = np.full(2, old.R)
+    ids = np.array([5, 9])
+    geometry = old.NoWall()
+
+    def forcing(x, r, t):
+        return dict(
+            primary_force_N=np.zeros_like(x),
+            secondary_force_N=np.zeros_like(x),
+            flow_velocity_m_s=np.array([[0.001, 0.0, 0.0], [-0.001, 0.0, 0.0]]),
+        )
+
+    model = MotionR2(old.MU)
+    step = SemiImplicit(model, geometry, forcing, analytic_sweep(geometry))
+    dt = 1e-6
+    y, u, c, d = step.advance(x, r, ids, 0.0, dt, "restart")
+    model.cache = c
+    p = tmp_path / "state.npz"
+    checkpoint(p, y, u, r, ids, np.ones(2, bool), dt, dict(next_dt=dt), c, "identity")
+    full, _, _, _ = step.advance(y, r, ids, dt, dt, "restart")
+    data, meta, cache = restore(p)
+    fresh = MotionR2(old.MU)
+    fresh.cache = cache
+    restarted, _, _, _ = SemiImplicit(fresh, geometry, forcing, analytic_sweep(geometry)).advance(
+        data["positions_m"], r, ids, float(data["time_s"]), meta["controller"]["next_dt"], "restart"
+    )
+    np.testing.assert_allclose(restarted, full, rtol=0, atol=1e-18)
+
+
+def test_trial_scratch_never_committed_and_workspace_bound():
+    model = MotionR2(old.MU)
+    x = old.pair(0.05)
+    r = np.full(2, old.R)
+    ids = np.array([7, 9])
+    wall = old.NoWall().wall_gap_and_normal(x, r)
+    from mevo_mb.bubbles.motion_r2 import anchored_constraints
+
+    flow = np.array([[0.001, 0.0, 0.0], [-0.001, 0.0, 0.0]])
+    a = model.solve(x, r, np.zeros_like(x), flow, wall)
+    c = anchored_constraints(x, x, r, wall, wall, 1e-6, ids, 1e-11, a.velocity)
+    accepted = model.cache
+    u, scratch, _ = model.constrained_stage(a, c, ids, "first")
+    _, _, _ = model.constrained_stage(a, c, ids, "second", scratch=scratch)
+    assert model.cache is accepted and len(model.stage_workspaces) == 2
+
+
+def test_nonfinite_cannot_fallback_to_success():
+    from mevo_mb.bubbles.constrained_motion import MotionSolverFailure
+
+    with pytest.raises(MotionSolverFailure, match="NONFINITE_INPUT"):
+        NativeQP().solve(
+            sparse.eye(1, format="csc"), np.array([np.nan]), sparse.eye(1, format="csc"), np.zeros(1)
+        )
+
+
+@pytest.mark.parametrize("infeasible", [False, True])
+def test_native_infeasibility_is_audited_without_acceptance(monkeypatch, infeasible):
+    from mevo_mb.bubbles.motion_qp_r2 import NativeQP, certificate
+    from mevo_mb.bubbles.constrained_motion import MotionSolverFailure
+
+    a = sparse.eye(1, format="csc")
+    b = np.array([-1.0])
+    g = sparse.csc_matrix([[1.0], [-1.0]]) if infeasible else sparse.csc_matrix([[1.0]])
+    lower = np.array([1.0, 0.0]) if infeasible else np.array([0.0])
+
+    def reported(self, a, b, g, lower, *args):
+        u = np.zeros(1)
+        lam = np.zeros(len(lower)) if infeasible else np.ones(1)
+        audit = certificate(a, b, g, lower, u, lam)
+        return (
+            u,
+            lam,
+            dict(audit, status="primal infeasible", setup_s=0.0, update_s=0.0, solve_s=0.0, iterations=1),
+        )
+
+    monkeypatch.setattr(NativeQP, "candidate", reported)
+    with pytest.raises(MotionSolverFailure) as caught:
+        NativeQP().solve(a, b, g, lower)
+    expected = "QP_INFEASIBILITY_UNRESOLVED" if infeasible else "QP_INFEASIBILITY_CONTRADICTED"
+    assert caught.value.diagnostics["reason"] == expected
+    assert len(caught.value.diagnostics["attempts"]) == 3
+    assert np.array_equal(caught.value.qp_state["lower"], lower)
+    assert bool(caught.value.diagnostics["infeasibility_audit"]["feasible_witness"]) != infeasible
+
+
+def test_native_nonconvex_status_is_fatal(monkeypatch):
+    from mevo_mb.bubbles.motion_qp_r2 import NativeQP
+    from mevo_mb.bubbles.constrained_motion import MotionSolverFailure
+
+    def reported(self, *args):
+        return np.zeros(1), np.zeros(1), dict(status="problem non convex", pass_gate=False)
+
+    monkeypatch.setattr(NativeQP, "candidate", reported)
+    with pytest.raises(MotionSolverFailure) as caught:
+        NativeQP().solve(
+            sparse.eye(1, format="csc"), np.array([-1.0]), sparse.csc_matrix([[1.0]]), np.zeros(1)
+        )
+    assert caught.value.diagnostics["reason"] == "INVALID_MODEL"
+
+
+def test_recovery_never_bypasses_local_error_or_geometry_budget():
+    from mevo_mb.bubbles.constrained_motion import SubdivideInterval
+    from mevo_mb.bubbles.motion_recovery_r2 import (
+        begin_recovery,
+        selected_method,
+        accepted_recovery,
+        recovery_ceiling,
+    )
+
+    for reason in ["LOCAL_ERROR", "SWEEP_NOT_CERTIFIED", "QP_CERTIFICATE_REJECTED"]:
+        controller = {}
+        assert not begin_recovery(
+            controller, SubdivideInterval(reason, dict(wall_normal_jump=0.2)), 1e-6, 1e-5
+        )
+        assert not controller
+    controller = {}
+    assert begin_recovery(
+        controller, SubdivideInterval("NONLINEAR_NOT_CONVERGED", dict(wall_normal_jump=0.2)), 1e-6, 1e-5
+    )
+    assert selected_method(controller) == "S0" and controller["next_dt"] <= 1e-7
+    for _ in range(8):
+        accepted_recovery(controller, "S0", 1e-7, 2e-7, 1e-5)
+    assert selected_method(controller) == "S1"
+    assert controller["recovery_duration_s"] == pytest.approx(8e-7)
+    assert recovery_ceiling(0.25) == pytest.approx(recovery_ceiling(1.0) / 2)
+
+
+def test_budget_interrupt_preserves_zero_step_state_and_null_certificates(tmp_path, monkeypatch):
+    import json
+    from types import SimpleNamespace
+    from scripts.stage5a_r2 import run as driver
+
+    base = tmp_path / "evidence"
+    (base / "environment").mkdir(parents=True)
+    (base / "environment/IDENTITY.json").write_text("{}")
+    geometry = old.NoWall()
+    x = old.pair(0.05)
+    r = np.full(2, old.R)
+    tracker = SimpleNamespace(
+        translation=MotionR2(old.MU), cylinder=geometry, evaluate=lambda *a: None, timings={}
+    )
+    state = dict(
+        positions_m=x, radii_m=r, particle_id=np.array([7, 9]), active=np.ones(2, bool), time_s=np.array(3.0)
+    )
+    monkeypatch.setattr(driver, "BASE", base)
+    monkeypatch.setattr(driver, "load", lambda *a: (tracker, analytic_sweep(geometry), {}, state, {}))
+    folder, summary = driver.run("B2", 1e-6, budget=0, label="watchdog_test")
+    assert summary["status"] == "INCOMPLETE" and summary["accepted_steps"] == 0
+    assert summary["accepted_kkt_max"] is None and summary["projection_max_m"] is None
+    restored, meta, cache = driver.restore(folder / "CHECKPOINT.npz")
+    np.testing.assert_array_equal(restored["positions_m"], x)
+    assert float(restored["time_s"]) == 3.0 and meta["controller"]["elapsed_s"] == 0.0
+    assert json.loads((folder / "SUMMARY.json").read_text())["accepted_nonlinear_kkt_max"] is None

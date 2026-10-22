@@ -1,0 +1,15 @@
+# F10P开发交付
+
+基于完整F10O 98cf17b8ecd03e831628ed7005a8e1c83d354a40，分支dev/fast-pzt-f10p-hard-sphere-group-admission-20261014，独立工作区mevo_fast_pzt_f10p_20261014。原F10O工作区及F1–F10O数据没有修改。
+
+本轮无新增安全删除对象。活跃索引和独立清理提交546f286f1先于预登记36343716a，后者固定全部质量门槛、独立团级准入和原XY目标。opt-in模块hard_sphere.py、water_hard_sphere.py复用原场、力、成对阻力及R3墙，原M0/B2默认入口不变。
+
+不可变科学执行：首轮OSQP pilot e27f13389d091f2575b5a44a7325f42ff91dea3b；直接活动集pilot 0ad7682f009fb428d32486260917af59708d8f32；正式validation 327d0833e84ae51f2cebf7440df920e71125918d；有限前缀diagnostic a27ca63dff802bc0470b7e1f10785eaeb5ef2794。原始本地参考cc35fad01也保留。每次独立Supervisor标签、外层timeout、逐条100 s上限、累计600 s检查及源包SHA完整归档。一次传输中断发生在计算启动前，有失败记录；没有重启其他任务。
+
+科学结论及23项回答见FAST_PZT_F10P_CONTROL_RESULTS.md；方程和原型限制见FAST_PZT_F10P_HARD_SPHERE_AUDIT.md；分层规则见FAST_PZT_F10P_GROUP_ADMISSION.md。代码中navigation.py为有条件路径，本轮没有navigation_admission.json，因此没有运行该搜索或产生候选科学结果。
+
+复现后处理：在项目环境设置PYTHONPATH=src:.与OPENBLAS_NUM_THREADS=1，依次运行scripts.straight_tube_exp1.f10p.analyze、verify、figures、inspect_pdfs。最终验证使用verify --final。最终ENGINEERING字段由通过的工程检查登记；分析脚本重跑会先将该字段设为PENDING_FINAL_CHECKS。科学运行必须从Git提交创建新的独立标签，不复用覆盖旧目录。
+
+服务器项目环境补装OSQP1.0.5，不升级CUDA/驱动；主要成功求解使用原SciPy的Cholesky/最小二乘，OSQP仅保留原失败及受限退出参考。全部计算是固定球形、未校准F2近场/润滑/声源响应假设下的探索；无实验可信训练准入。
+
+结果目录results/straight_tube_exp1/f10p/含注册、输入哈希、执行包、四次run、失败、逐步位置/残差、成本、分层JSON、四组图、视觉检查、进度before/after及最终MANIFEST。原输入缓存和APECSS仍位于既有F10N，不复制重算或任意外推。

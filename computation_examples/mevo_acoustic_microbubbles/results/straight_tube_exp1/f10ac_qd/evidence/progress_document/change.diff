@@ -1,0 +1,67 @@
+--- before.md
++++ after.md
+@@ -28,16 +28,16 @@
+ | 先用已有录像熟悉界面 | `bash /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/start_replay.sh` |
+ | 连接 Chronos，观察并录制实验 | `bash /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/start_live.sh` |
+ | 补充或修改人工标注 | `bash /home/lzy/projects/external_connect/vision_tracking_research/smart_online_tracking_v2/start_annotation.sh` |
+-| 查看最新仿真代码及结果 | [F10AB 工程][sim-root]；[形变研究报告][ab-report] |
++| 查看最新仿真代码及结果 | [F10AC + F10AD 工程][sim-root]；[多频率与形变探索报告][acad-report] |
+ | 查看正式全通道离线分析 | [F10X 离线工程][offline]；[结果说明][offline-readme] |
+ 
+ **当前仿真工程根目录：**
+ 
+ ```text
+-/home/lzy/projects/computation_examples/_archives/mevo_shape_f10ab_20261018/computation_examples/mevo_acoustic_microbubbles
++/home/lzy/projects/computation_examples/_archives/mevo_qd_f10ac_ad_20261018/computation_examples/mevo_acoustic_microbubbles
+ ```
+ 
+-当前 F10AB 分支为 `dev/f10ab-shape-control-20261018`，基于已核查的 F10AA `6028598d0012912cc19aa766fa786c4afb0a91a5`；每条实验的实际执行提交见对应 `EXECUTION.json`。声学聚集研究的主要依据来自 F10Z；F10AA 在保留物理和数值要求的前提下加速求解。旧的 `computation_examples/mevo_acoustic_microbubbles` 目录不能直接当作最新基线。
++当前分支为 `dev/f10ac-qd-f10ad-multifrequency-20261018`，基于已核查的 F10AB `9d304c22817599f85079ada5a42b2e143f3fe055`；每条实验的实际执行提交见对应 `EXECUTION.json`。声学聚集研究的主要依据来自 F10Z；F10AA 在保留物理和数值要求的前提下加速求解。旧的 `computation_examples/mevo_acoustic_microbubbles` 目录不能直接当作最新基线。
+ 
+ 视觉启动入口仍使用上表路径，其中实时工程指向 F10Y 工作树；当前界面还包含后续本地修复，不能仅靠 F10Y 最初的提交重现最新版。各工程使用独立环境，启动脚本会选择自己的 Python，无需将所有依赖装入同一个环境。
+ 
+@@ -116,13 +116,25 @@
+ 
+ 服务器连接为 `ssh -p 15283 root@95.3.33.46`。F10AA 独立目录位于 `/workspace/mevo_acoustic_microbubbles/f10aa_simulation_20261018`，使用其独立 `.venv`；通用 mevo 环境入口仍为 `source /workspace/mevo_acoustic_microbubbles/activate.sh`。远程结果回传后核对 SHA-256，执行源码身份以各任务的 `EXECUTION.json` 为准，不能用最终文档提交替代。
+ 
+-### 2.5 群体形状研究的最新结果（F10AB）
++### 2.5 群体形状研究的历史基线（F10AB）
+ 
+ 沿用 F10AA 完整逐泡引擎，新增固定 ID 的三维/XY形状分析，依次去除平移、刚体旋转和统一缩放。147 条尝试中，142 条完成、5 条被原数值门槛拒绝；45 组完整窗口数值比较全部通过。
+ 
+ 180° X 双源在三个 X 向细长初态上都增大了长宽比，变化超过数值差异；210° 动作的方向则依赖初始排列。局部幅值/相位分析只支持一个可辨识形状方向。预登记的“长宽比增加3%且保持连通”目标未通过：部分群体裂为多个邻近分量。因此，目前证明的是有限的固定粒子集合形变能力，尚未证明稳健、可逆的完整泡团形状控制。
+ 
+ [完整报告与十组科研图][ab-report] · [去刚体运动后的真实视频][ab-video]。服务器独立目录为 `/workspace/mevo_acoustic_microbubbles/f10ab_shape_20261018`；完整每步原始数据保留在那里，本地另有可独立读取的逐轨迹查阅数据。均匀水近似、物理未校准和 `training_ready=false` 保持不变。
++
++### 2.6 多频率与有限形变搜索（F10AC + F10AD）
++
++在原 F10AA 逐泡引擎上，新增 pyribs 官方 BOP-Elites、CMA-MAE 与 SciPy Sobol 比较。每种方法同为 32 次计费评价；本次 CMA-MAE 得到 6 个档案格、用时 89.0 s，Sobol 为 5 格/111.9 s，BOP 为 4 格/301.0 s。这是单次有限预算结果，档案格数不等于独立物理模式数。
++
++2.4、2.5、2.6 MHz 的声场和 APECSS 响应分别生成并核查；历史 2.5 MHz 生产路径保持不变。相同 Y 双源动作下，2 ms 内 Rg 分别约降低 7.59%、0.0057%、10.83%，对应九条频率/动作轨迹的 18 个半步长与细缓存对照全部通过。Y 结果仍仅适用于均匀水代理，不能直接外推到 PDMS 实验。
++
++366 次逐泡尝试中 363 条完整，3 条因历史响应表低压下限中止。三个档案候选通过独立初态与数值复核，但仍只确认“收缩、长宽比增加”这一类同向响应，没有证实新的独立控制模式或绝对主轴伸长。另一个强收缩候选在三个新初态的步长差异达 105–319 nm，超过原 50 nm 门槛，保留为失败证据。已记录科学计算和后处理约 30.5 分钟，不含开发及回传时间。
++
++![相同动作在三个频率下的形变差异][acad-figure]
++
++[27 项中文结论与限制][acad-report] · [多频率真实逐泡视频][acad-video] · [开发与复现入口][acad-code]。12 组 PNG/PDF、3 段 MP4 和全部失败索引已经生成；服务器独立目录为 `/workspace/mevo_acoustic_microbubbles/f10ac_ad_20261018`。完整逐步原始数据和全部便携数据保留在服务器，本地保留报告、媒体、关键输入轨迹与校验清单。没有操作真实 PZT，也未开展世界模型或强化学习训练，`training_ready=false`。
+ 
+ ## 3. 人工标注：少量可靠区域支持检测开发
+ 
+@@ -238,7 +250,7 @@
+ - 视觉：[F10X 离线结果][offline-readme]、[当前实时界面说明][live-readme]、[现场指南][lab-guide]。
+ - 本文配图与短视频为现有产物的原样副本，来源和 SHA-256 见 [媒体来源清单](microbubble_aggregation_assets/media_sources.json)。完整科研数据、失败记录和历史报告仍保存在各阶段目录。
+ 
+-[sim-root]: /home/lzy/projects/computation_examples/_archives/mevo_shape_f10ab_20261018/computation_examples/mevo_acoustic_microbubbles
++[sim-root]: /home/lzy/projects/computation_examples/_archives/mevo_qd_f10ac_ad_20261018/computation_examples/mevo_acoustic_microbubbles
+ [aa-report]: /home/lzy/projects/computation_examples/_archives/mevo_simulation_f10aa_20261018/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10aa/reports/F10AA_DEVELOPMENT_REPORT.md
+ [aa-code]: /home/lzy/projects/computation_examples/_archives/mevo_simulation_f10aa_20261018/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10aa/reports/ACTIVE_CODE_INDEX.md
+ [aa-gate]: /home/lzy/projects/computation_examples/_archives/mevo_simulation_f10aa_20261018/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10aa/FINAL_GATE.json
+@@ -256,3 +268,8 @@
+ 
+ [ab-report]: /home/lzy/projects/computation_examples/_archives/mevo_shape_f10ab_20261018/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10ab/F10AB_DEVELOPMENT_REPORT.md
+ [ab-video]: /home/lzy/projects/computation_examples/_archives/mevo_shape_f10ab_20261018/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10ab/videos/Video_F10AB_2_rigid_motion_vs_deformation.mp4
++
++[acad-report]: /home/lzy/projects/computation_examples/_archives/mevo_qd_f10ac_ad_20261018/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10ac_qd/FINAL_CHINESE_REPORT.md
++[acad-code]: /home/lzy/projects/computation_examples/_archives/mevo_qd_f10ac_ad_20261018/computation_examples/mevo_acoustic_microbubbles/scripts/straight_tube_exp1/f10ac_qd/README.md
++[acad-figure]: /home/lzy/projects/computation_examples/_archives/mevo_qd_f10ac_ad_20261018/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10ac_qd/figures/Fig_10_frequency_dependent_shape_response.png
++[acad-video]: /home/lzy/projects/computation_examples/_archives/mevo_qd_f10ac_ad_20261018/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10ac_qd/videos/Video_F10AD_3_frequency_dependent_dynamics.mp4

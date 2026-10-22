@@ -1,0 +1,36 @@
+{
+  "baseline_commit": "741ad7d8683bfbb2fc9a270d9e92a218dead5e54",
+  "scope": "EXPLORATORY / PHYSICS_UNCALIBRATED", "training_ready": false,
+  "radius_m": 1.78e-6, "residual_budget_m": 1.78e-8, "single_pass_budget_m": 1.78e-7,
+  "macro_s": 1e-5, "sample_s": 5e-5, "duration_s": 0.01,
+  "modes": {
+    "B0": {"dt_s": 1e-5, "contact_iterations": 12},
+    "SS2": {"dt_s": 5e-6, "contact_iterations": 6},
+    "SS4": {"dt_s": 2.5e-6, "contact_iterations": 3}
+  },
+  "baseline_replay": "B0 both exact first failures and accepted prefix; validate opt-in fail-stop recording",
+  "short_trials": "O/1102 selection case then prepare/1104 frozen numerical check; original branch initial states, no checkpoints",
+  "diagnostics": "Every attempted substep: full fresh physics, full quality, lightweight scalar ledger; last 32 full per-round traces",
+  "graph_chunk": 1, "relaxation": 0.5, "mobility_iterations": 2,
+  "no_multirate": true,
+  "morphology_gates": {
+    "source": "F10C strict scales, F10E sensitivity does not relax these",
+    "centroid_norm_m": 1e-8, "centroid_axis_m": 1e-8,
+    "paired_acoustic_delta_m": 1e-8,
+    "fixed_ID_max_m": 1.78e-7, "Kabsch_RMSD_m": 8.9e-8,
+    "Rg_relative": 0.01, "aspect_relative": 0.02, "shape_tensor_relative_Frobenius": 0.02,
+    "largest_fraction_abs": 0.0, "component_membership": "exact at shared saved physical times",
+    "minimum_gap_abs_m": 1.78e-8,
+    "contact_path": {"absolute_m": 1e-9, "relative": 0.02, "rule": "per ID max |a-b| <= absolute + relative*|reference|"},
+    "edge_events": {"identity_and_per_pair_order": "exact", "cross_pair_order": "same except events within 10us treated simultaneous", "time_tolerance_s": 1e-5},
+    "persistent_events": {"definition": "unchanged morphodynamics.topology, >=2ms", "identity": "exact", "time_tolerance_s": 1e-5},
+    "missing_matched_controls": "NOT_EVALUATED, never fabricate paired acoustic deltas",
+    "no_reference_after_failure": true
+  },
+  "extension": {"max_candidates": 2, "case": "O_1000_1102", "requires": "short target COMPLETE with original budgets; diagnostic per physical-time body excluding observer export <=10x B0; then <=10ms", "order": ["SS2", "SS4"]},
+  "SS12": "NOT_REGISTERED_FOR_EXECUTION unless SS2/SS4 positive contact, morphology and cost evidence; no automatic escalation",
+  "batch": {"maximum_one": 4, "requires": "full10ms contact PASS, all evaluated morphology gates PASS, paired deltas available, <= historical C1 cost; otherwise NOT_ADMITTED"},
+  "performance": "Formal matched speed test only short-window-admitted candidates; otherwise diagnostic measured costs only, no inferred production speedup",
+  "yield": "Charge all scientific failures, engineering retries, diagnostics and cold processes; no independent new seeds and no mixed-mode triplets",
+  "engineering_tolerances": {"CPU_GPU_position_abs_m": 1e-12, "force_abs_N": 1e-22, "clock_abs_s": 1e-14}
+}

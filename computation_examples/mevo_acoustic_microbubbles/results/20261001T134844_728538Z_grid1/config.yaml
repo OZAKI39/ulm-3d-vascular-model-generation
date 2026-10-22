@@ -1,0 +1,182 @@
+name: aggregation
+seed: 20261001
+grid:
+  shape:
+  - 320
+  - 160
+  - 160
+  spacing_m:
+  - 8.0e-05
+  - 8.0e-05
+  - 8.0e-05
+vessel:
+  radius_m: 0.0015
+  length_m: 0.02
+medium:
+  sound_speed_m_s: 1540.0
+  density_kg_m3: 1060.0
+  viscosity_Pa_s: 0.0035
+acoustics:
+  frequency_Hz: 1000000.0
+  backend: python
+  device: gpu
+  allow_python_gpu_fallback: true
+  BonA: null
+  CFL: 0.25
+  ramp_periods: 4
+  recording_periods: 4
+  transit_multiples: 2.0
+  pml_size: 20
+  pml_alpha: 2.0
+  pml_inside: false
+  roi_half_width_m:
+  - 0.0102
+  - 0.0018
+  - 0.0018
+  basis_source_amplitude_Pa: 10000.0
+  source_implementation: kwave_array
+  bli_tolerance: 0.01
+  upsampling_rate: 10
+  superposition_amplitudes:
+  - 1.0
+  - 0.8
+  - 0.6
+  - 1.0
+  superposition_phases_rad:
+  - 0.0
+  - 1.5707963267948966
+  - 3.141592653589793
+  - -1.5707963267948966
+  validation_relative_L2_max: 0.001
+  phase_mask_relative_amplitude: 0.01
+pzt:
+- id: y_plus
+  position_m:
+  - 0.0
+  - 0.004
+  - 0.0
+  normal:
+  - 0.0
+  - -1.0
+  - 0.0
+  geometry: disc
+  size_m:
+  - 0.003
+  amplitude_Pa: 2000.0
+  phase_rad: 0.0
+  enabled: true
+- id: y_minus
+  position_m:
+  - 0.0
+  - -0.004
+  - 0.0
+  normal:
+  - 0.0
+  - 1.0
+  - 0.0
+  geometry: disc
+  size_m:
+  - 0.003
+  amplitude_Pa: 2000.0
+  phase_rad: 0.0
+  enabled: true
+- id: z_plus
+  position_m:
+  - 0.0
+  - 0.0
+  - 0.004
+  normal:
+  - 0.0
+  - 0.0
+  - -1.0
+  geometry: disc
+  size_m:
+  - 0.003
+  amplitude_Pa: 2000.0
+  phase_rad: 0.0
+  enabled: true
+- id: z_minus
+  position_m:
+  - 0.0
+  - 0.0
+  - -0.004
+  normal:
+  - 0.0
+  - 0.0
+  - 1.0
+  geometry: disc
+  size_m:
+  - 0.003
+  amplitude_Pa: 2000.0
+  phase_rad: 0.0
+  enabled: true
+bubble_response:
+  model: linear_surrogate
+  resonance_frequency_Hz: 2500000.0
+  damping_ratio: 0.15
+  provenance: Demo assumptions; not calibrated SonoVue shell parameters
+particles:
+  count: 100
+  dt_s: 2.5e-05
+  duration_s: 0.02
+  integrator: RK2
+  primary_enabled: true
+  secondary_enabled: true
+  max_displacement_per_radius: 0.2
+  max_substeps: 10000
+  initialization:
+    kind: cloud
+    x_half_width_m: 0.0015
+    radial_fraction: 0.8
+    cloud_radius_m: 4.0e-05
+    cloud_center_m:
+    - 0.0
+    - 0.0
+    - 0.0
+  size_distribution:
+    kind: monodisperse
+    radius_m: 1.25e-06
+    minimum_radius_m: 5.0e-07
+    maximum_radius_m: 2.0e-06
+    lognormal_sigma: 0.2
+    samples_m: []
+  minimum_separation_m: 2.5e-06
+  collision_regularization_m: 1.0e-08
+  secondary_force_cutoff_m: 0.0005
+  contact_tolerance_m: 1.0e-11
+  contact_max_iterations: 100
+  pair_backend: numpy
+flow:
+  model: zero
+  maximum_velocity_m_s: 0.02
+metrics:
+  cluster_threshold_m: 1.0e-05
+  near_contact_gap_m: 5.0e-07
+  pair_histogram_bins: 40
+  pair_histogram_max_m: 0.004
+output:
+  vtk_stride: 10
+  figure_dpi: 300
+controls:
+  phase_patterns_rad:
+    baseline:
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    shifted:
+    - 0.0
+    - 1.5707963267948966
+    - 3.141592653589793
+    - -1.5707963267948966
+aggregation:
+  target_initial_local_PNP_Pa: 75000.0
+  pressure_sweep_Pa:
+  - 50000.0
+  - 100000.0
+  cloud_radius_sweep_m:
+  - 6.0e-05
+  duration_sweep_s:
+  - 0.005
+  - 0.01
+  - 0.02

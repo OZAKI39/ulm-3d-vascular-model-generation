@@ -1,0 +1,58 @@
+{
+  "radius_m": 1.78e-06,
+  "frequency_Hz": 2500000.0,
+  "flow": "STRICT_ZERO",
+  "channel_order": [
+    "Y-",
+    "Y+",
+    "X-",
+    "X+"
+  ],
+  "source_limit_Pa_equivalent": 1500,
+  "stages": [
+    "static",
+    "pilot",
+    "discovery",
+    "confirmation",
+    "sensitivity",
+    "target_if_admitted"
+  ],
+  "total_server_budget_s": 3600,
+  "per_run_budget_s": 240,
+  "max_workers": 2,
+  "dt_s": 1e-06,
+  "half_dt_s": 5e-07,
+  "cache_spacing_m": [
+    3e-06,
+    1.5e-06
+  ],
+  "short_s": 0.0005,
+  "formal_s": 0.002,
+  "max_extension_s": 0.005,
+  "metric_stride_steps": 10,
+  "physical_output": "every accepted step",
+  "discovery_replicates": [
+    0
+  ],
+  "confirmation_replicates": [
+    1,
+    2
+  ],
+  "shape_response_rule": "Similarity residual > max(5*dt/cache residual uncertainty,1 nm); deviatoric/shear response > max(5*uncertainty,1e-4); repeat signed response on two held-out realizations; require full windows and unchanged numerical gates.",
+  "action_difference_rule": "Pairwise anisotropic/shear output difference > max(5*sum numerical uncertainties,1e-4); centroid similarity <=20 nm is diagnostic, not target success.",
+  "orientation_eigen_gap_relative": 0.03,
+  "affine_max_condition": 100,
+  "affine_max_relative_residual": 0.1,
+  "discovery_selection": "Static diagnostic selects at most four non-OFF actions: historical A7, max free deviatoric rate, opposite/min rate, and L2-normalized control when legal. Fixed action library retained even if not integrated.",
+  "extension_rule": "Only a selected numerically resolved repeated case; predicted triple cost <180 s, remaining budget >300 s, no unresolved contact failure; max 5ms.",
+  "sensitivity_rule": "Central differences in pair amplitude (5%,2.5%) and relative X+ phase (6deg,3deg); at two windows or initial shapes; base A7. Two explored parameters cannot prove four-channel global controllability.",
+  "target_rule": "Only after full-window dt/cache and held-out signed-response checks. Freeze target and <=4 candidate schedules before target runs; max eight legal contiguous segments.",
+  "matching_priority": "Exact N/radius/center; then requested geometry and legal connectivity; Rg/density/minimum distances measured, not forced to match.",
+  "labels": [
+    "EXPLORATORY",
+    "HOMOGENEOUS_WATER_CONTROL_PROXY",
+    "PHYSICS_UNCALIBRATED",
+    "ELECTRICAL_TO_ACOUSTIC_UNCALIBRATED"
+  ],
+  "training_ready": false
+}

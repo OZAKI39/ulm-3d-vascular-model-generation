@@ -1,0 +1,70 @@
+{
+  "baseline_commit": "2fc90fd4ad57d16addfe5bed2878c7c3085efd61",
+  "physics": "Unmodified F6 M0 / F10C FullParticleBatch; field/flow stride=1",
+  "dt_s": 1e-05,
+  "duration_s": 0.01,
+  "sample_s": 5e-05,
+  "N": 32,
+  "batch_sizes": [
+    16,
+    64
+  ],
+  "cold_speed_gate": 1.25,
+  "discrete_gate": "Exact labels, member masks, sampled lineage, accepted-step raw edge events and persistence events/times",
+  "raw_gate": "Bitwise positions/time/controls/forces/quality and boundary datasets",
+  "float_gates": {
+    "length_m": {
+      "atol": 1e-18,
+      "rtol": 5e-12
+    },
+    "tensor_m2": {
+      "atol": 1e-28,
+      "rtol": 5e-12
+    },
+    "angle_deg": {
+      "atol": 1e-05,
+      "rtol": 1e-10
+    },
+    "dimensionless": {
+      "atol": 1e-10,
+      "rtol": 1e-10
+    }
+  },
+  "float_rationale": "Float64 batched reductions and LAPACK may change final rounding; length atol is one picometre of a micrometre (1e-18 m), much smaller than physical gates; acos near +/-1 uses absolute 1e-5 degree. Degenerate eigenvectors use reference fallback; no tolerance for discrete labels or events.",
+  "offline_benchmark": "Archived exclusive_v1_batch/B64_batch full201x64x32 input, one first and one warm legacy/optimized pair; instrumented profile separate",
+  "family_benchmark": {
+    "controls": [
+      "OFF",
+      "S_1000",
+      "O_1000"
+    ],
+    "counts": [
+      5,
+      7,
+      8
+    ],
+    "max_batch": 16,
+    "initials": "Original legal four translations repeated, BENCHMARK_ONLY"
+  },
+  "diversity": {
+    "seeds": [
+      1101,
+      1102,
+      1103,
+      1104
+    ],
+    "method": "If fewer than four independent archived mature families, hard-sphere random sequential placement in a radius12um ball centered on the actual F10A interior cloud; min center distance2.05R. No retries chosen by scientific success.",
+    "preparation_s": 0.01,
+    "controls": [
+      "O_1000",
+      "S_1000",
+      "OFF"
+    ],
+    "duration_s": 0.01,
+    "split": "Control branches and any prepared descendant remain in the original seed family; do not create a validation split"
+  },
+  "training_ready": false,
+  "physics_scope": "EXPLORATORY / PHYSICS_UNCALIBRATED",
+  "failure_policy": "Original global fail-stop, keep every failed member and accepted prefix; no automatic retry or dropped samples",
+  "performance_repetitions": "One bounded paired controlled-window comparison per B and startup mode, not a confidence interval"
+}

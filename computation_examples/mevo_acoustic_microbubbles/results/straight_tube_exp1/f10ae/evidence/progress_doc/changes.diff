@@ -1,0 +1,81 @@
+--- before.md
++++ after.md
+@@ -1,6 +1,6 @@
+ # 微泡声学控制与视觉观测：项目运行总览
+ 
+-更新：2026-10-18。本文按当前实际运行流程整理；阶段性的参数扫描、调试经过和完整日志请查文末链接，不再逐轮堆叠。
++更新：2026-10-19。本文按当前实际运行流程整理；阶段性的参数扫描、调试经过和完整日志请查文末链接，不再逐轮堆叠。
+ 
+ 项目要回答的是：**能否用四枚 PZT 使微泡靠近、移动和改变群体形状，并用 Chronos 显微录像可靠地观测这些变化？** 当前已有可运行的逐泡仿真、人工标注和实时视觉观测系统。仿真与观测能够分别工作，实验中的自动闭环控制尚未完成。
+ 
+@@ -28,16 +28,16 @@
+ | 先用已有录像熟悉界面 | `bash /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/start_replay.sh` |
+ | 连接 Chronos，观察并录制实验 | `bash /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/start_live.sh` |
+ | 补充或修改人工标注 | `bash /home/lzy/projects/external_connect/vision_tracking_research/smart_online_tracking_v2/start_annotation.sh` |
+-| 查看最新仿真代码及结果 | [F10AC + F10AD 工程][sim-root]；[多频率与形变探索报告][acad-report] |
++| 查看最新仿真代码及结果 | [F10AE 工程][sim-root]；[指定形态与恢复报告][ae-report] |
+ | 查看正式全通道离线分析 | [F10X 离线工程][offline]；[结果说明][offline-readme] |
+ 
+ **当前仿真工程根目录：**
+ 
+ ```text
+-/home/lzy/projects/computation_examples/_archives/mevo_qd_f10ac_ad_20261018/computation_examples/mevo_acoustic_microbubbles
++/home/lzy/projects/computation_examples/_archives/mevo_target_f10ae_20261019/computation_examples/mevo_acoustic_microbubbles
+ ```
+ 
+-当前分支为 `dev/f10ac-qd-f10ad-multifrequency-20261018`，基于已核查的 F10AB `9d304c22817599f85079ada5a42b2e143f3fe055`；每条实验的实际执行提交见对应 `EXECUTION.json`。声学聚集研究的主要依据来自 F10Z；F10AA 在保留物理和数值要求的前提下加速求解。旧的 `computation_examples/mevo_acoustic_microbubbles` 目录不能直接当作最新基线。
++当前分支为 `dev/f10ae-targeted-shape-recovery-20261019`，基于已核查的 F10AC/F10AD `baa47dbe95c78e1800aebe50bc3efc5faf07d5fa`；每条实验的实际执行提交见对应 `EXECUTION.json`。声学聚集研究的主要依据来自 F10Z；F10AA 在保留物理和数值要求的前提下加速求解。旧的 `computation_examples/mevo_acoustic_microbubbles` 目录不能直接当作最新基线。
+ 
+ 视觉启动入口仍使用上表路径，其中实时工程指向 F10Y 工作树；当前界面还包含后续本地修复，不能仅靠 F10Y 最初的提交重现最新版。各工程使用独立环境，启动脚本会选择自己的 Python，无需将所有依赖装入同一个环境。
+ 
+@@ -56,9 +56,9 @@
+ | 顶部开口 | 两个直径 1.5 mm 的镜像开口，连通中心通道 |
+ | PZT | 四枚直径 7 mm 圆片，位于 X±、Y± 外表面中心，朝装置内部 |
+ | 微泡运动环境 | 腔体按充水处理；背景流严格为零 |
+-| 当前声场 | 均匀水圆片声源代理，2.5 MHz；复用四路复声压缓存 |
++| 当前声场 | 均匀水圆片声源代理，2.5 MHz 主研究；2.4/2.6 MHz 对照各用匹配缓存与响应 |
+ | 本批逐泡参数 | 半径 1.78 µm；已完成 32、64、128 泡的有限窗口验证 |
+-| 当前时间尺度 | 主要为 1–2 ms；32 泡部分场景已验证至 5 ms |
++| 当前时间尺度 | 主要为 1–2 ms；本轮 64 泡两段动作共 4 ms；32 泡部分场景曾验证至 5 ms |
+ 
+ 当前控制研究不求解注射、液滴、自由液面、声流或完整 PDMS 弹性反射。早期 Y 管有流算例与此处的无流直管是不同实验，不能混用结果身份。
+ 
+@@ -135,6 +135,20 @@
+ ![相同动作在三个频率下的形变差异][acad-figure]
+ 
+ [27 项中文结论与限制][acad-report] · [多频率真实逐泡视频][acad-video] · [开发与复现入口][acad-code]。12 组 PNG/PDF、3 段 MP4 和全部失败索引已经生成；服务器独立目录为 `/workspace/mevo_acoustic_microbubbles/f10ac_ad_20261018`。完整逐步原始数据和全部便携数据保留在服务器，本地保留报告、媒体、关键输入轨迹与校验清单。没有操作真实 PZT，也未开展世界模型或强化学习训练，`training_ready=false`。
++
++### 2.7 指定形态、恢复与鲁棒性（F10AE）
++
++继续复用 F10AA 逐泡引擎，限定 64 泡、无流、均匀水代理，先登记目标再搜索幅相。官方 APECSS 支持将历史 2.5 MHz、原壳参数和半径 1.78 µm 的低压范围有限扩展至 **0.001 Pa**；0.0001 Pa 的精细求解超时，未准入。历史表与轨迹不变，搜索比较全程保留原压力域，新的低压扩展单独验证。
++
++Ax/BoTorch 与 Sobol 各有 32 次观察，包含 8 个共同起点；本次 Ax 首次达到发现集目标需 10 次观察，Sobol 为 26 次。这是单次有限预算比较。选定 T1 动作使发现初态长宽比增加约 **2.997%**、质心移动 **2.132 nm**，但独立验证及最终测试均只命中 **2/3**；较小形变目标 T2 的独立验证为 **2/3**、最终测试为 **3/3**。两者都未达到预登记的跨初态完整确认条件。
++
++不能将长宽比增加直接称为拉伸。两个验证初态出现超过数值差异的全局主轴增长 **1.186 / 2.218 nm**，但已分成 3 / 2 个邻近分量，其最大 62 泡子群仍收缩。另一个最终测试初态出现连通态约 **7.808 nm** 主轴增长，未对该留出初态追加数值复核，保留为未确认观察。第二段主动控制也没有实现恢复：选定案例的 Rg 误差由约 **0.694%** 增至 **0.746%**，固定 ID 内部结构误差同样增加，不能称为可逆形状控制。
++
++本轮 **230 次逐泡尝试，227 条完整、3 条中止**；630,000 个完整轨迹时间步完成独立审计，66 组半步长/缓存比较通过。核心科学计算与审计约 **18.24 分钟**，图和视频生成另计约 1 分钟，不含安装、开发与回传。12 组 PNG/PDF、3 段真实逐泡 MP4、失败记录和输入哈希均已保存。频率和壳参数变化会使目标值偏离；目前仍是短窗口、未校准的均匀水代理，`training_ready=false`。
++
++![实际主轴变化与初态敏感性][ae-figure]
++
++[25 项中文结论与完整限制][ae-report] · [两段动作与未恢复的真实视频][ae-video] · [开发和复现入口][ae-code]。服务器独立目录为 `/workspace/mevo_acoustic_microbubbles/f10ae_target_20261019`，大型逐步原始数据保留在该目录。下一步应在多个发现初态上优化，再用独立测试判断能否可靠控制；恢复研究应先寻找可重复的反向形变机制，并补做切换瞬态和真实四源声场标定。
+ 
+ ## 3. 人工标注：少量可靠区域支持检测开发
+ 
+@@ -250,7 +264,7 @@
+ - 视觉：[F10X 离线结果][offline-readme]、[当前实时界面说明][live-readme]、[现场指南][lab-guide]。
+ - 本文配图与短视频为现有产物的原样副本，来源和 SHA-256 见 [媒体来源清单](microbubble_aggregation_assets/media_sources.json)。完整科研数据、失败记录和历史报告仍保存在各阶段目录。
+ 
+-[sim-root]: /home/lzy/projects/computation_examples/_archives/mevo_qd_f10ac_ad_20261018/computation_examples/mevo_acoustic_microbubbles
++[sim-root]: /home/lzy/projects/computation_examples/_archives/mevo_target_f10ae_20261019/computation_examples/mevo_acoustic_microbubbles
+ [aa-report]: /home/lzy/projects/computation_examples/_archives/mevo_simulation_f10aa_20261018/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10aa/reports/F10AA_DEVELOPMENT_REPORT.md
+ [aa-code]: /home/lzy/projects/computation_examples/_archives/mevo_simulation_f10aa_20261018/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10aa/reports/ACTIVE_CODE_INDEX.md
+ [aa-gate]: /home/lzy/projects/computation_examples/_archives/mevo_simulation_f10aa_20261018/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10aa/FINAL_GATE.json
+@@ -273,3 +287,8 @@
+ [acad-code]: /home/lzy/projects/computation_examples/_archives/mevo_qd_f10ac_ad_20261018/computation_examples/mevo_acoustic_microbubbles/scripts/straight_tube_exp1/f10ac_qd/README.md
+ [acad-figure]: /home/lzy/projects/computation_examples/_archives/mevo_qd_f10ac_ad_20261018/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10ac_qd/figures/Fig_10_frequency_dependent_shape_response.png
+ [acad-video]: /home/lzy/projects/computation_examples/_archives/mevo_qd_f10ac_ad_20261018/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10ac_qd/videos/Video_F10AD_3_frequency_dependent_dynamics.mp4
++
++[ae-report]: /home/lzy/projects/computation_examples/_archives/mevo_target_f10ae_20261019/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10ae/FINAL_CHINESE_REPORT.md
++[ae-figure]: /home/lzy/projects/computation_examples/_archives/mevo_target_f10ae_20261019/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10ae/figures/Fig_F10AE_06_absolute_principal_axis_extension.png
++[ae-video]: /home/lzy/projects/computation_examples/_archives/mevo_target_f10ae_20261019/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10ae/videos/Video_F10AE_2_deformation_and_recovery.mp4
++[ae-code]: /home/lzy/projects/computation_examples/_archives/mevo_target_f10ae_20261019/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10ae/EXECUTION_AND_REPRODUCTION.md

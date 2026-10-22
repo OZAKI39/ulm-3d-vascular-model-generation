@@ -1,0 +1,101 @@
+<!doctype html><meta charset='utf-8'><title>Microbubble acoustics review</title><style>body{font:17px system-ui;max-width:1250px;margin:36px auto;padding:0 24px;color:#172638;background:#fafbfc}img{width:100%;background:white}table{border-collapse:collapse;background:white;font-size:14px;width:100%;margin:20px 0}th,td{border:1px solid #ddd;padding:9px;text-align:left}th{background:#e5edf4}p{line-height:1.65}a{color:#125c91}section{margin:32px 0}</style>
+<h1>PZT → 3D acoustics → microbubble transport</h1><p>实际结果与数值敏感性。Linear surrogate · one-way coupling · no coalescence</p>
+<p><a href='README.md'>README</a> · <a href='docs/VALIDATION_REPORT.md'>中文验证报告</a> · <a href='results/DEMO_CAMPAIGN.json'>Run index</a> · <a href='results/CONVERGENCE_STATE.json'>Convergence</a></p>
+<h1>PZT → acoustic field → microbubble demo：实际验证结果</h1>
+<p>本报告只读取已关闭run。基础单位SI；当前为线性声场、径向响应替代模型、单向耦合，不是经生理标定的SonoVue预测。</p>
+<h2>声场</h2>
+<table>
+<tr><th>Frequency</th><th>Basis/direct relative L2</th><th>Masked phase RMS (rad)</th></tr>
+<tr><td>2 MHz</td><td>1.56249e-07</td><td>4.74772e-07</td></tr>
+<tr><td>1 MHz</td><td>9.78255e-08</td><td>3.18591e-07</td></tr>
+</table>
+<p>CUDA binary的HDF5依赖失败保留；本次正式声学demo使用CuPy GPU。整个域不保存完整时间历史，末4周期仅记录ROI。</p>
+<h2>迁移与聚集</h2>
+<table>
+<tr><th>Case</th><th>N</th><th>Time (ms)</th><th>Mean lateral displacement (µm)</th><th>NN initial → final (µm)</th><th>Largest cluster initial → final</th><th>Near-contact final</th></tr>
+<tr><td>migration/baseline</td><td>150</td><td>10</td><td>0.376577</td><td>271.21 → 271.78</td><td>1 → 1</td><td>0</td></tr>
+<tr><td>migration/shifted</td><td>150</td><td>10</td><td>0.328535</td><td>271.21 → 271.75</td><td>1 → 1</td><td>0</td></tr>
+<tr><td>aggregation/baseline</td><td>32</td><td>20</td><td>21.2953</td><td>9.6309 → 2.5001</td><td>3 → 32</td><td>1</td></tr>
+</table>
+<h3>相同初值的泡间作用对照</h3>
+<table>
+<tr><th>Secondary force</th><th>Final NN (µm)</th><th>Largest cluster</th><th>Near-contact fraction</th></tr>
+<tr><td>ON</td><td>2.50015</td><td>32</td><td>1</td></tr>
+<tr><td>OFF</td><td>7.67374</td><td>6</td><td>0.0625</td></tr>
+</table>
+<p>两次初始位置、粒径、源控制量一致。此对照只支持当前数值模型内部归因，不代表真实微泡近场聚集定律已验证。</p>
+<p>相同初始ID，两个相位图样的末位置向量差：均值 0.612719 µm，最大 2.67958 µm。</p>
+<h2>两档数值敏感性</h2>
+<p>结论：尚未证明聚集轨迹收敛。20 ms聚集对照的同ID末位置RMS差为 5.718 µm，平均位移相差 6.126%。最近邻距离已接近接触直径，其稳定不能证明单泡轨迹准确。</p>
+<table>
+<tr><th>Scenario</th><th>Pressure L2 dx comparison</th><th>Gradient L2</th><th>Primary-force L2</th><th>dt endpoint RMS (µm)</th><th>dt NN relative difference</th></tr>
+<tr><td>migration</td><td>0.034328</td><td>0.024316</td><td>0.037161</td><td>1.8634e-11</td><td>3.7898e-15</td></tr>
+<tr><td>aggregation</td><td>0.014014</td><td>0.011287</td><td>0.012337</td><td>5.7185</td><td>0.00022518</td></tr>
+</table>
+<table>
+<tr><th>Scenario</th><th>Peak coarse / fine (kPa)</th><th>Center coarse / fine (kPa)</th><th>Mean displacement dt / dt/2 (µm)</th><th>NN dt / dt/2 (µm)</th><th>Grid particle endpoint RMS (µm)</th></tr>
+<tr><td>migration</td><td>14.333 / 14.333</td><td>14.333 / 14.333</td><td>134.59 / 134.59</td><td>271.78 / 271.78</td><td>0.054665</td></tr>
+<tr><td>aggregation</td><td>8.4308 / 8.4299</td><td>8.4308 / 8.4299</td><td>31.247 / 29.443</td><td>2.5001 / 2.5007</td><td>4.5808</td></tr>
+</table>
+<p>压力峰值和中心值使用相同每元2 kPa源控制；聚集粒子另按记录的scale放大到初始云中位PNP 75 kPa。</p>
+<p>这些是0.1/0.08 mm及25/12.5 µs的实测差异，不把基底叠加PASS当作网格无关。几何位移限制子步仍生效，具体计数/最小步长见JSON。</p>
+<h2>模型与失败证据</h2>
+<p>首次聚集试算在逐对接触速度迭代达到上限后停止；部分状态及源文件保留。最终采用相同摩擦无关非穿透约束的整体NNLS投影，30泡接触链测试通过。</p>
+<p>100泡开发探针因密集接触计算成本于1.941884 ms主动中断，7935状态保留。最终32泡是独立的完整20 ms演示，不能混称100泡结果。</p>
+<p>近场secondary Bjerknes经过显式数值正则化；接触不代表融合，cluster阈值不代表黏附。Marmottant响应尚未实现，不伪造壳参数。</p>
+<h3>实际子步补充检查</h3>
+<p>迁移的25/12.5 µs名义对照均产生800子步，不能独立证明时间收敛。补跑更小有效步长；聚集补充检查只覆盖0–2 ms形成阶段。</p>
+<table>
+<tr><th>Scenario</th><th>Horizon (ms)</th><th>Coarse / finer substeps</th><th>Endpoint RMS difference (µm)</th><th>NN coarse / finer (µm)</th></tr>
+<tr><td>migration</td><td>10</td><td>800 / 1600</td><td>4.64769e-09</td><td>271.779 / 271.779</td></tr>
+<tr><td>aggregation</td><td>2</td><td>3346 / 6869</td><td>1.91871</td><td>2.50041 / 2.5001</td></tr>
+</table>
+<p>此补充检查不改变原始主算例，也不推翻20 ms密集接触轨迹尚未收敛的结论。</p>
+<p>- migration/baseline: max predicted |ξ|/R0 = 0.048662；该数值不认证线性替代模型的真实生理有效性。</p>
+<p>- migration/shifted: max predicted |ξ|/R0 = 0.05185；该数值不认证线性替代模型的真实生理有效性。</p>
+<p>- aggregation/baseline: max predicted |ξ|/R0 = 0.21881；该数值不认证线性替代模型的真实生理有效性。</p>
+<h2>实际计算资源</h2>
+<table>
+<tr><th>f (MHz)</th><th>Grid</th><th>Nt</th><th>ROI sensors</th><th>Solver seconds</th><th>Sampled device VRAM MiB</th></tr>
+<tr><td>2</td><td>[256, 128, 128]</td><td>2790</td><td>280645</td><td>27.172</td><td>3156.0</td></tr>
+<tr><td>2</td><td>[256, 128, 128]</td><td>2790</td><td>280645</td><td>26.565</td><td>5302.0</td></tr>
+<tr><td>2</td><td>[256, 128, 128]</td><td>2790</td><td>280645</td><td>26.624</td><td>7448.0</td></tr>
+<tr><td>2</td><td>[256, 128, 128]</td><td>2790</td><td>280645</td><td>26.515</td><td>9218.0</td></tr>
+<tr><td>2</td><td>[320, 160, 160]</td><td>3510</td><td>516375</td><td>93.660</td><td>5190.0</td></tr>
+<tr><td>1</td><td>[256, 128, 128]</td><td>3038</td><td>280645</td><td>29.477</td><td>3394.0</td></tr>
+<tr><td>1</td><td>[256, 128, 128]</td><td>3038</td><td>280645</td><td>29.006</td><td>5662.0</td></tr>
+<tr><td>1</td><td>[256, 128, 128]</td><td>3038</td><td>280645</td><td>29.079</td><td>7872.0</td></tr>
+<tr><td>1</td><td>[256, 128, 128]</td><td>3038</td><td>280645</td><td>29.015</td><td>9496.0</td></tr>
+<tr><td>1</td><td>[320, 160, 160]</td><td>3773</td><td>516375</td><td>100.871</td><td>5650.0</td></tr>
+</table>
+<p>显存是整设备0.5 s采样峰值，不是进程私有分配上界。生产声场全部实际在RTX4090执行。</p>
+<p>外置PML后FFT网格为288×160×160；细档为360×200×200。这是由metadata物理网格与PML宽度计算的实际求解网格。</p>
+<h2>文件入口</h2>
+<p>- 配置、接口、安装与限制：../README.md</p>
+<p>- 测试证据：TEST_RESULTS.txt</p>
+<p>- 全帧数据检查：RESULT_INTEGRITY.json</p>
+<p>- 源码与运行输出身份：DELIVERY_MANIFEST.json</p>
+<section><h2>20261001T140059_607305Z_migration_baseline / geometry_and_field</h2><a href='results/20261001T140059_607305Z_migration_baseline/figures/geometry_and_field.pdf'>PDF</a><img src='results/20261001T140059_607305Z_migration_baseline/figures/geometry_and_field.png' loading='lazy'></section>
+<section><h2>20261001T133609_838799Z_acoustic2_superposition / superposition</h2><a href='results/20261001T133609_838799Z_acoustic2_superposition/figures/superposition.pdf'>PDF</a><img src='results/20261001T133609_838799Z_acoustic2_superposition/figures/superposition.png' loading='lazy'></section>
+<section><h2>20261001T134147_915052Z_acoustic1_superposition / superposition</h2><a href='results/20261001T134147_915052Z_acoustic1_superposition/figures/superposition.pdf'>PDF</a><img src='results/20261001T134147_915052Z_acoustic1_superposition/figures/superposition.png' loading='lazy'></section>
+<section><h2>20261001T140059_607305Z_migration_baseline / acoustic_and_primary_force</h2><a href='results/20261001T140059_607305Z_migration_baseline/figures/acoustic_and_primary_force.pdf'>PDF</a><img src='results/20261001T140059_607305Z_migration_baseline/figures/acoustic_and_primary_force.png' loading='lazy'></section>
+<section><h2>20261001T140059_607305Z_migration_baseline / trajectories_and_distribution</h2><a href='results/20261001T140059_607305Z_migration_baseline/figures/trajectories_and_distribution.pdf'>PDF</a><img src='results/20261001T140059_607305Z_migration_baseline/figures/trajectories_and_distribution.png' loading='lazy'></section>
+<section><h2>20261001T140059_607305Z_migration_baseline / metrics</h2><a href='results/20261001T140059_607305Z_migration_baseline/figures/metrics.pdf'>PDF</a><img src='results/20261001T140059_607305Z_migration_baseline/figures/metrics.png' loading='lazy'></section>
+<section><h2>20261001T140059_607305Z_migration_baseline / pair_distance_distribution</h2><a href='results/20261001T140059_607305Z_migration_baseline/figures/pair_distance_distribution.pdf'>PDF</a><img src='results/20261001T140059_607305Z_migration_baseline/figures/pair_distance_distribution.png' loading='lazy'></section>
+<section><h2>20261001T140104_658980Z_migration_shifted / acoustic_and_primary_force</h2><a href='results/20261001T140104_658980Z_migration_shifted/figures/acoustic_and_primary_force.pdf'>PDF</a><img src='results/20261001T140104_658980Z_migration_shifted/figures/acoustic_and_primary_force.png' loading='lazy'></section>
+<section><h2>20261001T140104_658980Z_migration_shifted / trajectories_and_distribution</h2><a href='results/20261001T140104_658980Z_migration_shifted/figures/trajectories_and_distribution.pdf'>PDF</a><img src='results/20261001T140104_658980Z_migration_shifted/figures/trajectories_and_distribution.png' loading='lazy'></section>
+<section><h2>20261001T140104_658980Z_migration_shifted / metrics</h2><a href='results/20261001T140104_658980Z_migration_shifted/figures/metrics.pdf'>PDF</a><img src='results/20261001T140104_658980Z_migration_shifted/figures/metrics.png' loading='lazy'></section>
+<section><h2>20261001T140104_658980Z_migration_shifted / pair_distance_distribution</h2><a href='results/20261001T140104_658980Z_migration_shifted/figures/pair_distance_distribution.pdf'>PDF</a><img src='results/20261001T140104_658980Z_migration_shifted/figures/pair_distance_distribution.png' loading='lazy'></section>
+<section><h2>20261001T140109_567108Z_aggregation_baseline / acoustic_and_primary_force</h2><a href='results/20261001T140109_567108Z_aggregation_baseline/figures/acoustic_and_primary_force.pdf'>PDF</a><img src='results/20261001T140109_567108Z_aggregation_baseline/figures/acoustic_and_primary_force.png' loading='lazy'></section>
+<section><h2>20261001T140109_567108Z_aggregation_baseline / trajectories_and_distribution</h2><a href='results/20261001T140109_567108Z_aggregation_baseline/figures/trajectories_and_distribution.pdf'>PDF</a><img src='results/20261001T140109_567108Z_aggregation_baseline/figures/trajectories_and_distribution.png' loading='lazy'></section>
+<section><h2>20261001T140109_567108Z_aggregation_baseline / metrics</h2><a href='results/20261001T140109_567108Z_aggregation_baseline/figures/metrics.pdf'>PDF</a><img src='results/20261001T140109_567108Z_aggregation_baseline/figures/metrics.png' loading='lazy'></section>
+<section><h2>20261001T140109_567108Z_aggregation_baseline / pair_distance_distribution</h2><a href='results/20261001T140109_567108Z_aggregation_baseline/figures/pair_distance_distribution.pdf'>PDF</a><img src='results/20261001T140109_567108Z_aggregation_baseline/figures/pair_distance_distribution.png' loading='lazy'></section>
+<section><h2>results / phase_pattern_displacements</h2><a href='results/review_figures/phase_pattern_displacements.pdf'>PDF</a><img src='results/review_figures/phase_pattern_displacements.png' loading='lazy'></section>
+<section><h2>20261001T140909_675763Z_migration_grid_comparison / grid_convergence</h2><a href='results/20261001T140909_675763Z_migration_grid_comparison/figures/grid_convergence.pdf'>PDF</a><img src='results/20261001T140909_675763Z_migration_grid_comparison/figures/grid_convergence.png' loading='lazy'></section>
+<section><h2>20261001T140910_515801Z_aggregation_grid_comparison / grid_convergence</h2><a href='results/20261001T140910_515801Z_aggregation_grid_comparison/figures/grid_convergence.pdf'>PDF</a><img src='results/20261001T140910_515801Z_aggregation_grid_comparison/figures/grid_convergence.png' loading='lazy'></section>
+<section><h2>20261001T141658_512802Z_convergence / timestep_convergence</h2><a href='results/20261001T141658_512802Z_convergence/figures/timestep_convergence.pdf'>PDF</a><img src='results/20261001T141658_512802Z_convergence/figures/timestep_convergence.png' loading='lazy'></section>
+<h2>ParaView</h2><ul>
+<li><a href='results/20261001T140059_607305Z_migration_baseline/vtk/particles.pvd'>migration / baseline particles.pvd</a></li>
+<li><a href='results/20261001T140104_658980Z_migration_shifted/vtk/particles.pvd'>migration / shifted particles.pvd</a></li>
+<li><a href='results/20261001T140109_567108Z_aggregation_baseline/vtk/particles.pvd'>aggregation / baseline particles.pvd</a></li>
+</ul>

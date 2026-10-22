@@ -1,0 +1,1 @@
+Historical pre-exclusive resource/archive/gate evidence, copied before the exclusive replay archive. Full earlier scientific outputs remain in batch_v1, batch64_v1 and cold_v1. Original figure/report revision: f49ecba0ee1621b2e81464245b46e3e7d60a5984.

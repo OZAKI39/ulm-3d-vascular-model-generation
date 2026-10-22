@@ -1,0 +1,11 @@
+# F10Q actual frozen failure audit
+
+The pre-solver diagnosis is `results/straight_tube_exp1/f10q/analysis/TRUE_GAP_FAILURE_DIAGNOSIS.json`, committed before sequential solver development. Inputs are the actual F10P last accepted state at 0.463 ms and rejected 0.464 ms proposal, each hashed with the original full-precision force, reaction, gap and ID mapping.
+
+The worst reaction-weighted pair is IDs 19 and 21. Its relative tangential displacement is 9.261203363 nm; its normal displacement is −0.011488121 nm. Initial positive gap plus that normal displacement leaves essentially zero affine gap. Exact finite-sphere geometry produces 0.012046312166 nm additional gap. δ²/(4R) predicts 0.012046332547 nm in this particular near-contact geometry, which quantitatively explains the magnitude. The exact identity g_true−g_linear = δ²/(sqrt(a²+δ²)+a), with a=initial distance+normal displacement, is verified across actual pairs with maximum error below 4e−21 m.
+
+The pair reaction is 1.202161817 nN. Applying the original force normalization gives 0.010056962227 nm, reproducing the stored failing indicator; the 0.01 nm gate is not a plain maximum-gap threshold. The actual normal rotates 0.149052435 degrees. Mapping unchanged local-QP reactions through actual new normals leaves a separate 7.204342975e−12 N force imbalance. This motivated checking both geometric complementarity and true-normal force equilibrium, not merely nudging the scalar failing indicator below its limit.
+
+No 2.1R graph edge changes occur at this particular rejected proposal. Positive local reactions remain mapped to the corresponding stored pairs. Stored/recomputed gap and weighted residual agree; no SI unit or pair-index error was found. Reconstructing velocity by subtracting saved absolute positions changes very small residuals by floating-point cancellation, far below the force threshold; it does not explain the true-normal imbalance.
+
+Evidence supports finite tangential curvature and frozen normals as the mechanism of this frozen failure. It does not prove that all later failures share the mechanism: F10Q's later 0.884 ms rejection is an active-set solver cycle, separately preserved. Geometric graph connectivity is never physical fusion.

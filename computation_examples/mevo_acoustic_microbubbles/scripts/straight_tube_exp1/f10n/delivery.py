@@ -1,0 +1,108 @@
+"""Generate the final Chinese report from saved data, including unsuccessful outcomes."""
+
+import numpy as np
+from .common import BASE, ROOT, read
+
+
+def main():
+    accepted = read(BASE / "ACCEPTED_CAMPAIGN.json")
+    out = BASE / accepted["path"]
+    gate = read(BASE / "analysis/FINAL_GATE.json")
+    sens = read(BASE / "analysis/NUMERICAL_SENSITIVITY.json")
+    cpu = read(BASE / "analysis/CPU_CHECKS.json")
+    gpu = read(out / "GPU_CHECKS.json")
+    campaign = read(out / "CAMPAIGN.json")
+    table = {r["name"]: r for r in read(BASE / "analysis/CONTROL_COMPARISON.json")}
+    opt = table["OPTIMIZED_REPLAY"]
+    shape = table["SHAPE_REPLAY"]
+    dispersed = table["DISPERSED_OPTIMIZED"]
+    trials = read(out / "TRIALS.json")
+    failed = [r for r in trials if not r["eligible"]]
+    transfer = read(BASE / "analysis/TRANSFER_VERIFICATION.json")
+    navcontrol = read(out / "runs/OPTIMIZED_REPLAY/INPUT.json")["events"][0]
+    shapecontrol = read(out / "runs/SHAPE_REPLAY/INPUT.json")["events"][0]
+    text = """# F10N：四PZT无流微泡位置与形态控制原型
+
+原型开发、有限试验和归档完成。**位置目标未达到，形态目标未达到。**选定控制的平均平移超过本轮步长/缓存差异，但位置控制下的具体逐泡排列尚未数值收敛，不能由质心一致宣称逐泡精度。较弱的形态控制产生可测的小幅变化，仍没有实验校准。保持EXPLORATORY、PHYSICS_UNCALIBRATED、training_ready=false。
+
+## 1. 基线、假设和实现
+
+基于F10M-R3提交e008a420b8bc386ac20454c556955b389be75fec，独立分支dev/fast-pzt-f10n-control-prototype-20261013。未修改任何既有src文件，只新增水圆片场、三次插值核和F10N适配器。原R3几何、暴露壁面查询、封闭X端、有限半径、完整逐泡身份、一次/二次力、局部润滑及PBD复用。
+
+按用户本轮授权，把微泡运动相关腔体明确视为充水、背景流严格零；不继续开发PDMS多材料、自由液面、液滴、注射、声流或残余流。32.5×9×9 mm块、1.6 mm主腔、两个1.5 mm孔与四枚7 mm源面保持R3尺寸；孔轴±10.85 mm及5.4 mm端面到中心解释继续为暂定测距。机械壁面与均匀水声学近似分别建模，不把忽略声学反射解释成微泡可以穿墙。
+
+声场标记HOMOGENEOUS_WATER_CONTROL_PROXY：四个独立均匀挡板圆活塞在均匀无损水中的近场，真实尺寸、中心和向内法向。采用[Kelly和McGough 2006式9](https://pmc.ncbi.nlm.nih.gov/articles/PMC2117898/)的单积分及同一积分的解析导数，并与独立二维Rayleigh面积积分、轴上闭式和加倍求积核对。理想挡板仅为单源近似，不代表装置PDMS/端密封已校准；忽略源间散射、PDMS反射和弹性波。源幅Pa定义为ρc vₙ等效幅值，不能直接当电压或实测面压力。
+
+频率固定2.5 MHz、泡半径1.78 µm。原APECSS表有效非零幅为0.1–40000 Pa，0为精确静止分支；不外推、不静默裁剪。四路分别设置幅值、相位、启停及持续时间；优化固定全局公共相位，仅搜索七个实际变量。3 µm缓存和1.5 µm核对缓存一次建立，所有候选直接复用；GPU使用C1 Catmull–Rom复压力及其一致导数，避免Z对称面的一侧线性梯度假漂移。没有新的k-Wave传播求解。
+
+## 2. 预登记与预算
+
+PREREGISTRATION.json在任何GPU轨迹前写入。32固定ID有两套独立初态：种子20261013分散云和4×4×2接触网络演示阵列。后者最小表面间隙0.0001R、无初始重叠，明确是预先指定的演示排列，绝不称为本轮声学聚集产物。两者质心均为原点。
+
+位置目标固定(3,2,1) µm，2 ms后误差需≤0.75 µm才达到目标。形态目标为√(Qxx/Qyy)从1增至至少1.25，且可辨认主轴距X≤15°；Q由去质心的同ID坐标计算。目标没有事后移动。搜索最多8个位置候选、4个形态候选、22条轨迹，每条45 s、总600 s；Supervisor外层700 s。每次静态SLSQP提案最多160次函数评价，静态初始力预测只用于提案，实际选择依赖完整M0轨迹。实际位置候选7个、形态候选4个；位置完成重算/步长/缓存比较后才运行形态任务。未延长窗口，也未额外开展分段搜索。
+
+## 3. 位置效果与真实失败
+
+| 控制 | 2 ms COM位移向量(µm) | 位移模(µm) | 终点目标误差(µm) |
+|---|---|---:|---:|
+"""
+    for name in ["OFF", "BASELINE", "OPTIMIZED_REPLAY"]:
+        r = table[name]
+        text += (
+            f"| {name} | "
+            + ", ".join(f"{v:.9g}" for v in r["displacement_um"])
+            + f" | {r['displacement_norm_um']:.9g} | {r['endpoint_error_um']:.9g} |\n"
+        )
+    text += f"""
+初始误差{gate["initial_error_um"]:.9g} µm，优化后减少{gate["error_reduction_um"]:.9g} µm（约{100 * gate["error_reduction_um"] / gate["initial_error_um"]:.3f}%）。OFF严格静止，因此优化位移就是相对OFF的声学额外位移。这是约0.228 µm的短窗探索位移，**不是完成3.74 µm导航**。
+
+最优固定幅相（顺序Y−、Y+、X−、X+）：幅值约{np.round(navcontrol["amplitude_Pa"], 4).tolist()} Pa，相位约{np.round(np.degrees(navcontrol["phase_rad"]), 4).tolist()}°，持续2 ms。完整未舍入值保存在INPUT.json中。实际粒子压力{opt["actual_particle_pressure_range_Pa"][0]:.6g}–{opt["actual_particle_pressure_range_Pa"][1]:.6g} Pa，一次力峰值{opt["peak_primary_force_N"]:.6g} N、二次力峰值{opt["peak_secondary_force_N"]:.6g} N。控制代价定义为∫ΣA²dt（Pa²s），各RESULT.json保存，不能称电功耗。
+
+局部初始COM声力响应雅可比奇异值约1.644e−4、1.349e−5、2.627e−20 m/s/归一化控制量，呈两个有效方向。本轮实际主要+X、少量+Y；对称初态与X/Y源布局未证明独立带符号Z平移，也不宣称任意三维可达。对每颗泡的Z形变与团质心Z控制是不同问题。
+
+NAV_STATIC_0在0.4 ms有效前缀后因接触残余超过0.01R门槛被拒绝，记录的最大残余约{failed[0]["quality"]["max_accepted_penetration_m"] / 1.78e-6:.6g}R；其失败提案也已保存。原0.1R单次接触修正、0.01R残余和0.1R壁修正预算没有放宽。GPU错误位为0不等于轨迹通过：该例在F6质量检查中明确FAILED。
+
+## 4. 质心一致不等于逐泡形态收敛
+
+优化控制独立重算与选中轨迹一致。dt从1降至0.5 µs时，最大COM差{sens["navigation_dt"]["max_COM_difference_m"] * 1e9:.6g} nm，但最大同ID位置差达 **{sens["navigation_dt"]["max_fixed_id_position_difference_m"] * 1e6:.6g} µm**；缓存3降至1.5 µm后对应同ID差 **{sens["navigation_cache"]["max_fixed_id_position_difference_m"] * 1e6:.6g} µm**。两者均超过预登记0.05 µm位置差门槛。已标记navigation_particle_resolution_pass=false、UNRESOLVED_SAME_ID_DT_AND_CACHE_SENSITIVITY。
+
+虽然COM有可重复的小幅控制响应，所示高驱动团内排列只是一条实际数值实现，不能称为已验证物理形态。优化轨迹累计PBD修正/累计预测物理路径约{opt["quality"]["correction_fraction"]:.4f}，近接触修正贡献很大。接触图保持一个分量、平均量相近、GPU核与CPU核一致都不能取代逐泡收敛。Fig3用步长/缓存带展示这项敏感性，Fig4直接列出失败的同ID准入。
+
+## 5. 形态控制结果
+
+形态候选采用独立目标和独立重算。选中幅值约{np.round(shapecontrol["amplitude_Pa"], 4).tolist()} Pa，相位约{np.round(np.degrees(shapecontrol["phase_rad"]), 4).tolist()}°。相消后粒子处压力约{shape["actual_particle_pressure_range_Pa"][0]:.4f}–{shape["actual_particle_pressure_range_Pa"][1]:.4f} Pa，均合法；不能只看源面幅值判断泡处压力。
+
+Rg从{shape["rg_um"][0]:.9f}增至{shape["rg_um"][1]:.9f} µm，变化{gate["Rg_change_um"] * 1000:.6g} nm。X/Y方向长短比从1增至{shape["directional_xy"][-1]:.9f}，约{100 * gate["shape_directional_xy_change"]:.6g}%；全局长短比从{shape["aspect"][0]:.9f}至{shape["aspect"][-1]:.9f}。初始X/Y特征值简并，主轴不可辨认，不能把任意初始特征向量当旋转基准；终点主轴距X约{shape["angle_to_x_deg"][-1]:.6g}°。形状张量、去质心同ID分布和所有帧均已保存。
+
+该弱形态控制的最大同ID减半步长差约{sens["shape_dt"]["max_fixed_id_position_difference_m"] * 1e9:.6g} nm，Rg对照差约{gate["Rg_numerical_envelope_um"] * 1000:.6g} nm，X/Y比对照差约{gate["shape_directional_xy_numerical_envelope"]:.6g}。观测变化超过本次对照差异，但1.00424远低于1.25目标，**形态任务未达标**。这些是未校准M0/PBD模型中的小幅数值响应，不能解释成实验可复现的形变或融合。
+
+位置与形态控制的演示团始终保持一个几何连通分量。另跑的分散初态在优化控制下由32个分量变成{dispersed["clusters"]}个，而非一个完整团；该对照未额外做步长收敛，不作定量聚集验证。所有连边阈值和瞬时连边时间敏感性限制保留。
+
+## 6. 成本、证据和图件
+
+CPU {len(cpu["checks"])}项预检通过，含两套缓存{cpu["wall_s"]:.3f} s；GPU {len(gpu["checks"])}项接口检查通过。远端整组验证及21条轨迹{campaign["wall_s"]:.3f} s，其中逐轨迹积分合计{campaign["integration_wall_s"]:.3f} s；20条完成，1条接触失败。整卡采样峰值{campaign["sampled_device_peak_MiB"]:.0f} MiB。必要预检和远端试验合计约{cpu["wall_s"] + campaign["wall_s"]:.3f} s，未包含模块导入、部署传输、开发、绘图和报告；不是生产吞吐结论。
+
+服务器目录/workspace/mevo_acoustic_microbubbles/f10n_control，Supervisor标签mevo_f10n_campaign_v1，实际执行SHA {campaign["identity"]["execution_commit"]}。不可变执行包和逐输入SHA保留；远端{transfer["files"]}文件共{transfer["bytes"]} bytes回传WSL，SHA全部一致。旧结果没有覆盖。
+
+四组英文PNG/PDF位于本工作区results/straight_tube_exp1/f10n/figures：
+
+- Fig_F10N_1_four_pzt_control_field：真实布局、局部代理场、声力方向及选中幅相。
+- Fig_F10N_2_target_navigation：固定目标、三组实际质心轨迹和误差。
+- Fig_F10N_3_morphology_control：实际球径逐泡分布、形状统计及导航排列的数值敏感性。
+- Fig_F10N_4_control_admission：质量预算、同ID不收敛、失败和实际成本。
+
+绘图脚本、原始数据、PNG/PDF、SHA及视觉检查记录分别保存。第一版图的标签排版和未充分突出逐泡差异的问题保留在review_history_v1；修订只改展示和解释，没有修改轨迹。
+
+## 7. 下一轮控制开发
+
+优先沿用充水零流代理，先在XY可控子空间设计更短目标与小幅分段反馈，不再把不可独立控制的Z目标作为成功前提。源相消、实际泡处压力和接触质量应作为控制约束。高驱动候选须先处理同ID步长/缓存敏感性，可采用逐泡误差约束的步长策略、较低驱动和短窗连续重规划；不放宽PBD/墙预算，不以COM收敛代替形态收敛。
+
+形态优化应在已经通过逐泡敏感性检查的弱控制区域，使用真实轨迹而非仅初始主力预测，联合Q、连通性和去质心同ID目标。当前对照尚未覆盖APECSS响应表插值误差、接触模型误差等完整误差预算；超过步长/缓存差异不能等同于超过全部误差。必要时再评估少量分段控制是否优于固定控制。本轮不能据此保证更长时间成功，也不开展AI训练或新材料高保真计算。
+
+科研进度文档仅在工程与证据核对完成后追加一段；独立backup、before/after、diff、SHA和标题一致性记录位于progress_document。只读复核入口为scripts.straight_tube_exp1.f10n.verify。
+"""
+    (ROOT / "docs/FAST_PZT_F10N_DEVELOPMENT.md").write_text(text)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,44 @@
+{
+  "storage_is_volume": false,
+  "gpu": {
+    "summary": "NVIDIA GeForce RTX 4090",
+    "render": {
+      "gl": true,
+      "optix": true,
+      "vulkan": true
+    },
+    "cuda": {
+      "driver_version": "550.120",
+      "components": {
+        "nvcc": true,
+        "dev_headers": true,
+        "cudart": true,
+        "nvrtc": true,
+        "cublas": true,
+        "cudnn": true,
+        "cufft": true,
+        "cusparse": true,
+        "cusolver": true,
+        "curand": true,
+        "nccl": true,
+        "npp": true,
+        "nvjpeg": true
+      },
+      "installed_version": "12.6",
+      "cuda_home": "/usr/local/cuda",
+      "forward_compat": {
+        "available": true,
+        "enabled": false,
+        "path": "/usr/local/cuda/compat",
+        "compat_driver_version": "560.35.05",
+        "host_driver_version": "550.120",
+        "note": "CUDA forward-compatibility libs. They let a NEWER CUDA MAJOR version run on an OLDER host driver, on datacenter (Volta+) GPUs only. This image auto-enables them at boot (via ldconfig) when needed and leaves them off otherwise \u2014 `enabled` is the current state. You normally never toggle this by hand; do NOT force them on when the host driver is new enough (set DISABLE_FORWARD_COMPAT=true at launch to opt out). For same-major mismatches (e.g. CUDA 12.x app on a 12.y driver) no compat libs are needed at all \u2014 see minor-version compatibility in the cuda note."
+      },
+      "driver_max_cuda": "12.4",
+      "compute_capability": "8.9",
+      "note": "CUDA compute works via the host-injected driver. A PARTIAL CUDA 12.6 install is present (components: nvcc, dev_headers, cudart, nvrtc, cublas, cudnn, cufft, cusparse, cusolver, curand, nccl, npp, nvjpeg); this is NOT a full toolkit, so check the `components` map before assuming a library exists \u2014 missing ones (e.g. cuBLAS/cuDNN) must be added from the configured nvidia apt repo (cuda-<lib>-X-Y / libcudnn*) or come bundled with framework wheels. COMPATIBILITY (agents get this wrong): the toolkit/wheel does NOT need to match the driver's exact CUDA version. CUDA minor-version compatibility means any CUDA 12.x build runs on any driver that supports CUDA 12.0+ (and 13.x on a 13.0+ driver) \u2014 so a 12.x wheel is fine here as long as driver_max_cuda is >= 12.0; do NOT 'upgrade the driver to match CUDA'. CAVEAT: this excludes PTX JIT \u2014 code shipped as PTX from a toolkit NEWER than the host driver fails with CUDA_ERROR_UNSUPPORTED_PTX_VERSION (222) since the driver owns the JIT (only bites when the host driver is older than the build; use native-cubin builds or forward compat). Forward compatibility (running a newer CUDA MAJOR on an older driver) is the separate cuda-compat mechanism, auto-managed at boot (see forward_compat). What DOES bind is the GPU architecture: compute_capability >= 10.0 (Blackwell) needs CUDA >= 12.8 wheels \u2014 an older build (e.g. torch cu124) installs cleanly but fails at runtime with 'no kernel image is available'. When installing CUDA libs: NEVER install the NVIDIA driver from apt (it must match the host \u2014 avoid the 'cuda' metapackage and nvidia-driver-*/libcuda* packages); install only components <= driver_max_cuda, and prefer framework wheels that bundle their own CUDA runtime. See AGENTS.md."
+    }
+  },
+  "os": "PRETTY_NAME=\"Ubuntu 24.04.4 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"24.04\"\nVERSION=\"24.04.4 LTS (Noble Numbat)\"\nVERSION_CODENAME=noble\nID=ubuntu\nID_LIKE=debian\nHOME_URL=\"https://www.ubuntu.com/\"\nSUPPORT_URL=\"https://help.ubuntu.com/\"\nBUG_REPORT_URL=\"https://bugs.launchpad.net/ubuntu/\"\nPRIVACY_POLICY_URL=\"https://www.ubuntu.com/legal/terms-and-policies/privacy-policy\"\nUBUNTU_CODENAME=noble\nLOGO=ubuntu-logo\n",
+  "nvidia_smi": "Fri Oct  9 15:45:03 2026       \n+-----------------------------------------------------------------------------------------+\n| NVIDIA-SMI 550.120                Driver Version: 550.120        CUDA Version: 12.4     |\n|-----------------------------------------+------------------------+----------------------+\n| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |\n| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |\n|                                         |                        |               MIG M. |\n|=========================================+========================+======================|\n|   0  NVIDIA GeForce RTX 4090        On  |   00000000:15:00.0 Off |                  Off |\n|  0%   31C    P8             30W /  450W |      15MiB /  24564MiB |      0%      Default |\n|                                         |                        |                  N/A |\n+-----------------------------------------+------------------------+----------------------+\n                                                                                         \n+-----------------------------------------------------------------------------------------+\n| Processes:                                                                              |\n|  GPU   GI   CI        PID   Type   Process name                              GPU Memory |\n|        ID   ID                                                               Usage      |\n|=========================================================================================|\n+-----------------------------------------------------------------------------------------+\n"
+}

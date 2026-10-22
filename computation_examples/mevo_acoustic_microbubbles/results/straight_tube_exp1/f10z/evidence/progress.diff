@@ -1,0 +1,20 @@
+--- /home/lzy/projects/microbubble_aggregation.md:before
++++ /home/lzy/projects/microbubble_aggregation.md:after
+@@ -525,6 +525,17 @@
+ 
+ 速度方面，RTX4090上的1倍实时回放收到937帧、分析693帧、跳过244帧，新鲜有效运动约22.02Hz，解码加分析的p95约56.05ms，仍未达到逐帧30Hz目标。本机Rust后备路径明显更慢，本机RTX4060也已接入同一CuPy路径；因此界面让最新原图独立刷新，将较早的分析图层淡化并注明年龄。科研图、完整视频、失败证据和实验室15步指南保存在 realtime_collective_observation_v1。下一步是现场核查直播新鲜度、独立LIVE遮罩、光学延迟与真实人工OFF/ON对照；training_ready和scientific_control_admitted继续为false。
+ 
++
++【F10Z-Simulation，2026-10-18】这一轮重新把问题放回“散开的泡能否靠近”。我们保留 F10S 的完整逐泡求解器、APECSS、均匀水圆片声场、F2、润滑及 Sequential QP 原门槛，新增 8 个预登记初态、13 种有限动作时序。32 泡、半径 1.78 µm、2.5 MHz、背景流严格为零，幅值仍是 Pa-equivalent，不是电压；原始和近接触演示初态明确不算声学形成的团。充水均匀介质不等于已经校准真实 PDMS 装置，原平移阻力黏度 0.001 Pa·s 与径向有效黏度 0.002 Pa·s 分别原样保留。
++
++真实完成 102 条积分，没有积分失败；其中标准 2 ms 窗口包含 37 个初态—动作组合，步长和缓存复算不是新的独立样本。OFF 完全静止；中等分散态 X 双源 2 ms 的 COM X 位移 0.129021 µm，三维 Rg 下降 0.594198 µm，对照差异约 0.020621 nm。去质心形变显著超过数值差异，几何分量从 32 降至 28，最大局部组为 3 泡；这是局部邻近，不是全部 32 泡形成稳定团，也不是融合。初始间距与布局不同，收缩和新连边明显不同；原始连通团仍主要平移。
++
++中等态独立完整积分扩展到 5 ms，COM X 位移 0.324054 µm，Rg 收缩 8.5401%。25 组完整窗口的 1/0.5 µs 步长和 3/1.5 µm 缓存对照通过连续量门槛，墙修正为零。下一档 10 ms 因预登记前级 5% 形变范围保护和三条复算成本条件未准入；这不是已知物理失效阈值，也不是 10 ms 计算失败。1 秒尺度没有完整求解依据。
++
++幅值和相位变化可以改变收缩与位移，但尚未证明独立 XY 位置—形状目标控制；Y 行为仍限 HOMOGENEOUS_WATER_PROXY_SPECIFIC。两种独立中等初态用于 0.5 ms 观测后预测 1.5 ms 的状态保持、恒速和动作均值基准；没有随机拆连续帧，没有未见动作×未见初态的联合模型验证，所以 WORLD_MODEL_DATA_NOT_READY，未训练神经世界模型，MPPI_CONTROL_NOT_RUN。统一 XY 中心、Rg、Q、NN、局部密度和汇聚指标可与 F10Y 做趋势对照，但投影真值不冒充显微相机输出。
++
++远端三批实际墙钟 1287.478 s；GPU 与 CPU 混合使用，A 批监测线程缺依赖的异常保留，B/C 已用标准库修复，未放宽物理门槛。8 组 PNG/PDF、3 段逐帧可追溯 MP4、35 问中文报告、原始/派生 HDF5、SHA 与失败/未运行依据保存在 /home/lzy/projects/computation_examples/_archives/mevo_simulation_f10z_20261018/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10z。保持 EXPLORATORY、PHYSICS_UNCALIBRATED、ELECTRICAL_TO_ACOUSTIC_UNCALIBRATED、training_ready=false。下一轮优先做独立动作设计、聚集适用的长窗准入与真实 OFF/ON 趋势核对，之后再决定联合世界模型。
++
+ ### 尾声：故事里还没讲完的部分
+ 
+ 1. **血流用的是水的参数**，不是真正的血液；而且只有血流带着泡泡走，泡泡不会反过来改变血流。

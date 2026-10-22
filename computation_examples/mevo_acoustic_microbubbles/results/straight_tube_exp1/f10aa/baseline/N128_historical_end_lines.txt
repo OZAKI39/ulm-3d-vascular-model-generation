@@ -1,0 +1,306 @@
+Timer unit: 1e-09 s
+
+Total time: 0.00147108 s
+File: /workspace/mevo_acoustic_microbubbles/f10aa_simulation_20261018/execution/38cc2f3820e7ccfde2c03049dc1d42c1a19bdecb_baseline_v3/src/mevo_mb/fast_sim/f10g_contact.py
+Function: normals at line 13
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    13                                           def normals(x):
+    14         4       2660.0    665.0      0.2      x = np.asarray(x, dtype=float)
+    15         4     318519.0  79629.8     21.7      i, j = np.triu_indices(len(x), 1)
+    16         4     466815.0 116703.8     31.7      dx = x[j] - x[i]
+    17         4     509215.0 127303.8     34.6      d = np.linalg.norm(dx, axis=1)
+    18         4      51050.0  12762.5      3.5      if np.any(d <= 0):
+    19                                                   raise ValueError("Coincident centers are not a valid contact normal")
+    20         4     122818.0  30704.5      8.3      return i, j, d, dx / d[:, None]
+
+Total time: 0.00716134 s
+File: /workspace/mevo_acoustic_microbubbles/f10aa_simulation_20261018/execution/38cc2f3820e7ccfde2c03049dc1d42c1a19bdecb_baseline_v3/src/mevo_mb/fast_sim/f10g_contact.py
+Function: resistance at line 23
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    23                                           def resistance(x, radius, activation=0.1, floor=0.001):
+    24         1     403797.0 403797.0      5.6      i, j, d, n = normals(x)
+    25         1       5490.0   5490.0      0.1      e = (d - 2 * radius) / radius
+    26         1       1790.0   1790.0      0.0      mask = e < activation
+    27         1      12140.0  12140.0      0.2      i, j, d, n, e = i[mask], j[mask], d[mask], n[mask], e[mask]
+    28                                           
+    29         1        370.0    370.0      0.0      def phi(v):
+    30                                                   return 0.5 / v - 0.45 * np.log(v) - (3 / 56) * v * np.log(v)
+    31                                           
+    32         1      12009.0  12009.0      0.2      c = 0.5 * (phi(np.maximum(e, floor)) - phi(activation))
+    33         1      31810.0  31810.0      0.4      a = np.eye(3 * len(x))
+    34         1      27830.0  27830.0      0.4      coupling = np.zeros((len(x), len(x), 3, 3))
+    35         1       1910.0   1910.0      0.0      parent = np.arange(len(x))
+    36                                           
+    37         1        490.0    490.0      0.0      def root(k):
+    38                                                   while parent[k] != k:
+    39                                                       k = parent[k]
+    40                                                   return k
+    41                                           
+    42         8       6160.0    770.0      0.1      for u, v, normal, coef in zip(i, j, n, c):
+    43         7      34290.0   4898.6      0.5          b = coef * np.outer(normal, normal)
+    44         7       4790.0    684.3      0.1          s, t = slice(3 * u, 3 * u + 3), slice(3 * v, 3 * v + 3)
+    45         7      13410.0   1915.7      0.2          a[s, s] += b
+    46         7       9650.0   1378.6      0.1          a[t, t] += b
+    47         7       9300.0   1328.6      0.1          a[s, t] -= b
+    48         7       8819.0   1259.9      0.1          a[t, s] -= b
+    49         7       5370.0    767.1      0.1          coupling[u, v] = coupling[v, u] = b
+    50         7      10920.0   1560.0      0.2          ru, rv = root(u), root(v)
+    51         7       4220.0    602.9      0.1          parent[max(ru, rv)] = min(ru, rv)
+    52         1    6458692.0 6.46e+06     90.2      groups = [np.array([j for j in range(len(x)) if root(j) == k]) for k in range(len(x)) if root(k) == k]
+    53         1      49269.0  49269.0      0.7      blocks = np.array([a[3 * k : 3 * k + 3, 3 * k : 3 * k + 3] for k in range(len(x))])
+    54         2       2170.0   1085.0      0.0      return dict(
+    55         1        160.0    160.0      0.0          A=a,
+    56         1        140.0    140.0      0.0          blocks=blocks,
+    57         1        150.0    150.0      0.0          coupling=coupling,
+    58         1        130.0    130.0      0.0          groups=groups,
+    59         1      42640.0  42640.0      0.6          pairs=np.c_[i, j],
+    60         1        160.0    160.0      0.0          normals=n,
+    61         1       2010.0   2010.0      0.0          gaps_m=d - 2 * radius,
+    62         1        130.0    130.0      0.0          coefficients=c,
+    63         1       1120.0   1120.0      0.0          floored=e < floor,
+    64                                               )
+
+Total time: 0.0410839 s
+File: /workspace/mevo_acoustic_microbubbles/f10aa_simulation_20261018/execution/38cc2f3820e7ccfde2c03049dc1d42c1a19bdecb_baseline_v3/src/mevo_mb/fast_sim/f10g_contact.py
+Function: contact_geometry at line 166
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   166                                           def contact_geometry(x, radius):
+   167                                               """All pairs: no missed neighbor that another contact could activate.
+   168                                           
+   169                                               Rows of B are distance gradients (-n_i,+n_j); positive B dx separates.
+   170                                               Normals are frozen at the initial state, not claimed nonlinear BE normals.
+   171                                               """
+   172         3    1076520.0 358840.0      2.6      i, j, d, n = normals(x)
+   173         3     372137.0 124045.7      0.9      B = np.zeros((len(i), 3 * len(x)))
+   174     24387    5021981.0    205.9     12.2      for k, (a, b) in enumerate(zip(i, j)):
+   175     24384   21638233.0    887.4     52.7          B[k, 3 * a : 3 * a + 3] = -n[k]
+   176     24384   12855255.0    527.2     31.3          B[k, 3 * b : 3 * b + 3] = n[k]
+   177         3     119819.0  39939.7      0.3      return B, np.c_[i, j], d - 2 * radius
+
+Total time: 0.0498024 s
+File: /workspace/mevo_acoustic_microbubbles/f10aa_simulation_20261018/execution/38cc2f3820e7ccfde2c03049dc1d42c1a19bdecb_baseline_v3/src/mevo_mb/fast_sim/sequential_hard_sphere.py
+Function: sequential_step at line 15
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    15                                           def sequential_step(x, force, radius, zeta, dt, A, policy):
+    16         1        350.0    350.0      0.0      begin = perf_counter()
+    17         1       1150.0   1150.0      0.0      x, force, A = [np.asarray(a, dtype=float) for a in (x, force, A)]
+    18                                               if (
+    19         1        650.0    650.0      0.0          min(radius, zeta, dt) <= 0
+    20         1        480.0    480.0      0.0          or x.shape != force.shape
+    21         1      46700.0  46700.0      0.1          or not all(np.isfinite(a).all() for a in (x, force, A))
+    22                                               ):
+    23                                                   raise ValueError("Finite matching inputs and positive scales required")
+    24         1     178528.0 178528.0      0.4      if abs(A - A.T).max() > 1e-12:
+    25                                                   raise ValueError("Nonsymmetric resistance")
+    26         1     563995.0 563995.0      1.1      factor = linalg.cho_factor(A, lower=True)
+    27         1   14740277.0 1.47e+07     29.6      _, pairs, g0 = contact_geometry(x, radius)
+    28         1       7700.0   7700.0      0.0      if g0.min(initial=0) < -policy["hard_geometry_m"]:
+    29                                                   raise ValueError("Illegal initial hard-sphere state")
+    30         1        840.0    840.0      0.0      limit = int(policy.get("max_sequential_qp", 3))
+    31         1        300.0    300.0      0.0      if not 1 <= limit <= 5:
+    32                                                   raise ValueError("Sequential QP hard cap is five")
+    33         1       3350.0   3350.0      0.0      b = dt * force.ravel() / (zeta * radius)
+    34         1     129199.0 129199.0      0.3      free = linalg.cho_solve(factor, b)
+    35         1       1100.0   1100.0      0.0      q = x.copy()
+    36         1        190.0    190.0      0.0      history = []
+    37         1        659.0    659.0      0.0      for iteration in range(limit):
+    38         1   14919405.0 1.49e+07     30.0          B, _, g = contact_geometry(q, radius)
+    39         1     484176.0 484176.0      1.0          offset = (g + B @ (x - q).ravel()) / radius
+    40         1     470326.0 470326.0      0.9          if np.all(B @ free + offset >= 0):
+    41         1       2490.0   2490.0      0.0              s, lam, status, its = free, np.zeros(len(pairs)), "unconstrained_verified", 0
+    42                                                   else:
+    43                                                       s, lam, status, its = active_set_qp(A, factor, b, B, offset)
+    44         1       3920.0   3920.0      0.0          y = x + radius * s.reshape(x.shape)
+    45         1   14215201.0 1.42e+07     28.5          By, py, gy = contact_geometry(y, radius)
+    46         1      23130.0  23130.0      0.0          assert np.array_equal(pairs, py)
+    47         1     420376.0 420376.0      0.8          slack = radius * (B @ s + offset)
+    48         1       3620.0   3620.0      0.0          reaction = zeta * radius / dt * lam
+    49         1     430826.0 430826.0      0.9          local_stat = A @ s - b - B.T @ lam
+    50         1     950501.0 950501.0      1.9          true_stat = A @ s - b - By.T @ lam
+    51                                           
+    52         1       2200.0   2200.0      0.0          def resid(stat):
+    53                                                       return (
+    54                                                           float(
+    55                                                               np.linalg.norm((radius * linalg.cho_solve(factor, stat)).reshape(x.shape), axis=1).max()
+    56                                                           ),
+    57                                                           float(np.linalg.norm((zeta * radius / dt * stat).reshape(x.shape), axis=1).max()),
+    58                                                       )
+    59                                           
+    60         1     233588.0 233588.0      0.5          local_m, local_N = resid(local_stat)
+    61         1     112139.0 112139.0      0.2          true_m, true_N = resid(true_stat)
+    62         1      22640.0  22640.0      0.0          scale = max(float(np.linalg.norm(force, axis=1).max()), float(abs(reaction).max(initial=0)), 1e-18)
+    63         1        980.0    980.0      0.0          force_tol = policy["force_residual_atol_N"] + policy["force_residual_rtol"] * scale
+    64         1      11980.0  11980.0      0.0          primal = float(np.maximum(0, -slack).max(initial=0))
+    65         1       7440.0   7440.0      0.0          dual = float(np.maximum(0, -reaction).max(initial=0))
+    66         1       5020.0   5020.0      0.0          comp_Nm = float(abs(reaction * slack).max(initial=0))
+    67         1        240.0    240.0      0.0          comp = comp_Nm / scale
+    68         1       7310.0   7310.0      0.0          truecomp = float(abs(reaction * gy).max(initial=0)) / scale
+    69         1       5700.0   5700.0      0.0          overlap = np.maximum(0, -gy)
+    70         1       1840.0   1840.0      0.0          dx = radius * (s - free).reshape(x.shape)
+    71         1      16069.0  16069.0      0.0          correction = float(np.linalg.norm(dx, axis=1).max())
+    72         2       1040.0    520.0      0.0          gates = dict(
+    73         2        790.0    395.0      0.0              LOCAL_QP_PASS=bool(
+    74         5       1280.0    256.0      0.0                  status in ["active_set_solved", "unconstrained_verified"]
+    75         1        480.0    480.0      0.0                  and local_m <= policy["mobility_residual_m"]
+    76         1        160.0    160.0      0.0                  and local_N <= force_tol
+    77         1        350.0    350.0      0.0                  and primal <= policy["primal_violation_m"]
+    78         1        270.0    270.0      0.0                  and dual <= policy["dual_negative_N"]
+    79         1        430.0    430.0      0.0                  and comp <= policy["complementarity_equivalent_gap_m"]
+    80                                                       ),
+    81         2        490.0    245.0      0.0              TRUE_GEOMETRY_PASS=bool(
+    82         1       2910.0   2910.0      0.0                  overlap.max(initial=0) <= min(policy["hard_geometry_m"], policy["contact_overlap_m"])
+    83                                                       ),
+    84         1        510.0    510.0      0.0              TRUE_GAP_COMPLEMENTARITY_PASS=bool(truecomp <= policy["actual_geometry_complementarity_m"]),
+    85         2        310.0    155.0      0.0              CONTACT_REACTION_BALANCE_PASS=bool(
+    86         1        210.0    210.0      0.0                  true_m <= policy["mobility_residual_m"] and true_N <= force_tol
+    87                                                       ),
+    88         1        320.0    320.0      0.0              CONTACT_CORRECTION=bool(correction <= policy["contact_correction_m"]),
+    89                                                   )
+    90         2       1080.0    540.0      0.0          history.append(
+    91         2       1860.0    930.0      0.0              dict(
+    92         1        240.0    240.0      0.0                  index=iteration + 1,
+    93         1       1610.0   1610.0      0.0                  linearization_m=q.copy(),
+    94         1        690.0    690.0      0.0                  positions_m=y.copy(),
+    95         1       1410.0   1410.0      0.0                  pair_force_N=reaction.copy(),
+    96         1       3890.0   3890.0      0.0                  linear_gap_m=slack.copy(),
+    97         1       3720.0   3720.0      0.0                  actual_gap_m=gy.copy(),
+    98         1      25340.0  25340.0      0.1                  active_count=int(np.sum(reaction > policy["dual_negative_N"])),
+    99         1        220.0    220.0      0.0                  local_residual_m=local_m,
+   100         1        150.0    150.0      0.0                  local_force_residual_N=local_N,
+   101         1        200.0    200.0      0.0                  true_residual_m=true_m,
+   102         1        120.0    120.0      0.0                  true_force_residual_N=true_N,
+   103         1        130.0    130.0      0.0                  true_complementarity_m=truecomp,
+   104         1       2580.0   2580.0      0.0                  overlap_m=float(overlap.max(initial=0)),
+   105         1        190.0    190.0      0.0                  working_set_iterations=its,
+   106         1        610.0    610.0      0.0                  gates=gates.copy(),
+   107                                                       )
+   108                                                   )
+   109         1        920.0    920.0      0.0          if all(gates.values()) or not gates["LOCAL_QP_PASS"]:
+   110         1        380.0    380.0      0.0              break
+   111                                                   q = y.copy()
+   112         1     644014.0 644014.0      1.3      contact = (By.T @ reaction).reshape(x.shape)
+   113        38      14270.0    375.5      0.0      return dict(
+   114         1        190.0    190.0      0.0          positions_m=y,
+   115         1       2550.0   2550.0      0.0          prediction_m=x + radius * free.reshape(x.shape),
+   116         1       2330.0   2330.0      0.0          velocity_m_s=radius / dt * s.reshape(x.shape),
+   117         1        140.0    140.0      0.0          contact_displacement_m=dx,
+   118         1        140.0    140.0      0.0          contact_force_N=contact,
+   119         1     820103.0 820103.0      1.6          local_contact_force_N=(B.T @ reaction).reshape(x.shape),
+   120         1        180.0    180.0      0.0          pair_force_N=reaction,
+   121         1        330.0    330.0      0.0          pairs=pairs,
+   122         1        200.0    200.0      0.0          initial_gap_m=g0,
+   123         1        140.0    140.0      0.0          linear_gap_m=slack,
+   124         1        880.0    880.0      0.0          actual_gap_m=gy,
+   125         1        370.0    370.0      0.0          geometric_overlap_m=overlap,
+   126         1        150.0    150.0      0.0          mobility_equation_residual_m=true_m,
+   127         1        140.0    140.0      0.0          force_equation_residual_N=true_N,
+   128         1        200.0    200.0      0.0          local_mobility_residual_m=local_m,
+   129         1        129.0    129.0      0.0          local_force_residual_N=local_N,
+   130         1        410.0    410.0      0.0          primal_violation_m=primal,
+   131         1        190.0    190.0      0.0          dual_negative_N=dual,
+   132         1        180.0    180.0      0.0          complementarity_N_m=comp_Nm,
+   133         1        150.0    150.0      0.0          complementarity_equivalent_gap_m=comp,
+   134         1        130.0    130.0      0.0          actual_complementarity_equivalent_gap_m=truecomp,
+   135         1       8750.0   8750.0      0.0          net_contact_force_N=contact.sum(0),
+   136         1     213738.0 213738.0      0.4          symmetry_error=float(abs(A - A.T).max()),
+   137         1        370.0    370.0      0.0          SPD_verified=True,
+   138         1        240.0    240.0      0.0          max_single_iteration_m=correction,
+   139         1        150.0    150.0      0.0          max_total_contact_correction_m=correction,
+   140         1        530.0    530.0      0.0          iterations=history,
+   141         1        730.0    730.0      0.0          qp_iterations=len(history),
+   142         1       5420.0   5420.0      0.0          working_set_iterations=sum(h["working_set_iterations"] for h in history),
+   143         1        510.0    510.0      0.0          active_count=history[-1]["active_count"],
+   144         1        250.0    250.0      0.0          solver_status=status,
+   145         1       1090.0   1090.0      0.0          total_s=perf_counter() - begin,
+   146         1        160.0    160.0      0.0          gates=gates,
+   147         1        880.0    880.0      0.0          converged=all(gates.values()),
+   148         1        170.0    170.0      0.0          dt_s=dt,
+   149         1        150.0    150.0      0.0          force_scale_N=scale,
+   150         1        230.0    230.0      0.0          model="F10Q sequential hard spheres; F10G resistance; explicit frozen forces/resistance; true-normal contact balance",
+   151                                               )
+
+Total time: 0 s
+File: /workspace/mevo_acoustic_microbubbles/f10aa_simulation_20261018/execution/38cc2f3820e7ccfde2c03049dc1d42c1a19bdecb_baseline_v3/src/mevo_mb/fast_sim/hard_sphere.py
+Function: active_set_qp at line 17
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    17                                           def active_set_qp(A, factor, b, B, gap_over_R, max_iterations=96):
+    18                                               """Small exact equality-QP working sets; all inequalities rechecked.
+    19                                           
+    20                                               This solves the same resistance-metric velocity QP, never projects positions.
+    21                                               Linear dependent working sets use a least-squares dual; inconsistent or cycling
+    22                                               sets fail closed. No uniqueness of redundant reaction multipliers is claimed.
+    23                                               """
+    24                                               free = linalg.cho_solve(factor, b)
+    25                                               inverse_BT = linalg.cho_solve(factor, B.T)
+    26                                               active = set(np.flatnonzero(B @ free + gap_over_R < 0).tolist())
+    27                                               visited = set()
+    28                                               lam = np.zeros(len(B))
+    29                                               for iteration in range(max_iterations):
+    30                                                   key = tuple(sorted(active))
+    31                                                   if key in visited:
+    32                                                       return free, lam, "active_set_cycle", iteration
+    33                                                   visited.add(key)
+    34                                                   ids = np.array(key, dtype=int)
+    35                                                   lam = np.zeros(len(B))
+    36                                                   if len(ids):
+    37                                                       S = B[ids] @ inverse_BT[:, ids]
+    38                                                       rhs = -gap_over_R[ids] - B[ids] @ free
+    39                                                       lam[ids] = linalg.lstsq(S, rhs, cond=1e-12, lapack_driver="gelsy")[0]
+    40                                                   s = free + inverse_BT @ lam
+    41                                                   slack = B @ s + gap_over_R
+    42                                                   if lam.min(initial=0) < -1e-12:
+    43                                                       active.remove(int(np.argmin(lam)))
+    44                                                       continue
+    45                                                   inactive = np.ones(len(B), dtype=bool)
+    46                                                   inactive[ids] = False
+    47                                                   violations = np.where(inactive, slack, np.inf)
+    48                                                   if violations.min(initial=0) < -1e-12:
+    49                                                       active.add(int(np.argmin(violations)))
+    50                                                       continue
+    51                                                   if abs(slack[ids]).max(initial=0) > 1e-10:
+    52                                                       return s, lam, "active_set_inconsistent_equalities", iteration + 1
+    53                                                   return s, lam, "active_set_solved", iteration + 1
+    54                                               return s, lam, "active_set_iteration_limit", max_iterations
+
+Total time: 0.0604215 s
+File: /workspace/mevo_acoustic_microbubbles/f10aa_simulation_20261018/execution/38cc2f3820e7ccfde2c03049dc1d42c1a19bdecb_baseline_v3/src/mevo_mb/fast_sim/water_sequential.py
+Function: WaterSequential.step at line 14
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    14                                               def step(self, dt):
+    15         1        780.0    780.0      0.0          begin = time.perf_counter()
+    16         1    1711815.0 1.71e+06      2.8          f = self.fields(self.x)
+    17         1        560.0    560.0      0.0          t = time.perf_counter()
+    18         1    7178785.0 7.18e+06     11.9          op = resistance(self.x, self.radius)
+    19         1        530.0    530.0      0.0          assembly = time.perf_counter() - t
+    20         1   50135966.0 5.01e+07     83.0          r = sequential_step(self.x, f["total_force_N"], self.radius, self.zeta, dt, op["A"], self.policy)
+    21         1    1375287.0 1.38e+06      2.3          walls = [self.wall_check(r[k]) for k in ["prediction_m", "positions_m"]]
+    22         1        780.0    780.0      0.0          gates = r["gates"].copy()
+    23         1       4530.0   4530.0      0.0          gates["WALL_PASS"] = all(w["error_bits"] == 0 and w["correction_m"] == 0 for w in walls)
+    24         1        980.0    980.0      0.0          reasons = [k for k, v in gates.items() if not v]
+    25         1        290.0    290.0      0.0          gates["FULL_STEP_ACCEPTED"] = not reasons
+    26         1        250.0    250.0      0.0          if not reasons:
+    27         1       2020.0   2020.0      0.0              self.x = r["positions_m"].copy()
+    28         2       2130.0   1065.0      0.0          return dict(
+    29         1        140.0    140.0      0.0              accepted=not reasons,
+    30         1        120.0    120.0      0.0              reasons=reasons,
+    31         1        110.0    110.0      0.0              gates=gates,
+    32         1        120.0    120.0      0.0              result=r,
+    33         1        120.0    120.0      0.0              fields=f,
+    34         1       2820.0   2820.0      0.0              wall_correction_m=max(w["correction_m"] for w in walls),
+    35         1       2130.0   2130.0      0.0              wall_error_bits=max(w["error_bits"] for w in walls),
+    36         1        180.0    180.0      0.0              resistance_s=assembly,
+    37         1       1040.0   1040.0      0.0              full_step_s=time.perf_counter() - begin,
+    38                                                   )
+

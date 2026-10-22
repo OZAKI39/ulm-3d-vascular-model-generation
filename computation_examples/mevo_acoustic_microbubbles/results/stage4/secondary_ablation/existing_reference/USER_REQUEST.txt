@@ -1,0 +1,1567 @@
+继续开发现有 `mevo_acoustic_microbubbles` 项目。
+
+本轮定义为：
+
+# Stage 4M — Near-Contact Secondary Bjerknes Ablation Sensitivity
+
+目标不是建立新的高保真近场声学模型。
+
+目标是回答：
+
+> **目前 Stage 4 的 PZT branch steering 和 bubble aggregation，在多大程度上依赖 classical far-field secondary Bjerknes force 被继续外推到 unresolved near-contact / sub-nm region？**
+
+这是：
+
+`MODEL SENSITIVITY / ABLATION STUDY`
+
+不是：
+
+`CORRECTED NEAR-FIELD FORCE MODEL`.
+
+---
+
+# 0. 当前基准
+
+本轮必须从已经完成的 Stage 4L lubrication backend 开始。
+
+不要退回 legacy Stokes translation。
+
+Stage 4L 已经建立：
+
+- Stokes self-drag
+- normal particle–particle lubrication
+- normal particle–wall lubrication
+- A-metric frictionless contact
+- gap-aware timestep
+- geometric projection fallback
+
+状态：
+
+`LUBRICATION_TRANSLATION_DEVELOPED_WITH_SCOPE`
+
+现有 Stage 4L primary-only B0–B3 和 nominal/dt-half 结果继续有效。
+
+不要重新跑 primary-only。
+
+---
+
+# 1. 不要修改的内容
+
+以下保持完全不变：
+
+- k-Wave acoustic field
+- PZT basis fields
+- PZT amplitudes/phases
+- adaptive APECSS response table
+- primary Bjerknes force
+- SimVascular / VTK flow
+- Stage 4L lubrication translation
+- wall lubrication
+- contact solver
+- contact tolerance
+- geometry
+- branch classifier
+- outlet crossing semantics
+- particle initial positions / IDs
+- particle radii
+- run duration definitions
+
+本轮只允许修改：
+
+\[
+\boxed{\text{near-contact weighting of the classical secondary Bjerknes pair force}}
+\]
+
+---
+
+# 2. 不要加入其他 physics
+
+本轮禁止加入：
+
+- shell repulsion
+- electrostatic force
+- lipid protrusion force
+- van der Waals
+- adhesion
+- friction
+- tangential lubrication
+- rotational lubrication
+- coalescence
+- fusion
+- history force
+- added mass production dynamics
+- full Doinikov multipole production solver
+- full multi-bubble APECSS production coupling
+- SRYL film drainage
+- arbitrary force clipping
+- velocity clipping
+
+如果本轮 sensitivity 失败，再讨论这些。
+
+---
+
+# 3. 文献解释边界
+
+本轮 ablation 的科学依据不是：
+
+“真实 near-contact secondary force 应该等于零”。
+
+正确解释：
+
+Doinikov & Bouakaz (2015) 表明：
+
+- classical large-separation approximation不能直接用于任意距离；
+- close-separation translational dynamics 需要更高阶 inverse-distance terms；
+- attraction / repulsion behavior本身可能随着 separation 改变；
+- 两泡 translation 在小 separation 下需要达到约 \(d^{-9}\) 精度才收敛。
+
+Chen et al. (2020) 表明：
+
+- secondary force between a pair can be modulated by surrounding bubbles；
+- surrounding bubbles change radial oscillation amplitudes/phases；
+- isolated two-bubble parametrization may be inadequate for dense clusters。
+
+因此：
+
+**当前 classical secondary force 在 dense near-contact region 是 unresolved / model-sensitive。**
+
+A1/A2 只是用来检查：
+
+“这些 unresolved interactions 是否影响本项目宏观 endpoint”。
+
+---
+
+# 4. 三个 secondary policies
+
+定义：
+
+## L0 — Legacy reference
+
+```text
+legacy Stokes translation
++
+full classical secondary
+```
+
+已有旧 Stage 4 gold data。
+
+禁止重跑。
+
+只读使用。
+
+---
+
+## A0 — Current Stage 4L reference
+
+```text
+lubrication_coupled translation
++
+full classical secondary
+```
+
+已有：
+
+- 3 s dense checkpoint probes
+- 5 ms dense runs
+- original-initial-condition partial B2/B3 secondary runs
+
+禁止为了本轮重新生成 A0 已有数据。
+
+缺少某个明确 comparison quantity 时才允许从现有 raw artifact 重新分析。
+
+---
+
+## A1 — Subfloor ablation
+
+使用 Stage 4L lubrication。
+
+Secondary：
+
+\[
+F_{ij}^{A1}
+=
+F_{ij}^{classical}
+\]
+
+当：
+
+\[
+h_{ij}>h_{\rm floor}
+\]
+
+而：
+
+\[
+F_{ij}^{A1}=0
+\]
+
+当：
+
+\[
+h_{ij}\le h_{\rm floor}.
+\]
+
+其中：
+
+\[
+h_{\rm floor}=0.001R.
+\]
+
+A1 只用于：
+
+**5 ms dense diagnostic**
+
+不要用于长 simulation。
+
+A1 的硬切换不是 production candidate。
+
+---
+
+## A2 — Smooth near-contact ablation
+
+这是本轮主要 candidate。
+
+使用：
+
+\[
+h_{\rm act}=0.1R
+\]
+
+和：
+
+\[
+h_{\rm floor}=0.001R.
+\]
+
+对于当前：
+
+\[
+R=1.78~\mu m
+\]
+
+对应：
+
+\[
+h_{\rm act}=178~nm
+\]
+
+\[
+h_{\rm floor}=1.78~nm.
+\]
+
+定义：
+
+\[
+s
+=
+\operatorname{clip}
+\left(
+\frac{
+h-h_{\rm floor}
+}{
+h_{\rm act}-h_{\rm floor}
+},
+0,1
+\right).
+\]
+
+使用 quintic smootherstep：
+
+\[
+\boxed{
+w(s)
+=
+6s^5-15s^4+10s^3
+}
+\]
+
+然后：
+
+\[
+\boxed{
+F_{ij}^{A2}
+=
+w(s)
+F_{ij}^{classical}
+}
+\]
+
+因此：
+
+### Farther range
+
+\[
+h\ge0.1R
+\]
+
+\[
+w=1
+\]
+
+classical secondary 完全不变。
+
+### Transition / ablation zone
+
+\[
+0.001R<h<0.1R
+\]
+
+secondary 平滑衰减。
+
+### Subfloor
+
+\[
+h\le0.001R
+\]
+
+\[
+w=0.
+\]
+
+---
+
+# 5. A2 不得叫 corrected secondary model
+
+代码/config/docs 中使用名称：
+
+`near_contact_secondary_ablation`
+
+或者：
+
+`smooth_near_contact_ablation`
+
+禁止命名：
+
+- corrected_bjerknes
+- validated_nearfield
+- physical_nearfield_force
+- exact_secondary
+
+Physics banner 必须注明：
+
+`Sensitivity-only smooth removal of unresolved classical secondary interaction inside the lubrication zone.`
+
+---
+
+# 6. A2 必须在 pair level 应用
+
+不要在已经求和完成后的：
+
+\[
+F_{secondary,i}^{net}
+\]
+
+上乘一个 particle-level scalar。
+
+必须对每一个 pair：
+
+\[
+(i,j)
+\]
+
+计算：
+
+\[
+h_{ij}=d_{ij}-R_i-R_j
+\]
+
+得到唯一：
+
+\[
+w_{ij}.
+\]
+
+然后：
+
+\[
+\mathbf F_{ij}^{eff}
+=
+w_{ij}\mathbf F_{ij}^{classical}.
+\]
+
+pair reciprocity 必须保持。
+
+同一个：
+
+\[
+w_{ij}
+\]
+
+同时用于 pair 两端。
+
+不要给 i/j 分别计算不同 weight。
+
+---
+
+# 7. Unit tests
+
+至少加入：
+
+### M1
+
+\[
+h\ge h_{act}
+\Rightarrow w=1
+\]
+
+### M2
+
+\[
+h\le h_{floor}
+\Rightarrow w=0
+\]
+
+### M3
+
+activation / floor 连续。
+
+### M4
+
+一阶导数在两个 endpoint 为 0。
+
+### M5
+
+二阶导数在两个 endpoint 为 0。
+
+### M6
+
+pair reciprocity unchanged。
+
+### M7
+
+A0 policy bitwise/strict-regression matches current Stage 4L full-secondary path。
+
+### M8
+
+A1 only changes pairs at/below floor。
+
+### M9
+
+A2 only changes pairs inside:
+
+\[
+h<0.1R.
+\]
+
+### M10
+
+secondary disabled 时：
+
+A0/A1/A2 完全无区别。
+
+因此不需要重跑 Stage 4L primary-only scientific campaign。
+
+---
+
+# 8. 必须同时记录 classical 和 effective secondary
+
+对每个 saved state / diagnostic interval：
+
+计算但不一定写全部 pair arrays。
+
+至少记录：
+
+\[
+S_{\rm classical}
+=
+\sum_{i<j}
+|\mathbf F_{ij}^{classical}|
+\]
+
+和：
+
+\[
+S_{\rm effective}
+=
+\sum_{i<j}
+|\mathbf F_{ij}^{effective}|.
+\]
+
+以及：
+
+\[
+r_F
+=
+\frac{
+S_{\rm effective}
+}{
+S_{\rm classical}
+}
+\]
+
+如果 denominator 为 0：
+
+明确记录 null。
+
+同时记录：
+
+- full-weight pair count
+- taper-zone pair count
+- zeroed pair count
+- fraction in each state
+
+以及：
+
+\[
+1-r_F
+\]
+
+作为 removed classical-force-norm fraction。
+
+注意：
+
+这是 pair-force magnitude diagnostic。
+
+不要把：
+
+\[
+\sum |F_{ij}|
+\]
+
+解释成 net physical force。
+
+---
+
+# 9. 因果解释必须固定
+
+本轮比较关系：
+
+\[
+\boxed{
+L0\rightarrow A0\rightarrow A2
+}
+\]
+
+其中：
+
+## L0 vs A0
+
+唯一主要变化：
+
+`legacy Stokes → lubrication translation`
+
+回答：
+
+**lubrication 本身对 aggregation formation 的影响。**
+
+## A0 vs A2
+
+唯一主要变化：
+
+`full near-contact classical secondary → smooth ablation`
+
+回答：
+
+**near-contact secondary treatment 的增量影响。**
+
+## L0 vs A2
+
+同时改变：
+
+- translation resistance
+- secondary treatment
+
+因此：
+
+**只能作为 total model difference。**
+
+禁止用：
+
+`L0 vs A2`
+
+直接把变化归因于 secondary ablation。
+
+---
+
+# 10. 先做零成本 L0 vs A0 分析
+
+不要运行新 simulation。
+
+直接读取已有：
+
+- L0 gold B2/B3
+- A0 Stage 4L B2/B3 original-initial-condition partial secondary runs
+
+使用共同的完整保存时间：
+
+\[
+\boxed{t=0.08~s}
+\]
+
+进行 paired comparison。
+
+不要使用 A0 0.089/0.096 s final accepted state 和 L0 0.08 s 做不等时比较。
+
+0.08 s 是共同 HDF5 saved frame。
+
+---
+
+# 11. L0 vs A0 @ 0.08 s 输出
+
+至少比较：
+
+- largest cluster size
+- cluster count
+- near-contact fraction
+- mean nearest-neighbor
+- median nearest-neighbor
+- cluster-size distribution
+- number of particles in clusters size ≥3
+- size ≥5
+- size ≥10
+- mean pair distance
+- centroid of largest cluster
+- radius of gyration of largest cluster
+
+生成：
+
+`LUBRICATION_ONLY_FORMATION_EFFECT.json`
+
+和：
+
+`LUBRICATION_ONLY_FORMATION_EFFECT.md`
+
+明确写：
+
+**This comparison isolates the effect of the Stage 4L translation change before any secondary ablation.**
+
+---
+
+# 12. 不要重新跑 L0 或 A0
+
+已有数据足够时：
+
+禁止重复运行。
+
+只有：
+
+- artifact missing
+- corrupted
+- incompatible
+- hash mismatch
+
+才允许报告无法比较。
+
+不要为了方便重新生成。
+
+---
+
+# 13. Stage M0 — dense 5 ms probe
+
+使用与 Stage 4L 完全相同的：
+
+B2/B3 t≈3 s sealed dense checkpoint。
+
+当前 mature clusters 来源于 legacy evolution。
+
+这一步只回答：
+
+- runtime
+- stiffness
+- local dense dynamics
+
+不回答：
+
+“新模型从初态会不会形成 cluster”。
+
+---
+
+# 14. Dense probe cases
+
+A0：
+
+使用已有 Stage 4L 5 ms结果。
+
+禁止重跑。
+
+运行：
+
+- A1 B2 5 ms
+- A1 B3 5 ms
+- A2 B2 5 ms
+- A2 B3 5 ms
+
+相同：
+
+- initial positions
+- IDs
+- radii
+- acoustic field
+- response
+- flow
+- lubrication
+- contact
+- timestep
+- solver
+- output metrics
+
+唯一区别：
+
+secondary policy。
+
+---
+
+# 15. Dense probe performance gate
+
+A2 才决定是否继续。
+
+相对于 A0 existing 5 ms：
+
+要求 B2 和 B3 **每个 case** 至少满足以下之一：
+
+\[
+\boxed{
+\text{accepted-step reduction}\ge5\times
+}
+\]
+
+或：
+
+\[
+\boxed{
+\text{wall-time speedup}\ge5\times
+}
+\]
+
+同时必须：
+
+- no numerical failure
+- no nonpositive timestep
+- no solver divergence
+- no new multi-radius projection pathology
+- no explosive cluster expansion
+- no NaN/Inf
+
+这个 5× 是：
+
+`ENGINEERING CONTINUATION GATE`
+
+不是物理精度阈值。
+
+Stage 4L dense extrapolation达到几十天/case，因此 1.5×–2× improvement 不足以解决工程问题。
+
+---
+
+# 16. Dense probe scientific diagnostics
+
+不要要求：
+
+`contact count → 0`.
+
+重点：
+
+- neighbor turnover
+- same-ID internal rearrangement
+- rigid-fit residual
+- radius of gyration
+- largest-cluster size
+- unordered pair-distance distribution
+- hard-contact membership change rate
+- contact edge lifetime
+- subfloor pair count
+- contact-QP calls
+- projection count/magnitude
+
+如果 A2：
+
+runtime 明显改善，
+
+且 cluster envelope 没有明显破坏，
+
+即可通过 M0。
+
+不要求 microscopic graph identical。
+
+---
+
+# 17. A1 的定位
+
+A1 只回答：
+
+> removing secondary only after the pair has already reached the unresolved subfloor regime 是否对 stiffness 有帮助？
+
+不要因为 A1 比 A2 更接近 A0 就自动偏好 A1。
+
+如果 A1 runtime improvement 很小：
+
+如实报告。
+
+不要长跑 A1。
+
+---
+
+# 18. 如果 A2 M0 不通过
+
+立即停止本轮长 simulation。
+
+输出：
+
+`A2_RUNTIME_GATE_FAILED`
+
+不要自动尝试：
+
+- wider cutoff
+- different smoothstep
+- shell repulsion
+- tangential lubrication
+- force cap
+
+报告即可。
+
+---
+
+# 19. Stage M1 — 从 original initial condition 跑 A2 到 0.25 s
+
+只有 M0 通过后执行。
+
+非常重要：
+
+不要从 3 s dense checkpoint 推断 cluster formation。
+
+必须从：
+
+**original Stage 4 B2/B3 initial population**
+
+重新启动。
+
+使用：
+
+- same IDs
+- same positions
+- same PZT field
+- same flow
+- same radii
+- same Stage 4L lubrication backend
+
+只改变 secondary policy：
+
+A0 → A2。
+
+---
+
+# 20. 不设置 0.1 s stop/go gate
+
+不要运行：
+
+0.1 s → “看不清楚” → Codex自行决定。
+
+直接目标：
+
+\[
+\boxed{0.25~s}
+\]
+
+中间照常保存。
+
+推荐保持：
+
+\[
+20~ms
+\]
+
+output cadence。
+
+因此自然包含：
+
+0.02
+0.04
+0.06
+0.08
+0.10
+0.12
+0.14
+...
+0.24
+0.25/endpoint
+
+如果 runner 使用 nominal save cadence，保持现有语义。
+
+不要为了精确命中每个上面数字重写 output engine。
+
+---
+
+# 21. 为什么是 0.25 s
+
+旧 full-secondary trajectory 表明 aggregation 在很早期已开始。
+
+0.1 s 主要看到 onset。
+
+约 0.14–0.22 s 后，旧 B2/B3 已经出现约 20-particle largest clusters。
+
+所以：
+
+\[
+0.25~s
+\]
+
+作为第一真正 formation horizon。
+
+不要把 0.1 s 单独当 scientific decision point。
+
+---
+
+# 22. 0.08 s 是重要中间因果 checkpoint
+
+A2 跑到 0.25 s 后：
+
+对：
+
+\[
+t=0.08~s
+\]
+
+建立三者比较：
+
+### L0
+
+legacy Stokes + full secondary
+
+### A0
+
+lubrication + full secondary
+
+### A2
+
+lubrication + ablated secondary
+
+生成：
+
+`CAUSAL_COMPARISON_008S.json`
+
+和图。
+
+正确解释：
+
+\[
+L0\rightarrow A0
+\]
+
+= lubrication-only effect。
+
+\[
+A0\rightarrow A2
+\]
+
+= ablation incremental effect。
+
+\[
+L0\rightarrow A2
+\]
+
+= total model difference。
+
+禁止混淆。
+
+---
+
+# 23. 0.25 s formation metrics
+
+记录整个 0–0.25 s：
+
+- largest cluster size
+- cluster count
+- largest cluster fraction
+- near-contact fraction
+- median NN
+- mean NN
+- fraction of active particles in clusters ≥3
+- ≥5
+- ≥10
+- cluster-size histogram
+- radius of gyration of largest cluster
+- cluster centroid
+- classical/effective secondary norm ratio
+- taper-zone pair fraction
+- zeroed pair fraction
+
+---
+
+# 24. 0.25 s 不使用人为“20-particle PASS threshold”
+
+不要声明：
+
+`largest cluster >= 20 = PASS`
+
+因为这不是物理定律。
+
+使用 descriptive classification。
+
+但为了决定是否值得继续 1 s：
+
+只在 aggregation **基本缺失**时停止。
+
+定义：
+
+`AGGREGATION_ESSENTIALLY_ABSENT`
+
+只有当 0.25 s endpoint 同时满足：
+
+\[
+\text{largest cluster size}\le2
+\]
+
+且：
+
+\[
+\text{near-contact fraction}<0.05
+\]
+
+且：
+
+\[
+\text{cluster count}\ge0.95N_{\rm active}.
+\]
+
+这种状态可视为仍接近 dilute initial population。
+
+如果不是以上极端情况：
+
+继续到 1.0 s。
+
+这样不需要 Codex 猜“delayed 还是 unclear”。
+
+---
+
+# 25. Formation classification
+
+报告可使用：
+
+### RETAINED
+
+aggregation 清楚存在，cluster growth trend明显。
+
+### DELAYED_OR_WEAKENED
+
+aggregation存在但明显弱于 A0/L0。
+
+### ESSENTIALLY_ABSENT
+
+仅在上面的严格 dilute criteria满足时使用。
+
+这只是 descriptive label。
+
+不要声称自然阈值。
+
+---
+
+# 26. 0.25 s runtime protection
+
+给 B2/B3 每个 A2 case：
+
+建议 wall budget：
+
+\[
+2~hours
+\]
+
+如果到 budget：
+
+- 保存 last accepted state
+- mark INCOMPLETE_RUNTIME
+- 不假装 scientific completion
+- 不继续 1 s
+
+如果运行明显比预算快：
+
+正常完成。
+
+---
+
+# 27. Stage M2 — 1.0 s growth run
+
+如果：
+
+- 0.25 s completed
+- numerical stability正常
+- aggregation并非 essentially absent
+
+则直接从 original initial condition / resumable same-run checkpoint：
+
+继续到：
+
+\[
+\boxed{1.0~s}.
+\]
+
+不得从 0.25 s output visualization frame 人工重启造成新的初值误差。
+
+优先使用 solver-native checkpoint/resume。
+
+如果当前 framework 不支持 exact resume：
+
+从相同 initial condition 运行到 1.0 s。
+
+记录 provenance。
+
+---
+
+# 28. 1.0 s 主要问题
+
+回答：
+
+> A2 下，cluster 是否仍然从 early small clusters 发展成 tens-of-bubbles clusters？
+
+旧结果用于 reference。
+
+比较：
+
+- largest cluster
+- cluster count
+- near-contact fraction
+- radius of gyration
+- cluster-size distribution
+- active particles
+- branch crossings observed so far
+- runtime
+- median dt
+- contact-QP share
+
+---
+
+# 29. 1.0 s runtime gate
+
+完成后基于后半段：
+
+\[
+t=0.5-1.0~s
+\]
+
+实际 wall-time / simulated-time rate，
+
+估算：
+
+完整 6 s 每 case runtime。
+
+如果：
+
+\[
+\boxed{
+\text{projected 6-s runtime} > 12~hours/case
+}
+\]
+
+则：
+
+不要自动启动 full 6 s。
+
+记录：
+
+`FULL_RUN_RUNTIME_GATE_NOT_PASSED`.
+
+12 h/case 是工程 launch limit。
+
+不是科学阈值。
+
+---
+
+# 30. Stage M3 — full 6 s B2/B3
+
+只有：
+
+- 1 s 完整成功
+- solver stable
+- aggregation仍存在
+- projected runtime ≤12 h/case
+
+才启动完整：
+
+- B2 A2
+- B3 A2
+
+从 original initial population。
+
+不要把 1 s run 拼接成伪 6 s trajectory，除非 checkpoint/resume 是 exact solver continuation 并记录完整 provenance。
+
+---
+
+# 31. Full-run primary scientific endpoint
+
+最重要的是：
+
+\[
+\boxed{\text{branch steering direction}}
+\]
+
+期望比较：
+
+B2：
+
+是否仍 preferentially exits Branch A。
+
+B3：
+
+是否仍 preferentially exits Branch B。
+
+记录：
+
+- N_A
+- N_B
+- N_unassigned
+- N_wall_loss
+- f_A conditioned on assigned
+- f_B conditioned on assigned
+- fractions relative to original population
+- crossing times
+- branch-switch matrix against A0/L0 where possible
+
+---
+
+# 32. 不要求 A2 和 A0 microscopic cluster完全一样
+
+如果：
+
+branch steering direction 保持，
+
+但：
+
+- exact cluster shape
+- compactness
+- contact graph
+- contact timing
+
+改变，
+
+允许结论：
+
+`BRANCH_CONTROL_ROBUST_TO_NEAR_CONTACT_SECONDARY_ABLATION_WITH_CLUSTER_MORPHOLOGY_SENSITIVITY`
+
+如果 branch outcome 本身明显改变：
+
+不要 promote A2。
+
+标记：
+
+`BRANCH_CONTROL_SENSITIVE_TO_NEAR_CONTACT_SECONDARY_PHYSICS`.
+
+---
+
+# 33. 不重新跑 primary-only
+
+因为 A2 只作用于：
+
+`secondary_enabled=True`.
+
+Stage 4L 已经重新完成：
+
+- B0–B3 lubrication primary baseline
+- B2 nominal/dt-half
+- B3 nominal/dt-half
+
+这些结果继续使用。
+
+不要浪费计算重新跑。
+
+---
+
+# 34. 本轮暂时不重新跑 dt/2 secondary
+
+A2 仍是 sensitivity candidate。
+
+先判断：
+
+- runtime
+- formation
+- growth
+- branch effect
+
+只有未来决定把 A2 promote 成 scoped production policy 时：
+
+才单独做 secondary dt sensitivity。
+
+本轮不要提前扩大 scope。
+
+---
+
+# 35. 统计和图
+
+至少生成：
+
+### Figure M1
+
+L0 vs A0 @ 0.08 s
+
+`lubrication-only formation effect`
+
+### Figure M2
+
+A0 vs A1 vs A2 dense 5 ms runtime / accepted steps
+
+### Figure M3
+
+A0 vs A2 dense cluster:
+
+- internal rearrangement
+- neighbor turnover
+- Rg
+
+### Figure M4
+
+0–0.25 s aggregation formation：
+
+L0
+A0
+A2
+
+至少：
+
+- largest cluster size
+- cluster count
+- near-contact fraction
+
+### Figure M5
+
+secondary-force removal：
+
+\[
+S_{\rm effective}/S_{\rm classical}
+\]
+
+vs time
+
+### Figure M6
+
+如果 1 s 完成：
+
+cluster growth 0–1 s
+
+### Figure M7
+
+如果 6 s 完成：
+
+B2/B3 branch outcome comparison
+
+---
+
+# 36. 输出目录
+
+使用：
+
+```text
+results/stage4/secondary_ablation/
+    existing_reference/
+    l0_vs_a0/
+    dense_probe/
+        A1/
+        A2/
+    formation_025s/
+    growth_1s/
+    full_6s/
+    comparisons/
+    final_decision/
+```
+
+不要写入旧 Stage 4L 目录。
+
+---
+
+# 37. 新文档
+
+建立：
+
+`docs/STAGE4M_NEAR_CONTACT_SECONDARY_ABLATION.md`
+
+内容：
+
+- motivation
+- literature scope
+- A0/A1/A2 definitions
+- taper equation
+- causal comparison logic
+- runtime gates
+- results
+- what can/cannot be concluded
+
+---
+
+# 38. References
+
+加入：
+
+## Doinikov & Bouakaz (2015)
+
+“Theoretical model for coupled radial and translational motion of two bubbles at arbitrary separation distances”
+
+Physical Review E 92, 043001
+
+DOI:
+
+`10.1103/PhysRevE.92.043001`
+
+用途：
+
+说明：
+
+- arbitrary separation coupling
+- high-order inverse-distance corrections
+- classical large-separation force not reliable near contact
+- possible attraction/repulsion changes
+
+不要声称：
+
+该模型直接验证 SonoVue dense clusters。
+
+---
+
+## Chen, Chen & Li (2020)
+
+“Modulation of the secondary Bjerknes force in multi-bubble systems”
+
+Ultrasonics Sonochemistry 61, 104814
+
+DOI:
+
+`10.1016/j.ultsonch.2019.104814`
+
+用途：
+
+说明：
+
+- surrounding bubbles modify pair secondary force
+- isolated two-bubble radial response is not necessarily adequate in clusters
+- multi-bubble modulation can reduce force magnitude / alter equilibrium distance
+
+不要使用其 numerical ratios 作为 Stage 4 correction factors。
+
+其 frequency / pressure / model regime 与当前 Stage 4不同。
+
+---
+
+# 39. 结果解释规则
+
+如果 A2：
+
+- runtime improvement明显
+- aggregation仍形成
+- B2/B3 steering direction不变
+
+则允许最终状态：
+
+`NEAR_CONTACT_SECONDARY_ABLATION_ROBUST_FOR_BRANCH_CONTROL_WITH_SCOPE`
+
+这不是：
+
+`validated near-field physics`.
+
+---
+
+如果：
+
+aggregation仍形成，
+
+但 morphology明显改变：
+
+状态：
+
+`BRANCH_CONTROL_ROBUST_CLUSTER_MORPHOLOGY_SENSITIVE`.
+
+---
+
+如果：
+
+branch outcome materially changes：
+
+状态：
+
+`BRANCH_CONTROL_SENSITIVE_TO_UNRESOLVED_NEAR_CONTACT_SECONDARY_PHYSICS`.
+
+这时停止 A2 production promotion。
+
+下一步才考虑：
+
+- Doinikov N=2 reference
+- APECSS coupled N=2/N=3 radial dynamics
+- lookup/surrogate correction
+
+不要在本轮自动开发。
+
+---
+
+# 40. 不允许的解释
+
+禁止写：
+
+“A2 is the true near-field Bjerknes force.”
+
+禁止写：
+
+“bubbles physically stop attracting below 0.1R.”
+
+禁止把 A2 产生的 equilibrium gap 当作：
+
+“real SonoVue equilibrium spacing.”
+
+禁止从 A2 结果推断：
+
+- shell contact physics
+- coalescence probability
+- clinical microbubble packing distance
+
+---
+
+# 41. 本轮真正的问题
+
+最终报告必须明确回答：
+
+### Q1
+
+Lubrication 本身是否已经改变 early aggregation rate？
+
+使用：
+
+L0 vs A0 @ 0.08 s。
+
+### Q2
+
+Removing only subfloor secondary 是否有明显 runtime benefit？
+
+A1 dense 5 ms。
+
+### Q3
+
+Smooth removal across the unresolved lubrication zone 是否解除 stiffness？
+
+A2 dense 5 ms。
+
+### Q4
+
+A2 从 original initial state 是否仍能形成 clusters？
+
+0–0.25 s。
+
+### Q5
+
+A2 是否还能发展出 large clusters？
+
+0–1 s。
+
+### Q6
+
+如果 full run feasible：
+
+PZT branch steering 是否仍保持：
+
+B2→A
+B3→B？
+
+---
+
+# 42. 当前第一动作
+
+首先：
+
+1. 检查当前 server / git / process 状态；
+2. 确认没有仍在运行的 Stage 4L scientific job；
+3. 验证当前 source 与完成的 Stage 4L backend identity；
+4. 建立新的 Stage 4M development branch/worktree；
+5. 不修改旧 Stage 4/4L artifacts；
+6. 实现 A0/A1/A2 policy abstraction；
+7. 写 M1–M10 tests；
+8. 先完成已有 L0 vs A0 的 0.08 s 零成本比较；
+9. 再运行 A1/A2 5 ms dense probe；
+10. 只有 A2 通过明确的 5× engineering gate 后，才跑 0.25 s original-initial-condition experiment。
+
+不要询问是否继续。
+
+按照上述 gate 自动推进。
+
+不要开展与本轮无关的大型 audit。

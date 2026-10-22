@@ -1,0 +1,400 @@
+{
+  "status": "COMPLETE",
+  "reason": null,
+  "completed_physical_s": 0.6,
+  "wall_s": 27.923611611127853,
+  "macro_step_count": 60000,
+  "actual_substep_count": 60000,
+  "effective_steps_per_physical_second": 100000.0,
+  "nominal_dt_s": 1e-05,
+  "substeps_per_macro": 1,
+  "compile_s": 4.962179809808731e-05,
+  "graph_capture_s": 0.017219556495547295,
+  "in_run_graph_capture_s": 0.0064056492410600185,
+  "control_update_s": 0.015779215842485428,
+  "sampled_download_s": 27.599481757264584,
+  "batch_size": 1,
+  "particle_count_per_sample": 32,
+  "quality": {
+    "pressure_min_Pa": 663.7138906640429,
+    "pressure_max_Pa": 712.8592180953641,
+    "max_predicted_penetration_m": 3.308527806607144e-08,
+    "max_accepted_penetration_m": 8.214120277611404e-09,
+    "cumulative_correction_m": 0.021711114574876334,
+    "cumulative_physical_displacement_m": 0.02169564658895131,
+    "max_contact_pass_correction_m": 9.926498562899681e-09,
+    "max_speed_m_s": 0.01056379749889231,
+    "max_physical_substep_displacement_m": 1.0563797498892308e-07,
+    "error_bits": 0,
+    "correction_fraction": 1.0007129534425998,
+    "max_component_balance_velocity_m_s": 0.0006420589148399825,
+    "coupled_effective_pressure_min_Pa": 785.6465515733711,
+    "coupled_effective_pressure_max_Pa": 1138.2309198997327,
+    "closure_min_abs_determinant": 0.9750024568230098,
+    "cumulative_free_Stokes_displacement_m": 0.05926519160055975,
+    "correction_over_free_Stokes_path": 0.36633838495295235
+  },
+  "quality_per_sample": [
+    {
+      "pressure_min_Pa": 663.7138906640429,
+      "pressure_max_Pa": 712.8592180953641,
+      "max_predicted_penetration_m": 3.308527806607144e-08,
+      "max_accepted_penetration_m": 8.214120277611404e-09,
+      "cumulative_correction_m": 0.021711114574876334,
+      "cumulative_physical_displacement_m": 0.02169564658895131,
+      "max_contact_pass_correction_m": 9.926498562899681e-09,
+      "max_speed_m_s": 0.01056379749889231,
+      "max_physical_substep_displacement_m": 1.0563797498892308e-07,
+      "error_bits": 0,
+      "correction_fraction": 1.0007129534425998,
+      "max_component_balance_velocity_m_s": 0.0006420589148399825,
+      "coupled_effective_pressure_min_Pa": 785.6465515733711,
+      "coupled_effective_pressure_max_Pa": 1138.2309198997327,
+      "closure_min_abs_determinant": 0.9750024568230098,
+      "cumulative_free_Stokes_displacement_m": 0.05926519160055975,
+      "correction_over_free_Stokes_path": 0.36633838495295235
+    }
+  ],
+  "controls": [
+    {
+      "time_s": 0,
+      "amplitude_Pa": [
+        291.237687721856,
+        291.237687721856,
+        291.237687721856,
+        291.237687721856
+      ],
+      "phase_rad": [
+        0.9250035793646082,
+        0.780743557106484,
+        2.6346931033656023,
+        -1.463397473181839
+      ],
+      "enabled": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "control_real_Pa": [
+        175.27608255635147,
+        206.8924612987502,
+        -254.61567834904676,
+        31.218497897831234
+      ],
+      "control_imag_Pa": [
+        232.58909181918307,
+        204.9753648790958,
+        141.38687028302192,
+        -289.5596590317381
+      ]
+    }
+  ],
+  "backend": "NVIDIA Warp",
+  "dtype": "float64",
+  "particle_block_dim": 32,
+  "full_pair_block_dim": 256,
+  "model": {
+    "radius_m": 1.78e-06,
+    "frequency_Hz": 2500000.0,
+    "density_kg_m3": 1000.0,
+    "viscosity_Pa_s": 0.001,
+    "radial_effective_viscosity_Pa_s": 0.002,
+    "secondary": true,
+    "near_field": "smooth_near_field_exploratory",
+    "transition_over_sum": 2.0,
+    "soft_core_over_sum": 1.0,
+    "local_lubrication": true,
+    "lubrication_activation": 0.1,
+    "lubrication_floor": 0.001,
+    "mobility_iterations": 2,
+    "contact_iterations": 12,
+    "contact_relaxation": 0.5,
+    "force_model": "f2_near_field_candidate",
+    "contact_model": "f1_pbd_contact",
+    "feedback_end_over_sum": 4.0,
+    "model_version": "fast_pzt_f2_pair_feedback_tensor_contact_v1",
+    "physics_scope": "EXPLORATORY",
+    "harmonic_convention": "Re[P exp(+i omega t)]",
+    "force_direction": "e_ij=(x_j-x_i)/d; positive correlation attracts",
+    "near_field_formula": "F=C*dx/[d^2+(s*Rsum*(1-q)^2)^2]^(3/2), q=clip(d/(transition*Rsum),0,1); classical above transition",
+    "near_field_calibration": "none; signed smooth exploratory regularization, not a Doinikov solution",
+    "mobility": "2 relaxed block-Jacobi local normal-resistance passes, initialized at free Stokes velocity; no global solve",
+    "mobility_force_balance": "Each current lubrication component receives only the common velocity shift mean(U_free-U_local), enforcing sum(zeta*U)=sum(F). Relative velocities remain unchanged; no particle or group is locked.",
+    "contact": "Jacobi PBD in diagonal Stokes mobility metric, weight mu_i/(mu_i+mu_j); monodisperse F1 weights 1/2",
+    "contact_vs_hydrodynamics": "Local symmetric relative-mobility metric, not a full coupled Stokes contact projection",
+    "wall": "none",
+    "flow": "zero",
+    "cluster_locking": false,
+    "adhesion": false,
+    "coalescence": false,
+    "near_field_candidate": "Pairwise linear fundamental monopole feedback using local table secant compliance; cubic signed correlation blend; harmonics 2-8 unchanged",
+    "near_field_limits": "Not a collective radial response, multipole theory or calibrated near-field solution; Primary remains the uncoupled table Primary",
+    "feedback_window": "Cubic smoothstep: 1 at d<=Ri+Rj; 0 at d>=4(Ri+Rj)",
+    "zero_drive_compliance": "Lowest valid table-pressure secant; exact zero total drive still has zero response",
+    "contact_candidate": "Frozen local normal-mobility tensors; symmetric pair H=(Mi+Mj)/2; equal/opposite correction overlap*H*n/(2*n.H*n), with fixed Jacobi relaxation"
+  },
+  "execution_mode": "stable_reduction",
+  "numerical_semantics": "Frozen F2 discrete model; ordered pair/member sums only in stable mode; contact and mobility kernels unchanged",
+  "repeatability_scope": "Same GPU, compiler, inputs, block layout and software; no cross-device bitwise promise",
+  "wall_off_observation_query_s": 0.0012879758141934872,
+  "vessel_enabled": false,
+  "metrics_wall_s": 0.7536457940004766,
+  "hdf5_wall_s": 0.07345429202541709,
+  "dataset_wall_s": 28.750712198205292,
+  "cluster_definitions": {
+    "cluster_gap_over_radius": 0.1,
+    "near_contact_gap_over_radius": 0.02,
+    "hard_contact_gap_tolerance_over_radius": 0.001,
+    "meaning": "spatial connected components; no adhesion or fusion"
+  },
+  "sampled_lineage_event_count": 29,
+  "initial_cluster_count": [
+    32
+  ],
+  "final_cluster_count": [
+    1
+  ],
+  "initial_largest_size": [
+    1
+  ],
+  "final_largest_size": [
+    32
+  ],
+  "initial_global_rg_m": [
+    1.2862203645701642e-05
+  ],
+  "final_global_rg_m": [
+    4.89462746025846e-06
+  ],
+  "numerical_quality": "PASS",
+  "physics_parameters": {
+    "radius_m": 1.78e-06,
+    "frequency_Hz": 2500000.0,
+    "density_kg_m3": 1000.0,
+    "viscosity_Pa_s": 0.001,
+    "radial_effective_viscosity_Pa_s": 0.002,
+    "secondary": true,
+    "near_field": "smooth_near_field_exploratory",
+    "transition_over_sum": 2.0,
+    "soft_core_over_sum": 1.0,
+    "local_lubrication": true,
+    "lubrication_activation": 0.1,
+    "lubrication_floor": 0.001,
+    "mobility_iterations": 2,
+    "contact_iterations": 12,
+    "contact_relaxation": 0.5,
+    "force_model": "f2_near_field_candidate",
+    "contact_model": "f1_pbd_contact",
+    "feedback_end_over_sum": 4.0
+  },
+  "wall_physics": "GEOMETRIC_WALL_ONLY",
+  "wall_contact_observed": true,
+  "fixed_ID_metrics_valid": true,
+  "configuration": {
+    "positions_m": [
+      [
+        0.0010498959622705921,
+        0.0002931081605916956,
+        -0.0010906871272319079
+      ],
+      [
+        0.0010413902296354575,
+        0.0003018574351716669,
+        -0.0010955413095286302
+      ],
+      [
+        0.0010449168551180373,
+        0.0003093898839577013,
+        -0.0010909418167330187
+      ],
+      [
+        0.001030544518624611,
+        0.00031848694470233826,
+        -0.0010954815041377397
+      ],
+      [
+        0.0010255576141958644,
+        0.00030444553944578327,
+        -0.0011014928071300318
+      ],
+      [
+        0.0010358974913296818,
+        0.00031391028246905323,
+        -0.0010975882648689183
+      ],
+      [
+        0.001025893663944311,
+        0.0003127750341144801,
+        -0.0010944579661951385
+      ],
+      [
+        0.0010318962314162772,
+        0.000295408601331393,
+        -0.001098764764235743
+      ],
+      [
+        0.0010473242474240592,
+        0.0002987635693375206,
+        -0.001088244103497788
+      ],
+      [
+        0.001028222561535065,
+        0.000297445087646365,
+        -0.0010975333727886584
+      ],
+      [
+        0.00103533739742571,
+        0.0002961973396771012,
+        -0.0010972555220986487
+      ],
+      [
+        0.0010328394106019416,
+        0.00030001669550191524,
+        -0.0010939744361387522
+      ],
+      [
+        0.001030881255093977,
+        0.0003124617550000586,
+        -0.0010925172909564732
+      ],
+      [
+        0.0010321725619507173,
+        0.00031016542029630557,
+        -0.0010988206682403768
+      ],
+      [
+        0.0010393457277869259,
+        0.00031988408357012563,
+        -0.001094690764964529
+      ],
+      [
+        0.0010401162686668978,
+        0.00029171027809838605,
+        -0.001096430757910975
+      ],
+      [
+        0.0010526869724346505,
+        0.00030812916072195027,
+        -0.0010905492704807768
+      ],
+      [
+        0.0010202883291549356,
+        0.0003019891837780976,
+        -0.0011020805386820485
+      ],
+      [
+        0.0010516230202403656,
+        0.0002998542338300643,
+        -0.0010903574998284808
+      ],
+      [
+        0.0010506724048365004,
+        0.000302766534695226,
+        -0.0010852777849753306
+      ],
+      [
+        0.001027795345602025,
+        0.0002913724046943882,
+        -0.0010986915428618889
+      ],
+      [
+        0.001035806338231223,
+        0.000298848713680753,
+        -0.001091471737056898
+      ],
+      [
+        0.0010268981797235382,
+        0.000307000589769509,
+        -0.0010979517721453193
+      ],
+      [
+        0.001043505282114747,
+        0.00028907195771628135,
+        -0.001093829818987207
+      ],
+      [
+        0.001028460638603571,
+        0.0003009579765984475,
+        -0.0010947367513179608
+      ],
+      [
+        0.0010238706085765996,
+        0.0002961955542669627,
+        -0.001098288890068532
+      ],
+      [
+        0.0010444890902529581,
+        0.0003033858925502083,
+        -0.0010918043850283434
+      ],
+      [
+        0.0010431382097548865,
+        0.000315860851781684,
+        -0.0010922012538681677
+      ],
+      [
+        0.001026111698897548,
+        0.00031134302694385546,
+        -0.0010985574672242335
+      ],
+      [
+        0.001025679681092717,
+        0.00029535953746672697,
+        -0.001102448728798082
+      ],
+      [
+        0.0010287125418451423,
+        0.00030797442048904677,
+        -0.0010938374411411658
+      ],
+      [
+        0.0010441775677545505,
+        0.00029642364199900125,
+        -0.0010934219243119133
+      ]
+    ],
+    "duration_s": 0.6,
+    "dt_s": 1e-05,
+    "sample_interval_s": 0.0002,
+    "wall_budget_s": 180,
+    "wall_enabled": false,
+    "basis": true,
+    "flow_enabled": false,
+    "events": [
+      {
+        "time_s": 0,
+        "amplitude_Pa": [
+          291.237687721856,
+          291.237687721856,
+          291.237687721856,
+          291.237687721856
+        ],
+        "phase_rad": [
+          0.9250035793646082,
+          0.780743557106484,
+          2.6346931033656023,
+          -1.463397473181839
+        ],
+        "enabled": [
+          true,
+          true,
+          true,
+          true
+        ]
+      }
+    ],
+    "initial_region": "junction",
+    "execution_mode": "stable_reduction"
+  },
+  "topology_counts": {
+    "merge_persistent": 31,
+    "merge_transient": 0,
+    "merge_right_censored": 0,
+    "split_persistent": 0,
+    "split_transient": 0,
+    "split_right_censored": 0
+  },
+  "process_body_wall_s": 30.018073613289744,
+  "minimum_saved_wall_gap_m": -2.981840899325505e-06
+}

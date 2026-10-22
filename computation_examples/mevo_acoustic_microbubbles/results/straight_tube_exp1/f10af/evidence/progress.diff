@@ -1,0 +1,77 @@
+--- /home/lzy/projects/microbubble_aggregation.md.bak_F10AF_20261019
++++ /home/lzy/projects/microbubble_aggregation.md
+@@ -28,16 +28,16 @@
+ | 先用已有录像熟悉界面 | `bash /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/start_replay.sh` |
+ | 连接 Chronos，观察并录制实验 | `bash /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/start_live.sh` |
+ | 补充或修改人工标注 | `bash /home/lzy/projects/external_connect/vision_tracking_research/smart_online_tracking_v2/start_annotation.sh` |
+-| 查看最新仿真代码及结果 | [F10AE 工程][sim-root]；[指定形态与恢复报告][ae-report] |
++| 查看最新仿真代码及结果 | [F10AF 工程][sim-root]；[可观测尺度研究报告][af-report] |
+ | 查看正式全通道离线分析 | [F10X 离线工程][offline]；[结果说明][offline-readme] |
+ 
+ **当前仿真工程根目录：**
+ 
+ ```text
+-/home/lzy/projects/computation_examples/_archives/mevo_target_f10ae_20261019/computation_examples/mevo_acoustic_microbubbles
++/home/lzy/projects/computation_examples/_archives/mevo_observable_f10af_20261019/computation_examples/mevo_acoustic_microbubbles
+ ```
+ 
+-当前分支为 `dev/f10ae-targeted-shape-recovery-20261019`，基于已核查的 F10AC/F10AD `baa47dbe95c78e1800aebe50bc3efc5faf07d5fa`；每条实验的实际执行提交见对应 `EXECUTION.json`。声学聚集研究的主要依据来自 F10Z；F10AA 在保留物理和数值要求的前提下加速求解。旧的 `computation_examples/mevo_acoustic_microbubbles` 目录不能直接当作最新基线。
++当前分支为 `dev/f10af-observable-multifidelity-20261019`，基于已核查的 F10AE `306d899fa4a9be18b8a926688a6e25d389193138`；每条实验的实际执行提交见对应 `EXECUTION.json`。声学聚集历史依据来自 F10Z，完整数值引擎沿用 F10AA；F10AF 新增受限慢时间积分及大范围空间指标。旧的 `computation_examples/mevo_acoustic_microbubbles` 目录不能直接当作最新基线。
+ 
+ 视觉启动入口仍使用上表路径，其中实时工程指向 F10Y 工作树；当前界面还包含后续本地修复，不能仅靠 F10Y 最初的提交重现最新版。各工程使用独立环境，启动脚本会选择自己的 Python，无需将所有依赖装入同一个环境。
+ 
+@@ -57,8 +57,8 @@
+ | PZT | 四枚直径 7 mm 圆片，位于 X±、Y± 外表面中心，朝装置内部 |
+ | 微泡运动环境 | 腔体按充水处理；背景流严格为零 |
+ | 当前声场 | 均匀水圆片声源代理，2.5 MHz 主研究；2.4/2.6 MHz 对照各用匹配缓存与响应 |
+-| 本批逐泡参数 | 半径 1.78 µm；已完成 32、64、128 泡的有限窗口验证 |
+-| 当前时间尺度 | 主要为 1–2 ms；本轮 64 泡两段动作共 4 ms；32 泡部分场景曾验证至 5 ms |
++| 本批逐泡参数 | 半径 1.78 µm；32、64、128、200 泡均有有限窗口测试，具体准入按算例区分 |
++| 当前时间尺度 | F10AF 最长完成 50 ms 完整逐泡参考；128/200 泡本轮限 2 ms，未完成秒级仿真 |
+ 
+ 当前控制研究不求解注射、液滴、自由液面、声流或完整 PDMS 弹性反射。早期 Y 管有流算例与此处的无流直管是不同实验，不能混用结果身份。
+ 
+@@ -67,7 +67,7 @@
+ 1. **登记初态与动作。** 固定每个泡的 ID、位置、半径、目标、运行时长及停止条件。分散初态与人为预置的近接触团分开记录；预置团不能算作声学聚集成果。
+ 2. **组合四 PZT 声场。** 各路独立设置启停、幅值、相位和持续时间；控制改变时组合已有基场，不重复运行整套 k-Wave。当前圆片代理的压力及梯度来自一致的场表达式。
+ 3. **查询微泡响应和声力。** 按泡所在位置的实际声压查询已有 APECSS 响应，计算一次 Bjerknes 力及泡间二次 Bjerknes 相互作用。超出频率、压力或缓存空间范围的输入会拒绝，不能静默裁剪或外推。
+-4. **求解平移与接触。** 结合阻力、水动力耦合和局部润滑，用 Sequential QP 硬球约束限制穿透，再检查真实球面间隙与壁面条件。当前标准步长为 1 µs。
++4. **求解平移与接触。** 结合阻力、水动力耦合和局部润滑，用 Sequential QP 硬球约束限制穿透，再检查真实球面间隙与壁面条件。完整参考步长为 1 µs；F10AF 仅在已验证的适用范围内采用自适应慢时间积分，接近接触时返回完整求解器。
+ 5. **保存接受步与失败证据。** 保存逐泡三维坐标、时间、压力、力、接触反力及质量状态；中止后的时间段不补造轨迹。
+ 6. **做对照后再解释。** 比较 OFF、不同控制、半步长和更细声场缓存。分别评价质心位移与去质心形变，并检查接触事件；最后从保存数据生成图表和视频。
+ 
+@@ -149,6 +149,18 @@
+ ![实际主轴变化与初态敏感性][ae-figure]
+ 
+ [25 项中文结论与完整限制][ae-report] · [两段动作与未恢复的真实视频][ae-video] · [开发和复现入口][ae-code]。服务器独立目录为 `/workspace/mevo_acoustic_microbubbles/f10ae_target_20261019`，大型逐步原始数据保留在该目录。下一步应在多个发现初态上优化，再用独立测试判断能否可靠控制；恢复研究应先寻找可重复的反向形变机制，并补做切换瞬态和真实四源声场标定。
++
++### 2.8 可观测尺度的空间排列与慢时间积分（F10AF）
++
++研究对象从紧凑泡团扩展到约 1.0 × 0.8 mm 的分散微泡云，并复用 F10Y 的二维群体指标。X 双源在 2.5 MHz 下存在约 **304.49 µm** 间距的 X 向稳定位置，但静态周期不等于微泡已形成条带。最长 X 双源试验完成 **50 ms**，最大逐泡位移约 **13.238 µm**；尚未确认条带、二维阵列或持续整体旋转，也未证明这些变化能被真实 Chronos 可靠观测。
++
++新增受限 SciPy 慢时间积分，保留原 F1/F2；远离接触时利用原阻力矩阵等于单位阵的性质，接近接触时返回原完整求解。短窗口可明显加速，50 ms 接触增多后优势缩小；紧凑初态在约92 µs触发的原反力平衡失败被如实复现，未放宽门槛。100 ms 的必要精细复算因预测成本超过单条预算而未运行。
++
++本轮 **78 次完整物理尝试、77 条完成**；科学计算阶段墙钟合计约 **34.19 分钟**，审计、分析和媒体生成另计。SMAC3 与 BoTorch 官方接口已通过冻结实测数据回放验证；由于没有高保真阳性模式，正式多保真筛选未准入。另完成8条有界全物理Sobol对照，不能据此宣称AI方法优于历史CMA-MAE。
++
++![实际空间排列与结构因子](microbubble_aggregation_assets/f10af_actual_pattern_evolution.png)
++
++[28项中文结论与完整报告][af-report] · [实际条带尝试视频](microbubble_aggregation_assets/f10af_pattern_attempt.mp4) · [代码与复现入口][af-code]。12组PNG/PDF和3段60 fps真实数据视频已保存；视频是毫秒物理过程的慢放。声流、自旋、真实PDMS声场及电压—声压映射未校准，`training_ready=false`。下一步优先测量真实声场与群体运动机制，再建立可重复的阳性模式和观测标定。
+ 
+ ## 3. 人工标注：少量可靠区域支持检测开发
+ 
+@@ -264,7 +276,7 @@
+ - 视觉：[F10X 离线结果][offline-readme]、[当前实时界面说明][live-readme]、[现场指南][lab-guide]。
+ - 本文配图与短视频为现有产物的原样副本，来源和 SHA-256 见 [媒体来源清单](microbubble_aggregation_assets/media_sources.json)。完整科研数据、失败记录和历史报告仍保存在各阶段目录。
+ 
+-[sim-root]: /home/lzy/projects/computation_examples/_archives/mevo_target_f10ae_20261019/computation_examples/mevo_acoustic_microbubbles
++[sim-root]: /home/lzy/projects/computation_examples/_archives/mevo_observable_f10af_20261019/computation_examples/mevo_acoustic_microbubbles
+ [aa-report]: /home/lzy/projects/computation_examples/_archives/mevo_simulation_f10aa_20261018/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10aa/reports/F10AA_DEVELOPMENT_REPORT.md
+ [aa-code]: /home/lzy/projects/computation_examples/_archives/mevo_simulation_f10aa_20261018/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10aa/reports/ACTIVE_CODE_INDEX.md
+ [aa-gate]: /home/lzy/projects/computation_examples/_archives/mevo_simulation_f10aa_20261018/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10aa/FINAL_GATE.json
+@@ -292,3 +304,6 @@
+ [ae-figure]: /home/lzy/projects/computation_examples/_archives/mevo_target_f10ae_20261019/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10ae/figures/Fig_F10AE_06_absolute_principal_axis_extension.png
+ [ae-video]: /home/lzy/projects/computation_examples/_archives/mevo_target_f10ae_20261019/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10ae/videos/Video_F10AE_2_deformation_and_recovery.mp4
+ [ae-code]: /home/lzy/projects/computation_examples/_archives/mevo_target_f10ae_20261019/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10ae/EXECUTION_AND_REPRODUCTION.md
++
++[af-report]: /home/lzy/projects/computation_examples/_archives/mevo_observable_f10af_20261019/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10af/F10AF_OBSERVABLE_DEVELOPMENT_REPORT.md
++[af-code]: /home/lzy/projects/computation_examples/_archives/mevo_observable_f10af_20261019/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10af/ACTIVE_CODE_INDEX.md

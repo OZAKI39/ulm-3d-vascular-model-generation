@@ -1,0 +1,56 @@
+--- before
++++ after
+@@ -28,7 +28,7 @@
+ | 先用已有录像熟悉界面 | `bash /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/start_replay.sh` |
+ | 连接 Chronos，观察并录制实验 | `bash /home/lzy/projects/external_connect/vision_tracking_research/realtime_collective_observation_v1/start_live.sh` |
+ | 补充或修改人工标注 | `bash /home/lzy/projects/external_connect/vision_tracking_research/smart_online_tracking_v2/start_annotation.sh` |
+-| 查看最新仿真代码及结果 | [F10AF 工程][sim-root]；[可观测尺度研究报告][af-report] |
++| 查看最新仿真代码及结果 | [F10AG 工程][sim-root]；[三维捕获与长时间研究报告](/home/lzy/projects/computation_examples/_archives/mevo_capture_f10ag_20261019/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10ag/F10AG_DEVELOPMENT_REPORT.md) |
+ | 查看正式全通道离线分析 | [F10X 离线工程][offline]；[结果说明][offline-readme] |
+ 
+ **当前仿真工程根目录：**
+@@ -37,7 +37,7 @@
+ /home/lzy/projects/computation_examples/_archives/mevo_observable_f10af_20261019/computation_examples/mevo_acoustic_microbubbles
+ ```
+ 
+-当前分支为 `dev/f10af-observable-multifidelity-20261019`，基于已核查的 F10AE `306d899fa4a9be18b8a926688a6e25d389193138`；每条实验的实际执行提交见对应 `EXECUTION.json`。声学聚集历史依据来自 F10Z，完整数值引擎沿用 F10AA；F10AF 新增受限慢时间积分及大范围空间指标。旧的 `computation_examples/mevo_acoustic_microbubbles` 目录不能直接当作最新基线。
++历史 F10AF 基线分支为 `dev/f10af-observable-multifidelity-20261019`，基于已核查的 F10AE `306d899fa4a9be18b8a926688a6e25d389193138`；每条实验的实际执行提交见对应 `EXECUTION.json`。声学聚集历史依据来自 F10Z，完整数值引擎沿用 F10AA；F10AF 新增受限慢时间积分及大范围空间指标。旧的 `computation_examples/mevo_acoustic_microbubbles` 目录不能直接当作最新基线。
+ 
+ 视觉启动入口仍使用上表路径，其中实时工程指向 F10Y 工作树；当前界面还包含后续本地修复，不能仅靠 F10Y 最初的提交重现最新版。各工程使用独立环境，启动脚本会选择自己的 Python，无需将所有依赖装入同一个环境。
+ 
+@@ -162,6 +162,26 @@
+ 
+ [28项中文结论与完整报告][af-report] · [实际条带尝试视频](microbubble_aggregation_assets/f10af_pattern_attempt.mp4) · [代码与复现入口][af-code]。12组PNG/PDF和3段60 fps真实数据视频已保存；视频是毫秒物理过程的慢放。声流、自旋、真实PDMS声场及电压—声压映射未校准，`training_ready=false`。下一步优先测量真实声场与群体运动机制，再建立可重复的阳性模式和观测标定。
+ 
++
++
++### 2.9 F10AG：三维捕获、长时间条带与旋转机制
++
++本轮在F10AF完整物理基础上复现冻结基准，检查三维漂移Jacobian、局部捕获时间、完整多泡条带和正反相位旋转。中央X恢复位置间距约304.487 µm；存在局部三维稳定点，但Y/Z恢复远弱于X方向。
++
++- 完整高保真最长250 ms；低保真最长250 ms；通过逐ID和带归属配对的窗口最多250 ms。
++- 162个独立单泡起点完成250 ms捕获诊断；近带捕获不代表从全局随机云形成条带。
++- 三个独立随机云、预置近/中/远带群及预置环用于不同验证，全部失败和右删失记录保留。
++- 本轮未确认随机分散云形成持续条带，也未确认可持续、可反向的整体旋转；正式多保真AI未准入；没有加入声流、浮力或新的泡径响应。
++- 当前结果保持EXPLORATORY、PHYSICS_UNCALIBRATED、training_ready=false。
++
++代码：`/home/lzy/projects/computation_examples/_archives/mevo_capture_f10ag_20261019/computation_examples/mevo_acoustic_microbubbles`。分支：`dev/f10ag-3d-capture-longtime-20261019`。
++
++[完整科研报告](/home/lzy/projects/computation_examples/_archives/mevo_capture_f10ag_20261019/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10ag/F10AG_DEVELOPMENT_REPORT.md) · [科学准入](/home/lzy/projects/computation_examples/_archives/mevo_capture_f10ag_20261019/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10ag/FINAL_GATE.json) · [图表](/home/lzy/projects/computation_examples/_archives/mevo_capture_f10ag_20261019/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10ag/figures) · [视频](/home/lzy/projects/computation_examples/_archives/mevo_capture_f10ag_20261019/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10ag/videos)
++
++![F10AG真实多泡条带检验](/home/lzy/projects/computation_examples/_archives/mevo_capture_f10ag_20261019/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10ag/figures/Fig_F10AG_07_multibubble_stripe_dynamics.png)
++
++[三维真实捕获视频](/home/lzy/projects/computation_examples/_archives/mevo_capture_f10ag_20261019/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10ag/videos/Video_F10AG_1_3d_acoustic_capture.mp4)
++
+ ## 3. 人工标注：少量可靠区域支持检测开发
+ 
+ 标注的作用是提供真实显微图像上的参考，帮助评价和改进检测。**不要求每次标完一整帧。** 当前推荐每次完整检查一小块，而不是零散标几个泡后把整帧标成审核完成。
+@@ -276,7 +296,7 @@
+ - 视觉：[F10X 离线结果][offline-readme]、[当前实时界面说明][live-readme]、[现场指南][lab-guide]。
+ - 本文配图与短视频为现有产物的原样副本，来源和 SHA-256 见 [媒体来源清单](microbubble_aggregation_assets/media_sources.json)。完整科研数据、失败记录和历史报告仍保存在各阶段目录。
+ 
+-[sim-root]: /home/lzy/projects/computation_examples/_archives/mevo_observable_f10af_20261019/computation_examples/mevo_acoustic_microbubbles
++[sim-root]: /home/lzy/projects/computation_examples/_archives/mevo_capture_f10ag_20261019/computation_examples/mevo_acoustic_microbubbles
+ [aa-report]: /home/lzy/projects/computation_examples/_archives/mevo_simulation_f10aa_20261018/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10aa/reports/F10AA_DEVELOPMENT_REPORT.md
+ [aa-code]: /home/lzy/projects/computation_examples/_archives/mevo_simulation_f10aa_20261018/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10aa/reports/ACTIVE_CODE_INDEX.md
+ [aa-gate]: /home/lzy/projects/computation_examples/_archives/mevo_simulation_f10aa_20261018/computation_examples/mevo_acoustic_microbubbles/results/straight_tube_exp1/f10aa/FINAL_GATE.json

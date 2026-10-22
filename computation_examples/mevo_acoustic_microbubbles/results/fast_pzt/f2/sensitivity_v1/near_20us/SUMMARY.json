@@ -1,0 +1,184 @@
+{
+  "status": "COMPLETE",
+  "reason": null,
+  "completed_physical_s": 0.05,
+  "wall_s": 1.100755572784692,
+  "macro_step_count": 2500,
+  "actual_substep_count": 2500,
+  "effective_steps_per_physical_second": 50000.0,
+  "nominal_dt_s": 2e-05,
+  "substeps_per_macro": 1,
+  "compile_s": 0.004656965844333172,
+  "graph_capture_s": 0.0229251179844141,
+  "in_run_graph_capture_s": 0.0079479836858809,
+  "control_update_s": 2.3694243282079697e-05,
+  "sampled_download_s": 1.0807919558137655,
+  "batch_size": 1,
+  "particle_count_per_sample": 32,
+  "quality": {
+    "pressure_min_Pa": 1000.0,
+    "pressure_max_Pa": 1000.0,
+    "max_predicted_penetration_m": 1.5666805889443893e-07,
+    "max_accepted_penetration_m": 3.6053630425506254e-08,
+    "cumulative_correction_m": 0.0033233821416884897,
+    "cumulative_physical_displacement_m": 0.0036849553996215205,
+    "max_contact_pass_correction_m": 5.470244057221649e-08,
+    "max_speed_m_s": 0.014385811897207128,
+    "max_physical_substep_displacement_m": 2.8771623794414257e-07,
+    "error_bits": 0,
+    "correction_fraction": 0.9018785253221334,
+    "max_component_balance_velocity_m_s": 0.0017414267155077539,
+    "coupled_effective_pressure_min_Pa": 1176.760372507106,
+    "coupled_effective_pressure_max_Pa": 1603.5384235924746,
+    "closure_min_abs_determinant": 0.9750024607688085,
+    "cumulative_free_Stokes_displacement_m": 0.008593642028801762,
+    "correction_over_free_Stokes_path": 0.38672568982395455
+  },
+  "quality_per_sample": [
+    {
+      "pressure_min_Pa": 1000.0,
+      "pressure_max_Pa": 1000.0,
+      "max_predicted_penetration_m": 1.5666805889443893e-07,
+      "max_accepted_penetration_m": 3.6053630425506254e-08,
+      "cumulative_correction_m": 0.0033233821416884897,
+      "cumulative_physical_displacement_m": 0.0036849553996215205,
+      "max_contact_pass_correction_m": 5.470244057221649e-08,
+      "max_speed_m_s": 0.014385811897207128,
+      "max_physical_substep_displacement_m": 2.8771623794414257e-07,
+      "error_bits": 0,
+      "correction_fraction": 0.9018785253221334,
+      "max_component_balance_velocity_m_s": 0.0017414267155077539,
+      "coupled_effective_pressure_min_Pa": 1176.760372507106,
+      "coupled_effective_pressure_max_Pa": 1603.5384235924746,
+      "closure_min_abs_determinant": 0.9750024607688085,
+      "cumulative_free_Stokes_displacement_m": 0.008593642028801762,
+      "correction_over_free_Stokes_path": 0.38672568982395455
+    }
+  ],
+  "controls": [
+    {
+      "time_s": 0,
+      "uniform_pressure_real_Pa": 1000.0,
+      "uniform_pressure_imag_Pa": 0.0
+    }
+  ],
+  "backend": "NVIDIA Warp",
+  "dtype": "float64",
+  "particle_block_dim": 32,
+  "full_pair_block_dim": 256,
+  "model": {
+    "radius_m": 1.78e-06,
+    "frequency_Hz": 2500000.0,
+    "density_kg_m3": 1000.0,
+    "viscosity_Pa_s": 0.001,
+    "radial_effective_viscosity_Pa_s": 0.002,
+    "secondary": true,
+    "near_field": "smooth_near_field_exploratory",
+    "transition_over_sum": 2.0,
+    "soft_core_over_sum": 1.0,
+    "local_lubrication": true,
+    "lubrication_activation": 0.1,
+    "lubrication_floor": 0.001,
+    "mobility_iterations": 2,
+    "contact_iterations": 12,
+    "contact_relaxation": 0.5,
+    "force_model": "f2_near_field_candidate",
+    "contact_model": "f1_pbd_contact",
+    "feedback_end_over_sum": 4.0,
+    "model_version": "fast_pzt_f2_pair_feedback_tensor_contact_v1",
+    "physics_scope": "EXPLORATORY",
+    "harmonic_convention": "Re[P exp(+i omega t)]",
+    "force_direction": "e_ij=(x_j-x_i)/d; positive correlation attracts",
+    "near_field_formula": "F=C*dx/[d^2+(s*Rsum*(1-q)^2)^2]^(3/2), q=clip(d/(transition*Rsum),0,1); classical above transition",
+    "near_field_calibration": "none; signed smooth exploratory regularization, not a Doinikov solution",
+    "mobility": "2 relaxed block-Jacobi local normal-resistance passes, initialized at free Stokes velocity; no global solve",
+    "mobility_force_balance": "Each current lubrication component receives only the common velocity shift mean(U_free-U_local), enforcing sum(zeta*U)=sum(F). Relative velocities remain unchanged; no particle or group is locked.",
+    "contact": "Jacobi PBD in diagonal Stokes mobility metric, weight mu_i/(mu_i+mu_j); monodisperse F1 weights 1/2",
+    "contact_vs_hydrodynamics": "Local symmetric relative-mobility metric, not a full coupled Stokes contact projection",
+    "wall": "none",
+    "flow": "zero",
+    "cluster_locking": false,
+    "adhesion": false,
+    "coalescence": false,
+    "near_field_candidate": "Pairwise linear fundamental monopole feedback using local table secant compliance; cubic signed correlation blend; harmonics 2-8 unchanged",
+    "near_field_limits": "Not a collective radial response, multipole theory or calibrated near-field solution; Primary remains the uncoupled table Primary",
+    "feedback_window": "Cubic smoothstep: 1 at d<=Ri+Rj; 0 at d>=4(Ri+Rj)",
+    "zero_drive_compliance": "Lowest valid table-pressure secant; exact zero total drive still has zero response",
+    "contact_candidate": "Frozen local normal-mobility tensors; symmetric pair H=(Mi+Mj)/2; equal/opposite correction overlap*H*n/(2*n.H*n), with fixed Jacobi relaxation"
+  },
+  "metrics_wall_s": 0.0337043940089643,
+  "hdf5_wall_s": 0.009551594965159893,
+  "dataset_wall_s": 1.1440125540830195,
+  "cluster_definitions": {
+    "cluster_gap_over_radius": 0.1,
+    "near_contact_gap_over_radius": 0.02,
+    "hard_contact_gap_tolerance_over_radius": 0.001,
+    "meaning": "spatial connected components; no adhesion or fusion"
+  },
+  "sampled_lineage_event_count": 28,
+  "initial_cluster_count": [
+    32
+  ],
+  "final_cluster_count": [
+    1
+  ],
+  "initial_largest_size": [
+    1
+  ],
+  "final_largest_size": [
+    32
+  ],
+  "initial_global_rg_m": [
+    1.5022125007615155e-05
+  ],
+  "final_global_rg_m": [
+    4.931333951247382e-06
+  ],
+  "sample_numerical_quality": [
+    "FAIL"
+  ],
+  "numerical_quality": "FAIL",
+  "configuration": {
+    "count": 32,
+    "seed": 20261007,
+    "cloud_radius_m": 2e-05,
+    "duration_s": 0.05,
+    "sample_interval_s": 0.0005,
+    "events": [
+      {
+        "time_s": 0,
+        "pressure_Pa": 1000
+      }
+    ],
+    "dt_s": 2e-05,
+    "physics": {
+      "force_model": "f2_near_field_candidate",
+      "contact_model": "f1_pbd_contact"
+    }
+  },
+  "physics_parameters": {
+    "radius_m": 1.78e-06,
+    "frequency_Hz": 2500000.0,
+    "density_kg_m3": 1000.0,
+    "viscosity_Pa_s": 0.001,
+    "radial_effective_viscosity_Pa_s": 0.002,
+    "secondary": true,
+    "near_field": "smooth_near_field_exploratory",
+    "transition_over_sum": 2.0,
+    "soft_core_over_sum": 1.0,
+    "local_lubrication": true,
+    "lubrication_activation": 0.1,
+    "lubrication_floor": 0.001,
+    "mobility_iterations": 2,
+    "contact_iterations": 12,
+    "contact_relaxation": 0.5,
+    "force_model": "f2_near_field_candidate",
+    "contact_model": "f1_pbd_contact",
+    "feedback_end_over_sum": 4.0
+  },
+  "formation_time_s": [
+    0.0105
+  ],
+  "edge_events_recorded": 874,
+  "process_body_wall_s": 1.4956164681352675
+}

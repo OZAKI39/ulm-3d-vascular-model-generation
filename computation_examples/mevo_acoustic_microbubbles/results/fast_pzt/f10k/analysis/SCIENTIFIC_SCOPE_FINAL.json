@@ -1,0 +1,201 @@
+{
+  "baseline_through": "F10J",
+  "baseline_rows": [
+    {
+      "model": "M0",
+      "task": "Full-particle acoustics, CFD, contact and GPU batching",
+      "status": "NUMERICAL_CHECKED",
+      "evidence": "F10C B1/4/16/64 match original serial at fixed dt; F10D optimized postprocessing preserves metrics.",
+      "limitation": "Synchronous controls only. F10D/E distinct dense initial states reject. Engineering regression is not physical accuracy.",
+      "sources": {
+        "src/mevo_mb/fast_sim/f10c_engine.py": "7166eaf0036a80aa5986d928a09fd16996a9825945cddcef4ae35805fc90fb82",
+        "src/mevo_mb/fast_sim/f10d_metrics.py": "c132d2eb260db3551ca42f15f476987fd43c611d6e1e23e943525c882f0dffab",
+        "docs/FAST_PZT_F10C_DEVELOPMENT.md": "167eba5bc2ab1933739ba54eb36fb133e56c1cd321e594c54d271730ffe976ba"
+      },
+      "training_ready": false
+    },
+    {
+      "model": "M0",
+      "task": "Interior 1kPa group response",
+      "status": "GROUP_MOTION_CHECKED",
+      "evidence": "F10A same-initial-state OFF/S/O10/5us gives resolved +Z paired centroid increment over10ms.",
+      "limitation": "One model and location; target navigation not established; F10K checks actual plane crossing.",
+      "sources": {
+        "docs/FAST_PZT_F10A_DEVELOPMENT.md": "112aa55cca1c5296a8db4db004294571a8db16f156b493babd07683dcba82da2",
+        "results/fast_pzt/f10a/analysis/FINAL_GATE.json": "bcf4f15963caef9a4cc220457beb9aa8dcf83b09c2377c39e612877ad86f1dfa"
+      },
+      "training_ready": false
+    },
+    {
+      "model": "M0",
+      "task": "Internal morphology and graph topology",
+      "status": "MORPHOLOGY_LIMITED",
+      "evidence": "Complete saved IDs and accepted edge ledger; historical persistent changes in F5/F8 and preparations.",
+      "limitation": "Large dt-dependent individual positions, dense contact rejection; historical events are not verified B2 truth.",
+      "sources": {
+        "src/mevo_mb/fast_sim/morphodynamics.py": "b1124f572e6de48368684034765bfc331a14b213a65ebad0d6f0092dcde7209e",
+        "docs/FAST_PZT_F10H_DEVELOPMENT.md": "73ceb0ca6a8a60fba855576bab702764c30c8a3fd2a1cbf48cbf8cc67e57328f"
+      },
+      "training_ready": false
+    },
+    {
+      "model": "B2",
+      "task": "Geometric unilateral contact, same discrete mobility",
+      "status": "NUMERICAL_CHECKED",
+      "evidence": "F10H independent two/four and real32; F10J corrected GPU true+recursive PCG and stable Armijo pass.",
+      "limitation": "Finite tested states, no universal convergence or unique physical equilibrium proof.",
+      "sources": {
+        "src/mevo_mb/fast_sim/f10h_contact.py": "38703facc91183269473e3bb96bd3dbad9287292a425a0e7bda14c0f5450a027",
+        "src/mevo_mb/fast_sim/f10j_gpu.py": "9e20492567459e7a9b2cf2b3fc650f25e523e48f9c8eff6132d929da18257b42",
+        "results/fast_pzt/f10j/analysis/FINAL_GATE.json": "c76c799d1409839477cd9def61a2029c445e1980b58fc70bedec26df914e16bf"
+      },
+      "training_ready": false
+    },
+    {
+      "model": "B2",
+      "task": "Group motion and shape in one5ms state",
+      "status": "GROUP_MOTION_CHECKED",
+      "evidence": "F10H same-model10/5us: centroid0.048867nm, fixed-ID10.411515nm, Kabsch4.637528nm; shape thresholds pass.",
+      "limitation": "One O/1102 state, not positive navigation or arbitrary morphology validation.",
+      "sources": {
+        "docs/FAST_PZT_F10H_DEVELOPMENT.md": "73ceb0ca6a8a60fba855576bab702764c30c8a3fd2a1cbf48cbf8cc67e57328f",
+        "results/fast_pzt/f10i/analysis/FINAL_GATE.json": "91cf5cea48c742e35d3132b19e0a736f297ffd79fcc8c8a1d662dd0dea669319"
+      },
+      "training_ready": false
+    },
+    {
+      "model": "B2",
+      "task": "Strict edge timing",
+      "status": "MORPHOLOGY_LIMITED",
+      "evidence": "Original12/29 edge timings exceed10us; max130us. F10I tighter solve does not resolve timestep contribution.",
+      "limitation": "Keep original FAIL and order discrepancy; no threshold relaxation.",
+      "sources": {
+        "docs/FAST_PZT_F10I_EVENT_DIAGNOSTICS.md": "26a91fc40fcbdecec508ea14717116e2c4ea8221eb05cd42be165ab1df1aab9a"
+      },
+      "training_ready": false
+    },
+    {
+      "model": "B2",
+      "task": "Persistent split and merge",
+      "status": "PERSISTENT_TOPOLOGY_UNTESTED",
+      "evidence": "All three original geometric B2 histories stay connected; no positive persistent event comparison beforeF10K.",
+      "limitation": "F10K candidate audit and conditional result are separate, do not retroactively validate historical events.",
+      "sources": {
+        "results/fast_pzt/f10j/analysis/TOPOLOGY_SCREEN.json": "786cad7d62d5c4efe7ca7b3814aad62e300dc9561702f1910f8c31f45e2ba9e3"
+      },
+      "training_ready": false
+    },
+    {
+      "model": "M0",
+      "task": "Near-wall collective hydrodynamics",
+      "status": "NEAR_WALL_UNCALIBRATED",
+      "evidence": "Original triangle no-penetration is a geometric constraint.",
+      "limitation": "Not verified near-wall collective mobility; B2 interior adapter rejects any wall correction.",
+      "sources": {
+        "src/mevo_mb/fast_sim/f10h_diagnostic.py": "734ac4874abc289e582135b55e826a43c3641b50178a4b244c701d909fcdc0ba",
+        "docs/FAST_PZT_F10G_CONTACT_MODEL.md": "a6ef084ec79535819d1ebacdeec96743aea6651e9e6fd65539ff5e8799b28a08"
+      },
+      "training_ready": false
+    },
+    {
+      "model": "M0",
+      "task": "Contact and near-field acoustics",
+      "status": "PHYSICS_UNCALIBRATED",
+      "evidence": "Original acoustic response and F2 exploratory closure retained.",
+      "limitation": "Local contact stiffness, lubrication cutoff and dense near-field force lack experimental calibration.",
+      "sources": {
+        "src/mevo_mb/fast_sim/nearfield.py": "ef55e26cc7ad05f2c3c1e2d4c899bb0b9b59bd749b2f98354ce73a7eb95b3df9",
+        "docs/FAST_PZT_F10B_MODEL_SCOPE.md": "0490df85b0e107014b0c6ce3acdf9d7a98d0f4ca6f3bf138f62d1753f0112398"
+      },
+      "training_ready": false
+    },
+    {
+      "model": "B2",
+      "task": "Near-wall collective hydrodynamics",
+      "status": "NEAR_WALL_UNCALIBRATED",
+      "evidence": "Original triangle no-penetration is a geometric constraint.",
+      "limitation": "Not verified near-wall collective mobility; B2 interior adapter rejects any wall correction.",
+      "sources": {
+        "src/mevo_mb/fast_sim/f10h_diagnostic.py": "734ac4874abc289e582135b55e826a43c3641b50178a4b244c701d909fcdc0ba",
+        "docs/FAST_PZT_F10G_CONTACT_MODEL.md": "a6ef084ec79535819d1ebacdeec96743aea6651e9e6fd65539ff5e8799b28a08"
+      },
+      "training_ready": false
+    },
+    {
+      "model": "B2",
+      "task": "Contact and near-field acoustics",
+      "status": "PHYSICS_UNCALIBRATED",
+      "evidence": "Original acoustic response and F2 exploratory closure retained.",
+      "limitation": "Local contact stiffness, lubrication cutoff and dense near-field force lack experimental calibration.",
+      "sources": {
+        "src/mevo_mb/fast_sim/nearfield.py": "ef55e26cc7ad05f2c3c1e2d4c899bb0b9b59bd749b2f98354ce73a7eb95b3df9",
+        "docs/FAST_PZT_F10B_MODEL_SCOPE.md": "0490df85b0e107014b0c6ce3acdf9d7a98d0f4ca6f3bf138f62d1753f0112398"
+      },
+      "training_ready": false
+    }
+  ],
+  "baseline_scope_sha256": "b1cf1ca01e39ee3c39160647ddec30f4f737d6d0c886d59c7f8fe9c459d021e2",
+  "F10K_additions": [
+    {
+      "model": "B2",
+      "task": "One interior persistent graph merge",
+      "status": "PERSISTENT_MERGE_CHECKED_ONE_CASE",
+      "evidence": "Same IDs and 0.290 ms event at dt10/5 us, observed for2.710 ms; original2 ms persistence criterion.",
+      "limitation": "Cross-model initialization, one 31+1 case; not physical bubble fusion or arbitrary topology validation.",
+      "source": "B2_TOPOLOGY_COMPARISON.json",
+      "source_sha256": "26770c8204953c4cd788a470f5e8970aeedf415115d6419a222942ee557b111a",
+      "training_ready": false,
+      "physical_calibration": "PHYSICS_UNCALIBRATED"
+    },
+    {
+      "model": "B2",
+      "task": "Persistent split",
+      "status": "PERSISTENT_TOPOLOGY_UNTESTED",
+      "evidence": "No split in either new3 ms window; near-wall F5 candidate not admitted.",
+      "limitation": "Missing positive persistent splitting and independent physical calibration.",
+      "source": "F5_ADMISSION.json",
+      "source_sha256": "c410ff79804deed747e07fdcd7c793e147e06c01d6dac71ce349961af84c8228",
+      "training_ready": false,
+      "physical_calibration": "PHYSICS_UNCALIBRATED"
+    },
+    {
+      "model": "B2",
+      "task": "Internal morphology and instantaneous edges",
+      "status": "MORPHOLOGY_LIMITED",
+      "evidence": "Positions, Rg, aspect, tensor and connected members pass existing gates; raw46/47 edges and up to60 us fail.",
+      "limitation": "Old12/29 strict timing FAIL remains; no threshold relaxation.",
+      "source": "B2_TOPOLOGY_COMPARISON.json",
+      "source_sha256": "26770c8204953c4cd788a470f5e8970aeedf415115d6419a222942ee557b111a",
+      "training_ready": false,
+      "physical_calibration": "PHYSICS_UNCALIBRATED"
+    },
+    {
+      "model": "M0",
+      "task": "Actual interior downstream-plane control",
+      "status": "GROUP_MOTION_CHECKED",
+      "evidence": "Actual O trajectories cross20 um at2.02433 ms; O-OFF20.32/20.53 nm, below original50 nm useful-effect gate.",
+      "limitation": "Navigation to prospective+1 um Z target is not established; 10 ms field support is right-censored.",
+      "source": "NAVIGATION.json",
+      "source_sha256": "4f4ddf3b4589db34a60504fde9a0fd86fa664c107ed31db026a55f8c7e2111e1",
+      "training_ready": false,
+      "physical_calibration": "PHYSICS_UNCALIBRATED"
+    },
+    {
+      "model": "B2",
+      "task": "B=1 fixed-state size scaling",
+      "status": "NUMERICAL_CHECKED",
+      "evidence": "32 real and128/512 synthetic pass both solvers; GPU advantage only measured at128/512;1024 NOT_RUN.",
+      "limitation": "Regular synthetic networks, no long trajectories, no B64 production or universal crossover.",
+      "source": "SCALING.json",
+      "source_sha256": "eb717575175c2e21b29f16406a68fbe09978540823769a0abe903de6981ed3f0",
+      "training_ready": false,
+      "physical_calibration": "PHYSICS_UNCALIBRATED"
+    }
+  ],
+  "labels": [
+    "EXPLORATORY",
+    "PHYSICS_UNCALIBRATED"
+  ],
+  "training_ready": false,
+  "interpretation": "New rows add limited evidence; historical model results remain descriptive, not cross-model truth."
+}

@@ -1,0 +1,68 @@
+{
+  "case": "Y1_5",
+  "dt_s": 5e-06,
+  "duration_s": 0.3,
+  "target_registration_sha256": "74be082c532c21ee9ed5ed77c3513e4673232e3e624b828bb14653176fce0c5a",
+  "f8_source": "results/fast_pzt/f8/y_half_v1/Y1",
+  "source_hashes": {
+    "CONFIG.json": "149244db91448580ae46eb2fda321e5cf45a1b19712a9bc00b6128f85c49e7ef",
+    "trajectory.h5": "b9f8b096db867de80e9150d3b1fc04c7a116905d932f77c0977ed0eb60c61b35",
+    "GATE_CROSSING.json": "0dbe1d4fd1645467d53162507f4601f07391fbbc422cb1df69ce7c0b50a1dd01",
+    "SUMMARY.json": "d92e67bb4a0f7c8419552c31a3000fc3d6aa67b731e8a539e08757909d89caeb"
+  },
+  "new_independent_sample": false,
+  "role": "instrumented_audit_reproduction",
+  "protocol": {
+    "baseline": "0ef3a0ba37b5741115060a811f47c8b67bd5dae3",
+    "evidence_level": "EXPLORATORY / UNCALIBRATED",
+    "model_changes": false,
+    "scope": "M0 fixed-event-aligned F8 trajectory audit only; no adaptive/restart or new controller admitted.",
+    "ledger": {
+      "per_particle_step_residual_m": 5e-17,
+      "cumulative_group_residual_m": 1e-12,
+      "wall_query_reconstruction_error_m": 2e-18,
+      "noninterference": "bitwise equality at all common stored states",
+      "step_buffer_capacity": 256,
+      "event_capacity": "256 * N * 5 sparse nonzero wall events",
+      "events": "all actual nonzero wall updates; no all-particle iteration-history tensor",
+      "transfer": "GPU reduction and sparse event compaction; flush per accepted save interval; rejected interval separately retained"
+    },
+    "diagnostics": {
+      "STEP_SENSITIVE": {
+        "threshold_m": 5e-08,
+        "definition": "norm of 10/5us gate YZ difference >50nm (the unchanged F8 minimum effect)"
+      },
+      "WALL_CORRECTION_SIGNIFICANT": {
+        "threshold_m": 5e-08,
+        "definition": "abs(cumulative fixed32 mean signed Z wall displacement) >50nm"
+      },
+      "CONTACT_SENSITIVE": {
+        "threshold_m": 5e-08,
+        "definition": "abs(cumulative fixed32 mean signed Z pair-contact displacement) >50nm; excludes untested indirect rearrangement effects"
+      },
+      "TRANSVERSE_EFFECT_RESOLVED": {
+        "minimum_progress_m": 5e-08,
+        "error_multiplier": 3,
+        "definition": "Y2 positive gate +Z increments vs BOTH Y0 and Y1 exceed max(50nm,3*(step sensitivity of Y2 + comparator)); does not imply target reached"
+      },
+      "NAVIGATION": {
+        "target_tolerance_m": 1.5e-07,
+        "min_largest_fraction": 0.9,
+        "target_registration": "F8 y_static_v1/TARGETS_BEFORE_TRAJECTORIES.json unchanged"
+      },
+      "PHYSICS_UNCALIBRATED": true
+    },
+    "planned_runs": [
+      "checks",
+      "Y0_5us_new",
+      "Y1_10us_audit",
+      "Y1_5us_audit"
+    ],
+    "conditional_runs": {
+      "Y2_10us": "only after Y1 ledger identifies the mechanism and an active-control comparison remains needed",
+      "Y2_5us": "only if Y2 fine-step signed components are needed to bound wall sensitivity",
+      "window_5_2p5us": "only if localized discrepancy and exact complete-state restart semantics can be demonstrated"
+    },
+    "frozen_labels": "F8 immutable, no retargeting"
+  }
+}

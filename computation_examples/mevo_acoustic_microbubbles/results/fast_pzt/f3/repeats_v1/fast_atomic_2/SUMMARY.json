@@ -1,0 +1,406 @@
+{
+  "status": "COMPLETE",
+  "reason": null,
+  "completed_physical_s": 0.12,
+  "wall_s": 5.4614729611203074,
+  "macro_step_count": 12000,
+  "actual_substep_count": 12000,
+  "effective_steps_per_physical_second": 100000.0,
+  "nominal_dt_s": 1e-05,
+  "substeps_per_macro": 1,
+  "compile_s": 4.94527630507946e-05,
+  "graph_capture_s": 0.016465183813124895,
+  "in_run_graph_capture_s": 0.006148145999759436,
+  "control_update_s": 0.015048179309815168,
+  "sampled_download_s": 5.375325688160956,
+  "batch_size": 1,
+  "particle_count_per_sample": 32,
+  "quality": {
+    "pressure_min_Pa": 836.6239254785935,
+    "pressure_max_Pa": 886.7419448095151,
+    "max_predicted_penetration_m": 4.93102274113167e-08,
+    "max_accepted_penetration_m": 1.0676117145506109e-08,
+    "cumulative_correction_m": 0.008343910203385346,
+    "cumulative_physical_displacement_m": 0.00798457676715074,
+    "max_contact_pass_correction_m": 1.800429126567326e-08,
+    "max_speed_m_s": 0.0074704442610486295,
+    "max_physical_substep_displacement_m": 7.47044426104863e-08,
+    "error_bits": 0,
+    "correction_fraction": 1.0450034418496588,
+    "max_component_balance_velocity_m_s": 0.0004700800250154985,
+    "coupled_effective_pressure_min_Pa": 1018.2713623907655,
+    "coupled_effective_pressure_max_Pa": 1417.7686418687097,
+    "closure_min_abs_determinant": 0.9750024592889831,
+    "cumulative_free_Stokes_displacement_m": 0.019149415612551478,
+    "correction_over_free_Stokes_path": 0.435726623318799
+  },
+  "quality_per_sample": [
+    {
+      "pressure_min_Pa": 836.6239254785935,
+      "pressure_max_Pa": 886.7419448095151,
+      "max_predicted_penetration_m": 4.93102274113167e-08,
+      "max_accepted_penetration_m": 1.0676117145506109e-08,
+      "cumulative_correction_m": 0.008343910203385346,
+      "cumulative_physical_displacement_m": 0.00798457676715074,
+      "max_contact_pass_correction_m": 1.800429126567326e-08,
+      "max_speed_m_s": 0.0074704442610486295,
+      "max_physical_substep_displacement_m": 7.47044426104863e-08,
+      "error_bits": 0,
+      "correction_fraction": 1.0450034418496588,
+      "max_component_balance_velocity_m_s": 0.0004700800250154985,
+      "coupled_effective_pressure_min_Pa": 1018.2713623907655,
+      "coupled_effective_pressure_max_Pa": 1417.7686418687097,
+      "closure_min_abs_determinant": 0.9750024592889831,
+      "cumulative_free_Stokes_displacement_m": 0.019149415612551478,
+      "correction_over_free_Stokes_path": 0.435726623318799
+    }
+  ],
+  "controls": [
+    {
+      "time_s": 0,
+      "amplitude_Pa": [
+        151.34051362515487,
+        151.34051362515487,
+        151.34051362515487,
+        151.34051362515487
+      ],
+      "phase_rad": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "enabled": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "control_real_Pa": [
+        151.34051362515487,
+        151.34051362515487,
+        151.34051362515487,
+        151.34051362515487
+      ],
+      "control_imag_Pa": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  ],
+  "backend": "NVIDIA Warp",
+  "dtype": "float64",
+  "particle_block_dim": 32,
+  "full_pair_block_dim": 256,
+  "model": {
+    "radius_m": 1.78e-06,
+    "frequency_Hz": 2500000.0,
+    "density_kg_m3": 1000.0,
+    "viscosity_Pa_s": 0.001,
+    "radial_effective_viscosity_Pa_s": 0.002,
+    "secondary": true,
+    "near_field": "smooth_near_field_exploratory",
+    "transition_over_sum": 2.0,
+    "soft_core_over_sum": 1.0,
+    "local_lubrication": true,
+    "lubrication_activation": 0.1,
+    "lubrication_floor": 0.001,
+    "mobility_iterations": 2,
+    "contact_iterations": 12,
+    "contact_relaxation": 0.5,
+    "force_model": "f2_near_field_candidate",
+    "contact_model": "f1_pbd_contact",
+    "feedback_end_over_sum": 4.0,
+    "model_version": "fast_pzt_f2_pair_feedback_tensor_contact_v1",
+    "physics_scope": "EXPLORATORY",
+    "harmonic_convention": "Re[P exp(+i omega t)]",
+    "force_direction": "e_ij=(x_j-x_i)/d; positive correlation attracts",
+    "near_field_formula": "F=C*dx/[d^2+(s*Rsum*(1-q)^2)^2]^(3/2), q=clip(d/(transition*Rsum),0,1); classical above transition",
+    "near_field_calibration": "none; signed smooth exploratory regularization, not a Doinikov solution",
+    "mobility": "2 relaxed block-Jacobi local normal-resistance passes, initialized at free Stokes velocity; no global solve",
+    "mobility_force_balance": "Each current lubrication component receives only the common velocity shift mean(U_free-U_local), enforcing sum(zeta*U)=sum(F). Relative velocities remain unchanged; no particle or group is locked.",
+    "contact": "Jacobi PBD in diagonal Stokes mobility metric, weight mu_i/(mu_i+mu_j); monodisperse F1 weights 1/2",
+    "contact_vs_hydrodynamics": "Local symmetric relative-mobility metric, not a full coupled Stokes contact projection",
+    "wall": "none",
+    "flow": "zero",
+    "cluster_locking": false,
+    "adhesion": false,
+    "coalescence": false,
+    "near_field_candidate": "Pairwise linear fundamental monopole feedback using local table secant compliance; cubic signed correlation blend; harmonics 2-8 unchanged",
+    "near_field_limits": "Not a collective radial response, multipole theory or calibrated near-field solution; Primary remains the uncoupled table Primary",
+    "feedback_window": "Cubic smoothstep: 1 at d<=Ri+Rj; 0 at d>=4(Ri+Rj)",
+    "zero_drive_compliance": "Lowest valid table-pressure secant; exact zero total drive still has zero response",
+    "contact_candidate": "Frozen local normal-mobility tensors; symmetric pair H=(Mi+Mj)/2; equal/opposite correction overlap*H*n/(2*n.H*n), with fixed Jacobi relaxation"
+  },
+  "execution_mode": "fast_atomic",
+  "numerical_semantics": "Frozen F2 discrete model; ordered pair/member sums only in stable mode; contact and mobility kernels unchanged",
+  "repeatability_scope": "Same GPU, compiler, inputs, block layout and software; no cross-device bitwise promise",
+  "metrics_wall_s": 0.14136476768180728,
+  "hdf5_wall_s": 0.02061306592077017,
+  "dataset_wall_s": 5.623451245948672,
+  "cluster_definitions": {
+    "cluster_gap_over_radius": 0.1,
+    "near_contact_gap_over_radius": 0.02,
+    "hard_contact_gap_tolerance_over_radius": 0.001,
+    "meaning": "spatial connected components; no adhesion or fusion"
+  },
+  "sampled_lineage_event_count": 0,
+  "initial_cluster_count": [
+    1
+  ],
+  "final_cluster_count": [
+    1
+  ],
+  "initial_largest_size": [
+    32
+  ],
+  "final_largest_size": [
+    32
+  ],
+  "initial_global_rg_m": [
+    4.934624015981765e-06
+  ],
+  "final_global_rg_m": [
+    4.844788730368737e-06
+  ],
+  "sample_numerical_quality": [
+    "PASS"
+  ],
+  "numerical_quality": "PASS",
+  "configuration": {
+    "count": 32,
+    "seed": 20261008,
+    "cloud_radius_m": 3e-05,
+    "center_m": [
+      0,
+      8e-05,
+      4e-05
+    ],
+    "basis": true,
+    "dt_s": 1e-05,
+    "sample_interval_s": 0.0002,
+    "physics": {
+      "force_model": "f2_near_field_candidate",
+      "contact_model": "f1_pbd_contact"
+    },
+    "events": [
+      {
+        "time_s": 0,
+        "amplitude_Pa": [
+          151.34051362515487,
+          151.34051362515487,
+          151.34051362515487,
+          151.34051362515487
+        ],
+        "phase_rad": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "enabled": [
+          true,
+          true,
+          true,
+          true
+        ]
+      }
+    ],
+    "duration_s": 0.12,
+    "positions_m": [
+      [
+        [
+          -2.5794224691668434e-06,
+          7.859054890416637e-05,
+          3.7099073540173685e-05
+        ],
+        [
+          -3.0552632360000947e-06,
+          7.242343962059201e-05,
+          3.8097309351499364e-05
+        ],
+        [
+          2.8525573238419574e-06,
+          7.813705681988297e-05,
+          3.426168765421736e-05
+        ],
+        [
+          2.605238307926421e-07,
+          7.58766667780403e-05,
+          4.2516289531727136e-05
+        ],
+        [
+          5.284905537731582e-06,
+          7.8095754747737e-05,
+          3.86378413426725e-05
+        ],
+        [
+          -3.4058497485728415e-07,
+          7.835636012873095e-05,
+          4.0036190851814584e-05
+        ],
+        [
+          -4.3187861159602476e-07,
+          8.095336403145568e-05,
+          4.2466682798462494e-05
+        ],
+        [
+          2.38361141267307e-06,
+          7.538242377208091e-05,
+          4.532810056789962e-05
+        ],
+        [
+          -2.3546008019812937e-06,
+          8.123608978957434e-05,
+          3.947127216496962e-05
+        ],
+        [
+          -2.4048223785075243e-06,
+          7.201949190260413e-05,
+          4.1576243603615574e-05
+        ],
+        [
+          3.857503233840763e-06,
+          7.558766676440948e-05,
+          3.653701717705247e-05
+        ],
+        [
+          3.453613227755555e-06,
+          7.290405689296781e-05,
+          3.884747567428564e-05
+        ],
+        [
+          2.628543877367641e-06,
+          8.003561077127197e-05,
+          3.7270060220113876e-05
+        ],
+        [
+          3.4386601882610456e-06,
+          7.38722047898985e-05,
+          4.2278174674129894e-05
+        ],
+        [
+          2.906548076003407e-06,
+          7.95707305786537e-05,
+          4.084502003130484e-05
+        ],
+        [
+          -4.246576707890745e-06,
+          7.569751172367775e-05,
+          3.8974591795313576e-05
+        ],
+        [
+          3.1463806395222304e-07,
+          7.571020779796275e-05,
+          3.3602266879107336e-05
+        ],
+        [
+          -3.7030820862888494e-06,
+          7.842724252312947e-05,
+          4.120054396947128e-05
+        ],
+        [
+          1.7740948773329602e-06,
+          7.868098761192296e-05,
+          4.410077362016385e-05
+        ],
+        [
+          5.091956586251026e-06,
+          7.702568317419465e-05,
+          4.2046521997858794e-05
+        ],
+        [
+          -7.877115286799647e-07,
+          7.490785407049952e-05,
+          3.925874234218658e-05
+        ],
+        [
+          -2.2496414717255737e-06,
+          7.521094323667406e-05,
+          3.602813740161937e-05
+        ],
+        [
+          -1.154201656337558e-06,
+          7.498801626505032e-05,
+          4.5656989471603256e-05
+        ],
+        [
+          4.4856982547612415e-07,
+          7.250833259408935e-05,
+          4.364912212765297e-05
+        ],
+        [
+          -3.236901407760723e-06,
+          7.526747745038084e-05,
+          4.27727711429438e-05
+        ],
+        [
+          9.038012005857184e-07,
+          7.358357470443446e-05,
+          3.642012946770843e-05
+        ],
+        [
+          2.488521696062116e-06,
+          7.620502531764935e-05,
+          3.9763624706449214e-05
+        ],
+        [
+          -1.0952595334854643e-07,
+          8.001851124655656e-05,
+          3.4957673083013374e-05
+        ],
+        [
+          2.0678925839854745e-07,
+          7.149077197392163e-05,
+          3.921450834274946e-05
+        ],
+        [
+          1.0434465820999309e-06,
+          8.229759381008368e-05,
+          3.951613271872304e-05
+        ],
+        [
+          -1.8192126562742333e-06,
+          7.819398521337149e-05,
+          4.4239070468274656e-05
+        ],
+        [
+          6.473290299498567e-07,
+          7.710661083374456e-05,
+          3.685681040510189e-05
+        ]
+      ]
+    ],
+    "absolute_time_offset_s": 0.10220000000000001,
+    "initial_condition": "Exact saved mature state; no new random initialization",
+    "capture_initial_force": true,
+    "execution_mode": "fast_atomic"
+  },
+  "physics_parameters": {
+    "radius_m": 1.78e-06,
+    "frequency_Hz": 2500000.0,
+    "density_kg_m3": 1000.0,
+    "viscosity_Pa_s": 0.001,
+    "radial_effective_viscosity_Pa_s": 0.002,
+    "secondary": true,
+    "near_field": "smooth_near_field_exploratory",
+    "transition_over_sum": 2.0,
+    "soft_core_over_sum": 1.0,
+    "local_lubrication": true,
+    "lubrication_activation": 0.1,
+    "lubrication_floor": 0.001,
+    "mobility_iterations": 2,
+    "contact_iterations": 12,
+    "contact_relaxation": 0.5,
+    "force_model": "f2_near_field_candidate",
+    "contact_model": "f1_pbd_contact",
+    "feedback_end_over_sum": 4.0
+  },
+  "formation_time_s": [
+    0.0
+  ],
+  "edge_events_recorded": 670,
+  "process_body_wall_s": 5.836204305756837
+}
