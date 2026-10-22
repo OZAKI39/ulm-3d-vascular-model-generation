@@ -1,0 +1,115 @@
+{
+  "options": {
+    "global_edge_size": {
+      "value": "0.0",
+      "doc": "Type: float                                                             \n   Default: 0.1                                                            \n   \n   The maxium length of an element edge.            \n   \n"
+    },
+    "boundary_layer_inside": {
+      "value": "True",
+      "doc": "Type: bool                                                              \n   Default: True                                                           \n   \n   If True then place the boundary layer inside the solid model surface.   \n   This is used for creating a boundary layer for CFD.                     \n   \n"
+    },
+    "create_local_edge_size": {
+      "value": "<built-in method create_local_edge_size of meshing.TetGenOptions object at 0x7f7c9a62bca8>",
+      "doc": "create_local_edge_size(face_id, size)  \n  \n  Create a value for the local_edge_size option. \n  \n  Args:  \n    face_id (int): The ID of the face to set the edge size for.  \n    size (float): The edge size for the face.  \n"
+    },
+    "use_mmg": {
+      "value": "True",
+      "doc": "Type: bool                                                              \n   Default: True                                                           \n   \n   If True then use MMG for remeshing.                                     \n   \n"
+    },
+    "radius_meshing_compute_centerlines": {
+      "value": "False",
+      "doc": "Type: bool                                                             \n   Default: False                                                         \n   \n   If True then enable computing centerlines for radius-based meshing.    \n   \n"
+    },
+    "sphere_refinement": {
+      "value": "[]",
+      "doc": "Type: list({'edge_size':float, 'radius':float, 'center':[float, float, float]}) \n   Default: []                                                            \n   \n   Specify a list of edge size, radius and center for spheres used for    \n   sphere refinement meshing. This is used to create different mesh       \n   densities for different regions of the solid model based on sphere     \n   geometry.                                                              \n   \n   The 'edge_size' parameter is the maxium length of an element edge for  \n   the nodes within a sphere.                                             \n   \n   The 'radius' parameter is the radius of a sphere.                      \n   \n   The 'center' parameter is the center of a sphere.                      \n   \n   Sphere refinement values are not checked when the values are set.      \n   Errors in the values (e.g. a misspelled dict key) are not reported     \n   until they used for generating a mesh.                                 \n   \n   Using sphere refinemen for meshing is enabled by setting the           \n   'sphere_refinement_on' meshing option to True.                         \n   \n   Example: Setting values for the sphere refinement option               \n   \n      options.sphere_refinement.append( {'edge_size':0.2, 'radius':3.7,  \n         'center':[1.4, -1.0, 0.078] })                                  \n      options.sphere_refinement_on = True                                \n   \n"
+    },
+    "sphere_refinement_on": {
+      "value": "False",
+      "doc": "Type: bool                                                             \n   Default: False                                                         \n   \n   If True then enable sphere refinement meshing.                         \n   \n"
+    },
+    "radius_meshing_centerlines": {
+      "value": "None",
+      "doc": "Type: vtkPolyData object                                                \n   Default: None                                                           \n   \n   The vtkPolyData object used to store centerline geometry for radius-based \n   meshing. The centerline geometry read in or computed can be stored in   \n   is parameter so it can be reused when changing other meshing options.   \n   \n   If 'radius_meshing_centerlines' is not set then centerline geometry is  \n   computed for the current solid model. The 'radius_meshing_centerlines'  \n   is then set with the computed centerlines.                              \n   \n   Example: Reading in centerlines and saving them in options              \n   \n      centerlines_file = \"centerlines.vtp\"                               \n      reader = vtk.vtkXMLPolyDataReader()                                  \n      reader.SetFileName(centerlines_file)                                 \n      reader.Update()                                                      \n      options.radius_meshing_centerlines = reader.GetOutput()              \n   \n"
+    },
+    "surface_mesh_flag": {
+      "value": "False",
+      "doc": "Type: bool                                                              \n   Default: True                                                           \n   \n   If True then perform surface remeshing.                                 \n   \n"
+    },
+    "local_edge_size_on": {
+      "value": "False",
+      "doc": "Type: bool                                                             \n   Default: False                                                         \n   \n   If True then enable using local edge sizes for meshing.                \n   \n"
+    },
+    "radius_meshing_on": {
+      "value": "False",
+      "doc": "Type: bool                                                             \n   Default: False                                                         \n   \n   If True then enable radius-based meshing.                              \n   \n"
+    },
+    "allow_multiple_regions": {
+      "value": "False",
+      "doc": "Type: bool                                                              \n   Default: False                                                          \n   \n   If True then allow for multiple unconnected regions.                    \n   \n"
+    },
+    "quality_ratio": {
+      "value": "1.4",
+      "doc": "Type: float                                                             \n   Default: 1.4                                                            \n   \n   The quality measure for the mesh. This number corresponds to the ratio  \n   between the radius of the circumsphere of an element and the maximum    \n   edge size.                                                              \n   \n"
+    },
+    "volume_mesh_flag": {
+      "value": "False",
+      "doc": "Type: bool                                                              \n   Default: True                                                           \n   \n   If True then generate a volume mesh.                                    \n   \n"
+    },
+    "no_bisect": {
+      "value": "True",
+      "doc": "Type: bool                                                              \n   Default: True                                                           \n   If True then use the solid model surface mesh for the volume mesh.      \n   \n"
+    },
+    "minimum_dihedral_angle": {
+      "value": "0.0",
+      "doc": "Type: float                                                             \n   Default: 0.0                                                            \n   \n   The minimum allowable dihedral angle for an element in the mesh. The    \n   dihedral is the angle between two adjacent faces for an element.        \n   \n"
+    },
+    "radius_meshing_scale": {
+      "value": "0.1",
+      "doc": "Type: float                                                             \n   Default: 0.1                                                            \n   \n   The scale value determines the mesh size factor used to set a variable  \n   edge size for meshing based on the distance of solid model surface nodes \n   to centerline geometry.                                                 \n   \n   The mesh size factor is calculated for each surface node using          \n   \n       size_factor = scale * (distance to centerline) / min_dist           \n   \n   where min_dist is the minumum node to centerline distance.              \n   \n"
+    },
+    "optimization": {
+      "value": "3",
+      "doc": "Type: int                                                               \n   Default: 3                                                              \n   \n   The number of times to optimize the mesh. Optimization moves nodes to   \n   obtain a better quality mesh.                                           \n   \n"
+    },
+    "get_values": {
+      "value": "<built-in method get_values of meshing.TetGenOptions object at 0x7f7c9a62bca8>",
+      "doc": "get_values()  \n  \n  Get the names and values of TetGen mesh generation options. \n  \n  Returns (dict): A dict containing options as name/value pairs.       \n"
+    },
+    "no_merge": {
+      "value": "True",
+      "doc": "Type: bool                                                              \n   Default: True                                                           \n   \n   If True then do not merge coplanar faces.                               \n   \n"
+    },
+    "local_edge_size": {
+      "value": "[]",
+      "doc": "Type: list({'face_id':int, 'edge_size':float})                         \n   Default: []                                                            \n   \n   Specify a list of local edge sizes for solid model faces. This is used \n   to create different mesh densities for different regions of the solid  \n   model.                                                                 \n   \n   The 'face_id' parameter is an integer ID identifying a solid model     \n   face. The solid model face IDs are obtained using the TetGen mesher    \n   get_model_face_ids() method.                                           \n   \n   The 'edge_size' parameter is the maxium length of an element edge for  \n   the face.                                                              \n   \n   Edge size values are not checked when the values are set. Errors in    \n   the values (e.g. a misspelled dict key) are not reported until they    \n   used for generating a mesh.                                            \n   \n   Using local edge sizes for meshing is enabled by setting the           \n   'local_edge_size_on' meshing option to True.                           \n   \n   Example: Setting values for the local edge sizes option                \n   \n      options.local_edge_size = [ {'face_id':1, 'edge_size':0.3} ]        \n      options.local_edge_size_on = True                                   \n   \n"
+    },
+    "create_sphere_refinement": {
+      "value": "<built-in method create_sphere_refinement of meshing.TetGenOptions object at 0x7f7c9a62bca8>",
+      "doc": "create_sphere_refinement(edge_size, radius, center)  \n  \n  Create a sphere refinement value. \n  \n  Args:  \n    edge_size (float): The edge size.  \n    radius: (float): The sphere radius.  \n    center: (list[float,float,float]): The sphere center.  \n"
+    }
+  },
+  "sv_home": "/workspace/brava_flow_roi_18mlmin_20260928/mesh_particle_validation_v2/runtime/simvascular",
+  "no_mesh_generated": true,
+  "meshing_module_doc": "SimVascular meshing module. \n   \n   The meshing module provides an interface to SV meshing functionality    \n   used to generate a finite element tetrahedral mesh from a solid model.  \n   \n   Methods are provided for setting meshing parameters, generating meshes  \n   and extracting mesh results as VTK unstructured mesh objects.           \n   \n   Two mesh generation software components are supported:                  \n       (1) TetGen  \n       (2) MeshSim \n   \n   TetGen is an open source software package used to generate meshes from  \n   PolyData solid models.                                                  \n   \n   MeshSim is a commercial software package used to generate meshes from   \n   Parasolid solid models. Using MeshSim requires purchasing a license from\n   Simmetrix, a Parasolid license from Siemens and SV plugins providing an \n   an interface to the software.                                           \n   \n   Meshing kernels are identified using the meshing.Kernel class:           \n       (1) Kernel.TETGEN                                                    \n       (2) Kernel.MESHSIM                                                   \n   \n",
+  "vtk": "8.1.1",
+  "class_doc": "TetGenOptions(global_edge_size=None, surface_mesh_flag=None,            \n                 volume_mesh_flag=None)                                     \n   \n   The TetGenOptions class stores parameter values used to control how      \n   TetGen generates a finite element mesh.                                  \n   \n   Example: Create a TetGen options object with default parameter values    \n   \n       options = sv.meshing.TetGenOptions()                                 \n   \n   Args: \n     global_edge_size (Optional[float]): The maxium length of an element    \n        edge.                                                               \n     surface_mesh_flag (Optional[bool]): If True then perform surface       \n         remeshing.                                                         \n     volume_mesh_flag (Optional[bool]): If True then generate a volume mesh.\n",
+  "methods": {
+    "get_surface": "get_surface()  \n   \n   Get the mesh surface as VTK PolyData. \n   \n   Returns (vtkPolyData): The VTK PolyData object for the mesh surface.  \n",
+    "generate_mesh": "generate_mesh(options)  \n   \n   Generate a mesh using the supplied meshing parameters. \n   \n   Args: \n     options (meshing.TetGenOptions): The meshing parameters used to   \n         generate a mesh. \n",
+    "write_mesh": "write_mesh(file_name)  \n   \n   Write the generated volume mesh to a file. \n   \n   The format of the file depends on the meshing kernel used to generate the  \n   mesh                                                                       \n      1) TetGen - A vtkUnstructuredGrid .vtu file.                            \n      2) MeshSim - A MeshSim .sms file.                                       \n   \n   Args: \n     file_name (str): The name of the file to write the mesh to.              \n",
+    "get_model_polydata": "get_model_polydata()  \n   \n   Get the VTK PolyData for the mesh solid model. \n   \n   Returns (vtkPolyData): The VTK PolyData object for the mesh solid model. \n",
+    "get_kernel": "get_kernel()  \n   \n   Get the mesher kernel. \n   \n   Returns (str): The name of the mesher kernel. \n",
+    "get_mesh": "get_mesh()  \n  \n  Get the generated volume mesh.                                             \n  \n  Returns (vtkUnstructuredGrid) The generated volume mesh.                   \n",
+    "load_mesh": "load_mesh(volume_file, surface_file=None)  \n   \n   Load a mesh from a VTK .vtu file.                                        \n   \n   Args: \n     volume_file (str): The name of the VTK .vtu file containing a           \n         volume mesh.                                                        \n     surface_file (Optionla[str]): The name of the VTK .vtp file containing a\n         surface mesh. \n",
+    "set_boundary_layer_options": "set_boundary_layer(number_of_layers, edge_size_fraction, layer_decreasing_ratio, \n       constant_thickness)  \n   \n   Set the options for boundary layer meshing. \n   \n   Args: \n     number_of_layers (int): The number of boundary layers to create. \n     edge_size_fraction (float): The fraction of the edge size meshing \n         option to use as the size for the initial boundary layer. This is \n         typically set to be between 0.0 and 1.0. \n     layer_decreasing_ratio (float): The amount of the size decrease between \n         successive boundary layers. \n     constant_thickness (bool): If True then the boundary layers will have a \n         constant thickness. \n",
+    "set_walls": "set_walls(face_ids)  \n   \n   Set the given faces to be of type wall. \n   \n   This function must be called prior to meshing to identify model wall     \n   and cap faces.                                                           \n   \n   A solid model must be loaded before calling this function. The solid     \n   model must have boundary faces defined for it.                           \n   \n   Args: \n     face_ids (list[int]): The face IDs to set to type wall. \n",
+    "get_model_face_info": "get_model_face_info()  \n  \n  Get the mesh solid model face information. \n  \n  Returns str,list([str]): The description and list of the face information. \n",
+    "get_face_polydata": "get_face_polydata(face_id)  \n   \n   Get the mesh face VTK PolyData for the given face ID.  \n   \n   Args: \n     face_id (int): The face ID to get the PolyData for. \n   \n   Returns (vtkPolyData): The VTK PolyData object for the face.  \n",
+    "load_model": "load_model(file_name)  \n  \n  Load a solid model from a file into the mesher. \n  \n  Args:                                    \n    file_name (str): Name in the solid model file. \n",
+    "get_model_face_ids": "get_model_face_ids()  \n  \n  Get the mesh solid model face IDs. \n  \n  Returns list([int]): The list of integer face IDs. \n",
+    "set_model": "set_model(model)  \n  \n  Set the solid model used by the mesher. \n  \n  Args:                                    \n    model (Model): A Model object.  \n",
+    "compute_model_boundary_faces": "compute_model_boundary_faces(angle)  \n   \n   Compute the boundary faces for the solid model. \n   \n   This method needs to be called only for PolyData solid models that do    \n   not have face information already defined (e.g. models from STL files).  \n   It does not need to be called for OpenCascade or Parasolid models.       \n   \n   For PolyData models faces are distinguished using the angle of the       \n   normals between adjacent triangles. If the angle is less than or equal   \n   to the 'angle' argument then the triangles are considered to part of     \n   the same face. \n   \n   Args:                                    \n     angle (double): The angle in degrees used to determine the boundary faces of the solid model. \n"
+  },
+  "python": "3.5.5 (default, Jun 10 2021, 09:25:39) \n[GCC 7.5.0]"
+}

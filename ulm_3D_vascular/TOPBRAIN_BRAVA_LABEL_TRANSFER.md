@@ -1,1 +1,0 @@
-../vascular_printing/TOPBRAIN_BRAVA_LABEL_TRANSFER.md

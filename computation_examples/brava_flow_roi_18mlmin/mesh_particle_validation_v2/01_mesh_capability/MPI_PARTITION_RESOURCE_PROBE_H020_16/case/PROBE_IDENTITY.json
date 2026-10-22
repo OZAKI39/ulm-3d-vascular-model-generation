@@ -1,0 +1,74 @@
+{
+  "status": "PREPARED_RESOURCE_DIAGNOSTIC_ONLY",
+  "review_sha256": "0c21fb9ec6357cf851fca9ccc2a691a7b8e09169668e5710a87c6e02096acb45",
+  "driver_sha256": "422e3a9047aff913272065ac9ac75139d2290f20ca33962939612c84bc7f8efb",
+  "base_runner_sha256": "f27feeaa5fdbd39581117b6bf93ed18b9ccf31412fa65a1af5feebdeaebacac5",
+  "executed_adapter_sha256": "62c844eecf9a5d2b0eb7ebff29c6e28f7563d69073d011255d13c7f0a1678053",
+  "adapter_substitutions": [
+    {
+      "reason": "Reuse the validated exact native node-identity reader without changing nodal fields",
+      "before": "from vascular_validation.postprocess import SolutionMeasurements",
+      "after": "sys.path.insert(0,'/workspace/brava_flow_roi_18mlmin_20260928/mesh_particle_validation_v2/scripts')\nfrom native_output_identity import CanonicalSolutionMeasurements as SolutionMeasurements"
+    },
+    {
+      "reason": "Declare the 16 available hardware-thread slots; CPU quota and solver options unchanged",
+      "before": "command=[w['candidate_wrapper'],w['launcher'],'-n',str(ranks),w['candidate_wrapper'],exe,'solver.xml']",
+      "after": "command=[w['candidate_wrapper'],w['launcher'],'--use-hwthread-cpus','-n',str(ranks),w['candidate_wrapper'],exe,'solver.xml']"
+    },
+    {
+      "reason": "Add diagnostic-only cgroup resource evidence and bounded abort controls",
+      "before": "monitor=SteadyStopMonitor(measure,policy); seen=set(); stop=None; errors=[]; samples=[]",
+      "after": "monitor=SteadyStopMonitor(measure,policy); seen=set(); stop=None; errors=[]; samples=[]\n    import signal\n    def memory_events():\n        return {k:int(v) for k,v in (line.split() for line in Path('/sys/fs/cgroup/memory.events').read_text().splitlines())}\n    initial_memory_events=memory_events();resource_samples=[];forced_termination=None"
+    },
+    {
+      "reason": "Sample physical memory and bound only this probe process group",
+      "before": "            sample=capture(['nvidia-smi','--query-gpu=utilization.gpu,memory.used','--format=csv,noheader,nounits'])",
+      "after": "            cg_bytes=int(Path('/sys/fs/cgroup/memory.current').read_text())\n            elapsed=time.time()-start\n            resource_samples.append(dict(elapsed_s=elapsed,cgroup_memory_GiB=cg_bytes/2**30,\n                tree_RSS_GiB=sum(info.get(pid,(0,0,0))[1] for pid in descendants)/2**20,\n                memory_events=memory_events()))\n            with (reports/'resource_samples.jsonl').open('a') as resource_log:\n                resource_log.write(json.dumps(resource_samples[-1])+'\\n')\n            if cg_bytes/2**30>=39.5 and stop is None:\n                stop=dict(reason='resource probe memory soft limit: FAIL',time_unix=time.time())\n                tmp=run/'STOP_SIM.pending';tmp.write_text('0\\n');tmp.replace(run/'STOP_SIM')\n            if cg_bytes/2**30>=41.0 or elapsed>policy['maximum_wall_time_s']+900:\n                forced_termination=dict(reason='resource probe hard memory/time limit',elapsed_s=elapsed,\n                                        cgroup_memory_GiB=cg_bytes/2**30,native_process_group=proc.pid)\n                try:os.killpg(proc.pid,signal.SIGTERM)\n                except ProcessLookupError:pass\n                try:proc.wait(timeout=10)\n                except subprocess.TimeoutExpired:\n                    try:os.killpg(proc.pid,signal.SIGKILL)\n                    except ProcessLookupError:pass\n                    proc.wait()\n                break\n            sample=capture(['nvidia-smi','--query-gpu=utilization.gpu,memory.used','--format=csv,noheader,nounits'])"
+    },
+    {
+      "reason": "Preserve the original execution status and add resource provenance",
+      "before": "    failures=[]",
+      "after": "    record.update(native_output_identities=measure.native_output_identities,\n        resource_samples=resource_samples,initial_memory_events=initial_memory_events,\n        final_memory_events=memory_events(),forced_termination=forced_termination,\n        scope='Fixed-step partition/resource diagnostic, not steady CFD qualification')\n    failures=[]"
+    }
+  ],
+  "policy_changes": {
+    "maximum_total_steps": {
+      "before": 500,
+      "after": 10
+    },
+    "maximum_wall_time_s": {
+      "before": 21600,
+      "after": 9000
+    },
+    "MPI_ranks": {
+      "before": 8,
+      "after": 16
+    },
+    "resource_plan": {
+      "before": "8 MPI CPU ranks + validated CUDA backend on RTX4090; CPU quota 7.68 cores.",
+      "after": "Isolated 16-rank, hardware-thread-slot, 0-to-10 resource probe; unchanged PETSc options"
+    },
+    "partition_resource_probe": {
+      "before": null,
+      "after": true
+    },
+    "reference_CFD_candidate": {
+      "before": null,
+      "after": "M1_coplanar_fine_h020"
+    }
+  },
+  "solver_xml_change": {
+    "before": "<Number_of_time_steps>500</Number_of_time_steps>",
+    "after": "<Number_of_time_steps>10</Number_of_time_steps>"
+  },
+  "physical_BC_and_formulation_unchanged": true,
+  "PETSc_options_unchanged": true,
+  "initial_state": "zero",
+  "MPI_ranks": 16,
+  "reference_MPI_ranks": 8,
+  "final_requested_step": 10,
+  "mesh_arrays_sha256": "f93bff504ef4bd035b58157f9e39e5d73205c082a0cf9f3c934670fcda9c3f2d",
+  "reference_step10_sha256": "1f1acf461a968c7011e500b90b478c1def255c9e4fdc5582d19a347b411c731e",
+  "particle_replay_launched": false,
+  "production_selected": false
+}

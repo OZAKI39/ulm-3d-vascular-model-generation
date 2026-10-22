@@ -1,1 +1,0 @@
-../../vascular_printing/tests/test_rodent_vasculature.py

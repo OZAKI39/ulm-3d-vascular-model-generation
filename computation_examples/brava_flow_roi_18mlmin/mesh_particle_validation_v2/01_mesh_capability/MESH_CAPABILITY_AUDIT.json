@@ -1,0 +1,58 @@
+{
+  "status": "NATIVE_GENERATION_VALIDATED_WITH_GEOMETRY_GATES",
+  "raw_sha256": "858533dbaab0f65f1998b99e2bf28cff29c260e2372bdbe399ec187e4f7697ff",
+  "version": "Same official SimVascular 2023-05-31 distribution used for baseline; deployed in study runtime",
+  "global_edge_size": true,
+  "local_edge_size": true,
+  "sphere_refinement": true,
+  "radius_meshing": true,
+  "boundary_layer_method": "set_boundary_layer_options",
+  "boundary_layer_parameters": [
+    "number_of_layers",
+    "edge_size_fraction",
+    "layer_decreasing_ratio",
+    "constant_thickness"
+  ],
+  "surface_remesh": true,
+  "use_mmg": false,
+  "volume_optimization": {
+    "option": "optimization",
+    "value": 3
+  },
+  "separate_surface_optimization_knob": false,
+  "caveats": [
+    "Installed default global_edge_size=0 and surface_mesh_flag=False differ from docstrings; all important switches set explicitly.",
+    "Boundary-layer setter availability does not establish mesh feasibility or achieved thickness. Actual volume and topology will be measured.",
+    "No independently named surface optimization control exposed by this TetGenOptions version."
+  ],
+  "references": [
+    "https://simvascular.github.io/documentation/python_interface/modules/docs/meshing_TetGen.html",
+    "https://simvascular.github.io/documentation/python_interface/modules/docs/meshing_TetGenOptions.html"
+  ],
+  "boundary_layer_total_thickness_semantics": "Measured native groups verify total thickness = global_edge_size * edge_size_fraction; first layer depends on layer count and ratio.",
+  "boundary_layer_measured_total_m": 0.0001,
+  "boundary_layer_measured_first_layer_m": {
+    "3_layers": 2.6229508304011657e-05,
+    "4_layers": 1.7344173416009555e-05
+  },
+  "mesher_frame_issue": "Original open-WALL normal orientation yields outward extrusion and overlapping tets; rigid diagonal(-1,-1,1) meshing frame and inverse output restore valid M2/M3 medium meshes. Every candidate still requires independent oriented conformity checks.",
+  "native_layer_direction_diagnostic": "NATIVE_LAYER_NORMAL_DIAGNOSTIC.json",
+  "invalid_early_diagnostics": [
+    "BL_NORMAL_ORIENTATION_PROBE.json",
+    "NATIVE_LAYER_NORMAL_DIAGNOSTIC_attempt1_INVALID_STATIC_LOCATOR.json"
+  ],
+  "VTK8_closest_point_caveat": "Use vtkCellLocator, not the VTK 8.1 vtkStaticCellLocator inherited unimplemented method; valid sentinel checks required. Main QA/field audits use VTK 9.",
+  "fixed_PLC_volume_only_probe": {
+    "surface_mesh_flag": false,
+    "volume_mesh_flag": true,
+    "use_mmg": true,
+    "MMG_executed": false,
+    "reason": "Native SetWalls cap preservation; surface remeshing is disabled.",
+    "tested_candidate": "M1_fixedsurface_h050_keepcaps",
+    "tetra": 762096,
+    "all_wall": 0,
+    "physical_probes_outside": 0,
+    "CFD_run": false
+  },
+  "no_bisect_false_native_caveat": "False is sent as a numeric zero but the native NoBisect setter enables by option name. A separate None/omitted-flag probe is running; actual subdivision must be checked."
+}
