@@ -2,6 +2,8 @@
 
 日期：2026-10-23。唯一日常开发目录：`/home/lzy/projects/new_mouse_vessel_flow`。
 
+后续更新：用户已确认删除，原清单中的 15 项已实际删除。最新状态见[确认后删除报告](CONFIRMED_CLEANUP_REPORT_ZH.md)。下文空间统计和验证记录属于前一次清理，不能与后续删除重复计算。
+
 **已实际删除重复同步工程，并把 Git 直接建在新小鼠工程内。** 已删除目标原占用约 **5.11 GB**；按本次发生变化的两个工作区计算，扣除补回正式数据、Git 和审计记录后，净减少约 **2.86 GB**。没有再次建立同步工程、备份镜像或压缩包。
 
 ## 1. 清理前后空间
@@ -68,17 +70,17 @@
 
 结论仅适用于这些实际检查，不增加完整血管局部物理精度或新算例成功的保证。参见 [验证汇总](../validation/cleanup_20261023/SUMMARY.json)、[独立性验证](../validation/cleanup_20261023/independence.json)、[最终数据核查](../validation/cleanup_20261023/integrity_after_removal.json)。
 
-## 5. 仍保留、等待你决定的内容
+## 5. 原待确认事项的后续结果
 
-见 [待确认清单](cleanup_20261023/PENDING_REVIEW.csv)。重点包括：
+见[已更新的原待确认清单](cleanup_20261023/PENDING_REVIEW.csv)。用户随后授权删除，处理结果如下：
 
-- `computation_examples/mean-2p0-mmps*` 和 `fem_reference_stage_q` 原始工程：新工程所需数据已核验，但删除原始工程仍需你确认。
+- `computation_examples/mean-2p0-mmps*` 和 `fem_reference_stage_q` 五个原始工程：已删除旧目录，新工程所需数据保留且核验通过。
 - `_shared/active_network_development`、`particle_workflow`、`geometry_network`、旧流场和 WSS 工作区：含共享关系、原始资料或未提交状态，不能整体视作纯临时副本。
 - `temp_storage/ulm-3d-vascular-model-generation/.git`：仍支撑多个独立项目；`ulm_particle_3d_particle0/.venv` 仍有旧项目消费者。
 - `_archives/github_sync_20260928_latest`：混有 BraVa 内容，且相对已缓存远端有 4 个本地提交，本轮不删除。
-- 2026-09-27 的迁移/清理记录，以及不完全相同的旧发布清单：部分有独有故障和验收记录，尚未证明可丢弃。
+- 2026-09-27 的六个迁移/清理目录、四份旧发布清单：已按后续授权删除，包括不再需要的独有历史整理记录。
 
-没有删除这些原始/混合项目、兼容链接、共享环境、正式唯一数据或服务器文件。
+原清单标为“保留”的 18 项继续保留。14 个指向已删除小鼠目录的兼容链接改指向新工程中对应数据；共享环境、混合项目、正式保留数据和服务器文件没有删除。
 
 ## 6. Git 和以后怎样开发
 

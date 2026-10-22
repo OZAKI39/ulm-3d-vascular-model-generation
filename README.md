@@ -4,7 +4,7 @@
 
 **2026-10-23：按最新清理要求，保留以下独立算例的数据，共用一套当前程序。** ROI-only 是默认开发参考。2026-10-22 曾按当时指令删除另外四个算例在新工程中的副本；本次按最新要求，从保留的原件核对 SHA 后补回必要数据与配置，没有恢复重复执行源码。旧报告记录各自当时的状态。
 
-先看[本次清理报告](docs/CLEANUP_REPORT_ZH.md)、[直接 Git 开发方式](docs/GIT_WORKFLOW_ZH.md)和[最新结果图表与动画](results/current_review/index.html)。当前身份清单为 `configs/active_data_manifest.json`。
+先看[确认后删除报告](docs/CONFIRMED_CLEANUP_REPORT_ZH.md)、[前次工程清理报告](docs/CLEANUP_REPORT_ZH.md)、[直接 Git 开发方式](docs/GIT_WORKFLOW_ZH.md)和[最新结果图表与动画](results/current_review/index.html)。当前身份清单为 `configs/active_data_manifest.json`。原待确认清单中的 15 项已经删除，正式数据保留在本工程；另外 18 项共享或混合资料按原清单保留。
 
 | 算例 | 正式轨迹 | O1 / O2 / O3 出流 | 接触支持静止 | 执行失败 |
 |---|---:|---:|---:|---:|
@@ -76,4 +76,4 @@ SonoVue 分布、D≤4 µm 条件分布、单次入口准入、固定来源顺�
 
 原流场展示可使用 `python -m mouse_vessel_flow.presentation.render_visualization --output 新目录 --stills-only` 或 `render_surface_fields`。这些渲染入口已迁入并检查导入/参数，本轮没有重新执行完整动画渲染。`presentation.prepare_streamlines` 是显式的新点诊断计算，不属于只读查看，也不是微泡生产。
 
-本次没有启动新正式 CFD、微泡批次、网格加密、细档血管或 O2 敏感性任务，也没有访问计算服务器。旧工程及共享资源的待确认清单、已删除同步副本和 Git 推送状态以[本次清理报告](docs/CLEANUP_REPORT_ZH.md)为准。
+本次没有启动新正式 CFD、微泡批次、网格加密、细档血管或 O2 敏感性任务，也没有访问计算服务器。旧工程及共享资源的最新处理结果以[确认后删除报告](docs/CONFIRMED_CLEANUP_REPORT_ZH.md)为准。
